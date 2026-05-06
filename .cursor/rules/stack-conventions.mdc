@@ -1,0 +1,30 @@
+---
+description: BazarCRM stack conventions — Next.js 16, Supabase auth, proxy.ts
+alwaysApply: true
+---
+
+# Stack Conventions
+
+## Framework
+- **Next.js 16** App Router, **React 19**, **TypeScript 5** (`strict: true`)
+- Path alias `@/*` maps to project root
+- `"use client"` only when hooks or browser APIs are needed — default to Server Components
+
+## Auth (Supabase)
+- Browser client → `lib/supabase/client.ts` (`createBrowserClient`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`)
+- Admin/server client → `lib/supabase/admin.ts` (service role, Route Handlers **only**)
+- Session gate lives in **`proxy.ts`** (Next.js 16 Proxy) — **never add `middleware.ts`** alongside it or the build fails
+- After MFA verify: always call `refreshSession()` then `window.location.assign()` (full nav) so AAL2 cookies are set before proxy.ts runs
+- Safe redirects only via `lib/auth/safe-return-path.ts`
+- Default post-login destination via `lib/auth/resolve-default-home.ts`
+
+## Styling
+- **Tailwind CSS v4** + `@tailwindcss/postcss` — no `tailwind.config.ts`
+- All color tokens via CSS variables (see `ui-design-system` rule) — **never hardcode hex**
+- shadcn CLI for UI primitives (`components.json` style: `base-nova`)
+- Icons: **lucide-react** only
+
+## Environment variables
+- `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` — browser-safe
+- `SUPABASE_SECRET_KEY` — server only, never import in client components
+- `NEXT_PUBLIC_APP_URL` — canonical origin for redirect URLs

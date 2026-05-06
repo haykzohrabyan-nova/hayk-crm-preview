@@ -1,0 +1,120 @@
+---
+description: BazaarPrinting CRM UI Design System — tokens, layout, components, do/don'ts
+alwaysApply: true
+---
+
+# BazaarPrinting CRM — UI Design System v1.0
+
+## Themes: Light (Navy & Gold) · Dark (Charcoal & Orange)
+
+### CSS Token Reference
+Always use these variables. **Never hardcode hex values in components.**
+
+| Token | Light | Dark |
+|---|---|---|
+| `--color-bg` | `#F8F7F4` | `#18181B` |
+| `--color-surface` | `#FFFFFF` | `#27272A` |
+| `--color-topbar` | `#1B2B4B` | `#27272A` |
+| `--color-accent` | `#E8C97A` | `#F97316` |
+| `--color-accent-dark` | `#C9A84C` | `#FB923C` |
+| `--color-text-primary` | `#333333` | `#F4F4F5` |
+| `--color-text-muted` | `#888888` | `#71717A` |
+| `--color-border` | `#E5E7EB` | `#3F3F46` |
+| `--color-badge-bg` | `#EAF0FB` | `#2D1F0E` |
+| `--color-badge-text` | `#1B2B4B` | `#FB923C` |
+| `--color-row-alt` | `#F8F7F4` | `#27272A` |
+| `--color-row-hover` | `#EAF0FB` | `#27272A` |
+| `--color-btn-primary-bg` | `#E8C97A` | `#F97316` |
+| `--color-btn-primary-text` | `#1B2B4B` | `#FFFFFF` |
+| `--color-btn-verify-bg` | `#1B2B4B` | `#F97316` |
+| `--color-btn-verify-text` | `#E8C97A` | `#FFFFFF` |
+| `--color-tab-active` | `#1B2B4B` | `#F97316` |
+| `--color-tab-underline` | `#E8C97A` | `#F97316` |
+| `--color-tab-inactive` | `#888888` | `#71717A` |
+
+Semantic colors (not tokenized — use directly):
+- Danger: `#DC2626` / dark `#EF4444`
+- Success: `#16A34A` / dark `#22C55E`
+- Warning: `#D97706` / dark `#F59E0B`
+
+## Typography
+- **Font: Inter** (Google Fonts via `next/font/google`). Fallback: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif`
+- Max font-weight: **600**. Never use 700+.
+- Table headers: `11px / 500 / uppercase / letter-spacing: 0.06em` in `--color-text-muted`
+- Page title (h1): `20px / 600` in `--color-text-primary`
+- Button text: `13px / 500`
+
+## Layout
+- **Left collapsible sidebar** for navigation. Background: `var(--color-topbar)` (navy light / dark gray dark).
+- Expanded width: `224px` (`w-56`). Collapsed width: `56px` (`w-14`). Collapse state persisted in `localStorage` key `bazaar-sidebar-collapsed`.
+- Brand name at sidebar top: `BAZAARPRINTING` in `var(--color-accent)`, `letter-spacing: 0.05em`.
+- Active nav item: `background: var(--color-accent)`, `color: var(--color-btn-primary-text)`. Inactive: `rgba(255,255,255,0.65)` on hover `rgba(255,255,255,0.9)`.
+- Bottom of sidebar: Dark mode toggle, Sign out, Collapse button — all using `rgba(255,255,255,0.55)` text.
+- Page content: `max-width: 1280px`, centered, `padding: 24px` (desktop) / `16px` (mobile).
+- Spacing scale: multiples of 4px only (`4 / 8 / 12 / 16 / 20 / 24 / 32px`).
+
+## Border Radius Tokens
+- `4px` — badges, chips, status pills
+- `6px` — buttons, inputs, small cards
+- `10px` — cards, modals, dropdowns
+- `16px` — large panels
+- `9999px` — toggle switches, avatars, round pills
+
+## Component Rules
+
+### Topbar
+- Logo: `"BAZAARPRINTING"` — `font-weight 500–600`, `color: var(--color-accent)`, `letter-spacing: 0.05em`
+- Dark mode: add `border-bottom: 1px solid var(--color-border)`
+- Theme toggle button on the right
+
+### Tab Navigation
+- Active: `color: var(--color-tab-active)`, `border-bottom: 2px solid var(--color-tab-underline)`, `font-weight: 500`
+- Inactive: `color: var(--color-tab-inactive)`, `font-weight: 400`
+- Padding: `10px 14px`
+
+### Buttons
+- All: `border-radius: 6px`, `padding: 6px 14px`, `font-size: 13px`, `font-weight: 500`
+- Primary CTA: `bg: var(--color-btn-primary-bg)`, `color: var(--color-btn-primary-text)`
+- Verify (table row): `bg: var(--color-btn-verify-bg)`, `color: var(--color-btn-verify-text)`
+- Danger: `bg: #DC2626` / `#EF4444`, `color: white`
+- Hover: lighten 8% (light) / brighten 10% (dark). Active: `scale(0.97)`
+
+### Status Pills
+- Not Defined: `bg #F2F2F0 / text #999` · dark: `bg #27272A / text #52525B / border #3F3F46`
+- High: `bg #FEF2F2 / text #DC2626` · dark: `bg #450A0A / text #EF4444`
+- Medium: `bg #FFFBEB / text #D97706` · dark: `bg #431407 / text #F59E0B`
+- Low: `bg #F0FDF4 / text #16A34A` · dark: `bg #052E16 / text #22C55E`
+
+### Table Rows
+- Light: odd `#FFFFFF`, even `#F8F7F4`, hover `#EAF0FB`
+- Dark: all rows `#1C1C1F`, hover `#27272A`
+- Min row height: `52px`. Sticky header at `top: 100px`
+
+### Skeleton / Loading
+- Never full-page spinner — always table skeleton
+- Light shimmer: `#E5E7EB → #F3F4F6`. Dark: `#27272A → #3F3F46`
+
+### Toast
+- Bottom-right, `16px` from edges, auto-dismiss 4s
+- Success: left border `4px solid #16A34A`. Error: `4px solid #DC2626`
+
+### Modal
+- Overlay: `rgba(0,0,0,0.45)`. `border-radius: 12px`, `padding: 24px`, `max-width: 520px`
+- Bg: `#FFFFFF` light / `#27272A` dark
+
+## Dark Mode
+- Toggle class `dark` on `<html>`. LocalStorage key: **`bazaar-theme`**
+- Read on load before first render to avoid flash
+
+## Do's & Don'ts
+- ✅ 100% token-based colors — zero hardcoded hex in components
+- ✅ Flat colors only — no gradients, no drop shadows on topbar/tab bar
+- ✅ Gold/orange ONLY for primary actions and active indicators
+- ✅ 52px+ row heights for comfortable click targets
+- ✅ Inter font throughout
+- ✅ Skeleton loaders while data fetches
+- ❌ No fixed topbar (brand + nav lives in the sidebar)
+- ❌ No gradients, no topbar/tab-bar shadows
+- ❌ No font-weight 700+
+- ❌ No emoji in production UI — use Lucide SVG icons
+- ❌ Never more than 2 accent colors in the same view

@@ -1,0 +1,134 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─── BazaarPrinting CRM — Design System Tokens ─────────────────────────── */
+
+:root {
+  /* Backgrounds */
+  --color-bg: #F8F7F4;
+  --color-surface: #FFFFFF;
+  --color-topbar: #1B2B4B;
+
+  /* Accent */
+  --color-accent: #E8C97A;
+  --color-accent-dark: #C9A84C;
+
+  /* Text */
+  --color-text-primary: #333333;
+  --color-text-muted: #888888;
+
+  /* Borders */
+  --color-border: #E5E7EB;
+
+  /* Badges */
+  --color-badge-bg: #EAF0FB;
+  --color-badge-text: #1B2B4B;
+
+  /* Table rows */
+  --color-row-alt: #F8F7F4;
+  --color-row-hover: #EAF0FB;
+
+  /* Buttons */
+  --color-btn-primary-bg: #E8C97A;
+  --color-btn-primary-text: #1B2B4B;
+  --color-btn-verify-bg: #1B2B4B;
+  --color-btn-verify-text: #E8C97A;
+
+  /* Tabs */
+  --color-tab-active: #1B2B4B;
+  --color-tab-underline: #E8C97A;
+  --color-tab-inactive: #888888;
+
+  /* Semantic */
+  --color-danger: #DC2626;
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+}
+
+.dark {
+  /* Backgrounds */
+  --color-bg: #18181B;
+  --color-surface: #27272A;
+  --color-topbar: #27272A;
+
+  /* Accent */
+  --color-accent: #F97316;
+  --color-accent-dark: #FB923C;
+
+  /* Text */
+  --color-text-primary: #F4F4F5;
+  --color-text-muted: #71717A;
+
+  /* Borders */
+  --color-border: #3F3F46;
+
+  /* Badges */
+  --color-badge-bg: #2D1F0E;
+  --color-badge-text: #FB923C;
+
+  /* Table rows */
+  --color-row-alt: #27272A;
+  --color-row-hover: #27272A;
+
+  /* Buttons */
+  --color-btn-primary-bg: #F97316;
+  --color-btn-primary-text: #FFFFFF;
+  --color-btn-verify-bg: #F97316;
+  --color-btn-verify-text: #FFFFFF;
+
+  /* Tabs */
+  --color-tab-active: #F97316;
+  --color-tab-underline: #F97316;
+  --color-tab-inactive: #71717A;
+
+  /* Semantic */
+  --color-danger: #EF4444;
+  --color-success: #22C55E;
+  --color-warning: #F59E0B;
+}
+
+/* ─── Tailwind theme bridge ──────────────────────────────────────────────── */
+
+@theme inline {
+  --color-background: var(--color-bg);
+  --color-foreground: var(--color-text-primary);
+  --font-sans: var(--font-inter);
+  --font-mono: ui-monospace, 'Cascadia Code', monospace;
+}
+
+/* ─── Base ───────────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  border-color: var(--color-border);
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Skeleton shimmer animation ────────────────────────────────────────── */
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-border) 25%,
+    var(--color-row-alt) 50%,
+    var(--color-border) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
