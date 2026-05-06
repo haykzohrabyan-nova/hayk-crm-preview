@@ -43,8 +43,12 @@ function Setup2FAForm() {
         setEnrollLoading(false);
         return;
       }
+      // Build a minimal otpauth URI from the secret.
+      // Supabase's full qr_code URI can exceed QR code data limits; the short form
+      // is universally supported by all authenticator apps.
+      const shortUri = `otpauth://totp/BazaarPrinting?secret=${data.totp.secret}&issuer=BazaarPrinting`;
       setFactorId(data.id);
-      setQrUri(data.totp.qr_code);
+      setQrUri(shortUri);
       setSecret(data.totp.secret);
       setEnrollLoading(false);
     }
