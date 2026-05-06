@@ -1,0 +1,51 @@
+---
+description: BazaarPrinting CRM — composable components, interactions, form validation
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# UI and Forms
+
+## Components
+
+- Prefer **small, reusable components** — avoid copy-paste. Share layout and patterns through composition and existing `components/ui` (shadcn).
+- Match project styling: Tailwind v4, BazaarPrinting CSS tokens (`var(--color-bg)`, `var(--color-text-muted)`, etc. — never hardcoded hex), accessible focus states.
+- All interactive elements must have a visible focus style — use `outline`, `box-shadow`, or `border-color` keyed to `var(--color-accent)`.
+
+## Motion and affordance
+
+- Add tasteful **hover**, **focus-visible**, and **transition** on interactive elements (buttons, links, cards acting as controls). Keep motion subtle.
+- Respect `prefers-reduced-motion` when adding non-trivial animation — wrap keyframe animations in `@media (prefers-reduced-motion: no-preference)`.
+- Button active state: `transform: scale(0.97)`. Hover: `opacity: 0.9`. No heavy shadows or bounces.
+
+## Inputs and validation
+
+- Use correct **HTML input types** (`email`, `number`, `tel`, `url`, `password`) and meaningful `autoComplete` values.
+- **Phone and email fields** must use `PhoneInput` and `EmailInput` from `components/ui/` — see `form-inputs` rule.
+- Add validation aligned to the field: email format, min/max/step for numbers, required fields, length limits.
+- Surface errors **next to the field** using the field-level `error` prop — not a single banner for the whole form.
+- Use `aria-invalid` and `aria-describedby` on inputs when showing errors.
+- Prefer shared validation helpers from `lib/utils/` once introduced; keep validation consistent per screen until then.
+
+## Labels
+
+All form labels follow the design system style:
+- `12px / font-weight 500 / uppercase / letter-spacing: 0.06em`
+- Color: `var(--color-text-muted)`
+- Always use `<label htmlFor="...">` — never skip labels for accessibility
+
+## Error display
+
+```tsx
+{error && (
+  <p
+    id="field-error"
+    className="mt-1.5 text-[12px] font-medium"
+    style={{ color: "var(--color-danger)" }}
+    role="alert"
+  >
+    {error}
+  </p>
+)}
+<input aria-invalid={!!error} aria-describedby={error ? "field-error" : undefined} ... />
+```
