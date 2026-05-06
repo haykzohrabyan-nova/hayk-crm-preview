@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
+import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -40,6 +41,12 @@ export function Sidebar() {
 
   function toggleTheme() {
     setTheme(theme === "dark" ? "light" : "dark");
+  }
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.assign("/login");
   }
 
   return (
@@ -159,8 +166,9 @@ export function Sidebar() {
           )}
         </button>
 
-        {/* Sign out (stub) */}
+        {/* Sign out */}
         <button
+          onClick={handleSignOut}
           title={collapsed ? "Sign out" : undefined}
           className={cn(
             "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors w-full",

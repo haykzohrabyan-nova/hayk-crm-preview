@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/theme-provider";
+import { createClient } from "@/lib/supabase/client";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -24,6 +25,12 @@ export function MobileNav() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
+
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.assign("/login");
+  }
 
   // Close drawer on route change
   useEffect(() => {
@@ -155,6 +162,7 @@ export function MobileNav() {
           </button>
 
           <button
+            onClick={handleSignOut}
             className="flex items-center gap-3 rounded-md px-3 py-2.5 text-[13px] w-full transition-colors"
             style={{ color: "rgba(255,255,255,0.55)" }}
           >
