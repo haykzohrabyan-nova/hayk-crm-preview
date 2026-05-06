@@ -1,13 +1,14 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
+import { ShieldCheck, KeyRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
+import { OtpInput } from "@/components/otp-input";
 
 function Setup2FAForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [qrUri, setQrUri] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
@@ -21,10 +22,10 @@ function Setup2FAForm() {
     async function enroll() {
       const supabase = createClient();
 
-      // Remove ALL existing unverified TOTP factors sequentially before re-enrolling.
+      // Remove all existing TOTP factors before re-enrolling.
+      // If the user is on this page, proxy.ts confirmed no verified MFA exists yet.
       const { data: existing } = await supabase.auth.mfa.listFactors();
-      const unverified = existing?.totp?.filter((f) => f.status === "unverified") ?? [];
-      for (const f of unverified) {
+      for (const f of existing?.totp ?? []) {
         await supabase.auth.mfa.unenroll({ factorId: f.id });
       }
 
@@ -48,7 +49,7 @@ function Setup2FAForm() {
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
-    if (!factorId) return;
+    if (!factorId || code.length < 6) return;
     setError(null);
     setLoading(true);
 
@@ -67,11 +68,11 @@ function Setup2FAForm() {
     });
     if (verifyError) {
       setError(verifyError.message);
+      setCode("");
       setLoading(false);
       return;
     }
 
-    // Refresh session so cookies reflect AAL2 before proxy.ts runs
     await supabase.auth.refreshSession();
     const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
     window.location.assign(next);
@@ -79,94 +80,118 @@ function Setup2FAForm() {
 
   return (
     <div
-      className="rounded-xl border p-8 shadow-sm"
-      style={{ borderColor: "var(--border)", backgroundColor: "var(--card)" }}
+      className="w-full rounded-[10px] border px-10 py-9"
+      style={{
+        maxWidth: 440,
+        backgroundColor: "var(--color-surface)",
+        borderColor: "var(--color-border)",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+      }}
     >
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>
+      {/* Step dots */}
+      <div className="flex items-center justify-center gap-2 mb-7">
+        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-success)" }} />
+        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-accent)" }} />
+      </div>
+
+      {/* Header */}
+      <div className="mb-6 flex flex-col items-center text-center">
+        <div
+          className="mb-4 flex h-12 w-12 items-center justify-center rounded-[10px]"
+          style={{ backgroundColor: "var(--color-topbar)" }}
+        >
+          <KeyRound className="h-5 w-5" style={{ color: "var(--color-accent)" }} />
+        </div>
+        <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
           Set up two-factor authentication
         </h1>
-        <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
-          Scan the QR code with your authenticator app, then enter the 6-digit code.
+        <p className="mt-1.5 text-[13px] italic" style={{ color: "var(--color-text-muted)" }}>
+          Scan the QR code with your authenticator app
         </p>
       </div>
 
-      {enrollLoading && (
-        <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
-          Generating QR code…
-        </p>
-      )}
-
-      {!enrollLoading && qrUri && (
+      {/* QR Code */}
+      {enrollLoading ? (
+        <div className="mb-6 flex flex-col items-center gap-3">
+          <div className="skeleton h-[196px] w-[196px] rounded-lg" />
+          <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>
+            Generating QR code…
+          </p>
+        </div>
+      ) : qrUri ? (
         <div className="mb-6 flex flex-col items-center gap-4">
           <div className="rounded-lg bg-white p-3">
             <QRCodeSVG value={qrUri} size={180} level="M" />
           </div>
           {secret && (
             <div className="w-full">
-              <p className="mb-1 text-xs font-medium uppercase tracking-wider" style={{ color: "var(--muted-foreground)" }}>
+              <p
+                className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.06em]"
+                style={{ color: "var(--color-text-muted)" }}
+              >
                 Manual entry key
               </p>
               <code
-                className="block w-full break-all rounded-md border px-3 py-2 font-mono text-xs"
-                style={{ borderColor: "var(--border)", backgroundColor: "var(--muted)", color: "var(--foreground)" }}
+                className="block w-full break-all rounded-md border px-3 py-2 font-mono text-[11px] leading-relaxed select-all"
+                style={{
+                  borderColor: "var(--color-border)",
+                  backgroundColor: "var(--color-bg)",
+                  color: "var(--color-text-primary)",
+                }}
               >
                 {secret}
               </code>
             </div>
           )}
         </div>
+      ) : null}
+
+      {/* Error */}
+      {error && (
+        <div
+          className="mb-4 rounded-md border px-3.5 py-2.5 text-xs font-medium"
+          style={{ backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "var(--color-danger)" }}
+        >
+          {error}
+        </div>
       )}
 
+      {/* OTP + submit */}
       {!enrollLoading && (
-        <form onSubmit={handleVerify} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
+        <form onSubmit={handleVerify} className="flex flex-col gap-6">
+          <div className="flex flex-col gap-3">
             <label
-              htmlFor="totp-code"
-              className="text-sm font-medium"
-              style={{ color: "var(--foreground)" }}
+              className="text-center text-[12px] font-medium uppercase tracking-[0.06em]"
+              style={{ color: "var(--color-text-muted)" }}
             >
               Verification code
             </label>
-            <input
-              id="totp-code"
-              type="text"
-              inputMode="numeric"
-              pattern="\d{6}"
-              maxLength={6}
-              autoComplete="one-time-code"
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-              className="rounded-md border px-3 py-2 text-center font-mono text-lg tracking-widest outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-1"
-              style={{
-                borderColor: "var(--input)",
-                backgroundColor: "var(--background)",
-                color: "var(--foreground)",
-              }}
-              placeholder="000000"
-            />
+            <OtpInput value={code} onChange={setCode} />
           </div>
-
-          {error && (
-            <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
-              {error}
-            </p>
-          )}
 
           <button
             type="submit"
-            disabled={loading || code.length !== 6}
-            className="rounded-md px-4 py-2 text-sm font-medium transition-opacity disabled:opacity-60"
+            disabled={loading || code.length < 6}
+            className="h-10 w-full rounded-md text-[13px] font-medium transition-all active:scale-[0.97] disabled:opacity-60"
             style={{
-              backgroundColor: "var(--primary)",
-              color: "var(--primary-foreground)",
+              backgroundColor: "var(--color-btn-primary-bg)",
+              color: "var(--color-btn-primary-text)",
             }}
+            onMouseEnter={(e) => { if (code.length === 6 && !loading) (e.currentTarget as HTMLButtonElement).style.opacity = "0.9"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
           >
-            {loading ? "Verifying…" : "Enable 2FA"}
+            {loading ? "Enabling…" : "Enable 2FA"}
           </button>
         </form>
       )}
+
+      {/* Security badge */}
+      <div className="mt-5 flex items-center justify-center gap-1.5">
+        <ShieldCheck className="h-3 w-3" style={{ color: "var(--color-success)" }} />
+        <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+          2-factor verification active after setup
+        </span>
+      </div>
     </div>
   );
 }

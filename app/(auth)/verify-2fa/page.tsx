@@ -1,12 +1,13 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
+import { ShieldCheck, Smartphone } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
+import { OtpInput } from "@/components/otp-input";
 
 function Verify2FAForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -14,11 +15,11 @@ function Verify2FAForm() {
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
+    if (code.length < 6) return;
     setError(null);
     setLoading(true);
 
     const supabase = createClient();
-
     const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
     if (factorsError || !factors?.totp?.length) {
       setError("No MFA factors found. Please sign in again.");
@@ -27,7 +28,6 @@ function Verify2FAForm() {
     }
 
     const factorId = factors.totp[0].id;
-
     const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
     if (challengeError || !challenge) {
       setError(challengeError?.message ?? "Challenge failed.");
@@ -42,90 +42,118 @@ function Verify2FAForm() {
     });
     if (verifyError) {
       setError(verifyError.message);
+      setCode("");
       setLoading(false);
       return;
     }
 
-    // Refresh session so cookies reflect AAL2 before proxy.ts runs
     await supabase.auth.refreshSession();
     const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
     window.location.assign(next);
   }
 
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.assign("/login");
+  }
+
   return (
     <div
-      className="rounded-xl border p-8 shadow-sm"
-      style={{ borderColor: "var(--border)", backgroundColor: "var(--card)" }}
+      className="w-full rounded-[10px] border px-10 py-9"
+      style={{
+        maxWidth: 420,
+        backgroundColor: "var(--color-surface)",
+        borderColor: "var(--color-border)",
+        boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
+      }}
     >
-      <div className="mb-6">
-        <h1 className="text-xl font-semibold" style={{ color: "var(--foreground)" }}>
-          Two-factor verification
+      {/* Step dots — step 1 done, step 2 active */}
+      <div className="flex items-center justify-center gap-2 mb-7">
+        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-success)" }} />
+        <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-accent)" }} />
+      </div>
+
+      {/* Header */}
+      <div className="mb-6 flex flex-col items-center text-center">
+        <div
+          className="mb-4 flex h-12 w-12 items-center justify-center rounded-[10px]"
+          style={{ backgroundColor: "var(--color-topbar)" }}
+        >
+          <ShieldCheck className="h-5 w-5" style={{ color: "var(--color-accent)" }} />
+        </div>
+        <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
+          Two-factor authentication
         </h1>
-        <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
-          Enter the 6-digit code from your authenticator app.
+        <p className="mt-1.5 text-[13px] italic" style={{ color: "var(--color-text-muted)" }}>
+          Enter the 6-digit code to continue
         </p>
       </div>
 
-      <form onSubmit={handleVerify} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <label
-            htmlFor="totp-code"
-            className="text-sm font-medium"
-            style={{ color: "var(--foreground)" }}
-          >
-            Verification code
-          </label>
-          <input
-            id="totp-code"
-            type="text"
-            inputMode="numeric"
-            pattern="\d{6}"
-            maxLength={6}
-            autoComplete="one-time-code"
-            required
-            value={code}
-            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
-            className="rounded-md border px-3 py-2 text-center font-mono text-lg tracking-widest outline-none focus:ring-2 focus:ring-[var(--ring)] focus:ring-offset-1"
-            style={{
-              borderColor: "var(--input)",
-              backgroundColor: "var(--background)",
-              color: "var(--foreground)",
-            }}
-            placeholder="000000"
-          />
-        </div>
+      {/* Info box */}
+      <div
+        className="mb-5 flex items-start gap-2.5 rounded-md border px-3.5 py-3"
+        style={{ backgroundColor: "var(--color-bg)", borderColor: "var(--color-border)" }}
+      >
+        <Smartphone className="mt-px h-4 w-4 shrink-0" style={{ color: "var(--color-accent-dark)" }} />
+        <p className="text-[12px] leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
+          Open your authenticator app and enter the{" "}
+          <strong style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>
+            6-digit code
+          </strong>{" "}
+          for BazaarPrinting CRM.
+        </p>
+      </div>
 
-        {error && (
-          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
-            {error}
-          </p>
-        )}
+      {/* Error */}
+      {error && (
+        <div
+          className="mb-4 rounded-md border px-3.5 py-2.5 text-xs font-medium"
+          style={{ backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "var(--color-danger)" }}
+        >
+          {error}
+        </div>
+      )}
+
+      <form onSubmit={handleVerify} className="flex flex-col gap-6">
+        <OtpInput value={code} onChange={setCode} autoFocus />
 
         <button
           type="submit"
-          disabled={loading || code.length !== 6}
-          className="rounded-md px-4 py-2 text-sm font-medium transition-opacity disabled:opacity-60"
+          disabled={loading || code.length < 6}
+          className="h-10 w-full rounded-md text-[13px] font-medium transition-all active:scale-[0.97] disabled:opacity-60"
           style={{
-            backgroundColor: "var(--primary)",
-            color: "var(--primary-foreground)",
+            backgroundColor: "var(--color-btn-primary-bg)",
+            color: "var(--color-btn-primary-text)",
           }}
+          onMouseEnter={(e) => { if (code.length === 6 && !loading) (e.currentTarget as HTMLButtonElement).style.opacity = "0.9"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.opacity = "1"; }}
         >
-          {loading ? "Verifying…" : "Verify"}
-        </button>
-
-        <button
-          type="button"
-          onClick={async () => {
-            const supabase = createClient();
-            await supabase.auth.signOut();
-            router.push("/login");
-          }}
-          className="text-sm text-center transition-colors"
-          style={{ color: "var(--muted-foreground)" }}
-        >
-          Sign out and use a different account
+          {loading ? "Verifying…" : "Verify Code"}
         </button>
       </form>
+
+      {/* Divider + sign out */}
+      <div className="mt-6 border-t pt-5" style={{ borderColor: "var(--color-border)" }}>
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="w-full text-center text-[12px] transition-colors"
+          style={{ color: "var(--color-text-muted)" }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--color-text-primary)"; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.color = "var(--color-text-muted)"; }}
+        >
+          Use a different account
+        </button>
+      </div>
+
+      {/* Security badge */}
+      <div className="mt-4 flex items-center justify-center gap-1.5">
+        <ShieldCheck className="h-3 w-3" style={{ color: "var(--color-success)" }} />
+        <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+          2-factor verification active
+        </span>
+      </div>
     </div>
   );
 }
