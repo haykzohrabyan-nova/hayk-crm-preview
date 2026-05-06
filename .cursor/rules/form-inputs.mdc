@@ -1,0 +1,65 @@
+---
+description: Form input standards — use PhoneInput and EmailInput for all phone/email fields
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# Form Input Standards
+
+## Phone and email fields MUST use the validated input components
+
+```tsx
+// ✅ CORRECT
+import { PhoneInput } from "@/components/ui/phone-input";
+import { EmailInput } from "@/components/ui/email-input";
+
+<PhoneInput value={form.phone} onChange={(val) => setForm(f => ({ ...f, phone: val }))} />
+<EmailInput value={form.email} onChange={(e) => setForm(f => ({ ...f, email: e.target.value }))} />
+```
+
+```tsx
+// ❌ WRONG — bare input with type="tel" or type="email"
+<input type="tel" ... />
+<input type="email" ... />
+```
+
+## What these components do
+
+- `PhoneInput` — auto-formats to `(xxx) xxx-xxxx` on every keystroke via `formatPhone()`; validates on blur via `validatePhone()`; accepts `error` prop for submit-time errors
+- `EmailInput` — validates format on blur via `validateEmail()`; accepts `error` prop; sets `type="email"` + `inputMode="email"` + `autoComplete="email"` automatically
+
+Both live in `components/ui/`. Validation helpers live in `lib/utils/phone.ts` and `lib/utils/email.ts`.
+
+## Save / submit validation
+
+Always run `validatePhone` and `validateEmail` before submitting — use field-level `error` props to surface errors inline, not a single banner message.
+
+```tsx
+async function handleSave() {
+  const emailErr = validateEmail(form.email);
+  const phoneErr = validatePhone(form.phone);
+  if (emailErr || phoneErr) {
+    setFieldErrors({ email: emailErr || undefined, phone: phoneErr || undefined });
+    return;
+  }
+  // ...proceed
+}
+```
+
+## Styling
+
+All inputs must use BazaarPrinting design tokens — never hardcoded hex:
+
+```tsx
+// Focus ring matches accent color
+onFocus={(e) => {
+  e.currentTarget.style.borderColor = "var(--color-accent)";
+  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
+}}
+onBlur={(e) => {
+  e.currentTarget.style.borderColor = "var(--color-border)";
+  e.currentTarget.style.boxShadow = "none";
+}}
+```
+
+Error state border: `var(--color-danger)`. Label style: `12px / 500 / uppercase / letter-spacing: 0.06em` in `var(--color-text-muted)`.
