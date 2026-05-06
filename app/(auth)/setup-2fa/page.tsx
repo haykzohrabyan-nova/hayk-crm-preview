@@ -121,7 +121,7 @@ function Setup2FAForm() {
       ) : qrUri ? (
         <div className="mb-6 flex flex-col items-center gap-4">
           <div className="rounded-lg bg-white p-3">
-            <QRCodeSVG value={qrUri} size={180} level="M" />
+            <QRCodeSVG value={qrUri} size={180} level="L" />
           </div>
           {secret && (
             <div className="w-full">
