@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import QRCode from "react-qr-code";
+import { QRCodeSVG } from "qrcode.react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
 
@@ -91,7 +91,7 @@ function Setup2FAForm() {
       {!enrollLoading && qrUri && (
         <div className="mb-6 flex flex-col items-center gap-4">
           <div className="rounded-lg bg-white p-3">
-            <QRCode value={qrUri} size={180} />
+            <QRCodeSVG value={qrUri} size={180} level="M" />
           </div>
           {secret && (
             <div className="w-full">
