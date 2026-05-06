@@ -21,14 +21,17 @@ function Setup2FAForm() {
     async function enroll() {
       const supabase = createClient();
 
-      // Clean up any stale unverified TOTP factors before enrolling fresh.
+      // Remove ALL existing unverified TOTP factors sequentially before re-enrolling.
       const { data: existing } = await supabase.auth.mfa.listFactors();
       const unverified = existing?.totp?.filter((f) => f.status === "unverified") ?? [];
-      await Promise.all(unverified.map((f) => supabase.auth.mfa.unenroll({ factorId: f.id })));
+      for (const f of unverified) {
+        await supabase.auth.mfa.unenroll({ factorId: f.id });
+      }
 
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        friendlyName: "BazarCRM Authenticator",
+        // Unique name avoids 422 if a same-named factor lingers on the Supabase side.
+        friendlyName: `BazarCRM (${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })})`,
       });
       if (enrollError || !data) {
         setError(enrollError?.message ?? "Failed to start MFA enrollment.");
