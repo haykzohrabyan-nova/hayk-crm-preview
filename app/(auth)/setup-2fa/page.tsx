@@ -134,7 +134,7 @@ function Setup2FAForm() {
           {secret && (
             <div className="w-full">
               <p
-                className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.06em]"
+                className="mb-1.5 text-[12px] font-medium uppercase tracking-[0.06em]"
                 style={{ color: "var(--color-text-muted)" }}
               >
                 Manual entry key
@@ -157,8 +157,13 @@ function Setup2FAForm() {
       {/* Error */}
       {error && (
         <div
+          role="alert"
           className="mb-4 rounded-md border px-3.5 py-2.5 text-xs font-medium"
-          style={{ backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "var(--color-danger)" }}
+          style={{
+            backgroundColor: "var(--color-danger-bg)",
+            borderColor: "var(--color-danger-border)",
+            color: "var(--color-danger)",
+          }}
         >
           {error}
         </div>

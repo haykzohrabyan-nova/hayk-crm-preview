@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Lock, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
+import { EmailInput } from "@/components/ui/email-input";
 
 function StepDots({ step }: { step: 1 | 2 }) {
   return (
@@ -76,10 +77,12 @@ function LoginForm() {
       {/* Error */}
       {error && (
         <div
+          id="login-error"
+          role="alert"
           className="mb-4 rounded-md border px-3.5 py-2.5 text-xs font-medium"
           style={{
-            backgroundColor: "#FEF2F2",
-            borderColor: "#FECACA",
+            backgroundColor: "var(--color-danger-bg)",
+            borderColor: "var(--color-danger-border)",
             color: "var(--color-danger)",
           }}
         >
@@ -97,28 +100,12 @@ function LoginForm() {
           >
             Email address
           </label>
-          <input
+          <EmailInput
             id="email"
-            type="email"
-            autoComplete="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="name@bazaarprinting.com"
-            className="h-10 rounded-md border px-3 text-[13px] outline-none transition-all"
-            style={{
-              borderColor: "var(--color-border)",
-              backgroundColor: "var(--color-bg)",
-              color: "var(--color-text-primary)",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-accent)";
-              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-border)";
-              e.currentTarget.style.boxShadow = "none";
-            }}
           />
         </div>
 
@@ -140,9 +127,11 @@ function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Enter your password"
+              aria-invalid={!!error}
+              aria-describedby={error ? "login-error" : undefined}
               className="h-10 w-full rounded-md border px-3 pr-10 text-[13px] outline-none transition-all"
               style={{
-                borderColor: "var(--color-border)",
+                borderColor: error ? "var(--color-danger)" : "var(--color-border)",
                 backgroundColor: "var(--color-bg)",
                 color: "var(--color-text-primary)",
               }}
@@ -151,7 +140,7 @@ function LoginForm() {
                 e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
               }}
               onBlur={(e) => {
-                e.currentTarget.style.borderColor = "var(--color-border)";
+                e.currentTarget.style.borderColor = error ? "var(--color-danger)" : "var(--color-border)";
                 e.currentTarget.style.boxShadow = "none";
               }}
             />

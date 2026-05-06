@@ -5,6 +5,24 @@ Format: `## [version or date] — description`, newest first.
 
 ---
 
+## [2026-05-06] — Rule compliance audit & fixes
+
+### Added
+- `--color-danger-bg` and `--color-danger-border` CSS tokens (light + dark) to `globals.css` — eliminates hardcoded hex from components.
+- `lib/utils/email.ts` — `validateEmail()` helper.
+- `components/ui/email-input.tsx` — `EmailInput` component with blur validation, focus ring, and `aria-invalid`/`aria-describedby` support.
+
+### Changed
+- All 3 auth pages (`login`, `verify-2fa`, `setup-2fa`): error banners now use `var(--color-danger-bg)` and `var(--color-danger-border)` instead of `#FEF2F2`/`#FECACA`. Added `role="alert"` to error banners.
+- `login/page.tsx`: replaced bare `<input type="email">` with `<EmailInput>`. Added `aria-invalid` and `aria-describedby` to the password field when an auth error is present. Error banner now has `id="login-error"` for the `aria-describedby` reference.
+- `setup-2fa/page.tsx`: fixed `text-[11px]` → `text-[12px]` on the "Manual entry key" label to match the 12px label standard.
+
+### Removed
+- `components/tab-nav.tsx` — unused since navigation switched to sidebar layout.
+- `components/topbar.tsx` — unused since navigation switched to sidebar layout.
+
+---
+
 ## [2026-05-06] — Auth UX polish & sign-out
 
 ### Added

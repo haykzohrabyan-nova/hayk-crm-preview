@@ -123,8 +123,13 @@ function Verify2FAForm() {
       {/* Error */}
       {error && (
         <div
+          role="alert"
           className="mb-4 rounded-md border px-3.5 py-2.5 text-xs font-medium"
-          style={{ backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "var(--color-danger)" }}
+          style={{
+            backgroundColor: "var(--color-danger-bg)",
+            borderColor: "var(--color-danger-border)",
+            color: "var(--color-danger)",
+          }}
         >
           {error}
         </div>

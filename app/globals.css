@@ -43,6 +43,8 @@
 
   /* Semantic */
   --color-danger: #DC2626;
+  --color-danger-bg: #FEF2F2;
+  --color-danger-border: #FECACA;
   --color-success: #16A34A;
   --color-warning: #D97706;
 }
@@ -85,6 +87,8 @@
 
   /* Semantic */
   --color-danger: #EF4444;
+  --color-danger-bg: rgba(239, 68, 68, 0.10);
+  --color-danger-border: rgba(239, 68, 68, 0.30);
   --color-success: #22C55E;
   --color-warning: #F59E0B;
 }
