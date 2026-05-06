@@ -1,0 +1,49 @@
+---
+description: Keep docs/CHANGELOG.md updated on every meaningful change
+alwaysApply: true
+---
+
+# Changelog Rule
+
+**Every time you make a meaningful change to this codebase, update `docs/CHANGELOG.md`.**
+
+## When to add an entry
+- New feature or page added
+- Existing feature changed or redesigned
+- Bug fixed
+- Dependency added, removed, or updated
+- Configuration changed (Vercel, Supabase, Next.js, Tailwind, etc.)
+- Auth flow changed
+- Design system token or component changed
+
+## When NOT to add an entry
+- Whitespace / formatting only
+- Comment changes
+- Renaming a variable with no behaviour change
+
+## Format
+
+Add a new `## [YYYY-MM-DD] — short title` section at the **top** of the changelog (below the header), newest first.
+
+Use these subsection labels as needed:
+- `### Added` — new files, features, components, routes
+- `### Changed` — updates to existing behaviour or design
+- `### Fixed` — bug fixes
+- `### Removed` — deleted files or features
+
+### Example entry
+
+```markdown
+## [2026-05-06] — Add leads table
+
+### Added
+- `app/(app)/leads/page.tsx` — leads list with search, sort, and filter
+- `components/lead-table.tsx` — table component with skeleton loader
+- Supabase migration `supabase/migrations/001_leads.sql`
+
+### Changed
+- Sidebar: added Leads nav item with `Users` icon
+```
+
+## Location
+`docs/CHANGELOG.md` — always at the project root's `docs/` folder.
