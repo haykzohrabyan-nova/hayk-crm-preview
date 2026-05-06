@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ShieldCheck, Smartphone } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -13,9 +13,22 @@ function Verify2FAForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Auto-submit when all 6 digits are entered
+  useEffect(() => {
+    if (code.length === 6 && !loading) {
+      verify(code);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
     if (code.length < 6) return;
+    await verify(code);
+  }
+
+  async function verify(currentCode: string) {
+    if (loading) return;
     setError(null);
     setLoading(true);
 
@@ -23,6 +36,7 @@ function Verify2FAForm() {
     const { data: factors, error: factorsError } = await supabase.auth.mfa.listFactors();
     if (factorsError || !factors?.totp?.length) {
       setError("No MFA factors found. Please sign in again.");
+      setCode("");
       setLoading(false);
       return;
     }
@@ -31,6 +45,7 @@ function Verify2FAForm() {
     const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
     if (challengeError || !challenge) {
       setError(challengeError?.message ?? "Challenge failed.");
+      setCode("");
       setLoading(false);
       return;
     }
@@ -38,10 +53,10 @@ function Verify2FAForm() {
     const { error: verifyError } = await supabase.auth.mfa.verify({
       factorId,
       challengeId: challenge.id,
-      code,
+      code: currentCode,
     });
     if (verifyError) {
-      setError(verifyError.message);
+      setError("Incorrect code — please try again.");
       setCode("");
       setLoading(false);
       return;
