@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import { ShieldCheck, KeyRound } from "lucide-react";
@@ -17,13 +17,17 @@ function Setup2FAForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [enrollLoading, setEnrollLoading] = useState(true);
+  const enrolledRef = useRef(false);
 
   useEffect(() => {
+    // Guard against React StrictMode double-invoke in development.
+    if (enrolledRef.current) return;
+    enrolledRef.current = true;
+
     async function enroll() {
       const supabase = createClient();
 
       // Remove all existing TOTP factors before re-enrolling.
-      // If the user is on this page, proxy.ts confirmed no verified MFA exists yet.
       const { data: existing } = await supabase.auth.mfa.listFactors();
       for (const f of existing?.totp ?? []) {
         await supabase.auth.mfa.unenroll({ factorId: f.id });
@@ -31,8 +35,8 @@ function Setup2FAForm() {
 
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: "totp",
-        // Unique name avoids 422 if a same-named factor lingers on the Supabase side.
-        friendlyName: `BazarCRM (${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })})`,
+        // Millisecond timestamp guarantees a unique name every enrollment attempt.
+        friendlyName: `BazarCRM-${Date.now()}`,
       });
       if (enrollError || !data) {
         setError(enrollError?.message ?? "Failed to start MFA enrollment.");
