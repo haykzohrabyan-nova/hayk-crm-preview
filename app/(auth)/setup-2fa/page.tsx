@@ -20,6 +20,12 @@ function Setup2FAForm() {
   useEffect(() => {
     async function enroll() {
       const supabase = createClient();
+
+      // Clean up any stale unverified TOTP factors before enrolling fresh.
+      const { data: existing } = await supabase.auth.mfa.listFactors();
+      const unverified = existing?.totp?.filter((f) => f.status === "unverified") ?? [];
+      await Promise.all(unverified.map((f) => supabase.auth.mfa.unenroll({ factorId: f.id })));
+
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
         factorType: "totp",
         friendlyName: "BazarCRM Authenticator",
