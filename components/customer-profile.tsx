@@ -222,7 +222,7 @@ function EditCustomerModal({
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>Heat Tag</label>
-            <Select value={form.heat_tag} onValueChange={(v) => setForm((f) => ({ ...f, heat_tag: v }))}>
+            <Select value={form.heat_tag} onValueChange={(v) => setForm((f) => ({ ...f, heat_tag: v ?? "" }))}>
               <SelectTrigger className="h-9 text-sm w-full">
                 <SelectValue placeholder="None">
                   {HEAT_OPTIONS.find((o) => o.value === form.heat_tag)?.label ?? "None"}

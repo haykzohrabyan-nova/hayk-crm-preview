@@ -451,7 +451,7 @@ export function SalesDrawer({
                     <label className={labelCls} style={labelStyle}>Sales Status</label>
                     <Select
                       value={form.sales_status}
-                      onValueChange={(v) => setForm((f) => ({ ...f, sales_status: v }))}
+                      onValueChange={(v) => setForm((f) => ({ ...f, sales_status: v ?? "" }))}
                       disabled={isReadOnly}
                     >
                       <SelectTrigger className="h-9 text-sm w-full">
@@ -602,7 +602,7 @@ export function SalesDrawer({
               </p>
               <Select
                 value={rejForm.rejection_reason}
-                onValueChange={(v) => setRejForm((f) => ({ ...f, rejection_reason: v }))}
+                onValueChange={(v) => setRejForm((f) => ({ ...f, rejection_reason: v ?? "" }))}
               >
                 <SelectTrigger className="h-9 text-sm w-full">
                   <SelectValue placeholder="Rejection reason *">
