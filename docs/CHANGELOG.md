@@ -3,6 +3,16 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-07] — Add Quoted Requests and Orders as nav pages
+
+### Added
+- `app/(app)/quotes/page.tsx` — Quoted Requests spec preview (formal + informal quotes, Quote Drawer, line items, follow-up, Convert to Order)
+- `app/(app)/orders/page.tsx` — Orders spec preview (order table, Order Drawer, PDF export via jspdf, API routes)
+- `supabase/migrations/027_add_quotes_orders_pages.sql` — inserts `/quotes` and `/orders` into the `pages` table (sort_order 5 and 6); shifts Statistics to 7 and Notifications to 8
+
+### Changed
+- `app/(app)/tickets/page.tsx` — redesigned as a Tickets hub landing page with two cards (Quoted Requests · Orders) that link to their individual pages; replaced the previous monolithic spec preview
+
 ## [2026-05-07] — Remove /settings page from nav
 
 ### Removed
