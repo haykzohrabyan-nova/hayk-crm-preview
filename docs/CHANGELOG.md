@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-07] — Remove /settings page from nav
+
+### Removed
+- `/settings` page removed from navigation — password resets and 2FA are Admin-managed; theme toggle lives in the sidebar; no use case for a personal settings page
+- `supabase/migrations/025_remove_settings_page.sql` — deletes /settings from pages table and cleans up role_permissions rows
+
 ## [2026-05-07] — Add all planned pages with spec previews
 
 ### Added
