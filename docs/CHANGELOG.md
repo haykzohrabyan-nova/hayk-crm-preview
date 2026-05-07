@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-07] — Remove /tickets hub; Quoted Requests and Orders are standalone nav pages
+
+### Removed
+- `/tickets` removed from navigation — it was a holdover from the POC that became redundant once Quoted Requests and Orders got their own pages; the route still exists in code but is not linked
+- `supabase/migrations/028_remove_tickets_page.sql` — deletes /tickets from pages table and cleans up role_permissions rows
+
 ## [2026-05-07] — Add Quoted Requests and Orders as nav pages
 
 ### Added
