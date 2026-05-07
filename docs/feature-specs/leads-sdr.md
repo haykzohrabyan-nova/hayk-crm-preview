@@ -337,3 +337,52 @@ This allows you to recognize them on future leads.
 ## Optimistic Updates
 
 When an SDR acts on a lead (verify, hold, reject), the row is **immediately removed** from the current tab without waiting for a server round-trip. If the request fails, the row is restored and an error toast appears.
+
+---
+
+## Build Status & Gaps (as of 2026-05-07)
+
+### ✅ Built and working
+| Feature | Notes |
+|---------|-------|
+| All Leads / On Hold / Directed to Sales / Rejected tabs | Tab counts visible before clicking; scoped correctly per SDR |
+| Manual Add Lead modal | Phone lookup + deduplication banner + customer auto-fill |
+| Verify Drawer (locking, lock banner) | Lock acquired on open, released on close |
+| Product Interests — select + quantity rows | Replaced checkbox grid with select picker + quantity inputs |
+| Hold action (with reason, notes, hold-until date) | Full hold sub-form |
+| Resume from hold | Restores to Validated |
+| Reject (terminal) | Reason + notes; read-only after |
+| Route to Sales | Sets status + sales_status = Ongoing |
+| Save without status change | PATCH lead fields |
+| Context-aware action buttons | On Hold → Resume shown; Routed leads → view-only |
+| Counts refresh after every action | bazaar:refresh-counts event fired |
+
+### ⏳ Not yet built — deferred
+
+**1. Inbox tab is not separate from "All Leads"**
+- Spec defines an **Inbox tab** (`is_inbox = true`, status = Pending) separate from the main All Leads queue
+- Current implementation: All Leads tab shows all Pending + Validated leads regardless of `is_inbox`
+- **When building:** Add `is_inbox` filter to the Inbox tab query; add a 5th tab or rework tab routing
+
+**2. Quote tab in Verify Drawer is not built**
+- Spec: Quote Total, Quote Channel (SMS / WhatsApp / Email / In-person), Quote Destination fields
+- Current: Drawer has "Lead Info" and history only; no Quote tab
+- **When building Tickets:** Add Quote tab to `VerifyDrawer`; wire Quote Channel and Quote Destination fields to the lead record
+
+**3. "Quote" action button missing**
+- Spec: `status = 'Quoted'` action — sets status to Quoted with quote fields
+- Current footer only has: Validate, Route to Sales, On Hold, Reject, Save
+- **When building Tickets:** Add **Quote** button to footer; sets `status = 'Quoted'`, saves quote fields
+
+**4. "Update Customer?" prompt on action not built**
+- Spec: when SDR edits contact info and then takes an action, prompt to update or skip the customer profile
+- **When building CRM enhancements:** Detect form diff on action; show inline prompt before firing action API
+
+**5. History tab in Verify Drawer is not built**
+- Spec: a History tab showing `HistoryTimeline` for the lead
+- Current: only Lead Info tab exists
+- **When building:** Add History tab + `HistoryTimeline` component (reads from `activities` table)
+
+**6. Admin Override for terminal leads**
+- Spec: Admin sees "Admin Override" banner and can reset a rejected lead
+- **When building Admin enhancements:** Check role in drawer; if admin and terminal, show override banner + re-enable actions

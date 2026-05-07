@@ -150,3 +150,50 @@ Same pattern as SDR pipeline:
 - Table skeleton while loading
 - Optimistic removal when Sales acts on a lead
 - Toast on success/error
+
+---
+
+## Build Status & Gaps (as of 2026-05-07)
+
+### ✅ Built and working
+| Feature | Notes |
+|---------|-------|
+| Pipeline / On Hold / Rejected tabs | All three tabs with counts visible before clicking |
+| Claim unclaimed lead | Inline claim → row updates |
+| Open drawer (with locking) | Lock acquired on open, released on close |
+| Sales Status (Ongoing / Quote Sent) | Editable in drawer |
+| Quote Total | Editable in drawer |
+| On Hold action | Hold sub-form with reason, notes, hold-until date |
+| Resume from hold | Restores to Ongoing |
+| Reject (terminal) | Rejection reason + notes, read-only after |
+| Save | PATCH lead with Sales Status + Quote Total |
+| Close (releases lock) | Unlock API called on close |
+| Read-only mode (locked by other user) | "Being worked by [Name]" banner |
+| Terminal state banner | Shown for Rejected / Won / Dropped |
+
+### ⏳ Not yet built — blocked on Tickets phase
+These items are deliberately deferred. Build them during the Tickets phase.
+
+**1. Sales Status: `Won` and `Dropped` options missing from dropdown**
+- Current dropdown: `Ongoing`, `Quote Sent`
+- Spec dropdown: `Ongoing`, `Quote Sent`, `Won`, `Dropped`
+- These were omitted because `Won` is normally set automatically when an Order ticket is created. `Dropped` is set when the lead is lost without a formal rejection.
+- **When building Tickets:** Add `Won` and `Dropped` to `SALES_STATUS_OPTIONS` in `components/sales-drawer.tsx`. When status changes to `Won` or `Dropped`, move the lead out of the Pipeline tab.
+
+**2. Order / Quote tab is a placeholder**
+- Current: shows "Coming in the Tickets phase."
+- Spec: Two buttons — **Create Quote** (opens ticket builder in `quote` mode) and **Create Order** (opens ticket builder in `order` mode). If a ticket already exists for this lead, show it in read-only with an **Edit** button.
+- **When building Tickets:** Replace the placeholder section in `SalesDrawer` `activeTab === "order"` with the `OrderDrawer` component.
+
+**3. "Convert to Order" footer button missing**
+- Spec: available in edit mode when lead is active; opens Order Drawer in `order` mode; on successful ticket creation, sets `sales_status = 'Won'` automatically.
+- **When building Tickets:** Add this button to the footer `footerMode === "actions"` block in `components/sales-drawer.tsx`. Wire it to open `OrderDrawer` and on `onTicketCreated` callback patch `sales_status = 'Won'`.
+
+**4. Admin Override for terminal leads**
+- Spec: Admin can open a Rejected/Won/Dropped lead with an "Admin Override" banner and reset it to `Ongoing` or any other status.
+- **When building Admin enhancements:** Check `roleName === 'admin'` in `SalesDrawer`; if true and `isTerminal`, show override banner and re-enable action buttons.
+
+**5. Notes field (Sales perspective)**
+- Spec: free-text notes field in the Lead Info tab editable by Sales
+- Not currently in the form — `SalesForm` interface only has `sales_status` and `quote_total`
+- **When building:** Add `sales_notes: string` to `SalesForm`, render a textarea in the Sales Fields section, include in the `PATCH` payload.
