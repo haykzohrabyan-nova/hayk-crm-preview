@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Megaphone } from "lucide-react";
+import { Users, KeyRound, ListFilter, Megaphone, ClipboardList, Building2, Package } from "lucide-react";
+import { SpecBadge } from "@/components/ui/spec-preview";
 
 const CARDS = [
   {
@@ -7,24 +8,49 @@ const CARDS = [
     description: "Create, edit, and deactivate team members. Assign roles and reset passwords.",
     href: "/admin/settings/users",
     icon: Users,
+    built: true,
   },
   {
     title: "Roles & Permissions",
     description: "Role definitions and page-level access control per role.",
     href: "/admin/settings/roles",
     icon: KeyRound,
+    built: true,
   },
   {
     title: "Dropdown Options",
-    description: "Edit sources, industries, hold reasons, reject reasons, and other dropdown lists.",
+    description: "Edit sources, industries, hold reasons, reject reasons, and other dropdown lists used in lead forms.",
     href: "/admin/settings/dropdowns",
     icon: ListFilter,
+    built: false,
   },
   {
     title: "Notifications",
     description: "Send a system broadcast message to all users or a specific role.",
     href: "/admin/settings/notifications",
     icon: Megaphone,
+    built: false,
+  },
+  {
+    title: "Audit Log",
+    description: "Full history of every action in the system — lead changes, user management, settings edits.",
+    href: "/admin/settings/audit-log",
+    icon: ClipboardList,
+    built: false,
+  },
+  {
+    title: "Company Info",
+    description: "Company name, address, logo, and contact details used in PDF headers and quote documents.",
+    href: "/admin/settings/company",
+    icon: Building2,
+    built: false,
+  },
+  {
+    title: "Products",
+    description: "Product types, materials, and finishes available in the Ticket Builder order line items.",
+    href: "/admin/settings/products",
+    icon: Package,
+    built: false,
   },
 ] as const;
 
@@ -44,7 +70,7 @@ export default function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {CARDS.map(({ title, description, href, icon: Icon }) => (
+        {CARDS.map(({ title, description, href, icon: Icon, built }) => (
           <Link
             key={href}
             href={href}
@@ -58,27 +84,30 @@ export default function AdminOverviewPage() {
                 borderColor: "var(--color-border)",
               }}
             >
-              <div className="flex items-center gap-2 mb-2">
-                <Icon
-                  className="h-5 w-5 shrink-0"
-                  style={{ color: "var(--color-accent)" }}
-                  aria-hidden
-                />
-                <span
-                  className="text-[15px] font-semibold"
-                  style={{ color: "var(--color-text-primary)" }}
-                >
-                  {title}
-                </span>
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <Icon
+                    className="h-5 w-5 shrink-0"
+                    style={{ color: built ? "var(--color-accent)" : "var(--color-text-muted)" }}
+                    aria-hidden
+                  />
+                  <span
+                    className="text-[15px] font-semibold"
+                    style={{ color: "var(--color-text-primary)" }}
+                  >
+                    {title}
+                  </span>
+                </div>
+                {!built && <SpecBadge label="Planned" />}
               </div>
               <p className="text-sm mb-4" style={{ color: "var(--color-text-muted)" }}>
                 {description}
               </p>
               <span
                 className="text-sm font-medium group-hover:underline"
-                style={{ color: "var(--color-tab-active)" }}
+                style={{ color: built ? "var(--color-tab-active)" : "var(--color-text-muted)" }}
               >
-                Open →
+                {built ? "Open →" : "View spec →"}
               </span>
             </div>
           </Link>

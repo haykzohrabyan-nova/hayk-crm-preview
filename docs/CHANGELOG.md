@@ -3,6 +3,18 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-07] — Add all planned pages with spec previews
+
+### Added
+- `app/(app)/notifications/page.tsx` — spec preview: bell popover, real-time setup, all notification types (lead_routed, hold reminder, follow-up due, system broadcast, lead_assigned v2)
+- `supabase/migrations/024_add_notifications_page.sql` — seeds /notifications into main nav; seeds audit-log, company, products as admin-sub pages
+- Admin Settings tabs: `audit-log`, `company`, `products` — full spec content for each (deferred from MVP)
+- Admin Settings tabs: `dropdowns`, `notifications` — replaced "coming soon" stubs with full spec content
+
+### Changed
+- `components/admin/settings-tab-nav.tsx` — added Audit Log, Company Info, Products tabs
+- `app/(app)/admin/page.tsx` — added deferred cards (Audit Log, Company Info, Products) with "Planned" badge; built cards show accent icon, unbuilt show muted icon + "View spec →"
+
 ## [2026-05-07] — Spec preview pages for unbuilt features
 
 ### Added
