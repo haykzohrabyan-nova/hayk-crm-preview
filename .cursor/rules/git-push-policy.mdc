@@ -1,0 +1,27 @@
+---
+description: Never run git push without explicit user approval — every push triggers a Vercel production build
+alwaysApply: true
+---
+
+# Git Push Policy
+
+**NEVER run `git push` automatically.** Every push to `origin/main` triggers a Vercel production build and deployment.
+
+## Rules
+
+- ✅ `git add`, `git commit` — fine to run when the user asks to commit
+- ❌ `git push` — ALWAYS stop and ask the user first
+
+## Required behaviour
+
+After committing, always ask the user before pushing:
+
+> "Ready to push — this will trigger a Vercel build. Want me to push now?"
+
+Only run `git push` after the user explicitly says yes (e.g. "yes", "push it", "go ahead").
+
+## Why
+
+- Vercel rebuilds and redeploys on every push to `main`
+- Unnecessary pushes waste build minutes and can deploy half-finished work
+- The user wants full control over when a deployment happens

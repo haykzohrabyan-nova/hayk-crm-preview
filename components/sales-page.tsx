@@ -124,12 +124,27 @@ export function SalesPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
+  const [tabCounts, setTabCounts] = useState<{ pipeline: number; hold: number; rejected: number } | null>(null);
 
   // Get current userId for ownership display
   useEffect(() => {
     createClient()
       .auth.getUser()
       .then(({ data }) => setUserId(data.user?.id ?? null));
+  }, []);
+
+  // Fetch tab counts upfront so all badges are visible before clicking
+  function fetchTabCounts() {
+    fetch("/api/leads/sales-counts")
+      .then((r) => r.json())
+      .then((d) => { if (d.counts) setTabCounts(d.counts); })
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    fetchTabCounts();
+    window.addEventListener("bazaar:refresh-counts", fetchTabCounts);
+    return () => window.removeEventListener("bazaar:refresh-counts", fetchTabCounts);
   }, []);
 
   function showToast(message: string, type: "success" | "error" = "success") {
@@ -235,6 +250,7 @@ export function SalesPage() {
 
   function handleRefresh() {
     fetchRoutedLeads();
+    fetchTabCounts();
     if (activeTab === "rejected") {
       setRejectedFetched(false);
       fetchRejectedLeads();
@@ -258,9 +274,9 @@ export function SalesPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   const TABS: { id: Tab; label: string; count: number }[] = [
-    { id: "pipeline", label: "Pipeline", count: pipelineLeads.length },
-    { id: "hold", label: "On Hold", count: holdLeads.length },
-    { id: "rejected", label: "Rejected (SDR)", count: rejLeads.length },
+    { id: "pipeline", label: "Pipeline", count: tabCounts?.pipeline ?? pipelineLeads.length },
+    { id: "hold", label: "On Hold", count: tabCounts?.hold ?? holdLeads.length },
+    { id: "rejected", label: "Rejected (SDR)", count: tabCounts?.rejected ?? rejLeads.length },
   ];
 
   function ownerLabel(lead: Lead): string {
@@ -292,10 +308,13 @@ export function SalesPage() {
             }}
           >
             {tab.label}
-            {activeTab === tab.id && !isLoading && (
+            {tab.count > 0 && (
               <span
                 className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
-                style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
+                style={{
+                  background: activeTab === tab.id ? "var(--color-badge-bg)" : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
+                  color: "var(--color-badge-text)",
+                }}
               >
                 {tab.count}
               </span>

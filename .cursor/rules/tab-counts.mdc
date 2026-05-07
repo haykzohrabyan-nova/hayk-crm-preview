@@ -1,0 +1,82 @@
+---
+description: Enforce visible count badges on all tabs before the user clicks them
+globs: **/*.tsx,**/*.ts
+alwaysApply: true
+---
+
+# Tab Count Badges — Always Visible
+
+**Every tabbed UI in BazarCRM must show a count badge on ALL tabs, not just the active one.**
+Users need to know at a glance how many items are in each section without clicking.
+
+## Pattern Requirements
+
+### 1. API counts endpoint (not derived from loaded data)
+Every page with tabs must have a dedicated counts route that returns all tab counts in one request.
+
+```
+GET /api/leads/sales-counts   → { counts: { pipeline, hold, rejected } }
+GET /api/leads/workspace/counts → { counts: { all, hold, routed, rejected } }
+```
+
+The endpoint should use lightweight DB queries (`.select("field", { count: "exact", head: true })` or `.select("status")` with client-side grouping) so it's fast.
+
+### 2. Fetch counts on mount, not lazily
+```tsx
+// ✅ GOOD — fetch upfront, show on all tabs
+const [tabCounts, setTabCounts] = useState<Record<string, number> | null>(null);
+
+useEffect(() => {
+  function fetchCounts() {
+    fetch("/api/leads/sales-counts")
+      .then(r => r.json())
+      .then(d => { if (d.counts) setTabCounts(d.counts); })
+      .catch(() => {});
+  }
+  fetchCounts();
+  window.addEventListener("bazaar:refresh-counts", fetchCounts);
+  return () => window.removeEventListener("bazaar:refresh-counts", fetchCounts);
+}, []);
+
+// ❌ BAD — count only known after clicking the tab
+useEffect(() => {
+  if (activeTab === "rejected") fetchRejectedLeads();
+}, [activeTab]);
+```
+
+### 3. Badge on every tab — not just the active one
+```tsx
+// ✅ GOOD — badge always visible, style differs for active vs inactive
+{tab.count > 0 && (
+  <span
+    className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+    style={{
+      background: activeTab === tab.id
+        ? "var(--color-badge-bg)"
+        : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
+      color: "var(--color-badge-text)",
+    }}
+  >
+    {tab.count}
+  </span>
+)}
+
+// ❌ BAD — count hidden until tab is clicked
+{activeTab === tab.id && !isLoading && (
+  <span>{tab.count}</span>
+)}
+```
+
+### 4. Refresh counts after any action
+When a lead action changes the data (claim, reject, route, put on hold, resume), always refresh the counts:
+
+```tsx
+// After any successful action:
+window.dispatchEvent(new Event("bazaar:refresh-counts"));
+```
+
+The sidebar, tab counts, and all pages listen to this event and update immediately.
+
+## Existing implementations to follow
+- `components/leads-page.tsx` + `app/api/leads/workspace/counts/route.ts`
+- `components/sales-page.tsx` + `app/api/leads/sales-counts/route.ts`

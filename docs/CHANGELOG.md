@@ -3,6 +3,22 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-07] — Spec preview pages for unbuilt features
+
+### Added
+- `components/ui/spec-preview.tsx` — shared `SpecPreviewPage`, `SpecSection`, `SpecCard`, `SpecNote`, `SpecBadge` components for rendering feature documentation as styled in-app pages
+- `app/(app)/tickets/page.tsx` — full spec preview: Quoted Requests tab, Orders tab, Order Drawer (line items, pricing, follow-up, history), PDF export, period filter
+- `app/(app)/statistics/page.tsx` — full spec preview: SDR KPIs + charts, Sales KPIs + charts, Admin KPIs + extras, chart library notes
+
+## [2026-05-07] — Tab count badges always visible (Sales Pipeline + rule)
+
+### Added
+- `app/api/leads/sales-counts/route.ts` — lightweight endpoint returning `{ pipeline, hold, rejected }` counts for the Sales Pipeline tabs
+- `.cursor/rules/tab-counts.mdc` — rule enforcing upfront count fetching and always-visible badges on all tab UIs
+
+### Changed
+- `components/sales-page.tsx` — count badges now show on **all** tabs before the user clicks; counts fetched from API on mount and refreshed on `bazaar:refresh-counts` event; Refresh button also triggers count refresh
+
 ## [2026-05-07] — Fix mobile navigation menu
 
 ### Fixed
