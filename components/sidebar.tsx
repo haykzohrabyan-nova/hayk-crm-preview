@@ -106,7 +106,7 @@ function NavLink({
         {/* Collapsed badge — dot on icon */}
         {collapsed && badge && badge > 0 && (
           <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold"
-            style={{ background: "#DC2626", color: "#fff" }}>
+            style={{ background: "var(--color-danger)", color: "#fff" }}>
             {badge > 99 ? "99" : badge}
           </span>
         )}
@@ -115,7 +115,7 @@ function NavLink({
       {/* Expanded badge — pill at right */}
       {!collapsed && badge && badge > 0 && (
         <span className="ml-auto shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 text-[10px] font-bold"
-          style={{ background: active ? "rgba(0,0,0,0.2)" : "#DC2626", color: "#fff" }}>
+          style={{ background: active ? "rgba(0,0,0,0.2)" : "var(--color-danger)", color: "#fff" }}>
           {badge > 99 ? "99+" : badge}
         </span>
       )}

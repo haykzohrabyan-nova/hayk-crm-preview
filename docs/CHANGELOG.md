@@ -3,6 +3,31 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-07] — Fix mobile navigation menu
+
+### Fixed
+- `components/mobile-nav.tsx` — rewrote mobile drawer to load role-based pages from Supabase (same as sidebar), replacing the hardcoded `[Dashboard, Settings]` stub that showed wrong items for SDR/Sales/Admin roles
+- Mobile nav now shows sidebar badge counts (Leads, Sales) and refreshes them via the `bazaar:refresh-counts` event, matching desktop sidebar behavior
+- Active-route detection matches sidebar logic (exact match for `/dashboard`, prefix match for all others)
+
+## [2026-05-07] — Design System Tokenization
+
+### Added
+- `components/ui/urgency-pill.tsx` — reusable `<UrgencyPill urgency={...} />` component; replaces 5 copies of inline urgency ternary logic across leads, sales, and CRM pages
+- `.cursor/rules/color-tokens.mdc` — Cursor rule enforcing CSS variable usage; documents all available tokens and `<StatusPill>` / `<UrgencyPill>` components with good/bad examples
+- New semantic tokens in `app/globals.css` (light + dark): `--color-success-bg/border`, `--color-warning-bg/border/text-deep`, `--color-info-bg/text/border/text-deep`, `--color-neutral-bg/text/border`, `--color-danger-text-deep`
+
+### Changed
+- `components/ui/status-pill.tsx` — all status styles now reference CSS vars (no hardcoded hex)
+- `components/crm-page.tsx`, `components/customer-profile.tsx` — customer status and heat tag style objects converted to CSS vars
+- `components/verify-drawer.tsx`, `components/sales-drawer.tsx` — banners, borders, buttons all tokenized
+- `components/leads-page.tsx`, `components/sales-page.tsx` — urgency pills replaced with `<UrgencyPill>`, all hex replaced with vars
+- `components/admin/roles-section.tsx` — danger colors tokenized
+- `components/sidebar.tsx` — badge colors tokenized
+- `components/ui/phone-input.tsx`, `components/ui/email-input.tsx` — error state colors tokenized
+
+---
+
 ## [2026-05-07] — Testing & Polish Pass (Post-Phase 6)
 
 ### Added

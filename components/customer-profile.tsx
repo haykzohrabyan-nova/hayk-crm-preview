@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle } from "lucide-react";
+import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { StatusPill } from "@/components/ui/status-pill";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
@@ -69,15 +70,15 @@ function fullName(c: Customer): string {
 }
 
 const CUSTOMER_STATUS_STYLE = {
-  new: { bg: "#F2F2F0", text: "#999999", label: "New Contact" },
-  known: { bg: "#EFF6FF", text: "#2563EB", label: "Known Customer" },
-  returning: { bg: "#FEF9C3", text: "#854D0E", label: "Returning Customer" },
+  new: { bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", label: "New Contact" },
+  known: { bg: "var(--color-info-bg)", text: "var(--color-info-text)", label: "Known Customer" },
+  returning: { bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)", label: "Returning Customer" },
 };
 
 const HEAT_STYLE: Record<string, { bg: string; text: string }> = {
-  hot: { bg: "#FEF2F2", text: "#DC2626" },
-  warm: { bg: "#FFFBEB", text: "#D97706" },
-  cold: { bg: "#EFF6FF", text: "#2563EB" },
+  hot: { bg: "var(--color-danger-bg)", text: "var(--color-danger)" },
+  warm: { bg: "var(--color-warning-bg)", text: "var(--color-warning)" },
+  cold: { bg: "var(--color-info-bg)", text: "var(--color-info-text)" },
 };
 
 const labelCls = "block text-[11px] font-medium uppercase tracking-[0.06em] mb-1";
@@ -110,7 +111,7 @@ function ToastBanner({ message, type, onDismiss }: { message: string; type: "suc
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
         borderLeftWidth: 4,
-        borderLeftColor: type === "success" ? "#16A34A" : "#DC2626",
+        borderLeftColor: type === "success" ? "var(--color-success)" : "var(--color-danger)",
         color: "var(--color-text-primary)",
       }}
     >
@@ -235,7 +236,7 @@ function EditCustomerModal({
           </div>
         </div>
 
-        {error && <p className="mt-3 text-[12px] font-medium" style={{ color: "#DC2626" }}>{error}</p>}
+        {error && <p className="mt-3 text-[12px] font-medium" style={{ color: "var(--color-danger)" }}>{error}</p>}
 
         <div className="flex justify-end gap-2 mt-5">
           <button
@@ -420,15 +421,15 @@ function MergeModal({
             {/* Confirmation step */}
             <div
               className="flex items-start gap-3 rounded-[8px] border p-4 mb-5"
-              style={{ background: "#FEF9C3", borderColor: "#FDE68A" }}
+              style={{ background: "var(--color-warning-bg)", borderColor: "var(--color-warning-border)" }}
             >
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "#854D0E" }} />
-              <p className="text-[13px]" style={{ color: "#854D0E" }}>
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--color-warning-text-deep)" }} />
+              <p className="text-[13px]" style={{ color: "var(--color-warning-text-deep)" }}>
                 All leads from <strong>{sourceName}</strong> will be moved to <strong>{targetName}</strong> and this record will be permanently deleted. This cannot be undone.
               </p>
             </div>
 
-            {error && <p className="text-[12px] font-medium mb-3" style={{ color: "#DC2626" }}>{error}</p>}
+            {error && <p className="text-[12px] font-medium mb-3" style={{ color: "var(--color-danger)" }}>{error}</p>}
 
             <div className="flex justify-end gap-2">
               <button
@@ -442,7 +443,7 @@ function MergeModal({
                 onClick={handleMerge}
                 disabled={merging}
                 className="rounded-[6px] px-4 py-1.5 text-[13px] font-medium disabled:opacity-50"
-                style={{ background: "#DC2626", color: "#ffffff" }}
+                style={{ background: "var(--color-danger)", color: "#ffffff" }}
               >
                 {merging ? "Merging…" : "Merge & Delete This Record"}
               </button>
@@ -642,17 +643,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
                     </td>
                     <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.source || "—"}</td>
                     <td className="px-3 py-2.5">
-                      {lead.urgency ? (
-                        <span
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                          style={{
-                            background: lead.urgency === "High" ? "#FEF2F2" : lead.urgency === "Medium" ? "#FFFBEB" : "#F0FDF4",
-                            color: lead.urgency === "High" ? "#DC2626" : lead.urgency === "Medium" ? "#D97706" : "#16A34A",
-                          }}
-                        >
-                          {lead.urgency}
-                        </span>
-                      ) : <span style={{ color: "var(--color-text-muted)" }}>—</span>}
+                      <UrgencyPill urgency={lead.urgency} />
                     </td>
                     <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
                       {relativeTime(lead.created_at)}

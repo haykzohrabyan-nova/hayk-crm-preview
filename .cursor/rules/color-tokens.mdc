@@ -1,0 +1,114 @@
+---
+description: Enforce CSS variable tokens for all colors — never hardcode hex values in components
+globs: **/*.tsx,**/*.ts,**/*.css
+alwaysApply: true
+---
+
+# Color Token Rule — BazaarPrinting CRM
+
+**Never hardcode hex colors or rgba values in components.** Always use CSS variables defined in `app/globals.css`.
+
+## Available Tokens
+
+### Core UI
+```
+var(--color-bg)               Page background
+var(--color-surface)          Card / modal / input background
+var(--color-topbar)           Sidebar background
+var(--color-border)           All borders and dividers
+var(--color-text-primary)     Main body text
+var(--color-text-muted)       Labels, placeholders, secondary text
+```
+
+### Accent & Buttons
+```
+var(--color-accent)           Primary accent (gold / orange)
+var(--color-accent-dark)      Hover state of accent
+var(--color-btn-primary-bg)   Primary button background
+var(--color-btn-primary-text) Primary button text
+var(--color-btn-verify-bg)    Verify / navy button background
+var(--color-btn-verify-text)  Verify button text
+```
+
+### Semantic — Danger (red)
+```
+var(--color-danger)           Text / icon
+var(--color-danger-bg)        Background
+var(--color-danger-border)    Border
+var(--color-danger-text-deep) Deep warning text (#7F1D1D light)
+```
+
+### Semantic — Success (green)
+```
+var(--color-success)          Text / icon
+var(--color-success-bg)       Background
+var(--color-success-border)   Border
+```
+
+### Semantic — Warning (amber)
+```
+var(--color-warning)          Text / icon
+var(--color-warning-bg)       Background
+var(--color-warning-border)   Border
+var(--color-warning-text-deep) Deep amber text (#854D0E light)
+```
+
+### Semantic — Info (blue)
+```
+var(--color-info-bg)          Background (dedup banner, Known Customer, cold heat)
+var(--color-info-text)        Text / icon
+var(--color-info-border)      Border
+var(--color-info-text-deep)   Deep blue text (#1E3A5F light)
+```
+
+### Semantic — Neutral (grey pill)
+```
+var(--color-neutral-bg)       Background (Pending, Not Defined)
+var(--color-neutral-text)     Text
+var(--color-neutral-border)   Border
+```
+
+### Tables & Badges
+```
+var(--color-row-alt)          Alternating row background
+var(--color-row-hover)        Row hover background
+var(--color-badge-bg)         Badge background
+var(--color-badge-text)       Badge text
+```
+
+### Tabs
+```
+var(--color-tab-active)       Active tab text
+var(--color-tab-underline)    Active tab underline
+var(--color-tab-inactive)     Inactive tab text
+```
+
+## Reusable Components
+
+Use these instead of inline urgency/status styles:
+- `<StatusPill status={...} />` — for all lead/sales statuses
+- `<UrgencyPill urgency={...} />` — for High / Medium / Low / Not Defined
+
+## Examples
+
+```tsx
+// ❌ BAD — hardcoded hex
+<div style={{ background: "#FEF2F2", color: "#DC2626", border: "1px solid #FECACA" }}>
+
+// ✅ GOOD — token-based
+<div style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", border: "1px solid var(--color-danger-border)" }}>
+```
+
+```tsx
+// ❌ BAD — inline urgency ternary
+<span style={{ background: urgency === "High" ? "#FEF2F2" : "#FFFBEB", color: "#DC2626" }}>
+  {urgency}
+</span>
+
+// ✅ GOOD — reusable component
+<UrgencyPill urgency={lead.urgency} />
+```
+
+## Adding New Tokens
+
+If a color is needed that isn't in the list above, **add it to `app/globals.css`** in both `:root` (light) and `.dark` sections before using it. Never use a raw hex in a component.

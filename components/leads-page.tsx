@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Plus, Search, RefreshCw, X, User, Clock } from "lucide-react";
+import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -70,7 +71,7 @@ function ToastBanner({ message, type, onDismiss }: Toast & { onDismiss: () => vo
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
         borderLeftWidth: 4,
-        borderLeftColor: type === "success" ? "#16A34A" : "#DC2626",
+        borderLeftColor: type === "success" ? "var(--color-success)" : "var(--color-danger)",
         color: "var(--color-text-primary)",
       }}
     >
@@ -281,10 +282,10 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
           {dedupBanner === "single" && matchedCustomers[0] && (
             <div
               className="flex items-center gap-3 rounded-[8px] border px-4 py-3"
-              style={{ background: "#EFF6FF", borderColor: "#BFDBFE" }}
+              style={{ background: "var(--color-info-bg)", borderColor: "var(--color-info-border)" }}
             >
               <User className="h-4 w-4 shrink-0 text-blue-600" />
-              <div className="flex-1 text-sm" style={{ color: "#1E3A5F" }}>
+              <div className="flex-1 text-sm" style={{ color: "var(--color-info-text-deep)" }}>
                 <strong>Existing customer found:</strong>{" "}
                 {[matchedCustomers[0].first_name, matchedCustomers[0].last_name]
                   .filter(Boolean)
@@ -314,7 +315,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
           {selectedCustomer && (
             <div
               className="flex items-center gap-2 rounded-[6px] border px-3 py-2 text-[13px]"
-              style={{ background: "#F0FDF4", borderColor: "#BBF7D0", color: "#15803D" }}
+              style={{ background: "var(--color-success-bg)", borderColor: "var(--color-success-border)", color: "var(--color-success)" }}
             >
               <User className="h-3.5 w-3.5" />
               Linked to:{" "}
@@ -323,7 +324,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
                 type="button"
                 onClick={clearCustomerSelection}
                 className="ml-auto"
-                style={{ color: "#6B7280" }}
+                  style={{ color: "var(--color-text-muted)" }}
               >
                 <X className="h-3 w-3" />
               </button>
@@ -474,7 +475,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
                 style={{
                   background: form.is_returning_customer ? "rgba(37,99,235,0.07)" : "transparent",
                   border: "1px solid",
-                  borderColor: form.is_returning_customer ? "#BFDBFE" : "transparent",
+                  borderColor: form.is_returning_customer ? "var(--color-info-border)" : "transparent",
                 }}
               >
                 <input
@@ -508,7 +509,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
 
             {error && (
               <div className="sm:col-span-2">
-                <p className="text-sm" style={{ color: "#DC2626" }}>{error}</p>
+                <p className="text-sm" style={{ color: "var(--color-danger)" }}>{error}</p>
               </div>
             )}
 
@@ -827,23 +828,8 @@ export function LeadsPage() {
                         {lead.customer?.phone ? formatPhone(lead.customer.phone) : "—"}
                       </td>
                       <td className="px-3 py-2.5">
-                        {lead.urgency ? (
-                          <span
-                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                            style={{
-                              background: lead.urgency === "High" ? "#FEF2F2" : lead.urgency === "Medium" ? "#FFFBEB" : "#F0FDF4",
-                              color: lead.urgency === "High" ? "#DC2626" : lead.urgency === "Medium" ? "#D97706" : "#16A34A",
-                            }}
-                          >
-                            {lead.urgency}
-                          </span>
-                        ) : (
-                          <span
-                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                            style={{ background: "#F2F2F0", color: "#999999" }}
-                          >
-                            Not Defined
-                          </span>
+                        {true && (
+                          <UrgencyPill urgency={lead.urgency} />
                         )}
                       </td>
                       <td className="px-3 py-2.5"><StatusPill status={lead.status} /></td>
@@ -890,15 +876,7 @@ export function LeadsPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span
-                        className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                        style={{
-                          background: lead.urgency === "High" ? "#FEF2F2" : lead.urgency === "Medium" ? "#FFFBEB" : lead.urgency === "Low" ? "#F0FDF4" : "#F2F2F0",
-                          color: lead.urgency === "High" ? "#DC2626" : lead.urgency === "Medium" ? "#D97706" : lead.urgency === "Low" ? "#16A34A" : "#999999",
-                        }}
-                      >
-                        {lead.urgency ?? "Not Defined"}
-                      </span>
+                      <UrgencyPill urgency={lead.urgency} />
                       <StatusPill status={lead.status} />
                     </div>
                   </div>

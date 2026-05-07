@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { X, Lock } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
+import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { HoldForm, Lead } from "@/lib/types";
 import { formatPhone } from "@/lib/utils/phone";
 import {
@@ -222,16 +223,7 @@ export function SalesDrawer({
               </p>
               <div className="flex items-center gap-2 mt-0.5">
                 {lead.sales_status && <StatusPill status={lead.sales_status} />}
-                {lead.urgency && (
-                  <span
-                    className="text-[11px] font-medium"
-                    style={{
-                      color: lead.urgency === "High" ? "#DC2626" : lead.urgency === "Medium" ? "#D97706" : "#16A34A",
-                    }}
-                  >
-                    {lead.urgency} urgency
-                  </span>
-                )}
+                {lead.urgency && <UrgencyPill urgency={lead.urgency} />}
               </div>
             </div>
           </div>
@@ -248,7 +240,7 @@ export function SalesDrawer({
         {lockedByName && (
           <div
             className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
-            style={{ background: "#FEF2F2", color: "#DC2626", borderBottom: "1px solid #FECACA" }}
+            style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", borderBottom: "1px solid var(--color-danger-border)" }}
           >
             <Lock className="h-3.5 w-3.5" />
             {lockedByName} is currently working this lead — view only
@@ -257,7 +249,7 @@ export function SalesDrawer({
         {isTerminal && !lockedByName && (
           <div
             className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
-            style={{ background: "#FEF2F2", color: "#DC2626", borderBottom: "1px solid #FECACA" }}
+            style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", borderBottom: "1px solid var(--color-danger-border)" }}
           >
             <Lock className="h-3.5 w-3.5" />
             This lead is in a terminal state and cannot be modified.
@@ -595,9 +587,9 @@ export function SalesDrawer({
           {footerMode === "reject" && (
             <div
               className="flex flex-col gap-3 rounded-[10px] border p-4"
-              style={{ background: "#FEF2F2", borderColor: "#FECACA" }}
+              style={{ background: "var(--color-danger-bg)", borderColor: "var(--color-danger-border)" }}
             >
-              <p className="text-sm font-medium" style={{ color: "#7F1D1D" }}>
+              <p className="text-sm font-medium" style={{ color: "var(--color-danger-text-deep)" }}>
                 Reject this lead — this is terminal and cannot be undone by Sales.
               </p>
               <Select
@@ -621,7 +613,7 @@ export function SalesDrawer({
                 onChange={(e) => setRejForm((f) => ({ ...f, rejection_notes: e.target.value }))}
                 placeholder="Notes (optional)…"
                 className="w-full rounded-[6px] border px-3 py-2 text-sm outline-none resize-none"
-                style={{ background: "var(--color-surface)", borderColor: "#FECACA", color: "var(--color-text-primary)" }}
+                style={{ background: "var(--color-surface)", borderColor: "var(--color-danger-border)", color: "var(--color-text-primary)" }}
               />
               <div className="flex gap-2 justify-end">
                 <button
@@ -636,7 +628,7 @@ export function SalesDrawer({
                   onClick={handleRejectConfirm}
                   disabled={!rejForm.rejection_reason || saving}
                   className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
-                  style={{ background: "#DC2626" }}
+                  style={{ background: "var(--color-danger)" }}
                 >
                   {saving ? "Saving…" : "Confirm Reject"}
                 </button>
@@ -659,7 +651,7 @@ export function SalesDrawer({
                 onClick={() => setFooterMode("reject")}
                 disabled={saving}
                 className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium text-white transition-all"
-                style={{ background: "#DC2626" }}
+                style={{ background: "var(--color-danger)" }}
               >
                 Reject
               </button>

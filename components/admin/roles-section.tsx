@@ -43,7 +43,7 @@ function ToastBanner({ message, type, onDismiss }: { message: string; type: "suc
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
         borderLeftWidth: 4,
-        borderLeftColor: type === "success" ? "#16A34A" : "#DC2626",
+        borderLeftColor: type === "success" ? "var(--color-success)" : "var(--color-danger)",
         color: "var(--color-text-primary)",
       }}
     >
@@ -107,7 +107,7 @@ function NewRoleForm({ onCreated, onCancel }: { onCreated: (role: Role) => void;
         />
         <p className="mt-1 text-[11px]" style={{ color: "var(--color-text-muted)" }}>Lowercase, letters and underscores only. Cannot be changed after creation.</p>
       </div>
-      {error && <p className="text-[12px] font-medium" style={{ color: "#DC2626" }}>{error}</p>}
+      {error && <p className="text-[12px] font-medium" style={{ color: "var(--color-danger)" }}>{error}</p>}
       <div className="flex gap-2 justify-end">
         <button onClick={onCancel} className="rounded-[6px] border px-3 py-1.5 text-[12px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
           Cancel
@@ -273,7 +273,7 @@ export function RolesSection() {
                 onClick={(e) => { e.stopPropagation(); handleDeleteRole(role); }}
                 disabled={deletingRoleId === role.id}
                 className="hidden group-hover:flex items-center justify-center rounded p-0.5 transition-all hover:opacity-70 disabled:opacity-30"
-                style={{ color: "#DC2626" }}
+                style={{ color: "var(--color-danger)" }}
                 title="Delete role"
               >
                 <Trash2 className="h-3.5 w-3.5" />

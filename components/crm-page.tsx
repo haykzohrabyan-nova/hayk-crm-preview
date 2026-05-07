@@ -52,9 +52,9 @@ function fullName(c: CrmCustomer): string {
 // ─── Status Badge ─────────────────────────────────────────────────────────────
 
 const STATUS_STYLE: Record<CustomerStatus, { bg: string; text: string; label: string }> = {
-  new: { bg: "#F2F2F0", text: "#999999", label: "New Contact" },
-  known: { bg: "#EFF6FF", text: "#2563EB", label: "Known Customer" },
-  returning: { bg: "#FEF9C3", text: "#854D0E", label: "Returning" },
+  new: { bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", label: "New Contact" },
+  known: { bg: "var(--color-info-bg)", text: "var(--color-info-text)", label: "Known Customer" },
+  returning: { bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)", label: "Returning" },
 };
 
 function StatusBadge({ status }: { status: CustomerStatus }) {
@@ -72,9 +72,9 @@ function StatusBadge({ status }: { status: CustomerStatus }) {
 // ─── Heat Badge ──────────────────────────────────────────────────────────────
 
 const HEAT_STYLE: Record<string, { bg: string; text: string }> = {
-  hot: { bg: "#FEF2F2", text: "#DC2626" },
-  warm: { bg: "#FFFBEB", text: "#D97706" },
-  cold: { bg: "#EFF6FF", text: "#2563EB" },
+  hot: { bg: "var(--color-danger-bg)", text: "var(--color-danger)" },
+  warm: { bg: "var(--color-warning-bg)", text: "var(--color-warning)" },
+  cold: { bg: "var(--color-info-bg)", text: "var(--color-info-text)" },
 };
 
 function HeatBadge({ tag }: { tag: HeatTag }) {
@@ -105,7 +105,7 @@ function ToastBanner({ message, type, onDismiss }: { message: string; type: "suc
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
         borderLeftWidth: 4,
-        borderLeftColor: type === "success" ? "#16A34A" : "#DC2626",
+        borderLeftColor: type === "success" ? "var(--color-success)" : "var(--color-danger)",
         color: "var(--color-text-primary)",
       }}
     >

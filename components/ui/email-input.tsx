@@ -45,7 +45,7 @@ export const EmailInput = forwardRef<HTMLInputElement, EmailInputProps>(
           className="h-9 rounded-[6px] border px-3 text-sm outline-none transition-all disabled:cursor-not-allowed disabled:opacity-50"
           style={{
             background: "var(--color-surface)",
-            borderColor: error ? "#DC2626" : "var(--color-border)",
+            borderColor: error ? "var(--color-danger)" : "var(--color-border)",
             color: "var(--color-text-primary)",
           }}
           onFocus={(e) => {
@@ -67,7 +67,7 @@ export const EmailInput = forwardRef<HTMLInputElement, EmailInputProps>(
             id={errorId}
             role="alert"
             className="text-[12px] font-medium"
-            style={{ color: "#DC2626" }}
+            style={{ color: "var(--color-danger)" }}
           >
             {error}
           </p>

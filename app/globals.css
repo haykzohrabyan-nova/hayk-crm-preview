@@ -41,12 +41,33 @@
   --color-tab-underline: #E8C97A;
   --color-tab-inactive: #888888;
 
-  /* Semantic */
+  /* Semantic — danger */
   --color-danger: #DC2626;
   --color-danger-bg: #FEF2F2;
   --color-danger-border: #FECACA;
+  --color-danger-text-deep: #7F1D1D;
+
+  /* Semantic — success */
   --color-success: #16A34A;
+  --color-success-bg: #F0FDF4;
+  --color-success-border: #BBF7D0;
+
+  /* Semantic — warning */
   --color-warning: #D97706;
+  --color-warning-bg: #FFFBEB;
+  --color-warning-border: #FDE68A;
+  --color-warning-text-deep: #854D0E;
+
+  /* Semantic — info (blue) */
+  --color-info-bg: #EFF6FF;
+  --color-info-text: #2563EB;
+  --color-info-border: #BFDBFE;
+  --color-info-text-deep: #1E3A5F;
+
+  /* Semantic — neutral (not defined / muted pill) */
+  --color-neutral-bg: #F2F2F0;
+  --color-neutral-text: #999999;
+  --color-neutral-border: #E0E0DC;
 }
 
 .dark {
@@ -85,12 +106,33 @@
   --color-tab-underline: #F97316;
   --color-tab-inactive: #71717A;
 
-  /* Semantic */
+  /* Semantic — danger */
   --color-danger: #EF4444;
-  --color-danger-bg: rgba(239, 68, 68, 0.10);
-  --color-danger-border: rgba(239, 68, 68, 0.30);
+  --color-danger-bg: rgba(239,68,68,0.10);
+  --color-danger-border: rgba(239,68,68,0.30);
+  --color-danger-text-deep: #FCA5A5;
+
+  /* Semantic — success */
   --color-success: #22C55E;
+  --color-success-bg: #052E16;
+  --color-success-border: #166534;
+
+  /* Semantic — warning */
   --color-warning: #F59E0B;
+  --color-warning-bg: #431407;
+  --color-warning-border: #92400E;
+  --color-warning-text-deep: #FCD34D;
+
+  /* Semantic — info (blue) */
+  --color-info-bg: #1E3A5F;
+  --color-info-text: #60A5FA;
+  --color-info-border: #1E40AF;
+  --color-info-text-deep: #BFDBFE;
+
+  /* Semantic — neutral */
+  --color-neutral-bg: #27272A;
+  --color-neutral-text: #71717A;
+  --color-neutral-border: #3F3F46;
 }
 
 /* ─── Tailwind theme bridge ──────────────────────────────────────────────── */

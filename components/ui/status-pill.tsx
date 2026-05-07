@@ -2,53 +2,40 @@ import { type LeadStatus, type SalesStatus } from "@/lib/types";
 
 type Status = LeadStatus | SalesStatus | string;
 
-const STATUS_STYLES: Record<
-  string,
-  { bg: string; text: string; border: string; darkBg: string; darkText: string; darkBorder: string }
-> = {
+// All values reference CSS vars — change tokens in globals.css to retheme globally
+const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
   Pending: {
-    bg: "#F2F2F0", text: "#999999", border: "#E0E0DC",
-    darkBg: "#27272A", darkText: "#71717A", darkBorder: "#3F3F46",
+    bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", border: "var(--color-neutral-border)",
   },
   Validated: {
-    bg: "#F0FDF4", text: "#16A34A", border: "#BBF7D0",
-    darkBg: "#052E16", darkText: "#22C55E", darkBorder: "#166534",
+    bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
   },
   Quoted: {
-    bg: "#EFF6FF", text: "#2563EB", border: "#BFDBFE",
-    darkBg: "#1E3A5F", darkText: "#60A5FA", darkBorder: "#1E40AF",
+    bg: "var(--color-info-bg)", text: "var(--color-info-text)", border: "var(--color-info-border)",
   },
   "Routed to Sales": {
-    bg: "#EAF0FB", text: "#1B2B4B", border: "#C7D7F5",
-    darkBg: "#2D1F0E", darkText: "#FB923C", darkBorder: "#92400E",
+    bg: "var(--color-badge-bg)", text: "var(--color-badge-text)", border: "var(--color-info-border)",
   },
   "On Hold": {
-    bg: "#FFFBEB", text: "#D97706", border: "#FDE68A",
-    darkBg: "#431407", darkText: "#F59E0B", darkBorder: "#92400E",
+    bg: "var(--color-warning-bg)", text: "var(--color-warning)", border: "var(--color-warning-border)",
   },
   Rejected: {
-    bg: "#FEF2F2", text: "#DC2626", border: "#FECACA",
-    darkBg: "#450A0A", darkText: "#EF4444", darkBorder: "#991B1B",
+    bg: "var(--color-danger-bg)", text: "var(--color-danger)", border: "var(--color-danger-border)",
   },
   Duplicate: {
-    bg: "#F2F2F0", text: "#999999", border: "#E0E0DC",
-    darkBg: "#27272A", darkText: "#71717A", darkBorder: "#3F3F46",
+    bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", border: "var(--color-neutral-border)",
   },
   Ongoing: {
-    bg: "#F0FDF4", text: "#16A34A", border: "#BBF7D0",
-    darkBg: "#052E16", darkText: "#22C55E", darkBorder: "#166534",
+    bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
   },
   "Quote Sent": {
-    bg: "#EFF6FF", text: "#2563EB", border: "#BFDBFE",
-    darkBg: "#1E3A5F", darkText: "#60A5FA", darkBorder: "#1E40AF",
+    bg: "var(--color-info-bg)", text: "var(--color-info-text)", border: "var(--color-info-border)",
   },
   Won: {
-    bg: "#F0FDF4", text: "#15803D", border: "#86EFAC",
-    darkBg: "#052E16", darkText: "#4ADE80", darkBorder: "#166534",
+    bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
   },
   Dropped: {
-    bg: "#FEF2F2", text: "#DC2626", border: "#FECACA",
-    darkBg: "#450A0A", darkText: "#EF4444", darkBorder: "#991B1B",
+    bg: "var(--color-danger-bg)", text: "var(--color-danger)", border: "var(--color-danger-border)",
   },
 };
 

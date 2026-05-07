@@ -5,6 +5,7 @@ import { Search, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatusPill } from "@/components/ui/status-pill";
+import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { SalesDrawer } from "@/components/sales-drawer";
 import { Lead } from "@/lib/types";
 import { formatPhone } from "@/lib/utils/phone";
@@ -67,7 +68,7 @@ function ToastBanner({ message, type, onDismiss }: Toast & { onDismiss: () => vo
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
         borderLeftWidth: 4,
-        borderLeftColor: type === "success" ? "#16A34A" : "#DC2626",
+        borderLeftColor: type === "success" ? "var(--color-success)" : "var(--color-danger)",
         color: "var(--color-text-primary)",
       }}
     >
@@ -368,15 +369,7 @@ export function SalesPage() {
                         {lead.sales_status ? <StatusPill status={lead.sales_status} /> : <span style={{ color: "var(--color-text-muted)" }}>—</span>}
                       </td>
                       <td className="px-3 py-2.5">
-                        <span
-                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium"
-                          style={{
-                            background: lead.urgency === "High" ? "#FEF2F2" : lead.urgency === "Medium" ? "#FFFBEB" : lead.urgency === "Low" ? "#F0FDF4" : "#F2F2F0",
-                            color: lead.urgency === "High" ? "#DC2626" : lead.urgency === "Medium" ? "#D97706" : lead.urgency === "Low" ? "#16A34A" : "#999999",
-                          }}
-                        >
-                          {lead.urgency ?? "Not Defined"}
-                        </span>
+                        <UrgencyPill urgency={lead.urgency} />
                       </td>
                       <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
                         {ownerLabel(lead)}

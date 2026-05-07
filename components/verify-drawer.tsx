@@ -405,7 +405,7 @@ export function VerifyDrawer({
                 {lead.urgency && (
                   <span
                     className="text-[11px] font-medium"
-                    style={{ color: lead.urgency === "High" ? "#DC2626" : lead.urgency === "Medium" ? "#D97706" : "#16A34A" }}
+                    style={{ color: lead.urgency === "High" ? "var(--color-danger)" : lead.urgency === "Medium" ? "var(--color-warning)" : "var(--color-success)" }}
                   >
                     {lead.urgency} urgency
                   </span>
@@ -426,7 +426,7 @@ export function VerifyDrawer({
         {lockedByName && (
           <div
             className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
-            style={{ background: "#FEF2F2", color: "#DC2626", borderBottom: "1px solid #FECACA" }}
+            style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", borderBottom: "1px solid var(--color-danger-border)" }}
           >
             <Lock className="h-3.5 w-3.5" />
             {lockedByName} is currently working this lead — view only
@@ -642,7 +642,7 @@ export function VerifyDrawer({
                   style={{
                     background: form.is_returning_customer ? "rgba(37,99,235,0.07)" : "transparent",
                     border: "1px solid",
-                    borderColor: form.is_returning_customer ? "#BFDBFE" : "transparent",
+                    borderColor: form.is_returning_customer ? "var(--color-info-border)" : "transparent",
                   }}
                 >
                   <input
@@ -790,11 +790,11 @@ export function VerifyDrawer({
           {showUpdateCustomer && (
             <div
               className="flex flex-col gap-3 rounded-[10px] border p-4"
-              style={{ background: "#EFF6FF", borderColor: "#BFDBFE" }}
+              style={{ background: "var(--color-info-bg)", borderColor: "var(--color-info-border)" }}
             >
               <div className="flex items-start gap-2">
-                <User className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "#2563EB" }} />
-                <p className="text-sm" style={{ color: "#1E3A5F" }}>
+                <User className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "var(--color-info-text)" }} />
+                <p className="text-sm" style={{ color: "var(--color-info-text-deep)" }}>
                   You&apos;ve updated the contact info. Update the customer profile too?
                 </p>
               </div>
@@ -830,9 +830,9 @@ export function VerifyDrawer({
           {footerMode === "reject" && (
             <div
               className="flex flex-col gap-3 rounded-[10px] border p-4"
-              style={{ background: "#FEF2F2", borderColor: "#FECACA" }}
+              style={{ background: "var(--color-danger-bg)", borderColor: "var(--color-danger-border)" }}
             >
-              <p className="text-sm font-medium" style={{ color: "#7F1D1D" }}>
+              <p className="text-sm font-medium" style={{ color: "var(--color-danger-text-deep)" }}>
                 Reject this lead — this is terminal and cannot be undone by the SDR.
               </p>
               <Select
@@ -858,7 +858,7 @@ export function VerifyDrawer({
                 className="w-full rounded-[6px] border px-3 py-2 text-sm outline-none resize-none"
                 style={{
                   background: "var(--color-surface)",
-                  borderColor: "#FECACA",
+                  borderColor: "var(--color-danger-border)",
                   color: "var(--color-text-primary)",
                 }}
               />
@@ -875,7 +875,7 @@ export function VerifyDrawer({
                   onClick={handleRejectConfirm}
                   disabled={!form.rejection_reason || saving}
                   className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
-                  style={{ background: "#DC2626" }}
+                  style={{ background: "var(--color-danger)" }}
                 >
                   {saving ? "Saving…" : "Confirm Reject"}
                 </button>
@@ -933,7 +933,7 @@ export function VerifyDrawer({
                 onClick={() => setFooterMode("reject")}
                 disabled={saving}
                 className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium text-white transition-all"
-                style={{ background: "#DC2626" }}
+                style={{ background: "var(--color-danger)" }}
               >
                 Reject
               </button>
