@@ -1,0 +1,966 @@
+"use client";
+
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  X,
+  Lock,
+  AlertTriangle,
+  User,
+  ChevronRight,
+} from "lucide-react";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { EmailInput } from "@/components/ui/email-input";
+import { StatusPill } from "@/components/ui/status-pill";
+import { HoldSubForm } from "@/components/hold-sub-form";
+import { HoldForm, Lead, LookupMap, PRODUCT_INTERESTS } from "@/lib/types";
+import { formatPhone } from "@/lib/utils/phone";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface DrawerForm {
+  phone: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  source: string;
+  authority: string;
+  company: string;
+  industry: string;
+  website: string;
+  brand: string;
+  urgency: string;
+  is_returning_customer: boolean;
+  sdr_comment: string;
+  interests: Record<string, boolean>;
+  quantities: Record<string, string>;
+  rejection_reason: string;
+  rejection_notes: string;
+}
+
+interface VerifyDrawerProps {
+  lead: Lead;
+  lookups: LookupMap;
+  readOnly?: boolean;
+  lockedByName?: string | null;
+  onClose: () => void;
+  onLeadUpdated: (lead: Lead) => void;
+  onLeadRemoved: (leadId: string) => void;
+  showToast: (msg: string, type?: "success" | "error") => void;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const labelCls =
+  "block text-[11px] font-medium uppercase tracking-[0.06em] mb-1";
+const labelStyle = { color: "var(--color-text-muted)" };
+const inputCls =
+  "w-full h-9 rounded-[6px] border px-3 text-sm outline-none transition-all";
+const inputStyle = {
+  background: "var(--color-surface)",
+  borderColor: "var(--color-border)",
+  color: "var(--color-text-primary)",
+};
+
+const AUTHORITY_OPTIONS = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
+
+const URGENCY_OPTIONS = [
+  { value: "not_defined", label: "Not Defined" },
+  { value: "High", label: "High" },
+  { value: "Medium", label: "Medium" },
+  { value: "Low", label: "Low" },
+];
+
+const REJECT_REASONS = [
+  { value: "not_a_fit", label: "Not a fit" },
+  { value: "no_budget", label: "No budget" },
+  { value: "competitor", label: "Competitor" },
+  { value: "spam_bot", label: "Spam / Bot" },
+  { value: "other", label: "Other" },
+];
+
+function formFromLead(lead: Lead): DrawerForm {
+  const c = lead.customer;
+  return {
+    phone: c?.phone ?? "",
+    email: c?.email ?? "",
+    first_name: c?.first_name ?? "",
+    last_name: c?.last_name ?? "",
+    source: lead.source ?? "",
+    authority: lead.authority ?? "",
+    company: c?.company ?? "",
+    industry: c?.industry ?? "",
+    website: c?.website ?? "",
+    brand: lead.brand ?? "",
+    urgency: lead.urgency ?? "not_defined",
+    is_returning_customer: lead.is_returning_customer,
+    sdr_comment: lead.sdr_comment ?? "",
+    interests: lead.interests ?? {},
+    quantities: lead.quantities ?? {},
+    rejection_reason: "",
+    rejection_notes: "",
+  };
+}
+
+function hasContactChanged(lead: Lead, form: DrawerForm): boolean {
+  const c = lead.customer;
+  return (
+    (c?.phone ?? "") !== form.phone ||
+    (c?.email ?? "") !== form.email ||
+    (c?.first_name ?? "") !== form.first_name ||
+    (c?.last_name ?? "") !== form.last_name ||
+    (c?.company ?? "") !== form.company ||
+    (c?.industry ?? "") !== form.industry ||
+    (c?.website ?? "") !== form.website
+  );
+}
+
+// ─── Main Component ──────────────────────────────────────────────────────────
+
+export function VerifyDrawer({
+  lead: initialLead,
+  lookups,
+  readOnly = false,
+  lockedByName = null,
+  onClose,
+  onLeadUpdated,
+  onLeadRemoved,
+  showToast,
+}: VerifyDrawerProps) {
+  const [lead, setLead] = useState<Lead>(initialLead);
+  const [form, setForm] = useState<DrawerForm>(() => formFromLead(initialLead));
+  const [activeTab, setActiveTab] = useState<"info" | "quote">("info");
+  const [footerMode, setFooterMode] = useState<"actions" | "hold" | "reject">("actions");
+  const [holdForm, setHoldForm] = useState<HoldForm>({ hold_reason: "", hold_notes: "", hold_until: "" });
+  const [saving, setSaving] = useState(false);
+  const [showUpdateCustomer, setShowUpdateCustomer] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
+  const unlockRef = useRef(false);
+
+  const isRejected = lead.status === "Rejected";
+  const isReadOnly = readOnly || isRejected;
+
+  // Unlock on unmount
+  useEffect(() => {
+    return () => {
+      if (!unlockRef.current && !readOnly) {
+        fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
+        unlockRef.current = true;
+      }
+    };
+  }, [lead.id, readOnly]);
+
+  function handleClose() {
+    if (!readOnly && !unlockRef.current) {
+      fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
+      unlockRef.current = true;
+    }
+    onClose();
+  }
+
+  // ── Save helpers ──────────────────────────────────────────────────────────
+
+  function fireCountsRefresh() {
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
+  }
+
+  async function patchLead(fields: Record<string, unknown>): Promise<Lead | null> {
+    const res = await fetch(`/api/leads/${lead.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(fields),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error ?? "Something went wrong.", "error");
+      return null;
+    }
+    return data.lead as Lead;
+  }
+
+  async function maybeUpdateCustomer() {
+    if (!lead.customer_id || !hasContactChanged(lead, form)) return;
+    await fetch(`/api/customers/${lead.customer_id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        first_name: form.first_name,
+        last_name: form.last_name,
+        email: form.email,
+        phone: form.phone,
+        company: form.company,
+        industry: form.industry,
+        website: form.website,
+      }),
+    });
+  }
+
+  function buildLeadPayload() {
+    return {
+      source: form.source || null,
+      brand: form.brand || null,
+      authority: form.authority || null,
+      urgency: (form.urgency && form.urgency !== "not_defined") ? form.urgency : null,
+      is_returning_customer: form.is_returning_customer,
+      sdr_comment: form.sdr_comment || null,
+      interests: form.interests,
+      quantities: form.quantities,
+    };
+  }
+
+  // ── Action: Save ──────────────────────────────────────────────────────────
+
+  async function handleSave() {
+    setSaving(true);
+    const updated = await patchLead(buildLeadPayload());
+    setSaving(false);
+    if (!updated) return;
+    setLead(updated);
+    onLeadUpdated(updated);
+    showToast("Lead saved.");
+  }
+
+  // ── Action flow with optional customer update prompt ──────────────────────
+
+  function promptThenRun(action: () => Promise<void>) {
+    if (lead.customer_id && hasContactChanged(lead, form)) {
+      setPendingAction(() => action);
+      setShowUpdateCustomer(true);
+    } else {
+      action();
+    }
+  }
+
+  async function handleUpdateCustomerYes() {
+    setShowUpdateCustomer(false);
+    await maybeUpdateCustomer();
+    if (pendingAction) await pendingAction();
+    setPendingAction(null);
+  }
+
+  async function handleUpdateCustomerNo() {
+    setShowUpdateCustomer(false);
+    if (pendingAction) await pendingAction();
+    setPendingAction(null);
+  }
+
+  // ── Action: Validate ──────────────────────────────────────────────────────
+
+  async function doValidate() {
+    setSaving(true);
+    const updated = await patchLead({ ...buildLeadPayload(), status: "Validated" });
+    setSaving(false);
+    if (!updated) return;
+    fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
+    unlockRef.current = true;
+    onLeadRemoved(lead.id);
+    onLeadUpdated(updated);
+    fireCountsRefresh();
+    showToast("Lead validated.");
+    onClose();
+  }
+
+  function handleValidate() {
+    promptThenRun(doValidate);
+  }
+
+  // ── Action: Route to Sales ────────────────────────────────────────────────
+
+  async function doRoute() {
+    setSaving(true);
+    const updated = await patchLead({
+      ...buildLeadPayload(),
+      status: "Routed to Sales",
+      sales_status: "Ongoing",
+    });
+    setSaving(false);
+    if (!updated) return;
+    fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
+    unlockRef.current = true;
+    onLeadRemoved(lead.id);
+    onLeadUpdated(updated);
+    fireCountsRefresh();
+    showToast("Lead routed to Sales.");
+    onClose();
+  }
+
+  function handleRoute() {
+    promptThenRun(doRoute);
+  }
+
+  // ── Action: Resume (from On Hold) ────────────────────────────────────────
+
+  async function handleResume() {
+    setSaving(true);
+    const res = await fetch(`/api/leads/${lead.id}/resume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: "sdr" }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    setLead(data.lead);
+    onLeadUpdated(data.lead);
+    fireCountsRefresh();
+    showToast("Lead resumed.");
+  }
+
+  // ── Action: Hold ──────────────────────────────────────────────────────────
+
+  async function doHold() {
+    if (!holdForm.hold_reason) return;
+    setSaving(true);
+    const res = await fetch(`/api/leads/${lead.id}/hold`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...holdForm, role: "sdr" }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    unlockRef.current = true;
+    onLeadRemoved(lead.id);
+    onLeadUpdated(data.lead);
+    fireCountsRefresh();
+    showToast("Lead put on hold.");
+    onClose();
+  }
+
+  function handleHoldConfirm() {
+    promptThenRun(doHold);
+  }
+
+  // ── Action: Reject ────────────────────────────────────────────────────────
+
+  async function doReject() {
+    if (!form.rejection_reason) return;
+    setSaving(true);
+    const updated = await patchLead({
+      ...buildLeadPayload(),
+      status: "Rejected",
+      rejection_reason: form.rejection_reason,
+      rejection_notes: form.rejection_notes || null,
+    });
+    setSaving(false);
+    if (!updated) return;
+    fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
+    unlockRef.current = true;
+    onLeadRemoved(lead.id);
+    onLeadUpdated(updated);
+    fireCountsRefresh();
+    showToast("Lead rejected.");
+    onClose();
+  }
+
+  function handleRejectConfirm() {
+    promptThenRun(doReject);
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Render
+  // ─────────────────────────────────────────────────────────────────────────
+
+  const sources = lookups.source ?? [];
+  const industries = lookups.industry ?? [];
+
+  const displayName =
+    `${form.first_name} ${form.last_name}`.trim() || "Lead Details";
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-40 bg-black/40"
+        onClick={handleClose}
+        aria-hidden="true"
+      />
+
+      {/* Drawer panel */}
+      <div
+        className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[600px] flex-col overflow-hidden shadow-2xl"
+        style={{ background: "var(--color-surface)", borderLeft: "1px solid var(--color-border)" }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--color-border)" }}
+        >
+          <div className="flex items-center gap-3 min-w-0">
+            <div>
+              <p className="text-[15px] font-semibold truncate" style={{ color: "var(--color-text-primary)" }}>
+                {displayName}
+              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <StatusPill status={lead.status} />
+                {lead.urgency && (
+                  <span
+                    className="text-[11px] font-medium"
+                    style={{ color: lead.urgency === "High" ? "#DC2626" : lead.urgency === "Medium" ? "#D97706" : "#16A34A" }}
+                  >
+                    {lead.urgency} urgency
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleClose}
+            className="rounded-full p-1.5 transition-colors hover:bg-muted"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Lock banner */}
+        {lockedByName && (
+          <div
+            className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
+            style={{ background: "#FEF2F2", color: "#DC2626", borderBottom: "1px solid #FECACA" }}
+          >
+            <Lock className="h-3.5 w-3.5" />
+            {lockedByName} is currently working this lead — view only
+          </div>
+        )}
+
+        {/* Tab bar */}
+        <div
+          className="flex shrink-0"
+          style={{ borderBottom: "1px solid var(--color-border)" }}
+        >
+          {(["info", "quote"] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className="px-5 py-2.5 text-[13px] font-medium transition-colors"
+              style={{
+                borderBottom: activeTab === tab ? "2px solid var(--color-tab-underline)" : "2px solid transparent",
+                color: activeTab === tab ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
+              }}
+            >
+              {tab === "info" ? "Lead Info" : "Quote"}
+            </button>
+          ))}
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+
+          {activeTab === "info" && (
+            <>
+              {/* Contact Information */}
+              <section>
+                <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                  Contact Information
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                  {/* Phone */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Phone *</label>
+                    <PhoneInput
+                      value={form.phone}
+                      onChange={(digits) => setForm((f) => ({ ...f, phone: digits }))}
+                      disabled={isReadOnly}
+                    />
+                  </div>
+
+                  {/* Email */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Email</label>
+                    <EmailInput
+                      value={form.email}
+                      onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                      disabled={isReadOnly}
+                    />
+                  </div>
+
+                  {/* First Name */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>First Name *</label>
+                    <input
+                      className={inputCls}
+                      style={inputStyle}
+                      value={form.first_name}
+                      onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
+                      disabled={isReadOnly}
+                      placeholder="First name"
+                    />
+                  </div>
+
+                  {/* Last Name */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Last Name</label>
+                    <input
+                      className={inputCls}
+                      style={inputStyle}
+                      value={form.last_name}
+                      onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
+                      disabled={isReadOnly}
+                      placeholder="Last name"
+                    />
+                  </div>
+
+                  {/* Source */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Source *</label>
+                    <Select
+                      value={form.source}
+                      onValueChange={(v) => setForm((f) => ({ ...f, source: v ?? "" }))}
+                      disabled={isReadOnly}
+                    >
+                      <SelectTrigger className="h-9 text-sm w-full">
+                        <SelectValue placeholder="Select source…">
+                          {(sources.find((s) => s.value === form.source)?.label ?? form.source) || "Select source…"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {sources.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Authority */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Decision Maker?</label>
+                    <Select
+                      value={form.authority}
+                      onValueChange={(v) => setForm((f) => ({ ...f, authority: v ?? "" }))}
+                      disabled={isReadOnly}
+                    >
+                      <SelectTrigger className="h-9 text-sm w-full">
+                        <SelectValue placeholder="Select…">
+                          {AUTHORITY_OPTIONS.find((a) => a.value === form.authority)?.label ?? "Select…"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {AUTHORITY_OPTIONS.map((a) => (
+                          <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Company */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Company</label>
+                    <input
+                      className={inputCls}
+                      style={inputStyle}
+                      value={form.company}
+                      onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
+                      disabled={isReadOnly}
+                      placeholder="Company name"
+                    />
+                  </div>
+
+                  {/* Industry */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Industry *</label>
+                    <Select
+                      value={form.industry}
+                      onValueChange={(v) => setForm((f) => ({ ...f, industry: v ?? "" }))}
+                      disabled={isReadOnly}
+                    >
+                      <SelectTrigger className="h-9 text-sm w-full">
+                        <SelectValue placeholder="Select industry…">
+                          {(industries.find((i) => i.value === form.industry)?.label ?? form.industry) || "Select industry…"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {industries.map((i) => (
+                          <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Website */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Website / Social</label>
+                    <input
+                      className={inputCls}
+                      style={inputStyle}
+                      value={form.website}
+                      onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+                      disabled={isReadOnly}
+                      placeholder="https://"
+                    />
+                  </div>
+
+                  {/* Brand */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Brand</label>
+                    <input
+                      className={inputCls}
+                      style={inputStyle}
+                      value={form.brand}
+                      onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
+                      disabled={isReadOnly}
+                      placeholder="Brand name"
+                    />
+                  </div>
+
+                  {/* Urgency */}
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Urgency</label>
+                    <Select
+                      value={form.urgency}
+                      onValueChange={(v) => setForm((f) => ({ ...f, urgency: v ?? "" }))}
+                      disabled={isReadOnly}
+                    >
+                      <SelectTrigger className="h-9 text-sm w-full">
+                        <SelectValue placeholder="Select…">
+                          {URGENCY_OPTIONS.find((u) => u.value === form.urgency)?.label ?? "Select…"}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        {URGENCY_OPTIONS.map((u) => (
+                          <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                </div>
+
+                {/* Returning customer */}
+                <label
+                  className="mt-3 flex items-center gap-2.5 cursor-pointer rounded-[6px] p-2.5 transition-colors"
+                  style={{
+                    background: form.is_returning_customer ? "rgba(37,99,235,0.07)" : "transparent",
+                    border: "1px solid",
+                    borderColor: form.is_returning_customer ? "#BFDBFE" : "transparent",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={form.is_returning_customer}
+                    onChange={(e) => setForm((f) => ({ ...f, is_returning_customer: e.target.checked }))}
+                    disabled={isReadOnly}
+                    className="rounded"
+                  />
+                  <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+                    Returning Customer (Existing Client)
+                  </span>
+                </label>
+              </section>
+
+              {/* SDR Comment */}
+              <section>
+                <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-2" style={{ color: "var(--color-text-muted)" }}>
+                  Verify Lead Comment
+                </h3>
+                <textarea
+                  rows={3}
+                  value={form.sdr_comment}
+                  onChange={(e) => setForm((f) => ({ ...f, sdr_comment: e.target.value }))}
+                  disabled={isReadOnly}
+                  placeholder="Add verification notes before opening Order / Quote…"
+                  className="w-full rounded-[6px] border px-3 py-2 text-sm outline-none transition-all resize-none"
+                  style={{
+                    background: "var(--color-surface)",
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text-primary)",
+                  }}
+                />
+              </section>
+
+              {/* Product Interests */}
+              <section>
+                <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                  Product Interests
+                </h3>
+
+                {/* Selected products list */}
+                {PRODUCT_INTERESTS.filter((p) => !!form.interests[p]).length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {PRODUCT_INTERESTS.filter((p) => !!form.interests[p]).map((interest) => (
+                      <div
+                        key={interest}
+                        className="flex items-center gap-2 rounded-[6px] border px-3 py-2"
+                        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+                      >
+                        <span className="flex-1 text-[13px] font-medium" style={{ color: "var(--color-text-primary)" }}>
+                          {interest}
+                        </span>
+                        <input
+                          type="text"
+                          value={form.quantities[interest] ?? ""}
+                          onChange={(e) =>
+                            setForm((f) => ({
+                              ...f,
+                              quantities: { ...f.quantities, [interest]: e.target.value },
+                            }))
+                          }
+                          disabled={isReadOnly}
+                          placeholder="Qty"
+                          className="h-7 w-24 rounded-[4px] border px-2 text-[12px] outline-none text-right"
+                          style={{
+                            background: "color-mix(in srgb, var(--color-border) 20%, transparent)",
+                            borderColor: "var(--color-border)",
+                            color: "var(--color-text-primary)",
+                          }}
+                        />
+                        {!isReadOnly && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setForm((f) => {
+                                const interests = { ...f.interests, [interest]: false };
+                                const quantities = { ...f.quantities };
+                                delete quantities[interest];
+                                return { ...f, interests, quantities };
+                              })
+                            }
+                            className="rounded p-0.5 transition-colors hover:bg-red-50"
+                            style={{ color: "var(--color-text-muted)" }}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add product dropdown */}
+                {!isReadOnly && PRODUCT_INTERESTS.some((p) => !form.interests[p]) && (
+                  <Select
+                    value=""
+                    onValueChange={(product) => {
+                      if (!product) return;
+                      setForm((f) => ({
+                        ...f,
+                        interests: { ...f.interests, [product]: true },
+                      }));
+                    }}
+                  >
+                    <SelectTrigger className="h-9 text-sm w-full" style={{ borderStyle: "dashed" }}>
+                      <SelectValue placeholder="+ Add product interest…">
+                        + Add product interest…
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRODUCT_INTERESTS.filter((p) => !form.interests[p]).map((p) => (
+                        <SelectItem key={p} value={p}>{p}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+
+                {isReadOnly && PRODUCT_INTERESTS.every((p) => !form.interests[p]) && (
+                  <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>No products selected.</p>
+                )}
+              </section>
+            </>
+          )}
+
+          {activeTab === "quote" && (
+            <section>
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                Quote Details
+              </h3>
+              <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                Quote builder coming in a future phase.
+              </p>
+            </section>
+          )}
+        </div>
+
+        {/* ── Footer ─────────────────────────────────────────────────────── */}
+        <div
+          className="shrink-0 px-5 py-4 space-y-3"
+          style={{ borderTop: "1px solid var(--color-border)" }}
+        >
+
+          {/* Update customer prompt */}
+          {showUpdateCustomer && (
+            <div
+              className="flex flex-col gap-3 rounded-[10px] border p-4"
+              style={{ background: "#EFF6FF", borderColor: "#BFDBFE" }}
+            >
+              <div className="flex items-start gap-2">
+                <User className="h-4 w-4 mt-0.5 shrink-0" style={{ color: "#2563EB" }} />
+                <p className="text-sm" style={{ color: "#1E3A5F" }}>
+                  You&apos;ve updated the contact info. Update the customer profile too?
+                </p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleUpdateCustomerYes}
+                  className="flex-1 rounded-[6px] border border-blue-300 px-3 py-1.5 text-[13px] font-medium text-blue-700 transition-all hover:bg-blue-50"
+                >
+                  Yes, update profile
+                </button>
+                <button
+                  onClick={handleUpdateCustomerNo}
+                  className="flex-1 rounded-[6px] border border-blue-200 px-3 py-1.5 text-[13px] font-medium text-blue-500 transition-all hover:bg-blue-50"
+                >
+                  No, keep existing
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Hold sub-form */}
+          {footerMode === "hold" && (
+            <HoldSubForm
+              form={holdForm}
+              onChange={setHoldForm}
+              onConfirm={handleHoldConfirm}
+              onCancel={() => setFooterMode("actions")}
+              saving={saving}
+            />
+          )}
+
+          {/* Reject sub-form */}
+          {footerMode === "reject" && (
+            <div
+              className="flex flex-col gap-3 rounded-[10px] border p-4"
+              style={{ background: "#FEF2F2", borderColor: "#FECACA" }}
+            >
+              <p className="text-sm font-medium" style={{ color: "#7F1D1D" }}>
+                Reject this lead — this is terminal and cannot be undone by the SDR.
+              </p>
+              <Select
+                value={form.rejection_reason}
+                onValueChange={(v) => setForm((f) => ({ ...f, rejection_reason: v ?? "" }))}
+              >
+                <SelectTrigger className="h-9 text-sm w-full">
+                  <SelectValue placeholder="Rejection reason *">
+                    {REJECT_REASONS.find((r) => r.value === form.rejection_reason)?.label ?? "Rejection reason *"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {REJECT_REASONS.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <textarea
+                rows={2}
+                value={form.rejection_notes}
+                onChange={(e) => setForm((f) => ({ ...f, rejection_notes: e.target.value }))}
+                placeholder="Notes (optional)…"
+                className="w-full rounded-[6px] border px-3 py-2 text-sm outline-none resize-none"
+                style={{
+                  background: "var(--color-surface)",
+                  borderColor: "#FECACA",
+                  color: "var(--color-text-primary)",
+                }}
+              />
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setFooterMode("actions")}
+                  disabled={saving}
+                  className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRejectConfirm}
+                  disabled={!form.rejection_reason || saving}
+                  className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
+                  style={{ background: "#DC2626" }}
+                >
+                  {saving ? "Saving…" : "Confirm Reject"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Main action buttons */}
+          {footerMode === "actions" && !isReadOnly && (
+            <div className="flex flex-wrap items-center gap-2">
+              {lead.status === "Pending" && (
+                <button
+                  onClick={handleValidate}
+                  disabled={saving}
+                  className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                  style={{
+                    background: "var(--color-btn-verify-bg)",
+                    color: "var(--color-btn-verify-text)",
+                  }}
+                >
+                  Validate
+                </button>
+              )}
+              <button
+                onClick={handleRoute}
+                disabled={saving}
+                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                style={{
+                  background: "var(--color-btn-primary-bg)",
+                  color: "var(--color-btn-primary-text)",
+                }}
+              >
+                Route to Sales
+              </button>
+              {lead.status === "On Hold" ? (
+                <button
+                  onClick={handleResume}
+                  disabled={saving}
+                  className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                >
+                  Resume
+                </button>
+              ) : (
+                <button
+                  onClick={() => setFooterMode("hold")}
+                  disabled={saving}
+                  className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                >
+                  On Hold
+                </button>
+              )}
+              <button
+                onClick={() => setFooterMode("reject")}
+                disabled={saving}
+                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium text-white transition-all"
+                style={{ background: "#DC2626" }}
+              >
+                Reject
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          )}
+
+          {/* Read-only close button */}
+          {isReadOnly && (
+            <button
+              onClick={handleClose}
+              className="w-full rounded-[6px] border py-2 text-[13px] font-medium transition-all"
+              style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+            >
+              Close
+            </button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}

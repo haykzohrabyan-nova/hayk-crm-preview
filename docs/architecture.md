@@ -1,6 +1,6 @@
 # BazaarPrinting CRM — Architecture & Setup
 
-> Internal CRM for BazaarPrinting. Built as a sibling project to Pulse V2, sharing the same technical stack and Supabase auth story but with its own isolated Supabase project and Vercel deployment.
+> Internal CRM for BazaarPrinting. Built on Next.js 16 + Supabase (Auth + Postgres) with a proof-of-concept in `sdr-crm-system` as the feature blueprint. See `docs/schema.md`, `docs/api-contract.md`, `docs/rbac.md`, `docs/navigation.md`, and `docs/feature-specs/` for the full production specification.
 
 ---
 
@@ -30,10 +30,16 @@
 |---|---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | Browser + Server | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Browser + Server | Supabase anon/public key |
-| `SUPABASE_SECRET_KEY` | Server only | Supabase service-role key — never expose to browser |
+| `SUPABASE_SECRET_KEY` | Server only | Supabase service-role key — used for `admin.createUser`, `admin.updateUserById` in Route Handlers — never expose to browser |
 | `NEXT_PUBLIC_APP_URL` | Browser + Server | Canonical origin (`https://bazar-crm-eta.vercel.app` in prod, `http://localhost:3000` locally) |
+| `OUTREACH_EMAIL_PROVIDER` | Server only | `'console'` in dev; set to provider name (e.g. `'resend'`) in prod |
+| `OUTREACH_SMS_PROVIDER` | Server only | `'console'` in dev; set to provider name (e.g. `'twilio'`) in prod |
+| `RESEND_API_KEY` | Server only | Email provider key (when `OUTREACH_EMAIL_PROVIDER=resend`) |
+| `TWILIO_ACCOUNT_SID` | Server only | Twilio SID (when `OUTREACH_SMS_PROVIDER=twilio`) |
+| `TWILIO_AUTH_TOKEN` | Server only | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | Server only | Twilio sender number |
 
-Copy `.env.local.example` → `.env.local` and fill in values from **Supabase → Project Settings → API**.
+Copy `.env.local.example` → `.env.local` and fill in values from **Supabase → Project Settings → API**. Email/SMS keys are optional until Phase 10.
 
 ---
 
@@ -68,52 +74,126 @@ Copy `.env.local.example` → `.env.local` and fill in values from **Supabase �
 | Redirect URLs | `https://bazar-crm-eta.vercel.app/**`, `http://localhost:3000/**` |
 
 ### Creating users
-Users are created manually in **Supabase → Authentication → Users → Add user → Create new user**. No self-registration.
+Users are invited by an Admin via `/admin/users` → "Invite User". This triggers `inviteUserByEmail` in Supabase Auth and immediately creates a `user_profiles` row with the assigned role. No self-registration.
 
 ---
 
 ## File Structure
 
+Current state (auth scaffold complete) + planned additions:
+
 ```
 BazarCRM/
 ├── app/
 │   ├── (auth)/
-│   │   ├── layout.tsx              # Centered card wrapper for auth pages
-│   │   ├── login/page.tsx          # Email + password sign-in
-│   │   ├── setup-2fa/page.tsx      # TOTP enrollment — QR code + manual key
-│   │   └── verify-2fa/page.tsx     # TOTP challenge — 6-box OTP, auto-submits on 6th digit
+│   │   ├── layout.tsx              ✓ Centered card wrapper for auth pages
+│   │   ├── login/page.tsx          ✓ Email + password sign-in
+│   │   ├── setup-2fa/page.tsx      ✓ TOTP enrollment — QR code + manual key
+│   │   ├── verify-2fa/page.tsx     ✓ TOTP challenge — 6-box OTP, auto-submits on 6th digit
+│   │   ├── change-password/page.tsx   → TO BUILD (forced on first login with temp password)
+│   │   ├── forgot-password/page.tsx   → TO BUILD
+│   │   └── reset-password/page.tsx    → TO BUILD
 │   ├── (app)/
-│   │   ├── layout.tsx              # App shell — sidebar (desktop) + mobile nav
-│   │   ├── dashboard/page.tsx      # Dashboard (stub)
-│   │   └── settings/page.tsx       # Settings (stub)
-│   ├── globals.css                 # Tailwind v4 + BazaarPrinting CSS tokens (light + dark)
-│   ├── layout.tsx                  # Root layout — Inter font, ThemeProvider, TopLoader
-│   └── page.tsx                    # Redirects → /dashboard
+│   │   ├── layout.tsx              ✓ App shell — sidebar + mobile nav (max-width: 1980px)
+│   │   ├── dashboard/page.tsx      → TO BUILD (currently stub)
+│   │   ├── leads/page.tsx          → TO BUILD (SDR + Admin — tabbed)
+│   │   ├── sales/page.tsx          → TO BUILD (Sales + Admin — tabbed)
+│   │   ├── crm/page.tsx            → TO BUILD (all roles)
+│   │   ├── tickets/page.tsx        → TO BUILD (all roles — tabbed)
+│   │   ├── statistics/page.tsx     → TO BUILD (all roles)
+│   │   ├── settings/page.tsx       → TO BUILD (currently stub — personal profile)
+│   │   └── admin/
+│   │       ├── layout.tsx          ✓ Admin-only shell — border-b sub-nav strip + AdminSubNav
+│   │       ├── page.tsx            ✓ Overview card grid (4 cards, all clickable, BazarCRM tokens)
+│   │       └── settings/
+│   │           ├── layout.tsx      ✓ Settings sub-layout — SettingsTabNav above children
+│   │           ├── page.tsx        ✓ Redirects /admin/settings → /admin/settings/users
+│   │           └── [tab]/page.tsx  ✓ Renders section per tab (users | roles | dropdowns | notifications)
+│   ├── api/
+│   │   ├── auth/change-password/   ✓ EXISTS
+│   │   ├── leads/                  → TO BUILD (Route Handlers)
+│   │   ├── contacts/               → TO BUILD
+│   │   ├── tickets/                → TO BUILD
+│   │   ├── activity/               → TO BUILD
+│   │   ├── notifications/          → TO BUILD
+│   │   ├── dashboard/              → TO BUILD
+│   │   ├── outreach/               → TO BUILD
+│   │   └── admin/
+│   │       ├── users/route.ts      ✓ EXISTS (GET all users)
+│   │       ├── users/create/       ✓ EXISTS (POST create user)
+│   │       ├── users/[id]/         ✓ EXISTS (PATCH update user)
+│   │       ├── roles/              → TO BUILD (CRUD + permission management)
+│   │       └── audit/              → TO BUILD
+│   ├── globals.css                 ✓ Tailwind v4 + BazaarPrinting CSS tokens
+│   ├── layout.tsx                  ✓ Root layout — Inter font, ThemeProvider, TopLoader
+│   └── page.tsx                    ✓ Redirects → /dashboard
 ├── components/
-│   ├── otp-input.tsx               # Reusable 6-box OTP input (auto-advance, paste, backspace)
-│   ├── sidebar.tsx                 # Collapsible desktop sidebar (224px ↔ 56px)
-│   ├── mobile-nav.tsx              # Mobile top bar + slide-in drawer
-│   ├── tab-nav.tsx                 # Horizontal tab nav (unused in current layout)
-│   ├── topbar.tsx                  # Top bar component (unused in current layout)
-│   └── theme-provider.tsx          # Light/dark theme — localStorage key: bazaar-theme
+│   ├── otp-input.tsx               ✓ 6-box OTP input
+│   ├── sidebar.tsx                 ✓ Collapsible sidebar — UPDATE for role-aware nav
+│   ├── mobile-nav.tsx              ✓ Mobile nav — UPDATE for role-aware nav
+│   ├── theme-provider.tsx          ✓ Light/dark theme
+│   ├── ui/email-input.tsx          ✓ Validated email field
+│   ├── ui/badge.tsx                ✓ Status badge primitive
+│   ├── ui/button.tsx               ✓ Button primitive
+│   ├── ui/card.tsx                 ✓ Card primitive
+│   ├── ui/dialog.tsx               ✓ Modal dialog primitive
+│   ├── ui/input.tsx                ✓ Input primitive
+│   ├── ui/select.tsx               ✓ Select primitive
+│   ├── ui/back-button.tsx          ✓ Back navigation button
+│   ├── admin/admin-sub-nav.tsx     ✓ Overview / Settings strip (BazarCRM tokens)
+│   ├── admin/settings-tab-nav.tsx  ✓ Horizontal settings tab pills (all tabs clickable)
+│   ├── admin/users-section.tsx     ✓ Full user management table + Add User modal
+│   ├── verify-drawer.tsx           → TO BUILD
+│   ├── sales-drawer.tsx            → TO BUILD
+│   ├── order-drawer.tsx            → TO BUILD (ticket builder)
+│   ├── contact-crm.tsx             → TO BUILD
+│   ├── history-timeline.tsx        → TO BUILD
+│   ├── notification-bell.tsx       → TO BUILD
+│   ├── outreach-dialog.tsx         → TO BUILD
+│   └── period-filter.tsx           → TO BUILD
 ├── lib/
 │   ├── supabase/
-│   │   ├── client.ts               # createBrowserClient (PUBLISHABLE_KEY)
-│   │   └── admin.ts                # createClient service-role — Route Handlers only
+│   │   ├── client.ts               ✓ createBrowserClient (PUBLISHABLE_KEY)
+│   │   └── admin.ts                ✓ Service-role client — Route Handlers only
 │   ├── auth/
-│   │   ├── safe-return-path.ts     # Validates redirect paths (no open redirects)
-│   │   └── resolve-default-home.ts # Returns /dashboard — extend for RBAC
-│   └── utils.ts                    # cn() helper (clsx + tailwind-merge)
-├── docs/                           # Project documentation (this folder)
-├── .cursor/rules/
-│   ├── stack-conventions.mdc       # Stack rules — always applied to agent sessions
-│   └── ui-design-system.mdc       # BazaarPrinting design system — always applied
-├── proxy.ts                        # Next.js 16 Proxy — AAL2 session enforcement
-├── middleware.ts                   # (deleted) — must not exist alongside proxy.ts
-├── components.json                 # shadcn config — style: base-nova
-├── vercel.json                     # Sets framework: nextjs for Vercel
-├── .env.local                      # Local secrets — gitignored
-└── .env.local.example              # Key names template — committed
+│   │   ├── safe-return-path.ts     ✓
+│   │   └── resolve-default-home.ts ✓
+│   ├── types/
+│   │   └── index.ts                → TO BUILD (see docs/types.md)
+│   ├── context/
+│   │   └── period-filter-context.tsx → TO BUILD
+│   ├── services/
+│   │   ├── notifications.ts        → TO BUILD
+│   │   └── outreach.ts             → TO BUILD (provider-agnostic)
+│   ├── utils/
+│   │   ├── order-ticket-pdf.ts     → TO BUILD (jspdf export)
+│   │   └── stats-date-range.ts     → TO BUILD (period buckets)
+│   └── utils.ts                    ✓ cn() helper
+├── supabase/
+│   └── migrations/                 → TO BUILD (see docs/schema.md)
+├── docs/
+│   ├── architecture.md             ✓ This file
+│   ├── CHANGELOG.md                ✓
+│   ├── schema.md                   ✓ Full DB schema + RLS
+│   ├── api-contract.md             ✓ All Route Handler specs
+│   ├── rbac.md                     ✓ Role matrix + proxy rules
+│   ├── navigation.md               ✓ Route tree + sidebar nav
+│   ├── types.md                    ✓ TypeScript types reference
+│   └── feature-specs/
+│       ├── leads-sdr.md            ✓
+│       ├── leads-sales.md          ✓
+│       ├── crm.md                  ✓
+│       ├── tickets.md              ✓
+│       ├── activity.md             ✓
+│       ├── statistics.md           ✓
+│       ├── notifications.md        ✓
+│       ├── admin.md                ✓
+│       └── dashboard.md            ✓
+├── proxy.ts                        ✓ AAL2 session enforcement — EXTEND for RBAC
+├── components.json                 ✓ shadcn config — style: base-nova
+├── vercel.json                     ✓
+├── .env.local                      ✓ Local secrets — gitignored
+└── .env.local.example              ✓ Key names template
 ```
 
 ---

@@ -1,0 +1,14 @@
+-- Already created in 013_rls_policies.sql (current_user_role, user_can_access_route)
+-- This file is a placeholder for additional utility functions added later.
+
+-- Example future function: get user's allowed routes as an array
+-- create or replace function public.user_allowed_routes()
+-- returns text[]
+-- language sql stable security definer
+-- as $$
+--   select array_agg(p.route)
+--   from public.user_profiles up
+--   join public.role_permissions rp on rp.role_id = up.role_id
+--   join public.pages p on p.id = rp.page_id
+--   where up.id = auth.uid()
+-- $$;

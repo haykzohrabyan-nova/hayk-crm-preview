@@ -1,61 +1,78 @@
 "use client";
 
-import { useState, InputHTMLAttributes } from "react";
-import { validateEmail } from "@/lib/utils/email";
+import { forwardRef } from "react";
 
-interface EmailInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "onChange"> {
+interface EmailInputProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   error?: string | null;
+  placeholder?: string;
+  required?: boolean;
+  disabled?: boolean;
+  id?: string;
 }
 
-export function EmailInput({ value, onChange, error: externalError, id, ...rest }: EmailInputProps) {
-  const [localError, setLocalError] = useState<string | null>(null);
-  const errorId = id ? `${id}-error` : undefined;
-  const activeError = externalError ?? localError;
-  const hasError = !!activeError;
+export const EmailInput = forwardRef<HTMLInputElement, EmailInputProps>(
+  function EmailInput(
+    {
+      value,
+      onChange,
+      error,
+      placeholder = "you@example.com",
+      required,
+      disabled,
+      id,
+    },
+    ref
+  ) {
+    const errorId = id ? `${id}-error` : undefined;
 
-  return (
-    <div className="flex flex-col gap-1.5">
-      <input
-        {...rest}
-        id={id}
-        type="email"
-        inputMode="email"
-        autoComplete="email"
-        value={value}
-        onChange={onChange}
-        onBlur={(e) => {
-          const err = validateEmail(e.target.value);
-          setLocalError(err);
-          e.currentTarget.style.borderColor = hasError || err ? "var(--color-danger)" : "var(--color-border)";
-          e.currentTarget.style.boxShadow = "none";
-          rest.onBlur?.(e);
-        }}
-        onFocus={(e) => {
-          e.currentTarget.style.borderColor = "var(--color-accent)";
-          e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
-          rest.onFocus?.(e);
-        }}
-        aria-invalid={hasError}
-        aria-describedby={activeError && errorId ? errorId : undefined}
-        className="h-10 rounded-md border px-3 text-[13px] outline-none transition-all"
-        style={{
-          borderColor: hasError ? "var(--color-danger)" : "var(--color-border)",
-          backgroundColor: "var(--color-bg)",
-          color: "var(--color-text-primary)",
-        }}
-      />
-      {activeError && (
-        <p
-          id={errorId}
-          role="alert"
-          className="text-[12px] font-medium"
-          style={{ color: "var(--color-danger)" }}
-        >
-          {activeError}
-        </p>
-      )}
-    </div>
-  );
-}
+    return (
+      <div className="flex flex-col gap-1">
+        <input
+          ref={ref}
+          id={id}
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          required={required}
+          disabled={disabled}
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          aria-invalid={!!error}
+          aria-describedby={error ? errorId : undefined}
+          className="h-9 rounded-[6px] border px-3 text-sm outline-none transition-all disabled:cursor-not-allowed disabled:opacity-50"
+          style={{
+            background: "var(--color-surface)",
+            borderColor: error ? "#DC2626" : "var(--color-border)",
+            color: "var(--color-text-primary)",
+          }}
+          onFocus={(e) => {
+            if (!error) {
+              e.currentTarget.style.borderColor = "var(--color-accent)";
+              e.currentTarget.style.boxShadow =
+                "0 0 0 3px rgba(232,201,122,0.18)";
+            }
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.boxShadow = "none";
+            if (!error) {
+              e.currentTarget.style.borderColor = "var(--color-border)";
+            }
+          }}
+        />
+        {error && (
+          <p
+            id={errorId}
+            role="alert"
+            className="text-[12px] font-medium"
+            style={{ color: "#DC2626" }}
+          >
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
+);

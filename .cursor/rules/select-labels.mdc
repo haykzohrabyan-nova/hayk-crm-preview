@@ -1,0 +1,49 @@
+---
+description: Select dropdowns must always display human-readable labels, never raw DB values or UUIDs
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# Select Label Rule
+
+**Rule:** `<Select>` components that are pre-filled from DB data (UUIDs, slugs, IDs) MUST explicitly pass the resolved label as children of `<SelectValue>`. Never rely solely on shadcn's auto-lookup — it fails when the options list loads asynchronously after the value is set.
+
+## Pattern
+
+```tsx
+// ❌ BAD — shows UUID if options haven't loaded yet
+<Select value={roleId}>
+  <SelectTrigger>
+    <SelectValue placeholder="Select role…" />
+  </SelectTrigger>
+  <SelectContent>
+    {roles.map((r) => (
+      <SelectItem key={r.id} value={r.id}>{r.display_name}</SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+
+// ✅ GOOD — always shows the resolved label
+<Select value={roleId}>
+  <SelectTrigger>
+    <SelectValue placeholder="Select role…">
+      {roles.find((r) => r.id === roleId)?.display_name ?? "Select role…"}
+    </SelectValue>
+  </SelectTrigger>
+  <SelectContent>
+    {roles.map((r) => (
+      <SelectItem key={r.id} value={r.id}>{r.display_name}</SelectItem>
+    ))}
+  </SelectContent>
+</Select>
+```
+
+## When this matters
+
+- Any `<Select>` pre-seeded with a value from DB (UUID foreign keys, slug strings, enum codes)
+- Any `<Select>` whose options list is fetched asynchronously (common: roles, categories, lookup values)
+- Edit forms / modals that open with existing data
+
+## Rule
+
+Always do `options.find(o => o.id === value)?.label ?? placeholder` as children of `<SelectValue>`.

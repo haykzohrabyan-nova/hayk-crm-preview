@@ -1,0 +1,82 @@
+---
+description: Mobile responsive rule — tables must render as cards on small screens
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# Mobile Table → Card Pattern
+
+**Rule:** Every data table in the app MUST have a card-based fallback for mobile (below `sm` breakpoint). Never show a horizontal-scrolling table on mobile — render each row as a card instead.
+
+## Pattern
+
+Use `hidden sm:block` on the table wrapper and `sm:hidden` on the card list:
+
+```tsx
+{/* ── Desktop: table ── */}
+<div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+  <table className="w-full text-sm">
+    <thead>…</thead>
+    <tbody>
+      {items.map((item) => (
+        <tr key={item.id}>…</tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+{/* ── Mobile: card list ── */}
+<div className="flex flex-col gap-3 sm:hidden">
+  {items.map((item) => (
+    <div
+      key={item.id}
+      className="rounded-[10px] border p-4 space-y-2"
+      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+    >
+      {/* Top row: primary identifier + status badge */}
+      <div className="flex items-center justify-between">
+        <span className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>
+          {item.name}
+        </span>
+        <StatusBadge … />
+      </div>
+
+      {/* Secondary fields as label/value pairs */}
+      <div className="text-xs space-y-1" style={{ color: "var(--color-text-muted)" }}>
+        <div className="flex justify-between">
+          <span className="uppercase tracking-wide font-medium">Email</span>
+          <span>{item.email}</span>
+        </div>
+        <div className="flex justify-between">
+          <span className="uppercase tracking-wide font-medium">Role</span>
+          <span>{item.role}</span>
+        </div>
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2 pt-1">
+        <button …>Edit</button>
+        <button …>Deactivate</button>
+      </div>
+    </div>
+  ))}
+</div>
+```
+
+## Rules
+
+- Cards use `var(--color-surface)` background and `var(--color-border)` border — **never hardcoded hex**
+- Card `border-radius` is `10px` (matches the design system card token)
+- Label text inside cards: `11px / uppercase / letter-spacing: 0.06em` in `var(--color-text-muted)`
+- Primary field (name/title) is always at the top of the card in `font-semibold`
+- Status badges and action buttons carry over from the table version unchanged
+- Skeleton loaders on mobile: replace card content with `animate-pulse` placeholder divs, same card shell
+- Empty state: single centered card with the same empty message as the table
+
+## Do's & Don'ts
+
+- ✅ `hidden sm:block` for table, `sm:hidden` for card list — always both together
+- ✅ Cards are self-contained — all the same data as the table row, just stacked vertically
+- ✅ Action buttons stay at the bottom of each card
+- ❌ Never use `overflow-x-auto` as the mobile solution — cards only
+- ❌ Never hide important columns on mobile — cards show everything

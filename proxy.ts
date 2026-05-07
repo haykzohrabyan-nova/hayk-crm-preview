@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
 import { resolveDefaultHomePath } from "@/lib/auth/resolve-default-home";
 
-/** Where to send the user after login/MFA (`next` query wins; else non-auth path + search). */
 function continueTargetFromRequest(request: NextRequest): string | null {
   const explicit = safeReturnPath(request.nextUrl.searchParams.get("next"));
   if (explicit) return explicit;
@@ -14,13 +13,13 @@ function continueTargetFromRequest(request: NextRequest): string | null {
     "/reset-password",
     "/setup-2fa",
     "/verify-2fa",
+    "/change-password",
   ];
   if (authPrefixes.some((p) => pathname.startsWith(p))) return null;
   return safeReturnPath(pathname + search);
 }
 
 export async function proxy(request: NextRequest) {
-  // Skip auth entirely when Supabase env vars are not configured (local UI dev).
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     return NextResponse.next({ request });
   }
@@ -59,14 +58,15 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/forgot-password") ||
     pathname.startsWith("/reset-password") ||
     pathname.startsWith("/setup-2fa") ||
-    pathname.startsWith("/verify-2fa");
+    pathname.startsWith("/verify-2fa") ||
+    pathname.startsWith("/change-password");
 
   const isStatic =
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
     pathname.includes(".");
 
-  // Not logged in → redirect to login, preserving deep link
+  // Not logged in → redirect to login
   if (!user && !isAuthFlow && !isStatic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
@@ -81,7 +81,7 @@ export async function proxy(request: NextRequest) {
     const current = aal?.currentLevel;
     const next = aal?.nextLevel;
 
-    // No MFA enrolled (aal1 → aal1): force setup
+    // No MFA enrolled → force setup
     if (current === "aal1" && next === "aal1" && !pathname.startsWith("/setup-2fa")) {
       const url = request.nextUrl.clone();
       url.pathname = "/setup-2fa";
@@ -91,7 +91,7 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // MFA enrolled but not yet verified this session (aal1 → aal2): verify
+    // MFA enrolled but not verified this session → verify
     if (current === "aal1" && next === "aal2" && !pathname.startsWith("/verify-2fa")) {
       const url = request.nextUrl.clone();
       url.pathname = "/verify-2fa";
@@ -102,10 +102,53 @@ export async function proxy(request: NextRequest) {
     }
 
     // Fully verified (aal2): kick auth-flow pages back to app
-    if (current === "aal2" && isAuthFlow) {
+    if (current === "aal2" && isAuthFlow && !pathname.startsWith("/change-password")) {
       const explicit = safeReturnPath(request.nextUrl.searchParams.get("next"));
       const dest = explicit ?? (await resolveDefaultHomePath(supabase));
       return NextResponse.redirect(new URL(dest, request.nextUrl.origin));
+    }
+
+    // Only run DB checks for app pages (not static, not auth flow)
+    if (current === "aal2" && !isStatic && !isAuthFlow) {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("is_active, must_change_password, role_id, roles(name)")
+        .eq("id", user.id)
+        .single();
+
+      // Deactivated user → sign out and redirect
+      if (profile && !profile.is_active) {
+        await supabase.auth.signOut();
+        const url = request.nextUrl.clone();
+        url.pathname = "/login";
+        url.search = "?error=deactivated";
+        return NextResponse.redirect(url);
+      }
+
+      // Must change password → force to /change-password
+      if (profile?.must_change_password && !pathname.startsWith("/change-password")) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/change-password";
+        url.search = "";
+        return NextResponse.redirect(url);
+      }
+
+      // Role-based route access (skip admin role — they get everything)
+      const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
+      if (roleName && roleName !== "admin") {
+        const { data: permission } = await supabase
+          .from("role_permissions")
+          .select("role_id, pages!inner(route)")
+          .eq("role_id", profile!.role_id)
+          .eq("pages.route", pathname)
+          .maybeSingle();
+
+        if (!permission) {
+          // User does not have access to this route → redirect to their home
+          const dest = await resolveDefaultHomePath(supabase);
+          return NextResponse.redirect(new URL(dest, request.nextUrl.origin));
+        }
+      }
     }
   }
 

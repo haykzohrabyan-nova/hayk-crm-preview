@@ -96,10 +96,43 @@
 /* ─── Tailwind theme bridge ──────────────────────────────────────────────── */
 
 @theme inline {
-  --color-background: var(--color-bg);
-  --color-foreground: var(--color-text-primary);
-  --font-sans: var(--font-inter);
-  --font-mono: ui-monospace, 'Cascadia Code', monospace;
+  /* Base */
+  --color-background:         var(--color-bg);
+  --color-foreground:         var(--color-text-primary);
+  --font-sans:                var(--font-inter);
+  --font-mono:                ui-monospace, 'Cascadia Code', monospace;
+
+  /* shadcn semantic tokens */
+  --color-card:               var(--color-surface);
+  --color-card-foreground:    var(--color-text-primary);
+  --color-popover:            var(--color-surface);
+  --color-popover-foreground: var(--color-text-primary);
+  --color-primary:            var(--color-accent);
+  --color-primary-foreground: var(--color-btn-primary-text);
+  --color-secondary:          var(--color-row-alt);
+  --color-secondary-foreground: var(--color-text-primary);
+  --color-muted:              var(--color-row-alt);
+  --color-muted-foreground:   var(--color-text-muted);
+  --color-accent-color:       var(--color-badge-bg);
+  --color-accent-foreground:  var(--color-badge-text);
+  --color-destructive:        var(--color-danger);
+  --color-destructive-foreground: #ffffff;
+  --color-border:             var(--color-border);
+  --color-input:              var(--color-border);
+  --color-ring:               var(--color-accent);
+
+  /* Sidebar tokens */
+  --color-sidebar:            var(--color-topbar);
+  --color-sidebar-foreground: rgba(255,255,255,0.85);
+  --color-sidebar-border:     rgba(255,255,255,0.10);
+  --color-sidebar-accent:     rgba(255,255,255,0.08);
+  --color-sidebar-accent-foreground: rgba(255,255,255,0.90);
+  --color-sidebar-primary:    var(--color-accent);
+  --color-sidebar-primary-foreground: var(--color-btn-primary-text);
+  --color-sidebar-ring:       var(--color-accent);
+
+  /* Radius */
+  --radius: 0.375rem; /* 6px */
 }
 
 /* ─── Base ───────────────────────────────────────────────────────────────── */
