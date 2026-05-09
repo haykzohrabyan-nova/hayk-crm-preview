@@ -3,19 +3,26 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 
 export async function GET() {
-  const { userId, errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   const admin = createAdminClient();
 
-  // All Leads tab: all non-inbox leads (Pending + Validated) — shared queue
+  // All Leads tab: SDRs only count leads they can actually see (unlocked + own lock).
+  // Admins see the full total.
   // Other tabs: scoped to this SDR's own leads (sdr_id = userId)
+  let allQuery = admin
+    .from("leads")
+    .select("status, locked_by_id")
+    .eq("is_inbox", false)
+    .in("status", ["Pending", "Validated"]);
+
+  if (roleName === "sdr" && userId) {
+    allQuery = allQuery.or(`locked_by_id.is.null,locked_by_id.eq.${userId}`);
+  }
+
   const [allResult, mineResult] = await Promise.all([
-    admin
-      .from("leads")
-      .select("status")
-      .eq("is_inbox", false)
-      .in("status", ["Pending", "Validated"]),
+    allQuery,
     admin
       .from("leads")
       .select("status")

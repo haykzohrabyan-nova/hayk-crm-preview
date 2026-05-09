@@ -3,6 +3,18 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — SDR lock-based lead visibility + admin Working column
+
+### Changed
+- `app/api/leads/workspace/route.ts` — SDRs now only receive unlocked leads + leads they themselves have open (`locked_by_id IS NULL OR locked_by_id = userId`), applied to the all-leads tab only; also added `locked_by` profile join so the locker's name is available in the row
+- `app/api/leads/workspace/counts/route.ts` — added `roleName` from `requireSession`; applies the same SDR lock filter to the all-leads count so the tab badge matches what the SDR actually sees
+- `components/leads-page.tsx` — added `userId` state (alongside `isAdmin`); added a "Working" column to the All Leads desktop table (admin only) showing which SDR has each lead open; same field shown on mobile cards for admin
+
+## [2026-05-09] — Admin view-only access in leads pipeline
+
+### Changed
+- `components/leads-page.tsx` — admin users now see a **View** button (no lock acquired) instead of Verify on all tabs; SDRs still see Verify / Work as before. Added `handleViewLead` function (opens drawer read-only without calling the lock endpoint) and role detection via `user_profiles`.
+
 ## [2026-05-09] — Auto-submit on 6th digit in setup-2fa
 
 ### Changed

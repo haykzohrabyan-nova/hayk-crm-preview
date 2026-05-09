@@ -10,35 +10,40 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 
 ---
 
-## Tab: Inbox
+## Tab: All Leads (Inbox)
 
-**Data:** `GET /api/leads/inbox` — leads where `is_inbox = true` and `status = 'Pending'`
+**Data:** `GET /api/leads/workspace` — leads where `is_inbox = false` and `status` in `['Pending', 'Validated']`
+
+**Visibility filtering (server-side):**
+- **SDR:** only receives leads where `locked_by_id IS NULL OR locked_by_id = currentUserId`
+- **Admin:** receives all leads (no filter); also gets `locked_by` profile joined on each row
 
 ### Table Columns
 
-| Column | Notes |
-|--------|-------|
-| Name | `first_name + last_name` from linked customer |
-| Company | |
-| Source | Lead source label |
-| Phone | Formatted display (stored digits-only) |
-| Urgency | Colour-coded pill: High (red) / Medium (amber) / Low (green) / Not Defined (grey) |
-| Status | `StatusPill` — Pending / Validated |
-| Created | Relative time (e.g. "2 hours ago") |
-| Action | **Verify** button — opens Verify Drawer + acquires lock |
+| Column | Visible to | Notes |
+|--------|-----------|-------|
+| Name | All | `first_name + last_name` from linked customer |
+| Company | All | |
+| Source | All | Lead source label |
+| Phone | All | Formatted display (stored digits-only) |
+| Urgency | All | Colour-coded pill: High / Medium / Low / Not Defined |
+| Status | All | `StatusPill` — Pending / Validated |
+| Created | All | Relative time (e.g. "2 hours ago") |
+| Working | Admin only | Name of SDR currently working the lead; "—" if unlocked; "You" if admin themselves has it open |
+| Action | All | **Verify** (SDR) / **View** (Admin) |
 
 ### Behaviors
 
 - **Search:** client-side filter on name, email, phone, company
-- **Sort:** by `created_at` (newest first by default)
+- **Sort:** by `updated_at` (newest first)
 - **Skeleton loader** while data fetches — never full-page spinner
-- **Verify button** → opens **Verify Drawer** (see below)
-- **Supervisor unlock:** If a lead has been locked (future feature), admin can unlock it. Out of scope for v1 — field reserved.
-- **Empty state:** "No leads in inbox" with an icon
+- **Verify button** (SDR) → acquires lock → opens **Verify Drawer** in edit mode
+- **View button** (Admin) → opens **Verify Drawer** in read-only mode, **no lock acquired**
+- **Empty state:** "No leads found." with muted text
 
 ### Badge
 
-Tab header shows live count of Pending inbox leads.
+Tab count reflects the filtered list — only leads the current SDR can work (unlocked + own). Admin badge shows total.
 
 ---
 
@@ -112,15 +117,22 @@ Leads the SDR has routed but that have not yet been claimed by Sales.
 
 ---
 
-## Lead Locking in the SDR Pipeline
+## Lead Visibility — Lock-Based Filtering
 
-When the SDR clicks **Verify** on a lead, the client immediately calls `POST /api/leads/[id]/lock` before opening the drawer.
+The All Leads tab only shows leads the SDR can actually work:
 
-- **Lock acquired** → drawer opens in edit mode (normal flow)
-- **Lead locked by another SDR** → drawer opens in read-only mode with banner: **"[Name] is currently working this lead"**. No action buttons are shown.
-- **Admin opens any lead** → always gets edit access, overrides any existing lock.
+- **Unlocked leads** (`locked_by_id IS NULL`) — available to any SDR
+- **Leads the SDR themselves have open** (`locked_by_id = currentUserId`) — their own in-progress work
 
-When the SDR closes the drawer (any way: save action, Cancel, Escape, close button) → `POST /api/leads/[id]/unlock` is called automatically.
+Leads currently locked by another SDR are **hidden from the queue entirely**. SDRs never see a lead that someone else is working — there is nothing to click on.
+
+**Admin** sees all leads regardless of lock state, plus a **Working** column showing which SDR has each lead open. Admin opens leads with a **View** action (no lock acquired) so they can inspect any lead without disrupting an active SDR.
+
+### Race Condition Safety Net
+
+If SDR B's page is stale (loaded before SDR A clicked Verify), SDR B may still see the lead. When SDR B clicks Verify, `POST /api/leads/[id]/lock` returns `409` and the drawer opens in read-only mode with a banner: **"[Name] is currently working this lead"**. No action buttons are shown. SDR B can close the drawer — on next refresh the lead will no longer appear in their queue.
+
+When the SDR closes the drawer (any way: save action, Cancel, Escape, close button) → `POST /api/leads/[id]/unlock` is called automatically, making the lead visible to others again.
 
 See `docs/feature-specs/lead-locking.md` for full lock spec.
 
@@ -340,12 +352,16 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 
 ---
 
-## Build Status & Gaps (as of 2026-05-07)
+## Build Status & Gaps (as of 2026-05-09)
 
 ### ✅ Built and working
 | Feature | Notes |
 |---------|-------|
 | All Leads / On Hold / Directed to Sales / Rejected tabs | Tab counts visible before clicking; scoped correctly per SDR |
+| Lock-based lead visibility | SDRs only see unlocked leads + their own; locked-by-other leads hidden from queue |
+| Admin View action (no lock) | Admin opens any lead read-only without acquiring a lock |
+| Admin "Working" column | All Leads table shows which SDR has each lead open; mobile cards too |
+| Race condition safety net | If SDR clicks Verify on a stale lead, 409 → read-only drawer with locker banner |
 | Manual Add Lead modal | Phone lookup + deduplication banner + customer auto-fill |
 | Verify Drawer (locking, lock banner) | Lock acquired on open, released on close |
 | Product Interests — select + quantity rows | Replaced checkbox grid with select picker + quantity inputs |

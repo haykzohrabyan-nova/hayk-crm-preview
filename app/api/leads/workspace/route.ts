@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from("leads")
     .select(
-      "*, customer:customers(*), sales_owner:user_profiles!leads_sales_owner_id_fkey(id,full_name)"
+      "*, customer:customers(*), sales_owner:user_profiles!leads_sales_owner_id_fkey(id,full_name), locked_by:user_profiles!leads_locked_by_id_fkey(id,full_name)"
     )
     .eq("is_inbox", false)
     .order("updated_at", { ascending: false });
@@ -30,9 +30,15 @@ export async function GET(request: NextRequest) {
   }
 
   // Sales reps only see unclaimed leads + leads they own.
-  // Admins and SDRs see everything.
   if (roleName === "sales" && userId) {
     query = query.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
+  }
+
+  // SDRs only see unlocked leads + leads they themselves have open.
+  // Applies to the all-leads tab only (no status param = Pending/Validated queue).
+  // Hold/routed/rejected tabs pass a status param and use scope=mine, so they are unaffected.
+  if (roleName === "sdr" && userId && !status) {
+    query = query.or(`locked_by_id.is.null,locked_by_id.eq.${userId}`);
   }
 
   const { data, error } = await query;

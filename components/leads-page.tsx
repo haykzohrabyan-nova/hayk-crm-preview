@@ -25,6 +25,7 @@ import { VerifyDrawer } from "@/components/verify-drawer";
 import { Lead, Customer, LookupMap } from "@/lib/types";
 import { formatPhone } from "@/lib/utils/phone";
 import { validatePhone } from "@/lib/utils/phone";
+import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -589,6 +590,26 @@ export function LeadsPage() {
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [drawerReadOnly, setDrawerReadOnly] = useState(false);
   const [drawerLockedBy, setDrawerLockedBy] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+
+  // Fetch current user id + role
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (uid) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("roles(name)")
+          .eq("id", uid)
+          .single();
+        const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
+        setIsAdmin(roleName === "admin");
+      }
+    });
+  }, []);
 
   function showToast(message: string, type: "success" | "error" = "success") {
     setToast({ message, type });
@@ -657,6 +678,13 @@ export function LeadsPage() {
       setDrawerReadOnly(false);
       setDrawerLockedBy(null);
     }
+  }
+
+  function handleViewLead(lead: Lead) {
+    // Admin view — no lock acquired, opens read-only
+    setDrawerLead(lead);
+    setDrawerReadOnly(true);
+    setDrawerLockedBy(null);
   }
 
   async function handleResumeLead(lead: Lead) {
@@ -787,7 +815,7 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Source", "Phone", "Urgency", "Status", "Created", "Action"].map((h) => (
+                  {["Name", "Company", "Source", "Phone", "Urgency", "Status", "Created", ...(isAdmin ? ["Working"] : []), "Action"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em] whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
                       {h}
                     </th>
@@ -836,14 +864,39 @@ export function LeadsPage() {
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {relativeTime(lead.created_at)}
                       </td>
+                      {isAdmin && (
+                        <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                          {lead.locked_by_id ? (
+                            lead.locked_by_id === userId ? (
+                              <span className="italic" style={{ color: "var(--color-text-muted)" }}>You</span>
+                            ) : (
+                              <span style={{ color: "var(--color-text-primary)" }}>
+                                {(lead.locked_by as { full_name?: string | null } | undefined)?.full_name ?? "—"}
+                              </span>
+                            )
+                          ) : (
+                            <span style={{ color: "var(--color-text-muted)" }}>—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-3 py-2.5">
-                        <button
-                          onClick={() => handleWorkLead(lead)}
-                          className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
-                          style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-                        >
-                          Verify
-                        </button>
+                        {isAdmin ? (
+                          <button
+                            onClick={() => handleViewLead(lead)}
+                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                            style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                          >
+                            View
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleWorkLead(lead)}
+                            className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                            style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                          >
+                            Verify
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -886,14 +939,34 @@ export function LeadsPage() {
                     )}
                     <div className="flex justify-between"><span>Source</span><span className="normal-case tracking-normal">{lead.source || "—"}</span></div>
                     <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{relativeTime(lead.created_at)}</span></div>
+                    {isAdmin && lead.locked_by_id && (
+                      <div className="flex justify-between">
+                        <span>Working</span>
+                        <span className="normal-case tracking-normal" style={{ color: "var(--color-text-primary)" }}>
+                          {lead.locked_by_id === userId
+                            ? "You"
+                            : (lead.locked_by as { full_name?: string | null } | undefined)?.full_name ?? "—"}
+                        </span>
+                      </div>
+                    )}
                   </div>
-                  <button
-                    onClick={() => handleWorkLead(lead)}
-                    className="w-full rounded-[6px] py-1.5 text-[13px] font-medium"
-                    style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-                  >
-                    Verify
-                  </button>
+                  {isAdmin ? (
+                    <button
+                      onClick={() => handleViewLead(lead)}
+                      className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                    >
+                      View
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleWorkLead(lead)}
+                      className="w-full rounded-[6px] py-1.5 text-[13px] font-medium"
+                      style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                    >
+                      Verify
+                    </button>
+                  )}
                 </div>
               ))
             )}
@@ -953,7 +1026,7 @@ export function LeadsPage() {
                             Resume
                           </button>
                           <button
-                            onClick={() => handleWorkLead(lead)}
+                            onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)}
                             className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium"
                             style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                           >
@@ -991,7 +1064,7 @@ export function LeadsPage() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => handleResumeLead(lead)} className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium" style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}>Resume</button>
-                    <button onClick={() => handleWorkLead(lead)} className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
+                    <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
                   </div>
                 </div>
               ))
@@ -1036,7 +1109,7 @@ export function LeadsPage() {
                       <td className="px-3 py-2.5">{lead.sales_status ? <StatusPill status={lead.sales_status} /> : <span style={{ color: "var(--color-text-muted)" }}>—</span>}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
                       <td className="px-3 py-2.5">
-                        <button onClick={() => handleWorkLead(lead)} className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
+                        <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
                       </td>
                     </tr>
                   ))
@@ -1066,7 +1139,7 @@ export function LeadsPage() {
                     <div className="flex justify-between"><span>Company</span><span className="normal-case tracking-normal">{lead.customer?.company || "—"}</span></div>
                     <div className="flex justify-between"><span>Routed</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
                   </div>
-                  <button onClick={() => handleWorkLead(lead)} className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
+                  <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
                 </div>
               ))
             )}
@@ -1111,7 +1184,7 @@ export function LeadsPage() {
                       <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.rejection_reason || "—"}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
                       <td className="px-3 py-2.5">
-                        <button onClick={() => handleWorkLead(lead)} className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>View</button>
+                        <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>View</button>
                       </td>
                     </tr>
                   ))
@@ -1140,7 +1213,7 @@ export function LeadsPage() {
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{lead.rejection_reason || "—"}</span></div>
                   </div>
-                  <button onClick={() => handleWorkLead(lead)} className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>View</button>
+                  <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>View</button>
                 </div>
               ))
             )}

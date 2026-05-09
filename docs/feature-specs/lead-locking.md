@@ -6,7 +6,11 @@ Ensures that when a user is actively working a lead (drawer open), other users c
 
 ## Why Locking Is Needed
 
-With multiple SDRs and multiple Sales reps working concurrently, two users could open the same lead simultaneously, make different changes, and overwrite each other's work. Locking prevents this: the first user to open a lead gets edit rights; all others see it in read-only mode.
+With multiple SDRs working concurrently, locking serves two purposes:
+
+1. **Queue filtering (primary):** Leads locked by another SDR are hidden from other SDRs' All Leads queue entirely. SDRs only see leads they can actually work. This prevents two SDRs from picking up the same lead under normal page-load conditions.
+
+2. **Race-condition protection (safety net):** If an SDR's page is stale (loaded before another SDR claimed a lead), they may still see it. When they click Verify, `POST /api/leads/[id]/lock` returns `409` and the drawer opens read-only with a banner — preventing a conflicting edit.
 
 ---
 
@@ -26,7 +30,15 @@ Both fields are `null` when a lead is unlocked.
 ## Lock Lifecycle
 
 ```
-User opens drawer
+SDR loads All Leads tab
+      │
+      ▼
+GET /api/leads/workspace
+      │
+      └── Server filters: locked_by_id IS NULL OR locked_by_id = currentUserId
+          (Admin skips this filter — sees all leads + locked_by name in each row)
+
+SDR clicks Verify on a lead
       │
       ▼
 POST /api/leads/[id]/lock
@@ -38,14 +50,17 @@ POST /api/leads/[id]/lock
       ├── Locked by same user? ────────────────────── Refresh locked_at
       │   (page refresh / reconnect)                  → Drawer opens in EDIT mode
       │
-      ├── Locked by different user? ──────────────── Return 409 with locker info
-      │                                               → Drawer opens in READ-ONLY mode
-      │                                               → Banner: "Jane is working this lead"
+      └── Locked by different user? ──────────────── Return 409 with locker info
+          (race condition — stale page)               → Drawer opens in READ-ONLY mode
+                                                      → Banner: "Jane is working this lead"
+                                                      → On close/refresh: lead disappears from queue
+
+Admin clicks View on a lead
       │
-      └── Caller is Admin? ─────────────────────────── Always grant lock (override)
-                                                       → Drawer opens in EDIT mode
-                                                       → Previous holder's drawer becomes read-only
-                                                         (they see the banner on their next action attempt)
+      ▼
+No lock call — drawer opens directly in READ-ONLY mode
+      │
+      └── No lock acquired, active SDR is undisturbed
 
 User completes action OR closes drawer
       │
@@ -53,6 +68,7 @@ User completes action OR closes drawer
 POST /api/leads/[id]/unlock  (or auto-release on verify/hold/route/reject)
       │
       └── locked_by_id = null, locked_at = null
+          → Lead becomes visible in other SDRs' queues on next refresh
 ```
 
 ---
@@ -76,13 +92,13 @@ POST /api/leads/[id]/unlock  (or auto-release on verify/hold/route/reject)
 - Action buttons: hidden entirely (not just disabled — no false affordance)
 - History tab: still accessible and fully interactive
 
-### Admin Override Mode
+### Admin View Mode
 
-Admin sees a distinct banner when opening a locked lead:
-```
-[ShieldIcon] This lead is locked by Jane Smith — you are overriding as Admin
-```
-Admin can make changes as normal. If the original holder's drawer is still open, their next save attempt will receive a `409` indicating the lock was taken.
+Admin opens leads via a **View** action that does **not** call the lock endpoint. The drawer opens directly in read-only mode. The active SDR's lock is completely undisturbed — they keep edit access.
+
+Admin can inspect all fields and the lead history without interfering with the SDR's work.
+
+> **Future — Admin Edit Override:** If admin needs to edit a locked lead, a dedicated "Edit" action would call `POST /api/leads/[id]/lock` (which always grants admin the lock), take over the lock, and show a banner: `[ShieldIcon] This lead is locked by Jane Smith — you are overriding as Admin`. The original holder's next save attempt would receive a `409`. This is deferred to a future build.
 
 ---
 

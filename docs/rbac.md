@@ -163,26 +163,37 @@ if (!isAllowed) {
 
 ## Lead Locking Rules
 
-A lead is "locked" when a user has its drawer open. Lock state is stored as `locked_by_id` + `locked_at` on the `leads` row.
+A lead is "locked" when an SDR has its drawer open. Lock state is stored as `locked_by_id` + `locked_at` on the `leads` row.
+
+### Lead Visibility (Queue Filtering)
+
+Before a lock is ever acquired, the API filters which leads each role can see on the All Leads tab:
+
+| Role | Sees |
+|------|------|
+| SDR | Unlocked leads (`locked_by_id IS NULL`) + leads they themselves have open |
+| Admin | All leads — includes leads locked by any SDR; also returns `locked_by` profile for the Working column |
+| Sales | Not applicable — Sales users access `/sales`, not `/leads` |
 
 ### Acquiring a Lock
 
-When any user opens a lead drawer, the client immediately calls `POST /api/leads/[id]/lock`:
+When an SDR clicks Verify, the client calls `POST /api/leads/[id]/lock`:
 
 | Scenario | Result |
 |----------|--------|
-| Lead is unlocked | Lock granted — user can edit |
-| Lead is locked by the same user | Lock refreshed — user can edit |
-| Lead is locked by a different user | `409` returned — client renders **read-only** mode |
-| Admin opens any lead | Lock always granted (overrides existing lock) |
+| Lead is unlocked | Lock granted — drawer opens in edit mode |
+| Lead is locked by the same user | Lock refreshed — drawer opens in edit mode |
+| Lead is locked by a different SDR (race condition) | `409` returned — drawer opens in read-only mode with banner |
+| Admin opens any lead | **No lock call** — drawer opens read-only directly (View action) |
 
-### Read-Only Mode (Locked by Another)
+### Read-Only Mode (Race Condition — Locked by Another)
 
-When a lead is locked by someone else, the drawer opens in read-only mode:
+This is a safety net for stale-page scenarios. The drawer opens read-only:
 - All inputs are disabled
 - A banner shows: **"[Name] is currently working this lead"**
 - No action buttons (Verify, Hold, Route, Reject) are shown
 - History tab is still accessible
+- On close or page refresh, the lead disappears from the SDR's queue (filtered out by the API)
 
 ### Releasing a Lock
 
@@ -227,7 +238,10 @@ Components read role from a context provider (`lib/auth/use-role.ts`) that fetch
 | Sidebar: Leads section | ✓ | ✗ | ✓ |
 | Sidebar: Sales section | ✗ | ✓ | ✓ |
 | Sidebar: Admin section | ✗ | ✗ | ✓ |
-| Verify button in inbox | ✓ | ✗ | ✓ |
+| Leads: Verify button (acquires lock) | ✓ | ✗ | ✗ |
+| Leads: View button (no lock, read-only) | ✗ | ✗ | ✓ |
+| Leads: "Working" column (shows active SDR) | ✗ | ✗ | ✓ |
+| Leads: sees locked-by-other leads in queue | ✗ | ✗ | ✓ |
 | Route Lead / Reject buttons | ✓ | ✗ | ✓ |
 | Claim Lead button | ✗ | ✓ | ✓ |
 | CRM: Merge contact | ✓ | ✗ | ✓ |
