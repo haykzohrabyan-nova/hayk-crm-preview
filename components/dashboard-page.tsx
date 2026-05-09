@@ -13,9 +13,7 @@ import {
   LayoutDashboard,
   Settings,
   ArrowRight,
-  ChevronRight,
 } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -181,71 +179,12 @@ function QuickAction({ label, description, href, icon, primary = false }: QuickA
   );
 }
 
-// ─── User Card ───────────────────────────────────────────────────────────────
-
-interface UserCardProps {
-  fullName: string | null;
-  roleName: string | null;
-}
-
-function UserCard({ fullName, roleName }: UserCardProps) {
-  const initial = fullName?.trim()[0]?.toUpperCase() ?? "?";
-  const roleLabel =
-    roleName === "admin" ? "Administrator"
-    : roleName === "sales" ? "Sales Rep"
-    : roleName === "sdr" ? "SDR"
-    : roleName ?? "";
-
-  return (
-    <Link
-      href="/profile"
-      className="group flex items-center gap-3 rounded-[10px] border px-4 py-3 transition-colors"
-      style={{
-        background: "var(--color-surface)",
-        borderColor: "var(--color-border)",
-      }}
-    >
-      {/* Avatar */}
-      <div
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[15px] font-semibold"
-        style={{
-          background: "var(--color-btn-verify-bg)",
-          color: "var(--color-btn-verify-text)",
-        }}
-      >
-        {initial}
-      </div>
-
-      {/* Name + role */}
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-          {fullName ?? "—"}
-        </p>
-        <p className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-          {roleLabel}
-        </p>
-      </div>
-
-      <ChevronRight
-        className="h-4 w-4 shrink-0 transition-transform group-hover:translate-x-0.5"
-        style={{ color: "var(--color-text-muted)" }}
-      />
-    </Link>
-  );
-}
-
 // ─── Main Component ──────────────────────────────────────────────────────────
-
-interface UserProfile {
-  full_name: string | null;
-  role_name: string | null;
-}
 
 export function DashboardPage() {
   const [period, setPeriod] = useState<Period>("month");
   const [data, setData] = useState<KpiData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
 
   const fetchKpis = useCallback(async () => {
     setLoading(true);
@@ -263,35 +202,10 @@ export function DashboardPage() {
     fetchKpis();
   }, [fetchKpis]);
 
-  // Fetch logged-in user's name and role for the greeting card
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data: authData }) => {
-      const uid = authData.user?.id;
-      if (!uid) return;
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("full_name, roles(name)")
-        .eq("id", uid)
-        .single();
-      if (profile) {
-        setUserProfile({
-          full_name: profile.full_name,
-          role_name: (profile.roles as unknown as { name: string } | null)?.name ?? null,
-        });
-      }
-    });
-  }, []);
-
   const periodLabel = PERIOD_LABELS[period];
 
   return (
     <div className="space-y-8">
-
-      {/* User greeting card */}
-      {userProfile && (
-        <UserCard fullName={userProfile.full_name} roleName={userProfile.role_name} />
-      )}
 
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">

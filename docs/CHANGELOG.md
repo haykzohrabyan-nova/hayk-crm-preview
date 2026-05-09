@@ -3,6 +3,16 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — User profile card in sidebar and mobile nav
+
+### Added
+- `app/(app)/profile/page.tsx` — placeholder profile page ("coming soon")
+- `components/sidebar.tsx` — user profile card at the top of the nav (avatar initial, full name, role label, chevron); collapsed state shows avatar only; links to `/profile`
+- `components/mobile-nav.tsx` — same user profile card inside the slide-in drawer
+
+### Changed
+- `components/dashboard-page.tsx` — removed user card (moved to nav)
+
 ## [2026-05-09] — Dashboard user greeting card + profile page
 
 ### Added

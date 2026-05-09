@@ -123,11 +123,20 @@ function NavLink({
   );
 }
 
+function roleLabel(name: string | undefined): string {
+  if (name === "admin") return "Administrator";
+  if (name === "sales") return "Sales Rep";
+  if (name === "sdr") return "SDR";
+  return name ?? "";
+}
+
 export function Sidebar() {
   const { theme, setTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
   const [sections, setSections] = useState<NavSection[]>([]);
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
+  const [userFullName, setUserFullName] = useState<string | null>(null);
+  const [userRoleName, setUserRoleName] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
@@ -144,11 +153,13 @@ export function Sidebar() {
 
       const { data: profile } = await supabase
         .from("user_profiles")
-        .select("role_id, roles(name)")
+        .select("role_id, full_name, roles(name)")
         .eq("id", user.id)
         .single();
 
       const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
+      setUserFullName(profile?.full_name ?? null);
+      setUserRoleName(roleName);
 
       let pages: Page[] = [];
 
@@ -259,6 +270,46 @@ export function Sidebar() {
             <span className="ml-1 text-[11px] font-normal opacity-60">CRM</span>
           </span>
         )}
+      </div>
+
+      {/* User profile card */}
+      <div className="shrink-0 px-2 pt-2">
+        <Link
+          href="/profile"
+          className="group flex items-center gap-2.5 rounded-md px-2 py-2 transition-colors"
+          style={{ color: "rgba(255,255,255,0.85)" }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.08)";
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLElement).style.backgroundColor = "";
+          }}
+          title={collapsed ? (userFullName ?? "My Profile") : undefined}
+        >
+          {/* Avatar circle */}
+          <div
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold"
+            style={{ background: "var(--color-accent)", color: "var(--color-btn-primary-text)" }}
+          >
+            {userFullName?.trim()[0]?.toUpperCase() ?? "?"}
+          </div>
+          {/* Name + role — hidden when collapsed */}
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium" style={{ color: "rgba(255,255,255,0.9)" }}>
+                {userFullName ?? "—"}
+              </p>
+              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+                {roleLabel(userRoleName)}
+              </p>
+            </div>
+          )}
+          {!collapsed && (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: "rgba(255,255,255,0.35)" }} />
+          )}
+        </Link>
+        {/* Divider */}
+        <div className="mt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
       </div>
 
       {/* Nav sections */}

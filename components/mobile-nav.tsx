@@ -9,6 +9,7 @@ import {
   Sun,
   Moon,
   LogOut,
+  ChevronRight,
   LayoutDashboard,
   Inbox,
   Briefcase,
@@ -34,12 +35,21 @@ const ICON_MAP: Record<string, LucideIcon> = {
   Settings, ShieldCheck, Users, KeyRound, ListFilter, Megaphone, ClipboardList, Bell,
 };
 
+function roleLabel(name: string | undefined): string {
+  if (name === "admin") return "Administrator";
+  if (name === "sales") return "Sales Rep";
+  if (name === "sdr") return "SDR";
+  return name ?? "";
+}
+
 export function MobileNav() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const [pages, setPages] = useState<Page[]>([]);
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
+  const [userFullName, setUserFullName] = useState<string | null>(null);
+  const [userRoleName, setUserRoleName] = useState<string | undefined>(undefined);
 
   // Load role-based nav pages (same logic as Sidebar)
   useEffect(() => {
@@ -50,11 +60,13 @@ export function MobileNav() {
 
       const { data: profile } = await supabase
         .from("user_profiles")
-        .select("role_id, roles(name)")
+        .select("role_id, full_name, roles(name)")
         .eq("id", user.id)
         .single();
 
       const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
+      setUserFullName(profile?.full_name ?? null);
+      setUserRoleName(roleName);
       let allPages: Page[] = [];
 
       if (roleName === "admin") {
@@ -179,6 +191,34 @@ export function MobileNav() {
           >
             <X className="h-5 w-5" />
           </button>
+        </div>
+
+        {/* User profile card */}
+        <div className="shrink-0 px-2 pt-2">
+          <Link
+            href="/profile"
+            className="group flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors"
+            style={{ color: "rgba(255,255,255,0.85)" }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.08)"; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ""; }}
+          >
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold"
+              style={{ background: "var(--color-accent)", color: "var(--color-btn-primary-text)" }}
+            >
+              {userFullName?.trim()[0]?.toUpperCase() ?? "?"}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-medium" style={{ color: "rgba(255,255,255,0.9)" }}>
+                {userFullName ?? "—"}
+              </p>
+              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+                {roleLabel(userRoleName)}
+              </p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "rgba(255,255,255,0.35)" }} />
+          </Link>
+          <div className="mt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
         </div>
 
         {/* Nav items — role-based, same as sidebar */}
