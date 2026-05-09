@@ -241,10 +241,10 @@ function TeamSection() {
                 </div>
                 {/* Online dot */}
                 <span
-                  className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2"
+                  className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full"
                   style={{
                     background: online ? "#16A34A" : "var(--color-border)",
-                    ringColor: "var(--color-surface)",
+                    outline: "2px solid var(--color-surface)",
                   }}
                 />
               </div>
