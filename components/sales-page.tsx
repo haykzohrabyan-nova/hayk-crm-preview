@@ -282,7 +282,7 @@ export function SalesPage() {
   function ownerLabel(lead: Lead): string {
     if (!lead.sales_owner_id) return "Unclaimed";
     if (lead.sales_owner_id === userId) return "You";
-    return "Claimed";
+    return lead.sales_owner?.full_name ?? "Claimed";
   }
 
   return (
@@ -700,6 +700,7 @@ export function SalesPage() {
           lead={drawerLead}
           readOnly={drawerReadOnly}
           lockedByName={drawerLockedBy}
+          currentUserId={userId}
           onClose={() => { setDrawerLead(null); setDrawerReadOnly(false); setDrawerLockedBy(null); }}
           onLeadUpdated={handleLeadUpdated}
           onLeadRemoved={handleLeadRemoved}

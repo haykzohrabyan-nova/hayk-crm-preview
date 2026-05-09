@@ -46,13 +46,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Use admin client to update the password (bypasses email confirmation)
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!
-  );
-
-  const { error: updateError } = await adminClient.auth.admin.updateUserById(user.id, {
+  // Update password within the current session so the AAL2 session stays alive.
+  // Using the session-aware client here (vs admin updateUserById) prevents Supabase
+  // from invalidating the refresh token, which would force the user back to /login.
+  const { error: updateError } = await supabase.auth.updateUser({
     password: new_password,
   });
 
@@ -63,7 +60,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Clear the must_change_password flag
+  // Clear the must_change_password flag (admin client required for service-role write)
+  const adminClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SECRET_KEY!
+  );
+
   const { error: profileError } = await adminClient
     .from("user_profiles")
     .update({ must_change_password: false })

@@ -3,6 +3,23 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Sales pipeline: role-based filtering + owner name display
+
+### Added
+- `supabase/migrations/029_fix_sales_owner_fk.sql` — re-points `leads.sales_owner_id` FK from `auth.users` to `public.user_profiles(id)`, enabling PostgREST to join owner profile data in a single query
+
+### Changed
+- `app/api/leads/workspace/route.ts` — joins `sales_owner:user_profiles(id,full_name)` via PostgREST; sales role now filtered to unclaimed + owned leads only; admins still see all
+- `app/api/leads/sales-counts/route.ts` — same role-based filter applied to tab badge counts
+- `lib/types/index.ts` — added `sales_owner?: { id, full_name } | null` to `Lead` interface
+- `components/sales-page.tsx` — Owner column now shows the actual sales rep name instead of "Claimed"; passes `currentUserId` to drawer
+- `components/sales-drawer.tsx` — Sales Fields section now includes a read-only "Assigned To" field showing owner name, "You", or "Unclaimed"
+
+## [2026-05-09] — Auto-login after first-time password setup
+
+### Fixed
+- `app/api/auth/change-password/route.ts` — replaced `adminClient.auth.admin.updateUserById` (which invalidates all refresh tokens) with `supabase.auth.updateUser` (session-aware). The user's AAL2 session is now preserved after setting their first password, so they land directly on the dashboard instead of being bounced back to `/login`.
+
 ## [2026-05-07] — Remove /tickets hub; Quoted Requests and Orders are standalone nav pages
 
 ### Removed

@@ -154,6 +154,7 @@ export interface Lead {
   // Joined (optional)
   customer?: Customer
   locked_by?: UserProfile
+  sales_owner?: { id: string; full_name: string | null } | null
 }
 
 export const PRODUCT_INTERESTS = [

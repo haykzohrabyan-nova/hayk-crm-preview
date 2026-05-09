@@ -58,6 +58,7 @@ interface SalesDrawerProps {
   lead: Lead;
   readOnly?: boolean;
   lockedByName?: string | null;
+  currentUserId?: string | null;
   onClose: () => void;
   onLeadUpdated: (lead: Lead) => void;
   onLeadRemoved: (leadId: string) => void;
@@ -83,6 +84,7 @@ export function SalesDrawer({
   lead: initialLead,
   readOnly = false,
   lockedByName = null,
+  currentUserId = null,
   onClose,
   onLeadUpdated,
   onLeadRemoved,
@@ -438,6 +440,22 @@ export function SalesDrawer({
                   Sales Fields
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+                  <div>
+                    <label className={labelCls} style={labelStyle}>Assigned To</label>
+                    <input
+                      className={inputCls}
+                      style={{ ...inputStyle, opacity: 0.75 }}
+                      value={
+                        !lead.sales_owner_id
+                          ? "Unclaimed"
+                          : lead.sales_owner_id === currentUserId
+                          ? "You"
+                          : (lead.sales_owner?.full_name ?? "Claimed")
+                      }
+                      readOnly
+                    />
+                  </div>
 
                   <div>
                     <label className={labelCls} style={labelStyle}>Sales Status</label>

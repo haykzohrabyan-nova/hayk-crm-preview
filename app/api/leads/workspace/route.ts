@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 
 export async function GET(request: NextRequest) {
-  const { userId, errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   const { searchParams } = request.nextUrl;
@@ -15,7 +15,9 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
   let query = admin
     .from("leads")
-    .select("*, customer:customers(*)")
+    .select(
+      "*, customer:customers(*), sales_owner:user_profiles!leads_sales_owner_id_fkey(id,full_name)"
+    )
     .eq("is_inbox", false)
     .order("updated_at", { ascending: false });
 
@@ -25,6 +27,12 @@ export async function GET(request: NextRequest) {
 
   if (scope === "mine" && userId) {
     query = query.eq("sdr_id", userId);
+  }
+
+  // Sales reps only see unclaimed leads + leads they own.
+  // Admins and SDRs see everything.
+  if (roleName === "sales" && userId) {
+    query = query.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
   }
 
   const { data, error } = await query;
