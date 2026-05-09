@@ -179,6 +179,101 @@ function QuickAction({ label, description, href, icon, primary = false }: QuickA
   );
 }
 
+// ─── Team Section (admin only) ────────────────────────────────────────────────
+
+interface TeamMember {
+  id: string;
+  full_name: string | null;
+  role_name: string;
+  role_display_name: string;
+  claimed_leads: number;
+  last_sign_in_at: string | null;
+}
+
+function isOnline(lastSignIn: string | null): boolean {
+  if (!lastSignIn) return false;
+  return Date.now() - new Date(lastSignIn).getTime() < 8 * 60 * 60 * 1000; // 8 hours
+}
+
+function TeamSection() {
+  const [members, setMembers] = useState<TeamMember[] | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/team")
+      .then((r) => r.json())
+      .then((d) => setMembers(d.members ?? []))
+      .catch(() => {});
+  }, []);
+
+  if (!members) return null;
+  if (members.length === 0) return null;
+
+  return (
+    <section>
+      <h2
+        className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em]"
+        style={{ color: "var(--color-text-muted)" }}
+      >
+        Team
+      </h2>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {members.map((m) => {
+          const initial = m.full_name?.trim()[0]?.toUpperCase() ?? "?";
+          const online = isOnline(m.last_sign_in_at);
+          const isSales = m.role_name === "sales";
+
+          return (
+            <div
+              key={m.id}
+              className="flex items-center gap-3 rounded-[10px] border p-4"
+              style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+            >
+              {/* Avatar with online indicator */}
+              <div className="relative shrink-0">
+                <div
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-[15px] font-semibold"
+                  style={{
+                    background: "var(--color-btn-verify-bg)",
+                    color: "var(--color-btn-verify-text)",
+                  }}
+                >
+                  {initial}
+                </div>
+                {/* Online dot */}
+                <span
+                  className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2"
+                  style={{
+                    background: online ? "#16A34A" : "var(--color-border)",
+                    ringColor: "var(--color-surface)",
+                  }}
+                />
+              </div>
+
+              {/* Info */}
+              <div className="min-w-0 flex-1">
+                <p
+                  className="truncate text-[13px] font-semibold"
+                  style={{ color: "var(--color-text-primary)" }}
+                >
+                  {m.full_name ?? "—"}
+                </p>
+                <p className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
+                  {m.role_display_name}
+                </p>
+                {isSales && (
+                  <p className="mt-0.5 text-[11px] font-medium" style={{ color: "var(--color-accent)" }}>
+                    {m.claimed_leads} active deal{m.claimed_leads !== 1 ? "s" : ""}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export function DashboardPage() {
@@ -246,6 +341,9 @@ export function DashboardPage() {
       ) : data?.role === "admin" ? (
         <AdminCards data={data} periodLabel={periodLabel} />
       ) : null}
+
+      {/* Team section — admin only */}
+      {!loading && data?.role === "admin" && <TeamSection />}
 
       {/* Quick Actions */}
       {!loading && data && (

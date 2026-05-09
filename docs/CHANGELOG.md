@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Admin dashboard team section
+
+### Added
+- `app/api/admin/team/route.ts` — admin-only endpoint returning all active users with role, claimed active deal count (sales), and `last_sign_in_at` from Supabase auth
+- `components/dashboard-page.tsx` — `TeamSection` component rendered below admin KPI cards showing avatar initial, name, role, active deals (sales only), and online indicator (green = signed in within 8 h)
+
 ## [2026-05-09] — Dedicated admin Overview page and routing
 
 ### Added

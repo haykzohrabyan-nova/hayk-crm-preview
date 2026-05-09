@@ -12,6 +12,5 @@ export async function resolveDefaultHomePath(supabase: SupabaseClient): Promise<
 
   if (roleName === "sdr") return "/leads";
   if (roleName === "sales") return "/sales";
-  if (roleName === "admin") return "/overview";
   return "/dashboard";
 }
