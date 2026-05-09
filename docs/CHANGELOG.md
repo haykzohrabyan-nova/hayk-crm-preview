@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Sales pipeline: admin View button + role-based filtering + owner name
+
+### Changed
+- `components/sales-page.tsx` — admin users now see a read-only "View" button on all pipeline leads instead of "Claim"/"Open"; fetches role on mount via `user_profiles.roles(name)`
+
 ## [2026-05-09] — Sales pipeline: role-based filtering + owner name display
 
 ### Added

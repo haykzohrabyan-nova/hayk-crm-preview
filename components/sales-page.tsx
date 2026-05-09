@@ -122,15 +122,27 @@ export function SalesPage() {
   const [drawerReadOnly, setDrawerReadOnly] = useState(false);
   const [drawerLockedBy, setDrawerLockedBy] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [tabCounts, setTabCounts] = useState<{ pipeline: number; hold: number; rejected: number } | null>(null);
 
-  // Get current userId for ownership display
+  // Get current userId and role for ownership display and admin view access
   useEffect(() => {
-    createClient()
-      .auth.getUser()
-      .then(({ data }) => setUserId(data.user?.id ?? null));
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id ?? null;
+      setUserId(uid);
+      if (uid) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("roles(name)")
+          .eq("id", uid)
+          .single();
+        const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
+        setIsAdmin(roleName === "admin");
+      }
+    });
   }, []);
 
   // Fetch tab counts upfront so all badges are visible before clicking
@@ -397,7 +409,15 @@ export function SalesPage() {
                         {relativeTime(lead.updated_at)}
                       </td>
                       <td className="px-3 py-2.5">
-                        {!lead.sales_owner_id ? (
+                        {isAdmin ? (
+                          <button
+                            onClick={() => handleViewLead(lead)}
+                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                            style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                          >
+                            View
+                          </button>
+                        ) : !lead.sales_owner_id ? (
                           <button
                             onClick={() => handleClaim(lead)}
                             disabled={claimingId === lead.id}
@@ -455,7 +475,15 @@ export function SalesPage() {
                     <div className="flex justify-between"><span>Owner</span><span className="normal-case tracking-normal">{ownerLabel(lead)}</span></div>
                     <div className="flex justify-between"><span>Routed</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
                   </div>
-                  {!lead.sales_owner_id ? (
+                  {isAdmin ? (
+                    <button
+                      onClick={() => handleViewLead(lead)}
+                      className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                    >
+                      View
+                    </button>
+                  ) : !lead.sales_owner_id ? (
                     <button
                       onClick={() => handleClaim(lead)}
                       disabled={claimingId === lead.id}
