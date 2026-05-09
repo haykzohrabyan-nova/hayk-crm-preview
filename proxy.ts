@@ -134,8 +134,10 @@ export async function proxy(request: NextRequest) {
       }
 
       // Role-based route access (skip admin role — they get everything)
+      // Some routes are available to all authenticated users regardless of role.
+      const universalRoutes = ["/profile", "/dashboard"];
       const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
-      if (roleName && roleName !== "admin") {
+      if (roleName && roleName !== "admin" && !universalRoutes.some((r) => pathname.startsWith(r))) {
         const { data: permission } = await supabase
           .from("role_permissions")
           .select("role_id, pages!inner(route)")

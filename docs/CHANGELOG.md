@@ -3,6 +3,15 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Dedicated admin Overview page and routing
+
+### Added
+- `app/(app)/overview/page.tsx` — admin-only overview page (currently renders shared DashboardPage; ready to be customized independently)
+- `supabase/migrations/030_add_admin_overview_page.sql` — inserts `/overview` into pages table (sort_order -1, appears first in nav) and grants admin role_permissions
+
+### Changed
+- `lib/auth/resolve-default-home.ts` — admin now lands on `/overview` after login instead of `/dashboard`
+
 ## [2026-05-09] — User profile card in sidebar and mobile nav
 
 ### Added
