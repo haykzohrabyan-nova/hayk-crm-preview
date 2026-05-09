@@ -3,6 +3,17 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Dashboard user greeting card + profile page
+
+### Added
+- `app/(app)/profile/page.tsx` — placeholder profile page ("coming soon") linked from the greeting card
+- `components/dashboard-page.tsx` — user greeting card at the top of the dashboard showing avatar initial, full name, and role; clicking navigates to `/profile`
+
+## [2026-05-09] — Fix sidebar Sales Pipeline badge count
+
+### Fixed
+- `app/api/sidebar-counts/route.ts` — Sales Pipeline badge is now role-scoped: sales reps see unclaimed leads + their own active deals; admins see total active deals across all reps. Previously showed a global unfiltered count.
+
 ## [2026-05-09] — Sales pipeline: admin View button + role-based filtering + owner name
 
 ### Changed
