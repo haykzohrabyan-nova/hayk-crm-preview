@@ -18,6 +18,14 @@ function Setup2FAForm() {
   const [loading, setLoading] = useState(false);
   const [enrollLoading, setEnrollLoading] = useState(true);
   const enrolledRef = useRef(false);
+  const formRef = useRef<HTMLFormElement>(null);
+
+  // Auto-submit when all 6 digits are entered
+  useEffect(() => {
+    if (code.length === 6 && factorId && !loading) {
+      formRef.current?.requestSubmit();
+    }
+  }, [code, factorId, loading]);
 
   useEffect(() => {
     // Guard against React StrictMode double-invoke in development.
@@ -171,7 +179,7 @@ function Setup2FAForm() {
 
       {/* OTP + submit */}
       {!enrollLoading && (
-        <form onSubmit={handleVerify} className="flex flex-col gap-6">
+        <form ref={formRef} onSubmit={handleVerify} className="flex flex-col gap-6">
           <div className="flex flex-col gap-3">
             <label
               className="text-center text-[12px] font-medium uppercase tracking-[0.06em]"

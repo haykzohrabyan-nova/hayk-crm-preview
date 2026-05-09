@@ -3,6 +3,57 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Auto-submit on 6th digit in setup-2fa
+
+### Changed
+- `app/(auth)/setup-2fa/page.tsx` — added `useEffect` watching `code`; when all 6 digits are entered the form auto-submits via `formRef.current?.requestSubmit()`, matching the existing behavior on the verify-2fa page
+
+---
+
+## [2026-05-09] — Future plan docs saved
+
+### Added
+- `docs/FuturePlan.md` — top-level future improvements doc covering the planned Notification System + Smart Sales Pipeline Refresh
+- `docs/Notification/Notification.md` — full architecture plan for the notification system: mermaid flowchart, notification types, all phases, files to create/modify, infrastructure notes, and estimated effort
+
+---
+
+## [2026-05-09] — Remove /overview from sidebar nav; revert admin default home
+
+### Changed
+- `supabase/migrations/031_remove_overview_from_nav.sql` — removes `/overview` from `public.pages` and deletes its `role_permissions` rows; page file (`app/(app)/overview/page.tsx`) is retained for future use
+- `lib/auth/resolve-default-home.ts` — admin default landing reverted from `/overview` back to `/dashboard` (Overview was removed from nav to avoid duplicate Dashboard + Overview entries)
+
+---
+
+## [2026-05-09] — Fix: proxy.ts whitelist /profile as universal route
+
+### Changed
+- `proxy.ts` — added `/profile` and `/dashboard` to `universalRoutes` array so all authenticated users can reach their profile page regardless of role, without triggering the `role_permissions` gate
+
+---
+
+## [2026-05-09] — Fix: sidebar badge counts disabled
+
+### Changed
+- `app/api/sidebar-counts/route.ts` — all badge counting logic for `/leads` and `/sales` commented out pending confirmation with owner; sidebar badges now return empty (no count displayed)
+
+---
+
+## [2026-05-09] — Fix: admin team section excludes admins
+
+### Changed
+- `app/api/admin/team/route.ts` — team list now resolves the admin `role_id` first, then filters `user_profiles` by `.neq("role_id", adminRole.id)` so admin accounts never appear in the team performance section
+
+---
+
+## [2026-05-09] — Fix: ringColor build error in dashboard TeamSection
+
+### Fixed
+- `components/dashboard-page.tsx` — replaced invalid inline `ringColor: "var(--color-surface)"` style property (not a standard CSS property) with `outline: "2px solid var(--color-surface)"` to achieve the same visual ring effect without causing TypeScript build failure
+
+---
+
 ## [2026-05-09] — Admin dashboard team section
 
 ### Added
@@ -11,12 +62,11 @@ Format: `## [version or date] — description`, newest first.
 
 ## [2026-05-09] — Dedicated admin Overview page and routing
 
+> Note: `/overview` was subsequently removed from the sidebar nav (see `031_remove_overview_from_nav.sql` entry above). The page file remains for future customization.
+
 ### Added
 - `app/(app)/overview/page.tsx` — admin-only overview page (currently renders shared DashboardPage; ready to be customized independently)
-- `supabase/migrations/030_add_admin_overview_page.sql` — inserts `/overview` into pages table (sort_order -1, appears first in nav) and grants admin role_permissions
-
-### Changed
-- `lib/auth/resolve-default-home.ts` — admin now lands on `/overview` after login instead of `/dashboard`
+- `supabase/migrations/030_add_admin_overview_page.sql` — inserts `/overview` into pages table (sort_order -1) and grants admin role_permissions
 
 ## [2026-05-09] — User profile card in sidebar and mobile nav
 
