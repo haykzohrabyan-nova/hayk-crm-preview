@@ -20,12 +20,25 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  // Fetch all active user profiles with their role
-  const { data: profiles } = await admin
+  // Resolve admin role_id so we can exclude admins from the team list
+  const { data: adminRole } = await admin
+    .from("roles")
+    .select("id")
+    .eq("name", "admin")
+    .single();
+
+  // Fetch all active non-admin user profiles with their role
+  let profileQuery = admin
     .from("user_profiles")
     .select("id, full_name, is_active, roles(name, display_name)")
     .eq("is_active", true)
     .order("full_name");
+
+  if (adminRole?.id) {
+    profileQuery = profileQuery.neq("role_id", adminRole.id);
+  }
+
+  const { data: profiles } = await profileQuery;
 
   if (!profiles?.length) return NextResponse.json({ members: [] });
 
