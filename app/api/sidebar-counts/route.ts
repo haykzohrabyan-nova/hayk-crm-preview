@@ -12,14 +12,23 @@ export async function GET() {
   const isSdr = roleName === "sdr" || roleName === "admin";
 
   await Promise.all([
-    // /leads badge — SDR workspace: leads waiting to be worked
+    // /leads badge — for SDR: only leads they can actually work (unclaimed + their own)
+    // for Admin: total active workspace leads regardless of lock state
     isSdr
-      ? admin
-          .from("leads")
-          .select("*", { count: "exact", head: true })
-          .eq("is_inbox", false)
-          .in("status", ["Pending", "Validated"])
-          .then(({ count }) => { counts["/leads"] = count ?? 0; })
+      ? roleName === "sdr"
+        ? admin
+            .from("leads")
+            .select("*", { count: "exact", head: true })
+            .eq("is_inbox", false)
+            .in("status", ["Pending", "Validated"])
+            .or(`locked_by_id.is.null,locked_by_id.eq.${userId}`)
+            .then(({ count }) => { counts["/leads"] = count ?? 0; })
+        : admin
+            .from("leads")
+            .select("*", { count: "exact", head: true })
+            .eq("is_inbox", false)
+            .in("status", ["Pending", "Validated"])
+            .then(({ count }) => { counts["/leads"] = count ?? 0; })
       : Promise.resolve(),
 
     // /sales badge — Sales Pipeline
