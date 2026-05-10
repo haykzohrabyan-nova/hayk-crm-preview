@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Megaphone, ClipboardList, Building2, Package } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package } from "lucide-react";
 import { SpecBadge } from "@/components/ui/spec-preview";
 
 const CARDS = [
@@ -22,20 +22,6 @@ const CARDS = [
     description: "Edit sources, industries, hold reasons, reject reasons, and other dropdown lists used in lead forms.",
     href: "/admin/settings/dropdowns",
     icon: ListFilter,
-    built: false,
-  },
-  {
-    title: "Notifications",
-    description: "Send a system broadcast message to all users or a specific role.",
-    href: "/admin/settings/notifications",
-    icon: Megaphone,
-    built: false,
-  },
-  {
-    title: "Audit Log",
-    description: "Full history of every action in the system — lead changes, user management, settings edits.",
-    href: "/admin/settings/audit-log",
-    icon: ClipboardList,
     built: false,
   },
   {
