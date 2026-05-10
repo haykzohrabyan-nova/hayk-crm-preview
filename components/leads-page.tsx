@@ -1130,41 +1130,48 @@ export function LeadsPage() {
       {/* ── Directed to Sales tab ── */}
       {activeTab === "routed" && (
         <>
+          {/* Desktop table */}
           <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Sales Status", "Routed", "Action"].map((h) => (
+                  {["Name", "Company", "Phone", "Sales Status", "Sales Rep", "Routed"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={5} />
+                  <TableSkeleton cols={6} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No leads directed to sales.</td>
+                    <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No leads directed to sales.</td>
                   </tr>
                 ) : (
                   filtered.map((lead, idx) => (
                     <tr
                       key={lead.id}
-                      className="transition-colors"
                       style={{
                         background: idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
                         borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
                       }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
-                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
-                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
-                      <td className="px-3 py-2.5">{lead.sales_status ? <StatusPill status={lead.sales_status} /> : <span style={{ color: "var(--color-text-muted)" }}>—</span>}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
-                      <td className="px-3 py-2.5">
-                        <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
+                      <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {lead.customer?.phone ? formatPhone(lead.customer.phone) : "—"}
                       </td>
+                      <td className="px-3 py-2.5">
+                        {lead.sales_status
+                          ? <StatusPill status={lead.sales_status} />
+                          : <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Unclaimed</span>}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-primary)" }}>
+                        {(lead.sales_owner as { full_name?: string | null } | undefined)?.full_name ?? (
+                          <span style={{ color: "var(--color-text-muted)" }}>—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
                     </tr>
                   ))
                 )}
@@ -1186,14 +1193,28 @@ export function LeadsPage() {
               filtered.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</p>
-                    <StatusPill status="Routed to Sales" />
+                    <div>
+                      <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</p>
+                      {lead.customer?.company && (
+                        <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer.company}</p>
+                      )}
+                    </div>
+                    {lead.sales_status
+                      ? <StatusPill status={lead.sales_status} />
+                      : <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}>Unclaimed</span>}
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
-                    <div className="flex justify-between"><span>Company</span><span className="normal-case tracking-normal">{lead.customer?.company || "—"}</span></div>
+                    {lead.customer?.phone && (
+                      <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>
+                    )}
+                    <div className="flex justify-between">
+                      <span>Sales Rep</span>
+                      <span className="normal-case tracking-normal" style={{ color: "var(--color-text-primary)" }}>
+                        {(lead.sales_owner as { full_name?: string | null } | undefined)?.full_name ?? "—"}
+                      </span>
+                    </div>
                     <div className="flex justify-between"><span>Routed</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
                   </div>
-                  <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
                 </div>
               ))
             )}

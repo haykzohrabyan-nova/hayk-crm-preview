@@ -14,7 +14,7 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 
 ## Tab: Pipeline
 
-**Data:** `GET /api/leads/workspace?status=Routed to Sales` filtered to `sales_status IN ('Ongoing', 'Quote Sent')`, AND where `sales_owner_id = current_user` OR `sales_owner_id IS NULL` (unclaimed).
+**Data:** `GET /api/leads/workspace?status=Routed to Sales` — leads with `sales_status IN ('Ongoing', 'Quote Sent', null)`, filtered server-side to `sales_owner_id IS NULL OR sales_owner_id = currentUserId` for Sales reps. Admins see all.
 
 ### Table Columns
 
@@ -22,18 +22,19 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 |--------|-------|
 | Name | |
 | Company | |
-| Quote Total | SDR's quoted amount (if any) |
-| Sales Status | Pill: Ongoing / Quote Sent |
-| Owner | Assigned sales rep name (or "Unclaimed") |
-| Routed At | When the lead was routed |
-| Actions | **Claim** (unclaimed) or **Open** (owned) |
+| Phone | Formatted display |
+| Sales Status | Pill: Ongoing / Quote Sent (or "—" if null) |
+| Urgency | `UrgencyPill` |
+| Owner | `ownerLabel`: "You" / sales rep name / "Unclaimed" |
+| Routed | `updated_at` relative time |
+| Action | **Claim** (unclaimed, Sales only) / **Open** (owned, Sales only) / **View** (Admin, no lock) |
 
 ### Behaviors
 
-- **Claim** → `PATCH /api/leads/[id]` with `sales_owner_id = current_user`, `sales_status = 'Ongoing'` → row updates inline to show "Claimed"
-- **Open** → opens Sales Drawer
-- Admin sees all leads in pipeline across all sales reps
-- **Search:** client-side filter on name, email, company
+- **Claim** → `POST /api/leads/[id]/claim` → sets `sales_owner_id = currentUser`, `sales_status = 'Ongoing'`; logs `lead_sales_claimed`; row updates in place
+- **Open** (owned lead) → `POST /api/leads/[id]/lock` → opens Sales Drawer in edit mode; 409 → read-only with banner
+- **View** (Admin) → opens Sales Drawer in read-only mode with **no lock acquired** — active Sales rep is undisturbed
+- **Search:** client-side filter on name, email, phone, company
 
 ---
 
@@ -60,7 +61,7 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 
 ## Tab: Rejected (SDR View)
 
-**Data:** workspace leads where `status = 'Rejected'` — leads rejected by SDR, visible to Sales as context.
+**Data:** `GET /api/leads/workspace?status=Rejected` — leads rejected by SDRs, visible to Sales as context. **Lazy-fetched** — only loaded when the tab is first opened (not on page mount). Count badge comes from `/api/leads/sales-counts` upfront.
 
 ### Table Columns
 
@@ -68,14 +69,15 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 |--------|-------|
 | Name | |
 | Company | |
+| Phone | Formatted display |
 | Rejection Reason | |
-| SDR | Who rejected it |
-| Rejected At | |
-| Actions | **View** (read-only) |
+| Rejected | `updated_at` relative time |
+| Action | **View** (read-only, no lock) |
 
 ### Behaviors
 
-- Read-only. Sales cannot modify SDR-rejected leads.
+- Read-only. **View** opens Sales Drawer with no lock acquired.
+- Sales cannot modify SDR-rejected leads.
 - Useful for Sales awareness — they can see what's been turned away.
 
 ---
@@ -153,23 +155,25 @@ Same pattern as SDR pipeline:
 
 ---
 
-## Build Status & Gaps (as of 2026-05-07)
+## Build Status & Gaps (as of 2026-05-09)
 
 ### ✅ Built and working
 | Feature | Notes |
 |---------|-------|
-| Pipeline / On Hold / Rejected tabs | All three tabs with counts visible before clicking |
-| Claim unclaimed lead | Inline claim → row updates |
-| Open drawer (with locking) | Lock acquired on open, released on close |
+| Pipeline / On Hold / Rejected (SDR) tabs | All three tabs with counts visible before clicking |
+| Claim unclaimed lead | `POST /api/leads/[id]/claim` → row updates in place; logs `lead_sales_claimed` activity |
+| Open owned lead (with locking) | Lock acquired on open, released on close |
+| Admin View (no lock) | Admin opens any lead read-only without acquiring a lock — Sales rep's edit session undisturbed |
 | Sales Status (Ongoing / Quote Sent) | Editable in drawer |
 | Quote Total | Editable in drawer |
 | On Hold action | Hold sub-form with reason, notes, hold-until date |
 | Resume from hold | Restores to Ongoing |
 | Reject (terminal) | Rejection reason + notes, read-only after |
 | Save | PATCH lead with Sales Status + Quote Total |
-| Close (releases lock) | Unlock API called on close |
+| Close (releases lock) | Unlock API called on close (Sales uses temporary locking — different from SDR soft lock) |
 | Read-only mode (locked by other user) | "Being worked by [Name]" banner |
 | Terminal state banner | Shown for Rejected / Won / Dropped |
+| Rejected (SDR) tab | Lazy-fetched on first open; Phone + Rejection Reason columns; View read-only (no lock) |
 
 ### ⏳ Not yet built — blocked on Tickets phase
 These items are deliberately deferred. Build them during the Tickets phase.

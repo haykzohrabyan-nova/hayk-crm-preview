@@ -21,24 +21,29 @@ export async function GET() {
     allQuery = allQuery.or(`locked_by_id.is.null,locked_by_id.eq.${userId}`);
   }
 
-  const [allResult, mineResult] = await Promise.all([
-    allQuery,
-    admin
-      .from("leads")
-      .select("status")
-      .eq("is_inbox", false)
-      .eq("sdr_id", userId)
-      .in("status", ["On Hold", "Routed to Sales", "Rejected"]),
-  ]);
+  // Scoped tabs (Hold / Routed / Rejected):
+  // - SDRs see only their own leads (sdr_id = userId)
+  // - Admins see all leads across every SDR
+  let scopedQuery = admin
+    .from("leads")
+    .select("status")
+    .eq("is_inbox", false)
+    .in("status", ["On Hold", "Routed to Sales", "Rejected"]);
+
+  if (roleName !== "admin" && userId) {
+    scopedQuery = scopedQuery.eq("sdr_id", userId);
+  }
+
+  const [allResult, scopedResult] = await Promise.all([allQuery, scopedQuery]);
 
   const allLeads = allResult.data ?? [];
-  const myLeads = mineResult.data ?? [];
+  const scopedLeads = scopedResult.data ?? [];
 
   const counts = {
     all: allLeads.length,
-    hold: myLeads.filter((l) => l.status === "On Hold").length,
-    routed: myLeads.filter((l) => l.status === "Routed to Sales").length,
-    rejected: myLeads.filter((l) => l.status === "Rejected").length,
+    hold: scopedLeads.filter((l) => l.status === "On Hold").length,
+    routed: scopedLeads.filter((l) => l.status === "Routed to Sales").length,
+    rejected: scopedLeads.filter((l) => l.status === "Rejected").length,
   };
 
   return NextResponse.json({ counts });

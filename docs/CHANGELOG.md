@@ -3,6 +3,13 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Docs update: Sales Pipeline spec aligned to code
+
+### Changed
+- `docs/feature-specs/leads-sales.md` — Pipeline tab columns corrected (Phone + Urgency added, Quote Total removed — not in actual table); Claim action corrected to `POST /api/leads/[id]/claim`; Admin View (no lock) documented; Rejected tab moved from "deferred" to "built and working" with accurate columns; Build Status date updated to 2026-05-09; `lead_sales_claimed` activity logging added to Build Status
+
+---
+
 ## [2026-05-09] — Docs update: reflect soft lock, activity logging, and reassign
 
 ### Changed

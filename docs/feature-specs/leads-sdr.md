@@ -76,9 +76,9 @@ Leads where `status = 'On Hold'` (SDR-initiated holds). Shows the SDR's own held
 
 ## Tab: Directed to Sales
 
-**Data:** `GET /api/leads/workspace?status=Routed to Sales`
+**Data:** `GET /api/leads/workspace?status=Routed to Sales&scope=mine` — leads the current SDR routed (`sdr_id = currentUserId`).
 
-Leads the SDR has routed but that have not yet been claimed by Sales.
+This is a **status-tracking view only**. The SDR's job is done once they route a lead. This tab lets them see what happened to their leads after handoff — no actions, no drawer.
 
 ### Table Columns
 
@@ -86,15 +86,26 @@ Leads the SDR has routed but that have not yet been claimed by Sales.
 |--------|-------|
 | Name | |
 | Company | |
-| Quote Total | Formatted currency or "—" |
-| Quote Channel | |
-| Routed At | `updated_at` when status changed to Routed |
-| Actions | **View** button |
+| Phone | |
+| Sales Status | `StatusPill` — current Sales progress; "Unclaimed" if no Sales rep has picked it up yet |
+| Sales Rep | Name of the Sales rep who claimed it, or "—" if unclaimed |
+| Routed | `updated_at` relative time |
 
 ### Behaviors
 
-- Read-only for SDR. View opens the drawer in view mode.
-- No action buttons (SDR cannot un-route from this tab; use hold or re-verify flow)
+- **No action buttons** — read-only list, no drawer opens
+- **No hover state** — rows are not interactive
+- **Search** applies (client-side filter on name, email, phone, company)
+
+### What "Sales Status" tells the SDR
+
+| Sales Status | Meaning |
+|---|---|
+| Unclaimed | Routed but no Sales rep has picked it up yet |
+| Ongoing | A Sales rep claimed it and is working it |
+| Quote Sent | Sales rep has sent a quote |
+| On Hold | Sales rep put it on hold |
+| Won | Deal closed |
 
 ---
 
@@ -370,7 +381,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Hold action (with reason, notes, hold-until date) | Full hold sub-form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
 | Reject (terminal) | Reason + notes; read-only after; ownership released |
-| Route to Sales | Sets status + sales_status = Ongoing; ownership released |
+| Route to Sales | Sets status + sales_status = Ongoing; ownership released; Directed to Sales tab shows Sales Rep + Sales Status — no drawer, no actions |
 | Save without status change | PATCH lead fields; logs `lead_edited` for tracked field changes |
 | Context-aware action buttons | On Hold → Resume shown; Routed leads → view-only |
 | Counts refresh after every action | bazaar:refresh-counts event fired |

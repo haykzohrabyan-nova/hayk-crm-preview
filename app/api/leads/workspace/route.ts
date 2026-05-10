@@ -25,7 +25,9 @@ export async function GET(request: NextRequest) {
     query = query.eq("status", status);
   }
 
-  if (scope === "mine" && userId) {
+  // scope=mine → filter to the current SDR's own leads (sdr_id = userId).
+  // Admins skip this filter so they see ALL leads across every SDR on these tabs.
+  if (scope === "mine" && userId && roleName !== "admin") {
     query = query.eq("sdr_id", userId);
   }
 
