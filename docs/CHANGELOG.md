@@ -3,6 +3,16 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Split dashboard into per-role components
+
+### Added
+- `components/sdr-dashboard.tsx` — standalone SDR dashboard (KPIs + quick actions)
+- `components/sales-dashboard.tsx` — standalone Sales dashboard (KPIs + quick actions)
+- `components/admin-dashboard.tsx` — standalone Admin dashboard (KPIs + team grid + quick actions)
+
+### Changed
+- `components/dashboard-page.tsx` — now a thin role-router; detects role via Supabase then renders the appropriate dashboard component; shows skeleton while role loads
+
 ## [2026-05-09] — Sortable columns + close drawer on save
 
 ### Changed

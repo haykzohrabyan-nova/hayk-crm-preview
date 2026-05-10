@@ -489,6 +489,9 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
                   Returning Customer (Existing Client)
                 </span>
               </label>
+              <p className="mt-1 px-1 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+                Set by SDR based on what the caller says. Once orders &amp; quotes are live this will be auto-derived from actual purchase history.
+              </p>
             </div>
 
             {/* SDR Comment — full width */}
