@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Rename Sales Pipeline "Rejected (SDR)" tab to "Rejected"
+
+### Changed
+- `components/sales-page.tsx` — tab label changed from `"Rejected (SDR)"` to `"Rejected"`. The confusing "(SDR)" suffix implied SDRs rejected these leads, when the opposite is true — these are leads the Sales team rejected. Logic unchanged: admin sees all sales-rejected leads; each sales rep sees only their own.
+
 ## [2026-05-09] — SDR History tab, Sales Notes field, and TODO doc
 
 ### Added
@@ -385,7 +390,7 @@ Format: `## [version or date] — description`, newest first.
 
 ### Added
 - `components/sales-drawer.tsx` — right-side drawer for Sales reps: read-only contact info, editable Sales fields (sales_status, quote_total), lock on open / unlock on close, Sales-specific hold sub-form (4 reasons), reject sub-form (sets `status = 'Rejected'`), Order/Quote tab placeholder
-- `components/sales-page.tsx` — full Sales Pipeline client component: 3 tabs (Pipeline, On Hold, Rejected SDR View), Claim/Open actions, Resume from hold, desktop table + mobile card layout, lazy-fetch for Rejected tab, userId lookup for ownership display
+- `components/sales-page.tsx` — full Sales Pipeline client component: 3 tabs (Pipeline, On Hold, Rejected), Claim/Open actions, Resume from hold, desktop table + mobile card layout, lazy-fetch for Rejected tab, userId lookup for ownership display
 - `app/(app)/sales/page.tsx` — updated from placeholder to render `<SalesPage />`
 - `app/api/leads/[id]/claim/route.ts` — `POST /api/leads/[id]/claim` → sets `sales_owner_id` to session user, `sales_status = 'Ongoing'`; 409 if already claimed
 

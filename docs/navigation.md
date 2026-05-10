@@ -181,7 +181,7 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 |-----|---------|-------|
 | Pipeline | `status = 'Routed to Sales'` AND `sales_status IN ('Ongoing', 'Quote Sent')` | count |
 | On Hold | `sales_status = 'On Hold'` | count |
-| Rejected | `status = 'Rejected'` (SDR-rejected, visible to Sales) | — |
+| Rejected | `status = 'Rejected'` and `prev_status = 'Routed to Sales'` — leads rejected from the sales pipeline. Admin sees all; Sales rep sees only their own. | count |
 
 ### `/tickets` — Quotes & Orders
 

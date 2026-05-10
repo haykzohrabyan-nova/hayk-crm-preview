@@ -49,7 +49,7 @@ app/(app)/leads/page.tsx                    app/(app)/sales/page.tsx
   └── components/leads-page.tsx               └── components/sales-page.tsx
         │                                            │
         ├── Tabs: All Leads | On Hold |              ├── Tabs: Pipeline | On Hold |
-        │         Directed to Sales | Rejected       │         Rejected (SDR)
+        │         Directed to Sales | Rejected       │         Rejected
         │                                            │
         ├── Inline table (per tab)                   ├── Inline table (per tab)
         │     Columns vary per tab                   │     Columns vary per tab
