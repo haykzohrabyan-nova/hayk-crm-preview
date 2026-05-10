@@ -3,6 +3,14 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Fix locked_by FK to enable user_profiles join
+
+### Added
+- `supabase/migrations/032_fix_locked_by_fk.sql` — re-points `leads.locked_by_id` FK from `auth.users` → `public.user_profiles` (same fix as migration 029 for `sales_owner_id`); required for PostgREST to auto-join the locker's profile name
+
+### Changed
+- `app/api/leads/workspace/route.ts` — temporarily removed `locked_by` join until migration 032 is applied; join will be restored after the FK is in place
+
 ## [2026-05-09] — SDR lock-based lead visibility + admin Working column
 
 ### Changed
