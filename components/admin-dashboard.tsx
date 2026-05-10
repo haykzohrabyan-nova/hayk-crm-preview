@@ -17,6 +17,22 @@ import {
 
 type Period = "week" | "month" | "quarter";
 
+interface SdrPerformanceRow {
+  id: string;
+  full_name: string;
+  handled: number;
+  routed: number;
+  rejected: number;
+  quote_value: number;
+  share_pct: number;
+}
+
+interface BreakdownItem {
+  reason?: string;
+  source?: string;
+  count: number;
+}
+
 interface AdminKpis {
   total_leads: number;
   inbox_leads: number;
@@ -24,6 +40,9 @@ interface AdminKpis {
   won_leads: number;
   total_revenue: number;
   pipeline_value: number;
+  sdr_performance: SdrPerformanceRow[];
+  rejection_reasons: BreakdownItem[];
+  source_breakdown: BreakdownItem[];
 }
 
 interface TeamMember {
@@ -357,6 +376,169 @@ export function AdminDashboard() {
 
       {/* Team */}
       <TeamSection />
+
+      {/* SDR Performance Table */}
+      {!loading && data && data.sdr_performance.length > 0 && (
+        <section>
+          <h2
+            className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em]"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            SDR Performance — {PERIOD_LABELS[period]}
+          </h2>
+          <div
+            className="rounded-[10px] border overflow-hidden"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr style={{ background: "var(--color-row-alt)", borderBottom: "1px solid var(--color-border)" }}>
+                  {["Name", "Handled", "Routed", "Rejected", "Quote Value", "Share"].map((h) => (
+                    <th
+                      key={h}
+                      className="px-4 py-2.5 text-left font-medium uppercase tracking-[0.06em] text-[11px]"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.sdr_performance.map((row, idx) => (
+                  <tr
+                    key={row.id}
+                    style={{
+                      background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
+                      borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
+                    }}
+                  >
+                    <td className="px-4 py-3 font-medium" style={{ color: "var(--color-text-primary)" }}>
+                      {row.full_name}
+                    </td>
+                    <td className="px-4 py-3" style={{ color: "var(--color-text-primary)" }}>{row.handled}</td>
+                    <td className="px-4 py-3" style={{ color: "var(--color-success)" }}>{row.routed}</td>
+                    <td className="px-4 py-3" style={{ color: "var(--color-danger)" }}>{row.rejected}</td>
+                    <td className="px-4 py-3" style={{ color: "var(--color-text-primary)" }}>
+                      {formatCurrency(row.quote_value)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className="h-1.5 rounded-full"
+                          style={{
+                            width: `${row.share_pct}%`,
+                            minWidth: row.share_pct > 0 ? "4px" : "0",
+                            maxWidth: "80px",
+                            background: "var(--color-accent)",
+                          }}
+                        />
+                        <span style={{ color: "var(--color-text-muted)" }}>{row.share_pct}%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {/* Rejection Reasons + Source Breakdown — 2 col grid */}
+      {!loading && data && (data.rejection_reasons.length > 0 || data.source_breakdown.length > 0) && (
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+
+          {/* Rejection Reasons */}
+          {data.rejection_reasons.length > 0 && (
+            <section>
+              <h2
+                className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em]"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                Rejection Reasons
+              </h2>
+              <div
+                className="rounded-[10px] border p-4 space-y-3"
+                style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+              >
+                {(() => {
+                  const max = data.rejection_reasons[0]?.count ?? 1;
+                  return data.rejection_reasons.map((item) => (
+                    <div key={item.reason}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[12px] truncate pr-2" style={{ color: "var(--color-text-primary)" }}>
+                          {item.reason?.replace(/_/g, " ")}
+                        </span>
+                        <span className="text-[12px] font-medium shrink-0" style={{ color: "var(--color-text-muted)" }}>
+                          {item.count}
+                        </span>
+                      </div>
+                      <div
+                        className="h-1.5 w-full rounded-full overflow-hidden"
+                        style={{ background: "var(--color-border)" }}
+                      >
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${Math.round((item.count / max) * 100)}%`,
+                            background: "var(--color-danger)",
+                            opacity: 0.7,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </section>
+          )}
+
+          {/* Source Breakdown */}
+          {data.source_breakdown.length > 0 && (
+            <section>
+              <h2
+                className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em]"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                Lead Sources
+              </h2>
+              <div
+                className="rounded-[10px] border p-4 space-y-3"
+                style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+              >
+                {(() => {
+                  const max = data.source_breakdown[0]?.count ?? 1;
+                  return data.source_breakdown.map((item) => (
+                    <div key={item.source}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[12px] truncate pr-2" style={{ color: "var(--color-text-primary)" }}>
+                          {item.source}
+                        </span>
+                        <span className="text-[12px] font-medium shrink-0" style={{ color: "var(--color-text-muted)" }}>
+                          {item.count}
+                        </span>
+                      </div>
+                      <div
+                        className="h-1.5 w-full rounded-full overflow-hidden"
+                        style={{ background: "var(--color-border)" }}
+                      >
+                        <div
+                          className="h-full rounded-full transition-all"
+                          style={{
+                            width: `${Math.round((item.count / max) * 100)}%`,
+                            background: "var(--color-accent)",
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </section>
+          )}
+
+        </div>
+      )}
 
       {/* Quick Actions */}
       {!loading && (

@@ -38,6 +38,8 @@ KPIs are **scoped to the current SDR** (`sdr_id = userId`). The inbox count is g
 | Routed to Sales | leads routed by this SDR in period | period label | |
 | On Hold | leads on hold owned by this SDR (all time) | "currently paused" | |
 | Rejected | leads rejected by this SDR in period | period label | |
+| Quote Value | `sum(quote_total)` for this SDR's leads in period | period label | |
+| My Share | this SDR's handled leads ÷ all SDR leads in period × 100 | "of all SDR work this period" | |
 
 ### Quick Actions
 
@@ -113,6 +115,33 @@ A grid of cards showing all active users:
 
 Data source: `GET /api/admin/team`
 
+### SDR Performance Table
+
+Period-scoped table showing each SDR's output side by side. Only visible to admins.
+
+| Column | Value |
+|--------|-------|
+| Name | SDR's full name |
+| Handled | count of workspace leads they touched in period |
+| Routed | count of leads sent to Sales |
+| Rejected | count of leads rejected (red text) |
+| Quote Value | `sum(quote_total)` for their leads |
+| Share | their handled ÷ total handled across all SDRs — shown as % with a gold inline bar |
+
+Sorted by Handled descending. Hidden when no SDR has activity in the period.
+
+Data source: grouped from `sdr_id` field in `/api/dashboard/kpis` response.
+
+### Rejection Reasons Breakdown
+
+All-time breakdown of `rejection_reason` values across all rejected workspace leads. Displayed as a labeled list with red horizontal progress bars proportional to the max count. Top 8 reasons shown.
+
+### Lead Sources Breakdown
+
+All-time breakdown of `source` values across all workspace leads. Same list + bar pattern using gold (`var(--color-accent)`) bars.
+
+Both breakdowns are displayed side-by-side in a 2-column grid and only render when data exists.
+
 ### Quick Actions
 
 - **Manage Users** → `/admin/settings/users` (primary)
@@ -122,7 +151,7 @@ Data source: `GET /api/admin/team`
 
 ### Period Selector
 
-This Week / This Month / This Quarter.
+This Week / This Month / This Quarter — affects KPI cards and SDR Performance Table. Rejection Reasons and Lead Sources are always all-time.
 
 ---
 

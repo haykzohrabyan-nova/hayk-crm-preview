@@ -3,6 +3,19 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Enhance Dashboard with live statistics
+
+### Added
+- `components/sdr-dashboard.tsx` — two new KPI cards: **Quote Value** (sum of `quote_total` for the SDR's leads this period) and **My Share %** (this SDR's handled leads ÷ all SDR leads in period)
+- `components/admin-dashboard.tsx` — three new sections:
+  - **SDR Performance Table** — one row per SDR showing Handled, Routed, Rejected, Quote Value, and Share % for the selected period. Sorted by most handled. Only visible to admins.
+  - **Rejection Reasons** — horizontal bar breakdown of the top rejection reason values across all leads. Uses `var(--color-danger)` bars.
+  - **Lead Sources** — horizontal bar breakdown of lead source distribution across all leads. Uses `var(--color-accent)` bars.
+- Both breakdown sections hide automatically when there is no data (no empty states to manage).
+
+### Changed
+- `app/api/dashboard/kpis/route.ts` — SDR response now includes `quote_value` and `share_pct`. Admin response now includes `sdr_performance[]`, `rejection_reasons[]`, and `source_breakdown[]`. No breaking changes to existing fields.
+
 ## [2026-05-09] — Rename Sales Pipeline "Rejected (SDR)" tab to "Rejected"
 
 ### Changed

@@ -10,6 +10,8 @@ import {
   XCircle,
   LayoutDashboard,
   ArrowRight,
+  DollarSign,
+  PieChart,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -22,6 +24,14 @@ interface SdrKpis {
   routed: number;
   on_hold: number;
   rejected: number;
+  quote_value: number;
+  share_pct: number;
+}
+
+function formatCurrency(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000)     return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${n.toLocaleString()}`;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -216,7 +226,7 @@ export function SdrDashboard() {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
         {loading ? (
-          Array.from({ length: 5 }).map((_, i) => <KpiCardSkeleton key={i} />)
+          Array.from({ length: 7 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : data ? (
           <>
             <KpiCard
@@ -249,6 +259,18 @@ export function SdrDashboard() {
               value={data.rejected}
               subtext={periodLabel.toLowerCase()}
               icon={<XCircle className="h-4 w-4" />}
+            />
+            <KpiCard
+              label="Quote Value"
+              value={formatCurrency(data.quote_value)}
+              subtext={`${periodLabel.toLowerCase()}`}
+              icon={<DollarSign className="h-4 w-4" />}
+            />
+            <KpiCard
+              label="My Share"
+              value={`${data.share_pct}%`}
+              subtext="of all SDR work this period"
+              icon={<PieChart className="h-4 w-4" />}
             />
           </>
         ) : null}

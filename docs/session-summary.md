@@ -1,6 +1,6 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 9, 2026
-**Status:** MVP complete + CRM + Roles Editor + testing/polish pass + spec preview system + Sales Pipeline history tab + Rejected tab bug fix. Ready for user testing.
+**Status:** MVP complete + CRM + Roles Editor + testing/polish pass + spec preview system + Sales Pipeline history tab + Rejected tab bug fix + SDR History tab + Sales Notes field + Dashboard statistics enhancements. Ready for user testing.
 
 ---
 
@@ -50,6 +50,15 @@ Starting point: BazarCRM had only an auth scaffold (login, 2FA, session gate). N
 - **Sales Drawer History tab:** third tab in the drawer (alongside Lead Info and Order/Quote). Lazy-loads activities on first open. Renders a vertical timeline with colored dots, human-readable labels, optional notes, actor name, and relative timestamp.
 - **`sales-counts` rejected badge:** now counts only `prev_status = 'Routed to Sales'` rejections so the badge matches the tab list.
 - **Migration 033:** `033_reset_leads_to_pending.sql` — resets all leads to Pending/inbox for testing (clears all workflow state, truncates activities).
+
+### SDR History Tab, Sales Notes & Dashboard Enhancements (2026-05-09)
+- **Verify Drawer History tab:** third tab added to the SDR's Verify Drawer (Lead Info | Quote | History). Same lazy-load pattern as Sales Drawer — fetches `GET /api/leads/[id]/activities` on first open. Full activity history visible even after a lead moves to Sales.
+- **Sales Notes field:** `sales_notes text` column added to `leads` table (`migration 034`). Sales reps have a dedicated textarea in the Sales Drawer Lead Info tab. Changes saved via `PATCH /api/leads/[id]` and auto-logged as `lead_edited` activity entry.
+- **Sales Pipeline tab renamed:** "Rejected (SDR)" → "Rejected" — the old label was misleading (these leads were rejected by Sales, not by SDRs).
+- **Reset migration fix:** `033_reset_leads_to_pending.sql` corrected to set `is_inbox = false` (was `true`, which hid all leads from the workspace after reset).
+- **`docs/TODO.md` created:** deferred item TODO-001 — Admin Override for Terminal Leads, with full problem description, fix sketch, and note that Won/Dropped must be handled separately after Tickets.
+- **Dashboard — SDR:** two new KPI cards: Quote Value and My Share %.
+- **Dashboard — Admin:** three new sections: SDR Performance Table (period-scoped, per-SDR stats), Rejection Reasons breakdown (all-time, red bars), Lead Sources breakdown (all-time, gold bars). No chart library — pure CSS bars matching the design system.
 
 ### Mobile Nav — Fixed
 - Rewrote `components/mobile-nav.tsx` from a hardcoded static list to role-based DB-driven pages (same logic as sidebar)

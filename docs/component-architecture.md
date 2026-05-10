@@ -157,6 +157,10 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 
 **Sales Drawer tabs:** Lead Info | Order / Quote | **History** (fetches `GET /api/leads/[id]/activities` lazily on first open — vertical timeline of all events)
 
+**Sales Drawer — Lead Info tab — Sales Fields section:** includes a `sales_notes` textarea (saved via `PATCH /api/leads/[id]`, logged as `lead_edited` activity). Notes are internal — visible to Sales and Admin only.
+
+**Verify Drawer tabs:** Lead Info | Quote | **History** (same lazy-fetch pattern as Sales Drawer — fetches `GET /api/leads/[id]/activities` on first open, renders vertical timeline with colored dots, actor name, relative timestamps)
+
 ---
 
 ### `/crm` — Customer Registry
