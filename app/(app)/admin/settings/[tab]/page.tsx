@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { UsersSection } from "@/components/admin/users-section";
 import { RolesSection } from "@/components/admin/roles-section";
 import {
@@ -14,8 +14,6 @@ const SUPPORTED_TABS = [
   "users",
   "roles",
   "dropdowns",
-  "notifications",
-  "audit-log",
   "company",
   "products",
 ] as const;
@@ -101,50 +99,6 @@ export default async function AdminSettingsTabPage({
                 { label: "Load", value: "GET /api/admin/lookups" },
                 { label: "Add", value: "POST /api/admin/lookups" },
                 { label: "Edit label / sort / active", value: "PATCH /api/admin/lookups/[id]" },
-              ]}
-            />
-          </SpecSection>
-        </TabSpecWrapper>
-      );
-
-    case "notifications":
-      redirect("/notifications");
-
-    case "audit-log":
-      return (
-        <TabSpecWrapper title="Audit Log">
-          <SpecSection title="What this will do">
-            <SpecNote>
-              Full history of every action taken in the system — lead changes, user management, settings edits.
-              Read-only for all users including Admin.
-            </SpecNote>
-          </SpecSection>
-          <SpecSection title="Audit table">
-            <SpecCard
-              items={[
-                { label: "Actor", value: "User full name + role badge" },
-                { label: "Action", value: "Human-readable description derived from activity type" },
-                { label: "Entity", value: "Customer name / Lead ID (from payload)" },
-                { label: "Timestamp", value: "Full datetime" },
-                { label: "Details", value: "Expandable payload preview (JSON diff of changed fields)" },
-              ]}
-            />
-          </SpecSection>
-          <SpecSection title="Filters">
-            <SpecCard
-              items={[
-                { label: "Search", value: "By actor name" },
-                { label: "Type filter", value: "By activity type (lead_verified, contact_edited, etc.)" },
-                { label: "Date range", value: "From / To date picker" },
-              ]}
-            />
-          </SpecSection>
-          <SpecSection title="Pagination">
-            <SpecCard
-              items={[
-                { label: "Page size", value: "50 rows per page" },
-                { label: "Load more", value: "'Load more' button fetches next 50 — total count shown in header" },
-                { label: "API", value: "GET /api/admin/audit" },
               ]}
             />
           </SpecSection>

@@ -2,17 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, KeyRound, ListFilter, Megaphone, ClipboardList, Building2, Package } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { label: "Users",               href: "/admin/settings/users",         icon: Users         },
-  { label: "Roles & Permissions", href: "/admin/settings/roles",         icon: KeyRound      },
-  { label: "Dropdown Options",    href: "/admin/settings/dropdowns",     icon: ListFilter    },
-  { label: "Notifications",       href: "/admin/settings/notifications", icon: Megaphone     },
-  { label: "Audit Log",           href: "/admin/settings/audit-log",     icon: ClipboardList },
-  { label: "Company Info",        href: "/admin/settings/company",       icon: Building2     },
-  { label: "Products",            href: "/admin/settings/products",      icon: Package       },
+  { label: "Users",               href: "/admin/settings/users",     icon: Users     },
+  { label: "Roles & Permissions", href: "/admin/settings/roles",     icon: KeyRound  },
+  { label: "Dropdown Options",    href: "/admin/settings/dropdowns", icon: ListFilter },
+  { label: "Company Info",        href: "/admin/settings/company",   icon: Building2 },
+  { label: "Products",            href: "/admin/settings/products",  icon: Package   },
 ] as const;
 
 function cnTab(active: boolean) {
