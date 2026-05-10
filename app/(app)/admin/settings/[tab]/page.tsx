@@ -1,7 +1,6 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { UsersSection } from "@/components/admin/users-section";
 import { RolesSection } from "@/components/admin/roles-section";
-import { ActivityLogSection } from "@/components/admin/activity-log-section";
 import {
   SpecSection,
   SpecCard,
@@ -109,7 +108,7 @@ export default async function AdminSettingsTabPage({
       );
 
     case "notifications":
-      return <ActivityLogSection />;
+      redirect("/notifications");
 
     case "audit-log":
       return (
