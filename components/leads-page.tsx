@@ -1346,7 +1346,7 @@ export function LeadsPage() {
                 >
                   Assign to SDR
                 </label>
-                <Select value={reassignUserId} onValueChange={setReassignUserId}>
+                <Select value={reassignUserId} onValueChange={(v) => setReassignUserId(v ?? "unassign")}>
                   <SelectTrigger className="h-9 text-sm w-full">
                     <SelectValue />
                   </SelectTrigger>

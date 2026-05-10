@@ -36,10 +36,12 @@ export async function PATCH(
 
   const admin = createAdminClient();
 
-  // Fetch current lead for guards and change-detection
+  // Fetch current lead for guards and change-detection.
+  // Fields must be listed as a static string — Supabase's type parser does not
+  // support dynamic template literals.
   const { data: current, error: fetchErr } = await admin
     .from("leads")
-    .select(`status, sales_status, locked_by_id, customer_id, ${TRACKED_FIELDS.join(", ")}`)
+    .select("status, sales_status, locked_by_id, customer_id, urgency, interests, quantities, sdr_comment, is_returning_customer, brand, source, authority")
     .eq("id", id)
     .single();
 
