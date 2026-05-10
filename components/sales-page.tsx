@@ -175,7 +175,7 @@ export function SalesPage() {
 
   const fetchRejectedLeads = useCallback(async () => {
     setRejLoading(true);
-    const res = await fetch("/api/leads/workspace?status=Rejected");
+    const res = await fetch("/api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales");
     const data = await res.json();
     setRejectedLeads(data.leads ?? []);
     setRejLoading(false);

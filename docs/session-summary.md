@@ -1,6 +1,6 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 7, 2026
-**Status:** MVP complete + CRM + Roles Editor + testing/polish pass + spec preview system complete. Ready for user testing.
+**Last updated:** May 9, 2026
+**Status:** MVP complete + CRM + Roles Editor + testing/polish pass + spec preview system + Sales Pipeline history tab + Rejected tab bug fix. Ready for user testing.
 
 ---
 
@@ -40,6 +40,16 @@ Starting point: BazarCRM had only an auth scaffold (login, 2FA, session gate). N
 - `components/ui/status-pill.tsx` — fully tokenized
 - `components/ui/spec-preview.tsx` — shared building blocks for spec preview pages
 - Cursor rules added: `color-tokens.mdc`, `tab-counts.mdc`, `git-push-policy.mdc`, `mobile-table-cards.mdc`, `select-labels.mdc`
+
+### Sales Pipeline — Rejected Tab Bug Fix & History Tab (2026-05-09)
+- **Bug fixed:** Sales Pipeline Rejected tab was showing all system rejections (including SDR-rejected leads that never reached sales). Now uses `GET /api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales` to show only leads rejected from within the sales pipeline.
+- **`prev_status` on reject:** `PATCH /api/leads/[id]` now auto-saves `prev_status = current.status` when rejecting, enabling the above filter and the history label "Rejected from Sales pipeline".
+- **`lead_rejected` payload enriched:** now includes `from: prevStatus` so the activity log shows the pipeline origin of every rejection.
+- **`ActivityType` union fixed:** added `'lead_sales_claimed'` and `'lead_edited'` (both were used in code but missing from the type).
+- **`GET /api/leads/[id]/activities`:** new endpoint — returns the full activity timeline for one lead, newest first, with `by_user.full_name` joined.
+- **Sales Drawer History tab:** third tab in the drawer (alongside Lead Info and Order/Quote). Lazy-loads activities on first open. Renders a vertical timeline with colored dots, human-readable labels, optional notes, actor name, and relative timestamp.
+- **`sales-counts` rejected badge:** now counts only `prev_status = 'Routed to Sales'` rejections so the badge matches the tab list.
+- **Migration 033:** `033_reset_leads_to_pending.sql` — resets all leads to Pending/inbox for testing (clears all workflow state, truncates activities).
 
 ### Mobile Nav — Fixed
 - Rewrote `components/mobile-nav.tsx` from a hardcoded static list to role-based DB-driven pages (same logic as sidebar)

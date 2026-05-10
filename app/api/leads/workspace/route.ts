@@ -11,6 +11,9 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search")?.trim().toLowerCase() ?? "";
   // scope=mine → filter to leads the current SDR worked (sdr_id = userId)
   const scope = searchParams.get("scope") ?? "";
+  // prev_status → restrict rows to those whose previous status matches (e.g.
+  // "Routed to Sales" to show only sales-pipeline rejections, not SDR rejections)
+  const prevStatus = searchParams.get("prev_status") ?? "";
 
   const admin = createAdminClient();
   let query = admin
@@ -23,6 +26,10 @@ export async function GET(request: NextRequest) {
 
   if (status) {
     query = query.eq("status", status);
+  }
+
+  if (prevStatus) {
+    query = query.eq("prev_status", prevStatus);
   }
 
   // scope=mine → filter to the current SDR's own leads (sdr_id = userId).

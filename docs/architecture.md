@@ -80,120 +80,109 @@ Users are invited by an Admin via `/admin/users` → "Invite User". This trigger
 
 ## File Structure
 
-Current state (auth scaffold complete) + planned additions:
-
 ```
 BazarCRM/
 ├── app/
 │   ├── (auth)/
-│   │   ├── layout.tsx              ✓ Centered card wrapper for auth pages
-│   │   ├── login/page.tsx          ✓ Email + password sign-in
-│   │   ├── setup-2fa/page.tsx      ✓ TOTP enrollment — QR code + manual key
-│   │   ├── verify-2fa/page.tsx     ✓ TOTP challenge — 6-box OTP, auto-submits on 6th digit
-│   │   ├── change-password/page.tsx   → TO BUILD (forced on first login with temp password)
-│   │   ├── forgot-password/page.tsx   → TO BUILD
-│   │   └── reset-password/page.tsx    → TO BUILD
+│   │   ├── layout.tsx                    ✓ Centered card wrapper for auth pages
+│   │   ├── login/page.tsx                ✓ Email + password sign-in
+│   │   ├── setup-2fa/page.tsx            ✓ TOTP enrollment — QR code + manual key
+│   │   ├── verify-2fa/page.tsx           ✓ TOTP challenge — 6-box OTP, auto-submits on 6th digit
+│   │   └── change-password/page.tsx      ✓ Forced on first login with temp password
 │   ├── (app)/
-│   │   ├── layout.tsx              ✓ App shell — sidebar + mobile nav (max-width: 1980px)
-│   │   ├── dashboard/page.tsx      → TO BUILD (currently stub)
-│   │   ├── leads/page.tsx          → TO BUILD (SDR + Admin — tabbed)
-│   │   ├── sales/page.tsx          → TO BUILD (Sales + Admin — tabbed)
-│   │   ├── crm/page.tsx            → TO BUILD (all roles)
-│   │   ├── tickets/page.tsx        → TO BUILD (all roles — tabbed)
-│   │   ├── statistics/page.tsx     → TO BUILD (all roles)
-│   │   ├── settings/page.tsx       → TO BUILD (currently stub — personal profile)
+│   │   ├── layout.tsx                    ✓ App shell — sidebar + mobile nav
+│   │   ├── dashboard/page.tsx            ✓ Role router → sdr/sales/admin dashboard
+│   │   ├── leads/page.tsx                ✓ SDR + Admin lead pipeline (4 tabs)
+│   │   ├── sales/page.tsx                ✓ Sales pipeline (3 tabs)
+│   │   ├── crm/page.tsx                  ✓ Customer registry + profile expand
+│   │   ├── crm/customers/[id]/page.tsx   ✓ Full customer profile page
+│   │   ├── notifications/page.tsx        ✓ Notification list
+│   │   ├── settings/page.tsx             ✓ Personal profile settings
 │   │   └── admin/
-│   │       ├── layout.tsx          ✓ Admin-only shell — border-b sub-nav strip + AdminSubNav
-│   │       ├── page.tsx            ✓ Overview card grid (4 cards, all clickable, BazarCRM tokens)
-│   │       └── settings/
-│   │           ├── layout.tsx      ✓ Settings sub-layout — SettingsTabNav above children
-│   │           ├── page.tsx        ✓ Redirects /admin/settings → /admin/settings/users
-│   │           └── [tab]/page.tsx  ✓ Renders section per tab (users | roles | dropdowns | notifications)
+│   │       ├── layout.tsx                ✓ Admin-only shell with sub-nav
+│   │       ├── page.tsx                  ✓ Overview card grid
+│   │       ├── users/page.tsx            ✓ User management table
+│   │       └── settings/[tab]/page.tsx   ✓ Users | Roles | Dropdowns | Notifications tabs
 │   ├── api/
-│   │   ├── auth/change-password/   ✓ EXISTS
-│   │   ├── leads/                  → TO BUILD (Route Handlers)
-│   │   ├── contacts/               → TO BUILD
-│   │   ├── tickets/                → TO BUILD
-│   │   ├── activity/               → TO BUILD
-│   │   ├── notifications/          → TO BUILD
-│   │   ├── dashboard/              → TO BUILD
-│   │   ├── outreach/               → TO BUILD
+│   │   ├── auth/change-password/         ✓ POST — password update
+│   │   ├── leads/
+│   │   │   ├── route.ts                  ✓ (manual create via /api/leads/manual)
+│   │   │   ├── manual/route.ts           ✓ POST — manual lead creation with dedup
+│   │   │   ├── workspace/route.ts        ✓ GET — SDR/Admin lead queue with filters
+│   │   │   ├── workspace/counts/route.ts ✓ GET — tab badge counts
+│   │   │   ├── sales-counts/route.ts     ✓ GET — sales tab badge counts
+│   │   │   └── [id]/
+│   │   │       ├── route.ts              ✓ PATCH — update lead fields
+│   │   │       ├── lock/route.ts         ✓ POST — acquire lock + set sdr_id
+│   │   │       ├── unlock/route.ts       ✓ POST — release lock
+│   │   │       ├── hold/route.ts         ✓ POST — put lead on hold
+│   │   │       ├── resume/route.ts       ✓ POST — resume from hold
+│   │   │       ├── claim/route.ts        ✓ POST — Sales claim a routed lead
+│   │   │       ├── activities/route.ts   ✓ GET — lead activity timeline (newest first, actor joined)
+│   │   │       └── reassign/route.ts     ✓ POST — Admin reassign/unassign lead (admin only)
+│   │   ├── customers/
+│   │   │   ├── route.ts                  ✓ GET — customer list
+│   │   │   ├── lookup/route.ts           ✓ GET — phone-based dedup lookup
+│   │   │   ├── [id]/route.ts             ✓ GET/PATCH — customer profile
+│   │   │   └── [id]/merge/route.ts       ✓ POST — merge duplicate customers
+│   │   ├── dashboard/kpis/route.ts       ✓ GET — role-scoped KPI data
+│   │   ├── lookups/route.ts              ✓ GET — dropdown option lists
+│   │   ├── sidebar-counts/route.ts       ✓ GET — sidebar badge counts
 │   │   └── admin/
-│   │       ├── users/route.ts      ✓ EXISTS (GET all users)
-│   │       ├── users/create/       ✓ EXISTS (POST create user)
-│   │       ├── users/[id]/         ✓ EXISTS (PATCH update user)
-│   │       ├── roles/              → TO BUILD (CRUD + permission management)
-│   │       └── audit/              → TO BUILD
-│   ├── globals.css                 ✓ Tailwind v4 + BazaarPrinting CSS tokens
-│   ├── layout.tsx                  ✓ Root layout — Inter font, ThemeProvider, TopLoader
-│   └── page.tsx                    ✓ Redirects → /dashboard
+│   │       ├── users/route.ts            ✓ GET all users
+│   │       ├── users/create/route.ts     ✓ POST create user
+│   │       ├── users/[id]/route.ts       ✓ PATCH update/deactivate user
+│   │       ├── team/route.ts             ✓ GET team overview for admin dashboard
+│   │       ├── roles/route.ts            ✓ GET/POST roles
+│   │       ├── roles/[id]/route.ts       ✓ PATCH/DELETE role
+│   │       ├── roles/[id]/permissions/   ✓ Role page permission management
+│   │       └── pages/route.ts            ✓ GET navigable pages list
+│   ├── globals.css                       ✓ Tailwind v4 + BazaarPrinting CSS tokens
+│   ├── layout.tsx                        ✓ Root layout — Inter font, ThemeProvider
+│   └── page.tsx                          ✓ Redirects → /dashboard
 ├── components/
-│   ├── otp-input.tsx               ✓ 6-box OTP input
-│   ├── sidebar.tsx                 ✓ Collapsible sidebar — UPDATE for role-aware nav
-│   ├── mobile-nav.tsx              ✓ Mobile nav — UPDATE for role-aware nav
-│   ├── theme-provider.tsx          ✓ Light/dark theme
-│   ├── ui/email-input.tsx          ✓ Validated email field
-│   ├── ui/badge.tsx                ✓ Status badge primitive
-│   ├── ui/button.tsx               ✓ Button primitive
-│   ├── ui/card.tsx                 ✓ Card primitive
-│   ├── ui/dialog.tsx               ✓ Modal dialog primitive
-│   ├── ui/input.tsx                ✓ Input primitive
-│   ├── ui/select.tsx               ✓ Select primitive
-│   ├── ui/back-button.tsx          ✓ Back navigation button
-│   ├── admin/admin-sub-nav.tsx     ✓ Overview / Settings strip (BazarCRM tokens)
-│   ├── admin/settings-tab-nav.tsx  ✓ Horizontal settings tab pills (all tabs clickable)
-│   ├── admin/users-section.tsx     ✓ Full user management table + Add User modal
-│   ├── verify-drawer.tsx           → TO BUILD
-│   ├── sales-drawer.tsx            → TO BUILD
-│   ├── order-drawer.tsx            → TO BUILD (ticket builder)
-│   ├── contact-crm.tsx             → TO BUILD
-│   ├── history-timeline.tsx        → TO BUILD
-│   ├── notification-bell.tsx       → TO BUILD
-│   ├── outreach-dialog.tsx         → TO BUILD
-│   └── period-filter.tsx           → TO BUILD
+│   ├── dashboard-page.tsx                ✓ Role router (detects role → renders dashboard)
+│   ├── sdr-dashboard.tsx                 ✓ SDR-specific dashboard (self-contained)
+│   ├── sales-dashboard.tsx               ✓ Sales-specific dashboard (self-contained)
+│   ├── admin-dashboard.tsx               ✓ Admin-specific dashboard (self-contained)
+│   ├── leads-page.tsx                    ✓ SDR/Admin lead pipeline
+│   ├── sales-page.tsx                    ✓ Sales pipeline
+│   ├── verify-drawer.tsx                 ✓ SDR lead work drawer (edit + read-only modes)
+│   ├── sales-drawer.tsx                  ✓ Sales lead work drawer
+│   ├── crm-page.tsx                      ✓ Customer registry
+│   ├── customer-profile.tsx              ✓ Full customer profile with history
+│   ├── sidebar.tsx                       ✓ Collapsible left sidebar (role-aware nav)
+│   ├── mobile-nav.tsx                    ✓ Mobile bottom nav
+│   ├── theme-provider.tsx                ✓ Light/dark theme
+│   ├── otp-input.tsx                     ✓ 6-box OTP input
+│   ├── ui/
+│   │   ├── status-pill.tsx               ✓ Lead/sales status pill
+│   │   ├── urgency-pill.tsx              ✓ High/Medium/Low/Not Defined pill
+│   │   ├── phone-input.tsx               ✓ Validated phone field
+│   │   ├── email-input.tsx               ✓ Validated email field
+│   │   └── [shadcn primitives]           ✓ button, input, select, dialog, etc.
+│   └── admin/
+│       ├── admin-sub-nav.tsx             ✓ Overview / Settings strip
+│       ├── settings-tab-nav.tsx          ✓ Settings tab pills
+│       └── users-section.tsx             ✓ User management table + Add User modal
 ├── lib/
 │   ├── supabase/
-│   │   ├── client.ts               ✓ createBrowserClient (PUBLISHABLE_KEY)
-│   │   └── admin.ts                ✓ Service-role client — Route Handlers only
+│   │   ├── client.ts                     ✓ createBrowserClient (PUBLISHABLE_KEY)
+│   │   └── admin.ts                      ✓ Service-role client — Route Handlers only
 │   ├── auth/
-│   │   ├── safe-return-path.ts     ✓
-│   │   └── resolve-default-home.ts ✓
-│   ├── types/
-│   │   └── index.ts                → TO BUILD (see docs/types.md)
-│   ├── context/
-│   │   └── period-filter-context.tsx → TO BUILD
-│   ├── services/
-│   │   ├── notifications.ts        → TO BUILD
-│   │   └── outreach.ts             → TO BUILD (provider-agnostic)
-│   ├── utils/
-│   │   ├── order-ticket-pdf.ts     → TO BUILD (jspdf export)
-│   │   └── stats-date-range.ts     → TO BUILD (period buckets)
-│   └── utils.ts                    ✓ cn() helper
+│   │   ├── safe-return-path.ts           ✓ Redirect safety
+│   │   ├── resolve-default-home.ts       ✓ Post-login destination
+│   │   └── require-session.ts            ✓ Route Handler auth helper
+│   ├── types/index.ts                    ✓ Shared TypeScript types (Lead, Customer, Activity, etc.)
+│   └── utils/
+│       └── phone.ts                      ✓ Phone formatting + validation
 ├── supabase/
-│   └── migrations/                 → TO BUILD (see docs/schema.md)
-├── docs/
-│   ├── architecture.md             ✓ This file
-│   ├── CHANGELOG.md                ✓
-│   ├── schema.md                   ✓ Full DB schema + RLS
-│   ├── api-contract.md             ✓ All Route Handler specs
-│   ├── rbac.md                     ✓ Role matrix + proxy rules
-│   ├── navigation.md               ✓ Route tree + sidebar nav
-│   ├── types.md                    ✓ TypeScript types reference
-│   └── feature-specs/
-│       ├── leads-sdr.md            ✓
-│       ├── leads-sales.md          ✓
-│       ├── crm.md                  ✓
-│       ├── tickets.md              ✓
-│       ├── activity.md             ✓
-│       ├── statistics.md           ✓
-│       ├── notifications.md        ✓
-│       ├── admin.md                ✓
-│       └── dashboard.md            ✓
-├── proxy.ts                        ✓ AAL2 session enforcement — EXTEND for RBAC
-├── components.json                 ✓ shadcn config — style: base-nova
-├── vercel.json                     ✓
-├── .env.local                      ✓ Local secrets — gitignored
-└── .env.local.example              ✓ Key names template
+│   └── migrations/                       ✓ 033 migrations (001–033, incl. 033_reset_leads_to_pending.sql)
+├── docs/                                 ✓ All feature specs + architecture docs
+├── proxy.ts                              ✓ AAL2 + RBAC session enforcement
+├── components.json                       ✓ shadcn config — style: base-nova
+├── vercel.json                           ✓
+└── .env.local.example                    ✓ Key names template
 ```
 
 ---

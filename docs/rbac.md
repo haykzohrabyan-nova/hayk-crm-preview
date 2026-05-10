@@ -236,25 +236,27 @@ When a non-Admin calls `PATCH /api/leads/[id]` or any status-changing endpoint o
 
 ## Role-Aware UI Rendering
 
-Components read role from a context provider (`lib/auth/use-role.ts`) that fetches `user_profiles.role` once on app shell mount.
+Role is read directly from Supabase (`user_profiles.roles(name)`) in each component that needs it.
 
 | UI Element | SDR | Sales | Admin |
 |------------|:---:|:-----:|:-----:|
 | Sidebar: Leads section | ✓ | ✗ | ✓ |
 | Sidebar: Sales section | ✗ | ✓ | ✓ |
 | Sidebar: Admin section | ✗ | ✗ | ✓ |
-| Leads: Verify button (acquires lock + permanent ownership) | ✓ | ✗ | ✗ |
-| Leads: View button (no lock, read-only) | ✗ | ✗ | ✓ |
-| Leads: Reassign button (owned leads only) | ✗ | ✗ | ✓ |
-| Leads: "Working" column (shows active SDR) | ✗ | ✗ | ✓ |
-| Leads: sees locked-by-other leads in queue | ✗ | ✗ | ✓ |
+| Dashboard: personal KPIs (own leads/deals only) | ✓ | ✓ | ✗ |
+| Dashboard: global KPIs + Team grid | ✗ | ✗ | ✓ |
+| Leads: **Claim** button (unclaimed — acquires lock + permanent ownership) | ✓ | ✗ | ✗ |
+| Leads: **View** button (SDR re-opens their own lead) | ✓ | ✗ | ✗ |
+| Leads: **View** button (Admin — no lock, always read-only) | ✗ | ✗ | ✓ |
+| Leads: **Reassign** button (owned leads only) | ✗ | ✗ | ✓ |
+| Leads: **Owner** column (SDR name or "Unclaimed" badge) | ✓ | ✗ | ✓ |
+| Leads: My Leads / All Leads toggle filter | ✓ | ✗ | ✗ |
+| Leads: sees other SDRs locked leads in queue | ✗ | ✗ | ✓ |
+| Leads: scoped tabs show own leads only | ✓ | ✗ | ✗ |
+| Leads: scoped tabs show ALL leads | ✗ | ✗ | ✓ |
 | Route Lead / Reject buttons | ✓ | ✗ | ✓ |
-| Claim Lead button | ✗ | ✓ | ✓ |
+| Sales: Claim Lead button | ✗ | ✓ | ✓ |
 | CRM: Merge contact | ✓ | ✗ | ✓ |
-| CRM: Add order (toolbar) | ✓ | ✓ | ✓ |
-| Stats: SDR Handled Share | ✓ | ✗ | ✓ |
-| Stats: Pipeline Value | ✗ | ✓ | ✓ |
-
 ---
 
 ## Default Post-Login Destination

@@ -6,120 +6,139 @@ Route: `/dashboard` (all roles)
 
 ## Overview
 
-The Dashboard is the first page users land on after login. It shows role-scoped KPI cards and a quick-action area. It replaces the current stub (`return null`).
+The Dashboard is the first page users land on after login. It shows role-scoped KPI cards, a quick-action area, and (for Admin) a live team overview.
+
+**Architecture:** One route, three completely separate components. `dashboard-page.tsx` is a thin role-router that detects the logged-in user's role via Supabase and renders the appropriate component. No role-based conditionals inside the individual dashboards — each is self-contained and can be redesigned independently.
+
+```
+components/dashboard-page.tsx   ← role router (detects role, renders one of:)
+  components/sdr-dashboard.tsx  ← SDR-specific dashboard
+  components/sales-dashboard.tsx ← Sales-specific dashboard
+  components/admin-dashboard.tsx ← Admin-specific dashboard
+```
 
 **Data:** `GET /api/dashboard/kpis?period=month`
 
-The period defaults to "This Month" and is controlled by a compact period selector on the page (not shared with Statistics — this is a standalone quick overview, not the full analytics page).
+The API returns role-scoped data — SDR and Sales see only their own numbers, Admin sees global totals.
+
+The period defaults to "This Month" and is controlled by a compact segmented control (This Week / This Month / This Quarter) in each dashboard's header.
 
 ---
 
-## SDR Dashboard
+## SDR Dashboard — `components/sdr-dashboard.tsx`
 
-### KPI Cards (2-column grid on mobile, 4-column on desktop)
+KPIs are **scoped to the current SDR** (`sdr_id = userId`). The inbox count is global (how many leads are available in the queue).
 
-| Card | Value | Subtext |
-|------|-------|---------|
-| Inbox | Count of `is_inbox = true` leads | "leads waiting" |
-| Handled | `leads_handled` in period | "this month" |
-| Quoted | `leads_verified` with `status = 'Quoted'` | "this month" |
-| Routed to Sales | `leads_routed` | "this month" |
-| My Handled Share | `handled_share_percent`% | "vs other SDRs" |
-| Total Quote Value | `$quote_value` formatted | "this month" |
+### KPI Cards (2-column on mobile, 3-column on desktop)
+
+| Card | Value | Subtext | Accent |
+|------|-------|---------|--------|
+| Inbox | `is_inbox = true` leads (global count) | "leads waiting to be claimed" | ✓ (highlighted) |
+| Handled | leads touched by this SDR in period | period label | |
+| Routed to Sales | leads routed by this SDR in period | period label | |
+| On Hold | leads on hold owned by this SDR (all time) | "currently paused" | |
+| Rejected | leads rejected by this SDR in period | period label | |
 
 ### Quick Actions
 
-Prominent buttons for the most common tasks:
-
-- **Go to Inbox** → `/leads?tab=inbox` — shows current inbox count as badge
-- **Add Lead Manually** → opens Manual Add Lead modal directly from dashboard
+- **Work Leads** → `/leads` (primary, accent-tinted)
 - **View CRM** → `/crm`
 
-### Recent Activity Strip
+### Period Selector
 
-Last 5 activities performed by the current SDR — fetched from `GET /api/activity?by_user_id=...&limit=5` (or derived from leads/tickets). Shows event type, contact name, and relative time.
+This Week / This Month / This Quarter — updates all KPI cards on change.
 
----
-
-## Sales Dashboard
-
-### KPI Cards
-
-| Card | Value | Subtext |
-|------|-------|---------|
-| New in Pipeline | Count of unclaimed + newly routed leads | "waiting for you" |
-| Active Deals | `leads_in_pipeline` | "ongoing" |
-| Won | `leads_won` | "this month" |
-| Won Value | `$won_value` | "this month" |
-| Pipeline Value | `$pipeline_value` | "current" |
-| Orders Created | `order_count` | "this month" |
-
-### Quick Actions
-
-- **Go to Pipeline** → `/sales`
-- **View Quotes & Orders** → `/tickets`
-
-### Follow-up Alerts
-
-A list of tickets where `follow_up_at <= today` and `follow_up_completed = false`. Shows:
-- Contact name
-- Ticket total
-- Follow-up date (highlighted red if overdue)
-- **Open** button → opens ticket drawer
+### Future Enhancements (when orders/quotes are live)
+- Conversion rate card (leads routed ÷ leads handled)
+- Recent activity strip (last 5 events by this SDR)
 
 ---
 
-## Admin Dashboard
+## Sales Dashboard — `components/sales-dashboard.tsx`
 
-### KPI Cards
+KPIs are **scoped to the current Sales rep** (`sales_owner_id = userId`). New in Pipeline is global (unclaimed routed leads).
 
-| Card | Value |
-|------|-------|
-| Total Leads (period) | `total_leads` |
-| In Inbox | `inbox_leads` |
-| Routed to Sales | `routed_leads` |
-| Won | `won_leads` |
-| Total Revenue | `$total_revenue` |
-| Pipeline Value | `$pipeline_value` |
+### KPI Cards (2-column on mobile, 3-column on desktop)
 
-### Team Overview
-
-A compact table: one row per active user, showing:
-
-| Column | Notes |
-|--------|-------|
-| Name | |
-| Role | Pill |
-| Leads (period) | Count of leads they've touched |
-| Revenue (period) | Sum of their tickets' `total` |
-
-**View all** → `/admin/audit` or `/statistics`
+| Card | Value | Subtext | Accent |
+|------|-------|---------|--------|
+| Won Value | sum of `quote_total` for Won leads in period | period label | ✓ (highlighted) |
+| New in Pipeline | unclaimed Routed to Sales leads (global) | "waiting to be claimed" | |
+| Active Deals | leads with `sales_status = Ongoing or Quote Sent` | "ongoing" | |
+| Won | count of Won leads in period | period label | |
+| On Hold | leads with `sales_status = On Hold` | "paused deals" | |
+| Pipeline Value | sum of `quote_total` for active deals | "current total" | |
 
 ### Quick Actions
 
-- **Manage Users** → `/admin/users`
+- **Go to Pipeline** → `/sales` (primary, accent-tinted)
+- **Quotes & Orders** → `/tickets`
+
+### Period Selector
+
+This Week / This Month / This Quarter.
+
+### Future Enhancements (when orders/quotes are live)
+- Follow-up alerts (tickets where `follow_up_at <= today`)
+- Orders created count
+
+---
+
+## Admin Dashboard — `components/admin-dashboard.tsx`
+
+KPIs are **global** — all SDRs and Sales reps combined.
+
+### KPI Cards (2-column on mobile, 3-column on desktop)
+
+| Card | Value | Subtext | Accent |
+|------|-------|---------|--------|
+| Total Revenue | sum of `quote_total` for Won leads in period | period label | ✓ (highlighted) |
+| Total Leads | count of all leads created in period | period label | |
+| In Inbox | `is_inbox = true` leads | "waiting for SDR" | |
+| Routed to Sales | `status = Routed to Sales` leads | "active pipeline" | |
+| Won | count of Won leads in period | period label | |
+| Pipeline Value | sum of `quote_total` for Routed to Sales leads | "current total" | |
+
+### Team Section
+
+A grid of cards showing all active users:
+
+| Field | Notes |
+|-------|-------|
+| Avatar | First initial, navy background |
+| Online dot | Green if last sign-in < 8 hours ago |
+| Name | Truncated |
+| Role | Display name |
+| Active deals | Sales reps only — count of claimed leads |
+
+Data source: `GET /api/admin/team`
+
+### Quick Actions
+
+- **Manage Users** → `/admin/settings/users` (primary)
 - **System Settings** → `/admin/settings`
+- **SDR Workspace** → `/leads`
+- **Sales Pipeline** → `/sales`
+
+### Period Selector
+
+This Week / This Month / This Quarter.
 
 ---
 
-## Period Selector
+## Loading States
 
-A small segmented control in the page header:
-- This Week | This Month | This Quarter
-
-Updates KPI card data on change. Does **not** affect the Statistics page period.
-
----
-
-## Loading State
-
-KPI card skeletons (rectangles matching card dimensions) while data loads. Minimum skeleton display: 300ms (avoids flash of skeleton on fast connections).
+- **Role loading** (while `dashboard-page.tsx` detects role): full skeleton grid (6 KPI card skeletons)
+- **KPI loading** (while API fetches): individual KPI card skeletons (rectangles matching card dimensions)
+- Minimum skeleton display: 300 ms to avoid flash on fast connections
 
 ---
 
-## Design Notes
+## Design
 
 - KPI cards: `background: var(--color-surface)`, `border: 1px solid var(--color-border)`, `border-radius: 10px`, `padding: 20px`
-- KPI value: `font-size: 28px / font-weight: 600 / color: var(--color-text-primary)`
-- KPI label: `font-size: 12px / color: var(--color-text-muted) / uppercase / letter-spacing: 0.06em`
-- Accent highlight on the primary KPI card for each role (e.g. Inbox count for SDR, Won Value for Sales)
+- Accent card: `background: var(--color-btn-verify-bg)` (navy light / orange dark), no border
+- KPI value: `28px / 600 / var(--color-text-primary)`
+- KPI label: `11px / 500 / uppercase / letter-spacing: 0.06em / var(--color-text-muted)`
+- Section headers: `13px / 600 / uppercase / letter-spacing: 0.06em / var(--color-text-muted)`
+- All colors via CSS variables — no hardcoded hex

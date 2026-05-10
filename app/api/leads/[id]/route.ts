@@ -72,6 +72,13 @@ export async function PATCH(
   const prevStatus = current.status;
   const prevSalesStatus = current.sales_status;
 
+  // When rejecting, persist prev_status so consumers can distinguish
+  // "rejected by SDR" (prev_status != "Routed to Sales") from
+  // "rejected from the sales pipeline" (prev_status == "Routed to Sales").
+  if (body.status === "Rejected") {
+    body.prev_status = current.status;
+  }
+
   body.updated_at = new Date().toISOString();
 
   const { data: lead, error } = await admin
@@ -127,6 +134,7 @@ export async function PATCH(
         type: "lead_rejected",
         by_user_id: userId,
         payload: {
+          from: prevStatus,
           reason: body.rejection_reason ?? null,
           notes: body.rejection_notes ?? null,
         },

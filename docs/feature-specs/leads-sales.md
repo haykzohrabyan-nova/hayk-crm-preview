@@ -59,9 +59,9 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 
 ---
 
-## Tab: Rejected (SDR View)
+## Tab: Rejected
 
-**Data:** `GET /api/leads/workspace?status=Rejected` — leads rejected by SDRs, visible to Sales as context. **Lazy-fetched** — only loaded when the tab is first opened (not on page mount). Count badge comes from `/api/leads/sales-counts` upfront.
+**Data:** `GET /api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales` — only leads that were **rejected from the sales pipeline** (i.e. their previous status was `Routed to Sales`). SDR-rejected leads that never reached sales are excluded. **Lazy-fetched** — only loaded when the tab is first opened (not on page mount). Count badge comes from `/api/leads/sales-counts` upfront (which applies the same `prev_status` filter).
 
 ### Table Columns
 
@@ -77,8 +77,8 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 ### Behaviors
 
 - Read-only. **View** opens Sales Drawer with no lock acquired.
-- Sales cannot modify SDR-rejected leads.
-- Useful for Sales awareness — they can see what's been turned away.
+- Shows only leads that a Sales rep explicitly rejected while working them in the pipeline.
+- SDR-rejected leads (rejected before being routed to Sales) are deliberately excluded — those remain visible on the SDR `/leads` Rejected tab instead.
 
 ---
 
@@ -92,7 +92,7 @@ A right-side drawer for a Sales rep to work a routed lead.
 |-----|---------|
 | Lead Info | Contact details (read-only) + Sales fields |
 | Order / Quote | Create or view job ticket |
-| History | `HistoryTimeline` component |
+| History | Lead activity timeline — fetches  lazily on first open |
 
 ### Lead Info Tab
 
@@ -117,11 +117,11 @@ Read-only view of contact fields (set by SDR). Editable Sales fields:
 |--------|---------------|--------------|
 | **Convert to Order** | Edit mode, `sales_status` active | Opens Order Drawer in `order` mode; on ticket creation sets `sales_status = 'Won'` |
 | **On Hold** | Edit mode, status not Rejected | Opens hold sub-form; sets `sales_status = 'On Hold'` |
-| **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `sales_status = 'Rejected'` — **TERMINAL** |
+| **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `status = 'Rejected'` + auto-saves `prev_status = 'Routed to Sales'` — **TERMINAL** |
 | **Save** | Edit mode | `PATCH /api/leads/[id]` with changed fields |
 | **Close** | Always | Dismisses drawer + releases lock |
 
-**Reject is terminal:** Once `sales_status = 'Rejected'`, the drawer reopens in read-only mode for all non-Admin users. Only Admin can change this status.
+**Reject is terminal:** Once `status = 'Rejected'`, the drawer reopens in read-only mode for all non-Admin users. Only Admin can change this status.
 
 ### Hold Sub-form
 
@@ -140,7 +140,7 @@ From the Sales hold tab:
 
 ### Rejected — Terminal State
 
-- Once `sales_status = 'Rejected'`, the lead appears in the **Rejected** tab
+- Once `status = 'Rejected'` (with `prev_status = 'Routed to Sales'`), the lead appears in the Sales **Rejected** tab
 - No action buttons in the drawer for non-Admin users
 - Admin can open the lead with an "Admin Override" banner and set it back to `Ongoing` or any other status
 
@@ -160,7 +160,7 @@ Same pattern as SDR pipeline:
 ### ✅ Built and working
 | Feature | Notes |
 |---------|-------|
-| Pipeline / On Hold / Rejected (SDR) tabs | All three tabs with counts visible before clicking |
+| Pipeline / On Hold / Rejected tabs | All three tabs with counts visible before clicking; Rejected shows only sales-pipeline rejections () |
 | Claim unclaimed lead | `POST /api/leads/[id]/claim` → row updates in place; logs `lead_sales_claimed` activity |
 | Open owned lead (with locking) | Lock acquired on open, released on close |
 | Admin View (no lock) | Admin opens any lead read-only without acquiring a lock — Sales rep's edit session undisturbed |
@@ -173,7 +173,7 @@ Same pattern as SDR pipeline:
 | Close (releases lock) | Unlock API called on close (Sales uses temporary locking — different from SDR soft lock) |
 | Read-only mode (locked by other user) | "Being worked by [Name]" banner |
 | Terminal state banner | Shown for Rejected / Won / Dropped |
-| Rejected (SDR) tab | Lazy-fetched on first open; Phone + Rejection Reason columns; View read-only (no lock) |
+| Rejected tab | Lazy-fetched on first open; fetches ; Phone + Rejection Reason columns; View read-only (no lock) |
 
 ### ⏳ Not yet built — blocked on Tickets phase
 These items are deliberately deferred. Build them during the Tickets phase.

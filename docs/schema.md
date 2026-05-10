@@ -254,7 +254,7 @@ Core lead record. A lead starts in the inbox (`is_inbox = true`) and moves to th
 | `hold_until` | `timestamptz` | Scheduled resume date |
 | `held_at` | `timestamptz` | Timestamp when hold was set |
 | `held_by_id` | `uuid` FK → `auth.users` | User who set the hold |
-| `prev_status` | `text` | SDR status snapshot before hold |
+| `prev_status` | `text` | Status snapshot — set on **hold** (to restore on resume) and on **reject** (to identify pipeline origin: `"Routed to Sales"` = rejected from sales pipeline) |
 | `prev_sales_status` | `text` | Sales status snapshot before hold |
 | `rejection_reason` | `text` | Reason selected on reject |
 | `urgency` | `text` | `'High'` \| `'Medium'` \| `'Low'` \| `null` — how urgently the client needs the product |
@@ -436,27 +436,29 @@ create table public.activities (
 
 #### Activity Type Enums
 
-| Type | Trigger |
-|------|---------|
-| `lead_verified` | SDR verifies inbox lead |
-| `lead_manual_created` | SDR manually creates a lead |
-| `lead_status_changed` | Any status transition |
-| `lead_routed_to_sales` | SDR routes to Sales |
-| `lead_rejected` | SDR rejects |
-| `lead_held` | Lead placed on hold |
-| `lead_resumed` | Lead resumed from hold |
-| `lead_merged` | Contact merge applied |
-| `contact_edited` | Contact fields updated |
-| `call_logged` | SDR/Sales manually logs a call |
-| `email_opened` | Email open tracked |
-| `outreach_sent` | Email or SMS sent from app |
-| `quote_sent` | Quote delivered to client |
-| `quote_approval_requested` | Approval follow-up sent |
-| `quote_follow_up_completed` | Follow-up marked done |
-| `quote_follow_up_reset` | Follow-up reset |
-| `order_ticket_created` | New order ticket created |
-| `order_ticket_updated` | Order ticket patched (payload lists fields) |
-| `ticket_client_confirmed` | Client confirmed quote → order |
+| Type | Trigger | Key payload fields |
+|------|---------|-------------------|
+| `lead_verified` | SDR verifies inbox lead | — |
+| `lead_manual_created` | SDR manually creates a lead | — |
+| `lead_edited` | Tracked field changes without a status change | `{ fields: string[] }` |
+| `lead_status_changed` | Any `status` or `sales_status` transition | `{ from, to }` |
+| `lead_routed_to_sales` | SDR routes to Sales | — |
+| `lead_rejected` | Lead rejected by SDR or Sales. `prev_status` on the lead row identifies origin (`"Routed to Sales"` = rejected from sales pipeline). | `{ from, reason, notes }` |
+| `lead_held` | Lead placed on hold | `{ reason, notes, role }` |
+| `lead_resumed` | Lead resumed from hold | — |
+| `lead_merged` | Customer merge applied | — |
+| `lead_sales_claimed` | Sales rep claims an unclaimed routed lead | — |
+| `contact_edited` | Customer profile fields updated | — |
+| `call_logged` | SDR/Sales manually logs a call | `{ channel, notes }` |
+| `email_opened` | Email open tracked | — |
+| `outreach_sent` | Email or SMS sent from app | `{ channel, recipient }` |
+| `quote_sent` | Quote delivered to client | — |
+| `quote_approval_requested` | Approval follow-up sent | — |
+| `quote_follow_up_completed` | Follow-up marked done | — |
+| `quote_follow_up_reset` | Follow-up reset | — |
+| `order_ticket_created` | New order ticket created | — |
+| `order_ticket_updated` | Order ticket patched | `{ fields: string[] }` |
+| `ticket_client_confirmed` | Client confirmed quote → order | — |
 
 ---
 

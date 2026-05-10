@@ -12,18 +12,23 @@ The `HistoryTimeline` component renders a chronological feed of all events relat
 
 ## Data Fetching
 
-**Endpoint:** `GET /api/activity`
+Two endpoints cover different scopes:
 
-Query can be by any combination of:
-- `contact_id` — all activities for a contact
-- `lead_id` — activities for a specific lead
-- `ticket_id` — activities for a specific ticket
-- `phone` / `email` — resolves the contact by phone or email, then returns all activities across all their leads (cross-lead resolution)
+### Lead-scoped (built)
+**`GET /api/leads/[id]/activities`** — all events for one lead, newest first. Joins `user_profiles` so `by_user.full_name` is always populated.
 
-**In practice:**
-- Verify Drawer: queries by `lead_id`
-- Sales Drawer: queries by `lead_id`
-- CRM expanded row History tab: queries by `contact_id` (most comprehensive — shows everything)
+Used by:
+- **Sales Drawer** History tab — fetched lazily on first open
+- (Verify Drawer History tab — not yet built)
+
+### Contact-scoped (planned)
+**`GET /api/activity`** with query params:
+- `contact_id` — all activities across every lead for a customer
+- `ticket_id` — activities for a specific job ticket
+- `phone` / `email` — resolves customer by phone/email, returns all their lead activities
+
+Used by (planned):
+- CRM expanded row History tab: queries by `contact_id` (shows everything across all leads)
 - Order Drawer History tab: queries by `ticket_id`
 
 ---
@@ -69,8 +74,8 @@ Each activity entry is rendered as a timeline row with:
 
 | Type | Payload shown |
 |------|--------------|
-| `lead_status_changed` | "From [prev] → [new]" |
-| `lead_rejected` | Rejection reason + notes |
+| `lead_status_changed` | "From [prev] → [new]" (`payload.from`, `payload.to`) |
+| `lead_rejected` | `payload.from` (previous status — `"Routed to Sales"` for sales-pipeline rejections, other values for SDR rejections) + rejection reason + notes |
 | `lead_held` | Hold reason + "Until: [date]" |
 | `lead_edited` | List of changed field names (`payload.fields`) |
 | `lead_reassigned` | "From [name] → [name]" or "Unassigned from [name]" |
@@ -116,9 +121,10 @@ The following Route Handlers automatically insert activity rows when they run:
 | `POST /api/leads/[id]/reassign` | `lead_reassigned` |
 | `POST /api/leads/[id]/hold` | `lead_held` |
 | `POST /api/leads/[id]/resume` | `lead_resumed` |
-| `PATCH /api/leads/[id]` | `lead_edited` (tracked field changes without status change) + `lead_status_changed` (if `status` or `sales_status` changes) |
-| `PATCH /api/contacts/merge` | `lead_merged` (on all affected leads) |
-| `PATCH /api/contacts/[id]` | `contact_edited` |
+| `PATCH /api/leads/[id]` | `lead_edited` (tracked field changes without status change) + `lead_status_changed` (if `status` or `sales_status` changes) + `lead_rejected` with `{ from, reason, notes }` when `status` → `Rejected` (auto-saves `prev_status = current.status` before updating) |
+| `GET /api/leads/[id]/activities` | Read-only — returns timeline; no writes |
+| `PATCH /api/customers/[id]/merge` | `lead_merged` (on all affected leads) |
+| `PATCH /api/customers/[id]` | `contact_edited` |
 | `POST /api/tickets` | `order_ticket_created` |
 | `PATCH /api/tickets/[id]` | `quote_approval_requested` / `quote_follow_up_completed` / `quote_follow_up_reset` / `ticket_client_confirmed` / `order_ticket_updated` |
 | `POST /api/outreach/send` | `outreach_sent` |

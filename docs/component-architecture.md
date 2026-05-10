@@ -1,6 +1,6 @@
 # BazarCRM — Component Architecture
 
-How pages, components, and data fetching are structured. Read this before building any feature page.
+How pages, components, and data fetching are structured.
 
 ---
 
@@ -16,56 +16,46 @@ Next.js App Router distinguishes between **Server Components** (run on server, n
 ### Pattern for feature pages
 
 ```
-app/(app)/leads/page.tsx          ← Server Component (fetches initial data)
-  └── components/leads-page.tsx   ← Client Component ("use client" — handles tabs, search, state)
-        ├── LeadTable              ← Client Component (row actions, optimistic updates)
-        │     └── LeadRow          ← Client Component (per-row buttons)
+app/(app)/leads/page.tsx          ← Server Component (thin — just exports the client page)
+  └── components/leads-page.tsx   ← Client Component ("use client" — tabs, search, state)
         └── VerifyDrawer           ← Client Component (form state, locking)
-              └── HistoryTimeline  ← Client Component (fetches on open)
 ```
 
-The Server Component fetches the **initial** data (first tab's leads) and passes it down as props. Tab switching and subsequent data loads are client-side fetches.
+All data fetching happens client-side via `fetch('/api/...')` after the page mounts. There is no server-side initial data pass on these pages.
+
+---
+
+## Dashboard Architecture
+
+Three completely separate dashboard components — no role conditionals inside them:
+
+```
+components/dashboard-page.tsx    ← role router (thin — detects role, renders correct dashboard)
+  components/sdr-dashboard.tsx   ← SDR: personal KPIs + quick actions
+  components/sales-dashboard.tsx ← Sales: personal KPIs + quick actions
+  components/admin-dashboard.tsx ← Admin: global KPIs + team grid + quick actions
+```
+
+Each dashboard is self-contained (its own KPI card components, period selector, helpers) and can be redesigned without touching the others.
 
 ---
 
 ## SDR vs Sales — Side-by-Side Architecture
 
 ```
-/leads (SDR)                                /sales (Sales)
-─────────────────────────────────────       ──────────────────────────────────
+/leads (SDR + Admin)                        /sales (Sales + Admin)
+──────────────────────────────────────      ──────────────────────────────────────
 app/(app)/leads/page.tsx                    app/(app)/sales/page.tsx
-  └── LeadsPage client component              └── SalesPage client component
-        │                                           │
-        ├── Tabs: inbox|on-hold|                   ├── Tabs: pipeline|on-hold|
-        │         directed|rejected                │         rejected
-        │                                           │
-        ├── LeadTable (shared)                     ├── LeadTable (shared)
-        │     props:                               │     props:
-        │       columns={SDR_COLUMNS}              │       columns={SALES_COLUMNS}
-        │       onRowAction={handleSDRAction}       │       onRowAction={handleSalesAction}
-        │                                           │
-        └── VerifyDrawer (SDR-specific)            └── SalesDrawer (Sales-specific)
+  └── components/leads-page.tsx               └── components/sales-page.tsx
+        │                                            │
+        ├── Tabs: All Leads | On Hold |              ├── Tabs: Pipeline | On Hold |
+        │         Directed to Sales | Rejected       │         Rejected (SDR)
+        │                                            │
+        ├── Inline table (per tab)                   ├── Inline table (per tab)
+        │     Columns vary per tab                   │     Columns vary per tab
+        │                                            │
+        └── VerifyDrawer (SDR / Admin)               └── SalesDrawer (Sales / Admin)
 ```
-
-`LeadTable` is a **shared, configurable component**. The columns shown and the per-row action button are passed as props — so SDR rows show a "Verify" button and Sales rows show a "Claim / Open" button.
-
----
-
-## Shared Components
-
-These are used by both SDR and Sales pages (and CRM):
-
-| Component | File | Used in |
-|-----------|------|---------|
-| `LeadTable` | `components/lead-table.tsx` | `/leads`, `/sales`, `/admin` |
-| `LeadRow` | internal to `LeadTable` | — |
-| `StatusPill` | `components/ui/status-pill.tsx` | Tables, drawers |
-| `HistoryTimeline` | `components/history-timeline.tsx` | Verify drawer, Sales drawer, CRM expand, Order drawer |
-| `HoldSubForm` | `components/hold-sub-form.tsx` | Verify drawer, Sales drawer |
-| `OrderDrawer` | `components/order-drawer.tsx` | Sales drawer, CRM, Tickets page |
-| `PeriodFilter` | `components/period-filter.tsx` | Statistics, CRM, Tickets |
-| `NotificationBell` | `components/notification-bell.tsx` | Sidebar |
-| `SkeletonRow` | `components/ui/skeleton-row.tsx` | All tables |
 
 ---
 
@@ -73,152 +63,139 @@ These are used by both SDR and Sales pages (and CRM):
 
 | Component | File | Role |
 |-----------|------|------|
-| `VerifyDrawer` | `components/verify-drawer.tsx` | SDR only |
-| `SalesDrawer` | `components/sales-drawer.tsx` | Sales only |
-| `ContactCRM` | `components/contact-crm.tsx` | All roles (but toolbar changes) |
+| `VerifyDrawer` | `components/verify-drawer.tsx` | SDR (edit), Admin (read-only view) |
+| `SalesDrawer` | `components/sales-drawer.tsx` | Sales (edit), Admin (read-only view) |
+| `SdrDashboard` | `components/sdr-dashboard.tsx` | SDR only |
+| `SalesDashboard` | `components/sales-dashboard.tsx` | Sales only |
+| `AdminDashboard` | `components/admin-dashboard.tsx` | Admin only |
+
+---
+
+## Shared UI Components
+
+| Component | File | Used in |
+|-----------|------|---------|
+| `StatusPill` | `components/ui/status-pill.tsx` | Tables, drawers |
+| `UrgencyPill` | `components/ui/urgency-pill.tsx` | Tables, drawers |
+| `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, verify drawer |
+| `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, verify drawer |
 
 ---
 
 ## Page-by-Page Breakdown
 
+### `/dashboard` — Role-scoped Dashboard
+
+```
+app/(app)/dashboard/page.tsx  [Server Component — thin wrapper]
+  └── components/dashboard-page.tsx  [Client Component]
+        ├── Detects role via Supabase (createBrowserClient)
+        ├── Shows skeleton while role loads
+        └── Renders one of:
+              sdr-dashboard.tsx    (role === "sdr")
+              sales-dashboard.tsx  (role === "sales")
+              admin-dashboard.tsx  (role === "admin")
+```
+
+---
+
 ### `/leads` — SDR Lead Pipeline
 
 ```
-app/(app)/leads/page.tsx  [Server Component]
-  - reads searchParams.tab (default: 'inbox')
-  - fetches initial leads for default tab via Supabase server client
-  - passes initialLeads + initialTab to LeadsPage
-
-components/leads-page.tsx  [Client Component "use client"]
-  - manages active tab state (synced to URL ?tab=)
-  - manages search, sort state
-  - on tab change: fetches leads via /api/leads/inbox or /api/leads/workspace
-  - renders LeadTable with correct props per tab
-  - renders VerifyDrawer (conditional, when selectedLead is set)
+app/(app)/leads/page.tsx  [Server Component — thin wrapper]
+  └── components/leads-page.tsx  [Client Component "use client"]
+        ├── Tabs: All Leads | On Hold | Directed to Sales | Rejected
+        ├── Tab state: local useState (not synced to URL)
+        ├── Per-tab API: GET /api/leads/workspace?status=...&scope=...
+        ├── Search: client-side filter on fetched data
+        ├── Sort: client-side sort by Created or Urgency (column headers on desktop,
+        │         cycling pill button on mobile)
+        ├── Owner filter (SDR only): All Leads / My Leads toggle
+        └── VerifyDrawer (opens on Claim / View click)
 ```
 
 **Tab → API mapping:**
 
-| Tab (`?tab=`) | API call | Filter |
-|---------------|----------|--------|
-| `inbox` (default) | `GET /api/leads/inbox` | `is_inbox=true` |
-| `on-hold` | `GET /api/leads/workspace` | `status=On Hold` |
-| `directed` | `GET /api/leads/workspace` | `status=Routed to Sales` |
-| `rejected` | `GET /api/leads/workspace` | `status=Rejected` |
+| Tab | API params | Notes |
+|-----|------------|-------|
+| All Leads | no `status`, no `scope` | SDR sees unlocked + own; Admin sees all |
+| On Hold | `status=On Hold&scope=mine` | SDR sees own; Admin sees all |
+| Directed to Sales | `status=Routed to Sales&scope=mine` | SDR sees own; Admin sees all |
+| Rejected | `status=Rejected&scope=mine` | SDR sees own (leads they rejected); Admin sees all SDR-rejected leads |
+
+**All Leads table columns:** Name, Company, Source, Phone, Urgency, Status, **Owner**, Created, Action
+
+**Owner column:** shows SDR name / "You" for owned leads, "Unclaimed" badge for unowned — visible to all roles.
+
+**Action button (SDR):**
+- `locked_by_id === null` → **Claim** button (navy fill) — acquires lock + permanent ownership
+- `locked_by_id === userId` → **View** button (outlined) — re-opens owned lead
+- Admin → **View** button (no lock acquired) + optional **Reassign** button
 
 ---
 
 ### `/sales` — Sales Pipeline
 
 ```
-app/(app)/sales/page.tsx  [Server Component]
-  - reads searchParams.tab (default: 'pipeline')
-  - fetches initial leads for default tab
-  - passes to SalesPage
-
-components/sales-page.tsx  [Client Component "use client"]
-  - manages active tab state (synced to URL ?tab=)
-  - renders LeadTable with SALES_COLUMNS
-  - renders SalesDrawer when a lead is selected
+app/(app)/sales/page.tsx  [Server Component — thin wrapper]
+  └── components/sales-page.tsx  [Client Component "use client"]
+        ├── Tabs: Pipeline | On Hold | Rejected
+        ├── Tab state: local useState
+        ├── Per-tab API: GET /api/leads/workspace?status=...
+        └── SalesDrawer (opens on Claim / Open / View click)
 ```
 
 **Tab → API mapping:**
 
-| Tab (`?tab=`) | API call | Filter |
-|---------------|----------|--------|
-| `pipeline` (default) | `GET /api/leads/workspace` | `status=Routed to Sales`, `sales_status in (Ongoing, Quote Sent)` |
-| `on-hold` | `GET /api/leads/workspace` | `sales_status=On Hold` |
-| `rejected` | `GET /api/leads/workspace` | `status=Rejected` (SDR-rejected, visible to Sales) |
+| Tab | API params | Notes |
+|-----|------------|-------|
+| Pipeline | `status=Routed to Sales` | Sales sees unclaimed + own; Admin sees all; client-filtered by `sales_status` |
+| On Hold | `status=Routed to Sales` | Client-filtered by `sales_status = On Hold` |
+| Rejected | `status=Rejected&prev_status=Routed+to+Sales` | Only leads rejected *from* the sales pipeline; lazy-fetched on first tab open |
+
+**Count badge:** `GET /api/leads/sales-counts` — `rejected` count uses same `prev_status = 'Routed to Sales'` filter so badge matches list.
+
+**Sales Drawer tabs:** Lead Info | Order / Quote | **History** (fetches `GET /api/leads/[id]/activities` lazily on first open — vertical timeline of all events)
 
 ---
 
-### `/crm` — Contact Registry
+### `/crm` — Customer Registry
 
 ```
-app/(app)/crm/page.tsx  [Server Component]
-  - fetches first page of contacts
-  - passes to CRMPage
-
-components/crm-page.tsx  [Client Component]
-  - manages search, sort, period filter, heat filter
-  - expand row state
-  - fetches tickets + activity for expanded contact
-```
-
----
-
-### `/tickets` — Quotes & Orders
-
-```
-app/(app)/tickets/page.tsx  [Server Component]
-  - reads searchParams.tab (default: 'quoted')
-  - fetches initial tickets for tab
-
-components/tickets-page.tsx  [Client Component]
-  - tab state (synced to URL ?tab=)
-  - renders QuotedRequestsTab or OrdersTab
-  - renders OrderDrawer when selected
-```
-
-**Tab → API mapping:**
-
-| Tab | API call |
-|-----|----------|
-| `quoted` (default) | `GET /api/tickets?kind=quote` + quoted workspace leads |
-| `orders` | `GET /api/tickets?kind=order` |
-
----
-
-### `/statistics` — Analytics
-
-```
-app/(app)/statistics/page.tsx  [Server Component]
-  - fetches initial KPI data for default period (month)
-
-components/statistics-page.tsx  [Client Component]
-  - period filter (synced to PeriodFilterContext)
-  - re-fetches KPIs + chart data on period change
-  - renders role-appropriate KPI cards and charts
+app/(app)/crm/page.tsx  [Server Component — thin wrapper]
+  └── components/crm-page.tsx  [Client Component]
+        ├── Search, sort, filter
+        └── Customer profile expand → CustomerProfile component
 ```
 
 ---
 
-### Drawers (Verify, Sales, Order)
+## Lead Ownership & Drawer Model
 
-All drawers are `"use client"` components. They:
-1. Acquire a lock when mounted (`POST /api/leads/[id]/lock`)
-2. Release the lock when unmounted (cleanup in `useEffect`)
-3. Show the lead in edit mode or read-only mode based on lock result
-4. Make API calls for form submissions
-5. Trigger toast notifications on success/error
+### Permanent Ownership (Soft Lock)
 
-**Drawer anatomy:**
+When an SDR clicks **Claim**, `POST /api/leads/[id]/lock` is called:
+- Sets `locked_by_id = userId` and `sdr_id = userId` on the lead
+- Lead disappears from other SDRs' All Leads queue (filtered by API)
+- Ownership persists beyond drawer close — it is **not** released when SDR closes the drawer or saves
 
-```
-[DrawerOverlay] ← closes drawer on click outside
-  [DrawerPanel]  ← slides in from right, max-width 520px
-    [DrawerHeader]
-      Title + Status pill + Close button
-    [LockBanner]   ← only shown when locked by another user
-    [DrawerTabs]   ← Lead Info | Quote | History
-    [TabContent]
-      [FormFields or ReadOnlyFields]
-    [DrawerFooter]
-      [ActionButtons]  ← hidden if locked by another user
-```
+### Drawer open — edit vs read-only
 
----
+| Scenario | Drawer mode |
+|----------|-------------|
+| SDR opens their own lead | Edit mode |
+| SDR opens lead locked by someone else (race condition on stale page) | Read-only + "currently working" banner |
+| Admin opens any lead via View | Read-only (no lock acquired) |
 
-## URL State Convention
+### Releasing ownership
 
-All tab states use `?tab=` query param. Page components read `searchParams` (Server Components) or `useSearchParams()` (Client Components).
+Ownership is only released by a terminal action:
+- SDR routes lead to Sales → `POST /api/leads/[id]/unlock` called after route
+- SDR rejects lead → `POST /api/leads/[id]/unlock` called after reject
+- Admin reassigns → `POST /api/leads/[id]/reassign` sets `locked_by_id` + `sdr_id` to new user
+- Admin unassigns → same endpoint with `user_id: null`
 
-**Never use `router.push` for tab changes — use `router.replace`** to avoid polluting the browser history stack with tab switches.
-
-```typescript
-// Tab switch — replace not push
-router.replace(`/leads?tab=${newTab}`, { scroll: false })
-```
+**Ownership does NOT release** on: drawer close, Save, Validate, Hold, Resume.
 
 ---
 
@@ -226,46 +203,33 @@ router.replace(`/leads?tab=${newTab}`, { scroll: false })
 
 | Layer | Where | How |
 |-------|-------|-----|
-| Initial page load | Server Component | Supabase server client (with RLS) |
+| Page load | Client Component (useEffect) | `fetch('/api/...')` Route Handler |
 | Tab switch | Client Component | `fetch('/api/...')` Route Handler |
 | Drawer open | Client Component | `fetch('/api/...')` Route Handler |
-| After a mutation | Client Component | Re-fetch affected data or optimistic update |
-| Notifications | Client Component | Supabase Realtime subscription |
+| After mutation | Client Component | Optimistic update or re-fetch |
+| Count refresh | Client Component | `window.dispatchEvent(new Event("bazaar:refresh-counts"))` |
 
-**No global state library** (no Redux, no Zustand). Data lives in:
-- Server props (passed down from Server Component)
-- Local `useState` / `useReducer` in Client Components
-- `PeriodFilterContext` for the shared period filter (the only global context)
+**No global state library.** Data lives in local `useState` / `useReducer` in Client Components.
 
 ---
 
-## `LeadTable` Props Interface
+## Count Refresh Event
 
-The shared `LeadTable` component accepts:
+Any action that changes lead counts (claim, hold, resume, route, reject, reassign) dispatches:
 
 ```typescript
-interface LeadTableProps {
-  leads: Lead[]
-  columns: ColumnDef[]       // which columns to show + order
-  onRowAction: (lead: Lead, action: LeadAction) => void
-  actionLabel: string        // e.g. "Verify" (SDR) or "Open" (Sales)
-  isLoading: boolean
-  emptyMessage?: string
-}
-
-type LeadAction = 'open' | 'verify' | 'claim' | 'resume' | 'view'
+window.dispatchEvent(new Event("bazaar:refresh-counts"));
 ```
 
-**SDR column config:** Name, Company, Source, Phone, Email, Interests, Created, [Verify button]
-**Sales column config:** Name, Company, Quote Total, Sales Status, Owner, Routed At, [Claim/Open button]
+Tab badges, sidebar counts, and any component listening to this event refresh automatically.
 
 ---
 
 ## Admin Differences
 
 Admin accessing `/leads` or `/sales` sees the same pages but:
-- The `VerifyDrawer` and `SalesDrawer` show an **"Admin View"** badge in the header
-- If a lead is rejected (terminal), Admin sees an **"Admin Override"** banner with status-change controls
-- If a lead is locked by another user, Admin's lock call always succeeds
-- Locked-by-admin banner is shown to the original holder on their next save attempt: "Lead was unlocked by Admin"
-- Admin can see all users' leads (no `sdr_id` or `sales_owner_id` filter on the server queries)
+- Action button is **View** (read-only, no lock acquired) instead of Claim/Verify
+- On `/leads` All Leads: **Reassign** button appears next to View for owned leads
+- On `/leads` All Leads: **Owner** column shows which SDR owns each lead
+- Scoped tabs (On Hold, Directed to Sales, Rejected) show **all** leads, not just admin's own
+- Tab counts also reflect all leads for admin

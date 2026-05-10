@@ -6,7 +6,8 @@ import { requireSession } from "@/lib/auth/require-session";
  * Returns tab counts for the Sales Pipeline page.
  * - pipeline: Routed to Sales leads with sales_status Ongoing, Quote Sent, or null
  * - hold:     Routed to Sales leads with sales_status = 'On Hold'
- * - rejected: Leads with status = 'Rejected' (SDR-rejected, visible to sales)
+ * - rejected: Leads with status = 'Rejected' AND prev_status = 'Routed to Sales'
+ *             (i.e. rejected FROM the sales pipeline, not SDR-rejected before reaching sales)
  *
  * Sales reps only see unclaimed leads + their own (same filter as the workspace route).
  * Admins see all.
@@ -33,7 +34,8 @@ export async function GET() {
       .from("leads")
       .select("id", { count: "exact", head: true })
       .eq("is_inbox", false)
-      .eq("status", "Rejected"),
+      .eq("status", "Rejected")
+      .eq("prev_status", "Routed to Sales"),
   ]);
 
   const routed = routedResult.data ?? [];

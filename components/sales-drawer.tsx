@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { X, Lock } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
-import { HoldForm, Lead } from "@/lib/types";
+import { Activity, HoldForm, Lead } from "@/lib/types";
 import { formatPhone } from "@/lib/utils/phone";
 import {
   Select,
@@ -65,6 +65,52 @@ interface SalesDrawerProps {
   showToast: (msg: string, type?: "success" | "error") => void;
 }
 
+// ─── Activity timeline helpers ────────────────────────────────────────────────
+
+function activityLabel(a: Activity): string {
+  const p = a.payload as Record<string, string | null>;
+  switch (a.type) {
+    case "lead_verified":         return "Lead verified by SDR";
+    case "lead_manual_created":   return "Lead created manually";
+    case "lead_edited":           return `Lead info updated`;
+    case "lead_sales_claimed":    return "Lead claimed by sales rep";
+    case "lead_routed_to_sales":  return "Routed to Sales";
+    case "lead_held":             return `Put on hold${p.reason ? ` — ${p.reason}` : ""}`;
+    case "lead_resumed":          return "Resumed from hold";
+    case "lead_merged":           return "Customer record merged";
+    case "contact_edited":        return "Contact info updated";
+    case "lead_rejected": {
+      const from = p.from === "Routed to Sales" ? "Sales pipeline" : "SDR pipeline";
+      return `Rejected from ${from}${p.reason ? ` — ${p.reason}` : ""}`;
+    }
+    case "lead_status_changed":
+      return `Status: ${p.from ?? "?"} → ${p.to ?? "?"}`;
+    default:
+      return a.type.replace(/_/g, " ");
+  }
+}
+
+function activityDotColor(type: Activity["type"]): string {
+  if (type === "lead_rejected")       return "var(--color-danger)";
+  if (type === "lead_held")           return "var(--color-warning)";
+  if (type === "lead_routed_to_sales" || type === "lead_sales_claimed") return "var(--color-accent)";
+  if (type === "lead_verified" || type === "lead_resumed") return "var(--color-success)";
+  return "var(--color-text-muted)";
+}
+
+function relativeTimeAct(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`;
+}
+
 function formFromLead(lead: Lead): SalesForm {
   return {
     sales_status: lead.sales_status ?? "Ongoing",
@@ -92,7 +138,10 @@ export function SalesDrawer({
 }: SalesDrawerProps) {
   const [lead, setLead] = useState<Lead>(initialLead);
   const [form, setForm] = useState<SalesForm>(() => formFromLead(initialLead));
-  const [activeTab, setActiveTab] = useState<"info" | "order">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "order" | "history">("info");
+  const [activities, setActivities] = useState<Activity[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [activitiesFetched, setActivitiesFetched] = useState(false);
   const [footerMode, setFooterMode] = useState<"actions" | "hold" | "reject">("actions");
   const [holdForm, setHoldForm] = useState<HoldForm>({ hold_reason: "", hold_notes: "", hold_until: "" });
   const [rejForm, setRejForm] = useState({ rejection_reason: "", rejection_notes: "" });
@@ -110,6 +159,17 @@ export function SalesDrawer({
       }
     };
   }, [lead.id, readOnly]);
+
+  useEffect(() => {
+    if (activeTab === "history" && !activitiesFetched) {
+      setActivitiesLoading(true);
+      fetch(`/api/leads/${lead.id}/activities`)
+        .then((r) => r.json())
+        .then((d) => { setActivities(d.activities ?? []); setActivitiesFetched(true); })
+        .catch(() => {})
+        .finally(() => setActivitiesLoading(false));
+    }
+  }, [activeTab, activitiesFetched, lead.id]);
 
   function handleClose() {
     if (!readOnly && !unlockRef.current) {
@@ -260,7 +320,7 @@ export function SalesDrawer({
 
         {/* Tab bar */}
         <div className="flex shrink-0" style={{ borderBottom: "1px solid var(--color-border)" }}>
-          {(["info", "order"] as const).map((tab) => (
+          {(["info", "order", "history"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -270,7 +330,7 @@ export function SalesDrawer({
                 color: activeTab === tab ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
               }}
             >
-              {tab === "info" ? "Lead Info" : "Order / Quote"}
+              {tab === "info" ? "Lead Info" : tab === "order" ? "Order / Quote" : "History"}
             </button>
           ))}
         </div>
@@ -512,6 +572,83 @@ export function SalesDrawer({
               <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>
                 Coming in the Tickets phase.
               </p>
+            </section>
+          )}
+
+          {activeTab === "history" && (
+            <section>
+              <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-4" style={{ color: "var(--color-text-muted)" }}>
+                Lead Timeline
+              </h3>
+
+              {/* Skeleton while loading */}
+              {activitiesLoading && (
+                <div className="space-y-4">
+                  {Array.from({ length: 4 }).map((_, i) => (
+                    <div key={i} className="flex gap-3">
+                      <div className="mt-1 h-2.5 w-2.5 shrink-0 animate-pulse rounded-full" style={{ background: "var(--color-border)" }} />
+                      <div className="flex-1 space-y-1.5">
+                        <div className="h-3 w-3/4 animate-pulse rounded" style={{ background: "var(--color-border)" }} />
+                        <div className="h-2.5 w-1/3 animate-pulse rounded" style={{ background: "var(--color-border)" }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Empty state */}
+              {!activitiesLoading && activitiesFetched && activities.length === 0 && (
+                <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>
+                  No activity recorded for this lead yet.
+                </p>
+              )}
+
+              {/* Timeline */}
+              {!activitiesLoading && activities.length > 0 && (
+                <ol className="relative space-y-0">
+                  {activities.map((a, idx) => (
+                    <li key={a.id} className="flex gap-3 pb-5 relative">
+                      {/* Vertical connector line */}
+                      {idx < activities.length - 1 && (
+                        <div
+                          className="absolute left-[4px] top-3 bottom-0 w-px"
+                          style={{ background: "var(--color-border)" }}
+                        />
+                      )}
+                      {/* Dot */}
+                      <div
+                        className="relative mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
+                        style={{
+                          background: activityDotColor(a.type),
+                          outline: "2px solid var(--color-surface)",
+                          outlineOffset: "1px",
+                        }}
+                      />
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--color-text-primary)" }}>
+                          {activityLabel(a)}
+                        </p>
+                        {/* Extra note for rejection */}
+                        {a.type === "lead_rejected" && (a.payload as Record<string, string | null>).notes && (
+                          <p className="mt-0.5 text-[12px]" style={{ color: "var(--color-text-muted)" }}>
+                            {(a.payload as Record<string, string | null>).notes}
+                          </p>
+                        )}
+                        {/* Extra note for hold */}
+                        {a.type === "lead_held" && (a.payload as Record<string, string | null>).notes && (
+                          <p className="mt-0.5 text-[12px]" style={{ color: "var(--color-text-muted)" }}>
+                            {(a.payload as Record<string, string | null>).notes}
+                          </p>
+                        )}
+                        <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+                          {a.by_user?.full_name ?? "System"} · {relativeTimeAct(a.created_at)}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </section>
           )}
         </div>

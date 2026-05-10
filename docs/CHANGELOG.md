@@ -3,6 +3,25 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Lead History tab in Sales Drawer
+
+### Added
+- `app/api/leads/[id]/activities/route.ts` — `GET` endpoint that returns the full activity timeline for a lead (newest first), joining `user_profiles` so every entry includes the actor's name.
+- `components/sales-drawer.tsx` — new **History** tab (third tab alongside Lead Info and Order / Quote) that renders a vertical timeline of all activity events for the open lead. Loads lazily on first open. Shows: event label, optional notes (rejection/hold), actor name, and relative timestamp. Skeleton loader while fetching; empty-state when no events exist.
+
+### Changed
+- `app/api/leads/[id]/route.ts` — `lead_rejected` activity payload now includes `from: prevStatus` so the timeline can display "Rejected from Sales pipeline" vs "Rejected from SDR pipeline".
+- `lib/types/index.ts` — added `'lead_sales_claimed'` and `'lead_edited'` to the `ActivityType` union (both were already written by API routes but missing from the type).
+
+## [2026-05-09] — Fix Sales Pipeline Rejected tab showing SDR rejections
+
+### Fixed
+- **Sales Pipeline Rejected tab was mixing two unrelated rejection types**: it showed all leads with `status = "Rejected"` — including leads rejected by SDRs before they ever reached sales — instead of only leads rejected *from* the sales pipeline.
+- `app/api/leads/[id]/route.ts` — PATCH route now automatically saves `prev_status = current.status` whenever a lead is moved to `status = "Rejected"`, mirroring the same pattern already used by the hold route. This allows downstream queries to distinguish "SDR rejected" (`prev_status ≠ "Routed to Sales"`) from "rejected from sales" (`prev_status = "Routed to Sales"`).
+- `app/api/leads/workspace/route.ts` — added support for `?prev_status=` query param so callers can filter leads by their previous status.
+- `app/api/leads/sales-counts/route.ts` — `rejected` badge count now filters by `prev_status = "Routed to Sales"` so the badge reflects only sales-pipeline rejections, not all system rejections.
+- `components/sales-page.tsx` — `fetchRejectedLeads` now requests `/api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales` so the Rejected tab lists only leads that were in the sales pipeline before being rejected.
+
 ## [2026-05-09] — Split dashboard into per-role components
 
 ### Added

@@ -1,6 +1,6 @@
 # BazarCRM — API Contract
 
-All endpoints are Next.js 15 Route Handlers under `app/api/`. Every handler uses the **admin Supabase client** (`lib/supabase/admin.ts`) for writes and the **server client** (from `@supabase/ssr`) for reads with RLS applied.
+All endpoints are Next.js 16 Route Handlers under `app/api/`. Every handler uses the **admin Supabase client** (`lib/supabase/admin.ts`) for writes and the **server client** (from `@supabase/ssr`) for reads with RLS applied.
 
 **Authentication:** All endpoints require an authenticated session. `proxy.ts` blocks unauthenticated requests before they reach Route Handlers. Handlers additionally call `supabase.auth.getUser()` and return `401` if no session.
 
@@ -42,9 +42,9 @@ Returns all leads where `is_inbox = false`. SDR and Admin see all workspace lead
 | Param | Type | Description |
 |-------|------|-------------|
 | `status` | `string` | Filter by `status` value |
-| `sales_status` | `string` | Filter by `sales_status` value |
-| `sdr_id` | `uuid` | Filter by `sdr_id` |
-| `search` | `string` | Full text search |
+| `prev_status` | `string` | Filter by `prev_status` value — used by Sales Rejected tab to restrict to `Routed to Sales` (sales-pipeline rejections only) |
+| `scope` | `string` | `mine` — restrict to leads where `sdr_id = current user` (SDR scoped tabs) |
+| `search` | `string` | Full-text search on name, email, phone, company |
 
 **Response `200`:**
 ```json
@@ -463,6 +463,21 @@ Partial ticket update.
 ---
 
 ## Activity
+
+### `GET /api/leads/[id]/activities`
+
+Returns the full activity timeline for a single lead, newest first. Joins `user_profiles` so `by_user.full_name` is always populated.
+
+**Response `200`:**
+```json
+{
+  "activities": [Activity]
+}
+```
+
+This is what the **Sales Drawer History tab** uses. Each entry includes `by_user.full_name` and `payload` (event-specific data — e.g. `{ from, reason, notes }` for `lead_rejected`).
+
+---
 
 ### `GET /api/activity`
 

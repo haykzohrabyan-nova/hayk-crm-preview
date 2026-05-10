@@ -282,12 +282,14 @@ export interface JobTicket {
 export type ActivityType =
   | 'lead_verified'
   | 'lead_manual_created'
+  | 'lead_edited'           // tracked field changes (no status change)
   | 'lead_status_changed'
   | 'lead_routed_to_sales'
-  | 'lead_rejected'
+  | 'lead_rejected'         // payload: { from, reason, notes }
   | 'lead_held'
   | 'lead_resumed'
   | 'lead_merged'
+  | 'lead_sales_claimed'    // Sales rep claims an unclaimed routed lead
   | 'contact_edited'
   | 'call_logged'
   | 'email_opened'
@@ -330,7 +332,7 @@ export type NotificationType =
   | 'lead_held_reminder'
   | 'system'
 
-export interface Notification {
+export interface AppNotification {
   id: string
   user_id: string
   type: NotificationType
