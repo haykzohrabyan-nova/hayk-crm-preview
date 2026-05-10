@@ -15,10 +15,11 @@ export async function POST(
 
   const admin = createAdminClient();
 
-  // Fetch current lead (need locked_by_id + customer_id for activity log)
+  // Fetch current lead — join locked_by profile so we get the current owner's name
+  // in the same round trip (requires migration 032: locked_by_id FK → public.user_profiles)
   const { data: lead, error: fetchErr } = await admin
     .from("leads")
-    .select("locked_by_id, customer_id")
+    .select("locked_by_id, customer_id, locked_by:user_profiles!leads_locked_by_id_fkey(full_name)")
     .eq("id", id)
     .single();
 
@@ -26,15 +27,18 @@ export async function POST(
     return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  // Resolve display names for the activity payload
-  const [currentLocker, newUser] = await Promise.all([
-    lead.locked_by_id
-      ? admin.from("user_profiles").select("full_name").eq("id", lead.locked_by_id).single().then((r) => r.data)
-      : Promise.resolve(null),
-    newUserId
-      ? admin.from("user_profiles").select("full_name").eq("id", newUserId).single().then((r) => r.data)
-      : Promise.resolve(null),
-  ]);
+  const currentLockerName = (lead.locked_by as { full_name?: string | null } | null)?.full_name ?? null;
+
+  // Fetch new user's display name (only when assigning, not unassigning)
+  let newUserName: string | null = null;
+  if (newUserId) {
+    const { data: newUser } = await admin
+      .from("user_profiles")
+      .select("full_name")
+      .eq("id", newUserId)
+      .single();
+    newUserName = newUser?.full_name ?? null;
+  }
 
   // Apply the reassignment or unassignment
   const update = newUserId
@@ -45,7 +49,7 @@ export async function POST(
     .from("leads")
     .update(update)
     .eq("id", id)
-    .select("*, customer:customers(*)")
+    .select("*, customer:customers(*), locked_by:user_profiles!leads_locked_by_id_fkey(id,full_name)")
     .single();
 
   if (updateErr) {
@@ -60,9 +64,9 @@ export async function POST(
     by_user_id: userId,
     payload: {
       from_user_id: lead.locked_by_id ?? null,
-      from_name: (currentLocker as { full_name?: string | null } | null)?.full_name ?? null,
+      from_name: currentLockerName,
       to_user_id: newUserId,
-      to_name: (newUser as { full_name?: string | null } | null)?.full_name ?? null,
+      to_name: newUserName,
     },
   });
 

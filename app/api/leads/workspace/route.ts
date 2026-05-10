@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from("leads")
     .select(
-      "*, customer:customers(*), sales_owner:user_profiles!leads_sales_owner_id_fkey(id,full_name)"
+      "*, customer:customers(*), sales_owner:user_profiles!leads_sales_owner_id_fkey(id,full_name), locked_by:user_profiles!leads_locked_by_id_fkey(id,full_name)"
     )
     .eq("is_inbox", false)
     .order("updated_at", { ascending: false });
