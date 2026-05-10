@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -158,6 +158,29 @@ export function SalesPage() {
     window.addEventListener("bazaar:refresh-counts", fetchTabCounts);
     return () => window.removeEventListener("bazaar:refresh-counts", fetchTabCounts);
   }, []);
+
+  // Realtime-driven table refresh — triggered by sidebar's leads subscription.
+  // If the sales drawer is open (user is actively working a lead), the refresh is
+  // deferred until the drawer closes to avoid interrupting their session.
+  const pendingLeadsRefresh = useRef(false);
+
+  useEffect(() => {
+    function onLeadsChanged() {
+      if (drawerLead) {
+        // Drawer is open — defer refresh until it closes
+        pendingLeadsRefresh.current = true;
+      } else {
+        // Silent re-fetch: update table without showing the loading skeleton
+        fetch("/api/leads/workspace?status=Routed+to+Sales")
+          .then((r) => r.json())
+          .then((d) => { setRoutedLeads(d.leads ?? []); })
+          .catch(() => {});
+        fetchTabCounts();
+      }
+    }
+    window.addEventListener("bazaar:leads-changed", onLeadsChanged);
+    return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
+  }, [drawerLead]);
 
   function showToast(message: string, type: "success" | "error" = "success") {
     setToast({ message, type });
@@ -729,7 +752,17 @@ export function SalesPage() {
           readOnly={drawerReadOnly}
           lockedByName={drawerLockedBy}
           currentUserId={userId}
-          onClose={() => { setDrawerLead(null); setDrawerReadOnly(false); setDrawerLockedBy(null); }}
+          onClose={() => {
+            setDrawerLead(null);
+            setDrawerReadOnly(false);
+            setDrawerLockedBy(null);
+            // Flush any Realtime-triggered refresh that was deferred while drawer was open
+            if (pendingLeadsRefresh.current) {
+              pendingLeadsRefresh.current = false;
+              fetchRoutedLeads();
+              fetchTabCounts();
+            }
+          }}
           onLeadUpdated={handleLeadUpdated}
           onLeadRemoved={handleLeadRemoved}
           showToast={showToast}

@@ -783,6 +783,35 @@ export function LeadsPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
+  // Realtime-driven silent table refresh.
+  // When the sidebar's leads subscription detects any change, this fires and
+  // silently re-fetches the current tab's data without showing the loading skeleton.
+  // If a drawer is open, we skip the refresh to avoid interrupting the user.
+  useEffect(() => {
+    function onLeadsChanged() {
+      if (drawerLead) return;
+      const tabConf = TAB_CONFIG.find((t) => t.id === activeTab);
+      if (!tabConf) return;
+      const params = new URLSearchParams();
+      if (tabConf.status) params.set("status", tabConf.status);
+      if (tabConf.scope) params.set("scope", tabConf.scope);
+      if (search) params.set("search", search);
+      fetch(`/api/leads/workspace?${params}`)
+        .then((r) => r.json())
+        .then((d) => {
+          let fetched: Lead[] = d.leads ?? [];
+          if (activeTab === "all" && tabConf.statuses) {
+            fetched = fetched.filter((l) => tabConf.statuses!.includes(l.status));
+          }
+          setLeads(fetched);
+        })
+        .catch(() => {});
+      fetchCounts();
+    }
+    window.addEventListener("bazaar:leads-changed", onLeadsChanged);
+    return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
+  }, [drawerLead, activeTab, search]);
+
   // Tabs
   const TABS: { id: Tab; label: string }[] = [
     { id: "all", label: "All Leads" },

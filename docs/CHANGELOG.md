@@ -3,6 +3,27 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-10] — Realtime live updates + sidebar badges + admin activity log
+
+### Added
+- `supabase/migrations/035_enable_leads_realtime.sql` — enables Supabase Realtime on the `leads` table (`REPLICA IDENTITY FULL` + publication)
+- `supabase/migrations/036_enable_activities_realtime.sql` — enables Supabase Realtime on the `activities` table so the admin activity log updates live
+- `app/api/admin/activity-log/route.ts` — paginated admin-only activity log API reading from the `activities` table, enriched with user name, role, and customer name
+- `components/admin/activity-log-section.tsx` — client component rendering the activity log table (who, action, lead/customer, when) with mobile card layout, load-more pagination, and live Realtime updates via `bazaar:activities-changed`
+- `docs/realtime-live-updates.md` — comprehensive pattern guide for adding Supabase Realtime to any future entity (orders, tickets, etc.), including architecture diagram, layer-by-layer code examples, and a copy-paste checklist
+
+### Changed
+- `components/sidebar.tsx` — replaced `setInterval(60s)` polling with two Supabase Realtime subscriptions: `leads` table (badge counts + `bazaar:leads-changed`) and `activities` table (`bazaar:activities-changed`)
+- `app/api/sidebar-counts/route.ts` — uncommented sidebar badge count queries (SDR: pending leads count on `/leads`; Sales: unclaimed + active deals on `/sales`; Admin: same combined view)
+- `components/sales-page.tsx` — added `bazaar:leads-changed` listener with drawer-aware deferral: silent table re-fetch when drawer is closed, deferred until drawer closes when open
+- `components/leads-page.tsx` — added `bazaar:leads-changed` listener for silent background table re-fetch (skipped when drawer is open)
+- `app/(app)/admin/settings/[tab]/page.tsx` — replaced "Broadcast Notifications" spec preview with the real `<ActivityLogSection />` component
+- `docs/Notification/Notification.md` — updated to reflect V1 implementation (sidebar badges + Realtime, not bell system)
+- `docs/feature-specs/notifications.md` — updated to reflect V1 scope and future V2 plan
+
+### Removed
+- `docs/FuturePlan/Notification/Notification.md` — deleted (exact duplicate of `docs/Notification/Notification.md`)
+
 ## [2026-05-09] — Enhance Dashboard with live statistics
 
 ### Added

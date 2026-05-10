@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { UsersSection } from "@/components/admin/users-section";
 import { RolesSection } from "@/components/admin/roles-section";
+import { ActivityLogSection } from "@/components/admin/activity-log-section";
 import {
   SpecSection,
   SpecCard,
@@ -108,41 +109,7 @@ export default async function AdminSettingsTabPage({
       );
 
     case "notifications":
-      return (
-        <TabSpecWrapper title="Broadcast Notifications">
-          <SpecSection title="What this will do">
-            <SpecNote>
-              Admin can send a system notification to all users or to a specific role.
-              Creates rows in the <strong>notifications</strong> table for all matching active users.
-              Online users see it appear immediately via Supabase Realtime.
-            </SpecNote>
-          </SpecSection>
-          <SpecSection title="Broadcast form">
-            <SpecCard
-              items={[
-                { label: "Title", value: "Required — short heading shown in the notification bell" },
-                { label: "Message", value: "Required — detail text shown in the feed" },
-                { label: "Send to", value: "All users / SDR / Sales (dropdown of all active roles)" },
-              ]}
-            />
-          </SpecSection>
-          <SpecSection title="Recent broadcasts table">
-            <SpecCard
-              items={[
-                { label: "Columns", value: "Sent (relative time) · Title · Sent to (role or All) · Recipients (count)" },
-                { label: "Shows", value: "Last 10 system broadcasts" },
-              ]}
-            />
-          </SpecSection>
-          <SpecSection title="API">
-            <SpecCard
-              items={[
-                { label: "Send", value: "POST /api/admin/notifications/broadcast — fetches matching active users, bulk-inserts into notifications table" },
-              ]}
-            />
-          </SpecSection>
-        </TabSpecWrapper>
-      );
+      return <ActivityLogSection />;
 
     case "audit-log":
       return (

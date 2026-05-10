@@ -1,153 +1,87 @@
-# Feature Spec — Notifications
+# Feature Spec — Notifications (V1)
 
-Component: `NotificationBell` in sidebar | Backend: `notifications` table + Supabase Realtime
+Component: Sidebar badge counts | Backend: Supabase Realtime on `leads` table + `activities` table
 
 ---
 
 ## Overview
 
-In-app notifications alert users to important events: a lead routed to them, a follow-up due, a quote approval requested. Notifications appear in a bell icon in the sidebar with an unread count badge. Clicking the bell opens a dropdown feed.
+BazaarPrinting CRM V1 uses sidebar nav badge counts as the notification system. When any lead changes, the badge next to "Leads" or "Sales Pipeline" updates instantly — no manual refresh needed. Admins have a dedicated Activity Log showing all system events.
 
 ---
 
-## Notification Bell (Sidebar)
+## Sidebar Badges
 
-- Position: Bottom cluster of sidebar, above Settings and Sign Out
-- **Unread badge:** Red pill with count (capped at "99+")
-- **Click:** Opens popover/dropdown anchored to the bell icon
-- **Realtime:** The unread count updates live via a Supabase Realtime subscription to `notifications` filtered by `user_id = current_user` — no polling needed
-
----
-
-## Notification Feed (Popover)
-
-### Header
-
-"Notifications" title + **Mark all read** button (visible only if unread notifications exist)
-
-### Notification Row
-
-Each row shows:
-- **Icon** — based on `notification.type`
-- **Title** — `notification.title`
-- **Body** — `notification.body` (truncated at 2 lines)
-- **Time** — relative (e.g. "5 minutes ago")
-- **Unread indicator** — subtle colored left border on unread rows
-
-### Interaction
-
-- Clicking a notification row:
-  1. Marks it as read (`PATCH /api/notifications/[id]/read`)
-  2. Navigates to the relevant page/entity (using `notification.payload.href` if present)
-- **Mark all read** → `POST /api/notifications/read-all`
-- Notifications are never deleted from the feed — just marked read
-
-### Load More
-
-Initial load: 20 most recent. A "Load more" button fetches the next 20 (offset pagination).
+- **Leads badge** (SDR + Admin): count of leads with `status IN ('Pending', 'Validated')` waiting to be worked
+- **Sales badge** (Sales + Admin): unclaimed routed leads + active in-progress deals
+- Updates in real-time via Supabase Realtime — no polling, no 60-second delays
+- Single Supabase channel in `sidebar.tsx` serves all badge + page refresh needs
 
 ---
 
-## Notification Types
+## Live Table Refresh
 
-### `lead_routed`
+When a lead changes, all pages auto-update silently:
 
-**Trigger:** `POST /api/leads/verify` when `status = 'Routed to Sales'`
-**Recipients:** All users with `role = 'sales'` who are `is_active = true`
-**Title:** "New lead routed to Sales"
-**Body:** "[First Last] from [Company] — [Quote Channel], $[quote_total]"
-**Payload:** `{ leadId, contactId, href: '/sales' }`
+- **Sales Pipeline** — table re-fetches in background; if a drawer is open, refresh defers until drawer closes
+- **Leads Workspace** — table re-fetches silently; skipped if drawer is open
 
----
-
-### `follow_up_due`
-
-**Trigger:** A scheduled job checks `job_tickets.follow_up_at <= now()` for tickets where `follow_up_completed = false`
-**Recipients:** `job_tickets.created_by_id`
-**Title:** "Follow-up due"
-**Body:** "[Contact name] — Quote #[id]"
-**Payload:** `{ ticketId, contactId, href: '/tickets' }`
-
-**Note:** This requires a cron job or Supabase scheduled function. In v1, implement as a simple check: when any user loads the page, the backend checks for overdue follow-ups and creates notifications lazily. Proper scheduled job is a v2 concern.
+No loading skeleton appears during Realtime-triggered refreshes — data swaps in place.
 
 ---
 
-### `quote_approval_requested`
+## Admin Activity Log
 
-**Trigger:** `PATCH /api/tickets/[id]` when `quote_approval_last_requested_at` is set
-**Recipients:** `job_tickets.created_by_id` (remind the creator to follow up)
-**Title:** "Quote approval follow-up sent"
-**Body:** "[Contact name] has been sent an approval request"
-**Payload:** `{ ticketId, href: '/tickets' }`
+Location: `/admin/settings/notifications` (accessible to Admin role only)
 
----
+Shows all system activity from the existing `activities` table:
 
-### `lead_assigned` (Future — v2)
+| Column | What it shows |
+|--------|---------------|
+| Who | User name + role badge |
+| Action | Human-readable label (e.g. "Routed lead to Sales") |
+| Lead / Customer | Contact name if present |
+| When | Relative time (hover for absolute) |
 
-**Trigger:** Admin assigns a lead to an SDR
-**Recipients:** The assigned SDR
-**Title:** "Lead assigned to you"
-**Body:** "[First Last] from [Company]"
-**Payload:** `{ leadId, href: '/leads' }`
+Paginated, 50 events per page. No delete — read-only history.
 
----
-
-### `lead_held_reminder`
-
-**Trigger:** `leads.hold_until <= now()` and lead is still `status = 'On Hold'`
-**Recipients:** `leads.sdr_id` or `leads.sales_owner_id`
-**Title:** "Hold period ended"
-**Body:** "[Contact name] — hold has expired"
-**Payload:** `{ leadId, href: '/leads' }` or `/sales`
-
-**Note:** Same lazy-check pattern as `follow_up_due` in v1.
+**API:** `GET /api/admin/activity-log?limit=50&offset=0`
 
 ---
 
-### `system`
+## Notification Types (Activity Log Labels)
 
-**Trigger:** Admin broadcasts a message via `/admin/settings`
-**Recipients:** All active users or targeted role
-**Title:** Admin-defined
-**Body:** Admin-defined
-**Payload:** Optional `href`
-
----
-
-## Server-side Creation
-
-Notifications are inserted via the **admin Supabase client** (service role) from Route Handlers. Never inserted from client components.
-
-```typescript
-// lib/services/notifications.ts
-export async function createNotification(params: {
-  user_id: string
-  type: NotificationType
-  title: string
-  body?: string
-  payload?: Record<string, unknown>
-}): Promise<void>
-```
+| `activities.type` | Displayed as |
+|---|---|
+| `lead_routed_to_sales` | Routed lead to Sales |
+| `lead_sales_claimed` | Claimed lead |
+| `lead_rejected` | Rejected lead |
+| `lead_held` | Put lead on hold |
+| `lead_resumed` | Resumed lead |
+| `lead_reassigned` | Reassigned lead |
+| `lead_edited` | Edited lead |
+| `lead_manual_created` | Created lead manually |
+| `lead_status_changed` | Changed lead status |
+| `customer_merged` | Merged customer records |
 
 ---
 
-## Supabase Realtime Setup
+## What is V2 / Future
 
-In `app/(app)/layout.tsx` (or a dedicated client component), subscribe to the `notifications` table filtered to the current user:
+- Bell icon in sidebar with unread count badge
+- Per-user notification feed (popover + `/notifications` history page)
+- Admin broadcast notifications
+- `lead_assigned` type (Admin assigns inbox lead directly to SDR)
+- `follow_up_due` lazy check
+- `lead_held_reminder` lazy check
 
-```typescript
-supabase
-  .channel('notifications')
-  .on('postgres_changes', {
-    event: 'INSERT',
-    schema: 'public',
-    table: 'notifications',
-    filter: `user_id=eq.${userId}`,
-  }, (payload) => {
-    // Increment unread count in local state
-    incrementUnreadCount()
-  })
-  .subscribe()
-```
+The `notifications` table already exists in the DB — fully ready for V2 without any schema changes.
 
-This requires Supabase Realtime to be enabled on the `notifications` table in the Supabase dashboard.
+---
+
+## Technical notes
+
+- Realtime requires the `leads` table to have `REPLICA IDENTITY FULL` and be added to the `supabase_realtime` publication — handled by migration `035_enable_leads_realtime.sql`
+- Also enable Realtime toggle in Supabase dashboard for the `leads` table
+- All activity is inserted via the admin Supabase client from Route Handlers — never from client components
+- See `docs/realtime-live-updates.md` for the full pattern guide and checklist for adding Realtime to future entities

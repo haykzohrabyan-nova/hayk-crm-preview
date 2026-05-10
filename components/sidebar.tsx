@@ -199,7 +199,10 @@ export function Sidebar() {
     loadNav();
   }, []);
 
-  // Fetch sidebar badge counts and refresh every 60 seconds
+  // Fetch sidebar badge counts — initial load + Realtime-driven refresh.
+  // A Supabase Realtime subscription watches the leads table for any change
+  // (INSERT / UPDATE / DELETE) and calls fetchBadges() immediately.
+  // No polling — counts update the instant a lead changes in the DB.
   useEffect(() => {
     function fetchBadges() {
       fetch("/api/sidebar-counts")
@@ -207,13 +210,43 @@ export function Sidebar() {
         .then((d) => { if (d.counts) setBadgeCounts(d.counts); })
         .catch(() => {});
     }
+
     fetchBadges();
-    const interval = setInterval(fetchBadges, 60_000);
-    // Also refresh immediately when any page action fires this event
+
+    // Also refresh immediately when any in-page action fires this event
     window.addEventListener("bazaar:refresh-counts", fetchBadges);
+
+    // Realtime: any change to the leads table triggers an instant badge refresh
+    // AND signals pages (sales, leads) to silently re-fetch their table data.
+    const supabase = createClient();
+    const leadsChannel = supabase
+      .channel("leads-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "leads" },
+        () => {
+          fetchBadges();
+          window.dispatchEvent(new Event("bazaar:leads-changed"));
+        }
+      )
+      .subscribe();
+
+    // Realtime: any new activity row signals the admin activity log to refresh.
+    const activitiesChannel = supabase
+      .channel("activities-realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "activities" },
+        () => {
+          window.dispatchEvent(new Event("bazaar:activities-changed"));
+        }
+      )
+      .subscribe();
+
     return () => {
-      clearInterval(interval);
       window.removeEventListener("bazaar:refresh-counts", fetchBadges);
+      supabase.removeChannel(leadsChannel);
+      supabase.removeChannel(activitiesChannel);
     };
   }, []);
 
