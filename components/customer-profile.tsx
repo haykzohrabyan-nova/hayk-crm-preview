@@ -443,7 +443,7 @@ function MergeModal({
                 onClick={handleMerge}
                 disabled={merging}
                 className="rounded-[6px] px-4 py-1.5 text-[13px] font-medium disabled:opacity-50"
-                style={{ background: "var(--color-danger)", color: "#ffffff" }}
+                style={{ background: "var(--color-danger)", color: "var(--color-text-inverse)" }}
               >
                 {merging ? "Merging…" : "Merge & Delete This Record"}
               </button>

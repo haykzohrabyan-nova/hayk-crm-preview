@@ -110,7 +110,7 @@ export default function ChangePasswordPage() {
           </div>
 
           {error && (
-            <p className="text-[13px]" style={{ color: "#DC2626" }}>
+            <p className="text-[13px]" style={{ color: "var(--color-danger)" }}>
               {error}
             </p>
           )}

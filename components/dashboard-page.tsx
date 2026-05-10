@@ -243,7 +243,7 @@ function TeamSection() {
                 <span
                   className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full"
                   style={{
-                    background: online ? "#16A34A" : "var(--color-border)",
+                    background: online ? "var(--color-success)" : "var(--color-border)",
                     outline: "2px solid var(--color-surface)",
                   }}
                 />

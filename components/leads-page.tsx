@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Search, RefreshCw, X, User, Clock } from "lucide-react";
+import { Plus, Search, RefreshCw, X, User, Clock, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -599,6 +599,35 @@ export function LeadsPage() {
   const [reassignUserId, setReassignUserId] = useState<string>("unassign");
   const [reassigning, setReassigning] = useState(false);
 
+  // Owner filter (SDR users only): "all" = unclaimed + mine, "mine" = only my leads
+  const [ownerFilter, setOwnerFilter] = useState<"all" | "mine">("all");
+
+  // Sort — field + direction
+  type SortField = "created" | "urgency";
+  type SortDir   = "asc" | "desc";
+  const [sortField, setSortField] = useState<SortField>("created");
+  const [sortDir,   setSortDir]   = useState<SortDir>("desc"); // newest first by default
+
+  function toggleSort(field: SortField) {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      // sensible defaults: created → desc (newest), urgency → asc (High first)
+      setSortDir(field === "urgency" ? "asc" : "desc");
+    }
+  }
+
+  // Mobile cycling: newest → oldest → urgency high → (repeat)
+  function cycleMobileSort() {
+    if (sortField === "created" && sortDir === "desc") { setSortField("created"); setSortDir("asc"); }
+    else if (sortField === "created" && sortDir === "asc") { setSortField("urgency"); setSortDir("asc"); }
+    else { setSortField("created"); setSortDir("desc"); }
+  }
+  const mobileSortLabel =
+    sortField === "urgency" ? "Urgency: High first" :
+    sortDir === "asc"       ? "Oldest first"        : "Newest first";
+
   // Fetch current user id + role
   useEffect(() => {
     const supabase = createClient();
@@ -759,8 +788,8 @@ export function LeadsPage() {
     { id: "rejected", label: "Rejected" },
   ];
 
-  // Filtered leads (client-side search for non-API-filtered cases)
-  const filtered = search
+  // Filtered leads (client-side search + owner filter)
+  const searchFiltered = search
     ? leads.filter((l) => {
         const q = search.toLowerCase();
         const c = l.customer;
@@ -773,6 +802,28 @@ export function LeadsPage() {
         );
       })
     : leads;
+
+  // "My Leads" filter — SDR only, applied on All Leads tab only
+  const ownerFiltered =
+    activeTab === "all" && !isAdmin && ownerFilter === "mine"
+      ? searchFiltered.filter((l) => l.locked_by_id === userId)
+      : searchFiltered;
+
+  // Client-side sort
+  const URGENCY_ORDER: Record<string, number> = { High: 1, Medium: 2, Low: 3 };
+  const filtered = [...ownerFiltered].sort((a, b) => {
+    if (sortField === "urgency") {
+      const ua = URGENCY_ORDER[a.urgency ?? ""] ?? 4;
+      const ub = URGENCY_ORDER[b.urgency ?? ""] ?? 4;
+      const primary = sortDir === "asc" ? ua - ub : ub - ua;
+      if (primary !== 0) return primary;
+      // tie-break: newest first
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
+    // created
+    const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    return sortDir === "asc" ? diff : -diff;
+  });
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -823,8 +874,8 @@ export function LeadsPage() {
         ))}
       </div>
 
-      {/* Search + Refresh */}
-      <div className="flex items-center gap-2">
+      {/* Search + Owner filter + Refresh */}
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1" style={{ maxWidth: 320 }}>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -834,6 +885,30 @@ export function LeadsPage() {
             className="pl-8 h-8 text-sm"
           />
         </div>
+
+        {/* My Leads / All Leads toggle — SDR only, All Leads tab only */}
+        {activeTab === "all" && !isAdmin && (
+          <div
+            className="flex rounded-[6px] overflow-hidden border text-[12px] font-medium"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            {(["all", "mine"] as const).map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setOwnerFilter(opt)}
+                className="px-3 h-8 transition-colors"
+                style={{
+                  background: ownerFilter === opt ? "var(--color-tab-active)" : "var(--color-surface)",
+                  color: ownerFilter === opt ? "var(--color-text-inverse)" : "var(--color-text-muted)",
+                  borderRight: opt === "all" ? "1px solid var(--color-border)" : undefined,
+                }}
+              >
+                {opt === "all" ? "All Leads" : "My Leads"}
+              </button>
+            ))}
+          </div>
+        )}
+
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchLeads} title="Refresh">
           <RefreshCw className="h-4 w-4" />
         </Button>
@@ -847,19 +922,38 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Source", "Phone", "Urgency", "Status", "Created", ...(isAdmin ? ["Working"] : []), "Action"].map((h) => (
-                    <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em] whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
-                      {h}
-                    </th>
-                  ))}
+                  {(["Name", "Company", "Source", "Phone", "Urgency", "Status", "Owner", "Created", "Action"] as const).map((h) => {
+                    const isSortable = h === "Urgency" || h === "Created";
+                    const field: SortField = h === "Urgency" ? "urgency" : "created";
+                    const isActive = isSortable && sortField === field;
+                    return (
+                      <th
+                        key={h}
+                        className={`px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em] whitespace-nowrap${isSortable ? " cursor-pointer select-none" : ""}`}
+                        style={{ color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)" }}
+                        onClick={isSortable ? () => toggleSort(field) : undefined}
+                      >
+                        <span className="inline-flex items-center gap-0.5">
+                          {h}
+                          {isSortable && (
+                            isActive
+                              ? sortDir === "asc"
+                                ? <ChevronUp className="h-3 w-3" />
+                                : <ChevronDown className="h-3 w-3" />
+                              : <ArrowUpDown className="h-3 w-3 opacity-30" />
+                          )}
+                        </span>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={8} />
+                  <TableSkeleton cols={9} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads found.
                     </td>
                   </tr>
@@ -888,29 +982,31 @@ export function LeadsPage() {
                         {lead.customer?.phone ? formatPhone(lead.customer.phone) : "—"}
                       </td>
                       <td className="px-3 py-2.5">
-                        {true && (
-                          <UrgencyPill urgency={lead.urgency} />
-                        )}
+                        <UrgencyPill urgency={lead.urgency} />
                       </td>
                       <td className="px-3 py-2.5"><StatusPill status={lead.status} /></td>
+                      {/* Owner column — visible to all roles */}
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                        {lead.locked_by_id ? (
+                          lead.locked_by_id === userId ? (
+                            <span className="italic" style={{ color: "var(--color-text-muted)" }}>You</span>
+                          ) : (
+                            <span style={{ color: "var(--color-text-primary)" }}>
+                              {(lead.locked_by as { full_name?: string | null } | undefined)?.full_name ?? "—"}
+                            </span>
+                          )
+                        ) : (
+                          <span
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                            style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}
+                          >
+                            Unclaimed
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {relativeTime(lead.created_at)}
                       </td>
-                      {isAdmin && (
-                        <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                          {lead.locked_by_id ? (
-                            lead.locked_by_id === userId ? (
-                              <span className="italic" style={{ color: "var(--color-text-muted)" }}>You</span>
-                            ) : (
-                              <span style={{ color: "var(--color-text-primary)" }}>
-                                {(lead.locked_by as { full_name?: string | null } | undefined)?.full_name ?? "—"}
-                              </span>
-                            )
-                          ) : (
-                            <span style={{ color: "var(--color-text-muted)" }}>—</span>
-                          )}
-                        </td>
-                      )}
                       <td className="px-3 py-2.5">
                         {isAdmin ? (
                           <div className="flex items-center gap-1.5">
@@ -931,13 +1027,21 @@ export function LeadsPage() {
                               </button>
                             )}
                           </div>
+                        ) : lead.locked_by_id === userId ? (
+                          <button
+                            onClick={() => handleWorkLead(lead)}
+                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                            style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                          >
+                            View
+                          </button>
                         ) : (
                           <button
                             onClick={() => handleWorkLead(lead)}
                             className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
                             style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                           >
-                            Verify
+                            Claim
                           </button>
                         )}
                       </td>
@@ -946,6 +1050,22 @@ export function LeadsPage() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Mobile sort pill */}
+          <div className="flex items-center justify-end sm:hidden">
+            <button
+              onClick={cycleMobileSort}
+              className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors"
+              style={{
+                borderColor: "var(--color-border)",
+                background: "var(--color-surface)",
+                color: "var(--color-text-muted)",
+              }}
+            >
+              <ArrowUpDown className="h-3 w-3" />
+              {mobileSortLabel}
+            </button>
           </div>
 
           {/* Mobile cards */}
@@ -982,16 +1102,23 @@ export function LeadsPage() {
                     )}
                     <div className="flex justify-between"><span>Source</span><span className="normal-case tracking-normal">{lead.source || "—"}</span></div>
                     <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{relativeTime(lead.created_at)}</span></div>
-                    {isAdmin && lead.locked_by_id && (
-                      <div className="flex justify-between">
-                        <span>Working</span>
+                    <div className="flex justify-between items-center">
+                      <span>Owner</span>
+                      {lead.locked_by_id ? (
                         <span className="normal-case tracking-normal" style={{ color: "var(--color-text-primary)" }}>
                           {lead.locked_by_id === userId
                             ? "You"
                             : (lead.locked_by as { full_name?: string | null } | undefined)?.full_name ?? "—"}
                         </span>
-                      </div>
-                    )}
+                      ) : (
+                        <span
+                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal"
+                          style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}
+                        >
+                          Unclaimed
+                        </span>
+                      )}
+                    </div>
                   </div>
                   {isAdmin ? (
                     <div className="flex gap-2">
@@ -1012,13 +1139,21 @@ export function LeadsPage() {
                         </button>
                       )}
                     </div>
+                  ) : lead.locked_by_id === userId ? (
+                    <button
+                      onClick={() => handleWorkLead(lead)}
+                      className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                    >
+                      View
+                    </button>
                   ) : (
                     <button
                       onClick={() => handleWorkLead(lead)}
                       className="w-full rounded-[6px] py-1.5 text-[13px] font-medium"
                       style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                     >
-                      Verify
+                      Claim
                     </button>
                   )}
                 </div>

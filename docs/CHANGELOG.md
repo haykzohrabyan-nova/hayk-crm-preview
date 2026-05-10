@@ -3,6 +3,20 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Sortable columns + close drawer on save
+
+### Changed
+- `components/leads-page.tsx` — **Urgency** and **Created** column headers on the All Leads desktop table are now clickable sort toggles; active column shows `↑`/`↓` arrow, inactive columns show a faint `⇅` hint
+- `components/leads-page.tsx` — Mobile All Leads view gains a **cycling sort pill** (tap to cycle: Newest first → Oldest first → Urgency: High first); no extra dropdowns or selects
+- `components/verify-drawer.tsx` — Drawer now closes automatically after **Save** (same behaviour as Validate, Route, Reject, and Hold)
+- `components/leads-page.tsx` — SDR action button on All Leads renamed **Claim** for unclaimed leads and **View** for already-claimed leads; visually distinct styles (filled vs outlined) reinforce the difference
+
+## [2026-05-09] — Owner column + My Leads filter on All Leads tab
+
+### Changed
+- `components/leads-page.tsx` — All Leads table now shows an **Owner** column (visible to all roles) that displays the assigned SDR's name, "You" for the current user's own leads, or an "Unclaimed" badge for unowned leads; replaces the previous admin-only "Working" column
+- `components/leads-page.tsx` — Added **My Leads / All Leads** segmented toggle on the All Leads tab; visible to SDR users only; filters client-side to show only the SDR's own claimed leads when "My Leads" is selected
+
 ## [2026-05-09] — Directed to Sales tab: info-only redesign + admin scope fix
 
 ### Changed

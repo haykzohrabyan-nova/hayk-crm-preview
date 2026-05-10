@@ -249,7 +249,7 @@ export function MobileNav() {
                     className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 text-[10px] font-bold"
                     style={{
                       background: active ? "rgba(0,0,0,0.2)" : "var(--color-danger)",
-                      color: "#fff",
+                      color: "var(--color-text-inverse)",
                     }}
                   >
                     {badge > 99 ? "99+" : badge}

@@ -214,6 +214,7 @@ export function VerifyDrawer({
     setLead(updated);
     onLeadUpdated(updated);
     showToast("Lead saved.");
+    onClose();
   }
 
   // ── Action flow with optional customer update prompt ──────────────────────

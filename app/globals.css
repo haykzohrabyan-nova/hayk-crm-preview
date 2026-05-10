@@ -18,6 +18,7 @@
   /* Text */
   --color-text-primary: #333333;
   --color-text-muted: #888888;
+  --color-text-inverse: #FFFFFF;
 
   /* Borders */
   --color-border: #E5E7EB;
@@ -83,6 +84,7 @@
   /* Text */
   --color-text-primary: #F4F4F5;
   --color-text-muted: #71717A;
+  --color-text-inverse: #FFFFFF;
 
   /* Borders */
   --color-border: #3F3F46;
