@@ -50,9 +50,10 @@ Tab count reflects the filtered list — only leads the current SDR can work (un
 
 ## Tab: On Hold
 
-**Data:** `GET /api/leads/workspace?status=On Hold`
+**Data:** `GET /api/leads/workspace?status=On Hold&scope=mine`
 
-Leads where `status = 'On Hold'` (SDR-initiated holds). Shows the SDR's own held leads.
+- **SDR:** only their own held leads (`sdr_id = currentUserId`)
+- **Admin:** all held leads across every SDR (scope filter is skipped server-side)
 
 ### Table Columns
 
@@ -61,9 +62,8 @@ Leads where `status = 'On Hold'` (SDR-initiated holds). Shows the SDR's own held
 | Name | |
 | Company | |
 | Hold Reason | |
-| Held By | User display name |
 | Hold Until | Formatted date (or "—" if indefinite) |
-| Held At | Relative time |
+| Held | Relative time (`held_at`) |
 | Actions | **Resume** button, **View** button |
 
 ### Behaviors
@@ -76,7 +76,10 @@ Leads where `status = 'On Hold'` (SDR-initiated holds). Shows the SDR's own held
 
 ## Tab: Directed to Sales
 
-**Data:** `GET /api/leads/workspace?status=Routed to Sales&scope=mine` — leads the current SDR routed (`sdr_id = currentUserId`).
+**Data:** `GET /api/leads/workspace?status=Routed to Sales&scope=mine`
+
+- **SDR:** only leads they personally routed (`sdr_id = currentUserId`) — they cannot see other SDRs' routed leads
+- **Admin:** all routed leads across every SDR (scope filter is skipped server-side)
 
 This is a **status-tracking view only**. The SDR's job is done once they route a lead. This tab lets them see what happened to their leads after handoff — no actions, no drawer.
 
@@ -111,7 +114,10 @@ This is a **status-tracking view only**. The SDR's job is done once they route a
 
 ## Tab: Rejected
 
-**Data:** `GET /api/leads/workspace?status=Rejected`
+**Data:** `GET /api/leads/workspace?status=Rejected&scope=mine`
+
+- **SDR:** only their own rejected leads (`sdr_id = currentUserId`)
+- **Admin:** all rejected leads across every SDR (scope filter is skipped server-side)
 
 ### Table Columns
 

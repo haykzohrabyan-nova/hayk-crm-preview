@@ -3,6 +3,16 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Directed to Sales tab: info-only redesign + admin scope fix
+
+### Changed
+- `components/leads-page.tsx` — Directed to Sales tab is now a status-tracking view with no action buttons or drawer; added **Phone** and **Sales Rep** columns; "Unclaimed" pill shown when `sales_status` is null
+- `app/api/leads/workspace/route.ts` — admin users now skip the `scope=mine` (`sdr_id`) filter so they see all leads on On Hold / Directed to Sales / Rejected tabs (previously admin saw an empty list on these tabs); also restored the `locked_by` join that was temporarily removed pending migration 032
+- `app/api/leads/workspace/counts/route.ts` — admin users now get full counts on scoped tabs (Hold / Routed / Rejected) instead of zero
+- `app/api/leads/[id]/reassign/route.ts` — update select now includes `locked_by` join so the Working column in the All Leads table shows the correct new SDR name immediately after reassignment (no page refresh needed)
+
+---
+
 ## [2026-05-09] — Docs update: Sales Pipeline spec aligned to code
 
 ### Changed
