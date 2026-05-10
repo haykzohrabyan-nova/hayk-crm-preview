@@ -12,30 +12,13 @@ All endpoints are Next.js 16 Route Handlers under `app/api/`. Every handler uses
 
 ## Leads
 
-### `GET /api/leads/inbox`
-
-Returns all leads where `is_inbox = true`. SDR sees all; Admin sees all. Sales cannot access this route (returns `403`).
-
-**Query params:**
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `assigned_to` | `uuid` | Filter by `assigned_sdr_id` (future) |
-| `source` | `string` | Filter by `source` |
-| `search` | `string` | Searches `first_name`, `last_name`, `email`, `company` |
-
-**Response `200`:**
-```json
-{
-  "leads": [Lead]
-}
-```
-
----
-
 ### `GET /api/leads/workspace`
 
-Returns all leads where `is_inbox = false`. SDR and Admin see all workspace leads. Sales sees only leads where `status = 'Routed to Sales'` or `sales_owner_id = current_user`.
+Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server-side**:
+- **SDR (no `status` param):** only leads where `locked_by_id IS NULL OR locked_by_id = currentUserId` — SDRs never see leads being worked by another SDR
+- **SDR (with `status` param):** scoped to their own leads (`sdr_id = currentUserId`), used for Hold / Rejected / Directed-to-Sales tabs
+- **Admin:** all leads, no lock filter — also returns a `locked_by` profile join on each row
+- **Sales:** only leads where `status = 'Routed to Sales'` or `sales_owner_id = currentUserId`
 
 **Query params:**
 
@@ -50,53 +33,6 @@ Returns all leads where `is_inbox = false`. SDR and Admin see all workspace lead
 ```json
 {
   "leads": [Lead]
-}
-```
-
----
-
-### `POST /api/leads/verify`
-
-Moves an inbox lead to the workspace. Sets `is_inbox = false`, assigns `sdr_id`, links or creates a `contact_id`, logs a `lead_verified` activity.
-
-**Body:**
-```json
-{
-  "lead_id": "uuid",
-  "status": "Validated | Quoted | Routed to Sales | Rejected",
-  "contact_id": "uuid | null",
-  "create_contact": {
-    "first_name": "string",
-    "last_name": "string",
-    "email": "string",
-    "phone": "string",
-    "company": "string",
-    "industry": "string",
-    "website": "string"
-  },
-  "quote_total": "number | null",
-  "quote_channel": "string | null",
-  "quote_destination": "string | null",
-  "rejection_reason": "string | null",
-  "rejection_notes": "string | null",
-  "interests": "object",
-  "quantities": "object"
-}
-```
-
-**Business rules:**
-- `contact_id` XOR `create_contact` — must provide one
-- Phone is normalized to digits-only before save
-- If `status = 'Routed to Sales'`, set `sales_status = 'Ongoing'`
-- Logs `lead_verified` activity; also logs `lead_routed_to_sales` or `lead_rejected` if applicable
-- Creates a `lead_routed` notification for all active Sales users if routed
-- **Lock guard:** Caller must be the current lock holder OR Admin. Otherwise → `409`
-- On success, releases the lock (`locked_by_id = null`, `locked_at = null`)
-
-**Response `201`:**
-```json
-{
-  "lead": Lead
 }
 ```
 
@@ -530,51 +466,19 @@ Append a client-side activity event. Used when the browser knows the context (e.
 
 ## Notifications
 
-### `GET /api/notifications`
+Notifications in BazaarCRM are delivered via **Supabase Realtime**, not HTTP polling endpoints.
 
-Returns notifications for the current authenticated user, ordered by `created_at DESC`.
+### How it works
 
-**Query params:**
+- `components/sidebar.tsx` maintains two persistent Supabase Realtime subscriptions:
+  - **`leads-realtime`** — watches any INSERT/UPDATE/DELETE on `public.leads` → refreshes sidebar badge counts + dispatches `bazaar:leads-changed` browser event
+  - **`activities-realtime`** — watches any INSERT on `public.activities` → dispatches `bazaar:activities-changed` browser event
+- **Sidebar badge counts** are fetched via `GET /api/sidebar-counts` (triggered on mount and on any Realtime event)
+- **Activity log** (admin `/notifications` page) is fetched via `GET /api/admin/activity-log` and auto-refreshes when `bazaar:activities-changed` fires
 
-| Param | Type | Default |
-|-------|------|---------|
-| `unread_only` | `boolean` | `false` |
-| `limit` | `number` | `20` |
-| `offset` | `number` | `0` |
+There are **no** REST notification endpoints (`/api/notifications`, `/api/notifications/read`, etc.) — those are planned for a future V2 bell-based notification system.
 
-**Response `200`:**
-```json
-{
-  "notifications": [Notification],
-  "unread_count": "number"
-}
-```
-
----
-
-### `PATCH /api/notifications/[id]/read`
-
-Marks a single notification as read.
-
-**Response `200`:**
-```json
-{
-  "notification": Notification
-}
-```
-
----
-
-### `POST /api/notifications/read-all`
-
-Marks all of the current user's notifications as read.
-
-**Response `200`:**
-```json
-{
-  "updated_count": "number"
-}
-```
+See `docs/realtime-live-updates.md` for the full architecture and pattern guide.
 
 ---
 
@@ -892,19 +796,16 @@ Update a user's role, active status, or reset their temp password.
 
 ---
 
-### `GET /api/admin/audit`
+### `GET /api/admin/activity-log`
 
-Paginated activity log across all users. Admin only.
+Paginated activity log across all users. Admin only. Powers the `/notifications` page.
 
 **Query params:**
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `user_id` | `uuid` | Filter by actor |
 | `type` | `string` | Filter by activity type |
-| `from` | `ISO date` | Start date |
-| `to` | `ISO date` | End date |
-| `limit` | `number` | Default `50` |
+| `limit` | `number` | Default `50`, max `100` |
 | `offset` | `number` | Default `0` |
 
 **Response `200`:**
@@ -914,6 +815,8 @@ Paginated activity log across all users. Admin only.
   "total": "number"
 }
 ```
+
+Each activity is enriched with `actor` (`{ id, full_name, role_name }`) and `customer` (`{ first_name, last_name, company }`) via server-side joins.
 
 ---
 

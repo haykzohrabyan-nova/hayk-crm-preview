@@ -612,7 +612,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
         </h2>
 
         {/* Desktop */}
-        <div className="hidden sm:block rounded-[10px] border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+        <div className="hidden lg:block rounded-[10px] border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
           <table className="w-full text-sm">
             <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
               <tr>
@@ -656,7 +656,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
         </div>
 
         {/* Mobile */}
-        <div className="flex flex-col gap-3 sm:hidden">
+        <div className="flex flex-col gap-3 lg:hidden">
           {leads.length === 0 ? (
             <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
               No leads yet.

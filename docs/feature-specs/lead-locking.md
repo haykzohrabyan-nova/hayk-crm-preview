@@ -172,7 +172,7 @@ A background heartbeat (`PATCH locked_at every N minutes`) is a v2 enhancement.
 
 ## Server Implementation
 
-Every write endpoint (`PATCH /api/leads/[id]`, `POST /api/leads/verify`, etc.) performs a **lock check** before writing:
+Every write endpoint (`PATCH /api/leads/[id]`, `POST /api/leads/[id]/hold`, `POST /api/leads/[id]/resume`, etc.) performs a **lock check** before writing:
 
 ```typescript
 // Pseudocode in Route Handler
@@ -193,9 +193,11 @@ if (lead.locked_by_id && lead.locked_by_id !== currentUserId) {
 
 ## Admin Force-Unlock
 
-From `/admin/audit` or `/admin/users`, Admin can see all currently locked leads (query: `SELECT * FROM leads WHERE locked_by_id IS NOT NULL`). An **Unlock** button calls `POST /api/leads/[id]/unlock` with admin authority.
+Admin can force-release a lock from the **All Leads tab** on the `/leads` page using the **Reassign** action (shown on any lead where `locked_by_id IS NOT NULL`). Choosing "Unassign" clears `locked_by_id`, `locked_at`, and `sdr_id`, releasing the lead back to the general queue.
 
-This should be surfaced as a small table or indicator on the Admin Dashboard too ("X leads currently locked").
+Alternatively, Admin can call `POST /api/leads/[id]/unlock` directly.
+
+> **Not yet built:** A dedicated "currently locked leads" indicator on the Admin Dashboard ("X leads currently locked") is a future enhancement.
 
 ---
 
@@ -207,4 +209,4 @@ Lock acquisition (`lead_claimed`) and reassignment (`lead_reassigned`) **are** l
 
 ## Concurrency Edge Case
 
-If User A and User B both call `POST /api/leads/[id]/lock` at the exact same millisecond, the first write wins due to Postgres row-level locking (`SELECT ... FOR UPDATE` in the lock handler). The loser receives a `409`.
+If User A and User B both call `POST /api/leads/[id]/lock` at the exact same millisecond, the first write wins due to Postgres's row-level serialization. The loser receives a `409`.

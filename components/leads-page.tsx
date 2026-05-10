@@ -950,7 +950,7 @@ export function LeadsPage() {
       {activeTab === "all" && (
         <>
           {/* Desktop table */}
-          <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
@@ -1085,7 +1085,7 @@ export function LeadsPage() {
           </div>
 
           {/* Mobile sort pill */}
-          <div className="flex items-center justify-end sm:hidden">
+          <div className="flex items-center justify-end lg:hidden">
             <button
               onClick={cycleMobileSort}
               className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[11px] font-medium transition-colors"
@@ -1101,7 +1101,7 @@ export function LeadsPage() {
           </div>
 
           {/* Mobile cards */}
-          <div className="flex flex-col gap-3 sm:hidden">
+          <div className="flex flex-col gap-3 lg:hidden">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
@@ -1198,7 +1198,7 @@ export function LeadsPage() {
       {/* ── On Hold tab ── */}
       {activeTab === "hold" && (
         <>
-          <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
@@ -1263,7 +1263,7 @@ export function LeadsPage() {
           </div>
 
           {/* Mobile: hold cards */}
-          <div className="flex flex-col gap-3 sm:hidden">
+          <div className="flex flex-col gap-3 lg:hidden">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
@@ -1298,7 +1298,7 @@ export function LeadsPage() {
       {activeTab === "routed" && (
         <>
           {/* Desktop table */}
-          <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
@@ -1347,7 +1347,7 @@ export function LeadsPage() {
           </div>
 
           {/* Mobile: routed cards */}
-          <div className="flex flex-col gap-3 sm:hidden">
+          <div className="flex flex-col gap-3 lg:hidden">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
@@ -1392,7 +1392,7 @@ export function LeadsPage() {
       {/* ── Rejected tab ── */}
       {activeTab === "rejected" && (
         <>
-          <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
@@ -1436,7 +1436,7 @@ export function LeadsPage() {
           </div>
 
           {/* Mobile: rejected cards */}
-          <div className="flex flex-col gap-3 sm:hidden">
+          <div className="flex flex-col gap-3 lg:hidden">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>

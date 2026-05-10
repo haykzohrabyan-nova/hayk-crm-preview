@@ -246,7 +246,7 @@ Plus:
 
 - Rejection Reason (dropdown: "Not a fit", "No budget", "Competitor", "Spam/Bot", "Other")
 - Notes (textarea, optional)
-- **Confirm Reject** button → verify endpoint with `status: 'Rejected'`
+- **Confirm Reject** button → `PATCH /api/leads/[id]` with `status: 'Rejected'`
 
 ---
 

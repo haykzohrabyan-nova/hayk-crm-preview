@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Search, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { SalesDrawer } from "@/components/sales-drawer";
@@ -126,6 +128,10 @@ export function SalesPage() {
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [tabCounts, setTabCounts] = useState<{ pipeline: number; hold: number; rejected: number } | null>(null);
+  const [salesUserList, setSalesUserList] = useState<{ id: string; full_name: string }[]>([]);
+  const [reassignLead, setReassignLead] = useState<Lead | null>(null);
+  const [reassignSalesUserId, setReassignSalesUserId] = useState<string>("unassign");
+  const [reassigning, setReassigning] = useState(false);
 
   // Get current userId and role for ownership display and admin view access
   useEffect(() => {
@@ -144,6 +150,14 @@ export function SalesPage() {
       }
     });
   }, []);
+
+  // Fetch active Sales user list (admin only — used by reassign modal)
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch("/api/admin/users?role=sales")
+      .then((r) => r.json())
+      .then((d) => setSalesUserList(d.users ?? []));
+  }, [isAdmin]);
 
   // Fetch tab counts upfront so all badges are visible before clicking
   function fetchTabCounts() {
@@ -186,7 +200,23 @@ export function SalesPage() {
     setToast({ message, type });
   }
 
-  // ── Fetch routed leads ────────────────────────────────────────────────────
+  async function handleSalesReassign() {
+    if (!reassignLead) return;
+    setReassigning(true);
+    const newUser = reassignSalesUserId === "unassign" ? null : reassignSalesUserId;
+    const res = await fetch(`/api/leads/${reassignLead.id}/reassign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: newUser, role: "sales" }),
+    });
+    const data = await res.json();
+    setReassigning(false);
+    if (!res.ok) { showToast(data.error ?? "Failed to reassign.", "error"); return; }
+    setRoutedLeads((prev) => prev.map((l) => l.id === data.lead.id ? data.lead : l));
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
+    setReassignLead(null);
+    showToast(newUser ? "Sales rep reassigned." : "Sales rep unassigned.");
+  }
 
   const fetchRoutedLeads = useCallback(async () => {
     setLoading(true);
@@ -378,7 +408,7 @@ export function SalesPage() {
       {activeTab === "pipeline" && (
         <>
           {/* Desktop table */}
-          <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
@@ -433,13 +463,22 @@ export function SalesPage() {
                       </td>
                       <td className="px-3 py-2.5">
                         {isAdmin ? (
-                          <button
-                            onClick={() => handleViewLead(lead)}
-                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
-                            style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                          >
-                            View
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleViewLead(lead)}
+                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                              style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                            >
+                              View
+                            </button>
+                            <button
+                              onClick={() => { setReassignLead(lead); setReassignSalesUserId("unassign"); }}
+                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                              style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                            >
+                              Reassign
+                            </button>
+                          </div>
                         ) : !lead.sales_owner_id ? (
                           <button
                             onClick={() => handleClaim(lead)}
@@ -467,7 +506,7 @@ export function SalesPage() {
           </div>
 
           {/* Mobile cards */}
-          <div className="flex flex-col gap-3 sm:hidden">
+          <div className="flex flex-col gap-3 lg:hidden">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
@@ -499,13 +538,22 @@ export function SalesPage() {
                     <div className="flex justify-between"><span>Routed</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
                   </div>
                   {isAdmin ? (
-                    <button
-                      onClick={() => handleViewLead(lead)}
-                      className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium"
-                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                    >
-                      View
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleViewLead(lead)}
+                        className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
+                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={() => { setReassignLead(lead); setReassignSalesUserId("unassign"); }}
+                        className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
+                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                      >
+                        Reassign
+                      </button>
+                    </div>
                   ) : !lead.sales_owner_id ? (
                     <button
                       onClick={() => handleClaim(lead)}
@@ -534,7 +582,7 @@ export function SalesPage() {
       {/* ── On Hold tab ── */}
       {activeTab === "hold" && (
         <>
-          <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
@@ -600,7 +648,7 @@ export function SalesPage() {
           </div>
 
           {/* Mobile: hold cards */}
-          <div className="flex flex-col gap-3 sm:hidden">
+          <div className="flex flex-col gap-3 lg:hidden">
             {loading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
@@ -650,7 +698,7 @@ export function SalesPage() {
       {/* ── Rejected tab ── */}
       {activeTab === "rejected" && (
         <>
-          <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
@@ -708,7 +756,7 @@ export function SalesPage() {
           </div>
 
           {/* Mobile: rejected cards */}
-          <div className="flex flex-col gap-3 sm:hidden">
+          <div className="flex flex-col gap-3 lg:hidden">
             {rejLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
@@ -744,6 +792,52 @@ export function SalesPage() {
           </div>
         </>
       )}
+
+      {/* Reassign modal (admin only) */}
+      <Dialog open={!!reassignLead} onOpenChange={(o) => { if (!o) setReassignLead(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Reassign Sales Lead</DialogTitle>
+          </DialogHeader>
+          {reassignLead && (
+            <div className="space-y-4 pt-1">
+              <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                {leadName(reassignLead)}
+                {reassignLead.customer?.company ? ` — ${reassignLead.customer.company}` : ""}
+              </p>
+              <div>
+                <label
+                  className="block text-[11px] font-medium uppercase tracking-[0.06em] mb-1.5"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Assign to Sales Rep
+                </label>
+                <Select value={reassignSalesUserId} onValueChange={(v) => setReassignSalesUserId(v ?? "unassign")}>
+                  <SelectTrigger className="h-9 text-sm w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassign">— Unassign (remove from Sales rep)</SelectItem>
+                    {salesUserList.map((u) => (
+                      <SelectItem key={u.id} value={u.id}>
+                        {u.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setReassignLead(null)} disabled={reassigning}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSalesReassign} disabled={reassigning}>
+                  {reassigning ? "Saving…" : "Confirm"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Sales Drawer */}
       {drawerLead && (

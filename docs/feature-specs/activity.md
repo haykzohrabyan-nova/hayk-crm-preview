@@ -19,7 +19,7 @@ Two endpoints cover different scopes:
 
 Used by:
 - **Sales Drawer** History tab — fetched lazily on first open
-- (Verify Drawer History tab — not yet built)
+- **Verify Drawer** History tab — fetched lazily on first open
 
 ### Contact-scoped (planned)
 **`GET /api/activity`** with query params:
@@ -114,14 +114,13 @@ The following Route Handlers automatically insert activity rows when they run:
 
 | Handler | Activities logged |
 |---------|------------------|
-| `POST /api/leads/verify` | `lead_verified`, and if applicable: `lead_routed_to_sales` or `lead_rejected` |
 | `POST /api/leads/manual` | `lead_manual_created` |
 | `POST /api/leads/[id]/lock` | `lead_claimed` (only on new claim, not self-refresh) |
 | `POST /api/leads/[id]/claim` | `lead_sales_claimed` |
 | `POST /api/leads/[id]/reassign` | `lead_reassigned` |
 | `POST /api/leads/[id]/hold` | `lead_held` |
 | `POST /api/leads/[id]/resume` | `lead_resumed` |
-| `PATCH /api/leads/[id]` | `lead_edited` (tracked field changes without status change) + `lead_status_changed` (if `status` or `sales_status` changes) + `lead_rejected` with `{ from, reason, notes }` when `status` → `Rejected` (auto-saves `prev_status = current.status` before updating) |
+| `PATCH /api/leads/[id]` | `lead_edited` (tracked field changes without status change) + `lead_status_changed` (if `status` or `sales_status` changes) + `lead_rejected` with `{ from, reason, notes }` when `status` → `Rejected` + `lead_routed_to_sales` when `status` → `Routed to Sales` |
 | `GET /api/leads/[id]/activities` | Read-only — returns timeline; no writes |
 | `PATCH /api/customers/[id]/merge` | `lead_merged` (on all affected leads) |
 | `PATCH /api/customers/[id]` | `contact_edited` |

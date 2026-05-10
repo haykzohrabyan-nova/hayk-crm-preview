@@ -267,7 +267,7 @@ export function CRMPage() {
       </div>
 
       {/* Desktop Table */}
-      <div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+      <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
         <table className="w-full text-sm">
           <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
             <tr>
@@ -341,7 +341,7 @@ export function CRMPage() {
       </div>
 
       {/* Mobile Cards */}
-      <div className="flex flex-col gap-3 sm:hidden">
+      <div className="flex flex-col gap-3 lg:hidden">
         {loading ? (
           Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>

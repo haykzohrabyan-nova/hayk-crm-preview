@@ -3,6 +3,37 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-10] — Admin can reassign/unassign Sales rep from pipeline leads
+
+### Added
+- `app/api/leads/[id]/reassign` — extended to accept `role: "sales"` param; updates `sales_owner_id` instead of `locked_by_id`/`sdr_id`; logs `lead_reassigned` activity with `role: "sales"` in payload
+
+### Changed
+- `components/sales-page.tsx` — admin action column in the Pipeline tab now shows **View + Reassign** buttons (desktop table and mobile cards); added reassign modal with Sales rep dropdown (fetched from `/api/admin/users?role=sales`); added `handleSalesReassign` function that calls the reassign endpoint with `role: "sales"`
+
+## [2026-05-10] — Remove Quick Actions from all dashboards
+
+### Changed
+- `components/sdr-dashboard.tsx` — removed Quick Actions section and `QuickAction` component; removed unused `Link`, `LayoutDashboard`, `ArrowRight` imports
+- `components/sales-dashboard.tsx` — same removal; removed unused `Link`, `ArrowRight` imports
+
+## [2026-05-10] — Align table/card breakpoint with sidebar (sm→lg)
+
+### Changed
+- `components/leads-page.tsx` — table/mobile-card toggle changed from `sm` (640px) to `lg` (1024px)
+- `components/sales-page.tsx` — same breakpoint fix (all three pipeline tabs)
+- `components/crm-page.tsx` — same breakpoint fix
+- `components/customer-profile.tsx` — same breakpoint fix
+- All four files now switch to mobile card view at the same 1024px point as the sidebar/navigation
+
+## [2026-05-10] — Documentation audit and sync to actual implementation
+
+### Changed
+- `docs/api-contract.md` — removed non-existent endpoints (`GET /api/leads/inbox`, `POST /api/leads/verify`, `GET /api/admin/audit`, `GET/PATCH/POST /api/notifications/*`); fixed `GET /api/leads/workspace` to correctly describe SDR lock-based filtering; replaced `GET /api/admin/audit` with the real `GET /api/admin/activity-log`; replaced Notifications REST section with accurate description of the Supabase Realtime system
+- `docs/feature-specs/lead-locking.md` — removed `POST /api/leads/verify` reference from lock-check description; replaced non-existent `/admin/audit` page force-unlock UI with the actual Reassign/Unassign flow on the leads page; removed false `SELECT ... FOR UPDATE` claim
+- `docs/feature-specs/leads-sdr.md` — fixed Rejection Form footer action to reference `PATCH /api/leads/[id]` instead of the non-existent "verify endpoint"
+- `docs/feature-specs/activity.md` — removed `POST /api/leads/verify` row from server-side auto-logging table; split its logged activities (`lead_routed_to_sales`, `lead_rejected`) to the correct `PATCH /api/leads/[id]` row; marked Verify Drawer History tab as built
+
 ## [2026-05-10] — Realtime live updates + sidebar badges + admin activity log
 
 ### Added
