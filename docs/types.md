@@ -166,6 +166,7 @@ export interface Lead {
   sdr_comment: string | null       // "Verify Lead Comment" — internal SDR notes
   rejection_reason: string | null
   rejection_notes: string | null
+  sales_notes: string | null       // internal Sales rep notes
   created_at: string               // immutable
   updated_at: string
   // Joined (optional, populated by some queries)

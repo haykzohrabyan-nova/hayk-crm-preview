@@ -9,6 +9,7 @@ const IMMUTABLE = ["id", "created_at"];
 const TRACKED_FIELDS = [
   "urgency", "interests", "quantities", "sdr_comment",
   "is_returning_customer", "brand", "source", "authority",
+  "sales_notes",
 ];
 
 export async function PATCH(

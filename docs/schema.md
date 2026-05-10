@@ -261,6 +261,7 @@ Core lead record. A lead starts in the inbox (`is_inbox = true`) and moves to th
 | `is_returning_customer` | `boolean` DEFAULT `false` | Existing / returning client flag |
 | `sdr_comment` | `text` | SDR verification notes ("Verify Lead Comment") — internal, not visible to client |
 | `rejection_notes` | `text` | Free-text |
+| `sales_notes` | `text` | Internal notes entered by Sales reps (not visible to SDRs) |
 | `locked_by_id` | `uuid` FK → `auth.users` | User currently working this lead (drawer open) |
 | `locked_at` | `timestamptz` | Timestamp when lock was acquired |
 | `created_at` | `timestamptz` NOT NULL DEFAULT `now()` | **Immutable** — never patched |
@@ -296,6 +297,7 @@ create table public.leads (
   sdr_comment       text,
   rejection_reason  text,
   rejection_notes   text,
+  sales_notes       text,
   locked_by_id      uuid        references auth.users(id),
   locked_at         timestamptz,
   created_at        timestamptz not null default now(),

@@ -166,7 +166,7 @@ A right-side drawer (slide-in panel) that opens when the SDR clicks **Verify** o
 |-----|---------|
 | Lead Info | Contact fields, source, brand, interests |
 | Quote | Quote total, channel, destination |
-| History | `HistoryTimeline` component for this lead |
+| History | Vertical timeline from `GET /api/leads/[id]/activities` — lazy-loaded on first open ✅ |
 
 ### Lead Info Tab — Contact Information section
 
@@ -402,7 +402,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 
 **2. Quote tab in Verify Drawer is not built**
 - Spec: Quote Total, Quote Channel (SMS / WhatsApp / Email / In-person), Quote Destination fields
-- Current: Drawer has "Lead Info" and history only; no Quote tab
+- Current: Drawer has "Lead Info", "Quote", and "History" tabs; Quote tab shows a placeholder
 - **When building Tickets:** Add Quote tab to `VerifyDrawer`; wire Quote Channel and Quote Destination fields to the lead record
 
 **3. "Quote" action button missing**
@@ -411,13 +411,12 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 - **When building Tickets:** Add **Quote** button to footer; sets `status = 'Quoted'`, saves quote fields
 
 **4. "Update Customer?" prompt on action not built**
-- Spec: when SDR edits contact info and then takes an action, prompt to update or skip the customer profile
-- **When building CRM enhancements:** Detect form diff on action; show inline prompt before firing action API
+- ✅ **Built** — `promptThenRun()` wrapper in `verify-drawer.tsx` intercepts Validate, Route, Hold, and Reject actions. If `hasContactChanged()` detects a diff, an inline "Update customer profile?" prompt is shown before the action fires.
 
-**5. History tab in Verify Drawer is not built**
-- Spec: a History tab showing `HistoryTimeline` for the lead
-- Current: only Lead Info tab exists
-- **When building:** Add History tab + `HistoryTimeline` component (reads from `activities` table)
+**5. History tab in Verify Drawer** ✅ Built
+- `verify-drawer.tsx` now has a third "History" tab alongside Lead Info and Quote.
+- Lazy-loads `GET /api/leads/[id]/activities` on first open — same pattern as Sales Drawer.
+- Renders a vertical timeline with colored dots, human-readable activity labels, actor name, and relative timestamp. Full activity history is always available, even after a lead moves to Sales.
 
 **6. Admin Override for terminal leads**
 - Spec: Admin sees "Admin Override" banner and can reset a rejected lead

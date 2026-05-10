@@ -198,6 +198,4 @@ These items are deliberately deferred. Build them during the Tickets phase.
 - **When building Admin enhancements:** Check `roleName === 'admin'` in `SalesDrawer`; if true and `isTerminal`, show override banner and re-enable action buttons.
 
 **5. Notes field (Sales perspective)**
-- Spec: free-text notes field in the Lead Info tab editable by Sales
-- Not currently in the form — `SalesForm` interface only has `sales_status` and `quote_total`
-- **When building:** Add `sales_notes: string` to `SalesForm`, render a textarea in the Sales Fields section, include in the `PATCH` payload.
+- ✅ **Built** — `sales_notes` field added to the Lead Info tab (Sales Fields section). Saves via `PATCH /api/leads/[id]`. Changes logged to activity history as `lead_edited`.

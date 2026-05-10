@@ -3,6 +3,18 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — SDR History tab, Sales Notes field, and TODO doc
+
+### Added
+- `components/verify-drawer.tsx` — **History tab** (third tab alongside Lead Info and Quote). Lazy-loads `GET /api/leads/[id]/activities` on first open. Renders the same vertical timeline as the Sales Drawer — colored dots, human-readable labels, actor name, relative timestamp, skeleton loader. Full activity history is preserved even after a lead moves to Sales, so SDRs and admins can always see the complete chain of events.
+- `supabase/migrations/034_add_sales_notes_to_leads.sql` — adds `sales_notes text` column to the `leads` table.
+- `components/sales-drawer.tsx` — **Sales Notes** textarea in the Sales Fields section. Sales reps can now write their own internal notes (separate from the SDR's Verify Lead Comment). Notes are saved via `PATCH /api/leads/[id]` and automatically logged to the activity timeline as `lead_edited` (field: `sales_notes`).
+- `docs/TODO.md` — new deferred-items file. First entry: **TODO-001 Admin Override for Terminal Leads**, with full problem description, fix sketch, and a note that Won/Dropped must be handled separately after the Tickets phase.
+
+### Changed
+- `app/api/leads/[id]/route.ts` — added `"sales_notes"` to `TRACKED_FIELDS` so any change to sales notes is automatically logged as a `lead_edited` activity entry.
+- `lib/types/index.ts` — added `sales_notes: string | null` to the `Lead` interface.
+
 ## [2026-05-09] — Lead History tab in Sales Drawer
 
 ### Added

@@ -52,6 +52,7 @@ const inputStyle = {
 interface SalesForm {
   sales_status: string;
   quote_total: string;
+  sales_notes: string;
 }
 
 interface SalesDrawerProps {
@@ -115,6 +116,7 @@ function formFromLead(lead: Lead): SalesForm {
   return {
     sales_status: lead.sales_status ?? "Ongoing",
     quote_total: lead.quote_total != null ? String(lead.quote_total) : "",
+    sales_notes: lead.sales_notes ?? "",
   };
 }
 
@@ -199,6 +201,7 @@ export function SalesDrawer({
     setSaving(true);
     const payload: Record<string, unknown> = {
       sales_status: form.sales_status || null,
+      sales_notes: form.sales_notes || null,
     };
     const qt = parseFloat(form.quote_total);
     payload.quote_total = isNaN(qt) ? null : qt;
@@ -549,6 +552,27 @@ export function SalesDrawer({
                       value={form.quote_total}
                       onChange={(e) => setForm((f) => ({ ...f, quote_total: e.target.value }))}
                       disabled={isReadOnly}
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className={labelCls} style={labelStyle}>Sales Notes</label>
+                    <textarea
+                      rows={3}
+                      placeholder="Internal notes visible to sales and admin only…"
+                      className="w-full rounded-[6px] border px-3 py-2 text-sm outline-none resize-none transition-all"
+                      style={inputStyle}
+                      value={form.sales_notes}
+                      onChange={(e) => setForm((f) => ({ ...f, sales_notes: e.target.value }))}
+                      disabled={isReadOnly}
+                      onFocus={(e) => {
+                        e.currentTarget.style.borderColor = "var(--color-accent)";
+                        e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
+                      }}
+                      onBlur={(e) => {
+                        e.currentTarget.style.borderColor = "var(--color-border)";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
                     />
                   </div>
                 </div>

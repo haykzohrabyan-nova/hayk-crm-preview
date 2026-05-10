@@ -149,6 +149,7 @@ export interface Lead {
   sdr_comment: string | null
   rejection_reason: string | null
   rejection_notes: string | null
+  sales_notes: string | null
   created_at: string
   updated_at: string
   // Joined (optional)
