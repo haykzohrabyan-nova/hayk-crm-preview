@@ -14,7 +14,7 @@ export async function POST(
 
   const { data: lead, error: fetchErr } = await admin
     .from("leads")
-    .select("locked_by_id, locked_at")
+    .select("locked_by_id, locked_at, customer_id")
     .eq("id", id)
     .single();
 
@@ -43,11 +43,31 @@ export async function POST(
     );
   }
 
-  // Acquire (or refresh) lock
+  // Detect new claim vs self-refresh (same user reopening their own lead)
+  const isNewClaim = !lead.locked_by_id || lead.locked_by_id !== userId;
+
+  // Acquire (or refresh) lock. Also set sdr_id so the SDR's scoped tabs
+  // (Hold / Routed / Rejected) correctly show this lead under scope=mine.
   await admin
     .from("leads")
-    .update({ locked_by_id: userId, locked_at: new Date().toISOString() })
+    .update({
+      locked_by_id: userId,
+      locked_at: new Date().toISOString(),
+      sdr_id: userId,
+    })
     .eq("id", id);
+
+  // Log a claim event only when the lead is being claimed for the first time
+  // (not when the same SDR simply reopens their own lead).
+  if (isNewClaim) {
+    await admin.from("activities").insert({
+      lead_id: id,
+      customer_id: lead.customer_id,
+      type: "lead_claimed",
+      by_user_id: userId,
+      payload: {},
+    });
+  }
 
   return NextResponse.json({ locked: true, locked_by: null });
 }

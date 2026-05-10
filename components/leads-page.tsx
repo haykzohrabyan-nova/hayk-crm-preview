@@ -593,6 +593,12 @@ export function LeadsPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
 
+  // Reassign modal state (admin only)
+  const [sdrList, setSdrList] = useState<{ id: string; full_name: string }[]>([]);
+  const [reassignLead, setReassignLead] = useState<Lead | null>(null);
+  const [reassignUserId, setReassignUserId] = useState<string>("unassign");
+  const [reassigning, setReassigning] = useState(false);
+
   // Fetch current user id + role
   useEffect(() => {
     const supabase = createClient();
@@ -610,6 +616,14 @@ export function LeadsPage() {
       }
     });
   }, []);
+
+  // Fetch active SDR list (admin only — used by reassign modal)
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch("/api/admin/users?role=sdr")
+      .then((r) => r.json())
+      .then((d) => setSdrList(d.users ?? []));
+  }, [isAdmin]);
 
   function showToast(message: string, type: "success" | "error" = "success") {
     setToast({ message, type });
@@ -698,6 +712,24 @@ export function LeadsPage() {
     setLeads((prev) => prev.filter((l) => l.id !== lead.id));
     window.dispatchEvent(new Event("bazaar:refresh-counts"));
     showToast("Lead resumed.");
+  }
+
+  async function handleReassign() {
+    if (!reassignLead) return;
+    setReassigning(true);
+    const newUser = reassignUserId === "unassign" ? null : reassignUserId;
+    const res = await fetch(`/api/leads/${reassignLead.id}/reassign`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: newUser }),
+    });
+    const data = await res.json();
+    setReassigning(false);
+    if (!res.ok) { showToast(data.error ?? "Failed to reassign lead.", "error"); return; }
+    setLeads((prev) => prev.map((l) => l.id === data.lead.id ? data.lead : l));
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
+    setReassignLead(null);
+    showToast(newUser ? "Lead reassigned." : "Lead unassigned.");
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -881,13 +913,24 @@ export function LeadsPage() {
                       )}
                       <td className="px-3 py-2.5">
                         {isAdmin ? (
-                          <button
-                            onClick={() => handleViewLead(lead)}
-                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
-                            style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                          >
-                            View
-                          </button>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => handleViewLead(lead)}
+                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                              style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                            >
+                              View
+                            </button>
+                            {lead.locked_by_id && (
+                              <button
+                                onClick={() => { setReassignLead(lead); setReassignUserId("unassign"); }}
+                                className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                                style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                              >
+                                Reassign
+                              </button>
+                            )}
+                          </div>
                         ) : (
                           <button
                             onClick={() => handleWorkLead(lead)}
@@ -951,13 +994,24 @@ export function LeadsPage() {
                     )}
                   </div>
                   {isAdmin ? (
-                    <button
-                      onClick={() => handleViewLead(lead)}
-                      className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium"
-                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                    >
-                      View
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleViewLead(lead)}
+                        className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
+                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                      >
+                        View
+                      </button>
+                      {lead.locked_by_id && (
+                        <button
+                          onClick={() => { setReassignLead(lead); setReassignUserId("unassign"); }}
+                          className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
+                          style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                        >
+                          Reassign
+                        </button>
+                      )}
+                    </div>
                   ) : (
                     <button
                       onClick={() => handleWorkLead(lead)}
@@ -1252,6 +1306,51 @@ export function LeadsPage() {
           showToast={showToast}
         />
       )}
+
+      {/* Reassign modal (admin only) */}
+      <Dialog open={!!reassignLead} onOpenChange={(o) => { if (!o) setReassignLead(null); }}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Reassign Lead</DialogTitle>
+          </DialogHeader>
+          {reassignLead && (
+            <div className="space-y-4 pt-1">
+              <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                {displayName(reassignLead)}
+              </p>
+              <div>
+                <label
+                  className="block text-[11px] font-medium uppercase tracking-[0.06em] mb-1.5"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  Assign to SDR
+                </label>
+                <Select value={reassignUserId} onValueChange={setReassignUserId}>
+                  <SelectTrigger className="h-9 text-sm w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassign">— Unassign (remove from SDR)</SelectItem>
+                    {sdrList.map((sdr) => (
+                      <SelectItem key={sdr.id} value={sdr.id}>
+                        {sdr.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-2 pt-1">
+                <Button variant="outline" onClick={() => setReassignLead(null)} disabled={reassigning}>
+                  Cancel
+                </Button>
+                <Button onClick={handleReassign} disabled={reassigning}>
+                  {reassigning ? "Saving…" : "Confirm"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Toast */}
       {toast && (

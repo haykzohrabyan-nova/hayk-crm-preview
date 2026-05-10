@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState } from "react";
 import {
   X,
   Lock,
@@ -144,26 +144,13 @@ export function VerifyDrawer({
   const [saving, setSaving] = useState(false);
   const [showUpdateCustomer, setShowUpdateCustomer] = useState(false);
   const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
-  const unlockRef = useRef(false);
 
   const isRejected = lead.status === "Rejected";
   const isReadOnly = readOnly || isRejected;
 
-  // Unlock on unmount
-  useEffect(() => {
-    return () => {
-      if (!unlockRef.current && !readOnly) {
-        fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
-        unlockRef.current = true;
-      }
-    };
-  }, [lead.id, readOnly]);
-
   function handleClose() {
-    if (!readOnly && !unlockRef.current) {
-      fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
-      unlockRef.current = true;
-    }
+    // Soft lock model: closing the drawer does NOT release ownership.
+    // The lead stays assigned to this SDR until they route, reject, or admin reassigns.
     onClose();
   }
 
@@ -260,9 +247,9 @@ export function VerifyDrawer({
     const updated = await patchLead({ ...buildLeadPayload(), status: "Validated" });
     setSaving(false);
     if (!updated) return;
-    fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
-    unlockRef.current = true;
-    onLeadRemoved(lead.id);
+    // Soft lock: ownership stays with SDR after validation.
+    // Lead row updates in place (Pending → Validated); SDR continues working it.
+    setLead(updated);
     onLeadUpdated(updated);
     fireCountsRefresh();
     showToast("Lead validated.");
@@ -284,8 +271,8 @@ export function VerifyDrawer({
     });
     setSaving(false);
     if (!updated) return;
+    // Ownership released — lead moves to Sales queue.
     fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
-    unlockRef.current = true;
     onLeadRemoved(lead.id);
     onLeadUpdated(updated);
     fireCountsRefresh();
@@ -328,7 +315,7 @@ export function VerifyDrawer({
     const data = await res.json();
     setSaving(false);
     if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
-    unlockRef.current = true;
+    // Soft lock: SDR retains ownership while lead is on hold.
     onLeadRemoved(lead.id);
     onLeadUpdated(data.lead);
     fireCountsRefresh();
@@ -353,8 +340,8 @@ export function VerifyDrawer({
     });
     setSaving(false);
     if (!updated) return;
+    // Ownership released — terminal state.
     fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
-    unlockRef.current = true;
     onLeadRemoved(lead.id);
     onLeadUpdated(updated);
     fireCountsRefresh();

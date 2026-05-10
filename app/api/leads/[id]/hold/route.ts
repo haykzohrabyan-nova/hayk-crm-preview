@@ -39,9 +39,10 @@ export async function POST(
     held_by_id: userId,
     held_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    // Unlock on hold
-    locked_by_id: null,
-    locked_at: null,
+    // SDR retains ownership (locked_by_id stays set) so the lead remains
+    // in their queue and hidden from other SDRs while on hold.
+    // Sales holds still release the lock (sales ownership is via sales_owner_id).
+    ...(role === "sales" ? { locked_by_id: null, locked_at: null } : {}),
   };
 
   if (isSales) {

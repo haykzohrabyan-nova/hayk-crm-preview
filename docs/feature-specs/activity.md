@@ -43,11 +43,15 @@ Each activity entry is rendered as a timeline row with:
 |---------------|------|-------|
 | `lead_verified` | `CheckCircle` | Lead Verified |
 | `lead_manual_created` | `PlusCircle` | Lead Created |
+| `lead_claimed` | `UserCheck` | Lead Claimed |
+| `lead_edited` | `Edit2` | Lead Updated |
 | `lead_status_changed` | `RefreshCw` | Status Changed |
 | `lead_routed_to_sales` | `ArrowRight` | Routed to Sales |
 | `lead_rejected` | `XCircle` | Rejected |
 | `lead_held` | `Pause` | Put on Hold |
 | `lead_resumed` | `Play` | Resumed |
+| `lead_sales_claimed` | `UserPlus` | Claimed by Sales |
+| `lead_reassigned` | `RefreshCw` | Lead Reassigned |
 | `lead_merged` | `GitMerge` | Contacts Merged |
 | `contact_edited` | `Edit2` | Contact Updated |
 | `call_logged` | `Phone` | Call Logged |
@@ -68,6 +72,8 @@ Each activity entry is rendered as a timeline row with:
 | `lead_status_changed` | "From [prev] → [new]" |
 | `lead_rejected` | Rejection reason + notes |
 | `lead_held` | Hold reason + "Until: [date]" |
+| `lead_edited` | List of changed field names (`payload.fields`) |
+| `lead_reassigned` | "From [name] → [name]" or "Unassigned from [name]" |
 | `contact_edited` | List of changed fields |
 | `order_ticket_updated` | List of changed field names (`payload.fields`) |
 | `outreach_sent` | Channel + recipient (masked phone/email) |
@@ -105,9 +111,12 @@ The following Route Handlers automatically insert activity rows when they run:
 |---------|------------------|
 | `POST /api/leads/verify` | `lead_verified`, and if applicable: `lead_routed_to_sales` or `lead_rejected` |
 | `POST /api/leads/manual` | `lead_manual_created` |
+| `POST /api/leads/[id]/lock` | `lead_claimed` (only on new claim, not self-refresh) |
+| `POST /api/leads/[id]/claim` | `lead_sales_claimed` |
+| `POST /api/leads/[id]/reassign` | `lead_reassigned` |
 | `POST /api/leads/[id]/hold` | `lead_held` |
 | `POST /api/leads/[id]/resume` | `lead_resumed` |
-| `PATCH /api/leads/[id]` | `lead_status_changed` (only if `status` or `sales_status` changes) |
+| `PATCH /api/leads/[id]` | `lead_edited` (tracked field changes without status change) + `lead_status_changed` (if `status` or `sales_status` changes) |
 | `PATCH /api/contacts/merge` | `lead_merged` (on all affected leads) |
 | `PATCH /api/contacts/[id]` | `contact_edited` |
 | `POST /api/tickets` | `order_ticket_created` |

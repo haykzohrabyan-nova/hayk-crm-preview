@@ -3,6 +3,47 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-09] — Docs update: reflect soft lock, activity logging, and reassign
+
+### Changed
+- `docs/feature-specs/leads-sdr.md` — Action column now lists Reassign (Admin); Behaviors section documents Reassign button; "Close" footer action corrected (ownership not released); race-condition paragraph updated; Build Status table expanded with soft lock, reassign, and activity logging entries
+- `docs/feature-specs/lead-locking.md` — Lock lifecycle diagram updated: removed old "close = unlock" footer; added Route/Reject and Admin Reassign as the correct ownership-release triggers
+- `docs/rbac.md` — API matrix: added `POST /api/leads/[id]/lock`, `POST /api/leads/[id]/unlock`, `POST /api/leads/[id]/reassign` rows; replaced "Releasing a Lock" section with the soft lock model; removed stale Lock API Access sub-table; added Reassign row to Role-Aware UI Rendering table
+
+---
+
+## [2026-05-09] — Admin Reassign Lead action
+
+### Added
+- `app/api/leads/[id]/reassign/route.ts` — admin-only POST endpoint; sets `locked_by_id`, `locked_at`, and `sdr_id` to the chosen SDR (or clears all three to null on unassign); logs a `lead_reassigned` activity with from/to names
+
+### Changed
+- `components/leads-page.tsx` — admin view of All Leads table now shows a **Reassign** button alongside View when a lead has an owner (`locked_by_id` is set); clicking opens a modal with a dropdown of active SDRs plus an "Unassign" option; on confirm the row updates in place and counts refresh. Added `sdrList`, `reassignLead`, `reassignUserId`, `reassigning` state and a `handleReassign` function.
+
+---
+
+## [2026-05-09] — Complete lead activity logging
+
+### Changed
+- `app/api/leads/[id]/lock/route.ts` — now fetches `customer_id` and logs a `lead_claimed` activity when an SDR claims a lead for the first time (not on self-refresh)
+- `app/api/leads/[id]/route.ts` — PATCH handler now fetches tracked fields (`urgency`, `interests`, `quantities`, `sdr_comment`, `is_returning_customer`, `brand`, `source`, `authority`) and logs `lead_edited` with a list of changed fields when a save does not include a status change
+- `app/api/leads/[id]/claim/route.ts` — now fetches `customer_id` and logs `lead_sales_claimed` after a successful Sales claim
+
+### Docs
+- `docs/feature-specs/activity.md` — added `lead_claimed`, `lead_edited`, `lead_sales_claimed`, and `lead_reassigned` to the icon map and payload details table; updated the auto-logging table to include all four new handlers
+
+---
+
+## [2026-05-09] — SDR soft lock: permanent ownership model
+
+### Changed
+- `app/api/leads/[id]/lock/route.ts` — also sets `sdr_id = userId` on lock acquisition so Hold/Routed/Rejected tab filters (`scope=mine`) work correctly from the moment the SDR claims a lead
+- `app/api/leads/[id]/hold/route.ts` — SDR holds no longer clear `locked_by_id`; ownership persists through hold/resume cycles. Sales holds still release the lock (sales ownership is tracked via `sales_owner_id`).
+- `components/verify-drawer.tsx` — removed `unlockRef`, the cleanup `useEffect`, and the unlock call from `handleClose`; closing the drawer no longer releases the lead. `doValidate` no longer calls unlock and no longer removes the lead from the list — the row updates in place with Validated status. `doRoute` and `doReject` still call unlock (ownership truly ends). `doHold` no longer sets `unlockRef`.
+
+### Docs
+- `docs/feature-specs/lead-locking.md` — rewrote Client Implementation section; added "When Ownership IS / is NOT Released" tables; updated schema fields to note `sdr_id`; updated activity logging note
+
 ## [2026-05-09] — Fix locked_by FK to enable user_profiles join
 
 ### Added

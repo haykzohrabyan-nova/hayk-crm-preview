@@ -5,6 +5,12 @@ import { digitsOnly } from "@/lib/utils/phone";
 
 const IMMUTABLE = ["id", "created_at"];
 
+// Fields whose changes are worth recording in the activity timeline
+const TRACKED_FIELDS = [
+  "urgency", "interests", "quantities", "sdr_comment",
+  "is_returning_customer", "brand", "source", "authority",
+];
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -30,10 +36,10 @@ export async function PATCH(
 
   const admin = createAdminClient();
 
-  // Fetch current lead for guards
+  // Fetch current lead for guards and change-detection
   const { data: current, error: fetchErr } = await admin
     .from("leads")
-    .select("status, sales_status, locked_by_id")
+    .select(`status, sales_status, locked_by_id, customer_id, ${TRACKED_FIELDS.join(", ")}`)
     .eq("id", id)
     .single();
 
@@ -75,6 +81,22 @@ export async function PATCH(
 
   if (error) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
+  }
+
+  // Log field-level edits when no status change is happening
+  if (!body.status) {
+    const changedFields = TRACKED_FIELDS.filter(
+      (f) => body[f] !== undefined && JSON.stringify(body[f]) !== JSON.stringify((current as Record<string, unknown>)[f])
+    );
+    if (changedFields.length > 0) {
+      await admin.from("activities").insert({
+        lead_id: id,
+        customer_id: lead.customer_id,
+        type: "lead_edited",
+        by_user_id: userId,
+        payload: { fields: changedFields },
+      });
+    }
   }
 
   // Log status change activity if status changed

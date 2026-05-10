@@ -30,7 +30,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 | Status | All | `StatusPill` — Pending / Validated |
 | Created | All | Relative time (e.g. "2 hours ago") |
 | Working | Admin only | Name of SDR currently working the lead; "—" if unlocked; "You" if admin themselves has it open |
-| Action | All | **Verify** (SDR) / **View** (Admin) |
+| Action | All | **Verify** (SDR) / **View** + **Reassign** (Admin) |
 
 ### Behaviors
 
@@ -39,6 +39,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 - **Skeleton loader** while data fetches — never full-page spinner
 - **Verify button** (SDR) → acquires lock → opens **Verify Drawer** in edit mode
 - **View button** (Admin) → opens **Verify Drawer** in read-only mode, **no lock acquired**
+- **Reassign button** (Admin only, shown only when `locked_by_id IS NOT NULL`) → opens a modal to reassign the lead to a different active SDR or unassign it entirely; the row updates in place and tab counts refresh
 - **Empty state:** "No leads found." with muted text
 
 ### Badge
@@ -132,7 +133,7 @@ Leads currently locked by another SDR are **hidden from the queue entirely**. SD
 
 If SDR B's page is stale (loaded before SDR A clicked Verify), SDR B may still see the lead. When SDR B clicks Verify, `POST /api/leads/[id]/lock` returns `409` and the drawer opens in read-only mode with a banner: **"[Name] is currently working this lead"**. No action buttons are shown. SDR B can close the drawer — on next refresh the lead will no longer appear in their queue.
 
-When the SDR closes the drawer (any way: save action, Cancel, Escape, close button) → `POST /api/leads/[id]/unlock` is called automatically, making the lead visible to others again.
+Closing the drawer does **not** release the lock. Ownership persists until the SDR routes the lead to Sales, rejects it, or an Admin reassigns/force-releases it.
 
 See `docs/feature-specs/lead-locking.md` for full lock spec.
 
@@ -205,7 +206,7 @@ Actions available depending on drawer mode and current `status`. **All action bu
 | **On Hold** | Edit mode, status not Rejected | Opens hold sub-form inline |
 | **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `status = 'Rejected'` — **TERMINAL** |
 | **Save** | Edit mode | `PATCH /api/leads/[id]` without changing status |
-| **Close** | Always | Dismisses drawer + releases lock |
+| **Close** | Always | Dismisses drawer — ownership is **not** released (soft lock persists until Route / Reject / Admin reassign) |
 
 **Reject is terminal:** Once `status = 'Rejected'` is set, the drawer reopens in read-only mode for all non-Admin users. Only Admin sees an "Admin Override" banner with the ability to change status.
 
@@ -358,20 +359,22 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Feature | Notes |
 |---------|-------|
 | All Leads / On Hold / Directed to Sales / Rejected tabs | Tab counts visible before clicking; scoped correctly per SDR |
-| Lock-based lead visibility | SDRs only see unlocked leads + their own; locked-by-other leads hidden from queue |
+| Lock-based lead visibility (soft lock / permanent ownership) | SDRs only see unlocked leads + their own; locked-by-other leads hidden; closing drawer does NOT release lock |
 | Admin View action (no lock) | Admin opens any lead read-only without acquiring a lock |
-| Admin "Working" column | All Leads table shows which SDR has each lead open; mobile cards too |
+| Admin "Working" column | All Leads table shows which SDR owns each lead; mobile cards too |
+| Admin Reassign action | Button shown on owned leads; modal with SDR dropdown + Unassign option; logs `lead_reassigned` activity |
 | Race condition safety net | If SDR clicks Verify on a stale lead, 409 → read-only drawer with locker banner |
 | Manual Add Lead modal | Phone lookup + deduplication banner + customer auto-fill |
-| Verify Drawer (locking, lock banner) | Lock acquired on open, released on close |
+| Verify Drawer (soft lock, lock banner) | Lock acquired on Verify; ownership persists across close/save/validate/hold until Route or Reject |
 | Product Interests — select + quantity rows | Replaced checkbox grid with select picker + quantity inputs |
-| Hold action (with reason, notes, hold-until date) | Full hold sub-form |
-| Resume from hold | Restores to Validated |
-| Reject (terminal) | Reason + notes; read-only after |
-| Route to Sales | Sets status + sales_status = Ongoing |
-| Save without status change | PATCH lead fields |
+| Hold action (with reason, notes, hold-until date) | Full hold sub-form; SDR retains ownership while on hold |
+| Resume from hold | Restores to Validated; ownership retained |
+| Reject (terminal) | Reason + notes; read-only after; ownership released |
+| Route to Sales | Sets status + sales_status = Ongoing; ownership released |
+| Save without status change | PATCH lead fields; logs `lead_edited` for tracked field changes |
 | Context-aware action buttons | On Hold → Resume shown; Routed leads → view-only |
 | Counts refresh after every action | bazaar:refresh-counts event fired |
+| Activity logging | `lead_claimed` on Verify, `lead_edited` on field save, `lead_reassigned` on Admin reassign |
 
 ### ⏳ Not yet built — deferred
 

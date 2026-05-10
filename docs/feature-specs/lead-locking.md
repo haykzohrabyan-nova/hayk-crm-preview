@@ -1,6 +1,6 @@
-# Feature Spec — Lead Locking
+# Feature Spec — Lead Locking (Soft Lock / Permanent Ownership)
 
-Ensures that when a user is actively working a lead (drawer open), other users cannot make conflicting edits.
+When an SDR clicks Verify, the lead is **permanently assigned** to them. It stays off other SDRs' queues until the SDR routes it to Sales, rejects it, or an admin force-releases it. Closing the drawer no longer releases the lead.
 
 ---
 
@@ -8,7 +8,7 @@ Ensures that when a user is actively working a lead (drawer open), other users c
 
 With multiple SDRs working concurrently, locking serves two purposes:
 
-1. **Queue filtering (primary):** Leads locked by another SDR are hidden from other SDRs' All Leads queue entirely. SDRs only see leads they can actually work. This prevents two SDRs from picking up the same lead under normal page-load conditions.
+1. **Permanent ownership (primary):** When an SDR clicks Verify, `locked_by_id` is set to their user ID and stays set. The lead is hidden from all other SDRs' queues. The SDR is the sole responsible party for the lead — through Hold, Resume, Validate, and all the way to Route to Sales or Reject.
 
 2. **Race-condition protection (safety net):** If an SDR's page is stale (loaded before another SDR claimed a lead), they may still see it. When they click Verify, `POST /api/leads/[id]/lock` returns `409` and the drawer opens read-only with a banner — preventing a conflicting edit.
 
@@ -20,10 +20,11 @@ On the `leads` table:
 
 | Field | Type | Purpose |
 |-------|------|---------|
-| `locked_by_id` | `uuid FK → auth.users` | User currently holding the lock |
-| `locked_at` | `timestamptz` | When the lock was acquired |
+| `locked_by_id` | `uuid FK → public.user_profiles` | SDR who currently owns this lead |
+| `locked_at` | `timestamptz` | When ownership was acquired |
+| `sdr_id` | `uuid FK → auth.users` | Set alongside `locked_by_id` on lock; used by Hold/Routed/Rejected tab filters (`scope=mine`) |
 
-Both fields are `null` when a lead is unlocked.
+All three fields are `null` when a lead is unowned/unlocked.
 
 ---
 
@@ -41,10 +42,11 @@ GET /api/leads/workspace
 SDR clicks Verify on a lead
       │
       ▼
-POST /api/leads/[id]/lock
+POST /api/leads/[id]/lock  (also sets sdr_id = userId)
       │
-      ├── Lead unlocked? ──────────────────────────── Grant lock
-      │                                               (locked_by_id = user, locked_at = now())
+      ├── Lead unlocked? ──────────────────────────── Grant ownership
+      │                                               (locked_by_id = user, locked_at = now(),
+      │                                                sdr_id = user)
       │                                               → Drawer opens in EDIT mode
       │
       ├── Locked by same user? ────────────────────── Refresh locked_at
@@ -62,13 +64,20 @@ No lock call — drawer opens directly in READ-ONLY mode
       │
       └── No lock acquired, active SDR is undisturbed
 
-User completes action OR closes drawer
+SDR routes to Sales OR rejects (terminal actions)
       │
       ▼
-POST /api/leads/[id]/unlock  (or auto-release on verify/hold/route/reject)
+POST /api/leads/[id]/unlock  (client-called after route or reject)
       │
-      └── locked_by_id = null, locked_at = null
-          → Lead becomes visible in other SDRs' queues on next refresh
+      └── locked_by_id = null, locked_at = null, sdr_id = null
+          → Lead released; visible to all SDRs again (or moved to terminal state)
+
+Admin reassigns OR unassigns lead
+      │
+      ▼
+POST /api/leads/[id]/reassign  { user_id: newSdrId | null }
+      │
+      └── locked_by_id / locked_at / sdr_id updated to new owner (or null)
 ```
 
 ---
@@ -106,43 +115,55 @@ Admin can inspect all fields and the lead history without interfering with the S
 
 ### Lock on Open
 
-In the drawer component's `useEffect` on mount:
+`POST /api/leads/[id]/lock` is called immediately when the SDR clicks Verify (before the drawer opens):
 
 ```typescript
-// Lock immediately when drawer opens
-useEffect(() => {
-  if (!leadId) return
-  lockLead(leadId).then((result) => {
-    if (result.locked) {
-      setIsEditable(true)
-    } else {
-      setIsEditable(false)
-      setLockedBy(result.locked_by)
-    }
-  })
-  // Unlock on cleanup (drawer close)
-  return () => {
-    unlockLead(leadId)
-  }
-}, [leadId])
+const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
+const data = await res.json();
+if (res.status === 409) {
+  // Race condition — open read-only with banner
+  setDrawerReadOnly(true);
+  setDrawerLockedBy(data.locked_by?.full_name ?? "Another user");
+} else {
+  setDrawerReadOnly(false);
+  setDrawerLockedBy(null);
+}
 ```
 
-### Unlock on Close
+### Close Drawer — No Unlock
 
-When the drawer is dismissed (user clicks X, presses Escape, or navigates away):
+Closing the drawer **does not** call unlock. The ownership persists. The cleanup `useEffect` has been removed from `verify-drawer.tsx`.
 
 ```typescript
-unlockLead(leadId)
+function handleClose() {
+  // Soft lock: ownership stays — no unlock call
+  onClose();
+}
 ```
 
-### Auto-release on Action
+### When Ownership IS Released
 
-After a successful `POST /api/leads/verify`, `POST /api/leads/[id]/hold`, etc., the server clears the lock. The client does not need to call unlock separately — but the cleanup `useEffect` will still run harmlessly (idempotent unlock).
+| Trigger | How |
+|---------|-----|
+| SDR routes lead to Sales | Client calls `POST /api/leads/[id]/unlock` after successful PATCH |
+| SDR rejects lead | Client calls `POST /api/leads/[id]/unlock` after successful PATCH |
+| Admin force-releases | Admin calls `POST /api/leads/[id]/unlock` for any lead |
+| Admin reassigns to another SDR | `POST /api/leads/[id]/reassign` sets `locked_by_id` to new user |
+
+### When Ownership is NOT Released
+
+| Trigger | Result |
+|---------|--------|
+| SDR closes drawer | Ownership stays — lead remains hidden from others |
+| SDR clicks Save | Ownership stays |
+| SDR validates (Pending → Validated) | Ownership stays — lead updates in place in SDR's queue |
+| SDR puts lead on Hold | Ownership stays — lead visible in SDR's Hold tab |
+| SDR resumes from Hold | Ownership stays |
 
 ### Heartbeat (Optional — v2)
 
-In v1, there is **no heartbeat**. The lock persists until released. If a user's browser crashes, the lock remains until:
-- Admin force-releases it, or
+In v1, there is **no heartbeat**. If a user's browser crashes, the lock remains until:
+- Admin force-releases it via `/admin`, or
 - The same user reopens the lead (refreshes `locked_at`)
 
 A background heartbeat (`PATCH locked_at every N minutes`) is a v2 enhancement.
@@ -180,7 +201,7 @@ This should be surfaced as a small table or indicator on the Admin Dashboard too
 
 ## Activity Logging
 
-Locking is **not** logged in the `activities` table — it is an operational concern, not a business event. Only substantive actions (status changes, edits, holds, etc.) are logged.
+Lock acquisition (`lead_claimed`) and reassignment (`lead_reassigned`) **are** logged in the `activities` table — see `docs/feature-specs/activity.md`. The unlock operation itself (route/reject already has its own activity entry) is not logged separately.
 
 ---
 

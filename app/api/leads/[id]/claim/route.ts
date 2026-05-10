@@ -14,7 +14,7 @@ export async function POST(
 
   const { data: current } = await admin
     .from("leads")
-    .select("sales_owner_id, status")
+    .select("sales_owner_id, status, customer_id")
     .eq("id", id)
     .single();
 
@@ -43,6 +43,14 @@ export async function POST(
   if (error) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
   }
+
+  await admin.from("activities").insert({
+    lead_id: id,
+    customer_id: lead.customer_id,
+    type: "lead_sales_claimed",
+    by_user_id: userId,
+    payload: {},
+  });
 
   return NextResponse.json({ lead });
 }

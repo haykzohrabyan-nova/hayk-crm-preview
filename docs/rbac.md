@@ -82,6 +82,9 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | `POST /api/notifications/read-all` | ✓ | ✓ | ✓ |
 | `GET /api/dashboard/kpis` | ✓ | ✓ | ✓ |
 | `POST /api/outreach/send` | ✓ | ✓ | ✓ |
+| `POST /api/leads/[id]/lock` | ✓ | ✗ | ✓ (admin uses View — no lock acquired) |
+| `POST /api/leads/[id]/unlock` | ✓ (own lock) | ✓ (own lock) | ✓ (any lock) |
+| `POST /api/leads/[id]/reassign` | ✗ | ✗ | ✓ |
 | `GET /api/admin/users` | ✗ | ✗ | ✓ |
 | `POST /api/admin/users/invite` | ✗ | ✗ | ✓ |
 | `PATCH /api/admin/users/[id]` | ✗ | ✗ | ✓ |
@@ -195,23 +198,25 @@ This is a safety net for stale-page scenarios. The drawer opens read-only:
 - History tab is still accessible
 - On close or page refresh, the lead disappears from the SDR's queue (filtered out by the API)
 
-### Releasing a Lock
+### Releasing a Lock (Soft Lock — Permanent Ownership)
+
+Ownership persists beyond drawer close. It is only released by a terminal action:
 
 | Trigger | Action |
 |---------|--------|
-| User closes the drawer | Client calls `POST /api/leads/[id]/unlock` |
-| User completes an action (Verify, Hold, Route, Reject) | Server auto-releases lock on success |
-| Admin force-unlock from `/admin/users` or `/admin/audit` | Admin calls `POST /api/leads/[id]/unlock` for any lead |
-| User logs out | Client calls unlock on all leads locked by their session |
+| SDR routes lead to Sales | Client calls `POST /api/leads/[id]/unlock` after successful route |
+| SDR rejects lead | Client calls `POST /api/leads/[id]/unlock` after successful reject |
+| Admin force-releases | Admin calls `POST /api/leads/[id]/unlock` for any lead |
+| Admin reassigns to another SDR | `POST /api/leads/[id]/reassign` sets `locked_by_id` + `sdr_id` to the new user |
+| Admin unassigns | `POST /api/leads/[id]/reassign` with `user_id: null` — clears all three fields |
 
-**No auto-expiry** — the lock persists until one of the above triggers. Only Admin can force-release a lock that the original holder abandoned.
+**Ownership does NOT release** when:
+- SDR closes the drawer
+- SDR clicks Save
+- SDR validates (Pending → Validated)
+- SDR puts lead on Hold or resumes from Hold
 
-### Lock API Access
-
-| Endpoint | SDR | Sales | Admin |
-|----------|:---:|:-----:|:-----:|
-| `POST /api/leads/[id]/lock` | ✓ (own leads scope) | ✓ (routed leads only) | ✓ (any lead) |
-| `POST /api/leads/[id]/unlock` | ✓ (own lock only) | ✓ (own lock only) | ✓ (any lock) |
+**No auto-expiry** — the lock persists until one of the release triggers above. Only Admin can force-release an abandoned lock.
 
 ---
 
@@ -238,8 +243,9 @@ Components read role from a context provider (`lib/auth/use-role.ts`) that fetch
 | Sidebar: Leads section | ✓ | ✗ | ✓ |
 | Sidebar: Sales section | ✗ | ✓ | ✓ |
 | Sidebar: Admin section | ✗ | ✗ | ✓ |
-| Leads: Verify button (acquires lock) | ✓ | ✗ | ✗ |
+| Leads: Verify button (acquires lock + permanent ownership) | ✓ | ✗ | ✗ |
 | Leads: View button (no lock, read-only) | ✗ | ✗ | ✓ |
+| Leads: Reassign button (owned leads only) | ✗ | ✗ | ✓ |
 | Leads: "Working" column (shows active SDR) | ✗ | ✗ | ✓ |
 | Leads: sees locked-by-other leads in queue | ✗ | ✗ | ✓ |
 | Route Lead / Reject buttons | ✓ | ✗ | ✓ |
