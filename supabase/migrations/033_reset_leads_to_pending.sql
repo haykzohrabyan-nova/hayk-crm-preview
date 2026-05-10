@@ -7,7 +7,7 @@
 --              quote_total, quote_channel, quote_destination,
 --              created_at, updated_at
 --
--- CLEARED    : status → Pending, is_inbox → true, sales_status,
+-- CLEARED    : status → Pending, is_inbox → false, sales_status,
 --              prev_status, prev_sales_status,
 --              sdr_id, assigned_sdr_id, sales_owner_id,
 --              held_by_id, locked_by_id, locked_at,
@@ -18,7 +18,7 @@
 UPDATE leads
 SET
   status             = 'Pending',
-  is_inbox           = true,
+  is_inbox           = false,
   sales_status       = NULL,
   prev_status        = NULL,
   prev_sales_status  = NULL,

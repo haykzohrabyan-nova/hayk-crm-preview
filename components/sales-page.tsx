@@ -288,7 +288,7 @@ export function SalesPage() {
   const TABS: { id: Tab; label: string; count: number }[] = [
     { id: "pipeline", label: "Pipeline", count: tabCounts?.pipeline ?? pipelineLeads.length },
     { id: "hold", label: "On Hold", count: tabCounts?.hold ?? holdLeads.length },
-    { id: "rejected", label: "Rejected (SDR)", count: tabCounts?.rejected ?? rejLeads.length },
+    { id: "rejected", label: "Rejected", count: tabCounts?.rejected ?? rejLeads.length },
   ];
 
   function ownerLabel(lead: Lead): string {
