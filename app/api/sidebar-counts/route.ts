@@ -12,24 +12,18 @@ export async function GET() {
   const isSdr = roleName === "sdr" || roleName === "admin";
 
   await Promise.all([
-    // /leads badge — for SDR: only leads they can actually work (unclaimed + their own)
-    // for Admin: total active workspace leads regardless of lock state
+    // /leads badge — unclaimed active leads only (Pending or Validated, no owner yet).
+    // Same for both SDR and admin: the number tells you how many new leads
+    // are waiting to be claimed. Leads already owned by the SDR are excluded
+    // because they are already being worked, not "new" work to act on.
     isSdr
-      ? roleName === "sdr"
-        ? admin
-            .from("leads")
-            .select("*", { count: "exact", head: true })
-            .eq("is_inbox", false)
-            .in("status", ["Pending", "Validated"])
-            .or(`locked_by_id.is.null,locked_by_id.eq.${userId}`)
-            .then(({ count }) => { counts["/leads"] = count ?? 0; })
-        : admin
-            .from("leads")
-            .select("*", { count: "exact", head: true })
-            .eq("is_inbox", false)
-            .in("status", ["Pending", "Validated"])
-            .is("locked_by_id", null)
-            .then(({ count }) => { counts["/leads"] = count ?? 0; })
+      ? admin
+          .from("leads")
+          .select("*", { count: "exact", head: true })
+          .eq("is_inbox", false)
+          .in("status", ["Pending", "Validated"])
+          .is("locked_by_id", null)
+          .then(({ count }) => { counts["/leads"] = count ?? 0; })
       : Promise.resolve(),
 
     // /sales badge — Sales Pipeline
