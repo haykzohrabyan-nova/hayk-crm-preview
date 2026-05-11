@@ -7,172 +7,260 @@ Follow this guide when adding Realtime to any new entity (orders, customers, tic
 
 ## How It Works — Full Architecture
 
-```mermaid
-flowchart TD
-    subgraph db [Supabase DB]
-        A["leads table\n(REPLICA IDENTITY FULL\n+ supabase_realtime publication)"]
-    end
-
-    subgraph realtime [Supabase Realtime Service]
-        B["Watches the publication\nfor INSERT / UPDATE / DELETE\non subscribed tables"]
-    end
-
-    subgraph transport [WebSocket]
-        C["Pushed to every connected\nbrowser session that has\nan active channel subscription"]
-    end
-
-    subgraph sidebar [sidebar.tsx — subscription owner]
-        D["supabase.channel('leads-realtime')\n.on('postgres_changes', ...)\n.subscribe()"]
-    end
-
-    subgraph browser [Browser custom events]
-        E["fetchBadges()\n→ GET /api/sidebar-counts"]
-        F["window.dispatchEvent\nnew Event('bazaar:leads-changed')"]
-    end
-
-    subgraph consumers [Page consumers]
-        G["sales-page.tsx\nlistens: bazaar:leads-changed\nsilent re-fetch (drawer-aware)"]
-        H["leads-page.tsx\nlistens: bazaar:leads-changed\nsilent re-fetch"]
-        I["sidebar badge\nupdates instantly"]
-    end
-
-    A -->|"change event"| B
-    B -->|"postgres_changes payload"| C
-    C --> D
-    D --> E
-    D --> F
-    E --> I
-    F --> G
-    F --> H
 ```
+User A makes a DB change (SDR claims a lead)
+  │
+  ▼
+API route (POST /api/leads/[id]/lock)
+  │  uses createAdminClient() — service role, bypasses RLS
+  │
+  ▼
+Supabase DB — leads table UPDATE
+  │  WAL (Write-Ahead Log) detects the change
+  │
+  ▼
+Supabase Realtime Server
+  │  • reads the change from the publication
+  │  • for each subscribed browser session:
+  │    – runs the table's RLS SELECT policy with that user's JWT
+  │    – if RLS passes → sends the event over WebSocket
+  │    – if RLS fails → silently drops (no error, no log)
+  │
+  ▼
+User B's browser (admin watching the leads page)
+  └── sidebar.tsx holds the WebSocket subscription
+        │
+        ├── fetchBadges() → GET /api/sidebar-counts → updates sidebar badge
+        └── dispatchEvent("bazaar:leads-changed")
+              │
+              └── leads-page.tsx (and sales-page.tsx) hear the event
+                    └── silent re-fetch → table updates in place, no skeleton
+```
+
+**Total time from DB write to UI update: ~100–500ms over a normal connection.**
 
 ---
 
-## End-to-End Flow (Example: SDR routes a lead)
+## Layer 1 — Database Setup (3 SQL steps, all required)
 
-```
-1. SDR clicks "Route to Sales"
-   → PATCH /api/leads/[id] updates leads.status to "Routed to Sales"
-   → DB write completes in Supabase
+### Step 1 — `REPLICA IDENTITY FULL`
 
-2. Supabase Realtime detects the UPDATE on the leads table
-   → Broadcasts an event over WebSocket to every browser with an active subscription
-
-3. sidebar.tsx receives the event (≈100–300ms after the DB write)
-   → Calls fetchBadges()   → /api/sidebar-counts returns updated counts
-   → Sidebar badge on /sales increments for all Sales reps instantly
-   → Dispatches window event "bazaar:leads-changed"
-
-4. sales-page.tsx hears "bazaar:leads-changed"
-   → Drawer is closed: silent fetch → new lead appears in the table
-   → Drawer is open: pendingLeadsRefresh.current = true (deferred)
-
-5. leads-page.tsx hears "bazaar:leads-changed"
-   → Drawer is closed: silent fetch → lead disappears from "Pending" tab
-   → Drawer is open: skipped
-```
-
-Total time from DB write to badge update: **~100–500ms** over a normal connection.
-
----
-
-## Layer 1 — Database Migration
-
-Every table you want to subscribe to needs two things:
-
-### 1a. `REPLICA IDENTITY FULL`
-
-By default, Postgres only includes the primary key in UPDATE and DELETE WAL events.
-`REPLICA IDENTITY FULL` tells Postgres to include the entire old row, which Supabase Realtime
-needs to send complete payloads for UPDATE and DELETE events.
+By default Postgres only includes the primary key in UPDATE/DELETE WAL events.
+`REPLICA IDENTITY FULL` includes the entire old row — required for Supabase Realtime
+to send complete payloads.
 
 ```sql
-ALTER TABLE public.your_table REPLICA IDENTITY FULL;
+ALTER TABLE public.orders REPLICA IDENTITY FULL;
 ```
 
-> Without this, UPDATE and DELETE events will only contain the PK in the `old` record.
-> INSERT events always include the full new row regardless of REPLICA IDENTITY setting.
+### Step 2 — Add to the `supabase_realtime` publication
 
-### 1b. Add to the `supabase_realtime` publication
-
-Supabase Realtime only broadcasts tables that are part of the `supabase_realtime` publication.
+Realtime only broadcasts tables that are in this publication.
 
 ```sql
-ALTER PUBLICATION supabase_realtime ADD TABLE public.your_table;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
 ```
 
-> **Important:** Also enable the Realtime toggle in the Supabase Dashboard:
-> Table Editor → your_table → Realtime: ON
-> The SQL migration handles the publication, but the dashboard toggle is also required.
+Also enable the **Realtime toggle** in the Supabase Dashboard:
+`Table Editor → orders → Realtime: ON`
+The SQL migration handles the publication but the dashboard toggle is also required.
+
+### Step 3 — Grant `SELECT` to `authenticated` role
+
+**This is the step most often missed.** Supabase Realtime checks RLS per-subscriber
+by running a `SELECT` query with the subscriber's JWT. If the `authenticated` role
+doesn't have table-level `SELECT` permission, that query fails and ALL events are
+silently dropped — even when the WebSocket shows `SUBSCRIBED`.
+
+```sql
+GRANT SELECT ON public.orders TO authenticated;
+```
+
+> Tables created via raw SQL migrations do NOT automatically get this grant.
+> Only tables created through the Supabase Dashboard get it by default.
 
 ### Full migration example
 
 ```sql
--- Enable Supabase Realtime on the orders table
+-- 039_enable_orders_realtime.sql
+
 ALTER TABLE public.orders REPLICA IDENTITY FULL;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.orders;
+GRANT SELECT ON public.orders TO authenticated;
 ```
 
 ---
 
-## Layer 2 — Subscription (sidebar.tsx)
+## Layer 2 — RLS Policies (Critical: inline subqueries only)
 
-The sidebar owns all Realtime subscriptions. One channel per table. The channel:
-1. Fires `fetchBadges()` to update sidebar counts
-2. Dispatches a custom browser event so any page on screen can react
+### ⚠️ The `SECURITY DEFINER` trap — most common Realtime bug
 
-```typescript
-// components/sidebar.tsx — inside the badge useEffect
+When Supabase Realtime evaluates RLS for a subscriber, it runs in a special
+PostgreSQL session context where the JWT claims are set as session variables
+(`request.jwt.claims`). The `auth.uid()` function reads from these session
+variables — **but only when called directly in the caller's security context.**
 
-const supabase = createClient(); // browser client
+`SECURITY DEFINER` functions execute as the function owner (`postgres`), NOT as
+the calling role. In the `postgres` context, `request.jwt.claims` is not accessible,
+so `auth.uid()` returns `NULL`. Any RLS policy that calls a `SECURITY DEFINER`
+function will always evaluate to `FALSE` for Realtime subscribers, silently dropping
+every event.
 
-// One channel = one subscription = one WebSocket message stream
-const channel = supabase
-  .channel("leads-realtime")           // unique channel name — use table name
-  .on(
-    "postgres_changes",
-    {
-      event: "*",                       // INSERT | UPDATE | DELETE | *
-      schema: "public",
-      table: "leads",                   // the table to watch
-    },
-    () => {
-      fetchBadges();                    // update sidebar badge counts
-      window.dispatchEvent(new Event("bazaar:leads-changed")); // signal pages
-    }
-  )
-  .subscribe();
+**This project's `current_user_role()` helper is `SECURITY DEFINER` — never use it in
+policies on Realtime-enabled tables.**
 
-// Always clean up on unmount to avoid WebSocket leaks
-return () => {
-  supabase.removeChannel(channel);
-};
+```sql
+-- ❌ BROKEN for Realtime — current_user_role() is SECURITY DEFINER
+--    auth.uid() inside it returns NULL → policy = FALSE → all events dropped
+CREATE POLICY "admin_read_all_orders" ON public.orders
+  FOR SELECT USING (public.current_user_role() = 'admin');
+
+-- ✅ CORRECT for Realtime — inline EXISTS subquery
+--    runs in caller's security context → auth.uid() resolves correctly
+CREATE POLICY "admin_read_all_orders" ON public.orders
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1
+      FROM public.user_profiles up
+      JOIN public.roles r ON r.id = up.role_id
+      WHERE up.id = auth.uid()
+        AND r.name = 'admin'
+    )
+  );
 ```
 
-### Adding a second table (e.g. orders)
+### Standard RLS policy templates for Realtime tables
 
-Add a second `.on()` call to the same `useEffect`, OR create a second channel:
+```sql
+-- Admin: sees everything
+CREATE POLICY "admin_read_all_orders" ON public.orders
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      JOIN public.roles r ON r.id = up.role_id
+      WHERE up.id = auth.uid() AND r.name = 'admin'
+    )
+  );
+
+-- SDR: sees all orders (data filtering at the API layer)
+CREATE POLICY "sdr_read_all_orders" ON public.orders
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      JOIN public.roles r ON r.id = up.role_id
+      WHERE up.id = auth.uid() AND r.name = 'sdr'
+    )
+  );
+
+-- Sales: sees only orders assigned to them
+CREATE POLICY "sales_read_own_orders" ON public.orders
+  FOR SELECT USING (
+    EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      JOIN public.roles r ON r.id = up.role_id
+      WHERE up.id = auth.uid() AND r.name = 'sales'
+    )
+    AND assigned_to_id = auth.uid()
+  );
+
+-- UPDATE: any authenticated user (actual permission checked in API route)
+CREATE POLICY "authenticated_update_orders" ON public.orders
+  FOR UPDATE USING (auth.uid() IS NOT NULL);
+
+-- INSERT: restricted roles only
+CREATE POLICY "sdr_admin_insert_orders" ON public.orders
+  FOR INSERT WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      JOIN public.roles r ON r.id = up.role_id
+      WHERE up.id = auth.uid() AND r.name IN ('sdr', 'admin')
+    )
+  );
+```
+
+> The `user_profiles` inline subquery works because the `users_read_own_profile`
+> RLS policy allows `WHERE up.id = auth.uid()` — every user can read their own profile row.
+
+---
+
+## Layer 3 — Subscription in `sidebar.tsx`
+
+### ⚠️ The JWT timing trap — second most common Realtime bug
+
+The Supabase Realtime WebSocket handshake happens at the moment `.subscribe()` is called.
+If no JWT is present at that exact moment, the server accepts the connection but marks
+it as unauthenticated. Every subsequent RLS check evaluates `auth.uid()` → `NULL` →
+all events are silently dropped. The subscription status still shows `SUBSCRIBED` —
+there is no error.
+
+**Rule: always call `.subscribe()` inside `getSession().then()`, never synchronously.**
 
 ```typescript
-const ordersChannel = supabase
+// ❌ BROKEN — .subscribe() fires before getSession() resolves
+//    channel opens WITHOUT a JWT, Realtime marks it unauthenticated
+const supabase = createClient();
+supabase.auth.getSession().then(({ data: { session } }) => {
+  supabase.realtime.setAuth(session!.access_token); // too late
+});
+const channel = supabase                            // subscribes NOW with no JWT
   .channel("orders-realtime")
-  .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => {
-    fetchBadges();
-    window.dispatchEvent(new Event("bazaar:orders-changed"));
-  })
+  .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, handler)
   .subscribe();
 
-return () => {
-  supabase.removeChannel(channel);
-  supabase.removeChannel(ordersChannel);
-};
+// ✅ CORRECT — .subscribe() called after JWT is confirmed present
+const supabase = createClient();
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (!session) return;
+  const channel = supabase
+    .channel("orders-realtime")
+    .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, handler)
+    .subscribe();
+});
+```
+
+### Complete subscription template (sidebar.tsx pattern)
+
+```typescript
+// Inside the badge useEffect in sidebar.tsx
+// Add a new channel block inside the getSession().then() callback:
+
+supabase.auth.getSession().then(({ data: { session } }) => {
+  if (cancelled || !session) return;
+
+  // Existing leads channel is already here ...
+
+  // Add orders channel:
+  const ordersChannel = supabase
+    .channel("orders-realtime")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "orders" },
+      (payload) => {
+        console.log("[Realtime] orders event:", payload.eventType, payload);
+        fetchBadges();
+        window.dispatchEvent(new Event("bazaar:orders-changed"));
+      }
+    )
+    .subscribe((status, err) => {
+      console.log("[Realtime] orders-realtime status:", status, err ?? "");
+    });
+
+  // Store ref for cleanup (follow the existing pattern in sidebar.tsx)
+  (supabase as unknown as Record<string, unknown>)["_sidebarOrdersCh"] = ordersChannel;
+});
+
+// Add to the cleanup return function:
+if (refs["_sidebarOrdersCh"]) {
+  supabase.removeChannel(refs["_sidebarOrdersCh"] as Parameters<typeof supabase.removeChannel>[0]);
+  delete refs["_sidebarOrdersCh"];
+}
 ```
 
 ---
 
-## Layer 3 — Page Consumer
+## Layer 4 — Page Consumer
 
-Any page that shows data from the subscribed table listens for the custom browser event
+Any page showing data from the subscribed table listens for the custom browser event
 and does a **silent re-fetch** — no loading skeleton, data swaps in place.
 
 ### Pattern A — Simple (no drawer)
@@ -180,7 +268,6 @@ and does a **silent re-fetch** — no loading skeleton, data swaps in place.
 ```typescript
 useEffect(() => {
   function onOrdersChanged() {
-    // Inline fetch — don't call the main fetchOrders() that sets loading=true
     fetch("/api/orders")
       .then((r) => r.json())
       .then((d) => { setOrders(d.orders ?? []); })
@@ -188,54 +275,54 @@ useEffect(() => {
   }
   window.addEventListener("bazaar:orders-changed", onOrdersChanged);
   return () => window.removeEventListener("bazaar:orders-changed", onOrdersChanged);
-}, []);
+}, [activeTab, search]); // re-register when filter state changes
 ```
 
-### Pattern B — Drawer-aware (skip refresh if user is actively editing)
-
-Use this when the page has a drawer or modal where the user can edit data.
-Refreshing the table while the drawer is open would be disorienting.
+### Pattern B — Drawer-aware (skip refresh when user is actively editing)
 
 ```typescript
 const pendingRefresh = useRef(false);
 
-// Listen for changes
 useEffect(() => {
   function onOrdersChanged() {
     if (drawerOrder) {
-      // Drawer is open — mark pending, don't refresh yet
+      // User has a drawer open — don't interrupt them, refresh later
       pendingRefresh.current = true;
-    } else {
-      // Silent re-fetch
-      fetch("/api/orders")
-        .then((r) => r.json())
-        .then((d) => { setOrders(d.orders ?? []); })
-        .catch(() => {});
+      return;
     }
+    fetch("/api/orders")
+      .then((r) => r.json())
+      .then((d) => { setOrders(d.orders ?? []); })
+      .catch(() => {});
   }
   window.addEventListener("bazaar:orders-changed", onOrdersChanged);
   return () => window.removeEventListener("bazaar:orders-changed", onOrdersChanged);
-}, [drawerOrder]); // re-register when drawerOrder changes
+}, [drawerOrder, activeTab, search]); // drawerOrder in deps — re-registers when drawer state changes
 
-// In drawer onClose — flush deferred refresh
+// Flush deferred refresh when drawer closes
 function handleDrawerClose() {
   setDrawerOrder(null);
   if (pendingRefresh.current) {
     pendingRefresh.current = false;
-    fetchOrders(); // full re-fetch now that drawer is closed
+    fetchOrders(); // full re-fetch now that it's safe
   }
 }
 ```
+
+### Rules for the silent re-fetch
+- **Do NOT call `setLoading(true)`** — that shows the full skeleton, which is jarring for a background refresh
+- **Do NOT call the main `fetchX()` function** if it sets loading state — do an inline fetch instead
+- Dispatch `window.dispatchEvent(new Event("bazaar:refresh-counts"))` after any action that changes count-relevant data
 
 ---
 
 ## Sidebar Badge Integration
 
-If the new entity needs a sidebar count badge, add it to `app/api/sidebar-counts/route.ts`:
+If the new entity needs a badge count in the sidebar, add it to `app/api/sidebar-counts/route.ts`:
 
 ```typescript
-// Example: /orders badge — count of orders in "Processing" status
-roleName === "sales" || roleName === "admin"
+// Count of orders waiting for action — shown on /orders nav item
+roleName === "admin" || roleName === "sales"
   ? admin
       .from("orders")
       .select("*", { count: "exact", head: true })
@@ -245,111 +332,145 @@ roleName === "sales" || roleName === "admin"
 ```
 
 The sidebar already renders `badge={badgeCounts[page.route]}` on every nav item —
-no changes needed to the sidebar UI itself.
+no changes needed to the sidebar UI.
 
 ---
 
 ## Step-by-Step Checklist for a New Entity
 
-When adding Realtime to a new entity (copy this list):
+Copy this checklist when adding Realtime to a new table:
 
 ```
 [ ] 1. Create migration NNN_enable_ENTITY_realtime.sql:
-       ALTER TABLE public.ENTITY REPLICA IDENTITY FULL;
-       ALTER PUBLICATION supabase_realtime ADD TABLE public.ENTITY;
+         ALTER TABLE public.ENTITY REPLICA IDENTITY FULL;
+         ALTER PUBLICATION supabase_realtime ADD TABLE public.ENTITY;
+         GRANT SELECT ON public.ENTITY TO authenticated;
 
-[ ] 2. Enable Realtime toggle in Supabase Dashboard for the ENTITY table.
+[ ] 2. Enable the Realtime toggle in Supabase Dashboard:
+         Table Editor → ENTITY table → Realtime: ON
 
-[ ] 3. Add count query to app/api/sidebar-counts/route.ts for the /ENTITY route
-       (if the entity needs a sidebar badge count).
+[ ] 3. Write RLS SELECT policies using inline EXISTS subqueries.
+         NEVER use current_user_role() or any SECURITY DEFINER function.
+         Use the templates in Layer 2 above.
 
-[ ] 4. In sidebar.tsx — add a new Supabase channel inside the badge useEffect:
-       const entityChannel = supabase
-         .channel("ENTITY-realtime")
-         .on("postgres_changes", { event: "*", schema: "public", table: "ENTITY" }, () => {
-           fetchBadges();
-           window.dispatchEvent(new Event("bazaar:ENTITY-changed"));
-         })
-         .subscribe();
-       Add cleanup: supabase.removeChannel(entityChannel);
+[ ] 4. In sidebar.tsx, add a new channel INSIDE the getSession().then() block.
+         Follow the template in Layer 3 above.
+         Add the cleanup ref pattern for the new channel.
 
-[ ] 5. In the entity list page — add a bazaar:ENTITY-changed listener:
-       - Use Pattern A (simple) if no drawer
-       - Use Pattern B (drawer-aware) if the page has a drawer/modal
+[ ] 5. In the entity list page, add a window event listener:
+         - Use Pattern A (simple) if no drawer
+         - Use Pattern B (drawer-aware) if the page has a drawer/modal
+         Include activeTab and search in the useEffect deps array.
 
-[ ] 6. Update docs/CHANGELOG.md with all changed files.
+[ ] 6. If the entity needs a sidebar badge:
+         Add a count query to app/api/sidebar-counts/route.ts
 
-[ ] 7. Update docs/realtime-live-updates.md if the pattern evolved.
+[ ] 7. Update docs/CHANGELOG.md with all changed files.
+
+[ ] 8. Update this document if the pattern evolved.
 ```
 
 ---
 
-## Supabase Free Tier Limits
+## Debugging Checklist
 
-As of 2026, the Supabase free tier includes:
+If Realtime is SUBSCRIBED but no events arrive, work through these in order:
 
-| Limit | Value |
-|-------|-------|
-| Concurrent Realtime connections | 200 |
-| Messages per second | 100 |
-| Max message size | 1 MB |
+### DB checks (run in Supabase SQL editor)
 
-For BazaarPrinting CRM's current scale (< 20 concurrent users), these limits are not a concern.
-If the app scales to hundreds of concurrent users, consider upgrading to the Pro plan.
+```sql
+-- 1. Is the table in the publication?
+SELECT tablename FROM pg_publication_tables
+WHERE pubname = 'supabase_realtime';
+-- Expected: your table name appears
+
+-- 2. Is REPLICA IDENTITY set to FULL?
+SELECT relname, relreplident FROM pg_class WHERE relname = 'your_table';
+-- Expected: relreplident = 'f'  (f = FULL, d = DEFAULT = broken)
+
+-- 3. Does authenticated have SELECT?
+SELECT grantee, privilege_type FROM information_schema.role_table_grants
+WHERE table_name = 'your_table' AND grantee = 'authenticated';
+-- Expected: a row with privilege_type = 'SELECT'
+
+-- 4. Check the RLS policies
+SELECT policyname, cmd, qual FROM pg_policies
+WHERE tablename = 'your_table' ORDER BY policyname;
+-- Expected: SELECT policies that use auth.uid() directly (no SECURITY DEFINER calls)
+```
+
+### Browser checks
+
+Open DevTools → Console on the page that should receive events.
+
+```
+[Realtime] session ready, opening channels uid=...   ← session was present before subscribe
+[Realtime] leads-realtime status: SUBSCRIBED         ← channel is connected
+[Realtime] leads event: UPDATE { ... }               ← event is being delivered
+```
+
+| Symptom | Likely cause | Fix |
+|---------|-------------|-----|
+| `TIMED_OUT` or `CHANNEL_ERROR` | WebSocket can't connect | Check Supabase project Realtime is enabled |
+| `SUBSCRIBED` but no events | RLS dropping events | Check all 4 DB queries above |
+| `SUBSCRIBED` + events in console but page doesn't update | Event listener issue | Check `window.addEventListener` is set up and the event name matches |
+| "session ready" log missing | `.subscribe()` called before `getSession()` resolved | Move channel setup inside `getSession().then()` |
+| Events fire once then stop | JWT expired, channel not refreshed | Verify `createBrowserClient` singleton is used (not `createClient` from raw `@supabase/supabase-js`) |
 
 ---
 
-## Gotchas and Rules
-
-### Always call `removeChannel` on unmount
-Failing to clean up leaves an open WebSocket subscription. Each re-mount creates a new one.
-Over time this exhausts the connection limit.
+## What NOT to do
 
 ```typescript
-return () => {
-  supabase.removeChannel(channel); // always — no exceptions
-};
-```
+// ❌ Don't call setAuth manually — createBrowserClient handles JWT automatically
+supabase.realtime.setAuth(token);
 
-### One channel per table, not per component
-If multiple components subscribe to the same table, each creates its own WebSocket stream.
-Instead, one component (the sidebar) owns the subscription and dispatches browser events
-that other components listen to.
+// ❌ Don't subscribe synchronously at module level — session not loaded yet
+const channel = supabase.channel("x").on(...).subscribe();
 
-### `REPLICA IDENTITY FULL` is required for UPDATE/DELETE payloads
-Without it, Supabase only sends `{ old: { id: "..." } }` for UPDATE/DELETE — no field values.
-If you only need INSERT events, this is optional. For UPDATE/DELETE, always set FULL.
+// ❌ Don't use current_user_role() in RLS policies on Realtime tables
+CREATE POLICY ... USING (current_user_role() = 'admin');
 
-### Filter at the Realtime level when possible (advanced)
-For high-traffic tables, you can filter which rows trigger events client-side:
-```typescript
-.on("postgres_changes", {
-  event: "INSERT",
-  schema: "public",
-  table: "leads",
-  filter: "status=eq.Routed to Sales",  // only fire for this status
-}, handler)
-```
-This reduces noise but requires knowing the exact filter at subscription time.
-For BazaarPrinting CRM, subscribing to all events (`event: "*"`, no filter) is fine.
+// ❌ Don't call setLoading(true) in the Realtime handler — shows skeleton
+function onLeadsChanged() { setLoading(true); fetchLeads(); }
 
-### Silent re-fetch pattern — don't call `setLoading(true)`
-When the Realtime event triggers a re-fetch, bypass the loading skeleton:
-```typescript
-// ✅ Silent — no skeleton flash
-fetch("/api/leads/workspace")
-  .then(r => r.json())
-  .then(d => { setLeads(d.leads ?? []); });
-
-// ❌ Shows skeleton while re-fetching — jarring for the user
-fetchLeads(); // calls setLoading(true) internally
+// ❌ Don't forget to clean up channels — causes WebSocket leaks
+// (missing removeChannel in useEffect cleanup)
 ```
 
 ---
 
-## Existing Implementations to Reference
+## Existing Implementations
 
-| Entity | Migration | Subscription | Badge API | Page Consumer(s) |
-|--------|-----------|-------------|-----------|-----------------|
-| `leads` | `035_enable_leads_realtime.sql` | `sidebar.tsx` → `"leads-realtime"` channel | `sidebar-counts/route.ts` | `sales-page.tsx`, `leads-page.tsx` |
-| `activities` | `036_enable_activities_realtime.sql` | `sidebar.tsx` → `"activities-realtime"` channel | — | `activity-log-section.tsx` |
+| Entity | Migration(s) | Channel name | Browser event | Page consumers |
+|--------|-------------|-------------|---------------|----------------|
+| `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx` |
+| `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` | `bazaar:activities-changed` | `activity-log-section.tsx` |
+
+---
+
+## Lessons Learned (from leads Realtime debugging, May 2026)
+
+Two separate bugs were discovered when implementing Realtime on the `leads` table.
+Both caused the same symptom: subscription shows `SUBSCRIBED` but zero events arrive.
+
+### Bug 1 — RLS policies used `SECURITY DEFINER` functions
+
+The `admin_read_all_leads`, `sdr_read_all_leads`, and `sales_read_routed_leads`
+policies all called `current_user_role()`, which is a `SECURITY DEFINER` function.
+In the Supabase Realtime evaluation context, this caused `auth.uid()` to return `NULL`,
+making every policy evaluate to `FALSE`. All events were silently dropped.
+
+**Fix:** `038_fix_leads_rls_for_realtime.sql` — replaced all three policies with
+inline `EXISTS` subqueries that call `auth.uid()` directly.
+
+### Bug 2 — Channels subscribed before JWT was present
+
+The sidebar's `useEffect` called `.subscribe()` synchronously while
+`supabase.auth.getSession()` was still pending. The channels opened without a JWT,
+and the explicit `supabase.realtime.setAuth()` call that followed was too late —
+the handshake had already happened without auth.
+
+**Fix:** `components/sidebar.tsx` — moved all `.channel().subscribe()` calls inside
+the `getSession().then()` callback. Removed the manual `setAuth` and `onAuthStateChange`
+calls since `createBrowserClient` handles JWT lifecycle automatically.

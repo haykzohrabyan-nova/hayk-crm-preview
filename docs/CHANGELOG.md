@@ -3,6 +3,15 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-10] — Fix Realtime not delivering lead-change events to admin
+
+### Fixed
+- `supabase/migrations/038_fix_leads_rls_for_realtime.sql` — replaced `current_user_role()` (a `SECURITY DEFINER` function) in all three `leads` SELECT RLS policies with inline `EXISTS` subqueries. `SECURITY DEFINER` functions run as their owner (`postgres`) in the Supabase Realtime evaluation context, causing `auth.uid()` to return `NULL`, which made every subscriber's RLS check fail and every event to be silently dropped even when the WebSocket was `SUBSCRIBED`.
+- `components/sidebar.tsx` — moved Realtime channel setup inside `getSession().then()` so the JWT is guaranteed to be present before the WebSocket handshake. Previously, `.subscribe()` was called synchronously while `setAuth` was still pending an async `getSession()` resolve, meaning channels opened without a JWT and Realtime silently rejected all events. Also removed the manual `setAuth` + `onAuthStateChange` handler — `createBrowserClient` handles token refresh automatically.
+
+### Changed
+- `docs/realtime-live-updates.md` — fully rewritten with both bug post-mortems, inline subquery RLS templates for all roles, JWT timing rules, complete debugging checklist, and a step-by-step checklist for adding Realtime to future entities (orders, etc.).
+
 ## [2026-05-10] — Admin can reassign/unassign Sales rep from pipeline leads
 
 ### Added

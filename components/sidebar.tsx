@@ -200,9 +200,9 @@ export function Sidebar() {
   }, []);
 
   // Fetch sidebar badge counts — initial load + Realtime-driven refresh.
-  // A Supabase Realtime subscription watches the leads table for any change
-  // (INSERT / UPDATE / DELETE) and calls fetchBadges() immediately.
-  // No polling — counts update the instant a lead changes in the DB.
+  // Channels are created AFTER getSession() resolves so the JWT is guaranteed
+  // to be present when the WebSocket handshake happens. createBrowserClient is a
+  // singleton, so the same auth state is shared across all createClient() calls.
   useEffect(() => {
     function fetchBadges() {
       fetch("/api/sidebar-counts")
@@ -212,41 +212,70 @@ export function Sidebar() {
     }
 
     fetchBadges();
-
-    // Also refresh immediately when any in-page action fires this event
     window.addEventListener("bazaar:refresh-counts", fetchBadges);
 
-    // Realtime: any change to the leads table triggers an instant badge refresh
-    // AND signals pages (sales, leads) to silently re-fetch their table data.
     const supabase = createClient();
-    const leadsChannel = supabase
-      .channel("leads-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "leads" },
-        () => {
-          fetchBadges();
-          window.dispatchEvent(new Event("bazaar:leads-changed"));
-        }
-      )
-      .subscribe();
+    let cancelled = false;
 
-    // Realtime: any new activity row signals the admin activity log to refresh.
-    const activitiesChannel = supabase
-      .channel("activities-realtime")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "activities" },
-        () => {
-          window.dispatchEvent(new Event("bazaar:activities-changed"));
-        }
-      )
-      .subscribe();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (cancelled) return;
+
+      if (!session) {
+        console.log("[Realtime] no session — skipping channel setup");
+        return;
+      }
+
+      console.log("[Realtime] session ready, opening channels uid=", session.user.id);
+
+      // Leads: any INSERT/UPDATE/DELETE triggers badge refresh + silent table re-fetch
+      const leadsChannel = supabase
+        .channel("leads-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "leads" },
+          (payload) => {
+            console.log("[Realtime] leads event:", payload.eventType, payload);
+            fetchBadges();
+            window.dispatchEvent(new Event("bazaar:leads-changed"));
+          }
+        )
+        .subscribe((status, err) => {
+          console.log("[Realtime] leads-realtime status:", status, err ?? "");
+        });
+
+      // Activities: new rows signal the admin activity log to refresh
+      const activitiesChannel = supabase
+        .channel("activities-realtime")
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "activities" },
+          (payload) => {
+            console.log("[Realtime] activities event:", payload);
+            window.dispatchEvent(new Event("bazaar:activities-changed"));
+          }
+        )
+        .subscribe((status, err) => {
+          console.log("[Realtime] activities-realtime status:", status, err ?? "");
+        });
+
+      // Store refs on the supabase instance for cleanup
+      (supabase as unknown as Record<string, unknown>)["_sidebarLeadsCh"] = leadsChannel;
+      (supabase as unknown as Record<string, unknown>)["_sidebarActivitiesCh"] = activitiesChannel;
+    });
 
     return () => {
+      cancelled = true;
       window.removeEventListener("bazaar:refresh-counts", fetchBadges);
-      supabase.removeChannel(leadsChannel);
-      supabase.removeChannel(activitiesChannel);
+      // Clean up channels if they were created
+      const refs = supabase as unknown as Record<string, unknown>;
+      if (refs["_sidebarLeadsCh"]) {
+        supabase.removeChannel(refs["_sidebarLeadsCh"] as Parameters<typeof supabase.removeChannel>[0]);
+        delete refs["_sidebarLeadsCh"];
+      }
+      if (refs["_sidebarActivitiesCh"]) {
+        supabase.removeChannel(refs["_sidebarActivitiesCh"] as Parameters<typeof supabase.removeChannel>[0]);
+        delete refs["_sidebarActivitiesCh"];
+      }
     };
   }, []);
 
