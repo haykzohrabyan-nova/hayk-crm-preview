@@ -23,6 +23,7 @@ import { EmailInput } from "@/components/ui/email-input";
 import { StatusPill } from "@/components/ui/status-pill";
 import { VerifyDrawer } from "@/components/verify-drawer";
 import { Lead, Customer, LookupMap } from "@/lib/types";
+import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import { validatePhone } from "@/lib/utils/phone";
 import { createClient } from "@/lib/supabase/client";
@@ -154,13 +155,15 @@ interface AddForm {
   website: string;
   urgency: string;
   is_returning_customer: boolean;
+  initial_interest: string;
   sdr_comment: string;
 }
 
 const EMPTY_FORM: AddForm = {
   phone: "", email: "", first_name: "", last_name: "",
   source: "", authority: "", company: "", industry: "",
-  website: "", urgency: "", is_returning_customer: false, sdr_comment: "",
+  website: "", urgency: "", is_returning_customer: false,
+  initial_interest: "", sdr_comment: "",
 };
 
 function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadModalProps) {
@@ -254,6 +257,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
+        initial_interest: form.initial_interest.trim() || null,
         customer_id: selectedCustomer?.id ?? null,
         create_customer: !selectedCustomer,
       }),
@@ -340,6 +344,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
                 value={form.phone}
                 onChange={(digits) => setForm((f) => ({ ...f, phone: digits }))}
                 error={phoneError}
+                showAction
               />
             </div>
 
@@ -349,6 +354,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
               <EmailInput
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                showAction
               />
             </div>
 
@@ -467,6 +473,26 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Initial Interest — full width */}
+            <div className="sm:col-span-2">
+              <label className={labelCls} style={labelStyle}>Initial Interest</label>
+              <input
+                className={inputCls}
+                style={inputStyle}
+                value={form.initial_interest}
+                onChange={(e) => setForm((f) => ({ ...f, initial_interest: e.target.value }))}
+                placeholder="e.g. Labels, custom boxes for product launch…"
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-accent)";
+                  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-border)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
             </div>
 
             {/* Returning customer — full width */}
@@ -954,7 +980,7 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {(["Name", "Company", "Source", "Phone", "Urgency", "Status", "Owner", "Created", "Action"] as const).map((h) => {
+                  {(["Name", "Company", "Source", "Initial Interest", "Phone", "Urgency", "Status", "Owner", "Created", "Action"] as const).map((h) => {
                     const isSortable = h === "Urgency" || h === "Created";
                     const field: SortField = h === "Urgency" ? "urgency" : "created";
                     const isActive = isSortable && sortField === field;
@@ -982,10 +1008,10 @@ export function LeadsPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={9} />
+                  <TableSkeleton cols={10} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={10} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads found.
                     </td>
                   </tr>
@@ -1009,6 +1035,11 @@ export function LeadsPage() {
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
                         {lead.source || "—"}
+                      </td>
+                      <td className="px-3 py-2.5 max-w-[160px]" style={{ color: "var(--color-text-muted)" }}>
+                        <span className="block truncate" title={lead.initial_interest ?? undefined}>
+                          {lead.initial_interest || "—"}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
                         {lead.customer?.phone ? formatPhone(lead.customer.phone) : "—"}
@@ -1133,6 +1164,12 @@ export function LeadsPage() {
                       <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>
                     )}
                     <div className="flex justify-between"><span>Source</span><span className="normal-case tracking-normal">{lead.source || "—"}</span></div>
+                    {lead.initial_interest && (
+                      <div className="flex justify-between gap-2">
+                        <span className="shrink-0">Initial Interest</span>
+                        <span className="normal-case tracking-normal text-right truncate max-w-[160px]">{lead.initial_interest}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{relativeTime(lead.created_at)}</span></div>
                     <div className="flex justify-between items-center">
                       <span>Owner</span>
@@ -1230,7 +1267,7 @@ export function LeadsPage() {
                     >
                       <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
-                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.hold_reason || "—"}</td>
+                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{holdReasonLabel(lead.hold_reason)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {lead.hold_until ? new Date(lead.hold_until).toLocaleDateString() : "—"}
                       </td>
@@ -1280,7 +1317,7 @@ export function LeadsPage() {
                     <StatusPill status="On Hold" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
-                    <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{lead.hold_reason || "—"}</span></div>
+                    <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{holdReasonLabel(lead.hold_reason)}</span></div>
                     <div className="flex justify-between"><span>Until</span><span className="normal-case tracking-normal">{lead.hold_until ? new Date(lead.hold_until).toLocaleDateString() : "—"}</span></div>
                   </div>
                   <div className="flex gap-2">
@@ -1486,7 +1523,18 @@ export function LeadsPage() {
           lockedByName={drawerLockedBy}
           onClose={() => setDrawerLead(null)}
           onLeadUpdated={(updated) => {
-            setLeads((prev) => prev.map((l) => l.id === updated.id ? updated : l));
+            const tabConf = TAB_CONFIG.find((t) => t.id === activeTab);
+            const tabStatus = tabConf?.status;
+            const tabStatuses = tabConf?.statuses;
+            const belongsToTab =
+              tabStatus ? updated.status === tabStatus
+              : tabStatuses ? tabStatuses.includes(updated.status)
+              : true;
+            if (!belongsToTab) {
+              setLeads((prev) => prev.filter((l) => l.id !== updated.id));
+            } else {
+              setLeads((prev) => prev.map((l) => l.id === updated.id ? updated : l));
+            }
           }}
           onLeadRemoved={(id) => {
             setLeads((prev) => prev.filter((l) => l.id !== id));

@@ -5,6 +5,43 @@ Each entry explains the current behaviour, the problem, the intended fix, and an
 
 ---
 
+## [TODO-002] Auto-set `Validated` and `Quoted` status on ticket creation
+
+**Status:** Deferred — build during Tickets phase  
+**Files affected:** `app/api/leads/[id]/route.ts` (or a new ticket creation route), `docs/schema.md`
+
+---
+
+### The Rule
+
+`status` on a lead is **never set to `Validated` or `Quoted` manually**. These are system-set based on ticket creation:
+
+| Action | `status` result |
+|--------|----------------|
+| SDR or Sales creates a ticket with a quote linked to this lead | `Quoted` |
+| SDR or Sales creates a ticket (order only, no quote) linked to this lead | `Validated` |
+
+### Where to implement
+
+When the Tickets module's create-ticket endpoint (`POST /api/tickets`) is built, after inserting the `job_tickets` row, add a step:
+
+```typescript
+// Determine new lead status from ticket kind
+const newLeadStatus = ticket.quote_skus?.length > 0 ? "Quoted" : "Validated";
+
+await admin.from("leads")
+  .update({ status: newLeadStatus, updated_at: now })
+  .eq("id", ticket.linked_lead_id);
+```
+
+Log a `lead_status_changed` activity for the transition.
+
+### What NOT to do
+- Never add a `Validate` or `Quote` button to any SDR/Sales UI — status changes from ticket creation only.
+- Do not restore a held lead to `Validated` on resume — resume always goes back to `Pending` (already fixed in `app/api/leads/[id]/resume/route.ts`).
+
+---
+
 ## [TODO-001] Admin Override for Terminal Leads
 
 **Status:** Deferred — build during Admin Enhancements phase  

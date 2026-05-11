@@ -68,9 +68,9 @@ Tab count reflects the filtered list — only leads the current SDR can work (un
 
 ### Behaviors
 
-- **Resume** → `POST /api/leads/[id]/resume` with `role: 'sdr'` → lead returns to `Validated` → removes from this tab
+- **Resume** → `POST /api/leads/[id]/resume` with `role: 'sdr'` → lead returns to `Pending` → removes from this tab
 - **View** → opens Verify Drawer (attempts lock; read-only if locked by another SDR)
-- From hold, SDR can: **Resume** (→ `Validated`), **Reject** (terminal), **Route to Sales**
+- From hold, SDR can: **Resume** (→ `Pending`), **Reject** (terminal), **Route to Sales**
 
 ---
 
@@ -217,14 +217,18 @@ Actions available depending on drawer mode and current `status`. **All action bu
 
 | Action | When Available | What it does |
 |--------|---------------|--------------|
-| **Validate** | `status = 'Pending'` | Sets `status = 'Validated'`, moves to workspace |
-| **Route to Sales** | Edit mode, `status = 'Validated'` or `'On Hold'` | Sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
-| **On Hold** | Edit mode, status not Rejected | Opens hold sub-form inline |
-| **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `status = 'Rejected'` — **TERMINAL** |
-| **Save** | Edit mode | `PATCH /api/leads/[id]` without changing status |
-| **Close** | Always | Dismisses drawer — ownership is **not** released (soft lock persists until Route / Reject / Admin reassign) |
+| ~~**Validate**~~ | _Removed_ | The Validate step has been removed from the SDR workflow. SDRs go directly to Route to Sales, On Hold, or Reject. |
+| **Route to Sales** | Edit mode, any status | Saves all form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
+| **On Hold** | Edit mode, status not Rejected | Saves all form edits first, then applies hold |
+| **Reject** | Edit mode, status not Rejected | Saves all form edits + sets `status = 'Rejected'` — **TERMINAL** |
+| **Resume** | Edit mode, `status = 'On Hold'` | Saves all form edits + restores to `Validated` |
+| **Close** | Read-only mode only | Dismisses modal — ownership is **not** released |
 
-**Route to Sales requires validation:** The "Route to Sales" button is **disabled** when `status = 'Pending'`. Hovering shows the tooltip: _"Lead must be validated before sending to Sales"_. The SDR must click **Validate** first (which sets `status = 'Validated'`), then Route to Sales becomes active.
+**No dedicated Save button.** All form edits are persisted automatically when the SDR takes any action (Validate, Route, Hold, Reject, Resume). Every edit is tied to an intent.
+
+**No X / close button when editing.** Once a lead is claimed the SDR must take an action to exit. The X button is only shown in read-only mode (lead locked by someone else, or rejected).
+
+**Route to Sales is always available.** The SDR can route a lead directly from `Pending` status without validating first. The Validate button is still available if the SDR wants to mark the lead validated before routing, but it is no longer a required step.
 
 **Reject is terminal:** Once `status = 'Rejected'` is set, the drawer reopens in read-only mode for all non-Admin users. Only Admin sees an "Admin Override" banner with the ability to change status.
 
@@ -388,7 +392,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Hold action (with reason, notes, hold-until date) | Full hold sub-form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
 | Reject (terminal) | Reason + notes; read-only after; ownership released |
-| Route to Sales | Button disabled (with tooltip) when `status = 'Pending'`; only active after Validate. Sets status + sales_status = Ongoing; ownership released; Directed to Sales tab shows Sales Rep + Sales Status — no drawer, no actions |
+| Route to Sales | Available from any status (Pending, Validated, On Hold). Sets status + sales_status = Ongoing; ownership released; Directed to Sales tab shows Sales Rep + Sales Status — no drawer, no actions |
 | Save without status change | PATCH lead fields; logs `lead_edited` for tracked field changes |
 | Context-aware action buttons | On Hold → Resume shown; Routed leads → view-only |
 | Counts refresh after every action | bazaar:refresh-counts event fired |

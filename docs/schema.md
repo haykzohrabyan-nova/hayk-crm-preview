@@ -182,6 +182,8 @@ create or replace view public.user_profiles_with_role as
 
 Customer profiles. A customer is created when a lead is first added and the SDR chooses to save the contact info. **Multiple customer records can share the same phone number or email** — this is intentional. When the same phone appears again, the SDR is shown all matching profiles and picks which one to link.
 
+**CRM page visibility:** A customer appears in the CRM contact list only once at least one of their linked leads has been routed to Sales (`status = 'Routed'` or `sales_status IS NOT NULL`). Customers whose leads are still Pending, On Hold (SDR side), or Rejected are not shown — they enter the CRM the moment the SDR routes the lead.
+
 | Column | Type | Notes |
 |--------|------|-------|
 | `id` | `uuid` PK | `gen_random_uuid()` |
@@ -260,6 +262,7 @@ Core lead record. A lead starts in the inbox (`is_inbox = true`) and moves to th
 | `urgency` | `text` | `'High'` \| `'Medium'` \| `'Low'` \| `null` — how urgently the client needs the product |
 | `is_returning_customer` | `boolean` DEFAULT `false` | Existing / returning client flag |
 | `sdr_comment` | `text` | SDR verification notes ("Verify Lead Comment") — internal, not visible to client |
+| `initial_interest` | `text` | Free-text capturing what the customer initially expressed interest in (e.g. "custom boxes, labels") — optional, added during manual lead creation |
 | `rejection_notes` | `text` | Free-text |
 | `sales_notes` | `text` | Internal notes entered by Sales reps (not visible to SDRs) |
 | `locked_by_id` | `uuid` FK → `auth.users` | User currently working this lead (drawer open) |
@@ -308,13 +311,25 @@ create table public.leads (
 #### Status Enums (enforced in application layer, not DB constraint for flexibility)
 
 **`status` (SDR lifecycle):**
-- `Pending` — in inbox, not yet touched by SDR
-- `Validated` — SDR has opened and is actively working it
-- `Quoted` — SDR has sent a quote to the client
+- `Pending` — lead created, not yet worked by SDR
+- `Validated` — **system-set, never set manually.** Auto-applied when a job ticket (order only, no quote) is created for this lead. See table below.
+- `Quoted` — **system-set, never set manually.** Auto-applied when a job ticket that includes a quote is created for this lead.
 - `Routed to Sales` — SDR has handed off to the Sales team
-- `On Hold` — SDR-initiated hold; can return to `Validated`, go to `Rejected`, or `Routed to Sales`
+- `On Hold` — SDR-initiated hold; can return to `Pending` (or `Validated` if previously system-validated), go to `Rejected`, or `Routed to Sales`
 - `Rejected` — **TERMINAL** for SDR and Sales. Only Admin can change this status.
 - `Duplicate` — merged into another contact
+
+**Auto-status rules (set by Tickets module on ticket creation):**
+
+| Action | `status` result |
+|--------|----------------|
+| SDR routes lead → Sales | `Routed to Sales` (unchanged here — set by SDR action) |
+| SDR or Sales creates a ticket with a quote | `Quoted` |
+| SDR or Sales creates a ticket with order only (no quote) | `Validated` |
+| Sales creates order + quote from a Routed lead | `Quoted` |
+| Sales creates order only from a Routed lead | `Validated` |
+
+> These transitions are implemented in the Tickets module (not yet built). The `Validated` and `Quoted` statuses are **never set manually** — they are always the result of ticket creation logic.
 
 **`sales_status` (Sales pipeline):**
 - `Ongoing` — Sales rep has claimed the lead and is actively working it
@@ -418,7 +433,7 @@ Append-only event log. Never updated, only inserted. Powers the `HistoryTimeline
 | `ticket_id` | `uuid` FK → `job_tickets` | |
 | `type` | `text` NOT NULL | See Activity Type Enums |
 | `channel` | `text` | `'SMS'` \| `'WhatsApp'` \| `'Email'` \| `'Call'` \| `'In-person'` |
-| `by_user_id` | `uuid` FK → `auth.users` | User who triggered the event |
+| `by_user_id` | `uuid` FK → `user_profiles` | User who triggered the event (FK re-pointed from `auth.users` to `user_profiles` so Supabase can join `full_name` inline — see migration 040) |
 | `payload` | `jsonb` DEFAULT `'{}'` | Event-specific data |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 
@@ -430,7 +445,7 @@ create table public.activities (
   ticket_id   uuid        references public.job_tickets(id),
   type        text        not null,
   channel     text,
-  by_user_id  uuid        references auth.users(id),
+  by_user_id  uuid        references public.user_profiles(id) on delete set null,
   payload     jsonb       not null default '{}',
   created_at  timestamptz not null default now()
 );

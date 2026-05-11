@@ -5,6 +5,7 @@ import { X, Lock } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { Activity, HoldForm, Lead } from "@/lib/types";
+import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import {
   Select,
@@ -76,7 +77,7 @@ function activityLabel(a: Activity): string {
     case "lead_edited":           return `Lead info updated`;
     case "lead_sales_claimed":    return "Lead claimed by sales rep";
     case "lead_routed_to_sales":  return "Routed to Sales";
-    case "lead_held":             return `Put on hold${p.reason ? ` — ${p.reason}` : ""}`;
+    case "lead_held":             return `Put on hold${p.reason ? ` — ${holdReasonLabel(p.reason)}` : ""}`;
     case "lead_resumed":          return "Resumed from hold";
     case "lead_merged":           return "Customer record merged";
     case "contact_edited":        return "Contact info updated";
@@ -140,7 +141,7 @@ export function SalesDrawer({
 }: SalesDrawerProps) {
   const [lead, setLead] = useState<Lead>(initialLead);
   const [form, setForm] = useState<SalesForm>(() => formFromLead(initialLead));
-  const [activeTab, setActiveTab] = useState<"info" | "order" | "history">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "history">("info");
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [activitiesFetched, setActivitiesFetched] = useState(false);
@@ -323,7 +324,7 @@ export function SalesDrawer({
 
         {/* Tab bar */}
         <div className="flex shrink-0" style={{ borderBottom: "1px solid var(--color-border)" }}>
-          {(["info", "order", "history"] as const).map((tab) => (
+          {(["info", "history"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -333,7 +334,7 @@ export function SalesDrawer({
                 color: activeTab === tab ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
               }}
             >
-              {tab === "info" ? "Lead Info" : tab === "order" ? "Order / Quote" : "History"}
+              {tab === "info" ? "Lead Info" : "History"}
             </button>
           ))}
         </div>
@@ -580,25 +581,6 @@ export function SalesDrawer({
             </>
           )}
 
-          {activeTab === "order" && (
-            <section className="flex flex-col items-center justify-center py-16 text-center">
-              <div
-                className="mb-4 flex h-12 w-12 items-center justify-center rounded-[10px]"
-                style={{ background: "var(--color-badge-bg)" }}
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: "var(--color-badge-text)" }}>
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <p className="text-[14px] font-semibold mb-1" style={{ color: "var(--color-text-primary)" }}>
-                Order / Quote Builder
-              </p>
-              <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>
-                Coming in the Tickets phase.
-              </p>
-            </section>
-          )}
-
           {activeTab === "history" && (
             <section>
               <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-4" style={{ color: "var(--color-text-muted)" }}>
@@ -818,6 +800,14 @@ export function SalesDrawer({
           {/* Main action buttons */}
           {footerMode === "actions" && !isReadOnly && (
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                disabled
+                title="Available in the Tickets phase"
+                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium opacity-40 cursor-not-allowed"
+                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+              >
+                Create Quote / Order
+              </button>
               <button
                 onClick={() => setFooterMode("hold")}
                 disabled={saving}

@@ -3,6 +3,84 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-11] — CRM page listens for real-time lead changes
+
+### Changed
+- `components/crm-page.tsx` — added `bazaar:leads-changed` event listener so the customer list silently re-fetches whenever any lead is updated (e.g. an SDR routes a lead, making that customer visible in the CRM for the first time)
+
+## [2026-05-11] — Filter CRM page to routed leads only
+
+### Fixed
+- `app/api/customers/route.ts` — CRM contact list now only returns customers that have at least one lead with `status = "Routed"` or a non-null `sales_status`. Customers whose leads are still Pending, On Hold (SDR), or Rejected no longer appear in the CRM page.
+
+## [2026-05-11] — Remove Quote/Order placeholder tabs from lead drawers
+
+### Changed
+- `components/verify-drawer.tsx` — removed placeholder "Quote" tab; SDR drawer now has only "Lead Info" and "History" tabs. Added disabled "Create Quote / Order" footer button (enabled in Tickets phase).
+- `components/sales-drawer.tsx` — removed placeholder "Order / Quote" tab; Sales drawer now has only "Lead Info" and "History" tabs. Added disabled "Create Quote / Order" footer button (enabled in Tickets phase).
+
+## [2026-05-10] — Add call/email action buttons to phone & email inputs
+
+### Changed
+- `components/ui/phone-input.tsx` — added optional `showAction` prop; when enabled and a full 10-digit number is present, renders a fused Phone icon link (`tel:+1…`) at the right edge of the input
+- `components/ui/email-input.tsx` — added optional `showAction` prop; when enabled and a value is present, renders a fused Mail icon link (`mailto:…`) at the right edge of the input
+- `components/leads-page.tsx` — enabled `showAction` on both Phone and Email inputs in the Add Lead modal
+- `components/verify-drawer.tsx` — enabled `showAction` on both Phone and Email inputs in the View/Claim modal
+
+## [2026-05-10] — Fix activity history always empty (FK mismatch)
+
+### Fixed
+- `supabase/migrations/040_fix_activities_by_user_fkey.sql` — re-pointed `activities.by_user_id` FK from `auth.users` to `public.user_profiles`. The original FK prevented Supabase from traversing the relationship to `user_profiles` in the inline select, causing `GET /api/leads/[id]/activities` to return a "Could not find a relationship" DB error and the History tab to always appear empty.
+- `docs/schema.md` — updated `activities` table definition to reflect the corrected FK target.
+
+## [2026-05-10] — Redefine Validated/Quoted as system-set statuses
+
+### Changed
+- `app/api/leads/[id]/resume/route.ts` — resume no longer restores to `Validated`; fallback is now `Pending`. A lead that was previously `Validated` before being put on hold also resumes to `Pending` (since `Validated` is now system-set by ticket creation, not the SDR).
+- `docs/schema.md` — rewrote `status` enum definitions: `Validated` and `Quoted` are now documented as system-set (auto-applied on ticket creation) and never set manually.
+- `docs/TODO.md` — added `[TODO-002]` with full implementation spec for auto-setting these statuses when the Tickets module is built.
+- `docs/feature-specs/leads-sdr.md` — Resume from Hold now restores to `Pending` instead of `Validated`.
+
+## [2026-05-10] — Remove Validate button from SDR workflow
+
+### Removed
+- `components/verify-drawer.tsx` — Validate button and `doValidate`/`handleValidate` functions removed entirely. SDRs now go directly from any status to Route to Sales, On Hold, or Reject.
+
+### Changed
+- `docs/feature-specs/leads-sdr.md` — Footer Actions table updated; Validate row marked as removed.
+
+> **Note:** The `Validated` status value is kept in the DB schema and TypeScript types for backward compatibility with existing leads that already carry that status. No migration needed.
+
+## [2026-05-10] — Remove validation gate before Route to Sales
+
+### Changed
+- `components/verify-drawer.tsx` — "Route to Sales" button is now always enabled; SDR can route directly from `Pending` without validating first. Removed the disabled state and tooltip that enforced validation.
+- `docs/feature-specs/leads-sdr.md` — updated Footer Actions table, build status table, and validation-gate paragraph to reflect the new behaviour.
+
+## [2026-05-10] — Remove Save button and X close from claimed-lead modal
+
+### Changed
+- `components/verify-drawer.tsx` — removed the **Save** button; form edits are now persisted as part of each action (Validate, Route to Sales, On Hold, Reject, Resume). Hold and Resume now call `patchLead(buildLeadPayload())` before their own API request so no field edits are lost.
+- `components/verify-drawer.tsx` — **X close button** is now hidden when the SDR has the lead claimed (edit mode). It remains visible in read-only mode (locked by another SDR, or rejected lead). The SDR must take a real action to exit.
+- `docs/feature-specs/leads-sdr.md` — Footer Actions table updated to reflect removed Save/Close buttons and new auto-save-on-action behaviour.
+
+## [2026-05-10] — Convert Verify Drawer to centered modal
+
+### Changed
+- `components/verify-drawer.tsx` — replaced the right-side slide-in panel with a centered modal window (`max-w-[780px]`, `max-h-90vh`, `border-radius: 12px`); all content, tabs, actions, and lock logic unchanged
+
+## [2026-05-10] — Add Initial Interest field to leads
+
+### Added
+- `supabase/migrations/039_add_initial_interest_to_leads.sql` — adds `initial_interest text` column to the `leads` table (nullable, no constraints)
+- `initial_interest` field in Add Lead modal (`components/leads-page.tsx`) — optional free-text input below Urgency, full-width, not required
+- `initial_interest` column in the All Leads table — shows value truncated with tooltip, or "—" when empty; also shown in mobile cards
+- `initial_interest: string | null` added to `Lead` interface in `lib/types/index.ts`
+
+### Changed
+- `app/api/leads/manual/route.ts` — accepts and persists `initial_interest` on lead creation
+- `docs/schema.md` — documented new `initial_interest` column in the `leads` table
+
 ## [2026-05-10] — Require validation before routing lead to Sales
 
 ### Changed

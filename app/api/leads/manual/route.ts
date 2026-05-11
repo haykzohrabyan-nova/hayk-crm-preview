@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
     urgency,
     is_returning_customer,
     sdr_comment,
+    initial_interest,
     interests,
     quantities,
     customer_id,
@@ -91,6 +92,7 @@ export async function POST(request: NextRequest) {
       sdr_id: userId,
       is_returning_customer: is_returning_customer ?? false,
       sdr_comment: sdr_comment ?? null,
+      initial_interest: initial_interest ?? null,
       interests: interests ?? {},
       quantities: quantities ?? {},
     })

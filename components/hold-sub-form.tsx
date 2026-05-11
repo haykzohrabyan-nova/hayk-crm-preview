@@ -1,15 +1,7 @@
 "use client";
 
 import { type HoldForm } from "@/lib/types";
-
-const HOLD_REASONS = [
-  { value: "awaiting_customer_response", label: "Awaiting customer response" },
-  { value: "awaiting_artwork_files", label: "Awaiting artwork / files" },
-  { value: "awaiting_payment_confirmation", label: "Awaiting payment confirmation" },
-  { value: "pricing_review_needed", label: "Pricing review needed" },
-  { value: "vacation_customer_unavailable", label: "Vacation / customer unavailable" },
-  { value: "other", label: "Other" },
-];
+import { HOLD_REASONS } from "@/lib/constants/hold-reasons";
 
 interface HoldSubFormProps {
   form: HoldForm;

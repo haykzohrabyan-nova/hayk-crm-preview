@@ -38,7 +38,10 @@ export async function POST(
     update.sales_status = current.prev_sales_status ?? "Ongoing";
     update.prev_sales_status = null;
   } else {
-    update.status = current.prev_status ?? "Validated";
+    // Restore to prev_status if recorded; fall back to Pending.
+    // Validated is now system-set (by ticket creation) — never restore manually to it.
+    const restoredStatus = current.prev_status === "Validated" ? "Pending" : (current.prev_status ?? "Pending");
+    update.status = restoredStatus;
     update.prev_status = null;
   }
 

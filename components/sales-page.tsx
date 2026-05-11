@@ -10,6 +10,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { SalesDrawer } from "@/components/sales-drawer";
 import { Lead } from "@/lib/types";
+import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import { createClient } from "@/lib/supabase/client";
 
@@ -614,7 +615,7 @@ export function SalesPage() {
                     >
                       <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{leadName(lead)}</td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
-                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.hold_reason || "—"}</td>
+                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{holdReasonLabel(lead.hold_reason)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {lead.hold_until ? new Date(lead.hold_until).toLocaleDateString() : "—"}
                       </td>
@@ -667,7 +668,7 @@ export function SalesPage() {
                     <StatusPill status="On Hold" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
-                    <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{lead.hold_reason || "—"}</span></div>
+                    <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{holdReasonLabel(lead.hold_reason)}</span></div>
                     <div className="flex justify-between"><span>Until</span><span className="normal-case tracking-normal">{lead.hold_until ? new Date(lead.hold_until).toLocaleDateString() : "—"}</span></div>
                     <div className="flex justify-between"><span>Company</span><span className="normal-case tracking-normal">{lead.customer?.company || "—"}</span></div>
                   </div>

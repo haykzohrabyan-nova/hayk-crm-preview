@@ -162,6 +162,13 @@ export function CRMPage() {
 
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
 
+  // Re-fetch silently whenever any lead changes (e.g. SDR routes a lead →
+  // that customer becomes visible in the CRM for the first time).
+  useEffect(() => {
+    window.addEventListener("bazaar:leads-changed", fetchCustomers);
+    return () => window.removeEventListener("bazaar:leads-changed", fetchCustomers);
+  }, [fetchCustomers]);
+
   // ── Client-side filters ───────────────────────────────────────────────────
 
   const filtered = customers.filter((c) => {

@@ -147,6 +147,7 @@ export interface Lead {
   urgency: LeadUrgency | null
   is_returning_customer: boolean
   sdr_comment: string | null
+  initial_interest: string | null
   rejection_reason: string | null
   rejection_notes: string | null
   sales_notes: string | null

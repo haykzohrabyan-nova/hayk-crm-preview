@@ -13,6 +13,7 @@ import { EmailInput } from "@/components/ui/email-input";
 import { StatusPill } from "@/components/ui/status-pill";
 import { HoldSubForm } from "@/components/hold-sub-form";
 import { Activity, HoldForm, Lead, LookupMap, PRODUCT_INTERESTS } from "@/lib/types";
+import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import {
   Select,
@@ -34,9 +35,9 @@ interface DrawerForm {
   company: string;
   industry: string;
   website: string;
-  brand: string;
   urgency: string;
   is_returning_customer: boolean;
+  initial_interest: string;
   sdr_comment: string;
   interests: Record<string, boolean>;
   quantities: Record<string, string>;
@@ -100,9 +101,9 @@ function formFromLead(lead: Lead): DrawerForm {
     company: c?.company ?? "",
     industry: c?.industry ?? "",
     website: c?.website ?? "",
-    brand: lead.brand ?? "",
     urgency: lead.urgency ?? "not_defined",
     is_returning_customer: lead.is_returning_customer,
+    initial_interest: lead.initial_interest ?? "",
     sdr_comment: lead.sdr_comment ?? "",
     interests: lead.interests ?? {},
     quantities: lead.quantities ?? {},
@@ -121,7 +122,7 @@ function activityLabel(a: Activity): string {
     case "lead_edited":           return "Lead info updated";
     case "lead_sales_claimed":    return "Lead claimed by sales rep";
     case "lead_routed_to_sales":  return "Routed to Sales";
-    case "lead_held":             return `Put on hold${p.reason ? ` — ${p.reason}` : ""}`;
+    case "lead_held":             return `Put on hold${p.reason ? ` — ${holdReasonLabel(p.reason)}` : ""}`;
     case "lead_resumed":          return "Resumed from hold";
     case "lead_merged":           return "Customer record merged";
     case "contact_edited":        return "Contact info updated";
@@ -184,7 +185,7 @@ export function VerifyDrawer({
 }: VerifyDrawerProps) {
   const [lead, setLead] = useState<Lead>(initialLead);
   const [form, setForm] = useState<DrawerForm>(() => formFromLead(initialLead));
-  const [activeTab, setActiveTab] = useState<"info" | "quote" | "history">("info");
+  const [activeTab, setActiveTab] = useState<"info" | "history">("info");
   const [footerMode, setFooterMode] = useState<"actions" | "hold" | "reject">("actions");
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
@@ -254,11 +255,11 @@ export function VerifyDrawer({
   function buildLeadPayload() {
     return {
       source: form.source || null,
-      brand: form.brand || null,
       authority: form.authority || null,
       urgency: (form.urgency && form.urgency !== "not_defined") ? form.urgency : null,
       is_returning_customer: form.is_returning_customer,
       sdr_comment: form.sdr_comment || null,
+      initial_interest: form.initial_interest.trim() || null,
       interests: form.interests,
       quantities: form.quantities,
     };
@@ -301,26 +302,6 @@ export function VerifyDrawer({
     setPendingAction(null);
   }
 
-  // ── Action: Validate ──────────────────────────────────────────────────────
-
-  async function doValidate() {
-    setSaving(true);
-    const updated = await patchLead({ ...buildLeadPayload(), status: "Validated" });
-    setSaving(false);
-    if (!updated) return;
-    // Soft lock: ownership stays with SDR after validation.
-    // Lead row updates in place (Pending → Validated); SDR continues working it.
-    setLead(updated);
-    onLeadUpdated(updated);
-    fireCountsRefresh();
-    showToast("Lead validated.");
-    onClose();
-  }
-
-  function handleValidate() {
-    promptThenRun(doValidate);
-  }
-
   // ── Action: Route to Sales ────────────────────────────────────────────────
 
   async function doRoute() {
@@ -349,6 +330,8 @@ export function VerifyDrawer({
 
   async function handleResume() {
     setSaving(true);
+    // Save any edited form fields before resuming
+    await patchLead(buildLeadPayload());
     const res = await fetch(`/api/leads/${lead.id}/resume`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -368,6 +351,8 @@ export function VerifyDrawer({
   async function doHold() {
     if (!holdForm.hold_reason) return;
     setSaving(true);
+    // Save any edited form fields before setting hold status
+    await patchLead(buildLeadPayload());
     const res = await fetch(`/api/leads/${lead.id}/hold`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -428,15 +413,27 @@ export function VerifyDrawer({
     <>
       {/* Backdrop */}
       <div
-        className="fixed inset-0 z-40 bg-black/40"
+        className="fixed inset-0 z-40 bg-black/45"
         onClick={handleClose}
         aria-hidden="true"
       />
 
-      {/* Drawer panel */}
+      {/* Modal panel */}
       <div
-        className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[600px] flex-col overflow-hidden shadow-2xl"
-        style={{ background: "var(--color-surface)", borderLeft: "1px solid var(--color-border)" }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+        aria-modal="true"
+        role="dialog"
+      >
+      <div
+        className="pointer-events-auto flex w-full max-w-[780px] flex-col overflow-hidden shadow-2xl"
+        style={{
+          background: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "12px",
+          minHeight: "600px",
+          maxHeight: "90vh",
+          height: "80vh",
+        }}
       >
         {/* Header */}
         <div
@@ -461,13 +458,16 @@ export function VerifyDrawer({
               </div>
             </div>
           </div>
-          <button
-            onClick={handleClose}
-            className="rounded-full p-1.5 transition-colors hover:bg-muted"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            <X className="h-4 w-4" />
-          </button>
+          {/* X only shown in read-only mode — claimed leads must be acted on, not dismissed */}
+          {isReadOnly && (
+            <button
+              onClick={handleClose}
+              className="rounded-full p-1.5 transition-colors hover:bg-muted"
+              style={{ color: "var(--color-text-muted)" }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         {/* Lock banner */}
@@ -486,7 +486,7 @@ export function VerifyDrawer({
           className="flex shrink-0"
           style={{ borderBottom: "1px solid var(--color-border)" }}
         >
-          {(["info", "quote", "history"] as const).map((tab) => (
+          {(["info", "history"] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -496,7 +496,7 @@ export function VerifyDrawer({
                 color: activeTab === tab ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
               }}
             >
-              {tab === "info" ? "Lead Info" : tab === "quote" ? "Quote" : "History"}
+              {tab === "info" ? "Lead Info" : "History"}
             </button>
           ))}
         </div>
@@ -511,7 +511,7 @@ export function VerifyDrawer({
                 <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
                   Contact Information
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-3">
 
                   {/* Phone */}
                   <div>
@@ -520,6 +520,7 @@ export function VerifyDrawer({
                       value={form.phone}
                       onChange={(digits) => setForm((f) => ({ ...f, phone: digits }))}
                       disabled={isReadOnly}
+                      showAction
                     />
                   </div>
 
@@ -530,6 +531,7 @@ export function VerifyDrawer({
                       value={form.email}
                       onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                       disabled={isReadOnly}
+                      showAction
                     />
                   </div>
 
@@ -648,19 +650,6 @@ export function VerifyDrawer({
                     />
                   </div>
 
-                  {/* Brand */}
-                  <div>
-                    <label className={labelCls} style={labelStyle}>Brand</label>
-                    <input
-                      className={inputCls}
-                      style={inputStyle}
-                      value={form.brand}
-                      onChange={(e) => setForm((f) => ({ ...f, brand: e.target.value }))}
-                      disabled={isReadOnly}
-                      placeholder="Brand name"
-                    />
-                  </div>
-
                   {/* Urgency */}
                   <div>
                     <label className={labelCls} style={labelStyle}>Urgency</label>
@@ -683,6 +672,29 @@ export function VerifyDrawer({
                   </div>
 
                 </div>
+
+                {/* Initial Interest */}
+                <section className="mt-3">
+                  <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-2" style={{ color: "var(--color-text-muted)" }}>
+                    Initial Interest
+                  </h3>
+                  <input
+                    className={inputCls}
+                    style={inputStyle}
+                    value={form.initial_interest}
+                    onChange={(e) => setForm((f) => ({ ...f, initial_interest: e.target.value }))}
+                    disabled={isReadOnly}
+                    placeholder="e.g. Labels, custom boxes for product launch…"
+                    onFocus={(e) => {
+                      e.currentTarget.style.borderColor = "var(--color-accent)";
+                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
+                    }}
+                    onBlur={(e) => {
+                      e.currentTarget.style.borderColor = "var(--color-border)";
+                      e.currentTarget.style.boxShadow = "none";
+                    }}
+                  />
+                </section>
 
                 {/* Returning customer */}
                 <label
@@ -817,17 +829,6 @@ export function VerifyDrawer({
                 )}
               </section>
             </>
-          )}
-
-          {activeTab === "quote" && (
-            <section>
-              <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
-                Quote Details
-              </h3>
-              <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-                Quote builder coming in a future phase.
-              </p>
-            </section>
           )}
 
           {activeTab === "history" && (
@@ -1002,35 +1003,25 @@ export function VerifyDrawer({
           {/* Main action buttons */}
           {footerMode === "actions" && !isReadOnly && (
             <div className="flex flex-wrap items-center gap-2">
-              {lead.status === "Pending" && (
-                <button
-                  onClick={handleValidate}
-                  disabled={saving}
-                  className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
-                  style={{
-                    background: "var(--color-btn-verify-bg)",
-                    color: "var(--color-btn-verify-text)",
-                  }}
-                >
-                  Validate
-                </button>
-              )}
-              <span
-                title={lead.status === "Pending" ? "Lead must be validated before sending to Sales" : undefined}
-                className="inline-flex"
+              <button
+                onClick={handleRoute}
+                disabled={saving}
+                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                style={{
+                  background: "var(--color-btn-primary-bg)",
+                  color: "var(--color-btn-primary-text)",
+                }}
               >
-                <button
-                  onClick={handleRoute}
-                  disabled={saving || lead.status === "Pending"}
-                  className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    background: "var(--color-btn-primary-bg)",
-                    color: "var(--color-btn-primary-text)",
-                  }}
-                >
-                  Route to Sales
-                </button>
-              </span>
+                Route to Sales
+              </button>
+              <button
+                disabled
+                title="Available in the Tickets phase"
+                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium opacity-40 cursor-not-allowed"
+                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+              >
+                Create Quote / Order
+              </button>
               {lead.status === "On Hold" ? (
                 <button
                   onClick={handleResume}
@@ -1058,15 +1049,6 @@ export function VerifyDrawer({
               >
                 Reject
               </button>
-              <div className="flex-1" />
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
-                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
             </div>
           )}
 
@@ -1081,6 +1063,7 @@ export function VerifyDrawer({
             </button>
           )}
         </div>
+      </div>
       </div>
     </>
   );
