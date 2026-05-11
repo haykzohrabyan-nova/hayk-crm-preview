@@ -1015,17 +1015,22 @@ export function VerifyDrawer({
                   Validate
                 </button>
               )}
-              <button
-                onClick={handleRoute}
-                disabled={saving}
-                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
-                style={{
-                  background: "var(--color-btn-primary-bg)",
-                  color: "var(--color-btn-primary-text)",
-                }}
+              <span
+                title={lead.status === "Pending" ? "Lead must be validated before sending to Sales" : undefined}
+                className="inline-flex"
               >
-                Route to Sales
-              </button>
+                <button
+                  onClick={handleRoute}
+                  disabled={saving || lead.status === "Pending"}
+                  className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    background: "var(--color-btn-primary-bg)",
+                    color: "var(--color-btn-primary-text)",
+                  }}
+                >
+                  Route to Sales
+                </button>
+              </span>
               {lead.status === "On Hold" ? (
                 <button
                   onClick={handleResume}

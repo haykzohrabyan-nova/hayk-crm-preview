@@ -526,17 +526,32 @@ Returns KPI metrics scoped to the current user's role and optional date range.
 **Response for Admin `200`:**
 ```json
 {
-  "period": "string",
+  "role": "admin",
   "total_leads": "number",
+  "open_leads": "number",
+  "claimed_leads": "number",
   "inbox_leads": "number",
   "routed_leads": "number",
   "won_leads": "number",
   "total_revenue": "number",
   "pipeline_value": "number",
-  "active_sdr_count": "number",
-  "active_sales_count": "number"
+  "sdr_performance": "SdrPerformanceRow[]",
+  "rejection_reasons": "BreakdownItem[]",
+  "source_breakdown": "BreakdownItem[]"
 }
 ```
+
+- `total_leads` — leads created in the selected period
+- `open_leads` — current snapshot: unclaimed `Pending/Validated` workspace leads (`locked_by_id IS NULL`)
+- `claimed_leads` — current snapshot: `Pending/Validated` workspace leads owned by an SDR
+- `inbox_leads` — current snapshot: leads still in inbox (`is_inbox = true`)
+- `routed_leads` — current snapshot: leads with `status = 'Routed to Sales'`
+- `won_leads` — leads with `sales_status = 'Won'` in the selected period
+- `total_revenue` — sum of `quote_total` for won leads in the selected period
+- `pipeline_value` — sum of `quote_total` for all `Routed to Sales` leads (live snapshot)
+- `sdr_performance` — per-SDR breakdown: `{ id, full_name, handled, routed, rejected, quote_value, share_pct }`
+- `rejection_reasons` — top rejection reasons: `{ reason, count }[]` sorted by count desc
+- `source_breakdown` — lead source counts: `{ source, count }[]` sorted by count desc
 
 ---
 

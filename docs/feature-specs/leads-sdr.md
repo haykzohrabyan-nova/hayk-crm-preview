@@ -218,12 +218,13 @@ Actions available depending on drawer mode and current `status`. **All action bu
 | Action | When Available | What it does |
 |--------|---------------|--------------|
 | **Validate** | `status = 'Pending'` | Sets `status = 'Validated'`, moves to workspace |
-| **Quote** | Edit mode | Sets `status = 'Quoted'` with quote fields |
-| **Route to Sales** | Edit mode | Sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
+| **Route to Sales** | Edit mode, `status = 'Validated'` or `'On Hold'` | Sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
 | **On Hold** | Edit mode, status not Rejected | Opens hold sub-form inline |
 | **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `status = 'Rejected'` — **TERMINAL** |
 | **Save** | Edit mode | `PATCH /api/leads/[id]` without changing status |
 | **Close** | Always | Dismisses drawer — ownership is **not** released (soft lock persists until Route / Reject / Admin reassign) |
+
+**Route to Sales requires validation:** The "Route to Sales" button is **disabled** when `status = 'Pending'`. Hovering shows the tooltip: _"Lead must be validated before sending to Sales"_. The SDR must click **Validate** first (which sets `status = 'Validated'`), then Route to Sales becomes active.
 
 **Reject is terminal:** Once `status = 'Rejected'` is set, the drawer reopens in read-only mode for all non-Admin users. Only Admin sees an "Admin Override" banner with the ability to change status.
 
@@ -387,7 +388,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Hold action (with reason, notes, hold-until date) | Full hold sub-form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
 | Reject (terminal) | Reason + notes; read-only after; ownership released |
-| Route to Sales | Sets status + sales_status = Ongoing; ownership released; Directed to Sales tab shows Sales Rep + Sales Status — no drawer, no actions |
+| Route to Sales | Button disabled (with tooltip) when `status = 'Pending'`; only active after Validate. Sets status + sales_status = Ongoing; ownership released; Directed to Sales tab shows Sales Rep + Sales Status — no drawer, no actions |
 | Save without status change | PATCH lead fields; logs `lead_edited` for tracked field changes |
 | Context-aware action buttons | On Hold → Resume shown; Routed leads → view-only |
 | Counts refresh after every action | bazaar:refresh-counts event fired |

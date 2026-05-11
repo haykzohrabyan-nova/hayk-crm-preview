@@ -212,8 +212,23 @@ Ownership is only released by a terminal action:
 | Drawer open | Client Component | `fetch('/api/...')` Route Handler |
 | After mutation | Client Component | Optimistic update or re-fetch |
 | Count refresh | Client Component | `window.dispatchEvent(new Event("bazaar:refresh-counts"))` |
+| Realtime DB change | `sidebar.tsx` subscription | `window.dispatchEvent(new Event("bazaar:leads-changed"))` |
 
 **No global state library.** Data lives in local `useState` / `useReducer` in Client Components.
+
+---
+
+## Realtime Listeners
+
+Components that listen to `bazaar:leads-changed` (dispatched by `sidebar.tsx` on any leads table change):
+
+| Component | Behavior |
+|-----------|---------|
+| `leads-page.tsx` | Silent re-fetch of current tab's leads; skips if drawer is open |
+| `sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open |
+| `admin-dashboard.tsx` | Silent re-fetch of all KPIs (no skeleton flash) |
+
+See `docs/realtime-live-updates.md` for full architecture and implementation guide.
 
 ---
 

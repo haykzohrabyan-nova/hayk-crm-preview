@@ -1,6 +1,6 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 9, 2026
-**Status:** MVP complete + CRM + Roles Editor + testing/polish pass + spec preview system + Sales Pipeline history tab + Rejected tab bug fix + SDR History tab + Sales Notes field + Dashboard statistics enhancements. Ready for user testing.
+**Last updated:** May 10, 2026
+**Status:** MVP complete + CRM + Roles Editor + testing/polish pass + spec preview system + Sales Pipeline history tab + Rejected tab bug fix + SDR History tab + Sales Notes field + Dashboard statistics enhancements + **Supabase Realtime live updates fully working**. Ready for user testing.
 
 ---
 
@@ -50,6 +50,19 @@ Starting point: BazarCRM had only an auth scaffold (login, 2FA, session gate). N
 - **Sales Drawer History tab:** third tab in the drawer (alongside Lead Info and Order/Quote). Lazy-loads activities on first open. Renders a vertical timeline with colored dots, human-readable labels, optional notes, actor name, and relative timestamp.
 - **`sales-counts` rejected badge:** now counts only `prev_status = 'Routed to Sales'` rejections so the badge matches the tab list.
 - **Migration 033:** `033_reset_leads_to_pending.sql` — resets all leads to Pending/inbox for testing (clears all workflow state, truncates activities).
+
+### Supabase Realtime Live Updates — Fixed & Documented (2026-05-10)
+
+Two root-cause bugs were found and fixed that prevented real-time DB change events from reaching the admin's browser:
+
+- **Bug 1 — RLS `SECURITY DEFINER` trap:** The `leads` table SELECT policies used `current_user_role()`, a `SECURITY DEFINER` function. In the Supabase Realtime evaluation context, this runs as `postgres` so `auth.uid()` returns `NULL` — every RLS check failed and events were silently dropped server-side. Fixed by replacing `current_user_role()` calls with inline `EXISTS` subqueries (`migration 038_fix_leads_rls_for_realtime.sql`).
+- **Bug 2 — JWT timing trap:** `sidebar.tsx` was calling `.subscribe()` synchronously before `getSession()` resolved. Channels opened without a JWT, making the Realtime server treat them as unauthenticated. Fixed by moving all `.channel().subscribe()` calls inside the `getSession().then()` callback and removing manual `setAuth`/`onAuthStateChange` calls (those conflicted with `createBrowserClient`'s automatic JWT management).
+- **Migration 037:** `GRANT SELECT ON public.leads TO authenticated` and same for `activities` — required for Realtime's RLS evaluation to succeed.
+- **Sidebar badge count fixed:** `/api/sidebar-counts` now shows only **unclaimed** leads (`locked_by_id IS NULL`) for both admin and SDR roles, not total leads.
+- **Admin dashboard Total Leads card:** now shows Open and Claimed sub-counts (`open_leads`, `claimed_leads`) alongside the period-scoped total. Realtime listener added — KPIs silently re-fetch whenever `bazaar:leads-changed` fires (no skeleton flash).
+- **`docs/realtime-live-updates.md`:** fully rewritten with both bug explanations, correct RLS policy templates, subscription pattern guide, step-by-step checklist for new entities (e.g. orders), and complete debugging checklist.
+- **`docs/api-contract.md`:** updated admin KPI response shape to include `open_leads`, `claimed_leads`, and the full `sdr_performance`, `rejection_reasons`, `source_breakdown` fields.
+- **`docs/component-architecture.md`:** added Realtime Listeners table and `bazaar:leads-changed` row in Data Fetching Strategy.
 
 ### SDR History Tab, Sales Notes & Dashboard Enhancements (2026-05-09)
 - **Verify Drawer History tab:** third tab added to the SDR's Verify Drawer (Lead Info | Quote | History). Same lazy-load pattern as Sales Drawer — fetches `GET /api/leads/[id]/activities` on first open. Full activity history visible even after a lead moves to Sales.

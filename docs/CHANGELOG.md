@@ -3,6 +3,19 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-10] — Require validation before routing lead to Sales
+
+### Changed
+- `components/verify-drawer.tsx` — "Route to Sales" button is now disabled when `status = 'Pending'`; hovering shows the tooltip "Lead must be validated before sending to Sales"
+- `docs/feature-specs/leads-sdr.md` — updated Footer Actions table and Build Status table to reflect the validation gate; corrected stale routing path descriptions
+
+## [2026-05-10] — Update docs to reflect all Realtime and dashboard changes
+
+### Changed
+- `docs/api-contract.md` — corrected admin KPI response shape: added `open_leads`, `claimed_leads`, `sdr_performance`, `rejection_reasons`, `source_breakdown`; removed stale `active_sdr_count` / `active_sales_count` fields that never existed.
+- `docs/component-architecture.md` — added Realtime Listeners table listing all components that listen to `bazaar:leads-changed`; added `bazaar:leads-changed` row to the Data Fetching Strategy table.
+- `docs/session-summary.md` — added May 10 entry covering all Realtime fixes, badge count fix, dashboard sub-counts, and doc updates.
+
 ## [2026-05-10] — Add Open / Claimed breakdown to Total Leads dashboard card
 
 ### Changed
