@@ -28,6 +28,7 @@ export async function GET() {
             .select("*", { count: "exact", head: true })
             .eq("is_inbox", false)
             .in("status", ["Pending", "Validated"])
+            .is("locked_by_id", null)
             .then(({ count }) => { counts["/leads"] = count ?? 0; })
       : Promise.resolve(),
 

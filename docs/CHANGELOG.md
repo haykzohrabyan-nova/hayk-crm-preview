@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-10] — Fix leads sidebar badge to show only unclaimed leads for admin
+
+### Fixed
+- `app/api/sidebar-counts/route.ts` — admin `/leads` badge was counting all `Pending/Validated` leads (including ones already claimed by SDRs). Added `.is("locked_by_id", null)` so the badge only counts truly open, unclaimed leads — matching what an SDR sees as available to work.
+
 ## [2026-05-10] — Fix Realtime not delivering lead-change events to admin
 
 ### Fixed
