@@ -3,7 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
-## [2026-05-10] — Fix leads sidebar badge to show only unclaimed leads
+## [2026-05-10] — Add Open / Claimed breakdown to Total Leads dashboard card
+
+### Changed
+- `app/api/dashboard/kpis/route.ts` — admin KPI response now includes `open_leads` (unclaimed `Pending/Validated` workspace leads, current snapshot) and `claimed_leads` (same status but owned by an SDR).
+- `components/admin-dashboard.tsx` — `KpiCard` accepts a new optional `subStats` prop that renders colored pill badges below the subtext. The **Total Leads** card uses it to show `Open: X` (green) and `Claimed: X` (gold) inline inside the card. Dashboard now also listens to `bazaar:leads-changed` and silently re-fetches KPIs when any lead changes (no skeleton flash).
 
 ### Fixed
 - `app/api/sidebar-counts/route.ts` — `/leads` badge was counting all `Pending/Validated` leads including ones already claimed. Both SDR and admin now count only `locked_by_id IS NULL` leads. The badge represents "new leads waiting to be picked up", not leads already being worked. Simplified the SDR/admin split into a single shared query.

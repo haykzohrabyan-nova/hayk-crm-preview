@@ -119,6 +119,8 @@ export async function GET(request: NextRequest) {
   // ── Admin ─────────────────────────────────────────────────────────────────
   const [
     totalLeads,
+    openLeads,
+    claimedLeads,
     inboxLeads,
     routedLeads,
     wonLeads,
@@ -131,6 +133,20 @@ export async function GET(request: NextRequest) {
       .from("leads")
       .select("id", { count: "exact", head: true })
       .gte("created_at", periodStart),
+    // Current snapshot: unclaimed workspace leads waiting to be picked up
+    admin
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("is_inbox", false)
+      .in("status", ["Pending", "Validated"])
+      .is("locked_by_id", null),
+    // Current snapshot: workspace leads actively held by an SDR
+    admin
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("is_inbox", false)
+      .in("status", ["Pending", "Validated"])
+      .not("locked_by_id", "is", null),
     admin
       .from("leads")
       .select("id", { count: "exact", head: true })
@@ -237,6 +253,8 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     role: "admin",
     total_leads:       totalLeads.count ?? 0,
+    open_leads:        openLeads.count ?? 0,
+    claimed_leads:     claimedLeads.count ?? 0,
     inbox_leads:       inboxLeads.count ?? 0,
     routed_leads:      routedLeads.count ?? 0,
     won_leads:         won.length,

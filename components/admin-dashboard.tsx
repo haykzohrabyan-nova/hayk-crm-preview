@@ -31,6 +31,8 @@ interface BreakdownItem {
 
 interface AdminKpis {
   total_leads: number;
+  open_leads: number;
+  claimed_leads: number;
   inbox_leads: number;
   routed_leads: number;
   won_leads: number;
@@ -77,12 +79,14 @@ function KpiCard({
   subtext,
   icon,
   accent = false,
+  subStats,
 }: {
   label: string;
   value: string | number;
   subtext: string;
   icon: React.ReactNode;
   accent?: boolean;
+  subStats?: { label: string; value: number; color: string }[];
 }) {
   return (
     <div
@@ -131,6 +135,23 @@ function KpiCard({
         >
           {subtext}
         </p>
+        {subStats && subStats.length > 0 && (
+          <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+            {subStats.map((s) => (
+              <span
+                key={s.label}
+                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+                style={{ background: `color-mix(in srgb, ${s.color} 12%, transparent)`, color: s.color }}
+              >
+                <span
+                  className="h-1.5 w-1.5 rounded-full shrink-0"
+                  style={{ background: s.color }}
+                />
+                {s.label}: {s.value}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -249,6 +270,19 @@ export function AdminDashboard() {
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
 
+  // Silent re-fetch when any lead changes (Realtime → sidebar → bazaar:leads-changed).
+  // Does NOT set loading=true so the cards don't flash skeleton.
+  useEffect(() => {
+    function onLeadsChanged() {
+      fetch(`/api/dashboard/kpis?period=${period}`)
+        .then((r) => r.json())
+        .then((json) => setData(json))
+        .catch(() => {});
+    }
+    window.addEventListener("bazaar:leads-changed", onLeadsChanged);
+    return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
+  }, [period]);
+
   const periodLabel = PERIOD_LABELS[period];
 
   return (
@@ -297,6 +331,10 @@ export function AdminDashboard() {
               value={data.total_leads}
               subtext={periodLabel.toLowerCase()}
               icon={<Users className="h-4 w-4" />}
+              subStats={[
+                { label: "Open", value: data.open_leads, color: "var(--color-success)" },
+                { label: "Claimed", value: data.claimed_leads, color: "var(--color-accent-dark)" },
+              ]}
             />
             <KpiCard
               label="In Inbox"
