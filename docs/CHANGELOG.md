@@ -3,6 +3,21 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-11] — Tickets module owner review — all decisions recorded
+
+### Changed
+- `docs/order-ticket/owner-questionnaire.md` — filled in all 22 questions with owner decisions from the 2026-05-11 review session; updated summary table
+- `docs/order-ticket/open-questions.md` — updated all status flags; marked three key design changes from the shadow project prototype
+- `docs/order-ticket/integration-plan.md` — removed all `[PENDING OWNER ANSWER]` markers; updated RLS scoping, Q4 quote→order flow, high-value hard block, admin-configurable values, reference number format, PDF logo, and dashboard revenue scoping
+
+**Key decisions:**
+- Quotes and Orders pages are **scoped** — each rep sees their own; admin sees all; customer detail page shows all for that customer
+- Quote ticket **becomes the order in place** — no simultaneous order shell (differs from shadow project)
+- High-value threshold is **admin-configurable**; when exceeded, SDR is **hard-blocked** and can only route to Sales Pipeline
+- Order reference format: **`ORD-YYYY-NNN`** (year + sequential, resets annually)
+- Tax rate, rush surcharge, and high-value threshold are all managed from Admin → Company Info tab
+- Pricing engine is **deferred** — rep enters unit price manually in this phase
+
 ## [2026-05-11] — CRM page listens for real-time lead changes
 
 ### Changed

@@ -4,8 +4,8 @@ Source analysis: [`shadow-project-findings.md`](./shadow-project-findings.md)
 Open questions: [`open-questions.md`](./open-questions.md)  
 Existing BazarCRM spec: [`../feature-specs/tickets.md`](../feature-specs/tickets.md)
 
-> **Status:** Pending owner answers to critical questions in `open-questions.md` (sections A, B, C, D, H).  
-> Development starts after those are resolved.
+> **Status:** All owner questions resolved — 2026-05-11. Ready to build.  
+> See `open-questions.md` for full decision log and the three key design changes from the shadow project.
 
 ---
 
@@ -14,8 +14,8 @@ Existing BazarCRM spec: [`../feature-specs/tickets.md`](../feature-specs/tickets
 Before any Tickets code is written, the following must be done:
 
 1. All uncommitted current changes committed (migrations 039/040, hold-reasons constants, component updates).
-2. Owner answers recorded for the 4 remaining decisions: **B5** (edit policy), **C4a/C4b** (product lists), **E1** (PDF company info), **H1** (reference number format). Everything else is confirmed from shadow project.
-3. This plan updated to reflect the owner's decisions where noted with `[PENDING OWNER ANSWER]`.
+2. ✅ Owner answers recorded — all decisions resolved in the 2026-05-11 review session.
+3. ✅ This plan updated to reflect owner decisions.
 
 ---
 
@@ -42,7 +42,7 @@ The following files have been created:
 
 ## Phase 2 — Schema + Type Alignment
 
-**Blocked by:** B5, C4b, E1, H1 from `open-questions.md` (all others confirmed from shadow project)
+**All blockers resolved.** Key schema additions beyond the original plan: `order_sequence_counters` table (for `ORD-YYYY-NNN` reference codes), and `company_settings` fields for `default_tax_rate`, `high_value_threshold`, and `rush_surcharge`.
 
 ### 2a. Migration `041_extend_job_tickets.sql`
 
@@ -93,18 +93,20 @@ alter table public.job_tickets
 
 Keep existing columns (`subtotal`, `discount_percent`, `discount_amount`, `total`, `payment_type`, `prepay_amount`, `follow_up_at`) as nullable for backwards compatibility.
 
-**RLS policies** — confirmed from shadow (A1/A2: all tickets visible to all):
-- Single SELECT policy: `auth.role() = 'authenticated'` — all logged-in users can read all tickets
+**RLS policies** — owner decision (A1/A2: scoped visibility, not shared):
+- SELECT policy: `created_by = auth.uid() OR user_role = 'admin'` — each rep sees only their own tickets; admin sees all
 - INSERT: authenticated users can create tickets
-- UPDATE: authenticated users can update tickets (edit guard enforced in application layer per B5)
+- UPDATE: authenticated users can update tickets (edit guard enforced in application layer per B5 — locked once order status reached)
 - Admin bypass follows same pattern as other tables
+
+> **Note:** This differs from the shadow project which had no RLS filter. The customer/contact detail page will show all tickets for that customer regardless of creator — this is a UI-level join, not a policy exception.
 
 ### 2b. Update `lib/types/index.ts`
 
 - Enrich `QuoteSku` interface: add `product_type`, `material`, `lamination`, `width`, `height`, `design_required`, `die_cut`
 - Enrich `JobTicket` interface with all new columns from 2a
 - Update `TicketStatus` to add `'Open'`, `'Pending Client Confirmation'`
-- Replace `PaymentType` with `PaymentTypeKey = 'card_default' | 'zelle' | 'offline'` — `[PENDING OWNER ANSWER C1]`
+- Replace `PaymentType` with `PaymentTypeKey = 'card_default' | 'zelle' | 'offline'` (owner confirmed C1)
 - Add `TicketForm` interface for OrderDrawer form state
 
 ### 2c. Update `docs/schema.md`
@@ -156,19 +158,19 @@ API is already correct (see `app/api/leads/[id]/route.ts` line ~53 — admin che
 
 ## Phase 4 — API Routes
 
-**Blocked by:** H1 (reference number format) only. All scoping/visibility/workflow questions confirmed from shadow project.
+**All blockers resolved.** Reference format: `ORD-YYYY-NNN`. Scoping: per-user (not shared). See design changes in `open-questions.md` before implementing POST and PATCH.
 
 ### `app/api/tickets/route.ts`
 
 **GET** — list tickets:
 - Supports `?kind=quote|order`, `?linked_lead_id=`, `?search=`, `?period=`
-- **Scoping: none** — all authenticated users see all tickets (confirmed A1/A2)
+- **Scoping: per user** — filter by `created_by = auth.uid()` for non-admin users; admin sees all (owner decision A1/A2)
 - Joins: `customers`, `user_profiles` (created_by)
 
 **POST** — create ticket:
 - Requires `title` and at least one SKU for orders
-- Auto-generates `reference_code` for orders — format **pending owner answer H1**
-- When `ticket_kind = 'quote'` + `requires_client_confirmation = true`: also creates a linked order shell with `ticket_status = 'Pending Client Confirmation'` (confirmed B4)
+- Auto-generates `reference_code` for orders in `ORD-{YYYY}-{NNN}` format (owner decision H1); uses a `order_sequence_counters` table keyed by year
+- **⚠️ Design change B4:** The quote ticket itself transitions to an order — no simultaneous order shell is created. Do NOT port the shadow project's dual-record creation pattern.
 - Logs `order_ticket_created` activity
 - **TODO-002**: if `linked_lead_id` is set, updates lead status (confirmed B2 — no auto-route):
   - ticket has quote SKUs → `status = 'Quoted'`, `sales_status = 'Quote Sent'`
@@ -187,7 +189,7 @@ API is already correct (see `app/api/leads/[id]/route.ts` line ~53 — admin che
   - follow-up fields cleared → log `quote_follow_up_reset`
   - `client_confirmed = true` → log `ticket_client_confirmed`
   - Otherwise → log `order_ticket_updated` with `{ fields: string[] }`
-- Edit guard: **pending owner answer B5** (always editable vs status-locked)
+- **Edit guard (owner decision B5):** Ticket is locked once it reaches order status. Only admin/owner can cancel (and only if no payment recorded). On cancel, respond with a flag that triggers the "duplicate & adjust" dialog on the client.
 
 ### `app/api/tickets/counts/route.ts`
 
@@ -226,28 +228,32 @@ export function calcPrepaySplit(
   prepaymentValue: string
 ): { dueNow: number; balance: number } | null
 
-export const HIGH_VALUE_THRESHOLD = 5000  // confirmed from shadow — owner to confirm threshold
-export const DEFAULT_TAX_RATE = 8.25      // confirmed from shadow (DEFAULT_QUOTE_TAX_RATE_PERCENT) — owner to confirm
+// NOTE: HIGH_VALUE_THRESHOLD and DEFAULT_TAX_RATE are NOT hardcoded constants.
+// Both are read from company settings (Admin → Company Info tab) at runtime.
+// HIGH_VALUE_THRESHOLD: when SDR total exceeds this, they can ONLY route to Sales — hard block, not a warning.
+// DEFAULT_TAX_RATE: shown as the default in the OrderDrawer tax field; rep can override per quote.
+// Rush surcharge (if any) is also stored in company settings — no constant needed here.
 ```
 
 ### `lib/utils/order-ticket-pdf.ts`
 Port from `frontend/src/utils/orderTicketPdf.js` with TypeScript types.
 - `export async function downloadOrderTicketPdf(ticket: JobTicket): Promise<void>`
 - Dynamic `jspdf` import (keeps it out of the server bundle)
-- Company name: **pending owner answer E1** (hardcode from owner's response until Company Info admin tab is built)
+- Company name, address, phone, email, website: read from `company_settings` record at render time (owner decision E1/Q14/Q15)
+- Logo: included in PDF header; read from `company_settings.logo_url` (owner decision Q15)
 - Full field parity with shadow PDF — see `shadow-project-findings.md` section 7
 
 ### `lib/utils/ticket-filters.ts`
 Port from `statsDateRange.js`:
 - `quotedRequestsRowCount(tickets, leads)` — counts quote tickets + quoted leads not linked to a ticket
-- `orderTicketsForTab(tickets)` — filters out `Pending Client Confirmation` placeholder orders
+- `orderTicketsForTab(tickets)` — filters out cancelled/draft tickets from the orders list (no `Pending Client Confirmation` state — B4 design change means no shadow order shells)
 - `ticketAmount(ticket)` — `quote_final_total ?? quote_subtotal ?? 0`
 
 ---
 
 ## Phase 6 — OrderDrawer Component
 
-**Blocked by:** B5, C4b, E1, H1 from `open-questions.md`. All other questions confirmed from shadow project.
+**All blockers resolved.** Key changes from original plan: no `requires_client_confirmation` toggle, high-value threshold is a hard routing block (not a warning), edit is locked once ticket reaches order status, unit price is always manual (no embedded calculator).
 
 **File:** `components/order-drawer.tsx`
 
@@ -271,31 +277,31 @@ Read-only mode tabs:     Info | Line Items | Quote | History
 
 ### Line Items tab
 - Dynamic SKU grid rows:
-  - `product_type` (select — values confirmed from shadow: Labels Roll/Sheet, Stickers, Pouches, Folding Cartons/Boxes, Business Cards, Flyer, Booklets, Vinyl Banners, Canvas Prints, Jars, Tubes, Other — owner to confirm list C4a)
-  - `material` (select — White BOPP, Clear BOPP, Silver BOPP, Paper, Kraft, Vinyl, Cardstock, Other)
-  - `lamination` (select — None, Gloss, Matte, Soft Touch, UV, Other)
+  - `product_type` (select — values read from Admin → Products; use production names confirmed by owner C4a: Diecut Stickers, Flyers/Postcards, Banners/Large Format, etc. Canvas Prints/Jars/Tubes are not seeded initially)
+  - `material` (select — read from Admin → Products; no facility filter per owner C4c)
+  - `lamination` (select — None, Gloss, Matte, Soft Touch, Holo, Coating)
   - Width × Height (two number inputs, inches)
   - `quantity` (number)
-  - `unit_price` (number)
+  - `unit_price` (number — rep enters manually; no calculator integration this phase per owner Q17)
   - `line_total` (computed, read-only display)
   - `design_required` checkbox
   - `die_cut` checkbox
-  - Add-on finishings checkboxes: Lamination, UV Coating, Foil, Perforation
+  - Add-on finishings checkboxes: Spot UV, Foil, Perforation
 - `description` column — derived and shown read-only (never user-typed)
 - `+ Add Line` / remove buttons
-- High-value warning banner when `quoteFinalTotal >= 5000` (SDR-only per shadow; owner to confirm C3)
+- **High-value hard block (owner decision C3/Q8):** When `quoteFinalTotal >= company_settings.high_value_threshold` AND `user_role = 'SDR'`: hide "Send Quote" button entirely; show "Route to Sales Pipeline" button only. This is not a warning banner — it is a hard block. Admin and Sales reps are not blocked.
 
 ### Quote tab
 - Pricing summary display (subtotal, shipping, discount, pre-tax, tax, total)
 - `quote_shipping` (number input, defaults to 0 — manual entry per shadow C6)
 - Discount toggle: `discount_type` radio (percent / fixed) + `discount_value` input + `discount_reason`
-- Tax rate input (default 8.25%) + tax exempt toggle + `sales_permit_number`
+- Tax rate input (pre-filled from `company_settings.default_tax_rate` — admin-configurable, not hardcoded) + tax exempt toggle + `sales_permit_number`
 - Payment types: checkboxes — Card Payment, Zelle, Offline (confirmed C1; card default-checked)
 - Prepayment row: `prepayment_type` (percent / fixed, no "None" in edit mode) + `prepayment_value` (default 25%)
 - Quote delivery: `quote_channel` + `quote_destination` (input type adapts per channel)
-- `requires_client_confirmation` toggle (default: on)
+- **No `requires_client_confirmation` toggle** — the shadow project's dual-record model is not used (owner decision B4). The quote ticket transitions to order status in place.
 - Follow-up schedule: `quote_reminder_date` + `follow_up_cycles` (default 3) + `follow_up_frequency` (Daily/Every 2 days/Weekly)
-- `client_confirmed` toggle — on toggle: logs `ticket_client_confirmed`; linked order shell becomes active (B4 confirmed)
+- `client_confirmed` toggle — on toggle: logs `ticket_client_confirmed`; transitions ticket from quote to order status (B4 design change)
 
 ### History tab (read-only mode only)
 - `<HistoryTimeline ticketId={ticket.id} />`
@@ -308,11 +314,11 @@ Read-only mode tabs:     Info | Line Items | Quote | History
 - Cancel
 
 **Read/Edit mode:**
-- Edit (toggle to edit mode — guard pending B5)
+- Edit (toggle to edit mode — **only shown for quote-status tickets**; hidden once ticket is in order status per owner B5)
 - Save Changes (`PATCH /api/tickets/[id]`)
 - Print PDF (`downloadOrderTicketPdf`)
 - Mark Won (`ticket_status = 'approved'`, `client_confirmed = true`)
-- Cancel Ticket (`ticket_status = 'cancelled'`)
+- Cancel Ticket (`ticket_status = 'cancelled'`) — **admin/owner only; disabled if payment recorded**. On success, client receives a "duplicate & adjust" prompt.
 - Close
 
 Dispatches `bazaar:refresh-counts` after every successful save.
@@ -329,7 +335,7 @@ Replaces the spec preview in `app/(app)/quotes/page.tsx`.
 Table columns: Contact, Type pill (Ticket / Lead Quote), Channel, Quote Total, Status, Follow-up (red if overdue), Created, View button.
 
 Data sources:
-1. `GET /api/tickets?kind=quote` → formal quote tickets
+1. `GET /api/tickets?kind=quote` → formal quote tickets (scoped to current user; admin sees all)
 2. Leads where `status = 'Quoted'` and no linked quote ticket (quoted by SMS/WhatsApp without a formal ticket)
 
 Opens `<OrderDrawer readOnly initialTicket={ticket}>` on View.
@@ -337,9 +343,9 @@ Opens `<OrderDrawer readOnly initialTicket={ticket}>` on View.
 ### `components/orders-page.tsx`
 Replaces the spec preview in `app/(app)/orders/page.tsx`.
 
-Table columns: Order # (short UUID), Contact, Total, Status pill, Rush badge, Created By, Created, View + Print PDF.
+Table columns: Order # (`ORD-YYYY-NNN`), Contact, Total, Status pill, Rush badge, Created By, Created, View + Print PDF.
 
-Data source: `GET /api/tickets?kind=order` — filtered by `orderTicketsForTab()` to exclude placeholder "Pending Client Confirmation" shell orders.
+Data source: `GET /api/tickets?kind=order` — scoped to current user (admin sees all). No `Pending Client Confirmation` filter needed since the dual-record model is not used (B4 design change).
 
 Both pages:
 - Mobile card layout (per `mobile-table-cards` rule)
@@ -368,8 +374,13 @@ In `components/history-timeline.tsx` (or wherever activity labels are mapped), c
 - `quote_follow_up_reset` → "Follow-up rescheduled"
 - `ticket_client_confirmed` → "Client confirmed"
 
-### 8d. Statistics integration — `[PENDING OWNER ANSWER F1/F2]`
-Update `app/api/dashboard/kpis/route.ts` to include revenue from `quote_final_total` on approved tickets.
+### 8d. Dashboard revenue integration
+Update `app/api/dashboard/kpis/route.ts` to include revenue from `quote_final_total` on approved/active tickets.
+
+- Each rep sees only their own revenue totals (filter by `created_by = auth.uid()`)
+- Admin sees all reps' totals
+- Data surfaces on the Dashboard page (not a separate Statistics page — owner decision F1)
+- Use `ticketAmount()` from `ticket-filters.ts` for consistency
 
 ---
 

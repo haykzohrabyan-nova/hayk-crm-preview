@@ -3,9 +3,12 @@
 Technical reference for the dev team. For the owner-facing version see [`owner-questionnaire.md`](./owner-questionnaire.md).
 
 **Status key:**
-- ✅ **ANSWERED** — confirmed from shadow project code
-- ⚠️ **OWNER PENDING** — needs owner decision before this part can be built
+- ✅ **ANSWERED** — confirmed from shadow project code or owner session (2026-05-11)
+- ⚠️ **DESIGN CHANGE** — owner chose a different approach from the shadow project prototype
 - 🔄 **OWNER REVIEW** — pre-filled from shadow; owner should confirm it matches production intent
+- ❌ **DEFERRED** — explicitly deferred to a future phase
+
+**All questions resolved — 2026-05-11 owner review session.**
 
 ---
 
@@ -15,13 +18,18 @@ Technical reference for the dev team. For the owner-facing version see [`owner-q
 
 **A1. Who can see the Quotes page (`/quotes`)?**
 
-🔄 **OWNER REVIEW** — confirmed from shadow project code (`GET /api/tickets` in `backend/server.js` has zero auth filtering — all tickets returned to all users).
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-**Answer from shadow: Everyone sees all** — SDR, Sales, and Admin all see the same list.
+**Answer: Scoped — each rep sees only tickets they created.** Admin sees all.
 
-Confirmed in code: `app.get('/api/tickets', (req, res) => { res.json(jobTickets); });`
+> Owner note: "Only in the CRM when we have all the customers with the list, any user can click on the customer and in the customer's page we will show all the quotes and all the orders for that customer. We also will show which order and quote belongs to which user. And admin user can see all the quotes."
 
-_Owner must confirm this is correct for production. If scoping is wanted, raises build scope significantly._
+**Implementation:**
+- `/quotes` page: filter by `created_by = auth.uid()` for non-admin users
+- Customer/contact detail page: show all quotes/orders for that customer regardless of creator (with `created_by` visible in the row)
+- Admin: no filter — sees all
+
+RLS policy in migration 041: SELECT requires `created_by = auth.uid() OR user_role = 'admin'`.
 
 Blocks: RLS policy in migration 041, `app/api/tickets/route.ts` GET filter.
 
@@ -29,9 +37,11 @@ Blocks: RLS policy in migration 041, `app/api/tickets/route.ts` GET filter.
 
 **A2. Who can see the Orders page (`/orders`)?**
 
-🔄 **OWNER REVIEW** — same as A1. All tickets (both quotes and orders) are returned unfiltered.
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-**Answer from shadow: Everyone sees all.**
+**Answer: Scoped — same as A1.** Each rep sees only their own orders. Admin sees all.
+
+> Owner note: "Only the Admin can see everything."
 
 Blocks: Same as A1.
 
@@ -39,7 +49,7 @@ Blocks: Same as A1.
 
 **A3. Can Admin see and edit ALL tickets?**
 
-✅ **ANSWERED** — Admin already has `bypass_rls` or is handled via role check in all other routes. Will follow the same pattern: Admin reads and edits all tickets.
+✅ **ANSWERED** — Admin has `bypass_rls` or is handled via role check in all other routes. Will follow the same pattern: Admin reads and edits all tickets.
 
 No owner question needed — consistent with rest of app.
 
@@ -66,24 +76,16 @@ const isLockedStatus = formData.status === 'Rejected' || formData.status === 'Ro
 
 **B2. When SDR creates a ticket, does the lead auto-route to Sales?**
 
-✅ **ANSWERED from shadow project code (`VerifyDrawer.jsx` lines 394–450).**
+✅ **ANSWERED from shadow project code (`VerifyDrawer.jsx` lines 394–450) — confirmed by owner.**
 
 **Answer: Lead stays with SDR. Status changes, no auto-route.**
+
+> Owner note: "As in the docs it does not go to the sales pipeline but becomes part of the CRM."
 
 Exact behavior:
 - Ticket has quote SKUs → `lead.status = 'Quoted'`, `lead.salesStatus = 'Quote Sent'`
 - Order only (no quote) → `lead.status = 'Validated'`
 - Lead does **not** get routed to Sales automatically
-
-Evidence:
-```javascript
-// VerifyDrawer.jsx ~line 397
-status: hasQuote ? 'Quoted' : 'Validated',
-...(hasQuote ? { salesStatus: 'Quote Sent', ... } : {}),
-// Then calls /api/leads/verify — NOT /api/leads/route
-```
-
-🔄 **OWNER REVIEW** — confirm this is correct for production (SDR-created ticket keeps lead with SDR).
 
 ---
 
@@ -101,34 +103,32 @@ No restriction to "claimed leads only."
 
 **B4. Can a quote be "converted" to an order?**
 
-✅ **ANSWERED from shadow project code (`ContactCRM.jsx` lines 1400–1435).**
+⚠️ **DESIGN CHANGE — owner chose a different model from the shadow project.**
 
-**Answer: Both tickets (quote + order shell) are created simultaneously at save time.**
+**Shadow project answer:** Both tickets (quote + order shell) are created simultaneously at save time. The order shell was hidden until client confirmed.
 
-When `requireClientConfirmation = true` (the default):
-- A `ticketKind: 'quote'` ticket is saved
-- A `ticketKind: 'order'` ticket with `orderStatus: 'Pending Client Confirmation'` is saved alongside it
-- The order shell is filtered OUT of the Orders tab until the client confirms (`orderTicketsForWorkspaceTab()` excludes `Pending Client Confirmation` orders)
-- When client confirms → order becomes active, appears on Orders tab
+**Production answer:** The quote ticket *itself* becomes the order based on user/client input. No separate order record is created simultaneously. Re-examine the shadow project code for the exact transition mechanics and adapt accordingly.
 
-When `requireClientConfirmation = false`:
-- An order ticket is created directly with `orderSource: 'direct'`
-- No quote ticket is created
+> Owner note: "We do not make an additional order. The quote itself becomes an order depending on the user input. We can get more information from the shadow project on how it is done there."
 
-🔄 **OWNER REVIEW** — confirm this "create both at once" model is correct for production.
+**Impact:** The `requires_client_confirmation` toggle and the simultaneous order shell creation from shadow's `ContactCRM.jsx` lines 1400–1435 should NOT be ported as-is. The ticket status transitions from quote → order in place.
 
 ---
 
 **B5. Can an existing ticket be edited after it is sent/approved?**
 
-⚠️ **OWNER PENDING** — Shadow project has no restrictions (always editable). This is a business policy decision.
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-Options:
-- Always editable (matches shadow)
-- Only draft/sent tickets editable; approved = read-only unless admin re-opens
-- Only creator can edit
+**Answer: Locked once the ticket is an order — no editing by reps. Owner/Admin can cancel (only if no payment has been made). Cancelling triggers a "duplicate & adjust" flow.**
 
-Blocks: Edit button visibility logic in OrderDrawer read-only mode.
+> Owner note: "The ticket is a quote so if the ticket is already an order and the client wants to make a change we do not edit the order. The owner and the admin can cancel the order if there was no payment made. And if the user is trying to cancel the ticket we will ask if the user wants to duplicate the ticket with same items and make a new ticket and make the adjustments."
+
+**Implementation in OrderDrawer:**
+- Edit button: hidden once `ticket_status` is in an order state
+- Cancel button: visible to admin/owner only; disabled if payment has been recorded
+- On cancel confirmation: show dialog — "Would you like to duplicate this ticket with the same items and make adjustments?" → Yes creates a new draft ticket pre-filled with the same line items
+
+Blocks: Edit button visibility logic, Cancel action, duplicate ticket API endpoint.
 
 ---
 
@@ -138,7 +138,7 @@ Blocks: Edit button visibility logic in OrderDrawer read-only mode.
 
 **C1. What payment methods?**
 
-✅ **ANSWERED from shadow project code (`ContactCRM.jsx` lines 417–434).**
+✅ **ANSWERED from shadow project code — confirmed by owner.**
 
 ```javascript
 const QUOTE_PAYMENT_TYPE_OPTIONS = [
@@ -149,7 +149,7 @@ const QUOTE_PAYMENT_TYPE_OPTIONS = [
 // Default: ['card_default']
 ```
 
-🔄 **OWNER REVIEW** — confirm these three are correct for BazaarPrinting. Add/remove/rename?
+> Owner answer: "Correct as-is."
 
 Blocks: `quote_payment_types` enum values, checkbox list in OrderDrawer.
 
@@ -157,111 +157,92 @@ Blocks: `quote_payment_types` enum values, checkbox list in OrderDrawer.
 
 **C2. Default tax rate?**
 
-✅ **ANSWERED from shadow project code (`ContactCRM.jsx` line 441).**
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-```javascript
-const DEFAULT_QUOTE_TAX_RATE_PERCENT = 8.25;
-```
+**Answer: Admin-configurable from Admin → Company tab.** No hardcoded default.
 
-🔄 **OWNER REVIEW** — confirm 8.25% is correct for production jurisdiction.
+> Owner note: "This should be manageable from the Admin panel. We can put this in the company tab."
 
-Blocks: `DEFAULT_TAX_RATE` constant in `lib/utils/ticket-math.ts`.
+**Implementation:** Remove `DEFAULT_QUOTE_TAX_RATE_PERCENT = 8.25` constant from `ticket-math.ts`. The tax rate shown in OrderDrawer is read from the company settings record. Rep can still override per quote.
+
+Blocks: `DEFAULT_TAX_RATE` constant removed from `lib/utils/ticket-math.ts`; add `default_tax_rate` field to company settings schema.
 
 ---
 
 **C3. High-value order warning threshold?**
 
-✅ **ANSWERED from shadow project code (`ContactCRM.jsx` lines 1255, 1272, 1371, 1508, 1704).**
+✅ **ANSWERED — 2026-05-11 owner session. Significant behavior change from shadow project.**
 
-```javascript
-// Threshold: $5,000
-if (userRole === 'SDR' && calculateQuoteTotals(form.quote).quoteFinalTotal >= 5000) { ... }
-```
+**Shadow project:** $5,000 warning banner — SDR must acknowledge but can still send.
 
-**Important nuance found in code:** The $5,000 warning currently applies to **SDR only** in the shadow project. Sales reps see the warning banner but are not blocked.
+**Production answer:** Threshold is configurable from Admin → Company Info tab. When the total exceeds this threshold, the SDR's **only available action is to route the lead to the Sales Pipeline** — they cannot send the quote themselves. This is a hard block, not a soft warning.
 
-🔄 **OWNER REVIEW** — confirm:
-- Threshold of $5,000 is correct
-- Warning for SDR only (not Sales) is correct, or should it apply to both equally?
+> Owner note: "We will set this value from the admin panel under the company information. If the order total is more than that number then the only action the SDR can take is to send to the Sales Pipeline."
 
-Blocks: `HIGH_VALUE_THRESHOLD` constant, warning banner condition in OrderDrawer.
+**Implementation:**
+- Remove `HIGH_VALUE_THRESHOLD = 5000` constant; read threshold from company settings
+- When `quoteFinalTotal >= threshold` AND `user_role = 'SDR'`: hide Send Quote button; show "Route to Sales" button only
+- Admin/Sales reps are not blocked
+
+Blocks: `HIGH_VALUE_THRESHOLD` constant removed, warning banner replaced with hard block in OrderDrawer, company settings schema needs `high_value_threshold` field.
 
 ---
 
 **C4. Are product types, materials, and finishes admin-managed or hardcoded?**
 
-✅ **C4b ANSWERED by owner** — Admin-managed from the Admin → Products tab (dedicated tables, not hardcoded). See `docs/order-ticket/product-catalog.md` for full data model and schema.
+✅ **ANSWERED — owner confirmed admin-managed from Admin → Products tab.**
 
-**Updated product list from `pulse/shared.js` (`PRODUCT_TYPES` constant):**
+**C4a — Product name alignment (pulse vs shadow names):**
 
-Shadow project had simplified names; pulse project has the authoritative production names. See reconciliation table in `product-catalog.md` Part 5.
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-**16th Street products:**
-- Labels (Roll) → materials: BOPP group (Clear/White/Silver/Holo BOPP), Label Sheets group
-- Labels (Sheet) → materials: Label Sheets group only
-- Pouches → materials: Cosmetic Web group (Clear/White/Silver Cosmetic Web)
-- Folding Cartons / Boxes → materials: Cardstock group (14pt–24pt C1S/C2S)
-- Business Cards → materials: Cardstock + Cover Stock
-- Flyers / Postcards → materials: Cover/Text Stock + Cardstock
-- Booklets → materials: Cover/Text Stock
-- Diecut Stickers → materials: BOPP + Label Sheets (same as Labels Roll)
+**Answer: Use the updated production names from the pulse/shadow project.**
 
-**Boyd Street products:**
-- Vinyl Labels / 54'' Rolls → materials: Vinyl (Boyd)
-- Vinyl Signage → materials: Vinyl (Boyd)
-- Banners / Large Format → materials: Specialty (Boyd)
-- Window Decals → materials: Specialty (Boyd) → Window Decal only
-- Wallpaper → materials: Specialty (Boyd) → Wallpaper Material only
-- Sheet Products (Boyd) → materials: Sheet (Boyd) (18pt/20pt/24pt)
+> Owner note: "We will use these names from the pulse shadow project."
 
-**Both facilities:**
-- Folding Cartons / Boxes at Boyd → Cardstock (Boyd): 16pt, 18pt, 20pt, 24pt
-- Diecut Stickers at Boyd → Vinyl (Boyd) instead of BOPP
-- Other → all material groups
+| Old name (prototype) | Production name (use this) |
+|---|---|
+| Stickers | Diecut Stickers |
+| Flyer | Flyers / Postcards |
+| Vinyl Banners | Banners / Large Format |
 
-**Full material groups with sub-options — see `product-catalog.md` Part 2.**
+**C4b — Canvas Prints, Jars, Tubes:**
 
-**Laminations (from `pulse/shared.js → LAMINATION_OPTIONS`):**
-None, Gloss, Matte, Soft Touch, Holo, Coating
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-Note: Labels (Sheet) auto-default to Gloss; labels do not get laminated at Boyd.
+**Answer: Not included in the initial build.** Will be added manually via Admin → Products panel in a future phase.
 
-**Color Modes:** CMYK, CMYK + White
+> Owner note: "We will add this manually from the admin panel in the future."
 
-**Finishing (toggles):** Spot UV (requires UV file), Foil (requires foil file + foil color), Perforation
+**C4c — Material dropdown filter by facility:**
 
-**Not in pulse (were in shadow):** Canvas Prints, Jars (as product type), Tubes (as product type)
-- Jars and Tubes appear as application service containers in the pricing calculator (see C7)
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-⚠️ **OWNER PENDING (C4a):** Confirm product name alignment: should the CRM use pulse production names (e.g. "Diecut Stickers", "Flyers / Postcards") or keep the shadow simplified names (e.g. "Stickers", "Flyer")? Should Canvas Prints / Jars / Tubes remain as product types?
+**Answer: No facility filter.** Show all materials for the selected product type. Reps pick the correct one.
 
-⚠️ **OWNER PENDING (C4c):** Should the OrderDrawer filter materials by facility (16th Street vs Boyd), or show all materials for a product type regardless of facility?
-
-Full product-to-material mapping table with owner review instructions: `docs/order-ticket/product-catalog.md` Part 3.
+> Owner answer: radio selected "No — show all materials; the rep picks the right one."
 
 ---
 
 **C5. Does "Rush" affect pricing?**
 
-✅ **ANSWERED from shadow project — Rush is informational only, no price impact.**
+✅ **ANSWERED — 2026-05-11 owner session. Behavior is admin-configurable.**
 
-Evidence: Rush toggle sets `rush: true` boolean on the ticket. Pricing formula (`calculateQuoteTotals`) does not reference the rush flag.
+**Answer: Rush surcharge (if any) is configurable from Admin → Company Info tab.** If no surcharge is configured, Rush is informational only (badge only, no price impact — same as shadow project).
 
-🔄 **OWNER REVIEW** — confirm Rush = badge only, no surcharge.
+> Owner note: "We will set this value also from the admin panel company information."
+
+**Implementation:** Add `rush_surcharge_percent` or `rush_surcharge_flat` to company settings. If set, OrderDrawer applies surcharge to total when rush toggle is on. If null, Rush is badge-only.
 
 ---
 
 **C6. Is shipping manual or fixed?**
 
-✅ **ANSWERED from shadow project code (`ContactCRM.jsx` line 536).**
-
-```javascript
-quoteShipping: '',  // defaults to empty (zero)
-```
+✅ **ANSWERED from shadow project code — confirmed by owner.**
 
 **Answer: Manual entry per quote, defaults to blank (no charge).**
 
-🔄 **OWNER REVIEW** — confirm this is correct.
+> Owner answer: radio selected "Manual entry per quote."
 
 ---
 
@@ -271,63 +252,57 @@ quoteShipping: '',  // defaults to empty (zero)
 
 **C7. Should the pricing/cost calculator be embedded in the OrderDrawer?**
 
-⚠️ **OWNER PENDING** — The pulse project has a standalone `pricing-calculator-sales.html` that calculates production cost from press + item size + quantity, producing a suggested price per piece. Currently this is a **separate tool** — the rep calculates the price there and then types it manually into the quote.
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-**Full tier pricing tables are documented in `docs/order-ticket/product-catalog.md` Part 4b.**
+**Answer: Keep as a separate tool.** Rep enters unit price manually. The pricing engine is not being built in this phase.
 
-Summary of how it works:
-1. Rep selects product type → system picks the press (6K / 15K / Boyd)
-2. Rep enters item dimensions and quantity
-3. System calculates fits per frame and needed frames
-4. Tier table lookup → suggested price per piece (accounts for UV, foil, lamination, material surcharges, double-sided, setup fee, cut fee)
+> Owner answer: radio selected "Keep as a separate tool."
+> Owner note (Q18a): "The user that makes the quote will add the price manually."
+> Owner note (Q18b): "The admin will do this but this is a future thing. We are not building the pricing engine now."
 
-Options:
-- **Option A — Keep as separate tool**: OrderDrawer stays simple (manual unit price entry). Rep opens the cost calculator separately, calculates, then enters the number.
-- **Option B — Embed in OrderDrawer**: Each SKU row shows a "Calculate price" button. Rep enters size + options, system suggests a unit price. Rep can accept or override. More useful but significantly more build work.
-
-Blocks: Scope of SKU row UI in `components/order-drawer.tsx` and whether to port the full pricing engine to `lib/utils/ticket-math.ts`.
+**No impact on current build:** OrderDrawer SKU rows have a simple `unit_price` number input only. No "Calculate price" button needed.
 
 ---
 
 **C8. Facility field on tickets (16th Street vs Boyd Street)?**
 
-⚠️ **OWNER PENDING** — The pulse production system routes jobs to either 16th Street or Boyd Street and this determines which materials are available. Should the CRM OrderDrawer include a Facility selector that filters the material dropdown accordingly?
+✅ **ANSWERED — 2026-05-11 owner session (answered via C4c).**
 
-- **Yes — show facility selector**: material dropdown filters to the right options per facility (matches pulse workflow exactly)
-- **No — skip facility selector**: show all materials for a product type; production figures out routing separately
-
-Blocks: Schema (add `facility` column to `job_tickets`?), OrderDrawer product-type change handler.
+**Answer: No facility field on tickets.** No facility selector in OrderDrawer. Materials are shown without facility filtering.
 
 ---
 
 **C9. Full material sub-options or group-level only?**
 
-⚠️ **OWNER PENDING** — Cardstock alone has 9 sub-options (14pt C1S, 14pt C2S, 16pt C1S, 16pt C2S, 18pt C1S, 18pt C2S, 18pt Silver, 24pt C1S, 24pt C2S). Should the CRM quote show the full weight/finish breakdown, or just "Cardstock"?
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-- **Full sub-options**: accurate pricing, production knows exactly what was quoted
-- **Group-level only (e.g. just "Cardstock")**: simpler for reps, production selects the weight
+**Answer: Admin-managed.** The owner adds products and materials manually via the Admin → Products panel. Whatever detail level is entered in the admin panel is what reps see. No constraint is hardcoded either way.
 
-Blocks: How many materials are seeded in the admin Products tab and what the SKU row material dropdown looks like.
+> Owner note: "We will add this from the admin panel manually."
+
+Blocks: Admin seed data determines the dropdown content; SKU row material dropdown renders whatever is in the database.
 
 ---
+
+## Section D — App Navigation
 
 ---
 
 **D1. `/tickets` hub vs separate `/quotes` and `/orders` pages?**
 
-🔄 **OWNER REVIEW** — BazarCRM already has `/quotes` and `/orders` as two separate sidebar items and pages. Shadow project had one tabbed page. The simplest path is to keep the two separate pages as already structured.
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-**Default answer (no change needed): Keep as two separate pages.**
+**Answer: Keep as two separate pages.** "Quoted Requests" and "Orders" remain as two distinct sidebar links.
 
-⚠️ **OWNER PENDING** only if they want to change to a single tabbed `/tickets` page — that would require nav and routing changes.
+> Owner answer: radio selected "Keep as two separate pages."
+
+No navigation changes needed.
 
 ---
 
 **D2. "Create" button on the standalone pages?**
 
 ✅ **ANSWERED from shadow project** — no standalone create button on the list pages. Creation always happens from a lead drawer (VerifyDrawer / SalesDrawer) or from CRM toolbar "+ Add Order".
-
-🔄 **OWNER REVIEW** — confirm no "New Quote" button is needed on the `/quotes` page directly.
 
 ---
 
@@ -337,17 +312,19 @@ Blocks: How many materials are seeded in the admin Products tab and what the SKU
 
 **E1. Company info for PDF header?**
 
-✅ **ANSWERED** — Company information (name, address, phone, email, logo, website) will be stored in and read from the **Admin → Company Info tab** (`/admin/settings/company`). The PDF generation will fetch these details from the database at render time. No hardcoding needed and no owner input required at this stage — the owner fills in the Company Info tab directly in the admin panel before generating their first PDF.
-
-No longer blocks the PDF build — only requires the Company Info admin tab to be built first (already planned as part of the Admin phase).
+✅ **ANSWERED** — Company information (name, address, phone, email, logo, website) will be stored in and read from the **Admin → Company Info tab** (`/admin/settings/company`). The PDF generation will fetch these details from the database at render time.
 
 ---
 
 **E2. Logo on PDF?**
 
-⚠️ **OWNER PENDING** — shadow is text-only. Owner to decide.
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-If yes: need the logo file.
+**Answer: Yes — include the logo.** Logo is stored in Admin → Company Info tab.
+
+> Owner note: "We already have this. This information should be in the admin panel in the company tab."
+
+**Implementation:** `order-ticket-pdf.ts` reads `company_logo_url` from the company settings record and includes it in the PDF header.
 
 ---
 
@@ -357,11 +334,13 @@ If yes: need the logo file.
 
 **F1. Revenue in Statistics and Dashboard?**
 
-✅ **ANSWERED from shadow project** — StatisticsTab (`StatisticsTab.jsx`) includes ticket revenue using `ticketAmount()` from `statsDateRange.js`.
+✅ **ANSWERED — 2026-05-11 owner session.**
 
-**Answer: Yes — include revenue from tickets in Stats and Dashboard.**
+**Answer: Yes — show on Dashboard.** Each rep sees their own revenue totals (tickets they created). Admin sees everyone's totals. Data comes from approved/active ticket `quote_final_total` values.
 
-🔄 **OWNER REVIEW** — confirm this is wanted in production.
+> Owner note: "We will show it in the dashboard. Each user will see their numbers and admin will see everything. In the shadow project it calls statistics. We will use the dashboard to show that information."
+
+**Note:** The shadow project had a separate "Statistics" tab. In production, this data surfaces on the Dashboard page instead.
 
 ---
 
@@ -377,7 +356,7 @@ If yes: need the logo file.
 
 **G1/G2 — Follow-up notifications and cross-rep alerts**
 
-⚠️ **DEFERRED** — Notifications module is not yet built. These questions are noted for when notifications are built. No impact on Tickets phase build.
+❌ **DEFERRED** — Notifications module is not yet built. These questions are noted for when notifications are built. No impact on Tickets phase build.
 
 ---
 
@@ -387,10 +366,13 @@ If yes: need the logo file.
 
 **H1. Order reference number format?**
 
-⚠️ **OWNER PENDING** — Shadow uses `O${timestamp}_${random}` (not user-friendly). Owner to choose:
-- Short UUID code: `#a3f9b12c`
-- Sequential: `ORD-0001`
-- Year + sequential: `ORD-2026-001`
+✅ **ANSWERED — 2026-05-11 owner session.**
+
+**Answer: Year + sequential — `ORD-2026-001`, `ORD-2026-002` ...** Counter resets at the start of each year.
+
+> Owner answer: radio selected "Year + sequential."
+
+**Implementation:** Add a `order_sequence_counters` table (year → last_number) or use a database sequence that resets annually. Generate `reference_code` as `'ORD-' || year || '-' || lpad(next_val::text, 3, '0')` in `POST /api/tickets`.
 
 Blocks: `reference_code` generation in `POST /api/tickets`.
 
@@ -410,29 +392,32 @@ Blocks: `reference_code` generation in `POST /api/tickets`.
 
 **H4. Locking on tickets (concurrent editing)?**
 
-✅ **ANSWERED from shadow** — no locking. Any authorized user can edit at any time. Will use the same model in production (no ticket lock, unlike leads).
+✅ **ANSWERED from shadow** — no locking. Any authorized user can edit at any time (subject to the B5 edit guard). Will use the same model in production (no ticket lock, unlike leads).
 
 ---
 
-## Summary — Current Status
+## Summary — Final Status
 
-### ✅ Answered from shadow project code (no owner input needed)
-A3, B1, B2, B3, B4, C1, C2, C3, C5, C6, D2, F1, F2, H2, H3, H4
+### ✅ Answered (all resolved as of 2026-05-11)
 
-### 🔄 Owner review (pre-filled, owner should confirm)
-A1, A2, B2 (confirm no auto-route), C1, C2, C3, C5, C6, D1, F1
+**From shadow project code (no owner input needed):**
+A3, B1, B3, C1, C6, D2, F2, H2, H3, H4
 
-### ⚠️ Owner must answer before building
-| ID | Question | Blocks |
-|---|---|---|
-| B5 | Editing policy after ticket sent/approved | OrderDrawer edit guard |
-| C4a | Product name alignment (pulse vs shadow names) + Canvas/Jars/Tubes | SKU dropdown product list |
-| C4c | Facility filter in OrderDrawer? (16th St vs Boyd) | Material dropdown logic |
-| C7 | Cost calculator: embedded in OrderDrawer or separate tool? | OrderDrawer SKU row scope |
-| C8 | Facility field on ticket? | Schema + material filter |
-| C9 | Full material sub-options vs group-level only? | Admin seed data + dropdown |
-| E2 | Logo on PDF | PDF complexity |
-| H1 | Order reference number format | `reference_code` generation |
+**Confirmed / decided by owner (2026-05-11 review session):**
+A1, A2, B2, B5, C2, C3, C4a, C4b, C4c/C8, C5, C7/C9, E1, E2, F1, H1
 
-### ⚠️ Deferred (no impact on current build)
-G1, G2 — notifications module not yet built
+**Navigation confirmed (no change):**
+D1
+
+### ⚠️ Design Change (differs from shadow project — read carefully before building)
+
+| ID | Change |
+|---|---|
+| A1/A2 | Scoped visibility — each rep sees own tickets only (shadow had no filter) |
+| B4 | Quote becomes the order in place — no simultaneous order shell (shadow created both at once) |
+| C3 | High-value threshold forces Sales routing for SDR (shadow was just a warning banner); threshold is admin-configurable |
+
+### ❌ Deferred (no impact on current build)
+
+G1, G2 — notifications module not yet built  
+C7/Q17, Q18a, Q18b — pricing engine deferred to future phase

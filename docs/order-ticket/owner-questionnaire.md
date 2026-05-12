@@ -4,6 +4,8 @@
 **To:** Product Owner  
 **Re:** Quotes & Orders module — decisions needed before we start building
 
+**Status: ✅ All questions answered — 2026-05-11**
+
 ---
 
 We are ready to build the **Quotes and Orders** section of the CRM. We went through the working prototype system and pre-filled the answers we were able to confirm from the code. The items marked **"Owner decision needed"** are the only ones you need to answer — everything else is already set.
@@ -25,9 +27,9 @@ Please review the pre-filled answers to make sure they match how you want the pr
 **Does this match how you want production to work?**
 
 - [ ] **Yes — keep it as a shared board** *(default — matches prototype)*
-- [ ] **No — I want scoped visibility (each person sees only their own)** *(requires additional build work)*
+- [x] **No — I want scoped visibility (each person sees only their own)** *(requires additional build work)*
 
-**Your answer:** _______________
+**Your answer:** Scoped — each rep sees only the quotes they created. However, on the customer detail page inside the CRM, all quotes and orders for that customer are visible regardless of who created them (with the creator shown). Admin can see everything.
 
 ---
 
@@ -38,9 +40,9 @@ Please review the pre-filled answers to make sure they match how you want the pr
 **Does this match how you want production to work?**
 
 - [ ] **Yes — shared board for all**
-- [ ] **No — I want scoped visibility**
+- [x] **No — I want scoped visibility**
 
-**Your answer:** _______________
+**Your answer:** Scoped — each rep sees only their own orders. Admin can see all orders.
 
 ---
 
@@ -57,11 +59,11 @@ Please review the pre-filled answers to make sure they match how you want the pr
 
 **Does this match how you want production to work?**
 
-- [ ] **Yes — SDR can create from inside the lead (same as prototype)**
+- [x] **Yes — SDR can create from inside the lead (same as prototype)**
 - [ ] **No — SDR should not create tickets; only Sales creates quotes and orders**
 - [ ] **Different — SDR creates the ticket but the lead auto-routes to Sales immediately after** *(requires a business rule change)*
 
-**Your answer:** _______________
+**Your answer:** Yes — same as prototype. The ticket does not go to the Sales pipeline; it becomes part of the CRM record for that customer.
 
 ---
 
@@ -74,9 +76,9 @@ If the rep does **not** require client confirmation, an order is created directl
 **Does this match how you want production to work?**
 
 - [ ] **Yes — create both at once; order activates on client confirmation** *(matches prototype)*
-- [ ] **Different — I want to explain:** _______________
+- [x] **Different — I want to explain:** The quote ticket itself becomes the order based on the user's input. We do not create a separate order record simultaneously. Reference the shadow project for the exact mechanics of how this transition happens.
 
-**Your answer:** _______________
+**Your answer:** The quote becomes the order — no separate parallel order record is created. The ticket transitions from quote to order state based on client input/confirmation. See shadow project code for the exact implementation pattern.
 
 ---
 
@@ -87,10 +89,10 @@ If the rep does **not** require client confirmation, an order is created directl
 Pick one:
 
 - [ ] **Always editable** — a rep can edit any ticket at any time, regardless of status *(matches prototype)*
-- [ ] **Only draft and sent tickets are editable** — once a ticket is approved, it is read-only unless an admin re-opens it
+- [x] **Only draft and sent tickets are editable** — once a ticket becomes an order, it is locked. Owner or Admin can cancel the order (only if no payment has been made). When cancelling, the system asks: "Do you want to duplicate this ticket with the same items and create a new one to make adjustments?"
 - [ ] **Only the person who created it can edit** — other team members can view but not change the ticket
 
-**Your answer:** _______________
+**Your answer:** Once the ticket is an order it is not editable. Owner/Admin can cancel if no payment was made. Cancelling triggers a "duplicate and adjust" prompt — the system offers to copy all line items into a fresh ticket so the rep can make changes and re-send.
 
 ---
 
@@ -112,7 +114,7 @@ Card Payment is checked by default on every new quote. At least one must always 
 
 **Are these correct for BazaarPrinting?** Should any be added, removed, or renamed?
 
-**Your answer (add / remove / rename, or write "Correct as-is"):** _______________
+**Your answer (add / remove / rename, or write "Correct as-is"):** Correct as-is.
 
 ---
 
@@ -122,7 +124,7 @@ Card Payment is checked by default on every new quote. At least one must always 
 
 **Is 8.25% correct for your jurisdiction?**
 
-**Your answer (confirm or provide correct rate):** _______________
+**Your answer:** Tax rate should be configurable from the Admin panel → Company tab. It should not be hardcoded. Admin sets the default rate; reps can still override it per quote.
 
 ---
 
@@ -139,7 +141,7 @@ Note from prototype: this warning currently shows **for SDR only** when the tota
 - [ ] **Yes — and show the warning to both SDR and Sales equally**
 - [ ] **No — remove the high-value warning entirely**
 
-**Your answer:** _______________
+**Your answer:** The threshold amount must be configurable from the Admin panel → Company Info tab (not hardcoded to $5,000). When the order total exceeds that threshold, the SDR's **only available action is to route to the Sales Pipeline** — they cannot send the quote themselves. This is a hard block, not just a warning banner.
 
 ---
 
@@ -149,11 +151,11 @@ Note from prototype: this warning currently shows **for SDR only** when the tota
 
 **Is this correct?**
 
-- [ ] **Yes — manual entry per quote** *(matches prototype)*
+- [x] **Yes — manual entry per quote** *(matches prototype)*
 - [ ] **No — we have a fixed shipping rate:** $_______________
 - [ ] **No — we never charge shipping; remove this field**
 
-**Your answer:** _______________
+**Your answer:** Correct as-is — manual entry per quote.
 
 ---
 
@@ -195,9 +197,13 @@ The prototype used simpler names. The production system uses more specific ones.
 
 | Old name (prototype) | New name (production) | Use which? |
 |---|---|---|
-| Stickers | Diecut Stickers | |
-| Flyer | Flyers / Postcards | |
-| Vinyl Banners | Banners / Large Format | |
+| Stickers | Diecut Stickers | ✅ Use production name |
+| Flyer | Flyers / Postcards | ✅ Use production name |
+| Vinyl Banners | Banners / Large Format | ✅ Use production name |
+
+**Your answer (Q10a):** Use the updated production names from the pulse/shadow project throughout the quote builder.
+
+---
 
 **Q10b — What about Canvas Prints, Jars, and Tubes?**
 
@@ -205,16 +211,20 @@ These were in the prototype but are not in the production system as product type
 - **Canvas Prints** — Are these still quoted through this CRM?
 - **Jars / Tubes** — In the production system these are listed as "application containers" (a label is applied to the jar/tube). Should they remain as product types, or should reps quote the label (e.g. Labels Roll) and note "for jars" in the description?
 
-**Your answer:** _______________
+**Your answer (Q10b):** Do not include Canvas Prints, Jars, or Tubes as product types in the initial build. They will be added manually via the Admin → Products panel in a future phase when needed.
+
+---
 
 **Q10c — Does the material dropdown need to filter by facility?**
 
 The production facility (16th Street vs Boyd Street) determines which materials are available. For example, stickers at 16th Street use BOPP material, but stickers at Boyd use Vinyl.
 
 - [ ] **Yes — ask for facility first, then filter materials accordingly** *(most accurate)*
-- [ ] **No — show all materials; the rep knows which to pick** *(simpler)*
+- [x] **No — show all materials; the rep knows which to pick** *(simpler)*
 
-**Your answer:** _______________
+**Your answer (Q10c):** No facility filter — show all materials for the selected product type. Reps know which material applies to their job.
+
+---
 
 **Q10d — How much detail on materials?**
 
@@ -223,7 +233,7 @@ Cardstock comes in many weights and finishes (14pt, 16pt, 18pt, 24pt, C1S, C2S, 
 - [ ] **Full detail** — rep picks exact weight (14pt C1S, 18pt C2S, etc.) — accurate for pricing
 - [ ] **Group level** — rep picks "Cardstock", production selects the weight *(simpler for reps)*
 
-**Your answer:** _______________
+**Your answer (Q10d):** Products and materials are admin-managed. The owner will add them manually via the Admin → Products panel. The level of detail is determined by what the admin enters — no hardcoded constraint either way.
 
 ---
 
@@ -236,7 +246,7 @@ Cardstock comes in many weights and finishes (14pt, 16pt, 18pt, 24pt, C1S, C2S, 
 - [ ] **Informational only — no price impact** *(matches prototype)*
 - [ ] **Rush adds a surcharge:** _______________% or $_______________
 
-**Your answer:** _______________
+**Your answer:** Rush surcharge (if any) will be configurable from the Admin panel → Company Info tab. Not hardcoded. If the admin sets a rush surcharge amount, it is applied automatically; if left blank, rush is informational only.
 
 ---
 
@@ -249,9 +259,9 @@ Right now the rep opens this calculator separately, gets the price, then types i
 **Should this calculator be built into the quote builder itself?**
 
 - [ ] **Yes — embedded in the quote builder** — when the rep enters item size and quantity, a suggested unit price appears automatically. Rep can accept or override. *(most useful, more build time)*
-- [ ] **No — keep as a separate tool** — rep calculates separately and types the price manually *(same as today, faster to build)*
+- [x] **No — keep as a separate tool** — rep calculates separately and types the price manually *(same as today, faster to build)*
 
-**Your answer:** _______________
+**Your answer:** Keep as a separate tool. The rep who creates the quote enters the price manually. The pricing engine is not being built in this phase.
 
 ---
 
@@ -268,6 +278,10 @@ If admin can add new product types from the Products panel, they would need to a
 - [ ] **Yes — full pricing config per product** — admin picks the machine (6K / 15K / Boyd), selects the tier table, and sets finishing surcharges (e.g. "Soft Touch = +10%"). New products are fully calculator-ready.
 - [ ] **No — new products default to "Manual"** — rep always types the price manually for any new product; only the existing products have wired calculators.
 
+**Your answer (Q18a):** All products use manual price entry — the rep who creates the quote types the price. The pricing calculator/engine is not being built in this phase. No pricing config is needed when adding products.
+
+---
+
 **Q18b — Should the pricing tier rates themselves be editable from the admin panel?**
 
 Example: if the cost per frame for Labels increases from $3.40 to $3.80, should the owner be able to update that number from the admin panel without involving a developer?
@@ -275,7 +289,7 @@ Example: if the cost per frame for Labels increases from $3.40 to $3.80, should 
 - [ ] **Yes — admin can edit the tier rate tables** (full control, no developer needed for price changes)
 - [ ] **No — rates are fixed; a developer updates them when needed** (simpler to build)
 
-**Your answer:** _______________
+**Your answer (Q18b):** Deferred — the pricing engine is not being built in this phase. When the pricing engine is built in a future phase, admin will be able to edit tier rates from the admin panel without developer involvement.
 
 ---
 
@@ -289,10 +303,10 @@ Example: if the cost per frame for Labels increases from $3.40 to $3.80, should 
 
 Pick one:
 
-- [ ] **Keep as two separate pages** — "Quoted Requests" and "Orders" as two distinct sidebar links *(current CRM setup — no changes to navigation needed)*
+- [x] **Keep as two separate pages** — "Quoted Requests" and "Orders" as two distinct sidebar links *(current CRM setup — no changes to navigation needed)*
 - [ ] **Combine into one "Tickets" page** — a single sidebar link that opens a tabbed view *(requires navigation change)*
 
-**Your answer:** _______________
+**Your answer:** Keep as two separate pages. No navigation changes needed.
 
 ---
 
@@ -302,9 +316,9 @@ Pick one:
 
 - [ ] **Short code** — last 8 characters of the system ID, e.g. `#a3f9b12c` *(simple, no counter needed)*
 - [ ] **Sequential number** — `ORD-0001`, `ORD-0002`, `ORD-0003` ... *(clean, requires a counter in the database)*
-- [ ] **Year + sequential** — `ORD-2026-001`, `ORD-2026-002` ... *(most professional, requires a counter)*
+- [x] **Year + sequential** — `ORD-2026-001`, `ORD-2026-002` ... *(most professional, requires a counter)*
 
-**Your answer:** _______________
+**Your answer:** Year + sequential format — `ORD-2026-001`. Counter resets each year.
 
 ---
 
@@ -323,9 +337,9 @@ Pick one:
 ### Q15 — Company logo on the PDF
 
 - [ ] **No logo — company name as text only** *(ready to build immediately)*
-- [ ] **Yes — include the logo** *(provide the logo file; adds build time)*
+- [x] **Yes — include the logo** *(provide the logo file; adds build time)*
 
-**Your answer:** _______________
+**Your answer:** Yes — include the logo. The logo file and all company information will be stored in the Admin → Company Info tab. The PDF reads directly from there; no separate upload step needed here.
 
 ---
 
@@ -337,44 +351,43 @@ Pick one:
 
 **✅ The prototype included ticket revenue in the Statistics tab.** Production can do the same.
 
-- [ ] **Yes — show revenue totals from quotes/orders on the dashboard and statistics page** *(matches prototype)*
-- [ ] **Not yet — build the quotes/orders module first; add revenue stats later*
+- [x] **Yes — show revenue totals from quotes/orders on the dashboard and statistics page** *(matches prototype)*
+- [ ] **Not yet — build the quotes/orders module first; add revenue stats later**
 
-**Your answer:** _______________
+**Your answer:** Yes — show revenue on the Dashboard. Each rep sees their own numbers (tickets they created). Admin sees everyone's totals. The shadow project calls this "Statistics" — we will surface this data on the Dashboard rather than a separate Statistics page.
 
 ---
 
-## Summary — Only These Items Need Your Answer
+## Summary — All Items Answered
 
-| # | Question | Status |
+| # | Question | Answer |
 |---|---|---|
-| Q1 | Confirm shared ticket visibility | Review pre-filled answer |
-| Q2 | Confirm shared ticket visibility | Review pre-filled answer |
-| Q3 | Confirm SDR can create from lead | Review pre-filled answer |
-| Q4 | Confirm quote + order created together | Review pre-filled answer |
-| **Q5** | **Editing policy after ticket is sent/approved** | **Needs your answer** |
-| Q6 | Confirm payment methods | Review pre-filled answer |
-| Q7 | Confirm 8.25% tax rate | Review pre-filled answer |
-| Q8 | Confirm $5,000 high-value warning | Review pre-filled answer |
-| Q9 | Confirm manual shipping | Review pre-filled answer |
-| **Q10a** | **Product names: use pulse names or prototype names?** | **Needs your answer** |
-| **Q10b** | **Canvas Prints / Jars / Tubes — keep or remove?** | **Needs your answer** |
-| **Q10c** | **Material filtering by facility?** | **Needs your answer** |
-| **Q10d** | **Full cardstock weight detail or group-level only?** | **Needs your answer** |
-| Q11 | Confirm rush = informational only | Review pre-filled answer |
-| Q12 | Confirm two separate sidebar pages | Review pre-filled answer |
-| **Q13** | **Order reference number format** | **Needs your answer** |
-| Q14 | Company info → handled by Admin → Company Info tab | Answered |
-| Q15 | Logo on PDF | Review / confirm |
-| Q16 | Revenue in statistics | Review pre-filled answer |
-| **Q17** | **Pricing calculator: embedded or separate tool?** | **Needs your answer** |
-| **Q18a** | **New product types: configure pricing when adding?** | **Needs your answer** |
-| **Q18b** | **Tier rates: admin-editable or developer-only?** | **Needs your answer** |
-
-**Minimum required to start building: Q5, Q10a–d, Q13, Q17, Q18a, Q18b.**
+| Q1 | Quotes visibility | ✅ **Scoped** — own quotes only; all shown on customer page; admin sees all |
+| Q2 | Orders visibility | ✅ **Scoped** — own orders only; admin sees all |
+| Q3 | SDR creates from lead | ✅ **Yes** — from inside the lead, no auto-route to Sales |
+| Q4 | Quote + Order relationship | ✅ **Quote becomes the order** — no separate order shell created |
+| Q5 | Editing after sent/approved | ✅ **Locked once order** — owner/admin can cancel (no payment); cancel offers duplicate & adjust |
+| Q6 | Payment methods | ✅ **Correct as-is** — Card Payment (default), Zelle, Offline |
+| Q7 | Default tax rate | ✅ **Admin-configurable** — stored in Admin → Company tab |
+| Q8 | High-value warning | ✅ **Admin-configurable threshold** — exceeding it forces SDR to route to Sales Pipeline |
+| Q9 | Shipping charge | ✅ **Manual per quote** |
+| Q10a | Product names | ✅ **Use production names** — from pulse/shadow project |
+| Q10b | Canvas Prints / Jars / Tubes | ✅ **Not now** — added via Admin → Products in future |
+| Q10c | Facility filter on materials | ✅ **No** — show all materials, rep picks |
+| Q10d | Material detail level | ✅ **Admin-managed** — owner adds via Admin panel |
+| Q11 | Rush orders | ✅ **Admin-configurable** — surcharge (if any) set in Admin → Company Info |
+| Q12 | Sidebar navigation | ✅ **Keep separate pages** — Quotes and Orders as two sidebar links |
+| Q13 | Reference number format | ✅ **Year + sequential** — `ORD-2026-001` |
+| Q14 | Company info for PDF | ✅ **Admin → Company Info tab** — already handled |
+| Q15 | Logo on PDF | ✅ **Yes** — from Admin → Company Info tab |
+| Q16 | Revenue on dashboard | ✅ **Yes** — Dashboard, scoped per user; admin sees all |
+| Q17 | Pricing calculator | ✅ **Separate tool** — rep enters price manually; engine not built this phase |
+| Q18a | New product pricing config | ✅ **Manual entry** — pricing engine deferred; no config needed when adding products |
+| Q18b | Tier rate admin editing | ✅ **Deferred** — pricing engine is a future phase |
 
 ---
 
 *Document prepared by: BazaarPrinting CRM development team*  
 *Technical reference: `docs/order-ticket/open-questions.md`*  
-*Shadow project analysis: `docs/order-ticket/shadow-project-findings.md`*
+*Shadow project analysis: `docs/order-ticket/shadow-project-findings.md`*  
+*Owner review session: 2026-05-11*
