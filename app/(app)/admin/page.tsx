@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Building2, Package } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug } from "lucide-react";
 import { SpecBadge } from "@/components/ui/spec-preview";
 
 const CARDS = [
@@ -36,6 +36,13 @@ const CARDS = [
     description: "Product types, materials, and finishes available in the Ticket Builder order line items.",
     href: "/admin/settings/products",
     icon: Package,
+    built: false,
+  },
+  {
+    title: "Integrations",
+    description: "Connect payment processors and external services. Stripe (card payments) and Zelle integration — coming soon.",
+    href: "/admin/settings/integrations",
+    icon: Plug,
     built: false,
   },
 ] as const;

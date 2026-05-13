@@ -17,6 +17,7 @@ import {
   ListFilter,
   Megaphone,
   ClipboardList,
+  MessageSquareQuote,
   Bell,
   Sun,
   Moon,
@@ -44,6 +45,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ListFilter,
   Megaphone,
   ClipboardList,
+  MessageSquareQuote,
   Bell,
 };
 
@@ -243,6 +245,23 @@ export function Sidebar() {
           console.log("[Realtime] leads-realtime status:", status, err ?? "");
         });
 
+      // Tickets (Quotes + Orders): any change triggers badge refresh + silent re-fetch
+      // on both /quotes and /orders pages via the "bazaar:tickets-changed" event.
+      const ticketsChannel = supabase
+        .channel("tickets-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "job_tickets" },
+          (payload) => {
+            console.log("[Realtime] tickets event:", payload.eventType, payload);
+            fetchBadges();
+            window.dispatchEvent(new Event("bazaar:tickets-changed"));
+          }
+        )
+        .subscribe((status, err) => {
+          console.log("[Realtime] tickets-realtime status:", status, err ?? "");
+        });
+
       // Activities: new rows signal the admin activity log to refresh
       const activitiesChannel = supabase
         .channel("activities-realtime")
@@ -260,6 +279,7 @@ export function Sidebar() {
 
       // Store refs on the supabase instance for cleanup
       (supabase as unknown as Record<string, unknown>)["_sidebarLeadsCh"] = leadsChannel;
+      (supabase as unknown as Record<string, unknown>)["_sidebarTicketsCh"] = ticketsChannel;
       (supabase as unknown as Record<string, unknown>)["_sidebarActivitiesCh"] = activitiesChannel;
     });
 
@@ -271,6 +291,10 @@ export function Sidebar() {
       if (refs["_sidebarLeadsCh"]) {
         supabase.removeChannel(refs["_sidebarLeadsCh"] as Parameters<typeof supabase.removeChannel>[0]);
         delete refs["_sidebarLeadsCh"];
+      }
+      if (refs["_sidebarTicketsCh"]) {
+        supabase.removeChannel(refs["_sidebarTicketsCh"] as Parameters<typeof supabase.removeChannel>[0]);
+        delete refs["_sidebarTicketsCh"];
       }
       if (refs["_sidebarActivitiesCh"]) {
         supabase.removeChannel(refs["_sidebarActivitiesCh"] as Parameters<typeof supabase.removeChannel>[0]);

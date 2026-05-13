@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package } from "lucide-react";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { StatusPill } from "@/components/ui/status-pill";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -41,6 +41,17 @@ interface LeadSummary {
   rejection_reason: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface TicketSummary {
+  id: string;
+  ticket_kind: "quote" | "order";
+  ticket_status: string;
+  title: string | null;
+  reference_code: string | null;
+  quote_final_total: number | null;
+  rush: boolean;
+  created_at: string;
 }
 
 interface ProfileData {
@@ -478,14 +489,21 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
   const router = useRouter();
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
-    fetch(`/api/customers/${customerId}`)
-      .then((r) => r.json())
-      .then((d) => { setData(d); setLoading(false); })
+    Promise.all([
+      fetch(`/api/customers/${customerId}`).then((r) => r.json()),
+      fetch(`/api/tickets?customer_id=${customerId}`).then((r) => r.json()),
+    ])
+      .then(([customerData, ticketData]) => {
+        setData(customerData);
+        setTickets(ticketData.tickets ?? []);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [customerId]);
 
@@ -581,9 +599,19 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
 
         {/* Contact fields grid */}
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>Phone</p>
+            {c.phone
+              ? <a href={`tel:${c.phone}`} className="text-[13px] hover:opacity-70 transition-opacity" style={{ color: "var(--color-text-primary)" }}>{formatPhone(c.phone)}</a>
+              : <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>—</p>}
+          </div>
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>Email</p>
+            {c.email
+              ? <a href={`mailto:${c.email}`} className="text-[13px] break-all hover:opacity-70 transition-opacity" style={{ color: "var(--color-text-primary)" }}>{c.email}</a>
+              : <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>—</p>}
+          </div>
           {[
-            { label: "Phone", value: c.phone ? formatPhone(c.phone) : null },
-            { label: "Email", value: c.email },
             { label: "Industry", value: c.industry },
             { label: "Website", value: c.website },
           ].map(({ label, value }) => (
@@ -676,19 +704,77 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
         </div>
       </section>
 
-      {/* Order History placeholder */}
+      {/* Quotes & Orders */}
       <section>
         <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
-          Order History
+          Quotes &amp; Orders
+          {tickets.length > 0 && (
+            <span className="ml-2 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold normal-case tracking-normal"
+              style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
+              {tickets.length}
+            </span>
+          )}
         </h2>
-        <div
-          className="rounded-[10px] border p-8 text-center"
-          style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-        >
-          <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>
-            Order history will appear here once the Tickets module is built.
-          </p>
-        </div>
+
+        {tickets.length === 0 ? (
+          <div className="rounded-[10px] border p-8 text-center"
+            style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+            <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>No quotes or orders yet.</p>
+          </div>
+        ) : (
+          <div className="rounded-[10px] border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+            {tickets.map((t, idx) => (
+              <div
+                key={t.id}
+                onClick={() => router.push(`/quotes/${t.id}`)}
+                className="flex items-center justify-between gap-4 px-4 py-3 cursor-pointer transition-colors hover:opacity-80"
+                style={{
+                  background: "var(--color-surface)",
+                  borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
+                }}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  {t.ticket_kind === "order"
+                    ? <Package className="h-4 w-4 shrink-0" style={{ color: "var(--color-accent)" }} />
+                    : <FileText className="h-4 w-4 shrink-0" style={{ color: "var(--color-text-muted)" }} />
+                  }
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-medium truncate" style={{ color: "var(--color-text-primary)" }}>
+                      {t.title || "Untitled"}
+                      {t.rush && <span className="ml-1.5 text-[10px]" style={{ color: "var(--color-accent)" }}>⚡ Rush</span>}
+                    </p>
+                    <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+                      {t.reference_code ? `${t.reference_code} · ` : ""}
+                      {relativeTime(t.created_at)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  {t.quote_final_total != null && (
+                    <span className="text-[13px] font-medium" style={{ color: "var(--color-text-primary)" }}>
+                      ${t.quote_final_total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  )}
+                  <span
+                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
+                    style={{
+                      background: t.ticket_status === "approved" ? "var(--color-success-bg)"
+                        : t.ticket_status === "cancelled" ? "var(--color-danger-bg)"
+                        : t.ticket_status === "sent" ? "var(--color-info-bg)"
+                        : "var(--color-neutral-bg)",
+                      color: t.ticket_status === "approved" ? "var(--color-success)"
+                        : t.ticket_status === "cancelled" ? "var(--color-danger)"
+                        : t.ticket_status === "sent" ? "var(--color-info-text)"
+                        : "var(--color-neutral-text)",
+                    }}
+                  >
+                    {t.ticket_status}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* Edit modal */}

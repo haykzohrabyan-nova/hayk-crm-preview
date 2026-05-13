@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   X,
   Lock,
@@ -12,7 +13,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { StatusPill } from "@/components/ui/status-pill";
 import { HoldSubForm } from "@/components/hold-sub-form";
-import { Activity, HoldForm, Lead, LookupMap, PRODUCT_INTERESTS } from "@/lib/types";
+import { Activity, HoldForm, Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import {
@@ -40,7 +41,6 @@ interface DrawerForm {
   initial_interest: string;
   sdr_comment: string;
   interests: Record<string, boolean>;
-  quantities: Record<string, string>;
   rejection_reason: string;
   rejection_notes: string;
 }
@@ -74,20 +74,7 @@ const AUTHORITY_OPTIONS = [
   { value: "no", label: "No" },
 ];
 
-const URGENCY_OPTIONS = [
-  { value: "not_defined", label: "Not Defined" },
-  { value: "High", label: "High" },
-  { value: "Medium", label: "Medium" },
-  { value: "Low", label: "Low" },
-];
-
-const REJECT_REASONS = [
-  { value: "not_a_fit", label: "Not a fit" },
-  { value: "no_budget", label: "No budget" },
-  { value: "competitor", label: "Competitor" },
-  { value: "spam_bot", label: "Spam / Bot" },
-  { value: "other", label: "Other" },
-];
+const URGENCY_NOT_DEFINED = { value: "not_defined", label: "Not Defined" };
 
 function formFromLead(lead: Lead): DrawerForm {
   const c = lead.customer;
@@ -106,7 +93,6 @@ function formFromLead(lead: Lead): DrawerForm {
     initial_interest: lead.initial_interest ?? "",
     sdr_comment: lead.sdr_comment ?? "",
     interests: lead.interests ?? {},
-    quantities: lead.quantities ?? {},
     rejection_reason: "",
     rejection_notes: "",
   };
@@ -183,6 +169,7 @@ export function VerifyDrawer({
   onLeadRemoved,
   showToast,
 }: VerifyDrawerProps) {
+  const router = useRouter();
   const [lead, setLead] = useState<Lead>(initialLead);
   const [form, setForm] = useState<DrawerForm>(() => formFromLead(initialLead));
   const [activeTab, setActiveTab] = useState<"info" | "history">("info");
@@ -197,6 +184,18 @@ export function VerifyDrawer({
 
   const isRejected = lead.status === "Rejected";
   const isReadOnly = readOnly || isRejected;
+
+  // Product types from admin panel
+  const [productTypes, setProductTypes] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/admin/product-types")
+      .then((r) => r.json())
+      .then((d) => {
+        const active = (d.product_types ?? []).filter((p: { is_active: boolean }) => p.is_active);
+        setProductTypes(active);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (activeTab === "history" && !activitiesFetched) {
@@ -261,7 +260,6 @@ export function VerifyDrawer({
       sdr_comment: form.sdr_comment || null,
       initial_interest: form.initial_interest.trim() || null,
       interests: form.interests,
-      quantities: form.quantities,
     };
   }
 
@@ -276,6 +274,20 @@ export function VerifyDrawer({
     onLeadUpdated(updated);
     showToast("Lead saved.");
     onClose();
+  }
+
+  // ── Action: Create Quote/Order — save lead silently then navigate ──────────
+
+  async function handleCreateQuote() {
+    setSaving(true);
+    // Save any pending lead changes silently (no toast / no close)
+    const updated = await patchLead(buildLeadPayload());
+    setSaving(false);
+    if (updated) {
+      setLead(updated);
+      onLeadUpdated(updated);
+    }
+    router.push(`/quotes/new?lead_id=${lead.id}`);
   }
 
   // ── Action flow with optional customer update prompt ──────────────────────
@@ -405,16 +417,18 @@ export function VerifyDrawer({
 
   const sources = lookups.source ?? [];
   const industries = lookups.industry ?? [];
+  const urgencyOptions = [URGENCY_NOT_DEFINED, ...(lookups.urgency ?? [])];
+  const rejectReasons = lookups.reject_reason ?? [];
+  const holdReasons = lookups.hold_reason ?? [];
 
   const displayName =
     `${form.first_name} ${form.last_name}`.trim() || "Lead Details";
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — intentionally non-clickable: user must use Save or an action button to close */}
       <div
         className="fixed inset-0 z-40 bg-black/45"
-        onClick={handleClose}
         aria-hidden="true"
       />
 
@@ -660,11 +674,11 @@ export function VerifyDrawer({
                     >
                       <SelectTrigger className="h-9 text-sm w-full">
                         <SelectValue placeholder="Select…">
-                          {URGENCY_OPTIONS.find((u) => u.value === form.urgency)?.label ?? "Select…"}
+                          {urgencyOptions.find((u) => u.value === form.urgency)?.label ?? "Select…"}
                         </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
-                        {URGENCY_OPTIONS.map((u) => (
+                        {urgencyOptions.map((u) => (
                           <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
                         ))}
                       </SelectContent>
@@ -721,6 +735,55 @@ export function VerifyDrawer({
                 </p>
               </section>
 
+              {/* Product Interests */}
+              <section>
+                <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
+                  Product Interests
+                </h3>
+
+                {productTypes.length === 0 ? (
+                  <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>No products configured yet.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {productTypes.map((pt) => {
+                      const isSelected = !!form.interests[pt.name];
+                      return (
+                        <button
+                          key={pt.id}
+                          type="button"
+                          disabled={isReadOnly}
+                          onClick={() => {
+                            if (isReadOnly) return;
+                            setForm((f) => ({
+                              ...f,
+                              interests: { ...f.interests, [pt.name]: !isSelected },
+                            }));
+                          }}
+                          className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-colors"
+                          style={
+                            isSelected
+                              ? {
+                                  background: "var(--color-badge-bg)",
+                                  borderColor: "var(--color-tab-underline)",
+                                  color: "var(--color-tab-active)",
+                                }
+                              : {
+                                  background: "var(--color-surface)",
+                                  borderColor: "var(--color-border)",
+                                  color: isReadOnly ? "var(--color-text-muted)" : "var(--color-text-muted)",
+                                  cursor: isReadOnly ? "default" : "pointer",
+                                  opacity: isReadOnly && !isSelected ? 0.5 : 1,
+                                }
+                          }
+                        >
+                          {pt.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </section>
+
               {/* SDR Comment */}
               <section>
                 <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-2" style={{ color: "var(--color-text-muted)" }}>
@@ -739,94 +802,6 @@ export function VerifyDrawer({
                     color: "var(--color-text-primary)",
                   }}
                 />
-              </section>
-
-              {/* Product Interests */}
-              <section>
-                <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
-                  Product Interests
-                </h3>
-
-                {/* Selected products list */}
-                {PRODUCT_INTERESTS.filter((p) => !!form.interests[p]).length > 0 && (
-                  <div className="space-y-2 mb-3">
-                    {PRODUCT_INTERESTS.filter((p) => !!form.interests[p]).map((interest) => (
-                      <div
-                        key={interest}
-                        className="flex items-center gap-2 rounded-[6px] border px-3 py-2"
-                        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-                      >
-                        <span className="flex-1 text-[13px] font-medium" style={{ color: "var(--color-text-primary)" }}>
-                          {interest}
-                        </span>
-                        <input
-                          type="text"
-                          value={form.quantities[interest] ?? ""}
-                          onChange={(e) =>
-                            setForm((f) => ({
-                              ...f,
-                              quantities: { ...f.quantities, [interest]: e.target.value },
-                            }))
-                          }
-                          disabled={isReadOnly}
-                          placeholder="Qty"
-                          className="h-7 w-24 rounded-[4px] border px-2 text-[12px] outline-none text-right"
-                          style={{
-                            background: "color-mix(in srgb, var(--color-border) 20%, transparent)",
-                            borderColor: "var(--color-border)",
-                            color: "var(--color-text-primary)",
-                          }}
-                        />
-                        {!isReadOnly && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setForm((f) => {
-                                const interests = { ...f.interests, [interest]: false };
-                                const quantities = { ...f.quantities };
-                                delete quantities[interest];
-                                return { ...f, interests, quantities };
-                              })
-                            }
-                            className="rounded p-0.5 transition-colors hover:bg-red-50"
-                            style={{ color: "var(--color-text-muted)" }}
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Add product dropdown */}
-                {!isReadOnly && PRODUCT_INTERESTS.some((p) => !form.interests[p]) && (
-                  <Select
-                    value=""
-                    onValueChange={(product) => {
-                      if (!product) return;
-                      setForm((f) => ({
-                        ...f,
-                        interests: { ...f.interests, [product]: true },
-                      }));
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-sm w-full" style={{ borderStyle: "dashed" }}>
-                      <SelectValue placeholder="+ Add product interest…">
-                        + Add product interest…
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PRODUCT_INTERESTS.filter((p) => !form.interests[p]).map((p) => (
-                        <SelectItem key={p} value={p}>{p}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-
-                {isReadOnly && PRODUCT_INTERESTS.every((p) => !form.interests[p]) && (
-                  <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>No products selected.</p>
-                )}
               </section>
             </>
           )}
@@ -936,6 +911,7 @@ export function VerifyDrawer({
           {footerMode === "hold" && (
             <HoldSubForm
               form={holdForm}
+              reasons={holdReasons}
               onChange={setHoldForm}
               onConfirm={handleHoldConfirm}
               onCancel={() => setFooterMode("actions")}
@@ -958,11 +934,11 @@ export function VerifyDrawer({
               >
                 <SelectTrigger className="h-9 text-sm w-full">
                   <SelectValue placeholder="Rejection reason *">
-                    {REJECT_REASONS.find((r) => r.value === form.rejection_reason)?.label ?? "Rejection reason *"}
+                    {rejectReasons.find((r) => r.value === form.rejection_reason)?.label ?? "Rejection reason *"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {REJECT_REASONS.map((r) => (
+                  {rejectReasons.map((r) => (
                     <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -1015,12 +991,13 @@ export function VerifyDrawer({
                 Route to Sales
               </button>
               <button
-                disabled
                 title="Available in the Tickets phase"
-                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium opacity-40 cursor-not-allowed"
-                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                onClick={handleCreateQuote}
+                disabled={saving}
               >
-                Create Quote / Order
+                {saving ? "Saving…" : "Create Quote / Order"}
               </button>
               {lead.status === "On Hold" ? (
                 <button
@@ -1048,6 +1025,17 @@ export function VerifyDrawer({
                 style={{ background: "var(--color-danger)" }}
               >
                 Reject
+              </button>
+              <button
+                onClick={() => promptThenRun(handleSave)}
+                disabled={saving}
+                className="ml-auto rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                style={{
+                  background: "var(--color-btn-verify-bg)",
+                  color: "var(--color-btn-verify-text)",
+                }}
+              >
+                {saving ? "Saving…" : "Save"}
               </button>
             </div>
           )}

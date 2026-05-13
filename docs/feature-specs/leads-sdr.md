@@ -178,13 +178,13 @@ Fields (editable when verifying, read-only when viewing):
 | Email Address | Email input | No | |
 | First Name | Text | Yes | |
 | Last Name | Text | No | |
-| Source | Dropdown | Yes | From `LEAD_SOURCES` (Manual, Website, Google, Walk-in, Referral, etc.) |
+| Source | Dropdown | Yes | **Admin-managed** — loaded from `lookup_values` (`source` category). Edit in Admin → Dropdown Options. |
 | Created | Read-only | — | Timestamp, shown with lock icon |
 | Authority | Dropdown | No | Decision maker? Yes / No |
 | Company Name | Text | No | |
-| Industry | Dropdown | Yes | From industry list |
+| Industry | Dropdown | Yes | **Admin-managed** — loaded from `lookup_values` (`industry` category). Edit in Admin → Dropdown Options. |
 | Website / Social | Text | No | |
-| Urgency | Dropdown | No | Not Defined (stored as null) / High / Medium / Low |
+| Urgency | Dropdown | No | **Admin-managed** — loaded from `lookup_values` (`urgency` category). "Not Defined" is a static sentinel prepended to the list. Edit real options in Admin → Dropdown Options. |
 | Returning Customer | Checkbox | No | "Returning Customer (Existing Client)" — blue highlight row when checked |
 
 ### Lead Info Tab — Verify Lead Comment section
@@ -201,7 +201,7 @@ A full-width textarea below the Contact Information grid:
 - Checkbox grid with `PRODUCT_INTERESTS` (Labels, Boxes, Flyers, Stickers, etc.)
 - For each checked interest: a quantity text input appears inline
 
-**Duplicate banner:** While the SDR types phone or email, `GET /api/contacts/lookup` is called with 600ms debounce. If a match is found:
+**Duplicate banner:** While the SDR types phone or email, `GET /api/customers/lookup` is called with 600ms debounce. If a match is found:
 - Banner appears: "Existing contact found: [Name] — [Company]"
 - Two options: **Merge into existing contact** (auto-fills fields) or **Continue as new contact**
 
@@ -219,37 +219,36 @@ Actions available depending on drawer mode and current `status`. **All action bu
 |--------|---------------|--------------|
 | ~~**Validate**~~ | _Removed_ | The Validate step has been removed from the SDR workflow. SDRs go directly to Route to Sales, On Hold, or Reject. |
 | **Route to Sales** | Edit mode, any status | Saves all form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
-| **On Hold** | Edit mode, status not Rejected | Saves all form edits first, then applies hold |
-| **Reject** | Edit mode, status not Rejected | Saves all form edits + sets `status = 'Rejected'` — **TERMINAL** |
-| **Resume** | Edit mode, `status = 'On Hold'` | Saves all form edits + restores to `Validated` |
+| **On Hold** | Edit mode, status not Rejected | Opens hold sub-form inline in footer |
+| **Resume** | Edit mode, `status = 'On Hold'` | Saves all form edits + restores to `Pending` |
+| **Reject** | Edit mode, status not Rejected | Opens rejection form inline in footer — **TERMINAL** |
+| **Save** | Edit mode (far-right of footer) | `PATCH /api/leads/[id]` with current form values; closes drawer on success |
 | **Close** | Read-only mode only | Dismisses modal — ownership is **not** released |
 
-**No dedicated Save button.** All form edits are persisted automatically when the SDR takes any action (Validate, Route, Hold, Reject, Resume). Every edit is tied to an intent.
+**Save button** is always visible at the far right of the footer when in edit mode (navy style). Route, Hold, and Reject also auto-save form fields before executing their specific action.
 
-**No X / close button when editing.** Once a lead is claimed the SDR must take an action to exit. The X button is only shown in read-only mode (lead locked by someone else, or rejected).
+**Clicking outside the modal does not close it.** The backdrop is non-interactive. The SDR must use Save, Route to Sales, On Hold, Reject, or the ✕ header button (read-only only) to exit. This prevents accidental dismissal of in-progress edits.
 
-**Route to Sales is always available.** The SDR can route a lead directly from `Pending` status without validating first. The Validate button is still available if the SDR wants to mark the lead validated before routing, but it is no longer a required step.
+**Route to Sales is always available.** The SDR can route a lead directly from `Pending` without validating first.
 
 **Reject is terminal:** Once `status = 'Rejected'` is set, the drawer reopens in read-only mode for all non-Admin users. Only Admin sees an "Admin Override" banner with the ability to change status.
 
 ### Hold Sub-form (inline in drawer footer)
 
-Radio button grid (2 columns) — reasons matching the POC:
-- Awaiting customer response
-- Awaiting artwork / files
-- Awaiting payment confirmation
-- Pricing review needed
-- Vacation / customer unavailable
-- Other
+Radio button grid (2 columns). **Reasons are admin-managed** — loaded from `lookup_values` (`hold_reason` category) via `GET /api/lookups`. Admin edits from **Admin → Dropdown Options** without a code change.
 
-Plus:
+Default seeded reasons: Awaiting customer response · Awaiting artwork / files · Awaiting payment confirmation · Pricing review needed · Vacation / customer unavailable · Other
+
 - Notes (textarea, optional)
 - Hold Until (date picker, optional)
 - **Confirm Hold** button → `POST /api/leads/[id]/hold`
 
 ### Rejection Form (inline in drawer footer)
 
-- Rejection Reason (dropdown: "Not a fit", "No budget", "Competitor", "Spam/Bot", "Other")
+**Rejection reasons are admin-managed** — loaded from `lookup_values` (`reject_reason` category) via `GET /api/lookups`. Admin edits from **Admin → Dropdown Options**.
+
+Default seeded reasons: Not a fit · No budget · Competitor · Spam/Bot · Other
+
 - Notes (textarea, optional)
 - **Confirm Reject** button → `PATCH /api/leads/[id]` with `status: 'Rejected'`
 
@@ -405,15 +404,11 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 - Current implementation: All Leads tab shows all Pending + Validated leads regardless of `is_inbox`
 - **When building:** Add `is_inbox` filter to the Inbox tab query; add a 5th tab or rework tab routing
 
-**2. Quote tab in Verify Drawer is not built**
-- Spec: Quote Total, Quote Channel (SMS / WhatsApp / Email / In-person), Quote Destination fields
-- Current: Drawer has "Lead Info", "Quote", and "History" tabs; Quote tab shows a placeholder
-- **When building Tickets:** Add Quote tab to `VerifyDrawer`; wire Quote Channel and Quote Destination fields to the lead record
-
-**3. "Quote" action button missing**
-- Spec: `status = 'Quoted'` action — sets status to Quoted with quote fields
-- Current footer only has: Validate, Route to Sales, On Hold, Reject, Save
-- **When building Tickets:** Add **Quote** button to footer; sets `status = 'Quoted'`, saves quote fields
+**2. "Create Quote / Order" from Verify Drawer** ✅ Built (2026-05-12)
+- "Create Quote / Order" button in the Verify Drawer footer is now live.
+- Clicking it silently saves the lead (no toast, no close), then navigates to `/quotes/new?lead_id=<id>`.
+- `status = 'Quoted'` is automatically set server-side by `POST /api/tickets` when a ticket is created for this lead — no separate "Quote" button needed.
+- The old placeholder "Quote" tab in the drawer was intentionally left as-is; the full quote form lives on the dedicated `/quotes/new` page.
 
 **4. "Update Customer?" prompt on action not built**
 - ✅ **Built** — `promptThenRun()` wrapper in `verify-drawer.tsx` intercepts Validate, Route, Hold, and Reject actions. If `hasContactChanged()` detects a diff, an inline "Update customer profile?" prompt is shown before the action fires.

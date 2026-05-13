@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EmailInput } from "@/components/ui/email-input";
 import { Badge } from "@/components/ui/badge";
 import {
   Dialog,
@@ -188,8 +189,7 @@ function CreateUserDialog({
             <label className="text-sm font-medium">
               Email <span className="text-destructive">*</span>
             </label>
-            <Input
-              type="email"
+            <EmailInput
               required
               placeholder="jane@bazaarprinting.com"
               value={form.email}
@@ -538,7 +538,7 @@ export function UsersSection() {
         </Select>
 
         {/* Show inactive */}
-        <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
+        <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground select-none">
           <input
             type="checkbox"
             checked={showInactive}

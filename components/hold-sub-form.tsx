@@ -1,10 +1,10 @@
 "use client";
 
-import { type HoldForm } from "@/lib/types";
-import { HOLD_REASONS } from "@/lib/constants/hold-reasons";
+import { type HoldForm, type LookupValue } from "@/lib/types";
 
 interface HoldSubFormProps {
   form: HoldForm;
+  reasons: LookupValue[];
   onChange: (form: HoldForm) => void;
   onConfirm: () => void;
   onCancel: () => void;
@@ -34,6 +34,7 @@ const inputStyle = {
 
 export function HoldSubForm({
   form,
+  reasons,
   onChange,
   onConfirm,
   onCancel,
@@ -52,7 +53,7 @@ export function HoldSubForm({
       <div>
         <label style={labelStyle}>Hold Reason *</label>
         <div className="grid grid-cols-2 gap-2 mt-1">
-          {HOLD_REASONS.map((r) => {
+          {reasons.map((r) => {
             const selected = form.hold_reason === r.value;
             return (
               <label

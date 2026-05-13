@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Search, RefreshCw, X, User } from "lucide-react";
+import { Search, RefreshCw, X, User, FilePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPhone } from "@/lib/utils/phone";
@@ -47,6 +47,16 @@ function relativeTime(iso: string): string {
 
 function fullName(c: CrmCustomer): string {
   return [c.first_name, c.last_name].filter(Boolean).join(" ") || "—";
+}
+
+function newQuoteUrl(c: CrmCustomer): string {
+  const params = new URLSearchParams();
+  if (c.first_name) params.set("first_name", c.first_name);
+  if (c.last_name) params.set("last_name", c.last_name);
+  if (c.email) params.set("email", c.email);
+  if (c.phone) params.set("phone", c.phone);
+  if (c.company) params.set("company", c.company);
+  return `/quotes/new?${params.toString()}`;
 }
 
 // ─── Status Badge ─────────────────────────────────────────────────────────────
@@ -279,7 +289,11 @@ export function CRMPage() {
           <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
             <tr>
               {["Name", "Company", "Phone", "Email", "Status", "Heat", "Leads", "Last Activity", ""].map((h) => (
-                <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em] whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
+                <th
+                  key={h}
+                  className={`px-3 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] whitespace-nowrap ${["Status", "Heat", "Leads", ""].includes(h) ? "text-center" : "text-left"}`}
+                  style={{ color: "var(--color-text-muted)" }}
+                >
                   {h}
                 </th>
               ))}
@@ -319,10 +333,10 @@ export function CRMPage() {
                   <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                     {c.email || "—"}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 text-center">
                     <StatusBadge status={c.customer_status} />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="px-3 py-2.5 text-center">
                     <HeatBadge tag={c.heat_tag} />
                   </td>
                   <td className="px-3 py-2.5 text-center font-medium" style={{ color: "var(--color-text-primary)" }}>
@@ -331,14 +345,25 @@ export function CRMPage() {
                   <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                     {relativeTime(c.last_activity)}
                   </td>
-                  <td className="px-3 py-2.5">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); router.push(`/crm/customers/${c.id}`); }}
-                      className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
-                      style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-                    >
-                      View
-                    </button>
+                  <td className="px-3 py-2.5 text-center">
+                    <div className="flex items-center justify-center gap-1.5">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); router.push(`/crm/customers/${c.id}`); }}
+                        className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                        style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                      >
+                        View
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); router.push(newQuoteUrl(c)); }}
+                        className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] flex items-center gap-1"
+                        style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                        title="New quote for this customer"
+                      >
+                        <FilePlus size={11} />
+                        Add Quote
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
@@ -384,12 +409,23 @@ export function CRMPage() {
                 <div className="flex justify-between"><span>Leads</span><span className="normal-case tracking-normal">{c.lead_count}</span></div>
                 <div className="flex justify-between"><span>Last activity</span><span className="normal-case tracking-normal">{relativeTime(c.last_activity)}</span></div>
               </div>
-              <button
-                className="w-full rounded-[6px] py-1.5 text-[13px] font-medium"
-                style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-              >
-                View Profile
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={(e) => { e.stopPropagation(); router.push(`/crm/customers/${c.id}`); }}
+                  className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium"
+                  style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                >
+                  View Profile
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); router.push(newQuoteUrl(c)); }}
+                  className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium flex items-center justify-center gap-1.5"
+                  style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                >
+                  <FilePlus size={13} />
+                  Add Quote
+                </button>
+              </div>
             </div>
           ))
         )}

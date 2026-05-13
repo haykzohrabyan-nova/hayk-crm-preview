@@ -446,6 +446,36 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 |--------|-------------|-------------|---------------|----------------|
 | `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx` |
 | `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` | `bazaar:activities-changed` | `activity-log-section.tsx` |
+| `job_tickets` | `047_enable_job_tickets_realtime.sql` | `tickets-realtime` (sidebar) + `quotes-page-tickets` (quotes-page direct) | `bazaar:tickets-changed` | `quotes-page.tsx` (also has own direct channel), `orders-page.tsx`, `quote-detail.tsx` |
+
+---
+
+---
+
+## Direct-Channel Pattern (page-level subscription)
+
+For pages where cross-session updates are critical (e.g. multi-user coordination), a page component can open its **own** Supabase channel directly instead of relying on sidebar → window event dispatch. This is used in `quotes-page.tsx` so that when a Sales user claims a routed quote, other Sales users see it disappear immediately without needing the sidebar to relay the event.
+
+```typescript
+// Inside a page component
+useEffect(() => {
+  const supabase = createClient();
+  const channel = supabase
+    .channel("quotes-page-tickets")          // unique channel name per page
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "job_tickets" },
+      () => {
+        fetchQuotes(true);   // silent re-fetch (no skeleton)
+        fetchCounts();
+      }
+    )
+    .subscribe();
+  return () => { supabase.removeChannel(channel); };
+}, [fetchQuotes, fetchCounts]);
+```
+
+**When to use this pattern:** When the sidebar relay is insufficient — e.g. the page needs to react to changes made by *other users* in near-real-time and there is no intermediate event dispatcher available in the same session.
 
 ---
 

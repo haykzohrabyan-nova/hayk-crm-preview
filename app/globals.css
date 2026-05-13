@@ -6,8 +6,9 @@
 /* ─── BazaarPrinting CRM — Design System Tokens ─────────────────────────── */
 
 :root {
+  color-scheme: light;
   /* Backgrounds */
-  --color-bg: #F8F7F4;
+  --color-bg: #f8fafc;
   --color-surface: #FFFFFF;
   --color-topbar: #1B2B4B;
 
@@ -72,6 +73,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   /* Backgrounds */
   --color-bg: #18181B;
   --color-surface: #27272A;
@@ -193,6 +195,54 @@ body {
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Native select: force light appearance so the OS popup matches the UI ── */
+
+select {
+  color-scheme: light;
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+select option {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.dark select {
+  color-scheme: dark;
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+.dark select option {
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+}
+
+/* ─── Remove number input spinners ──────────────────────────────────────── */
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Make the entire date input clickable — not just the calendar icon */
+input[type="date"] {
+  cursor: pointer;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  width: 100%;
+  position: absolute;
+  left: 0;
+  opacity: 0;
 }
 
 /* ─── Skeleton shimmer animation ────────────────────────────────────────── */

@@ -1,6 +1,6 @@
 # Feature Spec — Activity Timeline
 
-Used inside: Verify Drawer, Sales Drawer, CRM expanded row, Order Drawer
+Used inside: Verify Drawer, Sales Drawer, CRM expanded row, Quote/Order detail page (`quote-detail.tsx`)
 
 ---
 
@@ -21,15 +21,19 @@ Used by:
 - **Sales Drawer** History tab — fetched lazily on first open
 - **Verify Drawer** History tab — fetched lazily on first open
 
+### Ticket-scoped (built — 2026-05-12)
+**`GET /api/activities?ticket_id=xxx`** — activities for a specific job ticket.
+
+**`GET /api/activities?ticket_id=xxx&include_linked_lead=true`** — fetches both the ticket's activities AND its linked lead's activities, merges them chronologically (oldest first), and adds a `_source` field (`"lead"` or `"ticket"`) to each row.
+
+Used by:
+- **Quote/Order detail page** (`quote-detail.tsx`) History tab — full lifetime of the record across both lead and ticket phases
+
 ### Contact-scoped (planned)
-**`GET /api/activity`** with query params:
-- `contact_id` — all activities across every lead for a customer
-- `ticket_id` — activities for a specific job ticket
-- `phone` / `email` — resolves customer by phone/email, returns all their lead activities
+**`GET /api/activities?contact_id=xxx`** — all activities across every lead for a customer.
 
 Used by (planned):
 - CRM expanded row History tab: queries by `contact_id` (shows everything across all leads)
-- Order Drawer History tab: queries by `ticket_id`
 
 ---
 
@@ -68,6 +72,7 @@ Each activity entry is rendered as a timeline row with:
 | `quote_follow_up_reset` | `RotateCcw` | Follow-up Reset |
 | `order_ticket_created` | `ShoppingCart` | Order Created |
 | `order_ticket_updated` | `Edit3` | Order Updated |
+| `order_ticket_status_changed` | `ArrowRight` | Status Changed |
 | `ticket_client_confirmed` | `ThumbsUp` | Client Confirmed |
 
 ### Payload Details (collapsible)
@@ -125,5 +130,5 @@ The following Route Handlers automatically insert activity rows when they run:
 | `PATCH /api/customers/[id]/merge` | `lead_merged` (on all affected leads) |
 | `PATCH /api/customers/[id]` | `contact_edited` |
 | `POST /api/tickets` | `order_ticket_created` |
-| `PATCH /api/tickets/[id]` | `quote_approval_requested` / `quote_follow_up_completed` / `quote_follow_up_reset` / `ticket_client_confirmed` / `order_ticket_updated` |
+| `PATCH /api/tickets/[id]` | `quote_approval_requested` / `quote_follow_up_completed` / `quote_follow_up_reset` / `ticket_client_confirmed` / `order_ticket_updated` / `order_ticket_status_changed` (when `claim_ownership: true` — logs `{ from: "routed", to: "draft", action: "claimed" }`) |
 | `POST /api/outreach/send` | `outreach_sent` |

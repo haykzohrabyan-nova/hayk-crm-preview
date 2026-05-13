@@ -74,7 +74,7 @@ KPIs are **scoped to the current Sales rep** (`sales_owner_id = userId`). New in
 ### Quick Actions
 
 - **Go to Pipeline** → `/sales` (primary, accent-tinted)
-- **Quotes & Orders** → `/tickets`
+- **Quotes & Orders** → `/quotes`
 
 ### Period Selector
 

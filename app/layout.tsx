@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import NextTopLoader from "nextjs-toploader";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { GlobalEventHandlers } from "@/components/global-event-handlers";
 import "./globals.css";
 
 const inter = Inter({
@@ -22,9 +23,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} antialiased`}>
+      <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
         <ThemeProvider>
           <TooltipProvider>
+            <GlobalEventHandlers />
             <NextTopLoader color="var(--color-accent)" showSpinner={false} />
             {children}
           </TooltipProvider>

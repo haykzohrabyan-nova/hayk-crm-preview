@@ -138,14 +138,23 @@ export async function proxy(request: NextRequest) {
       const universalRoutes = ["/profile", "/dashboard"];
       const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
       if (roleName && roleName !== "admin" && !universalRoutes.some((r) => pathname.startsWith(r))) {
-        const { data: permission } = await supabase
+        // Fetch all pages this role can access, then check if the current
+        // pathname matches any of them — exact match OR prefix (e.g. /quotes
+        // grants access to /quotes/new and /quotes/[id]).
+        const { data: permissions } = await supabase
           .from("role_permissions")
-          .select("role_id, pages!inner(route)")
-          .eq("role_id", profile!.role_id)
-          .eq("pages.route", pathname)
-          .maybeSingle();
+          .select("pages!inner(route)")
+          .eq("role_id", profile!.role_id);
 
-        if (!permission) {
+        const allowedRoutes = (permissions ?? []).map(
+          (p) => (p.pages as unknown as { route: string }).route
+        );
+
+        const hasAccess = allowedRoutes.some(
+          (route) => pathname === route || pathname.startsWith(route + "/")
+        );
+
+        if (!hasAccess) {
           // User does not have access to this route → redirect to their home
           const dest = await resolveDefaultHomePath(supabase);
           return NextResponse.redirect(new URL(dest, request.nextUrl.origin));

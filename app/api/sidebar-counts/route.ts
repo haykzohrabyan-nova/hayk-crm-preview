@@ -11,11 +11,14 @@ export async function GET() {
 
   const isSdr = roleName === "sdr" || roleName === "admin";
 
+  // Base ticket query scoped by role
+  const ticketQuery = () => {
+    const q = admin.from("job_tickets").select("ticket_kind, ticket_status, created_by_id");
+    return roleName !== "admin" && userId ? q.eq("created_by_id", userId) : q;
+  };
+
   await Promise.all([
     // /leads badge — unclaimed active leads only (Pending or Validated, no owner yet).
-    // Same for both SDR and admin: the number tells you how many new leads
-    // are waiting to be claimed. Leads already owned by the SDR are excluded
-    // because they are already being worked, not "new" work to act on.
     isSdr
       ? admin
           .from("leads")
@@ -27,8 +30,6 @@ export async function GET() {
       : Promise.resolve(),
 
     // /sales badge — Sales Pipeline
-    // Sales rep: unclaimed leads (available to grab) + their own active deals
-    // Admin: total active deals across all reps
     roleName === "sales"
       ? Promise.all([
           admin
@@ -56,6 +57,33 @@ export async function GET() {
           .in("sales_status", ["Ongoing", "Quote Sent"])
           .then(({ count }) => { counts["/sales"] = count ?? 0; })
       : Promise.resolve(),
+
+    // /quotes badge — draft, sent, approved (Won) + routed (for sales/admin)
+    (async () => {
+      const { data } = await ticketQuery()
+        .eq("ticket_kind", "quote")
+        .in("ticket_status", ["draft", "sent", "approved"]);
+      let quoteCount = (data ?? []).length;
+
+      // Sales/admin also see routed tickets
+      if (roleName === "sales" || roleName === "admin") {
+        const { count: routedCount } = await admin
+          .from("job_tickets")
+          .select("*", { count: "exact", head: true })
+          .eq("ticket_status", "routed");
+        quoteCount += routedCount ?? 0;
+      }
+
+      counts["/quotes"] = quoteCount;
+    })(),
+
+    // /orders badge — confirmed order tickets only
+    ticketQuery()
+      .eq("ticket_kind", "quote")
+      .eq("ticket_status", "order")
+      .then(({ data }) => {
+        counts["/orders"] = (data ?? []).length;
+      }),
   ]);
 
   return NextResponse.json({ counts });

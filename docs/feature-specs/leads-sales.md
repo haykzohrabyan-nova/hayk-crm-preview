@@ -105,9 +105,9 @@ Read-only view of contact fields (set by SDR). Editable Sales fields:
 
 ### Order / Quote Tab
 
-- Button: **Create Quote** → opens full ticket builder (Order Drawer) in `quote` mode
-- Button: **Create Order** → opens full ticket builder in `order` mode
-- If a ticket already exists for this lead: shows existing ticket in read-only view with **Edit** button
+- Button: **Create Quote / Order** → silently saves the lead, then navigates to `/quotes/new?lead_id=<id>` (dedicated full page, not a modal/drawer)
+- The full quote builder lives at `/quotes/new` and `/quotes/[id]` — see `docs/feature-specs/tickets.md`
+- If a ticket already exists for this lead, the Sales rep can find it on `/quotes` or `/orders` pages
 
 ### Footer Actions
 
@@ -115,17 +115,19 @@ Read-only view of contact fields (set by SDR). Editable Sales fields:
 
 | Action | When Available | What it does |
 |--------|---------------|--------------|
-| **Convert to Order** | Edit mode, `sales_status` active | Opens Order Drawer in `order` mode; on ticket creation sets `sales_status = 'Won'` |
+| **Create Quote / Order** | Edit mode | Saves lead silently → navigates to `/quotes/new?lead_id=<id>`; `sales_status` is updated automatically by the ticket creation API |
 | **On Hold** | Edit mode, status not Rejected | Opens hold sub-form; sets `sales_status = 'On Hold'` |
-| **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `status = 'Rejected'` + auto-saves `prev_status = 'Routed to Sales'` — **TERMINAL** |
+| **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `status = 'Rejected'`, clears `sales_status = null` + auto-saves `prev_status = 'Routed to Sales'` — **TERMINAL** |
 | **Save** | Edit mode | `PATCH /api/leads/[id]` with changed fields |
 | **Close** | Always | Dismisses drawer + releases lock |
+
+**Clicking outside the modal does not close it.** The backdrop is non-interactive. Use Save, On Hold, Reject, or Close to exit.
 
 **Reject is terminal:** Once `status = 'Rejected'`, the drawer reopens in read-only mode for all non-Admin users. Only Admin can change this status.
 
 ### Hold Sub-form
 
-- Hold Reason dropdown: "Waiting for client decision", "Budget not confirmed", "Seasonal / timing", "Other"
+- **Hold reasons are admin-managed** — loaded from `lookup_values` (`hold_reason` category) via `GET /api/lookups`. Edit from Admin → Dropdown Options. Default seeded reasons: Awaiting customer response · Awaiting artwork / files · Awaiting payment confirmation · Pricing review needed · Vacation / customer unavailable · Other
 - Notes (optional)
 - Hold Until (date picker, optional)
 - **Confirm Hold** → `POST /api/leads/[id]/hold` with `role: 'sales'`
@@ -140,7 +142,7 @@ From the Sales hold tab:
 
 ### Rejected — Terminal State
 
-- Once `status = 'Rejected'` (with `prev_status = 'Routed to Sales'`), the lead appears in the Sales **Rejected** tab
+- Once `status = 'Rejected'` (with `prev_status = 'Routed to Sales'` and `sales_status = null`), the lead appears in the Sales **Rejected** tab
 - No action buttons in the drawer for non-Admin users
 - Admin can open the lead with an "Admin Override" banner and set it back to `Ongoing` or any other status
 
@@ -175,25 +177,20 @@ Same pattern as SDR pipeline:
 | Terminal state banner | Shown for Rejected / Won / Dropped |
 | Rejected tab | Lazy-fetched on first open; fetches ; Phone + Rejection Reason columns; View read-only (no lock) |
 
-### ⏳ Not yet built — blocked on Tickets phase
-These items are deliberately deferred. Build them during the Tickets phase.
+### ⏳ Not yet built — deferred to Phase 8+
 
 **1. Sales Status: `Won` and `Dropped` options missing from dropdown**
 - Current dropdown: `Ongoing`, `Quote Sent`
 - Spec dropdown: `Ongoing`, `Quote Sent`, `Won`, `Dropped`
-- These were omitted because `Won` is normally set automatically when an Order ticket is created. `Dropped` is set when the lead is lost without a formal rejection.
-- **When building Tickets:** Add `Won` and `Dropped` to `SALES_STATUS_OPTIONS` in `components/sales-drawer.tsx`. When status changes to `Won` or `Dropped`, move the lead out of the Pipeline tab.
+- `Won` is set automatically when an approved order ticket is created. `Dropped` is set when the lead is lost without a formal rejection.
+- **When building:** Add `Won` and `Dropped` to `SALES_STATUS_OPTIONS` in `components/sales-drawer.tsx`; move lead out of Pipeline tab when either is selected.
 
-**2. Order / Quote tab is a placeholder**
-- Current: shows "Coming in the Tickets phase."
-- Spec: Two buttons — **Create Quote** (opens ticket builder in `quote` mode) and **Create Order** (opens ticket builder in `order` mode). If a ticket already exists for this lead, show it in read-only with an **Edit** button.
-- **When building Tickets:** Replace the placeholder section in `SalesDrawer` `activeTab === "order"` with the `OrderDrawer` component.
+**2. Order / Quote tab** ✅ Built (2026-05-12)
+- "Create Quote / Order" button now saves the lead silently and navigates to `/quotes/new?lead_id=<id>`.
+- Full ticket builder lives at `/quotes/new` and `/quotes/[id]` — dedicated pages, not a modal.
+- `status = 'Quoted'` is set automatically by `POST /api/tickets` when a ticket is created.
 
-**3. "Convert to Order" footer button missing**
-- Spec: available in edit mode when lead is active; opens Order Drawer in `order` mode; on successful ticket creation, sets `sales_status = 'Won'` automatically.
-- **When building Tickets:** Add this button to the footer `footerMode === "actions"` block in `components/sales-drawer.tsx`. Wire it to open `OrderDrawer` and on `onTicketCreated` callback patch `sales_status = 'Won'`.
-
-**4. Admin Override for terminal leads**
+**3. Admin Override for terminal leads**
 - Spec: Admin can open a Rejected/Won/Dropped lead with an "Admin Override" banner and reset it to `Ongoing` or any other status.
 - **When building Admin enhancements:** Check `roleName === 'admin'` in `SalesDrawer`; if true and `isTerminal`, show override banner and re-enable action buttons.
 

@@ -49,6 +49,7 @@ export interface UserProfile {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type LookupCategory =
+  // Lead-form categories (seeded migration 020)
   | 'source'
   | 'industry'
   | 'urgency'
@@ -56,6 +57,17 @@ export type LookupCategory =
   | 'reject_reason'
   | 'route_reason'
   | 'sales_drop_reason'
+  // Order / Quote categories (seeded migrations 044 + 048)
+  | 'lamination'
+  | 'finishing'
+  | 'color_mode'
+  | 'sides'
+  | 'roll_direction'
+  | 'quote_channel'
+  | 'follow_up_freq'
+  | 'ticket_priority'
+  | 'order_source'
+  | 'ticket_payment'
 
 export interface LookupValue {
   id: string
@@ -188,9 +200,44 @@ export type TicketStatus =
   | 'in_production'
   | 'completed'
   | 'cancelled'
+  | 'routed'
 
+// Ticket-specific payment method keys (stored in quote_payment_types[])
+export type PaymentTypeKey = 'card_default' | 'zelle' | 'offline'
+
+// Legacy payment type — kept for backwards compat with old product_lines flow
 export type PaymentType = 'Cash' | 'Check' | 'Card' | 'Transfer'
 
+export type TicketPriority = 'Low' | 'Normal' | 'High'
+export type OrderSource   = 'quoted' | 'direct'
+export type DiscountType  = 'percent' | 'fixed'
+export type PrepayType    = 'percent' | 'fixed'
+export type FollowUpFreq  = 'Daily' | 'Every 2 days' | 'Weekly'
+
+// ── QuoteSku — one line item inside quote_skus JSONB ─────────────────────────
+// Canonical definition also lives in lib/utils/ticket-math.ts (pricing helpers
+// import from there). Both must stay in sync.
+export interface QuoteSku {
+  product_type: string          // product name from admin catalog
+  description?: string          // auto-derived: productType – material – lamination
+  material?: string             // material name from admin catalog
+  lamination?: string           // from `lamination` lookup
+  color_mode?: string           // from `color_mode` lookup
+  sides?: string                // from `sides` lookup
+  roll_direction?: string       // from `roll_direction` lookup
+  width?: number                // inches
+  height?: number               // inches
+  quantity?: number
+  unit_price?: number
+  design_required?: boolean     // "Design on file" checkbox
+  die_cut?: boolean
+  spot_uv?: boolean             // UV Coating add-on
+  foil?: boolean
+  perforation?: boolean
+  comment?: string              // per-SKU line item free-text note
+}
+
+// ── Legacy ProductLine — kept for backwards compat ───────────────────────────
 export interface ProductLine {
   id: string
   description: string
@@ -202,15 +249,7 @@ export interface ProductLine {
   line_total: number
 }
 
-export interface QuoteSku {
-  id: string
-  sku: string
-  description: string
-  quantity: number
-  unit_price: number
-  line_total: number
-}
-
+// ── JobTicket — full DB row + optional joins ──────────────────────────────────
 export interface JobTicket {
   id: string
   ticket_kind: TicketKind
@@ -218,9 +257,65 @@ export interface JobTicket {
   customer_id: string | null
   linked_lead_id: string | null
   created_by_id: string | null
+
+  // Contact (denormalized)
   contact_email: string | null
   contact_name: string | null
   contact_company: string | null
+  contact_phone: string | null
+
+  // Identity
+  title: string | null
+  reference_code: string | null   // ORD-YYYY-NNN (orders only)
+
+  // Quote delivery
+  quote_channel: string | null
+  quote_destination: string | null
+
+  // Pricing (new columns — used by OrderDrawer)
+  quote_subtotal: number | null
+  quote_shipping: number | null
+  discount_type: DiscountType | null
+  discount_value: string | null
+  discount_reason: string | null
+  quote_pre_tax_total: number | null
+  quote_tax_rate_percent: number | null
+  quote_tax_amount: number | null
+  quote_final_total: number | null
+  tax_exempt: boolean
+  sales_permit_number: string | null
+
+  // Payment
+  quote_payment_types: PaymentTypeKey[]
+  prepayment_type: PrepayType | null
+  prepayment_value: string | null
+
+  // Follow-up scheduling
+  quote_reminder_date: string | null
+  follow_up_cycles: number | null
+  follow_up_frequency: FollowUpFreq | null
+
+  // Order-specific
+  order_source: OrderSource | null
+  due_date: string | null
+  priority: TicketPriority | null
+  special_requirements: string | null
+  design_required: boolean
+  die_cut: boolean
+
+  // Line items
+  quote_skus: QuoteSku[]
+
+  // Flags & dates
+  rush: boolean
+  follow_up_completed: boolean
+  client_confirmed: boolean
+  quote_approval_last_requested_at: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+
+  // Legacy columns (nullable — backwards compat only)
   subtotal: number | null
   discount_percent: number | null
   discount_amount: number | null
@@ -228,17 +323,85 @@ export interface JobTicket {
   payment_type: PaymentType | null
   prepay_amount: number | null
   product_lines: ProductLine[]
-  quote_skus: QuoteSku[]
-  rush: boolean
   follow_up_at: string | null
-  follow_up_completed: boolean
-  client_confirmed: boolean
-  quote_approval_last_requested_at: string | null
-  notes: string | null
-  created_at: string
-  updated_at: string
+
+  // Optional joins
   customer?: Customer
   lead?: Lead
+  created_by?: { id: string; full_name: string | null }
+}
+
+// ── TicketForm — OrderDrawer form state (all strings for controlled inputs) ───
+export interface TicketForm {
+  title: string
+  ticket_kind: TicketKind
+  ticket_status: TicketStatus
+  order_source: OrderSource | ''
+  priority: TicketPriority | ''
+  due_date: string
+  special_requirements: string
+  rush: boolean
+  design_required: boolean
+  die_cut: boolean
+
+  // Contact
+  customer_id: string | null
+  linked_lead_id: string | null
+  contact_name: string
+  contact_email: string
+  contact_phone: string
+  contact_company: string
+
+  // Line items
+  quote_skus: Partial<QuoteSku>[]
+
+  // Quote pricing
+  quote_shipping: string          // string for input; parsed to number
+  discount_enabled: boolean
+  discount_type: DiscountType | ''
+  discount_value: string
+  discount_reason: string
+  quote_tax_rate_percent: string  // string for input; parsed to number
+  tax_exempt: boolean
+  sales_permit_number: string
+
+  // Payment
+  quote_payment_types: PaymentTypeKey[]
+  prepayment_type: PrepayType | ''
+  prepayment_value: string
+
+  // Quote delivery
+  quote_channel: string
+  quote_destination: string
+
+  // Follow-up
+  quote_reminder_date: string
+  follow_up_cycles: string        // string for input; parsed to number
+  follow_up_frequency: FollowUpFreq | ''
+
+  notes: string
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Company Settings
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface CompanySettings {
+  id: number
+  company_name: string
+  address_line1: string | null
+  address_line2: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  logo_url: string | null
+  default_tax_rate: number
+  high_value_threshold: number
+  rush_surcharge_percent: number | null
+  updated_at: string
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

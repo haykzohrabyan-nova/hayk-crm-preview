@@ -136,7 +136,7 @@ Table of all `job_tickets` linked to this customer.
 | Leads | Count of all leads |
 | Orders | Count of completed tickets |
 | Last Activity | Relative time from most recent lead or ticket |
-| Actions | **View** → customer profile page |
+| Actions | **View** → customer profile page · **Add Quote** → `/quotes/new` pre-filled with customer params |
 
 ### Filters & Controls
 
@@ -187,15 +187,23 @@ Once the CRM is built, both the **Add Lead modal** and the **Verify Drawer** wil
 
 ---
 
-## Add Order from CRM
+## Add Quote from CRM ✅ Built
 
-Available to SDR and Sales via **+ Add Order** button on the customer profile page.
+Available to SDR and Sales via **+ Add Quote** button in the CRM customer list (Actions column, next to View).
 
 **Flow:**
-1. Opens the Order/Quote Drawer pre-filled with the customer's info
-2. `ticket_kind` defaults to `'order'`
-3. `customer_id` pre-set from the current customer
-4. No `linked_lead_id` (standalone order, not tied to a specific lead)
+1. Clicking "Add Quote" navigates to `/quotes/new?first_name=...&last_name=...&email=...&phone=...&company=...` with the customer's details pre-filled as URL params
+2. The New Quote form detects these params, **skips the Customer tab**, and shows a read-only customer info card on the left sidebar
+3. User fills in Info → Line Items → Quote as normal
+4. On save: the existing customer record is linked via `customer_id` (matched by email/phone); no duplicate created
+
+> **No drawer used** — the New Quote page (`/quotes/new`) handles all entry points (lead, CRM, standalone).
+
+---
+
+## Add Order from CRM (Deferred)
+
+Direct order creation from CRM (bypassing the quote step) is deferred. For now, all orders start as quotes via the Add Quote flow above.
 
 ---
 

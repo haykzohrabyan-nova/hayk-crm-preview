@@ -96,37 +96,50 @@ BazarCRM/
 │   │   ├── sales/page.tsx                ✓ Sales pipeline (3 tabs)
 │   │   ├── crm/page.tsx                  ✓ Customer registry + profile expand
 │   │   ├── crm/customers/[id]/page.tsx   ✓ Full customer profile page
+│   │   ├── quotes/page.tsx               ✓ Quoted Requests list (4 tabs)
+│   │   ├── quotes/new/page.tsx           ✓ New Quote / Order form
+│   │   ├── quotes/[id]/page.tsx          ✓ Quote / Order detail + edit
+│   │   ├── orders/page.tsx               ✓ Orders list (4 tabs)
 │   │   ├── notifications/page.tsx        ✓ Notification list
 │   │   ├── settings/page.tsx             ✓ Personal profile settings
 │   │   └── admin/
 │   │       ├── layout.tsx                ✓ Admin-only shell with sub-nav
-│   │       ├── page.tsx                  ✓ Overview card grid
-│   │       ├── users/page.tsx            ✓ User management table
-│   │       └── settings/[tab]/page.tsx   ✓ Users | Roles | Dropdowns | Notifications tabs
+│   │       ├── page.tsx                  ✓ Overview card grid (Users, Roles, Dropdowns,
+│   │       │                               Notifications, Products, Company, Integrations)
+│   │       └── settings/[tab]/page.tsx   ✓ users | roles | dropdowns | products |
+│   │                                       company | notifications | integrations
 │   ├── api/
 │   │   ├── auth/change-password/         ✓ POST — password update
 │   │   ├── leads/
-│   │   │   ├── route.ts                  ✓ (manual create via /api/leads/manual)
 │   │   │   ├── manual/route.ts           ✓ POST — manual lead creation with dedup
 │   │   │   ├── workspace/route.ts        ✓ GET — SDR/Admin lead queue with filters
-│   │   │   ├── workspace/counts/route.ts ✓ GET — tab badge counts
+│   │   │   ├── workspace/counts/route.ts ✓ GET — SDR tab badge counts
 │   │   │   ├── sales-counts/route.ts     ✓ GET — sales tab badge counts
 │   │   │   └── [id]/
-│   │   │       ├── route.ts              ✓ PATCH — update lead fields
+│   │   │       ├── route.ts              ✓ GET/PATCH — lead detail + field update
 │   │   │       ├── lock/route.ts         ✓ POST — acquire lock + set sdr_id
 │   │   │       ├── unlock/route.ts       ✓ POST — release lock
 │   │   │       ├── hold/route.ts         ✓ POST — put lead on hold
 │   │   │       ├── resume/route.ts       ✓ POST — resume from hold
 │   │   │       ├── claim/route.ts        ✓ POST — Sales claim a routed lead
-│   │   │       ├── activities/route.ts   ✓ GET — lead activity timeline (newest first, actor joined)
-│   │   │       └── reassign/route.ts     ✓ POST — Admin reassign/unassign lead (admin only)
+│   │   │       ├── activities/route.ts   ✓ GET — lead activity timeline
+│   │   │       └── reassign/route.ts     ✓ POST — Admin reassign/unassign lead
 │   │   ├── customers/
 │   │   │   ├── route.ts                  ✓ GET — customer list
-│   │   │   ├── lookup/route.ts           ✓ GET — phone-based dedup lookup
+│   │   │   ├── lookup/route.ts           ✓ GET — phone/email dedup lookup
+│   │   │   ├── companies/route.ts        ✓ GET — company name autocomplete
 │   │   │   ├── [id]/route.ts             ✓ GET/PATCH — customer profile
 │   │   │   └── [id]/merge/route.ts       ✓ POST — merge duplicate customers
+│   │   ├── tickets/
+│   │   │   ├── route.ts                  ✓ GET list (own + routed for sales/admin) / POST create (supports 'routed' status)
+│   │   │   ├── counts/route.ts           ✓ GET — tab badge counts (drafts/sent/approved/orders/routed)
+│   │   │   └── [id]/route.ts             ✓ GET single / PATCH update (supports claim_ownership for sales/admin)
+│   │   ├── activities/route.ts           ✓ GET — unified activity feed (ticket + lead)
+│   │   ├── activity/route.ts             ✓ GET/POST — per-contact activity log
 │   │   ├── dashboard/kpis/route.ts       ✓ GET — role-scoped KPI data
-│   │   ├── lookups/route.ts              ✓ GET — dropdown option lists
+│   │   ├── lookups/
+│   │   │   ├── route.ts                  ✓ GET — active dropdown options by category
+│   │   │   └── products/route.ts         ✓ GET — product catalog (types + materials)
 │   │   ├── sidebar-counts/route.ts       ✓ GET — sidebar badge counts
 │   │   └── admin/
 │   │       ├── users/route.ts            ✓ GET all users
@@ -135,8 +148,16 @@ BazarCRM/
 │   │       ├── team/route.ts             ✓ GET team overview for admin dashboard
 │   │       ├── roles/route.ts            ✓ GET/POST roles
 │   │       ├── roles/[id]/route.ts       ✓ PATCH/DELETE role
-│   │       ├── roles/[id]/permissions/   ✓ Role page permission management
-│   │       └── pages/route.ts            ✓ GET navigable pages list
+│   │       ├── roles/[id]/permissions/   ✓ POST/DELETE role page permissions
+│   │       ├── pages/route.ts            ✓ GET navigable pages list
+│   │       ├── lookups/route.ts          ✓ GET all lookup values (incl. inactive)
+│   │       ├── lookups/[id]/route.ts     ✓ POST create / PATCH update / DELETE lookup value
+│   │       ├── company/route.ts          ✓ GET/PATCH company_settings (admin read; write admin-only)
+│   │       ├── product-types/route.ts    ✓ GET/POST product types
+│   │       ├── product-types/[id]/route.ts          ✓ PATCH/DELETE product type
+│   │       ├── product-types/[id]/materials/[matId]/ ✓ POST link / DELETE unlink material
+│   │       ├── materials/route.ts        ✓ GET/POST materials
+│   │       └── materials/[id]/route.ts   ✓ PATCH/DELETE material
 │   ├── globals.css                       ✓ Tailwind v4 + BazaarPrinting CSS tokens
 │   ├── layout.tsx                        ✓ Root layout — Inter font, ThemeProvider
 │   └── page.tsx                          ✓ Redirects → /dashboard
@@ -151,6 +172,10 @@ BazarCRM/
 │   ├── sales-drawer.tsx                  ✓ Sales lead work drawer
 │   ├── crm-page.tsx                      ✓ Customer registry
 │   ├── customer-profile.tsx              ✓ Full customer profile with history
+│   ├── quotes-page.tsx                   ✓ Quoted Requests list
+│   ├── orders-page.tsx                   ✓ Orders list
+│   ├── new-quote-form.tsx                ✓ 3-tab New Quote/Order form
+│   ├── quote-detail.tsx                  ✓ 4-tab Quote/Order detail + edit
 │   ├── sidebar.tsx                       ✓ Collapsible left sidebar (role-aware nav)
 │   ├── mobile-nav.tsx                    ✓ Mobile bottom nav
 │   ├── theme-provider.tsx                ✓ Light/dark theme
@@ -158,13 +183,21 @@ BazarCRM/
 │   ├── ui/
 │   │   ├── status-pill.tsx               ✓ Lead/sales status pill
 │   │   ├── urgency-pill.tsx              ✓ High/Medium/Low/Not Defined pill
-│   │   ├── phone-input.tsx               ✓ Validated phone field
-│   │   ├── email-input.tsx               ✓ Validated email field
-│   │   └── [shadcn primitives]           ✓ button, input, select, dialog, etc.
+│   │   ├── phone-input.tsx               ✓ Validated phone field with call-action icon
+│   │   ├── email-input.tsx               ✓ Validated email field with mailto-action icon
+│   │   ├── back-button.tsx               ✓ Reusable back navigation button
+│   │   ├── spec-preview.tsx              ✓ Coming-soon placeholder page
+│   │   └── [shadcn primitives]           ✓ button, input, select, dialog, tooltip, etc.
 │   └── admin/
 │       ├── admin-sub-nav.tsx             ✓ Overview / Settings strip
-│       ├── settings-tab-nav.tsx          ✓ Settings tab pills
-│       └── users-section.tsx             ✓ User management table + Add User modal
+│       ├── settings-tab-nav.tsx          ✓ Settings tab pills (users/roles/dropdowns/
+│       │                                   products/company/notifications/integrations)
+│       ├── users-section.tsx             ✓ User management table + Add/Edit User modals
+│       ├── dropdowns-section.tsx         ✓ Lookup value manager (all categories)
+│       ├── products-section.tsx          ✓ Product types + materials + link manager
+│       ├── company-section.tsx           ✓ Company info with validation (EmailInput,
+│       │                                   PhoneInput, ZIP/website validation)
+│       └── integrations-section.tsx      ✓ Stripe + Zelle placeholder cards
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts                     ✓ createBrowserClient (PUBLISHABLE_KEY)
@@ -173,11 +206,13 @@ BazarCRM/
 │   │   ├── safe-return-path.ts           ✓ Redirect safety
 │   │   ├── resolve-default-home.ts       ✓ Post-login destination
 │   │   └── require-session.ts            ✓ Route Handler auth helper
-│   ├── types/index.ts                    ✓ Shared TypeScript types (Lead, Customer, Activity, etc.)
+│   ├── types/index.ts                    ✓ Shared TypeScript types (Lead, Customer, Activity,
+│   │                                       JobTicket, QuoteSku, LookupValue, etc.)
 │   └── utils/
-│       └── phone.ts                      ✓ Phone formatting + validation
+│       ├── phone.ts                      ✓ Phone formatting + validation
+│       └── ticket-math.ts               ✓ QuoteSku interface + pricing computation helpers
 ├── supabase/
-│   └── migrations/                       ✓ 033 migrations (001–033, incl. 033_reset_leads_to_pending.sql)
+│   └── migrations/                       ✓ 048 migrations (001–048)
 ├── docs/                                 ✓ All feature specs + architecture docs
 ├── proxy.ts                              ✓ AAL2 + RBAC session enforcement
 ├── components.json                       ✓ shadcn config — style: base-nova

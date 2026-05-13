@@ -12,15 +12,19 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 ## Role Definitions
 
 ### SDR (Sales Development Representative)
-- Default pages: `/dashboard`, `/leads`, `/crm`, `/tickets`, `/statistics`, `/settings`
+- Default pages: `/dashboard`, `/leads`, `/crm`, `/quotes`, `/orders`, `/settings`
 - Triage the AI inbox: validate, quote, route, reject, hold leads
 - Add leads manually
 - View and manage CRM contacts
+- Create new quotes and orders
+- **Hard-blocked when a quote total exceeds `company_settings.high_value_threshold`** — a non-dismissible modal forces the quote to be saved as `routed` (status) and handed to Sales. SDR cannot bypass this.
 
 ### Sales
-- Default pages: `/dashboard`, `/sales`, `/crm`, `/tickets`, `/statistics`, `/settings`
+- Default pages: `/dashboard`, `/sales`, `/crm`, `/quotes`, `/orders`, `/settings`
 - Work leads routed to them
 - Manage sales pipeline (claim, update status, hold, create orders)
+- See "Routed to Sales" tab on `/quotes` page — quotes routed from SDR HVT block
+- **Claim** routed quotes (transfers ownership and sets status back to `draft`)
 
 ### Admin
 - Default pages: all pages including `/admin/*`
@@ -45,8 +49,10 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/leads` | ✓ | ✗ | ✓ | Inbox + SDR pipeline |
 | `/sales` | ✗ | ✓ | ✓ | Sales pipeline |
 | `/crm` | ✓ | ✓ | ✓ | |
-| `/tickets` | ✓ | ✓ | ✓ | |
-| `/statistics` | ✓ | ✓ | ✓ | |
+| `/quotes` | ✓ | ✓ | ✓ | Quoted Requests list |
+| `/quotes/new` | ✓ | ✓ | ✓ | Create new quote/order |
+| `/quotes/[id]` | ✓ | ✓ | ✓ | View/edit ticket detail |
+| `/orders` | ✓ | ✓ | ✓ | Orders list |
 | `/settings` | ✓ | ✓ | ✓ | Personal profile only |
 | `/admin` | ✗ | ✗ | ✓ | |
 | `/admin/users` | ✗ | ✗ | ✓ | |
@@ -61,34 +67,46 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 
 | Endpoint | SDR | Sales | Admin |
 |----------|:---:|:-----:|:-----:|
-| `GET /api/leads/inbox` | ✓ | ✗ | ✓ |
 | `GET /api/leads/workspace` | ✓ | ✓ (filtered) | ✓ (all) |
-| `POST /api/leads/verify` | ✓ | ✗ | ✓ |
 | `POST /api/leads/manual` | ✓ | ✗ | ✓ |
+| `GET /api/leads/[id]` | ✓ | ✓ | ✓ |
+| `PATCH /api/leads/[id]` | ✓ | ✓ | ✓ |
+| `POST /api/leads/[id]/lock` | ✓ | ✓ | ✓ (no lock acquired for admin View) |
+| `POST /api/leads/[id]/unlock` | ✓ (own lock) | ✓ (own lock) | ✓ (any lock) |
 | `POST /api/leads/[id]/hold` | ✓ | ✓ | ✓ |
 | `POST /api/leads/[id]/resume` | ✓ | ✓ | ✓ |
-| `PATCH /api/leads/[id]` | ✓ | ✓ | ✓ |
-| `GET /api/contacts/lookup` | ✓ | ✓ | ✓ |
-| `PATCH /api/contacts/merge` | ✓ | ✗ | ✓ |
-| `GET /api/contacts/companies` | ✓ | ✓ | ✓ |
-| `PATCH /api/contacts/[id]` | ✓ | ✓ | ✓ |
-| `GET /api/tickets` | ✓ | ✓ | ✓ |
+| `POST /api/leads/[id]/claim` | ✗ | ✓ | ✓ |
+| `POST /api/leads/[id]/reassign` | ✗ | ✗ | ✓ |
+| `GET /api/customers/lookup` | ✓ | ✓ | ✓ |
+| `GET /api/customers/companies` | ✓ | ✓ | ✓ |
+| `GET /api/customers/[id]` | ✓ | ✓ | ✓ |
+| `PATCH /api/customers/[id]` | ✓ | ✓ | ✓ |
+| `POST /api/customers/[id]/merge` | ✓ | ✗ | ✓ |
+| `GET /api/tickets` | ✓ (own) | ✓ (own + all routed) | ✓ (all) |
 | `POST /api/tickets` | ✓ | ✓ | ✓ |
-| `PATCH /api/tickets/[id]` | ✓ | ✓ | ✓ |
+| `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) |
+| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ |
+| `GET /api/tickets/counts` | ✓ | ✓ | ✓ |
+| `GET /api/lookups` | ✓ | ✓ | ✓ |
+| `GET /api/lookups/products` | ✓ | ✓ | ✓ |
+| `GET /api/activities` | ✓ | ✓ | ✓ |
 | `GET /api/activity` | ✓ | ✓ | ✓ |
 | `POST /api/activity` | ✓ | ✓ | ✓ |
-| `GET /api/notifications` | ✓ | ✓ | ✓ |
-| `PATCH /api/notifications/[id]/read` | ✓ | ✓ | ✓ |
-| `POST /api/notifications/read-all` | ✓ | ✓ | ✓ |
 | `GET /api/dashboard/kpis` | ✓ | ✓ | ✓ |
 | `POST /api/outreach/send` | ✓ | ✓ | ✓ |
-| `POST /api/leads/[id]/lock` | ✓ | ✗ | ✓ (admin uses View — no lock acquired) |
-| `POST /api/leads/[id]/unlock` | ✓ (own lock) | ✓ (own lock) | ✓ (any lock) |
-| `POST /api/leads/[id]/reassign` | ✗ | ✗ | ✓ |
+| `GET /api/admin/company` | ✓ | ✓ | ✓ |
+| `PATCH /api/admin/company` | ✗ | ✗ | ✓ |
 | `GET /api/admin/users` | ✗ | ✗ | ✓ |
-| `POST /api/admin/users/invite` | ✗ | ✗ | ✓ |
+| `POST /api/admin/users/create` | ✗ | ✗ | ✓ |
 | `PATCH /api/admin/users/[id]` | ✗ | ✗ | ✓ |
-| `GET /api/admin/audit` | ✗ | ✗ | ✓ |
+| `GET /api/admin/lookups` | ✗ | ✗ | ✓ |
+| `POST /api/admin/lookups` | ✗ | ✗ | ✓ |
+| `PATCH/DELETE /api/admin/lookups/[id]` | ✗ | ✗ | ✓ |
+| `GET/POST /api/admin/product-types` | ✗ | ✗ | ✓ |
+| `PATCH/DELETE /api/admin/product-types/[id]` | ✗ | ✗ | ✓ |
+| `GET/POST /api/admin/materials` | ✗ | ✗ | ✓ |
+| `PATCH/DELETE /api/admin/materials/[id]` | ✗ | ✗ | ✓ |
+| `GET /api/admin/activity-log` | ✗ | ✗ | ✓ |
 
 ---
 
@@ -97,11 +115,14 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | Table | SDR | Sales | Admin |
 |-------|-----|-------|-------|
 | `user_profiles` | Read own | Read own | Read + Write all |
-| `contacts` | Read + Write | Read + Write | Read + Write all |
+| `customers` | Read + Write | Read + Write | Read + Write all |
 | `leads` | Read + Write all | Read routed + owned | Read + Write all |
 | `job_tickets` | Read + Write own | Read + Write own | Read + Write all |
 | `activities` | Read + Insert | Read + Insert | Read + Insert all |
-| `notifications` | Read + Update own | Read + Update own | — (service role inserts) |
+| `notifications` | Read + Update own | Read + Update own | Read + Write all (admin broadcasts) |
+| `lookup_values` | Read active | Read active | Read all + Write |
+| `product_types` / `materials` | Read all | Read all | Read + Write all |
+| `company_settings` | Read | Read | Read + Write |
 
 ---
 
@@ -257,6 +278,9 @@ Role is read directly from Supabase (`user_profiles.roles(name)`) in each compon
 | Route Lead / Reject buttons | ✓ | ✗ | ✓ |
 | Sales: Claim Lead button | ✗ | ✓ | ✓ |
 | CRM: Merge contact | ✓ | ✗ | ✓ |
+| Quotes: "Routed to Sales" tab | ✗ | ✓ | ✓ |
+| Quotes: Claim button (routed → draft + ownership transfer) | ✗ | ✓ | ✓ |
+| Quotes/New Quote: HVT blocking modal | ✓ (triggered when total > threshold) | ✗ | ✗ |
 ---
 
 ## Default Post-Login Destination

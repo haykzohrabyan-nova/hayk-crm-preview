@@ -4,8 +4,9 @@ Source analysis: [`shadow-project-findings.md`](./shadow-project-findings.md)
 Open questions: [`open-questions.md`](./open-questions.md)  
 Existing BazarCRM spec: [`../feature-specs/tickets.md`](../feature-specs/tickets.md)
 
-> **Status:** All owner questions resolved — 2026-05-11. Ready to build.  
-> See `open-questions.md` for full decision log and the three key design changes from the shadow project.
+> **Status:** Phases 0–7 complete as of 2026-05-12. Phase 8 (Dashboard integration + PDF export) is next.  
+> See `open-questions.md` for the full decision log and the three key design changes from the shadow project.  
+> **Key design change (Phase 6):** OrderDrawer replaced with dedicated pages — `/quotes/new`, `/quotes/[id]`.
 
 ---
 
@@ -13,15 +14,15 @@ Existing BazarCRM spec: [`../feature-specs/tickets.md`](../feature-specs/tickets
 
 Before any Tickets code is written, the following must be done:
 
-1. All uncommitted current changes committed (migrations 039/040, hold-reasons constants, component updates).
+1. ✅ All uncommitted current changes committed (migrations 039/040, hold-reasons constants, component updates).
 2. ✅ Owner answers recorded — all decisions resolved in the 2026-05-11 review session.
 3. ✅ This plan updated to reflect owner decisions.
 
 ---
 
-## Phase 0 — Commit Current Work
+## Phase 0 — Commit Current Work ✅ DONE
 
-Commit all uncommitted changes before any new work:
+Committed before Phase 1:
 - `supabase/migrations/039_add_initial_interest_to_leads.sql`
 - `supabase/migrations/040_fix_activities_by_user_fkey.sql`
 - `lib/constants/hold-reasons.ts`
@@ -40,11 +41,11 @@ The following files have been created:
 
 ---
 
-## Phase 2 — Schema + Type Alignment
+## Phase 2 — Schema + Type Alignment ✅ DONE (2026-05-12)
 
-**All blockers resolved.** Key schema additions beyond the original plan: `order_sequence_counters` table (for `ORD-YYYY-NNN` reference codes), and `company_settings` fields for `default_tax_rate`, `high_value_threshold`, and `rush_surcharge`.
+Key additions beyond the original plan: products catalog (`041`), `order_sequence_counters` table, `company_settings` table, and admin-managed order/quote dropdowns.
 
-### 2a. Migration `041_extend_job_tickets.sql`
+### 2a. Migration `042_extend_job_tickets.sql` ✅
 
 Add missing columns to `job_tickets` (identified by comparing shadow project model with current schema):
 
@@ -101,16 +102,41 @@ Keep existing columns (`subtotal`, `discount_percent`, `discount_amount`, `total
 
 > **Note:** This differs from the shadow project which had no RLS filter. The customer/contact detail page will show all tickets for that customer regardless of creator — this is a UI-level join, not a policy exception.
 
-### 2b. Update `lib/types/index.ts`
+### 2b. Update `lib/types/index.ts` ✅
 
-- Enrich `QuoteSku` interface: add `product_type`, `material`, `lamination`, `width`, `height`, `design_required`, `die_cut`
-- Enrich `JobTicket` interface with all new columns from 2a
-- Update `TicketStatus` to add `'Open'`, `'Pending Client Confirmation'`
-- Replace `PaymentType` with `PaymentTypeKey = 'card_default' | 'zelle' | 'offline'` (owner confirmed C1)
-- Add `TicketForm` interface for OrderDrawer form state
+- Enriched `QuoteSku` interface: added `product_type`, `material`, `lamination`, `width`, `height`, `design_required`, `die_cut`, `finishing[]`
+- Enriched `JobTicket` interface with all 28 new columns from 2a
+- Added `'Open'` and `'Pending Client Confirmation'` to `TicketStatus`
+- Replaced `PaymentType` with `PaymentTypeKey = 'card_default' | 'zelle' | 'offline'` (owner decision C1)
+- Added `TicketForm` interface for OrderDrawer form state
+- Added `CompanySettings` interface matching migration 045
 
-### 2c. Update `docs/schema.md`
-Replace the `job_tickets` table definition with the new expanded version matching migration 041.
+### 2c. Update `docs/schema.md` ✅
+Expanded `job_tickets` definition, added `order_sequence_counters`, `company_settings`, product catalog tables, and all new RLS policies.
+
+### 2d. Migrations 041–045 ✅ (all applied 2026-05-12)
+
+| Migration | Description |
+|---|---|
+| `041_create_products_catalog.sql` | product_types, material_groups, materials, product_material_links with 15 types + 37 materials seeded |
+| `042_extend_job_tickets.sql` | 28 new columns on job_tickets + order_sequence_counters + scoped per-user RLS |
+| `043_fix_admin_rls_full_access.sql` | Admin full access on all tables; tightened product catalog policies; explicit no-delete rules for tickets/leads/activities |
+| `044_seed_order_lookup_values.sql` | 7 new order/quote lookup categories seeded |
+| `045_create_company_settings.sql` | company_settings single-row table (branding, address, order defaults) |
+
+### 2e. Admin panel tabs for products + dropdowns + company ✅
+
+| Component | Route | Purpose |
+|---|---|---|
+| `components/admin/products-section.tsx` | Admin → Products | Manage product types, material groups, materials |
+| `components/admin/dropdowns-section.tsx` | Admin → Dropdown Options | Add/edit/deactivate/delete any lookup_value |
+| `components/admin/company-section.tsx` | Admin → Company Info | Edit branding, address, and order defaults |
+| `app/api/admin/materials/route.ts` + `[id]/route.ts` | REST | CRUD for materials |
+| `app/api/admin/material-groups/route.ts` + `[id]/route.ts` | REST | CRUD for material groups |
+| `app/api/admin/product-types/route.ts` + `[id]/route.ts` | REST | CRUD for product types |
+| `app/api/admin/lookups/route.ts` + `[id]/route.ts` | REST | CRUD for lookup_values (with in-use safety check on delete) |
+| `app/api/admin/company/route.ts` | REST | GET + PATCH for company_settings |
+| `app/api/lookups/products/route.ts` | REST (public) | OrderDrawer product lookup (anon-safe) |
 
 ---
 
@@ -122,7 +148,7 @@ Replace the `job_tickets` table definition with the new expanded version matchin
 
 The SDR drawer (`verify-drawer.tsx`) and Sales drawer (`sales-drawer.tsx`) previously had placeholder "Quote" / "Order / Quote" tabs with no functionality. These have been removed. Both drawers now have **two tabs only: Lead Info and History**.
 
-A disabled **"Create Quote / Order"** button has been added to the footer of both drawers. It will be wired to open `<OrderDrawer>` as a stacked modal during Phase 6. Until then it is visually present but non-clickable (`opacity-40`, `cursor-not-allowed`).
+A **"Create Quote / Order"** button is in the footer of both drawers. As of Phase 6 it is fully wired: clicking it saves the lead silently then navigates to `/quotes/new?lead_id=<id>`.
 
 > **Pattern confirmed from shadow project:** The `VerifyDrawer` and `SalesDashboard` in the shadow project never embedded quote/order content inside the lead drawer tabs. A footer button opened the `OrderDrawer` as a separate, stacked modal (`stackZIndex={2500}`). BazarCRM mirrors this exactly.
 
@@ -144,7 +170,7 @@ A disabled **"Create Quote / Order"** button has been added to the footer of bot
 
 ## Phase 3.5 — Pre-Build Fix: TODO-001 (Admin Override for Terminal Leads)
 
-**Not blocked by any owner questions.** Can be done immediately after Phase 3.
+**⏳ PENDING — deferred until after Phase 5.** Not blocked by owner questions; can be done anytime.
 
 **Files affected:**
 - `components/sales-drawer.tsx` — change `const isReadOnly = readOnly || isTerminal` to `const isReadOnly = readOnly || (isTerminal && !isAdmin)`; show amber banner instead of red when `isAdmin && isTerminal`
@@ -156,112 +182,60 @@ API is already correct (see `app/api/leads/[id]/route.ts` line ~53 — admin che
 
 ---
 
-## Phase 4 — API Routes
+## Phase 4 — API Routes ✅ DONE (2026-05-12)
 
-**All blockers resolved.** Reference format: `ORD-YYYY-NNN`. Scoping: per-user (not shared). See design changes in `open-questions.md` before implementing POST and PATCH.
+### Files built
 
-### `app/api/tickets/route.ts`
-
-**GET** — list tickets:
-- Supports `?kind=quote|order`, `?linked_lead_id=`, `?search=`, `?period=`
-- **Scoping: per user** — filter by `created_by = auth.uid()` for non-admin users; admin sees all (owner decision A1/A2)
-- Joins: `customers`, `user_profiles` (created_by)
-
-**POST** — create ticket:
-- Requires `title` and at least one SKU for orders
-- Auto-generates `reference_code` for orders in `ORD-{YYYY}-{NNN}` format (owner decision H1); uses a `order_sequence_counters` table keyed by year
-- **⚠️ Design change B4:** The quote ticket itself transitions to an order — no simultaneous order shell is created. Do NOT port the shadow project's dual-record creation pattern.
-- Logs `order_ticket_created` activity
-- **TODO-002**: if `linked_lead_id` is set, updates lead status (confirmed B2 — no auto-route):
-  - ticket has quote SKUs → `status = 'Quoted'`, `sales_status = 'Quote Sent'`
-  - order only → `status = 'Validated'`
-- Logs `lead_status_changed` activity
-
-### `app/api/tickets/[id]/route.ts`
-
-**GET** — single ticket with joined customer + lead + activity history.
-
-**PATCH** — partial update:
-- Strips `created_at` from patch (immutable)
-- Activity logging:
-  - `quote_approval_last_requested_at` patched → log `quote_approval_requested`
-  - `follow_up_completed = true` → log `quote_follow_up_completed`
-  - follow-up fields cleared → log `quote_follow_up_reset`
-  - `client_confirmed = true` → log `ticket_client_confirmed`
-  - Otherwise → log `order_ticket_updated` with `{ fields: string[] }`
-- **Edit guard (owner decision B5):** Ticket is locked once it reaches order status. Only admin/owner can cancel (and only if no payment recorded). On cancel, respond with a flag that triggers the "duplicate & adjust" dialog on the client.
-
-### `app/api/tickets/counts/route.ts`
-
-**GET** — returns `{ quotes: number, orders: number }` for sidebar badges.
-- Same scoping as the list routes.
+| File | Purpose |
+|---|---|
+| `app/api/tickets/route.ts` | `GET` list (scoped per user/admin) + `POST` create (auto ORD-YYYY-NNN, activity logging, linked lead status update) |
+| `app/api/tickets/[id]/route.ts` | `GET` single ticket with joined lead/customer + `PATCH` update (edit guard: locked once order status, only admin can modify) |
+| `app/api/tickets/counts/route.ts` | `GET` lightweight counts for tab badges: `{ drafts, sent, approved, orders, total }` |
+| `app/api/activities/route.ts` | `GET` combined lifetime history: `?lead_id=` or `?ticket_id=` or `?ticket_id=&include_linked_lead=true` (merges lead + ticket activities chronologically, adds `_source` field) |
+| `supabase/migrations/046_order_sequence_function.sql` | `increment_order_sequence(p_year)` — atomically increments `order_sequence_counters` for ORD-YYYY-NNN generation |
 
 ---
 
-## Phase 5 — Utilities
+## Phase 5 — Utilities ✅ DONE (2026-05-12, partial)
 
-**Not blocked by owner questions.** Can be built as soon as Phase 2 types are done.
-
-### `lib/utils/ticket-math.ts`
-Port from `ContactCRM.jsx`:
+### `lib/utils/ticket-math.ts` ✅
+Pure pricing helpers used by both the create form and the detail page:
 
 ```typescript
-// Derives human-readable description from SKU fields (never typed by user)
-export function quoteSkuDescription(sku: QuoteSku): string
-
-// Normalizes raw SKU array: trims, derives descriptions, computes line_total
-export function normalizeQuoteSkus(skus: Partial<QuoteSku>[]): QuoteSku[]
-
-// Full pricing calculation
-export function calcQuoteTotals(form: TicketForm): {
-  quoteSubtotal: number
-  discountAmount: number
-  quotePreTaxTotal: number
-  quoteTaxAmount: number
-  quoteFinalTotal: number
-}
-
-// Prepayment split
-export function calcPrepaySplit(
-  finalTotal: number,
-  prepaymentType: string,
-  prepaymentValue: string
-): { dueNow: number; balance: number } | null
-
-// NOTE: HIGH_VALUE_THRESHOLD and DEFAULT_TAX_RATE are NOT hardcoded constants.
-// Both are read from company settings (Admin → Company Info tab) at runtime.
-// HIGH_VALUE_THRESHOLD: when SDR total exceeds this, they can ONLY route to Sales — hard block, not a warning.
-// DEFAULT_TAX_RATE: shown as the default in the OrderDrawer tax field; rep can override per quote.
-// Rush surcharge (if any) is also stored in company settings — no constant needed here.
+computePricing(inputs: PricingInputs): PricingResult   // subtotal → shipping → discount → pre-tax → tax → final
+skuLineTotal(sku: QuoteSku): number                    // qty × unit_price, rounded to 2dp
+formatCurrency(value: number): string                  // USD formatted string
 ```
 
-### `lib/utils/order-ticket-pdf.ts`
-Port from `frontend/src/utils/orderTicketPdf.js` with TypeScript types.
-- `export async function downloadOrderTicketPdf(ticket: JobTicket): Promise<void>`
-- Dynamic `jspdf` import (keeps it out of the server bundle)
-- Company name, address, phone, email, website: read from `company_settings` record at render time (owner decision E1/Q14/Q15)
-- Logo: included in PDF header; read from `company_settings.logo_url` (owner decision Q15)
-- Full field parity with shadow PDF — see `shadow-project-findings.md` section 7
+### `lib/utils/order-ticket-pdf.ts` ⏳ Phase 8
+Port from `frontend/src/utils/orderTicketPdf.js` — deferred to Phase 8.
 
-### `lib/utils/ticket-filters.ts`
-Port from `statsDateRange.js`:
-- `quotedRequestsRowCount(tickets, leads)` — counts quote tickets + quoted leads not linked to a ticket
-- `orderTicketsForTab(tickets)` — filters out cancelled/draft tickets from the orders list (no `Pending Client Confirmation` state — B4 design change means no shadow order shells)
-- `ticketAmount(ticket)` — `quote_final_total ?? quote_subtotal ?? 0`
+### `lib/utils/ticket-filters.ts` ⏳ Phase 8
+Client-side filtering helpers — deferred to Phase 8.
 
 ---
 
-## Phase 6 — OrderDrawer Component
+## Phase 6 — Quote & Order Pages (design change: dedicated pages, not a modal)
 
-**All blockers resolved.** Key changes from original plan: no `requires_client_confirmation` toggle, high-value threshold is a hard routing block (not a warning), edit is locked once ticket reaches order status, unit price is always manual (no embedded calculator).
+> **⚠️ Design change from original plan (2026-05-12):** The OrderDrawer stacked modal is replaced with **dedicated full pages**. This is better UX for a complex multi-tab form and allows deep-linking, browser history, and side-by-side lead info.
 
-**File:** `components/order-drawer.tsx`
+**Flow:**
+1. Sales/SDR clicks **"Create Quote / Order"** in the lead drawer → lead is saved silently → browser navigates to `/quotes/new?lead_id=xxx`
+2. New quote page shows a **lead info card** (contact, company, urgency, initial interest) + the full form
+3. On save → navigates to `/quotes/[id]` (the ticket's permanent page)
+4. If the quote is converted to an order → same `/quotes/[id]` page reflects the updated status (no separate `/orders/[id]` redirect needed since it is the same record)
 
-The most complex component in this phase. Two modes:
+**Files:**
+- `app/(app)/quotes/new/page.tsx` — server shell, reads `lead_id` from searchParams
+- `components/new-quote-form.tsx` — full create form (client component)
+- `app/(app)/quotes/[id]/page.tsx` — server shell, loads ticket + lead
+- `components/quote-detail.tsx` — view/edit/read-only (client component)
+
+Two modes:
 
 ```
-Create/Edit mode tabs:   Info → Line Items → Quote
-Read-only mode tabs:     Info | Line Items | Quote | History
+Create mode tabs:    Info → Line Items → Quote
+View/Edit mode tabs: Info | Line Items | Quote | History
 ```
 
 ### Info tab
@@ -304,110 +278,118 @@ Read-only mode tabs:     Info | Line Items | Quote | History
 - `client_confirmed` toggle — on toggle: logs `ticket_client_confirmed`; transitions ticket from quote to order status (B4 design change)
 
 ### History tab (read-only mode only)
-- `<HistoryTimeline ticketId={ticket.id} />`
+- Full lifetime history — combined lead activities + ticket activities, sorted chronologically, oldest first
+- Each entry shows: icon, human-readable label, actor name, detail line, **Lead / Ticket source badge**, time
+- Grouped by date with separators
+- Auto-refreshes on `bazaar:activities-changed` event
 
-### Footer actions
-**Create mode:**
-- Back / Next (tab navigation)
-- Send Quote (`POST /api/tickets` with `ticket_status = 'sent'`, `ticket_kind = 'quote'` + linked order shell if requires_client_confirmation)
-- Create Order (`POST /api/tickets` with `ticket_kind = 'order'`, `orderSource = 'direct'`)
-- Cancel
+### Footer actions (as built)
+**Create mode (`/quotes/new`):**
+- Back / Next tab navigation
+- Save Draft (`POST /api/tickets` → `ticket_status = 'draft'`) — always available
+- Save & Send Quote (`POST /api/tickets` → `ticket_status = 'sent'`) — available on Quote tab
 
-**Read/Edit mode:**
-- Edit (toggle to edit mode — **only shown for quote-status tickets**; hidden once ticket is in order status per owner B5)
+**View mode (`/quotes/[id]`):**
+- Edit button (toggle edit mode — only shown for non-order, non-cancelled tickets)
 - Save Changes (`PATCH /api/tickets/[id]`)
-- Print PDF (`downloadOrderTicketPdf`)
-- Mark Won (`ticket_status = 'approved'`, `client_confirmed = true`)
-- Cancel Ticket (`ticket_status = 'cancelled'`) — **admin/owner only; disabled if payment recorded**. On success, client receives a "duplicate & adjust" prompt.
-- Close
+- Send Quote (`PATCH` → `ticket_status = 'sent'`) — shown when in draft
+- Mark Won (`PATCH` → `ticket_status = 'approved'`)
+- Cancel Ticket (`PATCH` → `ticket_status = 'cancelled'`)
 
 Dispatches `bazaar:refresh-counts` after every successful save.
 
 ---
 
-## Phase 7 — Pages
+## Phase 7 — Pages ✅ DONE (2026-05-12)
 
-**No blockers** — two separate pages confirmed (D1 confirmed: keep `/quotes` and `/orders` as separate pages).
-
-### `components/quotes-page.tsx`
+### `components/quotes-page.tsx` ✅
 Replaces the spec preview in `app/(app)/quotes/page.tsx`.
 
-Table columns: Contact, Type pill (Ticket / Lead Quote), Channel, Quote Total, Status, Follow-up (red if overdue), Created, View button.
+- Tabs: All / Draft / Sent / Approved — count badge on every tab
+- Columns: Contact, Title, Channel, Quote Total, Status pill, Follow-up (red if overdue), Created, View
+- Search by contact, company, title, reference code
+- Skeleton loader; realtime silent refresh via `bazaar:tickets-changed`
+- Clicking row or View navigates to `/quotes/[id]`
 
-Data sources:
-1. `GET /api/tickets?kind=quote` → formal quote tickets (scoped to current user; admin sees all)
-2. Leads where `status = 'Quoted'` and no linked quote ticket (quoted by SMS/WhatsApp without a formal ticket)
-
-Opens `<OrderDrawer readOnly initialTicket={ticket}>` on View.
-
-### `components/orders-page.tsx`
+### `components/orders-page.tsx` ✅
 Replaces the spec preview in `app/(app)/orders/page.tsx`.
 
-Table columns: Order # (`ORD-YYYY-NNN`), Contact, Total, Status pill, Rush badge, Created By, Created, View + Print PDF.
+- Tabs: All / Active / Won / Cancelled — count badge on every tab
+- Columns: Order # (ORD-YYYY-NNN), Contact, Title (⚡ Rush badge), Total, Priority (colour-coded), Due Date (orange = due soon, red = overdue), Status pill, Created
+- Search, skeleton loader, realtime via `bazaar:tickets-changed`
+- Navigates to `/quotes/[id]` (same record for both quotes and orders)
 
-Data source: `GET /api/tickets?kind=order` — scoped to current user (admin sees all). No `Pending Client Confirmation` filter needed since the dual-record model is not used (B4 design change).
+### Sidebar badges ✅
+`app/api/sidebar-counts/route.ts` updated — `/quotes` and `/orders` nav items now show live count badges.
 
-Both pages:
-- Mobile card layout (per `mobile-table-cards` rule)
-- Search + period filter + sort
-- Skeleton loader while fetching
-- Tab count badges on nav
+### Realtime for job_tickets ✅
+`supabase/migrations/047_enable_job_tickets_realtime.sql` — `REPLICA IDENTITY FULL` + `ALTER PUBLICATION supabase_realtime ADD TABLE job_tickets`. Without this migration, the sidebar's `tickets-realtime` channel connects but never receives events.
 
 ---
 
-## Phase 8 — Integration
+## Phase 8 — Integration (⏳ Next)
 
-### 8a. SalesDrawer + VerifyDrawer — Wire up "Create Quote / Order" button
-The disabled "Create Quote / Order" footer button already exists in both drawers (added in Phase 3a). Phase 8a wires it up: remove `disabled`, add `onClick={() => setOrderDrawerOpen(true)}`, and render `<OrderDrawer>` as a stacked modal pre-filled with the lead's contact data. Follow the exact pattern from the shadow project's `VerifyDrawer.jsx`.
+### 8a. ~~SalesDrawer + VerifyDrawer — Wire up "Create Quote / Order" button~~ ✅ DONE in Phase 6
+Both drawers now save the lead silently and navigate to `/quotes/new?lead_id=<id>`.
 
-### 8b. Sidebar counts
-Update `app/api/sidebar-counts/route.ts` to include:
-- `/quotes` badge count = `quotedRequestsRowCount()` (quote tickets + unlinked quoted leads)
-- `/orders` badge count = count of open order tickets (`ticket_status NOT IN ('cancelled', 'completed')`)
+### 8b. ~~Sidebar counts~~ ✅ DONE in Phase 7
 
-### 8c. HistoryTimeline labels
-In `components/history-timeline.tsx` (or wherever activity labels are mapped), confirm human-readable labels exist for all ticket activity types:
-- `order_ticket_created` → "Ticket created"
-- `order_ticket_updated` → "Ticket updated"
-- `quote_approval_requested` → "Approval requested"
-- `quote_follow_up_completed` → "Follow-up completed"
-- `quote_follow_up_reset` → "Follow-up rescheduled"
-- `ticket_client_confirmed` → "Client confirmed"
+### 8c. HistoryTimeline activity labels ✅ DONE in Phase 6
+Implemented directly in `components/quote-detail.tsx` `HistorySection`. Human-readable labels + icons for all ticket and lead activity types.
 
-### 8d. Dashboard revenue integration
-Update `app/api/dashboard/kpis/route.ts` to include revenue from `quote_final_total` on approved/active tickets.
-
+### 8d. Dashboard revenue integration ⏳
+Update `app/api/dashboard/kpis/route.ts` to include revenue from `quote_final_total` on approved/active tickets:
 - Each rep sees only their own revenue totals (filter by `created_by = auth.uid()`)
 - Admin sees all reps' totals
-- Data surfaces on the Dashboard page (not a separate Statistics page — owner decision F1)
-- Use `ticketAmount()` from `ticket-filters.ts` for consistency
+- Data surfaces on Dashboard (not a separate Statistics page — owner decision F1)
+
+### 8e. PDF export ⏳
+`lib/utils/order-ticket-pdf.ts` — port from shadow project's `orderTicketPdf.js`:
+- `downloadOrderTicketPdf(ticket: JobTicket): Promise<void>`
+- Dynamic `jspdf` import (server-bundle safe)
+- Company name, address, phone, email, logo from `company_settings` (owner decision E1/Q14/Q15)
+- Wire Print PDF button on `/quotes/[id]` detail page
+
+### 8f. High-value hard block for SDRs ⏳
+When `quoteFinalTotal >= company_settings.high_value_threshold` AND `user_role = 'SDR'`: hide "Send Quote" button, show "Route to Sales Pipeline" only. Not yet implemented in `new-quote-form.tsx` or `quote-detail.tsx`.
 
 ---
 
-## File Inventory — New Files to Create
+## File Inventory — As Built
 
-| File | Phase | Notes |
+| File | Phase | Status |
 |---|---|---|
-| `supabase/migrations/041_extend_job_tickets.sql` | 2a | Adds ~25 new columns + RLS |
-| `lib/utils/ticket-math.ts` | 5 | Pricing calc, SKU normalization |
-| `lib/utils/order-ticket-pdf.ts` | 5 | PDF export (port from shadow) |
-| `lib/utils/ticket-filters.ts` | 5 | Date + kind filtering |
-| `components/order-drawer.tsx` | 6 | 3-tab wizard — the core component |
-| `components/quotes-page.tsx` | 7 | Quoted Requests list |
-| `components/orders-page.tsx` | 7 | Orders list |
-| `app/api/tickets/route.ts` | 4 | GET list + POST create |
-| `app/api/tickets/[id]/route.ts` | 4 | GET single + PATCH update |
-| `app/api/tickets/counts/route.ts` | 4 | Badge counts |
+| `supabase/migrations/041_create_products_catalog.sql` | 2 | ✅ |
+| `supabase/migrations/042_extend_job_tickets.sql` | 2 | ✅ |
+| `supabase/migrations/043_fix_admin_rls_full_access.sql` | 2 | ✅ |
+| `supabase/migrations/044_seed_order_lookup_values.sql` | 2 | ✅ |
+| `supabase/migrations/045_create_company_settings.sql` | 2 | ✅ |
+| `supabase/migrations/046_order_sequence_function.sql` | 4 | ✅ (push pending) |
+| `supabase/migrations/047_enable_job_tickets_realtime.sql` | 7 | ✅ (push pending) |
+| `lib/utils/ticket-math.ts` | 5 | ✅ |
+| `lib/utils/order-ticket-pdf.ts` | 8e | ⏳ |
+| `lib/utils/ticket-filters.ts` | 8d | ⏳ |
+| `app/api/tickets/route.ts` | 4 | ✅ |
+| `app/api/tickets/[id]/route.ts` | 4 | ✅ |
+| `app/api/tickets/counts/route.ts` | 4 | ✅ |
+| `app/api/activities/route.ts` | 4 | ✅ |
+| `app/(app)/quotes/new/page.tsx` | 6 | ✅ |
+| `components/new-quote-form.tsx` | 6 | ✅ |
+| `app/(app)/quotes/[id]/page.tsx` | 6 | ✅ |
+| `components/quote-detail.tsx` | 6 | ✅ |
+| `components/quotes-page.tsx` | 7 | ✅ |
+| `components/orders-page.tsx` | 7 | ✅ |
 
-## Files to Modify
+## Files Modified
 
 | File | Phase | Change |
 |---|---|---|
-| `lib/types/index.ts` | 2b | Enrich JobTicket, QuoteSku, add TicketForm |
-| `docs/schema.md` | 2c | Update job_tickets table definition |
-| `components/sales-drawer.tsx` | 3a, 3.5, 8a | ✅ Placeholder tabs removed + disabled CQ button (3a) · Admin override banner (3.5) · Wire up CQ button (8a) |
-| `components/verify-drawer.tsx` | 3a, 3.5, 8a | ✅ Placeholder tabs removed + disabled CQ button (3a) · Admin override banner (3.5) · Wire up CQ button (8a) |
+| `lib/types/index.ts` | 2b | ✅ Enriched JobTicket, QuoteSku, TicketForm, CompanySettings |
+| `docs/schema.md` | 2c | ✅ Updated job_tickets, added new tables and RLS |
+| `components/sales-drawer.tsx` | 3a, 6 | ✅ Tabs removed · CQ button wired (save → navigate) |
+| `components/verify-drawer.tsx` | 3a, 6 | ✅ Tabs removed · CQ button wired (save → navigate) |
 | `app/api/customers/route.ts` | 3b | ✅ Filter CRM to routed leads only |
+| `app/api/sidebar-counts/route.ts` | 7 | ✅ Added /quotes and /orders badge counts |
 | `components/sales-page.tsx` | 3 | Pass isAdmin to SalesDrawer |
 | `components/leads-page.tsx` | 3 | Pass isAdmin to VerifyDrawer |
 | `app/api/sidebar-counts/route.ts` | 8b | Add /quotes and /orders counts |

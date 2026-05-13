@@ -1,6 +1,6 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 10, 2026
-**Status:** MVP complete + CRM + Roles Editor + testing/polish pass + spec preview system + Sales Pipeline history tab + Rejected tab bug fix + SDR History tab + Sales Notes field + Dashboard statistics enhancements + **Supabase Realtime live updates fully working**. Ready for user testing.
+**Last updated:** May 13, 2026
+**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + all documentation audited and updated. Ready for end-to-end testing.
 
 ---
 
@@ -78,6 +78,57 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - Fixed admin-sub page filtering (was showing `/admin/users`, `/admin/roles` etc. in mobile menu)
 - Added badge counts and `bazaar:refresh-counts` listener
 
+### Tickets / Quotes & Orders — Complete (2026-05-12)
+- Migrations 041–048: product catalog, extended job_tickets, admin RLS, order/quote lookup seed, company_settings, order sequence function, realtime for job_tickets, SKU lookup categories
+- `lib/utils/ticket-math.ts` — QuoteSku interface, computePricing(), skuLineTotal(), formatCurrency()
+- `lib/types/index.ts` — fully updated: QuoteSku (15 fields), JobTicket (40+ columns), TicketForm, CompanySettings, LookupCategory union (all categories)
+- `/quotes/new` — `new-quote-form.tsx` — full 3-tab quote builder: Line Items (Color Mode, Sides, Roll Direction, Add-on Finishes, Design on File, Die Cut), Quote tab (all dropdowns admin-managed), Settings tab
+- `/quotes/[id]` — `quote-detail.tsx` — full detail view + edit mode, 4-tab layout matching new-quote-form
+- `/quotes` — `quotes-page.tsx` — 4-tab Quoted Requests list with counts, search, sort
+- `/orders` — `orders-page.tsx` — 4-tab Orders list with counts, search, sort
+- All dropdowns dynamically loaded from `lookup_values` via `/api/lookups`; `renderLookupOptions` helper prevents data loss for deactivated values
+- Sidebar badges for `/quotes` and `/orders`
+- `GET /api/lookups/products` — public product-type + material lookup for OrderDrawer
+
+### Quote/Order UI Redesign & Customer Flow (2026-05-13)
+
+Major UX improvements and business rule enforcement:
+
+- **New Quote form — unified entry point**: 4-step wizard (Customer → Info → Line Items → Quote) when creating standalone. Customer tab hidden when entering from Lead (`?lead_id`) or CRM (`?first_name&last_name&...` params). Read-only lead/customer card shown on left sidebar instead.
+- **Customer upsert**: customer data saved to `customers` table on "Save Draft" or "Save & Send Quote" — customers created via quotes now appear in CRM.
+- **CRM "Add Quote" button**: new action on CRM page pre-fills customer params in URL → skips Customer tab, shows read-only customer card.
+- **Customer info card on quote detail**: if no linked lead but customer exists, shows customer card (`CustomerInfoCard` component) on the left sidebar.
+- **Validation**: required fields enforced per tab before advancing. Line Items requires ≥ 1 fully-filled item.
+- **Orders page**: now shows only `ticket_status = 'order'` tickets. `draft`, `sent`, `approved`, `routed` stay on Quotes page. "New Order" button removed.
+- **Sidebar counts**: Quotes badge = `draft+sent+approved` (SDR) or `draft+sent+approved+routed` (Sales/Admin). Orders badge = `order` status only.
+- **UI polish**: pill/chip checkboxes, single-select payment methods, custom DatePicker, redesigned Adjustments card, "Order Flow" segmented control (Quote First / Direct Order), "Add Line Item" as full-width dashed button, `#f8fafc` page background, `Urgent` priority hidden from user dropdown.
+
+### High-Value Threshold (HVT) SDR Routing — Complete (2026-05-13)
+
+Full business rule implementation for routing high-value quotes from SDRs to Sales:
+
+- **`routed` ticket status** added to `lib/types/index.ts` `TicketStatus` union
+- **HVT modal in `new-quote-form.tsx`**: fires when SDR advances from Line Items → Quote tab and `pricing.final_total > company_settings.high_value_threshold`. Non-dismissible modal with 30-second countdown. On "OK" or timeout: saves as `routed`, redirects to `/quotes`.
+- **HVT modal in `quote-detail.tsx`**: same block fires when SDR clicks "Save Changes" on an existing `draft` quote over threshold.
+- **`routed` tickets hidden from SDR Quotes page** "All" tab count (correctly subtracted in `GET /api/tickets/counts`)
+- **"Routed to Sales" tab** on `/quotes` — visible to Sales/Admin only. Shows Contact, Title, Total (warning color), Routed By (SDR name), Date, Claim button.
+- **Claim action** (`PATCH /api/tickets/[id]` with `claim_ownership: true`): Sales/Admin only; sets `ticket_status = 'draft'` and `created_by_id = claimant`; once claimed it disappears from other Sales users' "Routed to Sales" tab.
+- **Supabase Realtime on `quotes-page.tsx`**: direct `postgres_changes` channel (independent of sidebar) so cross-session updates (SDR routes → Sales sees it; Sales claims → others see it disappear) happen instantly without manual refresh.
+- **Sidebar badge**: Sales/Admin `/quotes` badge includes routed count.
+- **`GET /api/tickets`**: Sales/Admin receive all `routed` tickets enriched with `created_by_name`.
+- **Migration `050_add_urgent_priority.sql`**: seeds 'Urgent' to `ticket_priority` lookup (system-set only; hidden from UI dropdown).
+- **Migration `051_backfill_routed_status.sql`**: retroactively marks SDR-created draft quotes over threshold as `routed`.
+- **`docs/feature-specs/tickets.md`**: fully rewritten to document all current behaviour.
+
+### Admin Panel — Complete (2026-05-12)
+- `/admin/settings/dropdowns` — fully built; 15+ categories (lead + order/quote + SKU)
+- `/admin/settings/products` — product types + material library, full CRUD + link/unlink
+- `/admin/settings/company` — EmailInput + PhoneInput components, ZIP digits-only, client-side validation
+- `/admin/settings/integrations` — placeholder for Stripe + Zelle (configured buttons deferred)
+- Admin overview card grid updated with Integrations card
+- `components/ui/email-input.tsx` — added optional onBlur prop for external validation
+- All phone fields use `PhoneInput`; all email fields use `EmailInput` — no inline duplicates
+
 ### Spec Preview System — Complete
 All unbuilt pages now show their full feature spec as a styled in-app page instead of "coming soon":
 
@@ -128,57 +179,56 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 
 ---
 
-## Current Navigation (as of 2026-05-07)
+## Current Navigation (as of 2026-05-13)
 
 | Route | Section | Built? |
 |-------|---------|--------|
-| `/dashboard` | main | ✅ Built |
+| `/dashboard` | main | ✅ Built — role router (SDR / Sales / Admin dashboards) |
 | `/leads` | main | ✅ Built |
 | `/sales` | main | ✅ Built |
 | `/crm` | main | ✅ Built |
-| `/tickets` | main | ⏳ Spec preview |
-| `/statistics` | main | ⏳ Spec preview |
+| `/crm/customers/[id]` | main | ✅ Built — full customer profile page |
+| `/quotes` | main | ✅ Built — Quoted Requests list (4 tabs) |
+| `/quotes/new` | main | ✅ Built — New Quote/Order form (3 tabs) |
+| `/quotes/[id]` | main | ✅ Built — Quote/Order detail + edit (4 tabs) |
+| `/orders` | main | ✅ Built — Orders list (4 tabs) |
+| `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
 | `/notifications` | main | ⏳ Spec preview |
-| `/admin` | admin | ✅ Built |
+| `/admin` | admin | ✅ Built — card grid overview |
 | `/admin/settings/users` | admin-sub | ✅ Built |
 | `/admin/settings/roles` | admin-sub | ✅ Built |
-| `/admin/settings/dropdowns` | admin-sub | ⏳ Spec preview |
+| `/admin/settings/dropdowns` | admin-sub | ✅ Built — all lead + order/quote categories |
+| `/admin/settings/products` | admin-sub | ✅ Built — product types, materials, links |
+| `/admin/settings/company` | admin-sub | ✅ Built — with EmailInput + PhoneInput validation |
+| `/admin/settings/integrations` | admin-sub | ✅ Built — Stripe + Zelle placeholder |
 | `/admin/settings/notifications` | admin-sub | ⏳ Spec preview |
 | `/admin/settings/audit-log` | admin-sub | ⏳ Spec preview |
-| `/admin/settings/company` | admin-sub | ⏳ Spec preview |
-| `/admin/settings/products` | admin-sub | ⏳ Spec preview |
 
 ---
 
 ## Migrations (in order)
 
+See `docs/schema.md` → Migration File Order for the full list (001–048). Key milestones:
+
 | # | File | Purpose |
 |---|------|---------|
-| 001 | `create_roles` | roles table |
-| 002 | `create_pages` | pages table |
-| 003 | `create_role_permissions` | many-to-many |
-| 004 | `create_user_profiles` | user profiles |
-| 005 | `create_customers` | customers table |
-| 006 | `create_leads` | leads table |
-| 007 | `create_job_tickets` | tickets table |
-| 008 | `create_activities` | activity log |
-| 009 | `create_notifications` | notifications table |
-| 010 | `create_lookup_values` | dropdown options |
-| 011 | `create_indexes` | performance indexes |
-| 012 | `enable_rls` | Row Level Security |
-| 013 | `rls_policies` | RLS policies |
-| 014 | `triggers` | auto-timestamps |
-| 015 | `views` | DB views |
-| 016 | `functions` | DB functions |
-| 017 | `seed_system_roles` | SDR, Sales, Admin |
-| 018 | `seed_pages` | all nav routes |
-| 019 | `seed_role_permissions` | default permissions |
-| 020 | `seed_lookup_values` | default dropdowns |
-| 021 | `seed_dev` | dev test data |
-| 022 | `fix_admin_subpages_section` | admin-sub fix |
-| 023 | `admin_settings_routes` | admin settings routes |
-| 024 | `add_notifications_page` | /notifications + admin deferred sub-pages |
-| 025 | `remove_settings_page` | removes /settings from nav |
+| 001–021 | Core schema + seed | All base tables, RLS, indexes, triggers, views, functions, seed data |
+| 022–033 | Nav + workflow fixes | Admin sub-pages, notifications page, lead reset, Realtime |
+| 034 | `add_sales_notes_to_leads` | sales_notes field |
+| 035–038 | Realtime | leads + activities realtime; RLS fix for realtime |
+| 039 | `add_initial_interest_to_leads` | initial_interest field |
+| 040 | `fix_activities_by_user_fkey` | activities FK → user_profiles |
+| 041 | `create_products_catalog` | product_types, materials, material_groups, links (15 types, 37 materials) |
+| 042 | `extend_job_tickets` | 28 new columns on job_tickets + order_sequence_counters |
+| 043 | `fix_admin_rls_full_access` | admin full-access policies; no DELETE on tickets/leads |
+| 044 | `seed_order_lookup_values` | 7 new lookup categories for order/quote dropdowns |
+| 045 | `create_company_settings` | single-row company_settings table |
+| 046 | `order_sequence_function` | increment_order_sequence() for ORD-YYYY-NNN |
+| 047 | `enable_job_tickets_realtime` | REPLICA IDENTITY FULL + supabase_realtime for job_tickets |
+| 048 | `add_sku_lookup_values` | color_mode, sides, roll_direction lookup categories |
+| 049 | `remove_statistics_page` | deletes /statistics from pages table (Dashboard handles all analytics) |
+| 050 | `add_urgent_priority` | seeds 'Urgent' to ticket_priority lookup (system-set only; hidden from user UI) |
+| 051 | `backfill_routed_status` | retroactively sets ticket_status = 'routed' for SDR draft quotes over HVT threshold |
 
 ---
 
@@ -253,13 +303,15 @@ SALES PIPELINE (Routed to Sales)
 
 | Feature | Notes |
 |---------|-------|
-| Tickets / Quote builder / Orders | Biggest phase — Order Drawer, line items, PDF export. Build Company Info + Products admin tabs first. |
-| Statistics / Charts | Recharts. SDR, Sales, Admin views. Shared period filter with Tickets. |
+| Dashboard enhancements | Revenue from approved tickets surfaced on Dashboard KPIs. |
 | Notifications | Supabase Realtime bell + feed. Lazy check for hold expiry + follow-up due in v1. |
-| Admin: Dropdown Options | Lookup values editor — sources, industries, hold/reject reasons. |
 | Admin: Broadcast Notifications | Send system messages to all users or by role. |
 | Admin: Audit Log | Full activity history with filters and pagination. |
-| Email / SMS outreach | Future — after Tickets phase. |
+| Integrations | Stripe + Zelle configured (placeholder built; wiring deferred). |
+| PDF Export | Quote/Order PDF with company logo from company_settings. |
+| ~~High-value SDR block~~ | ✅ Done (2026-05-13) |
+| Admin Override (terminal leads) | Admin can reopen Rejected/Won/Dropped leads (TODO-001). |
+| Email / SMS outreach | Future — after Stats + Notifications. |
 | AI/webhook lead ingestion | Future. |
 
 ---

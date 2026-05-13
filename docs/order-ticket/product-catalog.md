@@ -138,12 +138,12 @@ Product type → facility → allowed material groups → allowed materials.
 | **Diecut Stickers** (Boyd) | Vinyl (Boyd) | At Boyd, stickers use vinyl instead of BOPP |
 | **Other** | All material groups | Catch-all |
 
-### Roll Direction (labels only)
-Roll direction is only shown for products with `defaultPrintType = 'Roll'`. Options:
-- Direction 1 — Unwind from top
-- Direction 2 — Unwind from bottom
-- Direction 3 — Unwind left
-- Direction 4 — Unwind right
+### Roll Direction
+Roll Direction is always shown in the SKU row (right column, Row 5, alongside Lamination). Admin-managed via `roll_direction` lookup category. Default options:
+- Top Off First
+- Bottom Off First
+- Right Off First
+- Left Off First
 
 ---
 
@@ -156,18 +156,26 @@ None, Gloss, Matte, Soft Touch, Holo, Coating
 
 > Note: Labels (Sheet) auto-defaults to Gloss and hides the lamination toggle. Labels do NOT get laminated at Boyd Street.
 
-### Add-on Finishes (toggles/checkboxes)
+### Add-on Finishes (checkboxes)
+Admin-managed via `finishing` lookup category. Default options:
 
-| Finish | Notes |
-|---|---|
-| Spot UV | Requires UV file upload |
-| Foil | Requires foil file upload + foil color: Gold, Silver, Rose Gold, Holographic, Custom |
-| Perforation | Graphtec requires manual knife position adjustment (known issue) |
+| Finish | Stored as | Notes |
+|---|---|---|
+| UV Coating | `spot_uv` boolean on `job_tickets` | Requires UV file upload |
+| Foil | `foil` boolean on `job_tickets` | Requires foil file upload + foil color |
+| Perforation | `perforation` boolean on `job_tickets` | Graphtec manual knife position adjustment |
 
-### Color Modes
-CMYK, CMYK + White (white layer requires separate file upload)
+Below finishings, two fixed boolean checkboxes (not admin-managed):
+- **Design on file** → `design_required` column
+- **Die Cut** → `die_cut` column
+
+### Color Mode (select)
+Admin-managed via `color_mode` lookup category. Default options: CMYK, Pantone, Black Only, Full Color + White.
 
 > Note: Canon Colorado (Boyd) = CMYK only, Gloss materials. Roland (Boyd) = CMYK + Orange/Red/White/Gloss UV, Matte materials only.
+
+### Sides (select)
+Admin-managed via `sides` lookup category. Default options: Single-sided, Double-sided.
 
 ---
 
@@ -317,102 +325,114 @@ The shadow project (`sdr-crm-system`) used simplified product names. This table 
 
 ## Part 6 — Admin Products Tab — Technical Spec
 
-### Current state
-`/admin/settings/products` tab exists as a planned spec-preview. Three sections are noted: Product types, Materials, Finishes — nothing is built yet.
+### Status: **Built** (`/admin/settings/products`)
 
-### Data model recommendation — Dedicated tables
-
-Use separate `product_types` and `materials` tables rather than extending `lookup_values`. Products have relationships (product-to-material links) and may later need pricing rules, images, default impositions, and facility associations.
+### Actual schema (migration 041)
 
 ```sql
--- Product types
+-- Product types — text slug PK (e.g. 'labels-roll', 'business-cards')
 create table public.product_types (
-  id                  uuid primary key default gen_random_uuid(),
-  name                text not null unique,
-  default_print_type  text not null default 'Sheet', -- 'Roll' or 'Sheet'
-  facilities          text[] not null default '{16th-street,boyd-street}',
-  sort_order          int  not null default 0,
-  is_active           boolean not null default true,
-  notes               text,
-  created_at          timestamptz not null default now()
+  id                 text        primary key,
+  name               text        not null unique,
+  default_print_type text        not null default 'Sheet'
+                                 check (default_print_type in ('Roll', 'Sheet')),
+  facility           text        not null default 'all',  -- 'all', '16th-street', 'boyd-street'
+  sort_order         int         not null default 0,
+  is_active          boolean     not null default true,
+  notes              text,
+  created_at         timestamptz not null default now()
 );
 
--- Material groups (e.g. "BOPP", "Cardstock", "Vinyl (Boyd)")
+-- Material groups — internal DB grouping only, hidden from admin UI
 create table public.material_groups (
-  id         uuid primary key default gen_random_uuid(),
-  name       text not null unique,
-  facility   text,  -- null = both, '16th-street', 'boyd-street'
-  sort_order int  not null default 0,
-  is_active  boolean not null default true
+  id         uuid        primary key default gen_random_uuid(),
+  name       text        not null unique,
+  facility   text,
+  sort_order int         not null default 0,
+  is_active  boolean     not null default true
 );
 
--- Individual materials (e.g. "White BOPP", "14pt C1S")
+-- Materials — text slug PK (e.g. 'bopp-white', 'cs-14c1s')
 create table public.materials (
-  id               uuid primary key default gen_random_uuid(),
-  group_id         uuid references public.material_groups(id) on delete set null,
-  name             text not null,
-  sort_order       int  not null default 0,
-  is_active        boolean not null default true,
-  created_at       timestamptz not null default now()
+  id           text        primary key,
+  name         text        not null,
+  group_id     uuid        references public.material_groups(id) on delete set null,
+  category     text,                           -- denormalized group name
+  facility     text        not null default 'all',
+  sort_order   int         not null default 0,
+  is_active    boolean     not null default true,
+  default_unit text        not null default 'sheets',
+  created_at   timestamptz not null default now()
 );
 
--- Junction: which materials are valid for which product type
+-- Junction — text FKs match the slug PKs above
 create table public.product_material_links (
-  product_type_id  uuid references public.product_types(id) on delete cascade,
-  material_id      uuid references public.materials(id) on delete cascade,
+  product_type_id text references public.product_types(id) on delete cascade,
+  material_id     text references public.materials(id)     on delete cascade,
   primary key (product_type_id, material_id)
 );
 ```
 
-Laminations, finishings, color modes, and sides continue as `lookup_values` categories — they are simple flat lists and do not need product associations.
+Text slug PKs (`labels-roll`, `bopp-white`) are intentional — they stay stable in `quote_skus` JSONB without FK overhead. `material_groups.id` is UUID (internal only).
 
-### Admin Products tab UI
+Laminations, finishings, color modes, and sides remain as `lookup_values` categories — simple flat lists with no product associations needed.
+
+### Admin Products tab UI (built in `components/admin/products-section.tsx`)
+
+**Product-centric layout — no separate Material Library tab:**
 
 **Left panel — product list:**
-- Table: Name, Print Type, Facilities, Active toggle, Sort order
-- "+ Add Product Type" → inline row
-- Click a product to select it
+- `Add Product` button → inline form (name + Roll/Sheet selector)
+- Each row: name, print type pill, active toggle, rename, delete
+- Clicking a product selects it and opens its materials in the right panel
 
 **Right panel — materials for selected product:**
-- Grouped checklist (grouped by material group)
-- Checked = available for this product; uncheck to remove
-- Changes save on click (POST/DELETE `product_material_links`)
-- "+ Add Material" at bottom → opens modal to add a new material (and optionally link it immediately)
+- Flat list of materials linked to this product (no group headers in the UI)
+- `Add Material` button → inline search input:
+  - Type to filter existing materials → click to **link existing**
+  - Press Enter or click a "Create" option to **create new and link in one step**
+- Each material row: name, active toggle, rename (pencil), `×` remove from this product, 🗑 delete from library (with safety check)
+- Deletion is blocked if the material appears in any `job_tickets.quote_skus`
 
-**Second tab/section — standalone lists (flat):**
-- Laminations
-- Color Modes
-- Finishings
+> Material groups are an internal DB concept used for organisation only. The admin never sees or manages them directly.
 
-**API routes:**
+### API routes
+
 ```
-GET    /api/admin/product-types                        all product types + linked material IDs
-POST   /api/admin/product-types                        create
-PATCH  /api/admin/product-types/[id]                   update name / sort / active / facilities
-DELETE /api/admin/product-types/[id]                   only if no tickets reference it
+GET    /api/admin/product-types                        list all product types + linked material IDs
+POST   /api/admin/product-types                        create (auto-generates slug ID from name)
+PATCH  /api/admin/product-types/[id]                   update name / print type / active / facility
+DELETE /api/admin/product-types/[id]                   blocked if referenced in any quote_skus
 
-GET    /api/admin/materials                            all material groups + materials
+GET    /api/admin/materials                            all material groups + their materials
 POST   /api/admin/materials                            create material
-PATCH  /api/admin/materials/[id]                       update
-DELETE /api/admin/materials/[id]                       only if no tickets reference it
+PATCH  /api/admin/materials/[id]                       update name / active / group
+DELETE /api/admin/materials/[id]                       blocked if referenced in any quote_skus
 
-POST   /api/admin/product-types/[id]/materials/[matId] link material to product type
-DELETE /api/admin/product-types/[id]/materials/[matId] unlink
+POST   /api/admin/product-types/[id]/materials/[matId] link material to product
+DELETE /api/admin/product-types/[id]/materials/[matId] unlink material from product
+
+POST   /api/admin/material-groups                      create a material group
+PATCH  /api/admin/material-groups/[id]                 rename group
+DELETE /api/admin/material-groups/[id]                 blocked if group has materials
 
 GET    /api/lookups/products                           public read for OrderDrawer
 ```
 
-**OrderDrawer behavior:**
+### OrderDrawer behavior
+
 1. Product Type dropdown loads from `GET /api/lookups/products`
-2. When product type changes → material dropdown filters to linked materials, grouped by material group
+2. When product type changes → material dropdown filters to only that product's linked active materials
 3. Roll Direction row shows only when selected product has `default_print_type = 'Roll'`
-4. If a saved ticket has a material that is no longer linked → show `"{material} (saved)"` at top of dropdown (same pattern as shadow project for legacy values)
+4. If a saved ticket has a material that is no longer linked → show `"{material} (saved)"` at top of dropdown (shadow project legacy-value pattern)
 
 ---
 
 ## Part 6b — Product Pricing Configuration (Admin-Managed)
 
-This is a new requirement: when an admin adds a product type, they should also configure how the production cost is calculated for that product. This keeps pricing rules in the database (admin-managed), not hardcoded.
+> **Status: Deferred — not built.** Per owner decision Q17 (confirmed 2026-05-11), the pricing calculator is NOT integrated in the OrderDrawer for this phase. Reps enter unit prices manually. This section documents the future pricing tier system for reference only.
+
+This is a future requirement: when an admin adds a product type, they should also configure how the production cost is calculated for that product. This keeps pricing rules in the database (admin-managed), not hardcoded.
 
 ### What admin configures per product type
 
@@ -566,17 +586,30 @@ The pulse project has a standalone calculator that suggests a unit price based o
 ## Part 8 — Updated Build Order
 
 ```
-Phase 2a:  Migration 041 (extend job_tickets)
-Phase 2b:  Types update
-Phase 3:   TODO-001 admin override UI fix
-Phase 3.5: Admin Products tab (required before OrderDrawer)
-           · Migrations: product_types, material_groups, materials, product_material_links
-           · Seed data: insert all products + materials from Parts 2–3 above
-           · API: /api/admin/product-types, /api/admin/materials, link endpoints, /api/lookups/products
-           · UI: components/admin/products-section.tsx
-Phase 4:   Ticket API routes
-Phase 5:   Utilities (ticket-math, pdf, filters)
-Phase 6:   OrderDrawer (loads products/materials from DB, filters dynamically)
-Phase 7:   Quotes + Orders pages
-Phase 8:   Integration
+✅ Phase 2a:  Migration 042 (extend job_tickets — 28 new columns + order_sequence_counters)
+✅ Phase 2b:  Types update (lib/types/index.ts — JobTicket, QuoteSku, TicketForm, CompanySettings)
+✅ Phase 2c:  Schema + docs updated (docs/schema.md)
+✅ Phase 2d:  Migrations 041–045 applied
+                · 041: Products catalog seeded (15 types, 37 materials)
+                · 043: Admin RLS full access; tightened product write policies
+                · 044: Order/quote lookup categories seeded
+                · 045: company_settings table created
+✅ Phase 2e:  Admin Products tab built (components/admin/products-section.tsx)
+✅ Phase 2f:  Admin Dropdown Options tab built (components/admin/dropdowns-section.tsx)
+✅ Phase 2g:  Admin Company Info tab built (components/admin/company-section.tsx)
+⏳ Phase 3.5: TODO-001 admin override UI fix (deferred)
+✅ Phase 4:   Ticket API routes (GET/POST /api/tickets, GET/PATCH /api/tickets/[id],
+              GET /api/tickets/counts, GET /api/activities with linked-lead support)
+              Migration 046: increment_order_sequence() function
+✅ Phase 5:   lib/utils/ticket-math.ts (computePricing, skuLineTotal, formatCurrency)
+              PDF + filters deferred to Phase 8
+✅ Phase 6:   Dedicated pages — /quotes/new (new-quote-form.tsx) + /quotes/[id] (quote-detail.tsx)
+              Design change: full-page UX instead of stacked modal OrderDrawer
+              Products/materials loaded from DB via GET /api/lookups/products
+              Full lifetime history (lead + ticket activities combined)
+              Realtime refresh via bazaar:tickets-changed + bazaar:leads-changed
+✅ Phase 7:   Quotes + Orders list pages (quotes-page.tsx, orders-page.tsx)
+              Migration 047: REPLICA IDENTITY FULL + supabase_realtime for job_tickets
+              Sidebar badge counts for /quotes and /orders
+⏳ Phase 8:   Dashboard revenue integration + PDF export + high-value SDR block
 ```

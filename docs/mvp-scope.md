@@ -14,7 +14,7 @@ This file defines the boundary of the first production build.
 | 2 | **Auth additions** | `/change-password` page for first-login temp password flow. `proxy.ts` extended: `is_active` check, `must_change_password` check, DB-driven route permission check. |
 | 3 | **Minimal user management** | `/admin/users` — Admin creates SDR/Sales users with temp password. No full admin panel. No roles editor yet. |
 | 4 | **SDR Leads page** | `/leads` — All Leads, On Hold, Directed to Sales, Rejected tabs. Manual Add Lead with **customer deduplication lookup**. Verify Drawer with lock + Hold / Reject / Route to Sales + "Update customer?" prompt. |
-| 5 | **Sales Leads page** | `/sales` — Pipeline, On Hold, Rejected tabs. Sales Drawer with lock + Hold / Reject. "Create Order" = non-functional placeholder. |
+| 5 | **Sales Leads page** | `/sales` — Pipeline, On Hold, Rejected tabs. Sales Drawer with lock + Hold / Reject. "Create Quote / Order" navigates to `/quotes/new`. |
 | 6 | **Dashboard (basic)** | KPI cards showing lead counts per status. No charts. Replaces current stub. |
 
 ---
@@ -48,7 +48,7 @@ Sales sees lead in Pipeline tab
        │
        ├── Reject → TERMINAL (only Admin can undo)
        │
-       └── Create Order → placeholder (not yet built)
+       └── Create Quote / Order → saves lead silently → navigates to /quotes/new?lead_id=...
 ```
 
 ---
@@ -58,9 +58,9 @@ Sales sees lead in Pipeline tab
 | Feature | Status |
 |---------|--------|
 | Full Admin panel (Roles editor, Settings, Audit log) | ✅ Built |
-| CRM contact registry + customer profiles | ✅ Built |
+| CRM contact registry + customer profiles | ✅ Built (`/crm`) |
 | Contact dedup / merge | ✅ Built |
-| Tickets / Quote builder / Orders | Next |
+| Tickets / Quote builder / Orders | ✅ Built (Phases 4–7, 2026-05-12) |
 | Statistics / Charts | Next |
 | Notifications (Realtime bell) | Next |
 | Email / SMS outreach | Future |
@@ -123,7 +123,8 @@ from public.roles r where r.name = 'admin';
 ### Lock Fields
 - `locked_by_id`, `locked_at`
 
-### Future Fields (schema ready, UI not built yet)
-- `quote_total`, `quote_channel`, `quote_destination` (Tickets phase)
-- `contact_id` (CRM phase)
+### Built in Post-MVP Tickets Phase
+- `quote_total`, `quote_channel`, `quote_destination` — ✅ live (new-quote-form + quote-detail)
+
+### Future Fields (schema ready, UI not yet built)
 - `assigned_sdr_id` (Admin phase)

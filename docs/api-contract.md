@@ -305,7 +305,10 @@ Max 8 results. `SELECT DISTINCT company FROM customers WHERE company ILIKE '%q%'
 
 ### `GET /api/tickets`
 
-Returns all job tickets. Filtered via query params.
+Returns job tickets. Visibility is role-scoped:
+- **SDR:** own tickets only (`created_by_id = userId`)
+- **Sales/Admin:** own tickets + ALL tickets with `ticket_status = 'routed'` (from any SDR). Routed tickets are enriched with `created_by_name` (SDR's full name from `user_profiles`).
+- **Admin:** all tickets
 
 **Query params:**
 
@@ -313,15 +316,13 @@ Returns all job tickets. Filtered via query params.
 |-------|------|-------------|
 | `kind` | `'quote' \| 'order'` | Filter by `ticket_kind` |
 | `status` | `string` | Filter by `ticket_status` |
-| `contact_id` | `uuid` | Filter by `contact_id` |
 | `lead_id` | `uuid` | Filter by `linked_lead_id` |
-| `from` | `ISO date` | `created_at >= from` |
-| `to` | `ISO date` | `created_at <= to` |
+| `search` | `string` | Search on contact name, company, title, reference code |
 
 **Response `200`:**
 ```json
 {
-  "tickets": [Ticket]
+  "tickets": [Ticket]   // routed tickets include created_by_name: string
 }
 ```
 
@@ -335,28 +336,57 @@ Create a new ticket.
 ```json
 {
   "ticket_kind": "quote | order",
-  "contact_id": "uuid | null",
+  "ticket_status": "draft | sent | routed",
+  "customer_id": "uuid | null",
   "linked_lead_id": "uuid | null",
   "contact_email": "string",
   "contact_name": "string",
   "contact_company": "string",
-  "subtotal": "number",
-  "discount_percent": "number | null",
-  "discount_amount": "number | null",
-  "total": "number",
-  "payment_type": "string | null",
-  "prepay_amount": "number | null",
-  "product_lines": "array",
-  "quote_skus": "array",
+  "contact_phone": "string | null",
+  "title": "string",
+  "priority": "string | null",
+  "due_date": "ISO date | null",
+  "order_source": "string | null",
   "rush": "boolean",
-  "follow_up_at": "ISO timestamp | null",
-  "notes": "string | null"
+  "special_requirements": "string | null",
+  "notes": "string | null",
+  "quote_skus": "QuoteSku[]",
+  "quote_subtotal": "number | null",
+  "quote_shipping": "number | null",
+  "discount_type": "percent | fixed | null",
+  "discount_value": "string | null",
+  "discount_reason": "string | null",
+  "quote_pre_tax_total": "number | null",
+  "quote_tax_rate_percent": "number | null",
+  "quote_tax_amount": "number | null",
+  "quote_final_total": "number | null",
+  "tax_exempt": "boolean",
+  "sales_permit_number": "string | null",
+  "quote_payment_types": "string[]",
+  "prepayment_type": "percent | fixed | null",
+  "prepayment_value": "string | null",
+  "quote_channel": "string | null",
+  "quote_destination": "string | null",
+  "quote_reminder_date": "ISO date | null",
+  "follow_up_cycles": "number | null",
+  "follow_up_frequency": "string | null",
+  "customer_data": {
+    "first_name": "string",
+    "last_name": "string | null",
+    "email": "string | null",
+    "phone": "string | null",
+    "company": "string | null"
+  }
 }
 ```
 
 **Business rules:**
 - `created_by_id = current_user`
-- `ticket_status = 'draft'` on creation
+- `ticket_status` defaults to `'draft'` if not provided; `'routed'` is accepted for HVT saves from SDRs
+- **Customer upsert:** if `customer_data` is provided and `customer_id` is null, the server upserts a `customers` row (matches on email/phone; creates new if no match) and sets `customer_id`
+- For `ticket_kind = 'order'`: auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence(year)` PL/pgSQL function
+- Sets `design_required = true` if any SKU has `design_required = true`; same for `die_cut`
+- If `linked_lead_id` is provided, updates the linked lead's `status` to `'Quoted'` or `'Validated'`
 - Logs `order_ticket_created` activity
 
 **Response `201`:**
@@ -370,9 +400,24 @@ Create a new ticket.
 
 ### `PATCH /api/tickets/[id]`
 
-Partial ticket update.
+Partial ticket update. Two distinct operation modes:
 
-**Body:** Any subset of ticket fields plus optional:
+**Mode 1 — Claim (Sales/Admin only):**
+```json
+{
+  "ticket_status": "draft",
+  "claim_ownership": true
+}
+```
+- Ticket must currently have `ticket_status = 'routed'`
+- Caller must be `sales` or `admin`
+- Sets `ticket_status = 'draft'` and `created_by_id = callerUserId`
+- Logs `order_ticket_status_changed` activity with `payload: { from: "routed", to: "draft", action: "claimed" }`
+- Bypasses the normal ownership check (`created_by_id = userId`)
+
+**Mode 2 — Normal update:**
+
+Body: Any subset of ticket fields plus optional:
 ```json
 {
   "activity_by_role": "sdr | sales"
@@ -381,13 +426,12 @@ Partial ticket update.
 
 `activity_by_role` is stripped from the stored record but used to attribute the activity log entry.
 
-**Business rules:**
-- If `quote_approval_last_requested_at` is set → logs `quote_approval_requested` activity
+**Business rules (Mode 2):**
+- If `quote_approval_last_requested_at` is set → logs `quote_approval_requested`
 - If `follow_up_completed` transitions to `true` → logs `quote_follow_up_completed`
-- If `follow_up_at` is reset (set to null after being set) → logs `quote_follow_up_reset`
-- If `client_confirmed` transitions to `true` → logs `ticket_client_confirmed`; creates `follow_up_due` notification for ticket owner
-- Otherwise → logs `order_ticket_updated` with `payload.fields` listing changed keys
-- Resolves `contact_id` and `lead_id` from `linked_lead_id` if not provided directly
+- If `follow_up_at` is reset → logs `quote_follow_up_reset`
+- If `client_confirmed` transitions to `true` → logs `ticket_client_confirmed`; creates `follow_up_due` notification
+- Otherwise → logs `order_ticket_updated` with `payload.fields`
 
 **Response `200`:**
 ```json
@@ -398,7 +442,51 @@ Partial ticket update.
 
 ---
 
+### `GET /api/tickets/counts`
+
+Returns lightweight tab badge counts. Scoped per role.
+
+**Response `200`:**
+```json
+{
+  "counts": {
+    "drafts": 0,
+    "sent": 0,
+    "approved": 0,
+    "orders": 0,
+    "routed": 0,
+    "total": 0
+  }
+}
+```
+
+- **SDR:** `routed` = count of their own routed tickets (subtracted from `all` on the Quotes page)
+- **Sales/Admin:** `routed` = count of ALL routed tickets from any SDR
+
+---
+
 ## Activity
+
+### `GET /api/activities`
+
+Unified activity endpoint. Supports both lead-scoped and ticket-scoped queries.
+
+**Query params (at least one required):**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `lead_id` | `uuid` | Activities for this lead |
+| `ticket_id` | `uuid` | Activities for this job ticket |
+| `include_linked_lead` | `"true"` | When used with `ticket_id`: also fetches the ticket's linked lead activities, merges them chronologically (oldest first), adds `_source: "lead" | "ticket"` to each row |
+
+**Response `200`:**
+```json
+{
+  "activities": [Activity]
+}
+```
+
+---
 
 ### `GET /api/leads/[id]/activities`
 
@@ -873,7 +961,17 @@ Returns all values (including inactive) for all categories. Admin only — used 
   "hold_reason": [LookupValue],
   "reject_reason": [LookupValue],
   "route_reason": [LookupValue],
-  "sales_drop_reason": [LookupValue]
+  "sales_drop_reason": [LookupValue],
+  "lamination": [LookupValue],
+  "finishing": [LookupValue],
+  "color_mode": [LookupValue],
+  "sides": [LookupValue],
+  "roll_direction": [LookupValue],
+  "quote_channel": [LookupValue],
+  "follow_up_freq": [LookupValue],
+  "ticket_priority": [LookupValue],
+  "order_source": [LookupValue],
+  "ticket_payment": [LookupValue]
 }
 ```
 
@@ -914,6 +1012,78 @@ Update label, sort_order, or is_active. Admin only.
 - `value` and `category` cannot be changed after creation (they may be stored in historical lead records)
 
 **Response `200`:** `{ "item": LookupValue }`
+
+---
+
+## Products Catalog
+
+### `GET /api/lookups/products`
+
+Returns the full product catalog for the new-quote-form SKU dropdowns. Open to all authenticated users.
+
+**Response `200`:**
+```json
+{
+  "products": [
+    {
+      "id": "string",
+      "name": "string",
+      "is_roll": "boolean",
+      "is_active": "boolean",
+      "materials": [
+        {
+          "id": "string",
+          "name": "string",
+          "is_active": "boolean"
+        }
+      ]
+    }
+  ]
+}
+```
+
+Products and materials with `is_active = false` are excluded. Managed via **Admin → Products** tab.
+
+---
+
+## Company Settings
+
+### `GET /api/admin/company`
+
+Returns the single `company_settings` row. Accessible to all authenticated users (OrderDrawer needs tax rate + threshold at runtime).
+
+**Response `200`:**
+```json
+{
+  "settings": {
+    "id": 1,
+    "company_name": "string",
+    "address_line1": "string | null",
+    "address_line2": "string | null",
+    "city": "string | null",
+    "state": "string | null",
+    "zip": "string | null",
+    "phone": "string | null",
+    "email": "string | null",
+    "website": "string | null",
+    "logo_url": "string | null",
+    "default_tax_rate": "number",
+    "high_value_threshold": "number",
+    "rush_surcharge_percent": "number | null",
+    "updated_at": "string"
+  }
+}
+```
+
+---
+
+### `PATCH /api/admin/company`
+
+Update company settings. Admin only.
+
+**Body:** Any subset of company_settings fields (except `id`).
+
+**Response `200`:** `{ "settings": CompanySettings }`
 
 ---
 

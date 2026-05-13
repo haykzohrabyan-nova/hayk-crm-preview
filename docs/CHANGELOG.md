@@ -3,6 +3,482 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-13] — HV threshold check extended to quote-detail editing
+
+### Changed
+- `components/quote-detail.tsx` — SDR users editing an existing `draft` quote now trigger the same High-Value Threshold blocking modal as the new-quote flow. If the final total exceeds the threshold, a non-dismissible modal with a 30-second countdown appears; on "OK" or timeout the quote is saved as `routed` and the SDR is redirected to `/quotes`. Applies regardless of whether the draft was created from a lead, the CRM, or the Quotes page.
+
+## [2026-05-13] — Backfill routed status for pre-migration SDR quotes
+
+### Added
+- `supabase/migrations/051_backfill_routed_status.sql` — one-time backfill that finds `draft` quotes created by SDR users whose `quote_final_total` exceeds the company's `high_value_threshold`, and sets their `ticket_status` to `routed` so Sales can see and claim them in the new "Routed to Sales" tab
+
+
+
+### Added
+- `lib/types/index.ts` — added `'routed'` to `TicketStatus` union
+- `components/quotes-page.tsx` — "Routed to Sales" tab (visible only to `sales` and `admin` roles); dedicated table layout showing SDR name, total, and a "Claim" button; routed tickets hidden from all other tabs; amber badge on the tab
+- `app/api/tickets/[id]/route.ts` — `claim_ownership: true` in PATCH body triggers a claim flow: validates ticket is `routed`, updates `ticket_status → draft` and `created_by_id → claimant`, logs activity. GET now also allows `sales`/`admin` to view `routed` tickets they don't own.
+- `app/api/tickets/counts/route.ts` — added `routed` count for `sales`/`admin` roles
+- `app/api/sidebar-counts/route.ts` — `/quotes` badge for `sales`/`admin` now includes unclaimed routed ticket count
+
+### Changed
+- `components/new-quote-form.tsx` — high-value HV redirect saves ticket as `'routed'` instead of `'draft'`; `handleSave` signature updated to accept `"routed"`
+- `app/api/tickets/route.ts` — GET: `sales` users now receive their own tickets **or** tickets with `ticket_status = 'routed'`; routed tickets are enriched with `created_by_name` (SDR display name from `user_profiles`)
+
+
+
+### Added
+- `components/new-quote-form.tsx` — when an SDR user clicks "Next" from Line Items and the quote total exceeds the company's High-Value Threshold, a blocking modal appears with a 30-second animated countdown ring. On "OK" or countdown expiry the draft is auto-saved and the user is redirected to `/quotes` so a Sales rep can claim it. The user cannot dismiss the modal in any other way.
+- Fetches current user's role on mount via Supabase `user_profiles` so the check only applies to `sdr` users.
+
+
+
+### Changed
+- `components/crm-page.tsx` — added "Add Quote" (`FilePlus`) button next to "View" in both table row and card view; clicking it navigates to `/quotes/new` with customer fields pre-filled as query params
+- `components/new-quote-form.tsx` — reads `first_name`, `last_name`, `email`, `phone`, `company` from URL search params to pre-fill the Customer tab; automatically skips to the Info tab when arriving with customer data already filled
+
+## [2026-05-13] — Fix sidebar counts; move "Won" to Quotes page
+
+### Fixed
+- `app/api/sidebar-counts/route.ts` — sidebar badge for "Quoted Requests" was always 0 because `ticketQuery()` returns data rows (not a count), so switched to `(data ?? []).length`. Also added `approved` to the `/quotes` badge statuses.
+
+### Changed
+- `components/quotes-page.tsx` — renamed "Approved" tab to **"Won"** (customer accepted quote).
+- `components/orders-page.tsx` — removed "Won" / `approved` tab and status from Orders; `approved` tickets now live exclusively on the Quotes page. Orders page now only shows `order` and `cancelled`.
+- `app/api/sidebar-counts/route.ts` — `/quotes` badge includes `draft + sent + approved`; `/orders` badge counts only `ticket_status = "order"`.
+
+## [2026-05-13] — Use admin-panel lookups for priority, channel, payment, follow-up freq
+
+### Changed
+- `components/quote-detail.tsx` — fetches `ticket_priority`, `quote_channel`, `ticket_payment`, `follow_up_freq` from `/api/lookups`; hardcoded arrays (`PRIORITY_OPTIONS`, `CHANNEL_OPTIONS`, `PAYMENT_OPTIONS`, `FOLLOW_UP_FREQ`) kept only as fallbacks. `InfoSection` and `QuoteSection` now receive these as props.
+
+### Added
+- `supabase/migrations/050_add_urgent_priority.sql` — seeds `('ticket_priority', 'urgent', 'Urgent', 3)` so "Urgent" appears in priority dropdowns from the admin panel
+
+
+
+### Changed
+- `components/quote-detail.tsx` — Quote tab now renders two distinct flows:
+  - **Quote first**: shows pricing inputs → "Send Quote to Customer" (channel + destination) → Follow-up Schedule. Payment Methods section only appears once the ticket status is `approved`
+  - **Direct order**: shows pricing inputs → Payment Methods first → "Send Payment Link" (channel + destination). No follow-up schedule
+- Read-only view labels update to match the active flow ("Send Payment Link Via" vs "Send Quote Via"; Payment Methods hidden for quote-first until approved)
+
+## [2026-05-13] — Fix urgency check constraint on lead create/edit
+
+### Fixed
+- `app/api/leads/manual/route.ts` — normalize urgency to title case (`high` → `High`) before inserting; lookup values store lowercase keys but the DB constraint requires `'High' | 'Medium' | 'Low'`
+- `app/api/leads/[id]/route.ts` — same normalization applied in the PATCH handler so editing a lead's urgency no longer throws the constraint violation
+
+## [2026-05-13] — Consolidated schema file for fresh DB setup
+
+### Added
+- `supabase/schema.sql` — single-file equivalent of all 50 migrations (001–049).
+  Run this on a blank Supabase project to reach the current production schema in one shot.
+  Includes: all table definitions (final column state), indexes, RLS + policies (final),
+  functions, triggers, views, realtime setup, grants, and all seed data
+  (roles, pages, role_permissions, lookup values, product catalog, company settings).
+  Dev-only and one-time cleanup scripts are intentionally excluded.
+
+## [2026-05-13] — Remove Statistics page (Dashboard handles all analytics)
+
+### Removed
+- `app/(app)/statistics/page.tsx` — spec-preview page deleted; never built
+- `docs/feature-specs/statistics.md` — spec deleted; analytics covered by Dashboard instead
+- `supabase/migrations/049_remove_statistics_page.sql` — removes `/statistics` from `pages` table; `role_permissions` rows cascade-delete
+
+### Changed
+- `docs/navigation.md` — removed `/statistics` from all three sidebar views (SDR / Sales / Admin), icon map, and breadcrumb table
+- `docs/rbac.md` — removed `/statistics` from SDR and Sales default page lists and from the page access matrix
+- `docs/schema.md` — marked `/statistics` page row as removed; updated default page lists for SDR and Sales roles; added migration 049 to file order
+- `docs/session-summary.md` — navigation table updated (Statistics row marked removed); migration table updated with 049; "What's Next" updated
+
+## [2026-05-13] — Final doc pass: session-summary + SDR duplicate-check endpoint
+
+### Fixed
+- `docs/feature-specs/leads-sdr.md` — "Duplicate banner" section had wrong endpoint `/api/contacts/lookup`; corrected to `/api/customers/lookup` (matches the Manual Add Lead section in the same file and the actual API)
+
+### Changed
+- `docs/session-summary.md` — updated to current state (last updated was May 10, missing Tickets/Admin/Integrations work): status line refreshed, navigation table updated (all /quotes + /orders + admin tabs now shown as ✅ Built), migration table updated to 048, "What Was Accomplished" expanded with Tickets and Admin sections, "What's Next" queue updated to remove already-built items and add remaining deferred work
+
+## [2026-05-13] — Triple-check audit: code bug fixes + final doc corrections
+
+### Fixed
+- `lib/types/index.ts` — `LookupCategory` was missing `color_mode`, `sides`, `roll_direction` (present in DB and `CATEGORY_META` but not in the type union); `QuoteSku` interface was outdated (missing `color_mode`, `sides`, `roll_direction`, `spot_uv`, `foil`, `perforation`, `comment`); both now match `lib/utils/ticket-math.ts` and the actual DB schema
+
+### Changed
+- `docs/api-contract.md` — Company Settings response shape corrected: `address_street/city/state/zip/country` → `address_line1`, `address_line2`, `city`, `state`, `zip` (matches migration 045 column names)
+- `docs/feature-specs/admin.md` — Company Info address fields: removed non-existent "Country" field; now shows Address Line 1, Address Line 2, City, State, ZIP
+- `docs/schema.md` — added `company_settings` table definition (missing from docs despite migration 045 being present)
+- `docs/types.md` — `TicketBuilderForm` renamed to `TicketForm` (matches actual `lib/types/index.ts`); `QuoteSku` updated to canonical shape; `LookupCategory` changed to flat union (matches actual code); added `CompanySettings` interface (was in code but missing from docs)
+
+## [2026-05-13] — Second documentation pass — navigation, architecture, RBAC
+
+### Changed
+- `docs/navigation.md` — dashboard and change-password corrected from "TO BUILD" to "✓ EXISTS"; CRM corrected from `⬜` to `✓` in all sidebar role views; Settings corrected to `✓`; integrations tab added to admin settings route tree and breadcrumbs table
+- `docs/architecture.md` — file structure completely updated: migrations bumped from 033 to 048; added all Tickets API routes (`/api/tickets/*`), lookup routes (`/api/lookups/products`), admin routes (`/api/admin/company`, `/api/admin/lookups/*`, `/api/admin/product-types/*`, `/api/admin/materials/*`); added all new components (`new-quote-form`, `quote-detail`, `quotes-page`, `orders-page`, all admin sections); added `lib/utils/ticket-math.ts`
+- `docs/rbac.md` — API endpoint matrix replaced with correct current endpoint names (`/api/customers/` not `/api/contacts/`, no `/api/leads/inbox`, no `/api/leads/verify`); added 15 new rows for tickets, lookups, admin CRUD; Database RLS matrix renamed `contacts` → `customers` and added `lookup_values`, `product_types/materials`, `company_settings` rows
+
+## [2026-05-13] — Full documentation audit and update
+
+### Changed
+- `docs/types.md` — `LookupCategory` now includes all 10 order/quote categories; `QuoteSku` fully rewritten to match `lib/utils/ticket-math.ts` (was stale old shape); `JobTicket` updated with all 28+ columns from migration 042; `TicketBuilderForm` rewritten to match `new-quote-form.tsx` local state shape
+- `docs/api-contract.md` — `POST /api/tickets` body updated with all current fields (title, priority, due_date, rush, all quote_* pricing fields, etc.); `GET /api/admin/lookups` response updated to include all 10 order/quote categories; added missing `GET/PATCH /api/admin/company` and `GET /api/lookups/products` endpoint documentation
+- `docs/mvp-scope.md` — removed stale "Future Fields" note for `quote_total`, `quote_channel`, `quote_destination` (all built)
+- `docs/component-architecture.md` — expanded `PhoneInput` and `EmailInput` "Used in" to reflect all current usages; added component-reuse rule
+- `docs/feature-specs/tickets.md` — Send Via destination field documents smart component swap (EmailInput / PhoneInput)
+- `docs/feature-specs/admin.md` — Company Info documents PhoneInput + EmailInput usage + client-side validation; Invite User form documents EmailInput usage
+
+## [2026-05-13] — Use shared PhoneInput / EmailInput everywhere
+
+### Changed
+- `components/ui/email-input.tsx` — added optional `onBlur` prop so callers can attach blur-time validation
+- `components/admin/company-section.tsx` — replaced custom `FieldInput type="email"` with reusable `EmailInput` (was already using `PhoneInput` for phone)
+- `components/admin/users-section.tsx` — replaced shadcn `Input type="email"` on invite form with reusable `EmailInput`
+- `components/new-quote-form.tsx` — quote delivery destination now renders `EmailInput` when channel is Email, `PhoneInput` when SMS/WhatsApp, plain text input otherwise
+- `components/quote-detail.tsx` — same conditional-component pattern for quote destination as above; label also updated to reflect In-person / SMS / WhatsApp channels
+
+## [2026-05-13] — Add Integrations section to Admin panel
+
+### Added
+- `components/admin/integrations-section.tsx` — placeholder page showing Stripe and Zelle cards with "Coming soon" badges, planned feature bullets, and disabled "Configure" buttons
+- `app/(app)/admin/settings/[tab]/page.tsx` — registered `integrations` as a supported tab
+- `app/(app)/admin/page.tsx` — added Integrations overview card with `Plug` icon
+- `components/admin/settings-tab-nav.tsx` — added Integrations tab link
+
+---
+
+## [2026-05-12] — Guard inactive/deleted lookup values in all selects
+
+### Changed
+- `components/new-quote-form.tsx` + `components/quote-detail.tsx` — replaced `withSavedValue` helper with `renderLookupOptions`. If a saved value is no longer in the active list (deactivated or hard-deleted), it is re-injected as `"<label> (inactive)"` with the HTML `value` attribute set to the **original label string** so the stored data is never silently wiped on save. Applied to all SKU and Quote tab selects.
+
+---
+
+## [2026-05-12] — Quote tab dropdowns (Priority, Channel, Payment, Follow-up) now dynamic
+
+### Changed
+- `components/new-quote-form.tsx` — removed hardcoded `PRIORITY_OPTIONS`, `CHANNEL_OPTIONS`, `PAYMENT_OPTIONS`, `FOLLOW_UP_FREQ` constants and dead `PREPAY_OPTIONS`. All four are now loaded via `/api/lookups?categories=ticket_priority,quote_channel,ticket_payment,follow_up_freq` in the same single request that already fetches SKU lookups. Added `QuoteLookups` type. `InfoTab` and `QuoteTab` accept the lookup arrays as props.
+
+---
+
+## [2026-05-12] — SKU dropdowns now fully admin-managed (no more hardcoded options)
+
+### Changed
+- `components/new-quote-form.tsx` + `components/quote-detail.tsx` — Lamination, Color Mode, Sides, Roll Direction, and Add-on Finishings are now loaded at runtime from `/api/lookups?categories=lamination,color_mode,sides,roll_direction,finishing`. Hardcoded option arrays removed. Fallback to built-in values if API data is not yet loaded.
+- Admin → Dropdown Options now shows all 5 SKU categories under **Order / Quote** section (Color Mode, Sides, Roll Direction were registered via migration 048; Add-on Finishings / Lamination were already present)
+
+---
+
+## [2026-05-12] — Match shadow project SKU field order; add Line Item Comment
+
+### Changed
+- `components/new-quote-form.tsx` — `SkuRow` fields reordered to match shadow project: Product Type / Material → Width / Height → Color Mode / Sides → Quantity / Unit Price → **Lamination / Roll Direction** (side-by-side, always visible). Roll Direction is no longer conditional. Added line-price banner and Line Item Comment textarea. Add-on Finishings section split into UV Coating / Foil / Perforation checkboxes + Design on file / Die Cut row.
+- `components/quote-detail.tsx` — `EditableSkuRow` updated with same field order and new fields. Read-only card now shows comment.
+- `lib/utils/ticket-math.ts` — `QuoteSku` extended with `comment?: string`
+
+---
+
+## [2026-05-12] — Add Color Mode, Sides, Roll Direction to SKU form
+
+### Added
+- `supabase/migrations/048_add_sku_lookup_values.sql` — seeds three new admin-managed lookup categories: `color_mode`, `sides`, `roll_direction`
+- `app/api/admin/lookups/route.ts` — registers the three new categories in `CATEGORY_META` so they appear under Admin → Dropdown Options → Order / Quote
+
+### Changed
+- `lib/utils/ticket-math.ts` — `QuoteSku` interface extended with `color_mode`, `sides`, `roll_direction` optional fields
+- `components/new-quote-form.tsx` — SKU row now renders Color Mode + Sides in a 2-column grid row, and Roll Direction (conditionally, for roll-based product types)
+
+---
+
+## [2026-05-12] — Close shadow project gaps in new-quote-form
+
+### Changed
+- `components/new-quote-form.tsx`
+  - SKU description is now auto-derived on every field change: `productType – material – lamination` (shadow project rule; needed for PDF)
+  - Quote destination input now uses `type="tel"` for SMS and WhatsApp channels (was `type="text"`)
+  - Prepayment section now shows **Due now / Balance** split below the input, using the shadow project's prepayment formula
+
+## [2026-05-12] — Clickable phone and email across all lead/customer cards
+
+### Changed
+- `components/new-quote-form.tsx` — phone → `tel:` link, email → `mailto:` link in LeadInfoCard; both styled in accent color with hover opacity
+- `components/quote-detail.tsx` — same in LinkedLeadCard
+- `components/customer-profile.tsx` — phone and email in the contact fields grid are now `tel:` / `mailto:` links
+
+## [2026-05-12] — Quote detail page Linked Lead card shows full context
+
+### Changed
+- `components/quote-detail.tsx` — `LinkedLeadCard` updated to match `new-quote-form.tsx`: now shows industry, returning customer badge, source, urgency, "What they need", product interests + quantities, and SDR notes. Updated `Lead` interface to include `source`, `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`.
+
+## [2026-05-12] — New quote lead info card shows full lead context
+
+### Changed
+- `components/new-quote-form.tsx` — `LeadInfoCard` now shows all useful lead data: name + company + industry, returning customer badge, phone, email, lead source, urgency, "What they need" (initial interest), product interests + quantities (bullet list), SDR notes. Updated `LeadInfo` interface to include `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`, `customer.website`.
+
+## [2026-05-12] — Fix: GET /api/leads/[id] was missing
+
+### Fixed
+- `app/api/leads/[id]/route.ts` — added `GET` handler; previously only `PATCH` existed. Without this, `new-quote-form.tsx` could never fetch the lead on page load, so `customer_id` was always null on created tickets and the lead info card was always empty.
+
+## [2026-05-12] — CRM customer profile shows Quotes & Orders
+
+### Changed
+- `components/customer-profile.tsx` — replaced "Order History" placeholder with a live list of quotes and orders for the customer; fetches `GET /api/tickets?customer_id=<id>` in parallel with the customer data; each row shows kind icon, title, Rush badge, reference code, relative date, total, and status pill; clicking a row navigates to `/quotes/[id]`
+- `app/api/tickets/route.ts` — added `customer_id` query param filter so the CRM can fetch tickets scoped to a specific customer
+
+## [2026-05-12] — Fix: tickets API DB_ERROR on user_profiles join
+
+### Fixed
+- `app/api/tickets/route.ts` — removed `created_by:user_profiles!job_tickets_created_by_id_fkey` from the SELECT; `created_by_id` references `auth.users`, not `user_profiles`, so PostgREST had no FK path and returned a 500. Creator name is not shown in the list view so the join was unnecessary.
+- `app/api/tickets/[id]/route.ts` — same bad join removed; creator profile is now fetched with a separate `user_profiles` query after the ticket is loaded. Also fixed `lead:leads(...)` select — removed `first_name`, `last_name`, `industry`, `notes` which don't exist on the `leads` table (those live on `customers`); the invalid column names caused Supabase to return null even when the ticket existed, producing a false 404.
+
+## [2026-05-12] — Fix: Save Draft redirects to Quoted Requests list
+
+### Changed
+- `components/new-quote-form.tsx` — after saving: **Save Draft** → `/quotes` (list), **Save & Send Quote** → `/quotes/[id]` (detail page for immediate follow-up)
+
+## [2026-05-12] — Fix: proxy.ts blocked /quotes/new and /quotes/[id]
+
+### Fixed
+- `proxy.ts` — route permission check was an exact match against `pages.route`, so sub-routes like `/quotes/new` and `/quotes/[id]` were never found in `role_permissions` and every non-admin user was silently redirected to their home page instead. Changed to prefix matching: if a role has access to `/quotes`, they automatically have access to `/quotes/*`. This also future-proofs `/crm/[id]`, `/orders/[id]`, etc.
+
+## [2026-05-12] — Docs audit: full sweep of all 33 doc files
+
+### Changed
+- `docs/rbac.md` — replaced `/tickets` with `/quotes`, `/quotes/new`, `/quotes/[id]`, `/orders` in route matrix and role definitions; added `GET /api/tickets/[id]`, `GET /api/tickets/counts`, `GET /api/activities` to API access matrix
+- `docs/api-contract.md` — added `GET /api/tickets/counts` endpoint; added `GET /api/activities` (ticket-scoped + `include_linked_lead` param) above the older lead-scoped activity endpoints
+- `docs/feature-specs/activity.md` — updated "Used inside" header to reference `quote-detail.tsx` instead of "Order Drawer"; expanded ticket-scoped section to document the built `GET /api/activities?ticket_id` and `include_linked_lead` parameter
+- `docs/feature-specs/dashboard.md` — "Quotes & Orders" quick action link changed from `/tickets` to `/quotes`
+- `docs/feature-specs/admin.md` — custom role page example updated: `/tickets` replaced with `/quotes` + `/orders`
+- `docs/schema.md` — `pages` table seed data corrected: `/tickets` row replaced with `/quotes` + `/orders`; seeded role permissions updated for SDR and Sales roles
+- `docs/navigation.md` — Breadcrumbs/Page Titles table updated: `/tickets` removed, `/quotes`, `/quotes/new`, `/quotes/[id]`, `/orders` added
+
+### Changed
+- `docs/navigation.md` — full route tree updated: `leads`, `sales`, `quotes/*`, `orders` all marked ✓ EXISTS; `/tickets` route replaced with `/quotes` and `/orders`; sidebar nav items updated with badge descriptions; tab URL convention corrected for all four pages; icon map updated
+- `docs/feature-specs/leads-sdr.md` — "Quote tab not built" items updated: "Create Quote / Order" button is now live; `status = 'Quoted'` is set automatically by the ticket API
+- `docs/feature-specs/leads-sales.md` — Order/Quote tab updated to describe the page-navigation flow; "Convert to Order" footer action updated; deferred items marked correctly built vs. still pending
+- `docs/feature-specs/tickets.md` — fully rewritten to match actual implementation (pages, not modal; correct routes, tabs, API contract, realtime)
+- `docs/realtime-live-updates.md` — `job_tickets` row corrected from `042_enable_job_tickets_realtime.sql` (planned) to `047_enable_job_tickets_realtime.sql` (✅ built); consumer list updated
+- `docs/TODO.md` — TODO-002 (auto-set Quoted/Validated status) marked ✅ DONE; implemented in `app/api/tickets/route.ts`
+- `docs/mvp-scope.md` — "Create Order = placeholder" updated to reflect live navigation to `/quotes/new`; "Tickets / Quote builder / Orders" row updated to ✅ Built
+- `docs/component-architecture.md` — added page-by-page breakdown for `/quotes`, `/orders`, `/quotes/new`, `/quotes/[id]`; role-specific components table updated with four new components
+
+## [2026-05-12] — Phase 7: Quotes + Orders list pages live
+
+### Added
+- `components/quotes-page.tsx` — Quoted Requests list; tabs: All / Draft / Sent / Approved with count badges on all tabs; search by contact, company, title or reference; columns: Contact, Title, Channel, Total, Status, Follow-up (red if overdue), Created; clicking any row or View button navigates to `/quotes/[id]`; listens to `bazaar:tickets-changed` for realtime silent refresh
+- `components/orders-page.tsx` — Orders list; tabs: All / Active / Won / Cancelled with count badges; search; columns: Order #, Contact, Title (with Rush lightning bolt), Total, Priority (colour-coded), Due Date (orange = due soon, red = overdue), Status, Created; navigates to `/quotes/[id]` (same ticket record); realtime via `bazaar:tickets-changed`
+
+### Changed
+- `app/(app)/quotes/page.tsx` — replaced spec preview placeholder with `<QuotesPage />`
+- `app/(app)/orders/page.tsx` — replaced spec preview placeholder with `<OrdersPage />`
+- `app/api/sidebar-counts/route.ts` — added `/quotes` count (active non-cancelled quote tickets) and `/orders` count (sent/order-status tickets) so the sidebar nav badges populate for those two pages
+
+## [2026-05-12] — Enable Realtime on job_tickets
+
+### Added
+- `supabase/migrations/047_enable_job_tickets_realtime.sql` — `REPLICA IDENTITY FULL` + `ALTER PUBLICATION supabase_realtime ADD TABLE public.job_tickets`; same pattern as migrations 035/036 for `leads`/`activities`. Without this, the sidebar's `tickets-realtime` channel would subscribe successfully but never receive any events from the DB.
+
+## [2026-05-12] — Quote/Order realtime refresh + full lifetime history
+
+### Changed
+- `components/quote-detail.tsx`
+  - Listens to `bazaar:tickets-changed` and `bazaar:leads-changed` events (broadcast by sidebar realtime subscriptions) — silently re-fetches the ticket + linked lead whenever either changes; edit-state is not clobbered if the user is actively editing
+  - History tab now fetches the **complete lifetime** of the record (all lead activities from `leads` + all ticket activities from `job_tickets`) via `GET /api/activities?ticket_id=xxx&include_linked_lead=true`
+  - History redesigned: vertical timeline, date separators, per-event icons, human-readable labels, **Lead / Ticket source badge** on each row so you can see exactly when the lead became a quote and then an order
+  - History section listens to `bazaar:activities-changed` to auto-append new entries without a full page reload
+- `components/new-quote-form.tsx` — lead info card now silently refreshes when `bazaar:leads-changed` fires (another user may update the lead while the form is open)
+- `app/api/activities/route.ts` — added `include_linked_lead=true` query param: when set, the API fetches activities for both the ticket AND its linked lead, merges them, and returns them chronologically oldest→newest; each row gets a `_source` field (`"lead"` or `"ticket"`)
+
+## [2026-05-12] — Phase 4–6: Tickets API, Quote/Order dedicated pages
+
+### Added
+- `supabase/migrations/046_order_sequence_function.sql` — `increment_order_sequence(p_year)` PL/pgSQL function; atomically increments the `order_sequence_counters` table and returns the next sequence number for ORD-YYYY-NNN reference codes
+- `app/api/tickets/route.ts` — `GET /api/tickets` (list with scoped visibility) + `POST /api/tickets` (create quote or order with auto reference-code generation and activity logging)
+- `app/api/tickets/[id]/route.ts` — `GET /api/tickets/[id]` (single ticket with joined lead/customer) + `PATCH /api/tickets/[id]` (update with status-change logging; locked for reps once ticket is in order status)
+- `app/api/tickets/counts/route.ts` — `GET /api/tickets/counts` (lightweight tab badge counts: drafts / sent / approved / orders / total)
+- `app/api/activities/route.ts` — `GET /api/activities?lead_id=xxx` or `?ticket_id=xxx` (shared activities endpoint for both lead and ticket history timelines)
+- `lib/utils/ticket-math.ts` — pure pricing helpers: `computePricing()`, `skuLineTotal()`, `formatCurrency()`
+- `app/(app)/quotes/new/page.tsx` — server shell for new-quote page (reads `lead_id` from searchParams)
+- `components/new-quote-form.tsx` — full 3-tab (Info → Line Items → Quote) create form; shows lead info card on the left; pre-fills contact email from lead; Save Draft + Save & Send Quote footer actions
+- `app/(app)/quotes/[id]/page.tsx` — server shell for quote detail/edit page
+- `components/quote-detail.tsx` — 4-tab (Info | Line Items | Quote | History) view/edit component; read-only by default, edit mode toggled by Edit button; status-aware action bar (Send Quote / Mark Won / Cancel Ticket); linked lead card in sidebar; skeleton loader
+
+### Changed
+- `components/verify-drawer.tsx` — "Create Quote / Order" button is now live: saves the lead silently then navigates to `/quotes/new?lead_id=<id>`; added `useRouter` + `handleCreateQuote`
+- `components/sales-drawer.tsx` — same: "Create Quote / Order" now saves sales fields silently then navigates to `/quotes/new?lead_id=<id>`
+- `docs/order-ticket/integration-plan.md` — Phase 6 updated to document the design change from modal (OrderDrawer) to dedicated pages (`/quotes/new` + `/quotes/[id]`)
+
+## [2026-05-12] — Fix: rejection from Sales clears sales_status
+
+### Fixed
+- `components/sales-drawer.tsx` — `handleRejectConfirm` now also patches `sales_status: null` alongside `status: "Rejected"`. Previously `sales_status` was left as "Ongoing" even after rejection, causing it to display incorrectly anywhere the sales status was shown.
+
+---
+
+## [2026-05-12] — Disable backdrop click-to-close on lead drawers
+
+### Changed
+- `components/verify-drawer.tsx` — backdrop `onClick` removed; clicking outside the modal no longer closes it. Users must use Save, Route to Sales, On Hold, Reject, or the ✕ header button.
+- `components/sales-drawer.tsx` — same change; backdrop is now a visual overlay only.
+
+---
+
+## [2026-05-12] — Restore Save button in Verify Drawer
+
+### Fixed
+- `components/verify-drawer.tsx` — re-added the **Save** button to the footer action bar. The `handleSave` function was already implemented but had no button wired to it. Save appears as the first action (navy/verify style), followed by Route to Sales, On Hold / Resume, and Reject. Save goes through `promptThenRun` so the "update customer profile?" prompt still fires when contact fields change.
+
+---
+
+## [2026-05-12] — Lead forms use DB-driven dropdown options
+
+### Changed
+- `components/leads-page.tsx`:
+  - Expanded `/api/lookups` fetch to include `urgency`, `route_reason`, `sales_drop_reason` in addition to existing `source`, `industry`, `hold_reason`, `reject_reason`
+  - Replaced hardcoded `URGENCY_OPTIONS` with `lookups.urgency` from DB (prepends a static "Not Defined" entry)
+- `components/verify-drawer.tsx`:
+  - Removed hardcoded `URGENCY_OPTIONS` and `REJECT_REASONS` constants
+  - Urgency select now uses `lookups.urgency` passed from `leads-page`
+  - Rejection reason select now uses `lookups.reject_reason` passed from `leads-page`
+  - `HoldSubForm` now receives `reasons={lookups.hold_reason}` instead of using a hardcoded constant
+- `components/hold-sub-form.tsx`:
+  - Removed `HOLD_REASONS` import from `lib/constants/hold-reasons`
+  - Added required `reasons: LookupValue[]` prop — caller provides DB-driven hold reasons
+- `components/sales-drawer.tsx`:
+  - Removed hardcoded `SALES_HOLD_REASONS` and `REJECT_REASONS` constants
+  - Added `lookups: LookupMap` prop
+  - Hold radio grid now uses `lookups.hold_reason`; reject dropdown uses `lookups.reject_reason`
+- `components/sales-page.tsx`:
+  - Added `lookups` state and on-mount fetch from `/api/lookups` for all 7 lead categories
+  - Passes `lookups` to `SalesDrawer`
+
+All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer now come from the `lookup_values` table, making them fully manageable from Admin → Dropdown Options.
+
+---
+
+## [2026-05-12] — Documentation sync: schema, integration plan, product catalog, README
+
+### Changed
+- `docs/schema.md`:
+  - Fixed wrong index name `tickets_contact_id_idx` → `tickets_customer_id_idx`
+  - Added indexes for `tickets_reference_code_idx` (unique partial) and `tickets_created_by_idx`
+  - Added 7 new `lookup_values` Order/Quote category entries to Category Enums
+  - Added product catalog tables section (`product_types`, `material_groups`, `materials`, `product_material_links`)
+  - Added `company_settings` and `order_sequence_counters` RLS policy sections
+  - Added `notifications` admin policy (`admin_all_notifications`)
+  - Added permanent-record rules table explaining intentional absence of DELETE on tickets/leads/activities
+  - Updated Migration File Order list to include migrations 039–045
+- `docs/order-ticket/README.md`:
+  - Updated status header (no longer blocked)
+  - Replaced placeholder status table with full phase-by-phase progress tracking
+  - Added "What was built in Phase 2" summary section
+- `docs/order-ticket/integration-plan.md`:
+  - Updated overall status banner
+  - Phase 0: marked done
+  - Phase 2: marked done; corrected migration number (042, not 041); added sections 2d/2e/2f/2g for migrations 041–045 and admin panel tabs
+  - Phase 3.5 (TODO-001): marked as deferred
+  - Phase 4: marked as next
+- `docs/order-ticket/product-catalog.md`:
+  - Part 6b (pricing calculator): added deferred status note (per owner decision Q17)
+  - Part 8 build order: marked completed phases with ✅, pending with ⏳
+
+---
+
+## [2026-05-12] — Phase 2b: enrich types for Quotes & Orders module
+
+### Changed
+- `lib/types/index.ts`:
+  - `LookupCategory` — added 7 new order/quote categories: `lamination`, `finishing`, `quote_channel`, `follow_up_freq`, `ticket_priority`, `order_source`, `ticket_payment`
+  - `QuoteSku` — fully enriched: `product_type`, `material`, `lamination`, `width`, `height`, `design_required`, `die_cut`, `finishing[]`; `description` is auto-derived, never user-typed; legacy `sku` kept optional for backwards compat
+  - `JobTicket` — all 28 new columns from migration 042 added; legacy columns kept as nullable
+  - Added `PaymentTypeKey = 'card_default' | 'zelle' | 'offline'`
+  - Added `TicketPriority`, `OrderSource`, `DiscountType`, `PrepayType`, `FollowUpFreq` union types
+  - Added `TicketForm` interface — OrderDrawer form state (string inputs for number fields, controlled inputs pattern)
+  - Added `CompanySettings` interface matching migration 045 schema
+
+---
+
+## [2026-05-12] — Dropdown Options + Company Info admin tabs (live)
+
+### Added
+- `supabase/migrations/044_seed_order_lookup_values.sql` — seeds 7 new `lookup_values` categories for the OrderDrawer: `lamination`, `finishing`, `quote_channel`, `follow_up_freq`, `ticket_priority`, `order_source`, `ticket_payment` (29 options total)
+- `supabase/migrations/045_create_company_settings.sql` — single-row `company_settings` table with branding fields (name, address, phone, email, logo, website) + OrderDrawer defaults (`default_tax_rate`, `high_value_threshold`, `rush_surcharge_percent`); RLS: authenticated read, admin update only
+- `app/api/admin/lookups/route.ts` — GET (all categories + items grouped) + POST (create new option with auto-slug)
+- `app/api/admin/lookups/[id]/route.ts` — PATCH (label / sort_order / is_active) + DELETE (blocked if option is in use on any lead or ticket)
+- `app/api/admin/company/route.ts` — GET + PATCH for company settings
+- `components/admin/dropdowns-section.tsx` — two-panel UI matching Products layout: category list on left (grouped by "Lead Forms" / "Order / Quote"), options on right with add inline, rename, active toggle, delete with safety check
+- `components/admin/company-section.tsx` — company info form with branding, contact, address, and OrderDrawer defaults (tax rate, high-value threshold, rush surcharge)
+
+### Changed
+- `app/(app)/admin/settings/[tab]/page.tsx` — replaced spec placeholders for Dropdown Options and Company Info tabs with live `<DropdownsSection />` and `<CompanySection />` components; removed unused `TabSpecWrapper` and `SpecBadge` imports
+
+---
+
+## [2026-05-12] — Migration 043: admin full access on config + supporting tables
+
+### Fixed
+- `supabase/migrations/043_fix_admin_rls_full_access.sql`:
+  - **Products catalog (041 over-permissive writes fixed):** `product_types_write_auth`, `material_groups_write_auth`, `materials_write_auth`, `product_material_links_write_auth` all allowed any authenticated user to mutate product data — replaced with admin-only policies (`admin_all_*`)
+  - **`order_sequence_counters`:** added `admin_all_sequence_counters` (table was inaccessible to admin users — only service role could touch it)
+  - **`leads`:** added `admin_delete_leads` (no DELETE policy existed)
+  - **`activities`:** added `admin_delete_activities` (no DELETE policy existed)
+  - **`notifications`:** added `admin_all_notifications` (admin could not read or manage other users' notifications)
+  - **`user_profiles`:** added `admin_insert_profiles` + `admin_delete_profiles` (INSERT and DELETE were missing)
+
+### Intentional non-changes (permanent business records — DB-level protection)
+- **`job_tickets`** — no DELETE policy. Quotes and orders are permanent financial records. Close via `ticket_status = 'cancelled'` only.
+- **`leads`** — no DELETE policy. Leads and the sales pipeline are permanent. Close via `status = 'Rejected'` / `sales_status = 'Dropped'`; merge duplicates via the merge flow.
+- **`activities`** — no DELETE or UPDATE policy. Append-only audit trail. Removing entries would destroy lead/ticket history.
+
+---
+
+## [2026-05-12] — Migration 042: extend job_tickets for Quotes & Orders module
+
+### Added
+- `supabase/migrations/042_extend_job_tickets.sql` — adds 26 new columns to `job_tickets` (identity, quote delivery, richer pricing, payment array, follow-up scheduling, order-specific fields); creates `order_sequence_counters` table (for `ORD-YYYY-NNN` reference codes); replaces the overly-broad `authenticated_read_tickets` SELECT policy with scoped policies (`rep_read_own_tickets` + `admin_read_all_tickets`)
+- Unique index on `job_tickets.reference_code` + index on `created_by_id`
+
+### Changed
+- `docs/schema.md` — updated `job_tickets` table definition with all new columns; added `order_sequence_counters` table; documented legacy columns; updated RLS section
+
+---
+
+## [2026-05-12] — Products admin UI redesign + catalog migration (complete build)
+
+### Added
+- `supabase/migrations/041_create_products_catalog.sql` — **complete from-scratch build**: creates `product_types` (text slug PK), `material_groups` (uuid PK), `materials` (text slug PK), `product_material_links` (text FKs); RLS policies + grants to `anon / authenticated / service_role`; seeds 15 product types, 9 material groups, 37 materials, and all product-material links from `docs/order-ticket/product-catalog.md`
+- `app/api/admin/product-types/route.ts` — GET (list + linked material IDs) + POST (create with auto-slug ID)
+- `app/api/admin/product-types/[id]/route.ts` — PATCH + DELETE (safe — blocked if used in `job_tickets.quote_skus`)
+- `app/api/admin/product-types/[id]/materials/[matId]/route.ts` — POST (link) + DELETE (unlink)
+- `app/api/admin/materials/route.ts` — GET (all groups + materials) + POST (create)
+- `app/api/admin/materials/[id]/route.ts` — PATCH + DELETE (safe — blocked if used in `quote_skus`)
+- `app/api/admin/material-groups/route.ts` — POST (create group)
+- `app/api/admin/material-groups/[id]/route.ts` — PATCH + DELETE (blocked if group has materials)
+- `app/api/lookups/products/route.ts` — public GET for OrderDrawer; returns active products with their linked active materials
+
+### Changed
+- `components/admin/products-section.tsx` — **redesigned UI**: product-centric layout (no separate Materials tab or Material Library concept)
+  - **Left panel**: product list with active toggle, inline rename, delete
+  - **Right panel**: flat list of materials for the selected product; `+ Add Material` with smart search — links an existing material by name or creates a new one on the fly
+  - `×` removes a material from the product only; 🗑 deletes it from the library entirely (with safety check)
+  - Material groups are an internal DB concept only — hidden from the admin UI
+- `app/(app)/admin/settings/[tab]/page.tsx` — replaced Products spec placeholder with live `<ProductsSection />`
+- `app/layout.tsx` — added `suppressHydrationWarning` to `<body>` to silence Grammarly extension attribute mismatch
+
+### Schema notes
+- `product_types.id` and `materials.id` use **text slugs** (e.g. `labels-roll`, `bopp-white`) not UUIDs — allows stable IDs in `quote_skus` JSONB without FK overhead
+- `material_groups.id` uses UUID (internal grouping only, not referenced in tickets)
+- Migration is idempotent: `CREATE TABLE IF NOT EXISTS` + `INSERT … ON CONFLICT DO NOTHING`; safe to re-run
+
+> **Realtime for `job_tickets`** is deferred until the `job_tickets` schema is finalised in Phase 2. The sidebar already has the subscription wired (`tickets-realtime` channel) — just needs the migration to enable it.
+
+## [2026-05-12] — Fix Quoted Requests nav icon
+
+### Fixed
+- `components/sidebar.tsx` — added `MessageSquareQuote` to `ICON_MAP` so the Quoted Requests nav link renders with the correct icon (was falling back to the Dashboard icon)
+
 ## [2026-05-11] — Tickets module owner review — all decisions recorded
 
 ### Changed

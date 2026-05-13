@@ -6,6 +6,7 @@ import { Mail } from "lucide-react";
 interface EmailInputProps {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onBlur?: (e: React.FocusEvent<HTMLInputElement>) => void;
   error?: string | null;
   placeholder?: string;
   required?: boolean;
@@ -19,6 +20,7 @@ export const EmailInput = forwardRef<HTMLInputElement, EmailInputProps>(
     {
       value,
       onChange,
+      onBlur,
       error,
       placeholder = "you@example.com",
       required,
@@ -65,6 +67,7 @@ export const EmailInput = forwardRef<HTMLInputElement, EmailInputProps>(
               if (!error) {
                 e.currentTarget.style.borderColor = "var(--color-border)";
               }
+              onBlur?.(e);
             }}
           />
           {showAction && hasValue && (

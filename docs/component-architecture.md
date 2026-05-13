@@ -68,6 +68,10 @@ app/(app)/leads/page.tsx                    app/(app)/sales/page.tsx
 | `SdrDashboard` | `components/sdr-dashboard.tsx` | SDR only |
 | `SalesDashboard` | `components/sales-dashboard.tsx` | Sales only |
 | `AdminDashboard` | `components/admin-dashboard.tsx` | Admin only |
+| `QuotesPage` | `components/quotes-page.tsx` | All roles |
+| `OrdersPage` | `components/orders-page.tsx` | All roles |
+| `NewQuoteForm` | `components/new-quote-form.tsx` | Sales + SDR (create), Admin |
+| `QuoteDetail` | `components/quote-detail.tsx` | All roles (reps locked from editing orders) |
 
 ---
 
@@ -77,8 +81,12 @@ app/(app)/leads/page.tsx                    app/(app)/sales/page.tsx
 |-----------|------|---------|
 | `StatusPill` | `components/ui/status-pill.tsx` | Tables, drawers |
 | `UrgencyPill` | `components/ui/urgency-pill.tsx` | Tables, drawers |
-| `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, verify drawer |
-| `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, verify drawer |
+| `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail (SMS & WhatsApp destination) |
+| `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail (Email destination) |
+| `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar) |
+| `DatePicker` | `components/ui/date-picker.tsx` | New Quote form (Due Date field), Quote Detail (Due Date edit), Quote tab (First Reminder date) |
+
+> **Rule:** Every phone or email input in the app **must** use `PhoneInput` or `EmailInput`. Never add a raw `<input type="tel">` or `<input type="email">` in a component.
 
 ---
 
@@ -160,6 +168,98 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 **Sales Drawer — Lead Info tab — Sales Fields section:** includes a `sales_notes` textarea (saved via `PATCH /api/leads/[id]`, logged as `lead_edited` activity). Notes are internal — visible to Sales and Admin only.
 
 **Verify Drawer tabs:** Lead Info | Quote | **History** (same lazy-fetch pattern as Sales Drawer — fetches `GET /api/leads/[id]/activities` on first open, renders vertical timeline with colored dots, actor name, relative timestamps)
+
+---
+
+### `/quotes` — Quoted Requests list
+
+```
+app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
+  └── components/quotes-page.tsx  [Client Component "use client"]
+        ├── Tabs: All | Draft | Sent | Won | Routed to Sales* (count badge on all)
+        │         * "Routed to Sales" only visible to Sales + Admin roles
+        ├── Counts: GET /api/tickets/counts
+        ├── Data: GET /api/tickets?kind=quote
+        │         Routed tickets enriched with created_by_name
+        ├── Supabase Realtime: direct postgres_changes channel "quotes-page-tickets"
+        │         (independent of sidebar — cross-session updates work instantly)
+        ├── Window events: bazaar:tickets-changed + bazaar:refresh-counts
+        ├── Search: client-side filter
+        ├── Claim action (Routed tab): PATCH /api/tickets/[id] { claim_ownership: true }
+        └── Row click → /quotes/[id]
+```
+
+---
+
+### `/orders` — Orders list
+
+```
+app/(app)/orders/page.tsx  [Server Component — thin wrapper]
+  └── components/orders-page.tsx  [Client Component "use client"]
+        ├── Tabs: All | Active | Won | Cancelled (count badge on all)
+        ├── Only shows ticket_status = 'order' tickets (draft/sent/approved/routed excluded)
+        ├── Counts: GET /api/tickets/counts
+        ├── Data: GET /api/tickets?kind=quote (filtered to 'order' status client-side)
+        ├── No "New Order" button — orders created only through Quotes flow
+        ├── Search: client-side filter
+        └── Row click → /quotes/[id]  (same ticket record)
+```
+
+---
+
+### `/quotes/new` — New Quote form
+
+```
+app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
+  └── components/new-quote-form.tsx  [Client Component "use client"]
+        │
+        ├── Entry modes (detected from URL params):
+        │    ?lead_id=uuid     → LeadCard left sidebar, skip Customer tab, start on Info
+        │    ?first_name=...   → CustomerInfoCard left sidebar, skip Customer tab, start on Info
+        │    (none)            → No left sidebar, show Customer tab as step 1
+        │
+        ├── Tabs: [Customer] | Info | Line Items | Quote
+        │         Customer tab hidden when lead_id or CRM params present
+        │
+        ├── Validation per tab before advancing:
+        │    Customer: first_name required
+        │    Info: title required
+        │    Line Items: ≥1 fully-filled item
+        │
+        ├── High-Value Threshold modal (SDR only):
+        │    Fires when advancing to Quote tab with total > HVT
+        │    Non-dismissible, 30s countdown → saves as 'routed' → redirect to /quotes
+        │
+        ├── Data: GET /api/lookups, GET /api/lookups/products, GET /api/admin/company
+        ├── Save Draft: POST /api/tickets { status: 'draft' } — available from Line Items onwards
+        ├── Save & Send: POST /api/tickets { status: 'sent' } → redirect to /quotes
+        └── Customer upsert: POST /api/customers on save if no customer_id yet
+```
+
+---
+
+### `/quotes/[id]` — Quote / Order detail
+
+```
+app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
+  └── components/quote-detail.tsx  [Client Component "use client"]
+        │
+        ├── Left sidebar:
+        │    LinkedLeadCard   — if ticket has linked_lead_id
+        │    CustomerInfoCard — if ticket has customer but no lead
+        │    (nothing)        — if neither
+        │
+        ├── 4-tab view: Info | Line Items | Quote | History
+        ├── View mode default; Edit button toggles edit mode
+        │
+        ├── High-Value Threshold modal (SDR only):
+        │    Fires when SDR saves a draft quote with total > HVT
+        │    Non-dismissible, 30s countdown → PATCH { status: 'routed' } → redirect to /quotes
+        │
+        ├── Status actions (read-only mode): Send Quote / Mark Won / Cancel Ticket
+        ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true
+        └── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
+```
 
 ---
 

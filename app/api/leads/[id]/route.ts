@@ -5,6 +5,39 @@ import { digitsOnly } from "@/lib/utils/phone";
 
 const IMMUTABLE = ["id", "created_at"];
 
+// ─── GET /api/leads/[id] ──────────────────────────────────────────────────────
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { userId, roleName, errorResponse } = await requireSession();
+  if (errorResponse) return errorResponse;
+
+  const { id } = await params;
+  const admin = createAdminClient();
+
+  const { data: lead, error } = await admin
+    .from("leads")
+    .select(`
+      *,
+      customer:customers(id, first_name, last_name, company, phone, email, industry, website)
+    `)
+    .eq("id", id)
+    .single();
+
+  if (error || !lead) {
+    return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
+  }
+
+  // Reps can only view leads they own; admins see all
+  if (roleName !== "admin" && lead.sdr_id !== userId && lead.sales_owner_id !== userId) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  return NextResponse.json({ lead });
+}
+
 // Fields whose changes are worth recording in the activity timeline
 const TRACKED_FIELDS = [
   "urgency", "interests", "quantities", "sdr_comment",
@@ -25,9 +58,11 @@ export async function PATCH(
   // Strip immutable fields
   for (const f of IMMUTABLE) delete body[f];
 
-  // Normalize "not_defined" sentinel → null for DB check constraint
+  // Normalize "not_defined" sentinel → null, and capitalize to match DB constraint
   if (body.urgency === "not_defined" || body.urgency === "") {
     body.urgency = null;
+  } else if (typeof body.urgency === "string" && body.urgency) {
+    body.urgency = body.urgency.charAt(0).toUpperCase() + body.urgency.slice(1).toLowerCase();
   }
 
   // Normalize phone-like fields

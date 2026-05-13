@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Search, RefreshCw, X, User, Clock, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, X, User, Clock, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -127,12 +127,7 @@ const AUTHORITY_OPTIONS = [
   { value: "no", label: "No" },
 ];
 
-const URGENCY_OPTIONS = [
-  { value: "not_defined", label: "Not Defined" },
-  { value: "High", label: "High" },
-  { value: "Medium", label: "Medium" },
-  { value: "Low", label: "Low" },
-];
+const URGENCY_NOT_DEFINED = { value: "not_defined", label: "Not Defined" };
 
 const labelCls = "block text-[11px] font-medium uppercase tracking-[0.06em] mb-1";
 const labelStyle = { color: "var(--color-text-muted)" };
@@ -155,7 +150,7 @@ interface AddForm {
   website: string;
   urgency: string;
   is_returning_customer: boolean;
-  initial_interest: string;
+  interests: Record<string, boolean>;
   sdr_comment: string;
 }
 
@@ -163,7 +158,7 @@ const EMPTY_FORM: AddForm = {
   phone: "", email: "", first_name: "", last_name: "",
   source: "", authority: "", company: "", industry: "",
   website: "", urgency: "", is_returning_customer: false,
-  initial_interest: "", sdr_comment: "",
+  interests: {}, sdr_comment: "",
 };
 
 function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadModalProps) {
@@ -171,6 +166,18 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Product types from admin panel
+  const [productTypes, setProductTypes] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    fetch("/api/admin/product-types")
+      .then((r) => r.json())
+      .then((d) => {
+        const active = (d.product_types ?? []).filter((p: { is_active: boolean }) => p.is_active);
+        setProductTypes(active);
+      })
+      .catch(() => {});
+  }, []);
 
   // Customer dedup state
   const [lookingUp, setLookingUp] = useState(false);
@@ -257,7 +264,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
-        initial_interest: form.initial_interest.trim() || null,
+        interests: form.interests,
         customer_id: selectedCustomer?.id ?? null,
         create_customer: !selectedCustomer,
       }),
@@ -274,6 +281,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
 
   const sources = lookups.source ?? [];
   const industries = lookups.industry ?? [];
+  const urgencyOptions = [URGENCY_NOT_DEFINED, ...(lookups.urgency ?? [])];
 
   return (
     <>
@@ -464,35 +472,59 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
               <Select value={form.urgency} onValueChange={(v) => setForm((f) => ({ ...f, urgency: v ?? "" }))}>
                 <SelectTrigger className="h-9 text-sm w-full">
                   <SelectValue placeholder="Select…">
-                    {URGENCY_OPTIONS.find((u) => u.value === form.urgency)?.label ?? "Select…"}
+                    {urgencyOptions.find((u) => u.value === form.urgency)?.label ?? "Select…"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {URGENCY_OPTIONS.map((u) => (
+                  {urgencyOptions.map((u) => (
                     <SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Initial Interest — full width */}
+            {/* Product Interests — full width */}
             <div className="sm:col-span-2">
-              <label className={labelCls} style={labelStyle}>Initial Interest</label>
-              <input
-                className={inputCls}
-                style={inputStyle}
-                value={form.initial_interest}
-                onChange={(e) => setForm((f) => ({ ...f, initial_interest: e.target.value }))}
-                placeholder="e.g. Labels, custom boxes for product launch…"
-                onFocus={(e) => {
-                  e.currentTarget.style.borderColor = "var(--color-accent)";
-                  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
-                }}
-                onBlur={(e) => {
-                  e.currentTarget.style.borderColor = "var(--color-border)";
-                  e.currentTarget.style.boxShadow = "none";
-                }}
-              />
+              <label className={labelCls} style={labelStyle}>Product Interests</label>
+              {productTypes.length === 0 ? (
+                <p className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
+                  No products configured yet.
+                </p>
+              ) : (
+                <div className="flex flex-wrap gap-2 pt-0.5">
+                  {productTypes.map((pt) => {
+                    const selected = !!form.interests[pt.name];
+                    return (
+                      <button
+                        key={pt.id}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            interests: { ...f.interests, [pt.name]: !selected },
+                          }))
+                        }
+                        className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-colors"
+                        style={
+                          selected
+                            ? {
+                                background: "var(--color-badge-bg)",
+                                borderColor: "var(--color-tab-underline)",
+                                color: "var(--color-tab-active)",
+                              }
+                            : {
+                                background: "var(--color-surface)",
+                                borderColor: "var(--color-border)",
+                                color: "var(--color-text-muted)",
+                              }
+                        }
+                      >
+                        {pt.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             {/* Returning customer — full width */}
@@ -689,7 +721,7 @@ export function LeadsPage() {
 
   // Load lookups once
   useEffect(() => {
-    fetch("/api/lookups?categories=source,industry,hold_reason,reject_reason")
+    fetch("/api/lookups?categories=source,industry,urgency,hold_reason,reject_reason,route_reason,sales_drop_reason")
       .then((r) => r.json())
       .then((d) => setLookups(d));
   }, []);
@@ -896,7 +928,6 @@ export function LeadsPage() {
           Leads
         </h1>
         <Button onClick={() => setAddOpen(true)}>
-          <Plus className="h-4 w-4 mr-1.5" />
           Add Lead
         </Button>
       </div>

@@ -16,18 +16,19 @@ The page lives at `app/(app)/admin/page.tsx`. A sub-nav strip (Overview / Settin
 |---|---|---|
 | Users | `/admin/settings/users` | Create, edit, and deactivate team members. Assign roles and reset passwords. |
 | Roles & Permissions | `/admin/settings/roles` | Role definitions and allowed pages per role. |
-| Dropdown Options | `/admin/settings/dropdowns` | Edit sources, industries, hold reasons, reject reasons, and other dropdown lists. |
+| Dropdown Options | `/admin/settings/dropdowns` | ✅ **Built** — edit sources, industries, urgency, hold/reject reasons, and all order/quote dropdown lists. |
 | Notifications | `/admin/settings/notifications` | Send a system broadcast message to all users or a specific role. |
+| Products | `/admin/settings/products` | ✅ **Built** — product types, materials, and material–product links for the OrderDrawer. |
+| Company Info | `/admin/settings/company` | ✅ **Built** — company branding, address, and order/quote defaults (tax rate, high-value threshold, rush surcharge). |
+| Integrations | `/admin/settings/integrations` | 🔜 **Planned** — Stripe (card payment links) and Zelle (business account + PDF instructions). Placeholder page built; configuration deferred. |
 
-All four cards are clickable. "Roles & Permissions", "Dropdown Options", and "Notifications" navigate to their respective tab which shows a "Coming soon" placeholder until the feature is built.
+All cards are clickable and navigate to their respective tab. Dropdown Options, Products, and Company Info are fully built. Roles & Permissions and Notifications are built.
 
 ### Deferred cards (not yet on overview)
 
 | Title | Planned Route | Notes |
 |---|---|---|
 | Audit Log | `/admin/settings/audit-log` | Full history of all changes. |
-| Company Info | `/admin/settings/company` | Company name, address, logo for PDF headers. Future. |
-| Products | `/admin/settings/products` | Product types, materials, finishes for ticket builder. |
 
 ---
 
@@ -60,7 +61,7 @@ All four cards are clickable. "Roles & Permissions", "Dropdown Options", and "No
 | Field | Notes |
 |-------|-------|
 | Full Name | Required |
-| Email | Required |
+| Email | Required — uses `EmailInput` component (format validation, mail-action icon) |
 | Role | Dropdown: all roles from `roles` table (system + custom) |
 | Temporary Password | Required — Admin sets this, tells the user directly |
 
@@ -138,7 +139,8 @@ Pages                           [Role: Manager]
 ────────────────────────────────────────────────
 ☑ Dashboard                    /dashboard
 ☑ CRM                          /crm
-☑ Tickets                      /tickets
+☑ Quoted Requests              /quotes
+☑ Orders                       /orders
 ☑ Statistics                   /statistics
 ☐ Leads (SDR)                  /leads
 ☐ Sales Pipeline               /sales
@@ -162,50 +164,108 @@ Pages                           [Role: Manager]
 
 ---
 
-## `/admin/settings/dropdowns` — Dropdown Options
+## `/admin/settings/dropdowns` — Dropdown Options ✅ Built
 
-Admin-managed lists for all `<select>` fields in lead forms. Reads from / writes to the `lookup_values` table.
+Admin-managed lists for all `<select>` fields in lead forms and the OrderDrawer. Reads from / writes to the `lookup_values` table. Changes reflect immediately — no code deploy needed.
 
 ### Layout
 
-Left sidebar with the list of categories. Right panel shows the options for the selected category.
+Left sidebar with categories grouped into **Lead Forms** and **Order / Quote**. Right panel shows options for the selected category.
 
 ### Category List (Left Panel)
 
-| Category | Used in |
-|---|---|
-| Lead Sources | Add Lead, Verify Drawer, Sales Drawer |
-| Industries | Add Lead, Verify Drawer, Sales Drawer, CRM |
-| Urgency Levels | Add Lead, Verify Drawer, Sales Drawer |
-| Hold Reasons | Hold sub-form (SDR + Sales) |
-| Reject Reasons | Reject sub-form (SDR) |
-| Route Reasons | Route to Sales sub-form (SDR) |
-| Drop Reasons | Drop deal sub-form (Sales) |
+**Lead Forms group:**
+
+| Category | `lookup_values` key | Used in |
+|---|---|---|
+| Lead Sources | `source` | Add Lead, Verify Drawer, Sales Drawer |
+| Industries | `industry` | Add Lead, Verify Drawer, Sales Drawer, CRM |
+| Urgency Levels | `urgency` | Add Lead, Verify Drawer, Sales Drawer |
+| Hold Reasons | `hold_reason` | Hold sub-form (SDR + Sales) |
+| Reject Reasons | `reject_reason` | Reject sub-form (SDR + Sales) |
+| Route Reasons | `route_reason` | Route to Sales sub-form (SDR) |
+| Drop Reasons | `sales_drop_reason` | Drop deal sub-form (Sales) |
+
+**Order / Quote group:**
+
+| Category | `lookup_values` key | Used in |
+|---|---|---|
+| Lamination Options | `lamination` | Line Items tab — Lamination select (Row 5 left) |
+| Add-on Finishings | `finishing` | Line Items tab — UV Coating / Foil / Perforation checkboxes |
+| Color Mode | `color_mode` | Line Items tab — Color Mode select (Row 3 left) |
+| Sides | `sides` | Line Items tab — Sides select (Row 3 right) |
+| Roll Direction | `roll_direction` | Line Items tab — Roll Direction select (Row 5 right) |
+| Quote Channels | `quote_channel` | Quote tab — Send Via select |
+| Follow-up Frequency | `follow_up_freq` | Quote tab — Frequency select |
+| Ticket Priority | `ticket_priority` | Info tab — Priority select |
+| Order Source | `order_source` | Info tab — Order Source (hardcoded, admin-managed) |
+| Payment Methods | `ticket_payment` | Quote tab — Payment Methods checkboxes |
 
 ### Options Table (Right Panel)
-
-For the selected category:
 
 | Column | Notes |
 |--------|-------|
 | Label | Editable inline |
 | Value | Machine key — shown grayed out — cannot change after creation |
-| Sort Order | Drag-to-reorder handle OR numeric input |
-| Active | Toggle — inactive options are hidden from dropdowns in lead forms |
-| Actions | **Delete** (only if no leads use this value — otherwise deactivate only) |
+| Sort Order | Numeric input — reflected immediately in dropdowns |
+| Active | Toggle — inactive options hidden from new leads/tickets; historical data unaffected |
+| Actions | **Delete** (blocked if value is in use on any lead or ticket — deactivate instead) |
 
-**+ Add Option** button at the top right → inline row append with Label + Value fields.
+**+ Add Option** button → inline row with Label field (value auto-generated from label).
 
 **Business rules:**
-- `value` is auto-generated from `label` on creation (slugified, e.g. `"TikTok Ads"` → `tiktok_ads`) and cannot be changed afterward (historical lead records store the value)
-- Deactivating a value hides it from new leads; existing leads keep their saved value
-- Sort order is reflected immediately in dropdowns
+- `value` is auto-slugified on creation (e.g. `"TikTok Ads"` → `tiktok_ads`) and cannot be changed afterward
+- Deactivating hides the option from new entries; existing records keep their stored value
 
 **API calls:**
 - Load: `GET /api/admin/lookups`
 - Add: `POST /api/admin/lookups`
 - Edit label / sort / active: `PATCH /api/admin/lookups/[id]`
+- Delete: `DELETE /api/admin/lookups/[id]` (returns `409` if value is in use)
 
+---
+
+## `/admin/settings/products` — Products ✅ Built
+
+Admin-managed product catalog for the OrderDrawer. Backed by `product_types`, `materials`, `material_groups`, `product_material_links` tables (migration 041).
+
+### Layout
+
+Two-panel: product list on the left, materials for the selected product on the right.
+
+**Left panel — product list:** Add Product (name + Roll/Sheet), active toggle, rename, delete (blocked if in any quote).
+
+**Right panel — materials for selected product:** Link existing or create new material; active toggle, rename, unlink, delete from library (blocked if in any quote).
+
+**API calls:**
+- `GET/POST /api/admin/product-types` · `PATCH/DELETE /api/admin/product-types/[id]`
+- `GET/POST /api/admin/materials` · `PATCH/DELETE /api/admin/materials/[id]`
+- `POST/DELETE /api/admin/product-types/[id]/materials/[matId]`
+- `GET /api/lookups/products` — anon-safe read used by OrderDrawer
+
+---
+
+## `/admin/settings/company` — Company Info ✅ Built
+
+Single-row `company_settings` table. Used for invoice/PDF headers and OrderDrawer defaults.
+
+**Branding:** Company Name, Logo URL
+
+**Contact:** Phone (uses `PhoneInput` — digit-only with call-action icon), Email (uses `EmailInput` — format-validated with mailto-action icon), Website
+
+**Address:** Address Line 1, Address Line 2, City, State, ZIP
+
+**Order / Quote Defaults:**
+
+| Field | Notes |
+|---|---|
+| Default Tax Rate (%) | Pre-filled in OrderDrawer; rep can override per quote |
+| High-Value Threshold ($) | SDR hard-blocked from sending quote if total exceeds this — must route to Sales |
+| Rush Surcharge (%) | Applied when `rush` toggle is on in a ticket |
+
+**Input validation (client-side):** Email must be valid format; Website must start with `http://` or `https://`; ZIP must be digits only (max 10 chars); Phone is digits-only via `PhoneInput`. The **Save Changes** button is disabled while any validation error is active; all fields are re-validated on save attempt.
+
+**API calls:** `GET /api/admin/company` · `PATCH /api/admin/company` (admin only)
 ---
 
 ## `/admin/settings/notifications` — Broadcast Notifications

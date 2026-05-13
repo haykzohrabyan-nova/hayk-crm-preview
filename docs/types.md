@@ -60,6 +60,7 @@ A single option from a dropdown. Returned by `GET /api/lookups`.
 
 ```typescript
 export type LookupCategory =
+  // Lead-form categories (seeded migration 020)
   | 'source'
   | 'industry'
   | 'urgency'
@@ -67,6 +68,17 @@ export type LookupCategory =
   | 'reject_reason'
   | 'route_reason'
   | 'sales_drop_reason'
+  // Order / Quote categories (seeded migrations 044 + 048)
+  | 'lamination'
+  | 'finishing'
+  | 'color_mode'
+  | 'sides'
+  | 'roll_direction'
+  | 'quote_channel'
+  | 'follow_up_freq'
+  | 'ticket_priority'
+  | 'order_source'
+  | 'ticket_payment'
 
 export interface LookupValue {
   id: string
@@ -216,62 +228,126 @@ export type TicketStatus =
   | 'draft'
   | 'sent'
   | 'approved'
+  | 'routed'      // SDR quote exceeded high-value threshold — awaiting Sales claim
   | 'rejected'
   | 'in_production'
   | 'completed'
   | 'cancelled'
 
-export type PaymentType = 'Cash' | 'Check' | 'Card' | 'Transfer'
-
-export interface ProductLine {
-  id: string
-  description: string
-  quantity: number
-  unit_price: number
-  material: string | null
-  finish: string | null
-  size: string | null
-  line_total: number
-}
-
+/**
+ * A single line item inside `job_tickets.quote_skus` (JSONB array).
+ * Canonical definition: lib/types/index.ts QuoteSku.
+ * Pricing helpers (computePricing, skuLineTotal, formatCurrency) live in
+ * lib/utils/ticket-math.ts and use the same interface.
+ */
 export interface QuoteSku {
-  id: string
-  sku: string
-  description: string
-  quantity: number
-  unit_price: number
-  line_total: number
+  product_type: string              // product name from admin catalog
+  description?: string              // auto-derived: productType – material – lamination
+  material?: string                 // material name from admin catalog
+  lamination?: string               // from `lamination` lookup
+  color_mode?: string               // from `color_mode` lookup
+  sides?: string                    // from `sides` lookup
+  roll_direction?: string           // from `roll_direction` lookup
+  width?: number                    // inches
+  height?: number                   // inches
+  quantity?: number
+  unit_price?: number
+  design_required?: boolean         // "Design on file" checkbox
+  die_cut?: boolean
+  spot_uv?: boolean                 // UV Coating add-on
+  foil?: boolean
+  perforation?: boolean
+  comment?: string                  // per-SKU line item free-text note
 }
 
 export interface JobTicket {
   id: string
   ticket_kind: TicketKind
   ticket_status: TicketStatus
-  contact_id: string | null
+  customer_id: string | null
   linked_lead_id: string | null
   created_by_id: string | null
+  // Denormalized contact fields (copied from lead/customer at creation)
   contact_email: string | null
   contact_name: string | null
   contact_company: string | null
-  subtotal: number | null
-  discount_percent: number | null
-  discount_amount: number | null
-  total: number | null
-  payment_type: PaymentType | null
-  prepay_amount: number | null
-  product_lines: ProductLine[]
-  quote_skus: QuoteSku[]
+  contact_phone: string | null
+  // Info tab
+  title: string | null
+  reference_code: string | null     // ORD-YYYY-NNN, auto-generated for orders
+  priority: string | null           // from `ticket_priority` lookup
+  due_date: string | null           // ISO date
+  order_source: string | null       // from `order_source` lookup
   rush: boolean
-  follow_up_at: string | null
+  special_requirements: string | null
+  notes: string | null
+  // Line items
+  quote_skus: QuoteSku[]
+  design_required: boolean          // auto-set from SKUs: any SKU with design_required=true
+  die_cut: boolean                  // auto-set from SKUs: any SKU with die_cut=true
+  // Pricing (Quote tab)
+  quote_subtotal: number | null
+  quote_shipping: number | null
+  discount_type: 'percent' | 'fixed' | null
+  discount_value: string | null     // stored as text, parsed at runtime
+  discount_reason: string | null
+  quote_pre_tax_total: number | null
+  quote_tax_rate_percent: number | null
+  quote_tax_amount: number | null
+  quote_final_total: number | null
+  tax_exempt: boolean
+  sales_permit_number: string | null
+  quote_payment_types: string[]     // from `ticket_payment` lookup (multi-select)
+  prepayment_type: 'percent' | 'fixed' | null
+  prepayment_value: string | null
+  // Delivery / follow-up
+  quote_channel: string | null      // from `quote_channel` lookup
+  quote_destination: string | null  // digits for SMS/WhatsApp; email for Email
+  quote_reminder_date: string | null
+  follow_up_cycles: number | null
+  follow_up_frequency: string | null // from `follow_up_freq` lookup
   follow_up_completed: boolean
+  // Status flags
   client_confirmed: boolean
   quote_approval_last_requested_at: string | null
-  notes: string | null
   created_at: string
   updated_at: string
   // Joined (optional)
-  contact?: Contact
+  customer?: Customer
   lead?: Lead
+  // Legacy columns (kept for backwards compat — new code uses quote_* fields)
+  subtotal?: number | null
+  discount_percent?: number | null
+  discount_amount?: number | null
+  total?: number | null
+  payment_type?: string | null
+  prepay_amount?: number | null
+  product_lines?: unknown[]
+  follow_up_at?: string | null
+}
+```
+
+---
+
+## Company Settings
+
+```typescript
+export interface CompanySettings {
+  id: number                          // always 1 — single-row table
+  company_name: string
+  address_line1: string | null
+  address_line2: string | null
+  city: string | null
+  state: string | null
+  zip: string | null
+  phone: string | null
+  email: string | null
+  website: string | null
+  logo_url: string | null
+  default_tax_rate: number            // percent, e.g. 8.25 = 8.25%
+  high_value_threshold: number        // SDR hard-block threshold in $
+  rush_surcharge_percent: number | null  // null = rush is badge-only, no price impact
+  updated_at: string
 }
 ```
 
@@ -301,6 +377,7 @@ export type ActivityType =
   | 'quote_follow_up_reset'
   | 'order_ticket_created'
   | 'order_ticket_updated'
+  | 'order_ticket_status_changed'  // ticket_status transition (e.g. draft→routed, routed→draft on claim)
   | 'ticket_client_confirmed'
 
 export type ActivityChannel = 'SMS' | 'WhatsApp' | 'Email' | 'Call' | 'In-person'
@@ -465,24 +542,51 @@ export interface HoldForm {
   hold_until: string          // ISO date string from date picker
 }
 
-/** Shape of the ticket builder form */
-export interface TicketBuilderForm {
+/**
+ * Shape used by new-quote-form.tsx and quote-detail.tsx for all editable fields.
+ * Numeric values are stored as strings in form state and parsed on submit.
+ * Canonical definition: lib/types/index.ts TicketForm.
+ */
+export interface TicketForm {
+  title: string
   ticket_kind: TicketKind
-  contact_id: string | null
-  linked_lead_id: string | null
-  contact_email: string
-  contact_name: string
-  contact_company: string
-  product_lines: ProductLine[]
-  quote_skus: QuoteSku[]
-  subtotal: number
-  discount_percent: number
-  discount_amount: number
-  total: number
-  payment_type: PaymentType | ''
-  prepay_amount: number
+  ticket_status: TicketStatus
+  order_source: 'quoted' | 'direct' | ''
+  priority: 'Low' | 'Normal' | 'High' | ''
+  due_date: string
+  special_requirements: string
   rush: boolean
-  follow_up_at: string
+  design_required: boolean
+  die_cut: boolean
+  // Contact (denormalized)
+  customer_id: string | null
+  linked_lead_id: string | null
+  contact_name: string
+  contact_email: string
+  contact_phone: string
+  contact_company: string
+  // Line items
+  quote_skus: Partial<QuoteSku>[]
+  // Pricing
+  quote_shipping: string          // string in form; parsed to number on submit
+  discount_enabled: boolean
+  discount_type: 'percent' | 'fixed' | ''
+  discount_value: string
+  discount_reason: string
+  quote_tax_rate_percent: string  // string in form; parsed to number on submit
+  tax_exempt: boolean
+  sales_permit_number: string
+  // Payment
+  quote_payment_types: string[]   // single-select (enforced client-side), from ticket_payment lookup
+  prepayment_type: 'percent' | 'fixed' | ''
+  prepayment_value: string
+  // Delivery
+  quote_channel: string           // from quote_channel lookup
+  quote_destination: string
+  // Follow-up
+  quote_reminder_date: string
+  follow_up_cycles: string        // string in form; parsed to number on submit
+  follow_up_frequency: 'Daily' | 'Every 2 days' | 'Weekly' | ''
   notes: string
 }
 ```

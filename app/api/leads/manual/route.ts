@@ -86,7 +86,9 @@ export async function POST(request: NextRequest) {
       source: source ?? null,
       brand: brand ?? null,
       authority: authority ?? null,
-      urgency: (urgency && urgency !== "not_defined") ? urgency : null,
+      urgency: (urgency && urgency !== "not_defined")
+        ? urgency.charAt(0).toUpperCase() + urgency.slice(1).toLowerCase()
+        : null,
       is_inbox: false,
       status: "Pending",
       sdr_id: userId,

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { SalesDrawer } from "@/components/sales-drawer";
-import { Lead } from "@/lib/types";
+import { Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import { createClient } from "@/lib/supabase/client";
@@ -133,6 +133,14 @@ export function SalesPage() {
   const [reassignLead, setReassignLead] = useState<Lead | null>(null);
   const [reassignSalesUserId, setReassignSalesUserId] = useState<string>("unassign");
   const [reassigning, setReassigning] = useState(false);
+  const [lookups, setLookups] = useState<LookupMap>({});
+
+  // Load dropdown options from DB once on mount
+  useEffect(() => {
+    fetch("/api/lookups?categories=source,industry,urgency,hold_reason,reject_reason,route_reason,sales_drop_reason")
+      .then((r) => r.json())
+      .then((d) => setLookups(d));
+  }, []);
 
   // Get current userId and role for ownership display and admin view access
   useEffect(() => {
@@ -844,6 +852,7 @@ export function SalesPage() {
       {drawerLead && (
         <SalesDrawer
           lead={drawerLead}
+          lookups={lookups}
           readOnly={drawerReadOnly}
           lockedByName={drawerLockedBy}
           currentUserId={userId}

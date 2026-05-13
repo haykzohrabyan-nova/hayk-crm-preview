@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, KeyRound, ListFilter, Building2, Package } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -10,7 +10,8 @@ const TABS = [
   { label: "Roles & Permissions", href: "/admin/settings/roles",     icon: KeyRound  },
   { label: "Dropdown Options",    href: "/admin/settings/dropdowns", icon: ListFilter },
   { label: "Company Info",        href: "/admin/settings/company",   icon: Building2 },
-  { label: "Products",            href: "/admin/settings/products",  icon: Package   },
+  { label: "Products",            href: "/admin/settings/products",      icon: Package   },
+  { label: "Integrations",        href: "/admin/settings/integrations",  icon: Plug      },
 ] as const;
 
 function cnTab(active: boolean) {

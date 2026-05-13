@@ -14,27 +14,31 @@ app/
 │   ├── login/page.tsx                ✓ EXISTS
 │   ├── setup-2fa/page.tsx            ✓ EXISTS
 │   ├── verify-2fa/page.tsx           ✓ EXISTS
-│   ├── change-password/page.tsx      → TO BUILD (forced on first login with temp password)
+│   ├── change-password/page.tsx      ✓ EXISTS (forced on first login with temp password)
 │   ├── forgot-password/page.tsx      → TO BUILD (proxy.ts already allows this path)
 │   └── reset-password/page.tsx       → TO BUILD (proxy.ts already allows this path)
 │
 └── (app)/
     ├── layout.tsx                    ✓ EXISTS (sidebar + mobile nav shell)
     │
-    ├── dashboard/page.tsx            → TO BUILD (currently stub)
+    ├── dashboard/page.tsx            ✓ EXISTS — role router (SDR / Sales / Admin dashboards)
     │
-    ├── leads/page.tsx                → TO BUILD (SDR + Admin only)
-    │   └── Tabs: Inbox | On Hold | Directed to Sales | Rejected
+    ├── leads/page.tsx                ✓ EXISTS (SDR + Admin only)
+    │   └── Tabs: All Leads | On Hold | Directed to Sales | Rejected
     │
-    ├── sales/page.tsx                → TO BUILD (Sales + Admin only)
+    ├── sales/page.tsx                ✓ EXISTS (Sales + Admin only)
     │   └── Tabs: Pipeline | On Hold | Rejected
     │
-    ├── crm/page.tsx                  → TO BUILD (all roles)
+    ├── crm/page.tsx                  ✓ EXISTS (all roles)
     │
-    ├── tickets/page.tsx              → TO BUILD (all roles)
-    │   └── Tabs: Quoted Requests | Orders
+    ├── quotes/
+    │   ├── page.tsx                  ✓ EXISTS — Quoted Requests list (QuotesPage component)
+    │   │   └── Tabs: All | Draft | Sent | Won | Routed to Sales (sales/admin only)
+    │   ├── new/page.tsx              ✓ EXISTS — New Quote form (?lead_id=uuid or CRM params optional)
+    │   └── [id]/page.tsx             ✓ EXISTS — Quote/Order detail + edit
     │
-    ├── statistics/page.tsx           → TO BUILD (all roles)
+    ├── orders/page.tsx               ✓ EXISTS — Orders list (OrdersPage component)
+    │   └── Tabs: All | Active | Won | Cancelled
     │
     ├── settings/page.tsx             → TO BUILD (currently stub — personal profile)
     │
@@ -45,9 +49,12 @@ app/
             ├── layout.tsx            ✓ EXISTS — SettingsTabNav above children
             ├── page.tsx              ✓ EXISTS — redirects → /admin/settings/users
             └── [tab]/page.tsx        ✓ EXISTS — renders section per tab:
-                                        users        → UsersSection (full user management)
-                                        roles        → Coming soon placeholder
-                                        dropdowns    → Coming soon placeholder
+                                        users         → UsersSection (full user management)
+                                        dropdowns     → DropdownsSection (all lookup_values categories)
+                                        products      → ProductsSection (product types, materials, links)
+                                        company       → CompanySection (branding, address, order defaults)
+                                        integrations  → IntegrationsSection (Stripe + Zelle — placeholder)
+                                        roles         → Coming soon placeholder
                                         notifications → Coming soon placeholder
 ```
 
@@ -61,17 +68,17 @@ app/
 BAZAARPRINTING                      ← brand logo text (accent color)
 
 ─── Main ───────────────────────
-⬜ Dashboard                        /dashboard
-⬜ Leads                            /leads
-⬜ CRM                              /crm
-⬜ Tickets                          /tickets
-⬜ Statistics                       /statistics
+✓ Dashboard                        /dashboard
+✓ Leads                            /leads          (badge: inbox count)
+✓ CRM                              /crm
+✓ Quoted Requests                  /quotes         (badge: active quotes)
+✓ Orders                           /orders         (badge: sent/active orders)
 
 ─── Bottom ─────────────────────
-⬜ Settings                         /settings
-⬜ [Dark mode toggle]
-⬜ [Sign out]
-⬜ [Collapse]
+✓ Settings                         /settings
+✓ [Dark mode toggle]
+✓ [Sign out]
+✓ [Collapse]
 ```
 
 ### Sales Sidebar
@@ -80,17 +87,17 @@ BAZAARPRINTING                      ← brand logo text (accent color)
 BAZAARPRINTING
 
 ─── Main ───────────────────────
-⬜ Dashboard                        /dashboard
-⬜ Pipeline                         /sales
-⬜ CRM                              /crm
-⬜ Tickets                          /tickets
-⬜ Statistics                       /statistics
+✓ Dashboard                        /dashboard
+✓ Pipeline                         /sales          (badge: pipeline count)
+✓ CRM                              /crm
+✓ Quoted Requests                  /quotes         (badge: active quotes)
+✓ Orders                           /orders         (badge: sent/active orders)
 
 ─── Bottom ─────────────────────
-⬜ Settings                         /settings
-⬜ [Dark mode toggle]
-⬜ [Sign out]
-⬜ [Collapse]
+✓ Settings                         /settings
+✓ [Dark mode toggle]
+✓ [Sign out]
+✓ [Collapse]
 ```
 
 ### Admin Sidebar
@@ -99,22 +106,24 @@ BAZAARPRINTING
 BAZAARPRINTING
 
 ─── Main ───────────────────────
-⬜ Dashboard                        /dashboard
-⬜ Leads                            /leads
-⬜ Pipeline                         /sales
-⬜ CRM                              /crm
-⬜ Tickets                          /tickets
-⬜ Statistics                       /statistics
+✓ Dashboard                        /dashboard
+✓ Leads                            /leads          (badge: inbox count)
+✓ Pipeline                         /sales          (badge: pipeline count)
+✓ CRM                              /crm
+✓ Quoted Requests                  /quotes         (badge: active quotes)
+✓ Orders                           /orders         (badge: sent/active orders)
 
 ─── Admin ──────────────────────
-⬜ Admin Panel                      /admin
+✓ Admin Panel                      /admin
 
 ─── Bottom ─────────────────────
-⬜ Settings                         /settings
-⬜ [Dark mode toggle]
-⬜ [Sign out]
-⬜ [Collapse]
+✓ Settings                         /settings
+✓ [Dark mode toggle]
+✓ [Sign out]
+✓ [Collapse]
 ```
+
+✓ = built and live   ⬜ = to build
 
 ---
 
@@ -126,8 +135,8 @@ BAZAARPRINTING
 | Leads | `Inbox` |
 | Pipeline (Sales) | `Briefcase` |
 | CRM | `BookUser` |
-| Tickets | `FileText` |
-| Statistics | `BarChart3` |
+| Quoted Requests (`/quotes`) | `FileText` |
+| Orders (`/orders`) | `Package` |
 | Settings (personal) | `Settings` |
 | Admin Panel | `ShieldCheck` |
 | Users (admin section) | `Users` |
@@ -144,8 +153,8 @@ BAZAARPRINTING
 All tabs are reflected in the URL via `?tab=` query param. This enables bookmarking and back-button navigation.
 
 ```
-/leads              → defaults to ?tab=inbox
-/leads?tab=inbox    → Inbox
+/leads              → defaults to ?tab=all
+/leads?tab=all      → All Leads
 /leads?tab=on-hold  → On Hold
 /leads?tab=directed → Directed to Sales
 /leads?tab=rejected → Rejected
@@ -155,9 +164,17 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 /sales?tab=on-hold  → On Hold
 /sales?tab=rejected → Rejected
 
-/tickets            → defaults to ?tab=quoted
-/tickets?tab=quoted → Quoted Requests
-/tickets?tab=orders → Orders
+/quotes             → defaults to ?tab=all
+/quotes?tab=all     → All
+/quotes?tab=draft   → Draft
+/quotes?tab=sent    → Sent
+/quotes?tab=approved → Approved
+
+/orders             → defaults to ?tab=all
+/orders?tab=all     → All
+/orders?tab=active  → Active
+/orders?tab=won     → Won
+/orders?tab=cancelled → Cancelled
 ```
 
 Tab switches use `router.replace` (not `router.push`) — no browser history pollution.
@@ -183,12 +200,26 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 | On Hold | `sales_status = 'On Hold'` | count |
 | Rejected | `status = 'Rejected'` and `prev_status = 'Routed to Sales'` — leads rejected from the sales pipeline. Admin sees all; Sales rep sees only their own. | count |
 
-### `/tickets` — Quotes & Orders
+### `/quotes` — Quoted Requests
 
-| Tab | Content |
-|-----|---------|
-| Quoted Requests | `ticket_kind = 'quote'` + leads with `status = 'Quoted'` not yet linked to a ticket |
-| Orders | `ticket_kind = 'order'` |
+| Tab | Content | Badge | Visible to |
+|-----|---------|-------|-----------|
+| All | All non-order, non-routed tickets | count | All roles |
+| Draft | `ticket_status = 'draft'` | count | All roles |
+| Sent | `ticket_status = 'sent'` | count | All roles |
+| Won | `ticket_status = 'approved'` | count | All roles |
+| Routed to Sales | `ticket_status = 'routed'` | count | Sales + Admin only |
+
+### `/orders` — Orders
+
+> Only tickets with `ticket_status = 'order'` appear here. Draft, sent, approved, and routed tickets stay on the Quotes page.
+
+| Tab | Content | Badge |
+|-----|---------|-------|
+| All | `ticket_status = 'order'` | count |
+| Active | Orders not yet in production | count |
+| Won | `ticket_status = 'completed'` | count |
+| Cancelled | `ticket_status = 'cancelled'` | count |
 
 ### `/admin/settings/users`
 
@@ -215,14 +246,17 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/leads` | Leads |
 | `/sales` | Sales Pipeline |
 | `/crm` | CRM |
-| `/tickets` | Tickets |
-| `/statistics` | Statistics |
+| `/quotes` | Quoted Requests |
+| `/quotes/new` | New Quote |
+| `/quotes/[id]` | Quote / Order |
+| `/orders` | Orders |
 | `/settings` | Account Settings |
 | `/admin` | Admin (Overview) |
 | `/admin/settings/users` | Users |
 | `/admin/settings/roles` | Roles & Permissions |
 | `/admin/settings/dropdowns` | Dropdown Options |
 | `/admin/settings/notifications` | Notifications |
+| `/admin/settings/integrations` | Integrations |
 
 ---
 

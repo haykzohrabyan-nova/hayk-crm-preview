@@ -97,8 +97,9 @@ create table public.pages (
 | `/leads` | Leads | `Inbox` | main | 1 |
 | `/sales` | Sales Pipeline | `Briefcase` | main | 2 |
 | `/crm` | CRM | `BookUser` | main | 3 |
-| `/tickets` | Tickets | `FileText` | main | 4 |
-| `/statistics` | Statistics | `BarChart3` | main | 5 |
+| `/quotes` | Quoted Requests | `MessageSquareQuote` | main | 5 |
+| `/orders` | Orders | `ClipboardList` | main | 6 |
+| ~~`/statistics`~~ | ~~Statistics~~ | ~~`BarChart3`~~ | ~~main~~ | — | Removed — Dashboard handles all analytics |
 | `/settings` | Settings | `Settings` | bottom | 0 |
 | `/admin/users` | Users | `Users` | admin | 0 |
 | `/admin/settings` | System Settings | `SlidersHorizontal` | admin | 1 |
@@ -127,8 +128,8 @@ create table public.role_permissions (
 
 | Role | Allowed pages |
 |------|--------------|
-| `sdr` | /dashboard, /leads, /crm, /tickets, /statistics, /settings |
-| `sales` | /dashboard, /sales, /crm, /tickets, /statistics, /settings |
+| `sdr` | /dashboard, /leads, /crm, /quotes, /orders, /settings |
+| `sales` | /dashboard, /sales, /crm, /quotes, /orders, /settings |
 | `admin` | All pages |
 
 When Admin grants `/sales` access to a custom `'manager'` role, a new row is inserted here.
@@ -182,7 +183,11 @@ create or replace view public.user_profiles_with_role as
 
 Customer profiles. A customer is created when a lead is first added and the SDR chooses to save the contact info. **Multiple customer records can share the same phone number or email** — this is intentional. When the same phone appears again, the SDR is shown all matching profiles and picks which one to link.
 
-**CRM page visibility:** A customer appears in the CRM contact list only once at least one of their linked leads has been routed to Sales (`status = 'Routed'` or `sales_status IS NOT NULL`). Customers whose leads are still Pending, On Hold (SDR side), or Rejected are not shown — they enter the CRM the moment the SDR routes the lead.
+**CRM page visibility:** A customer appears in the CRM contact list if at least one of the following is true:
+- A linked lead has been routed to Sales (`status = 'Routed'` or `sales_status IS NOT NULL`), OR
+- The customer has at least one `job_tickets` record (created via the New Quote form or quote detail page)
+
+Customers whose leads are still Pending/On Hold/Rejected and who have no tickets are not shown in CRM.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -329,7 +334,7 @@ create table public.leads (
 | Sales creates order + quote from a Routed lead | `Quoted` |
 | Sales creates order only from a Routed lead | `Validated` |
 
-> These transitions are implemented in the Tickets module (not yet built). The `Validated` and `Quoted` statuses are **never set manually** — they are always the result of ticket creation logic.
+> These transitions are implemented in `app/api/tickets/route.ts` (`POST` handler). The `Validated` and `Quoted` statuses are **never set manually** — they are always the result of ticket creation logic.
 
 **`sales_status` (Sales pipeline):**
 - `Ongoing` — Sales rep has claimed the lead and is actively working it
@@ -348,7 +353,9 @@ create table public.leads (
 
 ### `job_tickets`
 
-Unified model for both quotes and orders. `ticket_kind` distinguishes them.
+Unified model for both quotes and orders. `ticket_kind` distinguishes them. Extended in migration 042 with all fields required by the Quotes & Orders module.
+
+> **Legacy columns** (`subtotal`, `discount_percent`, `discount_amount`, `total`, `payment_type`, `prepay_amount`, `product_lines`, `follow_up_at`) are preserved as nullable for backwards compatibility. New code uses the `quote_*` columns instead.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -361,63 +368,113 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them.
 | `contact_email` | `text` | Denormalized for display |
 | `contact_name` | `text` | Denormalized |
 | `contact_company` | `text` | Denormalized |
-| `subtotal` | `numeric` | Pre-discount total |
-| `discount_percent` | `numeric` | |
-| `discount_amount` | `numeric` | Computed or manual override |
-| `total` | `numeric` | Final amount after discount |
-| `payment_type` | `text` | `'Cash'` \| `'Check'` \| `'Card'` \| `'Transfer'` |
-| `prepay_amount` | `numeric` | Deposit paid upfront |
-| `product_lines` | `jsonb` DEFAULT `'[]'` | Array of line items (order) |
-| `quote_skus` | `jsonb` DEFAULT `'[]'` | Array of SKU rows (quote) |
+| `title` | `text` | Human-readable ticket title (required on create) |
+| `reference_code` | `text` UNIQUE | `ORD-YYYY-NNN` — auto-generated for orders |
+| `contact_phone` | `text` | Denormalized phone for display |
+| `quote_channel` | `text` | `'SMS'` \| `'WhatsApp'` \| `'Email'` \| `'In-person'` |
+| `quote_destination` | `text` | Phone (digits) for SMS/WhatsApp; email address for Email |
+| `quote_subtotal` | `numeric` | Sum of all line totals |
+| `quote_shipping` | `numeric` DEFAULT `0` | Manual shipping charge |
+| `discount_type` | `text` | `'percent'` \| `'fixed'` |
+| `discount_value` | `text` | Stored as text; parsed to numeric at runtime |
+| `discount_reason` | `text` | |
+| `quote_pre_tax_total` | `numeric` | subtotal − discount + shipping |
+| `quote_tax_rate_percent` | `numeric` | Tax rate applied (admin-configurable default, rep can override) |
+| `quote_tax_amount` | `numeric` | Computed tax |
+| `quote_final_total` | `numeric` | pre_tax_total + tax_amount |
+| `tax_exempt` | `boolean` NOT NULL DEFAULT `false` | |
+| `sales_permit_number` | `text` | Required when tax_exempt = true |
+| `quote_payment_types` | `text[]` NOT NULL DEFAULT `'{}'` | `'card_default'` \| `'zelle'` \| `'offline'` |
+| `prepayment_type` | `text` | `'percent'` \| `'fixed'` |
+| `prepayment_value` | `text` | Stored as text; parsed at runtime |
+| `quote_reminder_date` | `date` | First follow-up date |
+| `follow_up_cycles` | `int` | Number of follow-up attempts (default 3) |
+| `follow_up_frequency` | `text` | `'Daily'` \| `'Every 2 days'` \| `'Weekly'` |
+| `order_source` | `text` | `'quoted'` \| `'direct'` |
+| `due_date` | `date` | Production due date |
+| `priority` | `text` | `'Low'` \| `'Normal'` \| `'High'` |
+| `special_requirements` | `text` | |
+| `design_required` | `boolean` NOT NULL DEFAULT `false` | Auto-set from SKUs |
+| `die_cut` | `boolean` NOT NULL DEFAULT `false` | Auto-set from SKUs |
+| `quote_skus` | `jsonb` DEFAULT `'[]'` | Array of SKU rows — see QuoteSku type |
 | `rush` | `boolean` DEFAULT `false` | Rush order flag |
-| `follow_up_at` | `timestamptz` | Scheduled follow-up |
 | `follow_up_completed` | `boolean` DEFAULT `false` | |
-| `client_confirmed` | `boolean` DEFAULT `false` | Client has approved quote |
+| `client_confirmed` | `boolean` DEFAULT `false` | Client has approved quote → transitions to order |
 | `quote_approval_last_requested_at` | `timestamptz` | Last time approval was requested |
 | `notes` | `text` | Internal notes |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
+| *(legacy)* `subtotal` | `numeric` | Old pre-discount total — keep for backwards compat |
+| *(legacy)* `discount_percent` | `numeric` | Old discount field |
+| *(legacy)* `discount_amount` | `numeric` | Old discount field |
+| *(legacy)* `total` | `numeric` | Old final total |
+| *(legacy)* `payment_type` | `text` | Old single payment type |
+| *(legacy)* `prepay_amount` | `numeric` | Old prepay amount |
+| *(legacy)* `product_lines` | `jsonb` | Old line items array |
+| *(legacy)* `follow_up_at` | `timestamptz` | Old follow-up timestamp |
 
-```sql
-create table public.job_tickets (
-  id                                 uuid        primary key default gen_random_uuid(),
-  ticket_kind                        text        not null check (ticket_kind in ('quote', 'order')),
-  ticket_status                      text        not null default 'draft',
-  customer_id                        uuid        references public.customers(id),
-  linked_lead_id                     uuid        references public.leads(id),
-  created_by_id                      uuid        references auth.users(id),
-  contact_email                      text,
-  contact_name                       text,
-  contact_company                    text,
-  subtotal                           numeric,
-  discount_percent                   numeric,
-  discount_amount                    numeric,
-  total                              numeric,
-  payment_type                       text,
-  prepay_amount                      numeric,
-  product_lines                      jsonb       not null default '[]',
-  quote_skus                         jsonb       not null default '[]',
-  rush                               boolean     not null default false,
-  follow_up_at                       timestamptz,
-  follow_up_completed                boolean     not null default false,
-  client_confirmed                   boolean     not null default false,
-  quote_approval_last_requested_at   timestamptz,
-  notes                              text,
-  created_at                         timestamptz not null default now(),
-  updated_at                         timestamptz not null default now()
-);
-```
+#### QuoteSku (JSONB shape)
+
+Each element of `quote_skus` conforms to `QuoteSku` in `lib/utils/ticket-math.ts`:
+
+| Field | Type | Notes |
+|---|---|---|
+| `product_type` | `string` | Product name from admin catalog |
+| `description` | `string?` | Auto-derived: `productType – material – lamination` |
+| `material` | `string?` | Material name |
+| `lamination` | `string?` | From `lamination` lookup |
+| `color_mode` | `string?` | From `color_mode` lookup |
+| `sides` | `string?` | From `sides` lookup |
+| `roll_direction` | `string?` | From `roll_direction` lookup |
+| `width` | `number?` | inches |
+| `height` | `number?` | inches |
+| `quantity` | `number?` | |
+| `unit_price` | `number?` | |
+| `design_required` | `boolean?` | "Design on file" checkbox |
+| `die_cut` | `boolean?` | |
+| `spot_uv` | `boolean?` | UV Coating |
+| `foil` | `boolean?` | |
+| `perforation` | `boolean?` | |
+| `comment` | `string?` | Per-SKU line item comment |
 
 #### Ticket Status Enums
 
 **`ticket_status`:**
-- `draft` — in progress
+- `draft` — in progress, not yet sent
 - `sent` — quote sent to client
-- `approved` — client confirmed
+- `approved` — client confirmed (quote → order transition)
+- `routed` — **SDR-only.** Quote total exceeded the High-Value Threshold; automatically routed to Sales for claiming. SDR cannot edit; Sales/Admin can claim (moves to `draft` with new `created_by_id`).
 - `rejected` — client declined
 - `in_production` — order in production
 - `completed` — fulfilled
-- `cancelled` — cancelled
+- `cancelled` — cancelled (admin/owner only; only if no payment recorded)
+
+#### RLS (updated in migration 042 + 043)
+
+- **SELECT (rep):** `created_by_id = auth.uid()` — each rep sees only their own tickets. Exception: Sales/Admin can also SELECT tickets with `ticket_status = 'routed'` regardless of `created_by_id` (handled at API layer via admin client, not RLS).
+- **SELECT (admin):** `public.current_user_role() = 'admin'` — admin sees all
+- **INSERT:** any authenticated user
+- **UPDATE:** `created_by_id = auth.uid() OR public.current_user_role() = 'admin'`. Exception: Sales/Admin can UPDATE a `routed` ticket to claim it (sets `ticket_status = 'draft'` and `created_by_id` to claimant) — enforced in the API route, not RLS.
+
+---
+
+### `order_sequence_counters`
+
+Tracks the last-used sequence number per calendar year for `ORD-YYYY-NNN` reference codes. One row per year; incremented atomically when a new order is created.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `year` | `int` PK | Calendar year, e.g. `2026` |
+| `last_number` | `int` NOT NULL DEFAULT `0` | Last-issued sequence number for this year |
+
+```sql
+create table public.order_sequence_counters (
+  year        int  primary key,
+  last_number int  not null default 0
+);
+```
+
+Only accessible via the service-role (admin) client. RLS enabled with no user-facing policies.
 
 ---
 
@@ -550,7 +607,9 @@ create table public.lookup_values (
 
 #### Category Enums
 
-| Category key | Used in | Options (seeded from POC) |
+**Lead-form categories** (seeded migration 020):
+
+| Category key | Used in | Options |
 |---|---|---|
 | `source` | Add Lead, Verify Drawer, Sales Drawer | Website Form, Email, Phone Call, Walk-in, Referral, Facebook, Instagram, Google, Yelp, LinkedIn, Trade Show, Direct Mail, Manual, Manual (CRM), Manual (Sales Sourced) |
 | `industry` | Add Lead, Verify Drawer, Sales Drawer, CRM | Cosmetics & Beauty, Food & Beverage, Healthcare & Medical, Cannabis & CBD, Retail & Apparel, E-Commerce, Hospitality & Events, Agencies & Marketing, Education, Real Estate, Manufacturing & Industrial, Tech & Electronics, Non-Profit, Other |
@@ -560,10 +619,68 @@ create table public.lookup_values (
 | `route_reason` | Route to Sales sub-form (SDR) | Unusually Large Volume, Complex Custom Dimensions, High-Value VIP Client, Requires Technical Support, Out of Box request, Other |
 | `sales_drop_reason` | Drop deal sub-form (Sales) | Price, Ghosted, Competitor, Timeline, Other |
 
+**Order / Quote categories** (seeded migrations 044 + 048):
+
+| Category key | Used in | Default options |
+|---|---|---|
+| `lamination` | Line Items tab — Lamination select (Row 5 left) | None, Gloss, Matte, Soft Touch, Holo, Coating |
+| `finishing` | Line Items tab — Add-on Finishings checkboxes | Spot UV, Foil, Perforation |
+| `color_mode` | Line Items tab — Color Mode select (Row 3 left) | CMYK, Pantone, Black Only, Full Color + White |
+| `sides` | Line Items tab — Sides select (Row 3 right) | Single-sided, Double-sided |
+| `roll_direction` | Line Items tab — Roll Direction select (Row 5 right) | Top Off First, Bottom Off First, Right Off First, Left Off First |
+| `quote_channel` | Quote tab — Send Via select | SMS, WhatsApp, Email, In-person |
+| `follow_up_freq` | Quote tab — Follow-up Frequency select | Daily, Every 2 days, Weekly |
+| `ticket_priority` | Info tab — Priority select | Low, Normal, High |
+| `order_source` | Info tab — Order Source (internal, hardcoded) | Quoted (from lead), Direct |
+| `ticket_payment` | Quote tab — Payment Methods checkboxes | Card Payment, Zelle, Offline |
+
+All options are **admin-managed** via Admin → Dropdown Options → Order / Quote. Inactive/deleted values are re-injected as `"<label> (inactive)"` in edit mode so existing data is never silently lost.
+
 #### RLS
 
-- **Read**: all authenticated users (needed to populate dropdowns)
-- **Insert / Update / Delete**: Admin only
+- **Read**: all authenticated users (needed to populate dropdowns in lead forms and OrderDrawer)
+- **Insert / Update / Delete**: Admin only (managed via Admin → Dropdown Options tab)
+
+---
+
+### `company_settings`
+
+Single-row configuration table (always `id = 1`). Seeded in migration 045. Used by OrderDrawer for defaults and by future PDF export for branding.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `int` PK | Always `1` — DB CHECK constraint enforces single row |
+| `company_name` | `text` NOT NULL DEFAULT `''` | |
+| `address_line1` | `text` | |
+| `address_line2` | `text` | |
+| `city` | `text` | |
+| `state` | `text` | |
+| `zip` | `text` | |
+| `phone` | `text` | |
+| `email` | `text` | |
+| `website` | `text` | |
+| `logo_url` | `text` | |
+| `default_tax_rate` | `numeric` NOT NULL DEFAULT `8.25` | percent, e.g. `8.25` = 8.25% |
+| `high_value_threshold` | `numeric` NOT NULL DEFAULT `5000` | SDR hard-block amount in $ |
+| `rush_surcharge_percent` | `numeric` | `null` = rush is badge-only, no price impact |
+| `updated_at` | `timestamptz` NOT NULL DEFAULT `now()` | |
+
+**RLS:** All authenticated users can SELECT (OrderDrawer reads tax rate + threshold). Only Admin can UPDATE. No INSERT / DELETE — single seeded row.
+
+---
+
+### `product_types`, `material_groups`, `materials`, `product_material_links`
+
+Admin-managed product catalog for the OrderDrawer. Created and seeded in migration 041. Managed from **Admin → Products tab**.
+
+- `product_types` — text slug PK (e.g. `labels-roll`), 15 types seeded
+- `material_groups` — uuid PK, internal grouping only (hidden from admin UI), 9 groups seeded
+- `materials` — text slug PK (e.g. `bopp-white`), 37 materials seeded
+- `product_material_links` — junction table linking materials to product types
+
+Text slug PKs are stable identifiers stored inside `job_tickets.quote_skus` JSONB without FK overhead. Full schema in `supabase/migrations/041_create_products_catalog.sql`.
+
+**RLS:** SELECT open to all (including anon — needed by OrderDrawer lookup). INSERT / UPDATE / DELETE: admin only (migration 043 `admin_all_*` policies).
 
 ---
 
@@ -587,14 +704,18 @@ create index customers_email_idx   on public.customers(email);
 create index customers_company_idx on public.customers(company);
 
 -- job_tickets
-create index tickets_contact_id_idx    on public.job_tickets(contact_id);
+create index tickets_customer_id_idx   on public.job_tickets(customer_id);
 create index tickets_lead_id_idx       on public.job_tickets(linked_lead_id);
 create index tickets_kind_idx          on public.job_tickets(ticket_kind);
 create index tickets_status_idx        on public.job_tickets(ticket_status);
 create index tickets_created_at_idx    on public.job_tickets(created_at desc);
+-- added migration 042
+create unique index tickets_reference_code_idx on public.job_tickets(reference_code)
+  where reference_code is not null;
+create index tickets_created_by_idx    on public.job_tickets(created_by_id);
 
 -- activities
-create index activities_contact_id_idx on public.activities(contact_id);
+create index activities_customer_id_idx on public.activities(customer_id);
 create index activities_lead_id_idx    on public.activities(lead_id);
 create index activities_ticket_id_idx  on public.activities(ticket_id);
 create index activities_created_at_idx on public.activities(created_at desc);
@@ -620,6 +741,19 @@ as $$
   from public.user_profiles up
   join public.roles r on r.id = up.role_id
   where up.id = auth.uid()
+$$;
+
+-- Atomic order sequence increment (migration 046)
+-- Called by POST /api/tickets via service-role client to generate ORD-YYYY-NNN codes.
+create or replace function public.increment_order_sequence(p_year int)
+returns int language plpgsql security definer as $$
+declare v_next int;
+begin
+  insert into public.order_sequence_counters (year, last_number) values (p_year, 1)
+  on conflict (year) do update set last_number = order_sequence_counters.last_number + 1
+  returning last_number into v_next;
+  return v_next;
+end;
 $$;
 
 -- Helper: check if current user has access to a given route
@@ -701,6 +835,11 @@ create policy "sdr_admin_insert_leads" on public.leads
 -- SDR, Sales, Admin can update leads they have access to
 create policy "authenticated_update_leads" on public.leads
   for update using (auth.uid() is not null);
+
+-- ⚠️ NO DELETE POLICY — intentional business rule.
+-- Leads and the sales pipeline are permanent records. Close a lead by
+-- setting status = 'Rejected' / sales_status = 'Dropped'. Use the
+-- customer merge flow for duplicates. Never hard-delete a lead.
 ```
 
 ### `job_tickets` policies
@@ -708,9 +847,13 @@ create policy "authenticated_update_leads" on public.leads
 ```sql
 alter table public.job_tickets enable row level security;
 
--- All authenticated users can read tickets
-create policy "authenticated_read_tickets" on public.job_tickets
-  for select using (auth.uid() is not null);
+-- Reps: own tickets only (migration 042 — replaces old catch-all)
+create policy "rep_read_own_tickets" on public.job_tickets
+  for select using (created_by_id = auth.uid());
+
+-- Admin: all tickets (migration 042)
+create policy "admin_read_all_tickets" on public.job_tickets
+  for select using (public.current_user_role() = 'admin');
 
 -- All authenticated users can insert tickets
 create policy "authenticated_insert_tickets" on public.job_tickets
@@ -722,6 +865,10 @@ create policy "owner_admin_update_tickets" on public.job_tickets
     created_by_id = auth.uid()
     or public.current_user_role() = 'admin'
   );
+
+-- ⚠️ NO DELETE POLICY — intentional business rule.
+-- Quotes and orders are permanent financial records and must never be deleted.
+-- The only terminal action is ticket_status = 'cancelled'.
 ```
 
 ### `activities` policies
@@ -736,6 +883,11 @@ create policy "authenticated_read_activities" on public.activities
 -- All authenticated users can insert activities
 create policy "authenticated_insert_activities" on public.activities
   for insert with check (auth.uid() is not null);
+
+-- ⚠️ NO DELETE / UPDATE POLICY — intentional business rule.
+-- Activities are the append-only audit trail for leads and tickets.
+-- Removing entries would destroy the history of what happened. No one
+-- can delete or update an activity row — not even admin.
 ```
 
 ### `notifications` policies
@@ -751,8 +903,65 @@ create policy "users_read_own_notifications" on public.notifications
 create policy "users_update_own_notifications" on public.notifications
   for update using (user_id = auth.uid());
 
+-- Admin: full access (migration 043)
+create policy "admin_all_notifications" on public.notifications
+  for all using (public.current_user_role() = 'admin')
+  with check (public.current_user_role() = 'admin');
+
 -- Server (service role) inserts notifications
 ```
+
+### `product_types` / `materials` / `material_groups` / `product_material_links` policies
+
+```sql
+-- SELECT: open to everyone (anon + authenticated) — OrderDrawer loads products without auth
+create policy "product_types_select_all"          on public.product_types          for select using (true);
+create policy "material_groups_select_all"        on public.material_groups        for select using (true);
+create policy "materials_select_all"              on public.materials              for select using (true);
+create policy "product_material_links_select_all" on public.product_material_links for select using (true);
+
+-- INSERT / UPDATE / DELETE: admin only (migration 043 — replaces over-permissive 041 policies)
+create policy "admin_all_product_types"          on public.product_types          for all using (public.current_user_role() = 'admin');
+create policy "admin_all_material_groups"        on public.material_groups        for all using (public.current_user_role() = 'admin');
+create policy "admin_all_materials"              on public.materials              for all using (public.current_user_role() = 'admin');
+create policy "admin_all_product_material_links" on public.product_material_links for all using (public.current_user_role() = 'admin');
+```
+
+### `company_settings` policies
+
+```sql
+alter table public.company_settings enable row level security;
+
+-- All authenticated users can read (OrderDrawer needs tax rate + threshold at runtime)
+create policy "authenticated_read_company_settings" on public.company_settings
+  for select using (auth.uid() is not null);
+
+-- Admin only can update
+create policy "admin_update_company_settings" on public.company_settings
+  for update using (public.current_user_role() = 'admin');
+
+-- No INSERT / DELETE — single row seeded in migration 045, never changed
+```
+
+### `order_sequence_counters` policies
+
+```sql
+alter table public.order_sequence_counters enable row level security;
+
+-- Admin: full access for inspection / correction (migration 043)
+create policy "admin_all_sequence_counters" on public.order_sequence_counters
+  for all using (public.current_user_role() = 'admin');
+
+-- No user-facing policies — written exclusively by the service-role client in POST /api/tickets
+```
+
+### Permanent-record rules (no DELETE policies — enforced at DB level)
+
+| Table | Why no DELETE |
+|---|---|
+| `job_tickets` | Quotes and orders are permanent financial records. Close via `ticket_status = 'cancelled'` only. |
+| `leads` | Leads and the sales pipeline are permanent. Close via `status = 'Rejected'` / `sales_status = 'Dropped'`; merge duplicates. |
+| `activities` | Append-only audit trail. Removing entries would destroy lead/ticket history. |
 
 ---
 
@@ -786,6 +995,22 @@ create trigger set_user_profiles_updated_at
 
 ---
 
+## Supabase Realtime — Enabled Tables
+
+Tables opted into the `supabase_realtime` publication. Any INSERT/UPDATE/DELETE on these tables is broadcast over WebSocket to subscribed browser sessions (subject to RLS filtering per session JWT).
+
+| Table | Migration | Browser event dispatched |
+|---|---|---|
+| `leads` | `035_enable_leads_realtime.sql` | `bazaar:leads-changed` |
+| `activities` | `036_enable_activities_realtime.sql` | `bazaar:activities-changed` |
+| `job_tickets` | `047_enable_job_tickets_realtime.sql` | `bazaar:tickets-changed` |
+
+All three use `REPLICA IDENTITY FULL` so UPDATE/DELETE events include the full old row in the payload.
+
+The sidebar (`components/sidebar.tsx`) holds all three Supabase channel subscriptions and dispatches the corresponding `window` events. Page components listen to those events for silent re-fetches.
+
+---
+
 ## Migration File Order
 
 When creating Supabase migrations under `supabase/migrations/`:
@@ -810,6 +1035,20 @@ When creating Supabase migrations under `supabase/migrations/`:
 017_seed_system_roles.sql            ← sdr, sales, admin roles
 018_seed_pages.sql                   ← all app pages
 019_seed_role_permissions.sql        ← default permissions per system role
-020_seed_lookup_values.sql           ← all dropdown options from POC
+020_seed_lookup_values.sql           ← all lead-form dropdown options from POC
 021_seed_dev.sql                     ← dev only (test users, sample leads)
+...
+039_add_initial_interest_to_leads.sql
+040_fix_activities_by_user_fkey.sql
+041_create_products_catalog.sql      ← product_types, material_groups, materials, product_material_links (15 types, 37 materials seeded)
+042_extend_job_tickets.sql           ← 28 new columns on job_tickets + order_sequence_counters table + scoped RLS
+043_fix_admin_rls_full_access.sql    ← admin full-access on all tables; fixes over-permissive product catalog RLS; no DELETE on tickets/leads/activities
+044_seed_order_lookup_values.sql     ← 7 new lookup categories: lamination, finishing, quote_channel, follow_up_freq, ticket_priority, order_source, ticket_payment
+045_create_company_settings.sql      ← company_settings single-row table (branding, contact, address, order defaults)
+046_order_sequence_function.sql      ← increment_order_sequence(p_year int) PL/pgSQL function; atomic ORD-YYYY-NNN generation via order_sequence_counters
+047_enable_job_tickets_realtime.sql  ← REPLICA IDENTITY FULL + ALTER PUBLICATION supabase_realtime ADD TABLE job_tickets
+048_add_sku_lookup_values.sql        ← seeds color_mode, sides, roll_direction lookup categories (10 values total)
+049_remove_statistics_page.sql       ← deletes /statistics from pages table; role_permissions cascade-delete
+050_add_urgent_priority.sql          ← seeds 'Urgent' priority to ticket_priority lookup (system-set only; hidden from UI dropdowns)
+051_backfill_routed_status.sql       ← one-time backfill: finds SDR-created draft quotes whose quote_final_total > company_settings.high_value_threshold and sets ticket_status = 'routed'
 ```

@@ -5,10 +5,19 @@ Each entry explains the current behaviour, the problem, the intended fix, and an
 
 ---
 
+## [TODO-003] High-Value Threshold (HVT) SDR Block
+
+**Status:** ✅ DONE (2026-05-13) — fully implemented  
+**Files affected:** `components/new-quote-form.tsx`, `components/quote-detail.tsx`, `app/api/tickets/route.ts`, `app/api/tickets/[id]/route.ts`, `app/api/tickets/counts/route.ts`, `app/api/sidebar-counts/route.ts`, `components/quotes-page.tsx`, `lib/types/index.ts`, `supabase/migrations/051_backfill_routed_status.sql`
+
+See `docs/feature-specs/tickets.md` → High-Value Threshold section for full documentation.
+
+---
+
 ## [TODO-002] Auto-set `Validated` and `Quoted` status on ticket creation
 
-**Status:** Deferred — build during Tickets phase  
-**Files affected:** `app/api/leads/[id]/route.ts` (or a new ticket creation route), `docs/schema.md`
+**Status:** ✅ DONE (2026-05-12) — implemented in `app/api/tickets/route.ts` `POST` handler  
+**Files affected:** `app/api/tickets/route.ts`
 
 ---
 

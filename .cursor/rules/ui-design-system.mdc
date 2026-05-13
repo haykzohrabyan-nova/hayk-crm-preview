@@ -12,7 +12,7 @@ Always use these variables. **Never hardcode hex values in components.**
 
 | Token | Light | Dark |
 |---|---|---|
-| `--color-bg` | `#F8F7F4` | `#18181B` |
+| `--color-bg` | `#f8fafc` | `#18181B` |
 | `--color-surface` | `#FFFFFF` | `#27272A` |
 | `--color-topbar` | `#1B2B4B` | `#27272A` |
 | `--color-accent` | `#E8C97A` | `#F97316` |
@@ -50,7 +50,7 @@ Semantic colors (not tokenized — use directly):
 - Brand name at sidebar top: `BAZAARPRINTING` in `var(--color-accent)`, `letter-spacing: 0.05em`.
 - Active nav item: `background: var(--color-accent)`, `color: var(--color-btn-primary-text)`. Inactive: `rgba(255,255,255,0.65)` on hover `rgba(255,255,255,0.9)`.
 - Bottom of sidebar: Dark mode toggle, Sign out, Collapse button — all using `rgba(255,255,255,0.55)` text.
-- Page content: `max-width: 1280px`, centered, `padding: 24px` (desktop) / `16px` (mobile).
+- Page content: **full width** (no `max-w` on page component roots) — the app layout wrapper (`app/(app)/layout.tsx`) provides `max-w-[1980px] px-4 lg:px-6 py-6` which is effectively full-screen. Page components use `<div className="space-y-5">` as their root, matching `leads-page.tsx`. Do NOT add `max-w-screen-xl mx-auto` or similar on page-level wrappers — it narrows the page unnecessarily. Full-page form/detail views (e.g. `/quotes/new`, `/quotes/[id]`) use `w-full px-6 py-6` for their inner content area.
 - Spacing scale: multiples of 4px only (`4 / 8 / 12 / 16 / 20 / 24 / 32px`).
 
 ## Border Radius Tokens

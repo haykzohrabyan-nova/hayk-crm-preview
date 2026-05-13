@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { X, Lock } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
-import { Activity, HoldForm, Lead } from "@/lib/types";
+import { Activity, HoldForm, Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import {
@@ -22,20 +23,6 @@ const SALES_STATUS_OPTIONS = [
   { value: "Quote Sent", label: "Quote Sent" },
 ];
 
-const SALES_HOLD_REASONS = [
-  { value: "waiting_client_decision", label: "Waiting for client decision" },
-  { value: "budget_not_confirmed", label: "Budget not confirmed" },
-  { value: "seasonal_timing", label: "Seasonal / timing" },
-  { value: "other", label: "Other" },
-];
-
-const REJECT_REASONS = [
-  { value: "not_a_fit", label: "Not a fit" },
-  { value: "no_budget", label: "No budget" },
-  { value: "competitor", label: "Competitor" },
-  { value: "bad_timing", label: "Bad timing" },
-  { value: "other", label: "Other" },
-];
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +45,7 @@ interface SalesForm {
 
 interface SalesDrawerProps {
   lead: Lead;
+  lookups: LookupMap;
   readOnly?: boolean;
   lockedByName?: string | null;
   currentUserId?: string | null;
@@ -131,6 +119,7 @@ function leadDisplayName(lead: Lead): string {
 
 export function SalesDrawer({
   lead: initialLead,
+  lookups,
   readOnly = false,
   lockedByName = null,
   currentUserId = null,
@@ -139,6 +128,7 @@ export function SalesDrawer({
   onLeadRemoved,
   showToast,
 }: SalesDrawerProps) {
+  const router = useRouter();
   const [lead, setLead] = useState<Lead>(initialLead);
   const [form, setForm] = useState<SalesForm>(() => formFromLead(initialLead));
   const [activeTab, setActiveTab] = useState<"info" | "history">("info");
@@ -153,6 +143,9 @@ export function SalesDrawer({
 
   const isTerminal = lead.status === "Rejected" || lead.sales_status === "Won" || lead.sales_status === "Dropped";
   const isReadOnly = readOnly || isTerminal;
+
+  const holdReasons = lookups.hold_reason ?? [];
+  const rejectReasons = lookups.reject_reason ?? [];
 
   useEffect(() => {
     return () => {
@@ -216,6 +209,21 @@ export function SalesDrawer({
     showToast("Lead saved.");
   }
 
+  // ── Action: Create Quote/Order — save lead silently then navigate ─────────
+
+  async function handleCreateQuote() {
+    setSaving(true);
+    const payload: Record<string, unknown> = {
+      sales_status: form.sales_status || null,
+      sales_notes: form.sales_notes || null,
+    };
+    const qt = parseFloat(form.quote_total);
+    payload.quote_total = isNaN(qt) ? null : qt;
+    await patchLead(payload);
+    setSaving(false);
+    router.push(`/quotes/new?lead_id=${lead.id}`);
+  }
+
   // ── Action: Hold ─────────────────────────────────────────────────────────
 
   async function handleHoldConfirm() {
@@ -243,6 +251,7 @@ export function SalesDrawer({
     setSaving(true);
     const updated = await patchLead({
       status: "Rejected",
+      sales_status: null,
       rejection_reason: rejForm.rejection_reason,
       rejection_notes: rejForm.rejection_notes || null,
     });
@@ -265,10 +274,9 @@ export function SalesDrawer({
 
   return (
     <>
-      {/* Backdrop */}
+      {/* Backdrop — intentionally non-clickable: user must use Save or an action button to close */}
       <div
         className="fixed inset-0 z-40 bg-black/40"
-        onClick={handleClose}
         aria-hidden="true"
       />
 
@@ -676,7 +684,7 @@ export function SalesDrawer({
               <div>
                 <label className={labelCls} style={labelStyle}>Hold Reason *</label>
                 <div className="grid grid-cols-2 gap-2 mt-1">
-                  {SALES_HOLD_REASONS.map((r) => {
+                  {holdReasons.map((r) => {
                     const selected = holdForm.hold_reason === r.value;
                     return (
                       <label
@@ -759,11 +767,11 @@ export function SalesDrawer({
               >
                 <SelectTrigger className="h-9 text-sm w-full">
                   <SelectValue placeholder="Rejection reason *">
-                    {REJECT_REASONS.find((r) => r.value === rejForm.rejection_reason)?.label ?? "Rejection reason *"}
+                    {rejectReasons.find((r) => r.value === rejForm.rejection_reason)?.label ?? "Rejection reason *"}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
-                  {REJECT_REASONS.map((r) => (
+                  {rejectReasons.map((r) => (
                     <SelectItem key={r.value} value={r.value}>{r.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -801,12 +809,12 @@ export function SalesDrawer({
           {footerMode === "actions" && !isReadOnly && (
             <div className="flex flex-wrap items-center gap-2">
               <button
-                disabled
-                title="Available in the Tickets phase"
-                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium opacity-40 cursor-not-allowed"
-                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                onClick={handleCreateQuote}
+                disabled={saving}
+                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
               >
-                Create Quote / Order
+                {saving ? "Saving…" : "Create Quote / Order"}
               </button>
               <button
                 onClick={() => setFooterMode("hold")}
