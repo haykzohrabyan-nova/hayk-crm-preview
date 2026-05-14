@@ -80,12 +80,11 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 | Tab | Filter |
 |-----|--------|
-| All | `ticket_status = 'order'` |
-| Active | `ticket_status = 'order'` AND `in_production = false` |
-| Won | `ticket_status = 'completed'` |
+| All | `ticket_status IN ('order', 'cancelled')` |
+| Active | `ticket_status = 'order'` |
 | Cancelled | `ticket_status = 'cancelled'` |
 
-> **Note:** `draft`, `sent`, `approved`, and `routed` tickets do NOT appear on the Orders page. They belong to the Quotes page only. The Orders page shows only tickets that have been fully confirmed as orders.
+> **Note:** `draft`, `sent`, `approved`, and `routed` tickets do NOT appear on the Orders page. They belong to the Quotes page only. The Orders page shows only tickets that have been fully confirmed as orders (status `order`) or cancelled.
 
 **Table columns:** Order # (ORD-YYYY-NNN), Contact, Title (⚡ Rush), Total, Priority (colour-coded), Due Date (orange = due soon, red = overdue), Status pill, Created
 

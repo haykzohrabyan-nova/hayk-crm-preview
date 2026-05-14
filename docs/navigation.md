@@ -38,7 +38,7 @@ app/
     │   └── [id]/page.tsx             ✓ EXISTS — Quote/Order detail + edit
     │
     ├── orders/page.tsx               ✓ EXISTS — Orders list (OrdersPage component)
-    │   └── Tabs: All | Active | Won | Cancelled
+    │   └── Tabs: All | Active | Cancelled
     │
     ├── settings/page.tsx             → TO BUILD (currently stub — personal profile)
     │
@@ -169,11 +169,11 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 /quotes?tab=draft   → Draft
 /quotes?tab=sent    → Sent
 /quotes?tab=approved → Approved
+/quotes?tab=routed  → Routed to Sales (sales/admin only)
 
 /orders             → defaults to ?tab=all
 /orders?tab=all     → All
 /orders?tab=active  → Active
-/orders?tab=won     → Won
 /orders?tab=cancelled → Cancelled
 ```
 
@@ -216,9 +216,8 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 
 | Tab | Content | Badge |
 |-----|---------|-------|
-| All | `ticket_status = 'order'` | count |
-| Active | Orders not yet in production | count |
-| Won | `ticket_status = 'completed'` | count |
+| All | `ticket_status IN ('order', 'cancelled')` | count |
+| Active | `ticket_status = 'order'` | count |
 | Cancelled | `ticket_status = 'cancelled'` | count |
 
 ### `/admin/settings/users`

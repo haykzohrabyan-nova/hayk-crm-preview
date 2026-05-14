@@ -27,6 +27,7 @@ import {
   BadgeCheck,
   Zap,
   ChevronDown,
+  Printer,
 } from "lucide-react";
 import { computePricing, formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { formatPhone } from "@/lib/utils/phone";
@@ -557,6 +558,17 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
         >
           {ticket.ticket_status}
         </span>
+
+        {/* Download PDF */}
+        <a
+          href={`/api/tickets/${ticketId}/pdf`}
+          download
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80"
+          style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)", textDecoration: "none" }}
+          title="Download PDF"
+        >
+          <Printer size={14} /> Save PDF
+        </a>
 
         {!editing && !isLocked && (
           <button

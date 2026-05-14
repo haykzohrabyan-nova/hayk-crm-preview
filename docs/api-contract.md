@@ -442,6 +442,35 @@ Body: Any subset of ticket fields plus optional:
 
 ---
 
+### `GET /api/tickets/[id]/pdf`
+
+Renders the ticket as a PDF binary and returns it for direct download.
+
+**Auth:** Requires authenticated session. Returns `401` if no session, `404` if ticket not found.
+
+**Response `200`:**
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment; filename="Quote-REF.pdf"` (or `Invoice-REF.pdf` for orders where `ticket_status` is `order`, `in_production`, or `completed`)
+- Body: raw PDF binary rendered server-side by `@react-pdf/renderer`
+
+PDF sections: company header (logo or name, address, contact), Bill To, Prepared By, line items table, pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment methods, special requirements, gold footer.
+
+The "Save PDF" button in `quote-detail.tsx` is an `<a href="/api/tickets/[id]/pdf" download>` link — clicking it triggers a direct file download with no new tab or print dialog.
+
+---
+
+### `GET /api/tickets/[id]/print`
+
+Returns a complete, fully-styled HTML document of the invoice. Used for browser print / Save as PDF via the system print dialog.
+
+**Auth:** Requires authenticated session. Returns `401` if no session, `404` if ticket not found.
+
+**Response `200`:**
+- `Content-Type: text/html; charset=utf-8`
+- Body: standalone HTML with all styles inline and `@media print` rules. Includes a "Print / Save PDF" button visible on screen. When loaded inside a hidden iframe, a script auto-triggers `window.print()`.
+
+---
+
 ### `GET /api/tickets/counts`
 
 Returns lightweight tab badge counts. Scoped per role.
@@ -558,9 +587,10 @@ Notifications in BazaarCRM are delivered via **Supabase Realtime**, not HTTP pol
 
 ### How it works
 
-- `components/sidebar.tsx` maintains two persistent Supabase Realtime subscriptions:
+- `components/sidebar.tsx` maintains three persistent Supabase Realtime subscriptions:
   - **`leads-realtime`** — watches any INSERT/UPDATE/DELETE on `public.leads` → refreshes sidebar badge counts + dispatches `bazaar:leads-changed` browser event
   - **`activities-realtime`** — watches any INSERT on `public.activities` → dispatches `bazaar:activities-changed` browser event
+  - **`tickets-realtime`** — watches any INSERT/UPDATE/DELETE on `public.job_tickets` → refreshes sidebar badge counts + dispatches `bazaar:tickets-changed` browser event
 - **Sidebar badge counts** are fetched via `GET /api/sidebar-counts` (triggered on mount and on any Realtime event)
 - **Activity log** (admin `/notifications` page) is fetched via `GET /api/admin/activity-log` and auto-refreshes when `bazaar:activities-changed` fires
 

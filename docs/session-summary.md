@@ -1,6 +1,6 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 13, 2026
-**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + all documentation audited and updated. Ready for end-to-end testing.
+**Last updated:** May 14, 2026
+**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + PDF export for quotes and orders + all documentation audited and updated. Ready for end-to-end testing.
 
 ---
 
@@ -82,10 +82,10 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - Migrations 041–048: product catalog, extended job_tickets, admin RLS, order/quote lookup seed, company_settings, order sequence function, realtime for job_tickets, SKU lookup categories
 - `lib/utils/ticket-math.ts` — QuoteSku interface, computePricing(), skuLineTotal(), formatCurrency()
 - `lib/types/index.ts` — fully updated: QuoteSku (15 fields), JobTicket (40+ columns), TicketForm, CompanySettings, LookupCategory union (all categories)
-- `/quotes/new` — `new-quote-form.tsx` — full 3-tab quote builder: Line Items (Color Mode, Sides, Roll Direction, Add-on Finishes, Design on File, Die Cut), Quote tab (all dropdowns admin-managed), Settings tab
+- `/quotes/new` — `new-quote-form.tsx` — new quote form with up to 4 tabs: Customer (optional, shown for new customers), Line Items, Quote, Settings; the Customer tab is hidden when a lead or CRM customer is pre-selected via URL params
 - `/quotes/[id]` — `quote-detail.tsx` — full detail view + edit mode, 4-tab layout matching new-quote-form
 - `/quotes` — `quotes-page.tsx` — 4-tab Quoted Requests list with counts, search, sort
-- `/orders` — `orders-page.tsx` — 4-tab Orders list with counts, search, sort
+- `/orders` — `orders-page.tsx` — 3-tab Orders list (All | Active | Cancelled) with counts, search, sort; only `ticket_status IN ('order','cancelled')` tickets shown
 - All dropdowns dynamically loaded from `lookup_values` via `/api/lookups`; `renderLookupOptions` helper prevents data loss for deactivated values
 - Sidebar badges for `/quotes` and `/orders`
 - `GET /api/lookups/products` — public product-type + material lookup for OrderDrawer
@@ -119,6 +119,15 @@ Full business rule implementation for routing high-value quotes from SDRs to Sal
 - **Migration `050_add_urgent_priority.sql`**: seeds 'Urgent' to `ticket_priority` lookup (system-set only; hidden from UI dropdown).
 - **Migration `051_backfill_routed_status.sql`**: retroactively marks SDR-created draft quotes over threshold as `routed`.
 - **`docs/feature-specs/tickets.md`**: fully rewritten to document all current behaviour.
+
+### PDF Export for Quotes & Orders — Complete (2026-05-14)
+
+- **`lib/pdf/invoice-pdf.tsx`** — `@react-pdf/renderer` React component that produces a professional, fully styled PDF invoice. Sections: company header (logo or name, address, phone, email, website), Bill To block, Prepared By block, line items table (product, spec, qty, unit price, line total), pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment methods, delivery channel, special requirements, gold-accent footer. Works for both QUOTE and INVOICE document types.
+- **`app/api/tickets/[id]/pdf/route.ts`** — authenticated GET endpoint. Fetches ticket + company settings, renders the PDF server-side with `renderToBuffer`, returns `application/pdf` with `Content-Disposition: attachment; filename="Quote-REF.pdf"` (or `Invoice-REF.pdf` for orders). Browser downloads the file immediately — no new tab, no print dialog.
+- **`app/api/tickets/[id]/print/route.ts`** — HTML print endpoint (existing). Returns a fully styled HTML invoice document. Useful for browser-based print / Save as PDF via the system print dialog.
+- **`components/quote-detail.tsx`** — "Save PDF" button replaced with a plain `<a href="/api/tickets/[id]/pdf" download>` link. One click → file download.
+- **Root cause fix in both PDF and print routes:** `job_tickets.created_by_id` is the FK column (not `created_by`). The broken Supabase join `created_by:user_profiles(full_name)` was silently failing and making the whole query return null (404). Fixed by fetching the creator name in a separate query using `created_by_id`, identical to the pattern in `/api/tickets/[id]/route.ts`.
+- Added `@react-pdf/renderer` to `package.json`.
 
 ### Admin Panel — Complete (2026-05-12)
 - `/admin/settings/dropdowns` — fully built; 15+ categories (lead + order/quote + SKU)
@@ -189,9 +198,9 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/crm` | main | ✅ Built |
 | `/crm/customers/[id]` | main | ✅ Built — full customer profile page |
 | `/quotes` | main | ✅ Built — Quoted Requests list (4 tabs) |
-| `/quotes/new` | main | ✅ Built — New Quote/Order form (3 tabs) |
+| `/quotes/new` | main | ✅ Built — New Quote/Order form (Customer + 3 tabs; Customer tab conditional) |
 | `/quotes/[id]` | main | ✅ Built — Quote/Order detail + edit (4 tabs) |
-| `/orders` | main | ✅ Built — Orders list (4 tabs) |
+| `/orders` | main | ✅ Built — Orders list (3 tabs: All | Active | Cancelled) |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
 | `/notifications` | main | ⏳ Spec preview |
 | `/admin` | admin | ✅ Built — card grid overview |
@@ -208,7 +217,7 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 
 ## Migrations (in order)
 
-See `docs/schema.md` → Migration File Order for the full list (001–048). Key milestones:
+See `docs/schema.md` → Migration File Order for the full list (001–051). Key milestones:
 
 | # | File | Purpose |
 |---|------|---------|
@@ -308,7 +317,7 @@ SALES PIPELINE (Routed to Sales)
 | Admin: Broadcast Notifications | Send system messages to all users or by role. |
 | Admin: Audit Log | Full activity history with filters and pagination. |
 | Integrations | Stripe + Zelle configured (placeholder built; wiring deferred). |
-| PDF Export | Quote/Order PDF with company logo from company_settings. |
+| ~~PDF Export~~ | ✅ Done (2026-05-14) — `@react-pdf/renderer`, direct download link |
 | ~~High-value SDR block~~ | ✅ Done (2026-05-13) |
 | Admin Override (terminal leads) | Admin can reopen Rejected/Won/Dropped leads (TODO-001). |
 | Email / SMS outreach | Future — after Stats + Notifications. |

@@ -90,6 +90,27 @@ app/(app)/leads/page.tsx                    app/(app)/sales/page.tsx
 
 ---
 
+## PDF Generation
+
+PDF rendering uses `@react-pdf/renderer` (server-side only — never imported in Client Components).
+
+| File | Purpose |
+|------|---------|
+| `lib/pdf/invoice-pdf.tsx` | `InvoicePDF` React component — renders a `<Document>` + `<Page>` with all invoice sections. Accepts typed props (company, ticket, customer, skus, pricing). Used exclusively by the `/api/tickets/[id]/pdf` route handler. |
+
+**How it works:**
+1. `GET /api/tickets/[id]/pdf` fetches ticket + company_settings from Supabase (admin client).
+2. `renderToBuffer(<InvoicePDF .../>)` produces a PDF binary server-side.
+3. Response: `Content-Type: application/pdf` + `Content-Disposition: attachment`.
+4. In `quote-detail.tsx`, the "Save PDF" button is `<a href="/api/tickets/[id]/pdf" download>` — one click downloads the file with no new tab.
+
+**Pattern for adding new PDF types:**
+- Create a new component in `lib/pdf/` (e.g. `lib/pdf/packing-slip.tsx`)
+- Create a new route handler (e.g. `app/api/tickets/[id]/packing-slip/route.ts`)
+- Add a download link pointing to the new route — no frontend state needed
+
+---
+
 ## Page-by-Page Breakdown
 
 ### `/dashboard` — Role-scoped Dashboard
@@ -196,7 +217,7 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/orders/page.tsx  [Server Component — thin wrapper]
   └── components/orders-page.tsx  [Client Component "use client"]
-        ├── Tabs: All | Active | Won | Cancelled (count badge on all)
+        ├── Tabs: All | Active | Cancelled (count badge on all)
         ├── Only shows ticket_status = 'order' tickets (draft/sent/approved/routed excluded)
         ├── Counts: GET /api/tickets/counts
         ├── Data: GET /api/tickets?kind=quote (filtered to 'order' status client-side)

@@ -442,8 +442,9 @@ Each element of `quote_skus` conforms to `QuoteSku` in `lib/utils/ticket-math.ts
 **`ticket_status`:**
 - `draft` — in progress, not yet sent
 - `sent` — quote sent to client
-- `approved` — client confirmed (quote → order transition)
+- `approved` — client confirmed (quote → order transition; moves to Orders page)
 - `routed` — **SDR-only.** Quote total exceeded the High-Value Threshold; automatically routed to Sales for claiming. SDR cannot edit; Sales/Admin can claim (moves to `draft` with new `created_by_id`).
+- `order` — confirmed production order (appears on Orders page, gets ORD-YYYY-NNN reference code)
 - `rejected` — client declined
 - `in_production` — order in production
 - `completed` — fulfilled
@@ -532,6 +533,7 @@ create table public.activities (
 | `quote_follow_up_reset` | Follow-up reset | — |
 | `order_ticket_created` | New order ticket created | — |
 | `order_ticket_updated` | Order ticket patched | `{ fields: string[] }` |
+| `order_ticket_status_changed` | Ticket status explicitly changed (e.g. routed → draft on claim, draft → order) | `{ from, to }` |
 | `ticket_client_confirmed` | Client confirmed quote → order | — |
 
 ---

@@ -3,6 +3,37 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-14] — PDF download for quotes and orders
+
+### Added
+- `lib/pdf/invoice-pdf.tsx` — `@react-pdf/renderer` React component (`InvoicePDF`) that produces a styled PDF: company header (logo or text name, address, phone, email, website), Bill To, Prepared By, line items table (product, spec, qty, unit price, line total), pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment methods, delivery channel, special requirements, gold-accent footer. Supports QUOTE and INVOICE document types.
+- `app/api/tickets/[id]/pdf/route.ts` — authenticated GET endpoint; fetches ticket + company settings, renders PDF with `renderToBuffer`, returns `application/pdf` + `Content-Disposition: attachment; filename="Quote-REF.pdf"`. One click in the browser downloads the file directly.
+- `app/api/tickets/[id]/print/route.ts` — (kept) HTML fallback; returns a fully styled standalone HTML invoice with `@media print` rules and auto-print script when loaded in an iframe.
+
+### Changed
+- `components/quote-detail.tsx` — replaced the iframe-based print hack with a plain `<a href="/api/tickets/[id]/pdf" download>` link. No JavaScript needed.
+- `package.json` — added `@react-pdf/renderer`
+
+### Fixed
+- `app/api/tickets/[id]/pdf/route.ts` + `print/route.ts` — removed broken Supabase join `created_by:user_profiles(full_name)` (FK column is `created_by_id`, not `created_by`). The bad join caused the entire ticket query to return null → 404 on every request. Creator name is now fetched separately, matching the pattern in `GET /api/tickets/[id]`.
+
+### Documentation
+- `docs/session-summary.md` — added PDF Export section under completed work; marked PDF Export done in build queue
+- `docs/api-contract.md` — added `GET /api/tickets/[id]/pdf` and `GET /api/tickets/[id]/print` endpoint docs
+- `docs/component-architecture.md` — added PDF Generation section with `InvoicePDF` component, how-it-works notes, and pattern for adding new PDF types
+
+## [2026-05-13] — Documentation audit and corrections
+
+### Fixed
+- `docs/schema.md` — added `order` to ticket_status enum (confirmed order on Orders page); added `order_ticket_status_changed` to Activity Type Enums table
+- `docs/types.md` — added `'order'` to `TicketStatus` union; added `customer_id` alias note on `Activity` interface (`contact_id` was stale)
+- `lib/types/index.ts` — added `'order'` to `TicketStatus` union (matches runtime usage)
+- `docs/navigation.md` — corrected `/orders` tabs to 3 (All | Active | Cancelled, no Won/completed); added `?tab=routed` to Tab URL Convention; fixed All tab filter to `IN ('order','cancelled')`
+- `docs/feature-specs/tickets.md` — corrected Orders page tab table (3 tabs, removed Won/in_production)
+- `docs/component-architecture.md` — corrected Orders page tab list (3 tabs, not 4)
+- `docs/api-contract.md` — corrected Notifications section from "two" to "three" Realtime channels; added `tickets-realtime` channel entry
+- `docs/session-summary.md` — fixed `/quotes/new` description (conditional Customer tab, not "3 tabs"); fixed `/orders` description (3 tabs); updated migration range from 001–048 to 001–051
+
 ## [2026-05-13] — HV threshold check extended to quote-detail editing
 
 ### Changed

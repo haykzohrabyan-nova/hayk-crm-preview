@@ -229,6 +229,7 @@ export type TicketStatus =
   | 'sent'
   | 'approved'
   | 'routed'      // SDR quote exceeded high-value threshold — awaiting Sales claim
+  | 'order'       // confirmed production order (appears on Orders page)
   | 'rejected'
   | 'in_production'
   | 'completed'
@@ -384,7 +385,8 @@ export type ActivityChannel = 'SMS' | 'WhatsApp' | 'Email' | 'Call' | 'In-person
 
 export interface Activity {
   id: string
-  contact_id: string | null
+  contact_id: string | null    // deprecated alias — use customer_id
+  customer_id: string | null
   lead_id: string | null
   ticket_id: string | null
   type: ActivityType

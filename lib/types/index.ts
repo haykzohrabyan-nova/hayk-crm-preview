@@ -201,6 +201,7 @@ export type TicketStatus =
   | 'completed'
   | 'cancelled'
   | 'routed'
+  | 'order'
 
 // Ticket-specific payment method keys (stored in quote_payment_types[])
 export type PaymentTypeKey = 'card_default' | 'zelle' | 'offline'
