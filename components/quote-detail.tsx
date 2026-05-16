@@ -95,8 +95,10 @@ interface Ticket {
   tax_exempt: boolean;
   sales_permit_number: string | null;
   quote_payment_types: string[];
+  payment_status: "unpaid" | "partial" | "paid" | null;
   prepayment_type: string | null;
   prepayment_value: string | null;
+  prepayment_status: "pending" | "paid" | null;
   quote_reminder_date: string | null;
   follow_up_cycles: number | null;
   follow_up_frequency: string | null;
