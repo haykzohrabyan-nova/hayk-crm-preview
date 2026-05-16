@@ -199,6 +199,8 @@ export default function QuotesPage() {
   const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
 
   const filtered = quotes.filter((q) => {
+    // Orders have moved to the Orders page — never show on Quotes
+    if (q.ticket_status === "order") return false;
     // Routed tickets only appear in the dedicated "routed" tab
     if (q.ticket_status === "routed" && tab !== "routed") return false;
     if (activeTab.status && q.ticket_status !== activeTab.status) return false;

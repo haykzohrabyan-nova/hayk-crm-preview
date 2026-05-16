@@ -16,6 +16,7 @@ export interface QuoteSku {
   height?: number;
   quantity?: number;
   unit_price?: number;
+  line_total?: number;   // Manual override — when set, used instead of qty × unit_price
   design_required?: boolean;
   die_cut?: boolean;
   spot_uv?: boolean;
@@ -42,8 +43,12 @@ export interface PricingResult {
   final_total: number;
 }
 
-/** Compute the line total for a single SKU. */
+/** Compute the line total for a single SKU.
+ *  If line_total is explicitly set by the user, use that as the override.
+ *  Otherwise fall back to qty × unit_price.
+ */
 export function skuLineTotal(sku: QuoteSku): number {
+  if (sku.line_total != null) return round2(sku.line_total);
   const qty = sku.quantity ?? 0;
   const price = sku.unit_price ?? 0;
   return round2(qty * price);

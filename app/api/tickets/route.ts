@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -306,6 +307,27 @@ export async function POST(request: NextRequest) {
       payload: { to: newLeadStatus, reason: "ticket_created" },
       created_at: now,
     });
+  }
+
+  // Fire quote delivery if the ticket was created directly in "sent" status
+  if (ticket_status === "sent") {
+    const { data: fullTicket } = await admin
+      .from("job_tickets")
+      .select("*, customer:customers(first_name, last_name, email, phone)")
+      .eq("id", ticket.id)
+      .single();
+    const { data: companyRow } = await admin
+      .from("company_settings")
+      .select("*")
+      .eq("id", 1)
+      .single();
+    if (fullTicket && companyRow) {
+      sendQuoteToCustomer(fullTicket, companyRow).then((result) => {
+        if (!result.ok) {
+          console.error("[send-quote] POST delivery failed:", result.error, { ticketId: ticket.id });
+        }
+      });
+    }
   }
 
   return NextResponse.json({ ticket }, { status: 201 });

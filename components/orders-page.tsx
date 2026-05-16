@@ -11,6 +11,7 @@ interface OrderTicket {
   id: string;
   ticket_kind: string;
   ticket_status: string;
+  payment_status: "unpaid" | "partial" | "paid" | null;
   title: string | null;
   reference_code: string | null;
   quote_final_total: number | null;
@@ -26,6 +27,12 @@ interface OrderTicket {
   } | null;
   created_by: { id: string; full_name: string | null } | null;
 }
+
+const PAYMENT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+  unpaid:  { bg: "var(--color-danger-bg)",  text: "var(--color-danger)",  label: "Unpaid" },
+  partial: { bg: "var(--color-warning-bg)", text: "var(--color-warning)", label: "Partial" },
+  paid:    { bg: "var(--color-success-bg)", text: "var(--color-success)", label: "Paid" },
+};
 
 type Tab = "all" | "active" | "cancelled";
 
@@ -229,7 +236,7 @@ export default function OrdersPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableSkeleton cols={8} />
+          <TableSkeleton cols={9} />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -240,7 +247,7 @@ export default function OrdersPage() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Order #", "Contact", "Title", "Total", "Priority", "Due Date", "Status", "Created"].map((h) => (
+                {["Order #", "Contact", "Title", "Total", "Priority", "Due Date", "Status", "Payment", "Created"].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -266,7 +273,7 @@ export default function OrdersPage() {
                     style={{ background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)" }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)")}
-                    onClick={() => router.push(`/quotes/${o.id}`)}
+                    onClick={() => router.push(`/orders/${o.id}`)}
                   >
                     <td className="px-4 py-3">
                       {o.reference_code ? (
@@ -331,13 +338,26 @@ export default function OrdersPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
+                      {(() => {
+                        const ps = PAYMENT_STYLE[o.payment_status ?? "unpaid"] ?? PAYMENT_STYLE.unpaid;
+                        return (
+                          <span
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                            style={{ background: ps.bg, color: ps.text }}
+                          >
+                            {ps.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td className="px-4 py-3">
                       <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {relativeTime(o.created_at)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={(e) => { e.stopPropagation(); router.push(`/quotes/${o.id}`); }}
+                        onClick={(e) => { e.stopPropagation(); router.push(`/orders/${o.id}`); }}
                         className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-opacity hover:opacity-70"
                         style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
                       >

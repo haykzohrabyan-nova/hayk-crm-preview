@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
-  ChevronRight,
   Plus,
   Trash2,
   Pencil,
@@ -123,12 +122,10 @@ interface ProductType {
   }[];
 }
 
-type Tab = "info" | "lines" | "quote" | "history";
+type Tab = "info" | "history";
 
 const VIEW_TABS: { id: Tab; label: string }[] = [
   { id: "info", label: "Info" },
-  { id: "lines", label: "Line Items" },
-  { id: "quote", label: "Quote" },
   { id: "history", label: "History" },
 ];
 
@@ -288,10 +285,12 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
   const [taxExempt, setTaxExempt] = useState(false);
   const [salesPermit, setSalesPermit] = useState("");
   const [paymentTypes, setPaymentTypes] = useState<string[]>(["Card Payment"]);
+  const [prepayMode, setPrepayMode] = useState<"full" | "partial">("full");
   const [prepayType, setPrepayType] = useState<"percent" | "fixed">("percent");
   const [prepayValue, setPrepayValue] = useState("25");
   const [quoteChannel, setQuoteChannel] = useState("Email");
   const [quoteDestination, setQuoteDestination] = useState("");
+  const [quoteDestinationError, setQuoteDestinationError] = useState<string | undefined>();
   const [reminderDate, setReminderDate] = useState("");
   const [followUpCycles, setFollowUpCycles] = useState(3);
   const [followUpFreq, setFollowUpFreq] = useState("Every 2 days");
@@ -315,7 +314,8 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
     setTaxExempt(t.tax_exempt ?? false);
     setSalesPermit(t.sales_permit_number ?? "");
     setPaymentTypes(t.quote_payment_types?.length ? t.quote_payment_types : ["Card Payment"]);
-    setPrepayType((t.prepayment_type as "percent" | "fixed") ?? "percent");
+    setPrepayMode(t.prepayment_type === "percent" || t.prepayment_type === "fixed" ? "partial" : "full");
+    setPrepayType((t.prepayment_type === "percent" || t.prepayment_type === "fixed") ? (t.prepayment_type as "percent" | "fixed") : "percent");
     setPrepayValue(t.prepayment_value ?? "25");
     setQuoteChannel(t.quote_channel ?? "Email");
     setQuoteDestination(t.quote_destination ?? "");
@@ -407,9 +407,33 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
 
   // ─── Save ─────────────────────────────────────────────────────────────────
 
-  async function handleSave(newStatus?: string) {
+  async function handleSave(newStatus?: string, extraFields?: Record<string, unknown>) {
     // Keep ref current for the HV countdown timer
     handleSaveRef.current = handleSave;
+
+    // Payment-status-only update — skip all form validation and just PATCH the extra fields
+    if (!newStatus && extraFields && Object.keys(extraFields).length > 0 && ticket?.ticket_status === "order") {
+      setSaving(true);
+      try {
+        const res = await fetch(`/api/tickets/${ticketId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(extraFields),
+        });
+        const json = await res.json();
+        if (res.ok) {
+          setTicket(json.ticket);
+          window.dispatchEvent(new Event("bazaar:refresh-counts"));
+        } else {
+          setError(json.error ?? "Failed to update.");
+        }
+      } catch {
+        setError("Network error. Please try again.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     // ── High-value threshold check for SDR users ─────────────────────────────
     // Only fires when editing a draft (not when moving to sent/order/etc.)
@@ -440,6 +464,18 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
     setSaving(true);
     setError(null);
 
+    // Require quote_destination when sending or saving a draft quote
+    if (
+      ticket?.ticket_kind === "quote" &&
+      (newStatus === "sent" || (!newStatus && ticket?.ticket_status === "draft")) &&
+      !quoteDestination.trim()
+    ) {
+      const label = quoteChannel === "Email" ? "email address" : quoteChannel === "In-person" ? "location" : "phone number";
+      setQuoteDestinationError(`Please enter the ${label} to send the quote to.`);
+      setSaving(false);
+      return;
+    }
+
     const body: Record<string, unknown> = {
       title: title.trim(),
       priority,
@@ -461,8 +497,8 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
       tax_exempt: taxExempt,
       sales_permit_number: salesPermit || null,
       quote_payment_types: paymentTypes,
-      prepayment_type: prepayType,
-      prepayment_value: prepayValue,
+      prepayment_type: prepayMode === "full" ? "full" : prepayType,
+      prepayment_value: prepayMode === "full" ? "100" : prepayValue,
       quote_channel: quoteChannel,
       quote_destination: quoteDestination || null,
       quote_reminder_date: reminderDate || null,
@@ -524,7 +560,8 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
   }
 
   const statusColors = STATUS_COLORS[ticket.ticket_status] ?? STATUS_COLORS.draft;
-  const isLocked = ticket.ticket_status === "order" || ticket.ticket_status === "cancelled";
+  const hasPayment = ticket.payment_status === "partial" || ticket.payment_status === "paid";
+  const isLocked = ticket.ticket_status === "cancelled" || (ticket.ticket_status === "order" && hasPayment);
 
   return (
     <>
@@ -627,56 +664,79 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
 
           <div className="rounded-xl p-6" style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
             {tab === "info" && (
-              <InfoSection
-                editing={editing}
-                title={title} setTitle={setTitle}
-                priority={priority} setPriority={setPriority}
-                dueDate={dueDate} setDueDate={setDueDate}
-                rush={rush} setRush={setRush}
-                specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
-                notes={notes} setNotes={setNotes}
-                ticket={ticket}
-                priorityOpts={quoteLookups.ticket_priority}
-              />
-            )}
+              <div className="space-y-8">
+                {/* ── Info ── */}
+                <InfoSection
+                  editing={editing}
+                  title={title} setTitle={setTitle}
+                  priority={priority} setPriority={setPriority}
+                  dueDate={dueDate} setDueDate={(v) => {
+                    setDueDate(v);
+                    if (v) {
+                      const today = new Date(); today.setHours(0, 0, 0, 0);
+                      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+                      const picked = new Date(v + "T00:00:00");
+                      setRush(picked <= tomorrow);
+                    }
+                  }}
+                  rush={rush} setRush={setRush}
+                  specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
+                  notes={notes} setNotes={setNotes}
+                  ticket={ticket}
+                  priorityOpts={quoteLookups.ticket_priority}
+                />
 
-            {tab === "lines" && (
-              <LinesSection
-                editing={editing}
-                skus={skus}
-                setSkus={setSkus}
-                products={products}
-                skuLookups={skuLookups}
-                onUpdate={updateSku}
-              />
-            )}
+                {/* ── Divider: Line Items ── */}
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>Line Items</p>
+                    <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
+                  </div>
+                  <LinesSection
+                    editing={editing}
+                    skus={skus}
+                    setSkus={setSkus}
+                    products={products}
+                    skuLookups={skuLookups}
+                    onUpdate={updateSku}
+                  />
+                </div>
 
-            {tab === "quote" && (
-              <QuoteSection
-                editing={editing}
-                pricing={pricing}
-                ticket={ticket}
-                orderSource={orderSource}
-                setOrderSource={setOrderSource}
-                shipping={shipping} setShipping={setShipping}
-                discountType={discountType} setDiscountType={setDiscountType}
-                discountValue={discountValue} setDiscountValue={setDiscountValue}
-                discountReason={discountReason} setDiscountReason={setDiscountReason}
-                taxRate={taxRate} setTaxRate={setTaxRate}
-                taxExempt={taxExempt} setTaxExempt={setTaxExempt}
-                salesPermit={salesPermit} setSalesPermit={setSalesPermit}
-                paymentTypes={paymentTypes} togglePayment={togglePayment}
-                prepayType={prepayType} setPrepayType={setPrepayType}
-                prepayValue={prepayValue} setPrepayValue={setPrepayValue}
-                quoteChannel={quoteChannel} setQuoteChannel={setQuoteChannel}
-                quoteDestination={quoteDestination} setQuoteDestination={setQuoteDestination}
-                reminderDate={reminderDate} setReminderDate={setReminderDate}
-                followUpCycles={followUpCycles} setFollowUpCycles={setFollowUpCycles}
-                followUpFreq={followUpFreq} setFollowUpFreq={setFollowUpFreq}
-                channelOpts={quoteLookups.quote_channel}
-                paymentOpts={quoteLookups.ticket_payment}
-                followUpFreqOpts={quoteLookups.follow_up_freq}
-              />
+                {/* ── Divider: Quote & Pricing ── */}
+                <div>
+                  <div className="flex items-center gap-3 mb-4">
+                    <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>Quote &amp; Pricing</p>
+                    <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
+                  </div>
+                  <QuoteSection
+                    editing={editing}
+                    pricing={pricing}
+                    ticket={ticket}
+                    orderSource={orderSource}
+                    setOrderSource={setOrderSource}
+                    shipping={shipping} setShipping={setShipping}
+                    discountType={discountType} setDiscountType={setDiscountType}
+                    discountValue={discountValue} setDiscountValue={setDiscountValue}
+                    discountReason={discountReason} setDiscountReason={setDiscountReason}
+                    taxRate={taxRate} setTaxRate={setTaxRate}
+                    taxExempt={taxExempt} setTaxExempt={setTaxExempt}
+                    salesPermit={salesPermit} setSalesPermit={setSalesPermit}
+                    paymentTypes={paymentTypes} togglePayment={togglePayment}
+                    prepayMode={prepayMode} setPrepayMode={setPrepayMode}
+                    prepayType={prepayType} setPrepayType={setPrepayType}
+                    prepayValue={prepayValue} setPrepayValue={setPrepayValue}
+                    quoteChannel={quoteChannel} setQuoteChannel={setQuoteChannel}
+                    quoteDestination={quoteDestination} setQuoteDestination={(v) => { setQuoteDestination(v); setQuoteDestinationError(undefined); }}
+                    quoteDestinationError={quoteDestinationError}
+                    reminderDate={reminderDate} setReminderDate={setReminderDate}
+                    followUpCycles={followUpCycles} setFollowUpCycles={setFollowUpCycles}
+                    followUpFreq={followUpFreq} setFollowUpFreq={setFollowUpFreq}
+                    channelOpts={quoteLookups.quote_channel}
+                    paymentOpts={quoteLookups.ticket_payment}
+                    followUpFreqOpts={quoteLookups.follow_up_freq}
+                  />
+                </div>
+              </div>
             )}
 
             {tab === "history" && <HistorySection ticketId={ticketId} />}
@@ -692,10 +752,22 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
                 <button
                   disabled={saving}
                   onClick={() => handleSave("sent")}
-                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50"
+                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
                   style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
                 >
+                  <Mail size={14} />
                   Send Quote
+                </button>
+              )}
+              {ticket.ticket_status === "sent" && (
+                <button
+                  disabled={saving}
+                  onClick={() => handleSave("sent")}
+                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                  style={{ background: "var(--color-surface)", color: "var(--color-text-primary)", border: "1px solid var(--color-border)" }}
+                >
+                  <Mail size={14} />
+                  Resend Quote
                 </button>
               )}
               {(ticket.ticket_status === "sent" || ticket.ticket_status === "draft") && (
@@ -721,59 +793,115 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
             </div>
           )}
 
+          {/* Payment status bar — visible when ticket is a confirmed order */}
+          {!editing && ticket.ticket_status === "order" && (
+            <div
+              className="mt-4 rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap"
+              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
+            >
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+                Payment
+              </span>
+              {(["unpaid", "partial", "paid"] as const).map((status) => {
+                const styles = {
+                  unpaid:  { active: { background: "var(--color-danger-bg)",  color: "var(--color-danger)"  }, label: "Unpaid"  },
+                  partial: { active: { background: "var(--color-warning-bg)", color: "var(--color-warning)" }, label: "Partial" },
+                  paid:    { active: { background: "var(--color-success-bg)", color: "var(--color-success)" }, label: "Paid"    },
+                };
+                const s = styles[status];
+                const isActive = (ticket.payment_status ?? "unpaid") === status;
+                return (
+                  <button
+                    key={status}
+                    disabled={saving}
+                    onClick={() => handleSave(undefined, { payment_status: status })}
+                    className="px-3 py-1 text-xs font-medium rounded-full border transition-opacity hover:opacity-80 disabled:opacity-50"
+                    style={
+                      isActive
+                        ? { ...s.active, borderColor: "transparent" }
+                        : { background: "var(--color-bg)", color: "var(--color-text-muted)", borderColor: "var(--color-border)" }
+                    }
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+              <span className="ml-auto text-xs" style={{ color: "var(--color-text-muted)" }}>
+                Click to update payment status
+              </span>
+            </div>
+          )}
+
+          {/* Deposit status bar — visible when order has a partial prepayment set */}
+          {!editing && ticket.ticket_status === "order" && (ticket.prepayment_type === "percent" || ticket.prepayment_type === "fixed") && (
+            <div
+              className="mt-2 rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap"
+              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
+            >
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+                Deposit
+              </span>
+              {(["pending", "paid"] as const).map((status) => {
+                const styles = {
+                  pending: { active: { background: "var(--color-warning-bg)", color: "var(--color-warning)" }, label: "Pending" },
+                  paid:    { active: { background: "var(--color-success-bg)", color: "var(--color-success)" }, label: "Paid"    },
+                };
+                const s = styles[status];
+                const isActive = (ticket.prepayment_status ?? "pending") === status;
+                return (
+                  <button
+                    key={status}
+                    disabled={saving}
+                    onClick={() => handleSave(undefined, { prepayment_status: status })}
+                    className="px-3 py-1 text-xs font-medium rounded-full border transition-opacity hover:opacity-80 disabled:opacity-50"
+                    style={
+                      isActive
+                        ? { ...s.active, borderColor: "transparent" }
+                        : { background: "var(--color-bg)", color: "var(--color-text-muted)", borderColor: "var(--color-border)" }
+                    }
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+              <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                {(() => {
+                  const val = parseFloat(ticket.prepayment_value ?? "0") || 0;
+                  const total = ticket.quote_final_total ?? 0;
+                  const amount = ticket.prepayment_type === "percent"
+                    ? Math.round(total * (val / 100) * 100) / 100
+                    : Math.min(val, total);
+                  return `— deposit amount: ${formatCurrency(amount)}`;
+                })()}
+              </span>
+              <span className="ml-auto text-xs" style={{ color: "var(--color-text-muted)" }}>
+                Will be auto-updated by Stripe
+              </span>
+            </div>
+          )}
+
           {/* Bottom action bar — edit mode */}
           {editing && (
             <div
               className="mt-4 rounded-xl px-5 py-3 flex items-center justify-between gap-2"
               style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
             >
-              {/* Left: Cancel + Back */}
-              <div className="flex gap-2">
-                <button
-                  onClick={cancelEdit}
-                  className="flex items-center gap-1 px-4 py-2 text-sm rounded-md border hover:opacity-70 transition-opacity"
-                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-surface)" }}
-                >
-                  <X size={14} /> Cancel
-                </button>
-                {tab !== "info" && (
-                  <button
-                    onClick={() => {
-                      const editTabs: Tab[] = ["info", "lines", "quote"];
-                      const idx = editTabs.indexOf(tab as Tab);
-                      if (idx > 0) setTab(editTabs[idx - 1]);
-                    }}
-                    className="flex items-center gap-1 px-4 py-2 text-sm rounded-md border hover:opacity-70 transition-opacity"
-                    style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)", background: "var(--color-surface)" }}
-                  >
-                    <ChevronLeft size={14} /> Back
-                  </button>
-                )}
-              </div>
+              <button
+                onClick={cancelEdit}
+                className="flex items-center gap-1 px-4 py-2 text-sm rounded-md border hover:opacity-70 transition-opacity"
+                style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-surface)" }}
+              >
+                <X size={14} /> Cancel
+              </button>
 
-              {/* Right: Next or Save */}
-              {tab !== "quote" ? (
-                <button
-                  onClick={() => {
-                    const editTabs: Tab[] = ["info", "lines", "quote"];
-                    const idx = editTabs.indexOf(tab as Tab);
-                    if (idx < editTabs.length - 1) setTab(editTabs[idx + 1]);
-                  }}
-                  className="flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80"
-                  style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-                >
-                  Next <ChevronRight size={14} />
-                </button>
-              ) : (
-                <button
-                  disabled={saving}
-                  onClick={() => handleSave()}
-                  className="flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50"
-                  style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-                >
-                  <Check size={14} /> {saving ? "Saving…" : "Save Changes"}
-                </button>
-              )}
+              <button
+                disabled={saving}
+                onClick={() => handleSave()}
+                className="flex items-center gap-1 px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50"
+                style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+              >
+                <Check size={14} /> {saving ? "Saving…" : "Save Changes"}
+              </button>
             </div>
           )}
         </div>
@@ -1066,7 +1194,8 @@ function LinesSection({
     return (
       <div className="space-y-3">
         {skus.map((sku, i) => {
-          const lineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
+          const computedLineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
+          const lineTotal = sku.line_total ?? computedLineTotal;
           return (
             <div key={i} className="rounded-lg p-3 border" style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}>
               <div className="flex justify-between items-start">
@@ -1134,8 +1263,24 @@ function EditableSkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, ca
 }) {
   const selectedProduct = products.find((p) => p.name === sku.product_type);
   const allMaterials = selectedProduct?.material_groups.flatMap((g) => g.materials) ?? [];
-  const lineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
+  const computedTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
   const fieldStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" };
+  const [lineTotalRaw, setLineTotalRaw] = useState(sku.line_total != null ? String(sku.line_total) : "");
+
+  function SkuSelect({ value, onChange, disabled = false, children }: {
+    value: string; onChange: (v: string) => void; disabled?: boolean; children: React.ReactNode;
+  }) {
+    return (
+      <div className="relative">
+        <select value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled}
+          className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm border outline-none disabled:opacity-50"
+          style={fieldStyle}>
+          {children}
+        </select>
+        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+      </div>
+    );
+  }
 
   return (
     <div className="rounded-lg p-4 border" style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}>
@@ -1148,78 +1293,78 @@ function EditableSkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, ca
         )}
       </div>
       {/* Row 1: Product Type | Material */}
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Product Type</label>
-          <select value={sku.product_type} onChange={(e) => { onUpdate(idx, "product_type", e.target.value); onUpdate(idx, "material", ""); }} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle}>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Product Type</label>
+          <SkuSelect value={sku.product_type} onChange={(v) => { onUpdate(idx, "product_type", v); onUpdate(idx, "material", ""); }}>
             <option value="">Select product…</option>
             {products.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
-          </select>
+          </SkuSelect>
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Material</label>
-          <select value={sku.material ?? ""} onChange={(e) => onUpdate(idx, "material", e.target.value)} disabled={!selectedProduct} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none disabled:opacity-50" style={fieldStyle}>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Material</label>
+          <SkuSelect value={sku.material ?? ""} onChange={(v) => onUpdate(idx, "material", v)} disabled={!selectedProduct}>
             <option value="">Select material…</option>
             {allMaterials.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
-          </select>
+          </SkuSelect>
         </div>
 
         {/* Row 2: Width | Height */}
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Width (in)</label>
-          <input type="number" min={0} value={sku.width ?? ""} onChange={(e) => onUpdate(idx, "width", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle} />
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Width (in)</label>
+          <input type="number" min={0} value={sku.width ?? ""} onChange={(e) => onUpdate(idx, "width", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Height (in)</label>
-          <input type="number" min={0} value={sku.height ?? ""} onChange={(e) => onUpdate(idx, "height", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle} />
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Height (in)</label>
+          <input type="number" min={0} value={sku.height ?? ""} onChange={(e) => onUpdate(idx, "height", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
         </div>
 
         {/* Row 3: Color Mode | Sides */}
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Color Mode</label>
-          <select value={sku.color_mode ?? ""} onChange={(e) => onUpdate(idx, "color_mode", e.target.value || undefined)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle}>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Color Mode</label>
+          <SkuSelect value={sku.color_mode ?? ""} onChange={(v) => onUpdate(idx, "color_mode", v || undefined)}>
             <option value="">None</option>
             {renderLookupOptions(skuLookups.color_mode, sku.color_mode)}
-          </select>
+          </SkuSelect>
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Sides</label>
-          <select value={sku.sides ?? ""} onChange={(e) => onUpdate(idx, "sides", e.target.value || undefined)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle}>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Sides</label>
+          <SkuSelect value={sku.sides ?? ""} onChange={(v) => onUpdate(idx, "sides", v || undefined)}>
             <option value="">None</option>
             {renderLookupOptions(skuLookups.sides, sku.sides)}
-          </select>
+          </SkuSelect>
         </div>
 
         {/* Row 4: Quantity | Unit Price */}
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Quantity</label>
-          <input type="number" min={1} value={sku.quantity ?? ""} onChange={(e) => onUpdate(idx, "quantity", e.target.value ? parseInt(e.target.value) : undefined)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle} />
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Quantity</label>
+          <input type="number" min={1} value={sku.quantity ?? ""} onChange={(e) => onUpdate(idx, "quantity", e.target.value ? parseInt(e.target.value) : undefined)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Unit Price ($)</label>
-          <input type="number" min={0} step={0.01} value={sku.unit_price ?? ""} onChange={(e) => onUpdate(idx, "unit_price", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle} />
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Unit Price ($)</label>
+          <input type="number" min={0} step={0.01} value={sku.unit_price ?? ""} onChange={(e) => onUpdate(idx, "unit_price", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
         </div>
 
         {/* Row 5: Lamination | Roll Direction */}
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Lamination</label>
-          <select value={sku.lamination ?? "None"} onChange={(e) => onUpdate(idx, "lamination", e.target.value)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle}>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Lamination</label>
+          <SkuSelect value={sku.lamination ?? "None"} onChange={(v) => onUpdate(idx, "lamination", v)}>
             {renderLookupOptions(skuLookups.lamination, sku.lamination)}
-          </select>
+          </SkuSelect>
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Roll Direction</label>
-          <select value={sku.roll_direction ?? ""} onChange={(e) => onUpdate(idx, "roll_direction", e.target.value || undefined)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle}>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Roll Direction</label>
+          <SkuSelect value={sku.roll_direction ?? ""} onChange={(v) => onUpdate(idx, "roll_direction", v || undefined)}>
             <option value="">None</option>
             {renderLookupOptions(skuLookups.roll_direction, sku.roll_direction)}
-          </select>
+          </SkuSelect>
         </div>
       </div>
 
-      {/* Line price banner */}
-      {lineTotal > 0 && (
-        <div className="mb-3 px-3 py-2 rounded text-sm font-medium" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
-          Line price: {formatCurrency(lineTotal)} <span className="font-normal opacity-70">qty × unit</span>
+      {/* Calculated reference — shown only when no manual override */}
+      {computedTotal > 0 && sku.line_total == null && (
+        <div className="mb-3 px-3 py-2 rounded text-xs" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
+          Calculated: {formatCurrency(computedTotal)} <span className="opacity-60">(qty × unit — override below if needed)</span>
         </div>
       )}
 
@@ -1262,17 +1407,56 @@ function EditableSkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, ca
         </div>
       </div>
 
-      {/* Line item comment */}
+      {/* Line Item Comment */}
       <div className="mt-3">
-        <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Line Item Comment</label>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Line Item Comment</label>
         <textarea
           rows={2}
           placeholder="Optional notes for this SKU"
           value={sku.comment ?? ""}
           onChange={(e) => onUpdate(idx, "comment", e.target.value || undefined)}
-          className="w-full px-2.5 py-1.5 rounded text-sm border outline-none resize-none"
+          className="w-full px-3 py-2 rounded-md text-sm border outline-none resize-none"
           style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
         />
+      </div>
+
+      {/* Line Total override */}
+      <div className="mt-3">
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+          Line Total ($) <span className="font-normal opacity-60">— actual price</span>
+        </label>
+        <input
+          type="number"
+          min={0}
+          step={0.01}
+          placeholder={computedTotal > 0 ? formatCurrency(computedTotal).replace("$", "") : "0.00"}
+          value={lineTotalRaw}
+          onChange={(e) => {
+            setLineTotalRaw(e.target.value);
+            const n = parseFloat(e.target.value);
+            onUpdate(idx, "line_total", isNaN(n) ? undefined : n);
+          }}
+          onBlur={() => {
+            const n = parseFloat(lineTotalRaw);
+            setLineTotalRaw(isNaN(n) ? "" : String(n));
+          }}
+          className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+          style={{
+            background: "var(--color-surface)",
+            border: sku.line_total != null ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
+            color: "var(--color-text-primary)",
+          }}
+        />
+        {sku.line_total != null && (
+          <button
+            type="button"
+            onClick={() => { setLineTotalRaw(""); onUpdate(idx, "line_total", undefined); }}
+            className="mt-1 text-[10px] hover:opacity-70 transition-opacity"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            ✕ Clear override
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1293,10 +1477,12 @@ interface QuoteSectionProps {
   taxExempt: boolean; setTaxExempt: (v: boolean) => void;
   salesPermit: string; setSalesPermit: (v: string) => void;
   paymentTypes: string[]; togglePayment: (opt: string) => void;
+  prepayMode: "full" | "partial"; setPrepayMode: (v: "full" | "partial") => void;
   prepayType: "percent" | "fixed"; setPrepayType: (v: "percent" | "fixed") => void;
   prepayValue: string; setPrepayValue: (v: string) => void;
   quoteChannel: string; setQuoteChannel: (v: string) => void;
   quoteDestination: string; setQuoteDestination: (v: string) => void;
+  quoteDestinationError?: string;
   reminderDate: string; setReminderDate: (v: string) => void;
   followUpCycles: number; setFollowUpCycles: (v: number) => void;
   followUpFreq: string; setFollowUpFreq: (v: string) => void;
@@ -1307,6 +1493,25 @@ interface QuoteSectionProps {
 
 function QuoteSection(p: QuoteSectionProps) {
   const fieldStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" };
+
+  // Local string states so the user can clear and retype without snapping back to 0
+  const [shippingRaw, setShippingRaw] = useState(p.shipping === 0 ? "" : String(p.shipping));
+  const [taxRateRaw, setTaxRateRaw] = useState(p.taxRate === 0 ? "" : String(p.taxRate));
+
+  function StyledSelect({ value, onChange, children }: {
+    value: string; onChange: (v: string) => void; children: React.ReactNode;
+  }) {
+    return (
+      <div className="relative">
+        <select value={value} onChange={(e) => onChange(e.target.value)}
+          className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm border outline-none"
+          style={fieldStyle}>
+          {children}
+        </select>
+        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+      </div>
+    );
+  }
 
   const channelLabels = p.channelOpts.length ? p.channelOpts.map((o) => o.label) : CHANNEL_OPTIONS;
   const paymentLabels = p.paymentOpts.length ? p.paymentOpts.map((o) => o.label) : PAYMENT_OPTIONS;
@@ -1356,11 +1561,19 @@ function QuoteSection(p: QuoteSectionProps) {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Shipping ($)</label>
-                <input type="number" min={0} step={0.01} value={p.shipping} onChange={(e) => p.setShipping(parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                <input type="number" min={0} step={0.01} placeholder="0.00"
+                  value={shippingRaw}
+                  onChange={(e) => { setShippingRaw(e.target.value); p.setShipping(parseFloat(e.target.value) || 0); }}
+                  onBlur={() => { const n = parseFloat(shippingRaw); setShippingRaw(isNaN(n) ? "" : String(n)); }}
+                  className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Tax Rate (%)</label>
-                <input type="number" min={0} step={0.1} value={p.taxRate} disabled={p.taxExempt} onChange={(e) => p.setTaxRate(parseFloat(e.target.value) || 0)} className="w-full px-3 py-2 rounded-md text-sm border outline-none disabled:opacity-40" style={fieldStyle} />
+                <input type="number" min={0} step={0.1} placeholder="0" disabled={p.taxExempt}
+                  value={taxRateRaw}
+                  onChange={(e) => { setTaxRateRaw(e.target.value); p.setTaxRate(parseFloat(e.target.value) || 0); }}
+                  onBlur={() => { const n = parseFloat(taxRateRaw); setTaxRateRaw(isNaN(n) ? "" : String(n)); }}
+                  className="w-full px-3 py-2 rounded-md text-sm border outline-none disabled:opacity-40" style={fieldStyle} />
               </div>
             </div>
 
@@ -1471,29 +1684,24 @@ function QuoteSection(p: QuoteSectionProps) {
               {/* Payment Methods first */}
               <div className="rounded-lg p-4 space-y-3" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
                 <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Payment Methods</h4>
-                <div className="flex flex-wrap gap-2">
-                  {paymentLabels.map((opt) => {
-                    const checked = p.paymentTypes.includes(opt);
+                <div
+                  className="grid rounded-md overflow-hidden border"
+                  style={{ gridTemplateColumns: `repeat(${paymentLabels.length}, 1fr)`, borderColor: "var(--color-border)" }}
+                >
+                  {paymentLabels.map((opt, i) => {
+                    const active = p.paymentTypes.includes(opt);
                     return (
                       <button
                         key={opt}
                         type="button"
                         onClick={() => p.togglePayment(opt)}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-all"
-                        style={checked
-                          ? { background: "var(--color-badge-bg)", color: "var(--color-badge-text)", borderColor: "var(--color-accent)" }
-                          : { background: "transparent", color: "var(--color-text-muted)", borderColor: "var(--color-border)" }
-                        }
+                        className={`py-2 text-sm font-medium transition-all${i < paymentLabels.length - 1 ? " border-r" : ""}`}
+                        style={{
+                          background: active ? "var(--color-accent)" : "var(--color-surface)",
+                          color: active ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
+                          borderColor: "var(--color-border)",
+                        }}
                       >
-                        <span
-                          className="w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0"
-                          style={checked
-                            ? { background: "var(--color-accent)", borderColor: "var(--color-accent)" }
-                            : { borderColor: "var(--color-border)" }
-                          }
-                        >
-                          {checked && <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-btn-primary-text)" }} />}
-                        </span>
                         {opt}
                       </button>
                     );
@@ -1501,26 +1709,105 @@ function QuoteSection(p: QuoteSectionProps) {
                 </div>
               </div>
 
+              {/* Prepayment */}
+              <div className="rounded-lg p-4 space-y-3" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
+                <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Prepayment / Deposit</h4>
+                {/* Full / Partial toggle */}
+                <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-border)", width: "fit-content" }}>
+                  {(["full", "partial"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => p.setPrepayMode(mode)}
+                      className="px-4 py-2 text-sm font-medium transition-colors"
+                      style={
+                        p.prepayMode === mode
+                          ? { background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }
+                          : { background: "var(--color-surface)", color: "var(--color-text-muted)" }
+                      }
+                    >
+                      {mode === "full" ? "Full Payment" : "Partial Payment"}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Partial payment controls */}
+                {p.prepayMode === "partial" && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3">
+                      <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-border)" }}>
+                        {(["percent", "fixed"] as const).map((opt) => (
+                          <button
+                            key={opt}
+                            type="button"
+                            onClick={() => p.setPrepayType(opt)}
+                            className="px-3 py-2 text-sm font-medium transition-colors"
+                            style={
+                              p.prepayType === opt
+                                ? { background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }
+                                : { background: "var(--color-surface)", color: "var(--color-text-muted)" }
+                            }
+                          >
+                            {opt === "percent" ? "%" : "$"}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        step={p.prepayType === "percent" ? 1 : 0.01}
+                        value={p.prepayValue}
+                        onChange={(e) => p.setPrepayValue(e.target.value)}
+                        className="w-28 px-3 py-2 rounded-md text-sm border outline-none"
+                        style={fieldStyle}
+                      />
+                      <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                        = <strong style={{ color: "var(--color-text-primary)" }}>
+                          {p.prepayType === "percent"
+                            ? formatCurrency(p.pricing.final_total * (parseFloat(p.prepayValue) / 100 || 0))
+                            : formatCurrency(parseFloat(p.prepayValue) || 0)}
+                        </strong>
+                      </span>
+                    </div>
+                    {p.pricing.final_total > 0 && (() => {
+                      const dueNow = p.prepayType === "percent"
+                        ? Math.round(p.pricing.final_total * (parseFloat(p.prepayValue) / 100 || 0) * 100) / 100
+                        : Math.round(Math.min(parseFloat(p.prepayValue) || 0, p.pricing.final_total) * 100) / 100;
+                      const balance = Math.max(Math.round((p.pricing.final_total - dueNow) * 100) / 100, 0);
+                      return (
+                        <div className="flex gap-6 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                          <span>Due now: <strong style={{ color: "var(--color-text-primary)" }}>{formatCurrency(dueNow)}</strong></span>
+                          <span>Balance: <strong style={{ color: "var(--color-text-primary)" }}>{formatCurrency(balance)}</strong></span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
               {/* Send payment link */}
               <div className="rounded-lg p-4 space-y-3" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
                 <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Send Payment Link</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via</label>
-                    <select value={p.quoteChannel} onChange={(e) => p.setQuoteChannel(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle}>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via <span style={{ color: "var(--color-danger)" }}>*</span></label>
+                    <StyledSelect value={p.quoteChannel} onChange={p.setQuoteChannel}>
                       {channelLabels.map((o) => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    </StyledSelect>
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                      {p.quoteChannel === "Email" ? "Email Address" : p.quoteChannel === "SMS" || p.quoteChannel === "WhatsApp" ? "Phone / Contact" : p.quoteChannel === "In-person" ? "Location" : "Contact"}
+                      {p.quoteChannel === "Email" ? "Email Address" : p.quoteChannel === "SMS" || p.quoteChannel === "WhatsApp" ? "Phone / Contact" : p.quoteChannel === "In-person" ? "Location" : "Contact"} <span style={{ color: "var(--color-danger)" }}>*</span>
                     </label>
                     {p.quoteChannel === "Email" ? (
-                      <EmailInput value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} showAction />
+                      <EmailInput value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} error={p.quoteDestinationError} showAction />
                     ) : p.quoteChannel === "SMS" || p.quoteChannel === "WhatsApp" ? (
-                      <PhoneInput value={p.quoteDestination} onChange={(val) => p.setQuoteDestination(val)} />
+                      <PhoneInput value={p.quoteDestination} onChange={(val) => p.setQuoteDestination(val)} error={p.quoteDestinationError} />
                     ) : (
-                      <input value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} type="text" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                      <>
+                        <input value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} type="text" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={{ ...fieldStyle, ...(p.quoteDestinationError ? { borderColor: "var(--color-danger)" } : {}) }} />
+                        {p.quoteDestinationError && <p className="mt-1.5 text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">{p.quoteDestinationError}</p>}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1534,21 +1821,24 @@ function QuoteSection(p: QuoteSectionProps) {
                 <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Send Quote to Customer</h4>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via</label>
-                    <select value={p.quoteChannel} onChange={(e) => p.setQuoteChannel(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle}>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via <span style={{ color: "var(--color-danger)" }}>*</span></label>
+                    <StyledSelect value={p.quoteChannel} onChange={p.setQuoteChannel}>
                       {channelLabels.map((o) => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    </StyledSelect>
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                      {p.quoteChannel === "Email" ? "Email Address" : p.quoteChannel === "SMS" || p.quoteChannel === "WhatsApp" ? "Phone / Contact" : p.quoteChannel === "In-person" ? "Location" : "Contact"}
+                      {p.quoteChannel === "Email" ? "Email Address" : p.quoteChannel === "SMS" || p.quoteChannel === "WhatsApp" ? "Phone / Contact" : p.quoteChannel === "In-person" ? "Location" : "Contact"} <span style={{ color: "var(--color-danger)" }}>*</span>
                     </label>
                     {p.quoteChannel === "Email" ? (
-                      <EmailInput value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} showAction />
+                      <EmailInput value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} error={p.quoteDestinationError} showAction />
                     ) : p.quoteChannel === "SMS" || p.quoteChannel === "WhatsApp" ? (
-                      <PhoneInput value={p.quoteDestination} onChange={(val) => p.setQuoteDestination(val)} />
+                      <PhoneInput value={p.quoteDestination} onChange={(val) => p.setQuoteDestination(val)} error={p.quoteDestinationError} />
                     ) : (
-                      <input value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} type="text" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                      <>
+                        <input value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} type="text" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={{ ...fieldStyle, ...(p.quoteDestinationError ? { borderColor: "var(--color-danger)" } : {}) }} />
+                        {p.quoteDestinationError && <p className="mt-1.5 text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">{p.quoteDestinationError}</p>}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1559,18 +1849,18 @@ function QuoteSection(p: QuoteSectionProps) {
                 <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Follow-up Schedule</h4>
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>First Reminder</label>
-                    <input type="date" value={p.reminderDate} onChange={(e) => p.setReminderDate(e.target.value)} onClick={(e) => (e.target as HTMLInputElement).showPicker?.()} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none cursor-pointer" style={fieldStyle} />
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>First Reminder</label>
+                    <DatePicker value={p.reminderDate} onChange={p.setReminderDate} placeholder="Pick a date" />
                   </div>
                   <div>
-                    <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Cycles</label>
-                    <input type="number" min={1} max={10} value={p.followUpCycles} onChange={(e) => p.setFollowUpCycles(parseInt(e.target.value) || 3)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle} />
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Cycles</label>
+                    <input type="number" min={1} max={10} value={p.followUpCycles} onChange={(e) => p.setFollowUpCycles(parseInt(e.target.value) || 3)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
                   </div>
                   <div>
-                    <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Frequency</label>
-                    <select value={p.followUpFreq} onChange={(e) => p.setFollowUpFreq(e.target.value)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle}>
+                    <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Frequency</label>
+                    <StyledSelect value={p.followUpFreq} onChange={p.setFollowUpFreq}>
                       {freqLabels.map((o) => <option key={o} value={o}>{o}</option>)}
-                    </select>
+                    </StyledSelect>
                   </div>
                 </div>
               </div>
@@ -1581,29 +1871,24 @@ function QuoteSection(p: QuoteSectionProps) {
                   <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-success)" }}>
                     Quote Approved — Select Payment Method
                   </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {paymentLabels.map((opt) => {
-                      const checked = p.paymentTypes.includes(opt);
+                  <div
+                    className="grid rounded-md overflow-hidden border"
+                    style={{ gridTemplateColumns: `repeat(${paymentLabels.length}, 1fr)`, borderColor: "var(--color-border)" }}
+                  >
+                    {paymentLabels.map((opt, i) => {
+                      const active = p.paymentTypes.includes(opt);
                       return (
                         <button
                           key={opt}
                           type="button"
                           onClick={() => p.togglePayment(opt)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-all"
-                          style={checked
-                            ? { background: "var(--color-badge-bg)", color: "var(--color-badge-text)", borderColor: "var(--color-accent)" }
-                            : { background: "transparent", color: "var(--color-text-muted)", borderColor: "var(--color-border)" }
-                          }
+                          className={`py-2 text-sm font-medium transition-all${i < paymentLabels.length - 1 ? " border-r" : ""}`}
+                          style={{
+                            background: active ? "var(--color-accent)" : "var(--color-surface)",
+                            color: active ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
+                            borderColor: "var(--color-border)",
+                          }}
                         >
-                          <span
-                            className="w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0"
-                            style={checked
-                              ? { background: "var(--color-accent)", borderColor: "var(--color-accent)" }
-                              : { borderColor: "var(--color-border)" }
-                            }
-                          >
-                            {checked && <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-btn-primary-text)" }} />}
-                          </span>
                           {opt}
                         </button>
                       );

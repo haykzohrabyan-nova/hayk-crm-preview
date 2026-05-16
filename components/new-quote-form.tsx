@@ -176,6 +176,9 @@ export default function NewQuoteForm() {
   const [contactEmail, setContactEmail] = useState(searchParams.get("email") ?? "");
   const [contactPhone, setContactPhone] = useState(searchParams.get("phone") ?? "");
   const [contactCompany, setContactCompany] = useState(searchParams.get("company") ?? "");
+  // Lifted from CustomerTab so lock state survives tab navigation
+  const [customerLocked, setCustomerLocked] = useState(false);
+  const [customerFoundName, setCustomerFoundName] = useState<string | null>(null);
 
   // ── Info tab fields ──────────────────────────────────────────────────────
   const [title, setTitle] = useState("");
@@ -198,10 +201,26 @@ export default function NewQuoteForm() {
   const [taxExempt, setTaxExempt] = useState(false);
   const [salesPermit, setSalesPermit] = useState("");
   const [paymentTypes, setPaymentTypes] = useState<string[]>(["Card Payment"]);
+  const [prepayMode, setPrepayMode] = useState<"full" | "partial">("full");
   const [prepayType, setPrepayType] = useState<"percent" | "fixed">("percent");
   const [prepayValue, setPrepayValue] = useState("25");
   const [quoteChannel, setQuoteChannel] = useState("Email");
   const [quoteDestination, setQuoteDestination] = useState("");
+  const clearQuoteDestinationError = () => setFieldErrors((e) => ({ ...e, quoteDestination: "" }));
+
+  // When the Send Via channel changes while a customer is locked, auto-fill the destination
+  useEffect(() => {
+    if (!customerLocked) return;
+    if (quoteChannel === "Email" && contactEmail) {
+      setQuoteDestination(contactEmail);
+    } else if ((quoteChannel === "SMS" || quoteChannel === "WhatsApp") && contactPhone) {
+      setQuoteDestination(contactPhone);
+    } else {
+      setQuoteDestination("");
+    }
+    clearQuoteDestinationError();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quoteChannel, customerLocked]);
   const [reminderDate, setReminderDate] = useState("");
   const [followUpCycles, setFollowUpCycles] = useState(3);
   const [followUpFreq, setFollowUpFreq] = useState("Every 2 days");
@@ -338,6 +357,12 @@ export default function NewQuoteForm() {
       }
     }
 
+    if (tab === "quote") {
+      if (!quoteDestination.trim()) {
+        errors.quoteDestination = `Please enter the ${quoteChannel === "Email" ? "email address" : quoteChannel === "In-person" ? "location" : "phone number"} to send the quote to.`;
+      }
+    }
+
     setFieldErrors(errors);
     if (Object.keys(errors).length === 0) {
       setFieldErrors({});
@@ -389,6 +414,12 @@ export default function NewQuoteForm() {
       return;
     }
 
+    if (status === "sent" && !quoteDestination.trim()) {
+      setFieldErrors({ quoteDestination: `Please enter the ${quoteChannel === "Email" ? "email address" : quoteChannel === "In-person" ? "location" : "phone number"} to send the quote to.` });
+      setTab("quote");
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -429,8 +460,8 @@ export default function NewQuoteForm() {
       tax_exempt: taxExempt,
       sales_permit_number: salesPermit || undefined,
       quote_payment_types: paymentTypes,
-      prepayment_type: prepayType,
-      prepayment_value: prepayValue,
+      prepayment_type: prepayMode === "full" ? "full" : prepayType,
+      prepayment_value: prepayMode === "full" ? "100" : prepayValue,
       quote_reminder_date: reminderDate || undefined,
       follow_up_cycles: followUpCycles,
       follow_up_frequency: followUpFreq,
@@ -620,7 +651,16 @@ export default function NewQuoteForm() {
                 email={contactEmail} setEmail={(v) => { setContactEmail(v); setFieldErrors((e) => ({ ...e, customerContact: "" })); }}
                 phone={contactPhone} setPhone={(v) => { setContactPhone(v); setFieldErrors((e) => ({ ...e, customerContact: "" })); }}
                 company={contactCompany} setCompany={setContactCompany}
+                locked={customerLocked} setLocked={setCustomerLocked}
+                foundName={customerFoundName} setFoundName={setCustomerFoundName}
                 errors={fieldErrors}
+                onCustomerFound={(c) => {
+                  if (quoteChannel === "Email" && c.email) {
+                    setQuoteDestination(c.email);
+                  } else if ((quoteChannel === "SMS" || quoteChannel === "WhatsApp") && c.phone) {
+                    setQuoteDestination(c.phone);
+                  }
+                }}
               />
             )}
 
@@ -628,7 +668,15 @@ export default function NewQuoteForm() {
               <InfoTab
                 title={title} setTitle={(v) => { setTitle(v); setFieldErrors((e) => ({ ...e, title: "" })); }}
                 priority={priority} setPriority={setPriority}
-                dueDate={dueDate} setDueDate={setDueDate}
+                dueDate={dueDate} setDueDate={(v) => {
+                  setDueDate(v);
+                  if (v) {
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
+                    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+                    const picked = new Date(v + "T00:00:00");
+                    setRush(picked <= tomorrow);
+                  }
+                }}
                 rush={rush} setRush={setRush}
                 specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
                 notes={notes} setNotes={setNotes}
@@ -661,10 +709,12 @@ export default function NewQuoteForm() {
                 taxExempt={taxExempt} setTaxExempt={setTaxExempt}
                 salesPermit={salesPermit} setSalesPermit={setSalesPermit}
                 paymentTypes={paymentTypes} togglePayment={togglePayment}
+                prepayMode={prepayMode} setPrepayMode={setPrepayMode}
                 prepayType={prepayType} setPrepayType={setPrepayType}
                 prepayValue={prepayValue} setPrepayValue={setPrepayValue}
                 quoteChannel={quoteChannel} setQuoteChannel={setQuoteChannel}
-                quoteDestination={quoteDestination} setQuoteDestination={setQuoteDestination}
+                quoteDestination={quoteDestination} setQuoteDestination={(v) => { setQuoteDestination(v); clearQuoteDestinationError(); }}
+                quoteDestinationError={fieldErrors.quoteDestination}
                 reminderDate={reminderDate} setReminderDate={setReminderDate}
                 followUpCycles={followUpCycles} setFollowUpCycles={setFollowUpCycles}
                 followUpFreq={followUpFreq} setFollowUpFreq={setFollowUpFreq}
@@ -888,12 +938,112 @@ interface CustomerTabProps {
   email: string; setEmail: (v: string) => void;
   phone: string; setPhone: (v: string) => void;
   company: string; setCompany: (v: string) => void;
+  locked: boolean; setLocked: (v: boolean) => void;
+  foundName: string | null; setFoundName: (v: string | null) => void;
   errors?: Record<string, string>;
+  onCustomerFound?: (customer: CrmCustomer) => void;
+}
+
+interface CrmCustomer {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  company: string | null;
+  phone: string | null;
 }
 
 function CustomerTab(p: CustomerTabProps) {
-  const fieldStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" };
-  const errStyle = (key: string) => p.errors?.[key] ? { border: "1px solid var(--color-danger)" } : {};
+  const [searching, setSearching] = useState(false);
+  const [candidates, setCandidates] = useState<CrmCustomer[]>([]);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Use lifted state from parent so lock persists across tab navigation
+  const locked = p.locked;
+  const setLocked = p.setLocked;
+  const foundName = p.foundName;
+  const setFoundName = p.setFoundName;
+
+  const fieldStyle = {
+    background: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    color: "var(--color-text-primary)",
+  };
+  const lockedStyle = {
+    background: "var(--color-bg)",
+    border: "1px solid var(--color-border)",
+    color: "var(--color-text-muted)",
+    cursor: "not-allowed" as const,
+    opacity: 0.75,
+  };
+  const errStyle = (key: string) =>
+    p.errors?.[key] ? { border: "1px solid var(--color-danger)" } : {};
+
+  function applyCustomer(c: CrmCustomer) {
+    p.setFirstName(c.first_name ?? "");
+    p.setLastName(c.last_name ?? "");
+    p.setEmail(c.email ?? "");
+    p.setCompany(c.company ?? "");
+    setFoundName([c.first_name, c.last_name].filter(Boolean).join(" ") || "Customer");
+    setLocked(true);
+    setCandidates([]);
+    p.onCustomerFound?.(c);
+  }
+
+  function dismissModal() {
+    // User chose "New Customer" — clear any pre-filled data and keep fields editable
+    setCandidates([]);
+    p.setFirstName("");
+    p.setLastName("");
+    p.setEmail("");
+    p.setCompany("");
+  }
+
+  function clearLock() {
+    setLocked(false);
+    setFoundName(null);
+    setCandidates([]);
+    p.setFirstName("");
+    p.setLastName("");
+    p.setEmail("");
+    p.setCompany("");
+  }
+
+  function handlePhoneChange(v: string) {
+    p.setPhone(v);
+
+    // Reset lock when phone changes
+    if (locked) {
+      setLocked(false);
+      setFoundName(null);
+      setCandidates([]);
+      p.setFirstName("");
+      p.setLastName("");
+      p.setEmail("");
+      p.setCompany("");
+    }
+
+    // Debounce search — trigger after 600ms of no typing
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => {
+      const digits = v.replace(/\D/g, "");
+      if (digits.length >= 7) {
+        setSearching(true);
+        fetch(`/api/customers/lookup?phone=${encodeURIComponent(v)}`)
+          .then((r) => r.json())
+          .then((d) => {
+            const matches: CrmCustomer[] = d.customers ?? [];
+            if (matches.length > 0) {
+              // Always show the picker modal — even for a single match —
+              // so the rep consciously selects or creates a new customer.
+              setCandidates(matches);
+            }
+          })
+          .catch(() => {})
+          .finally(() => setSearching(false));
+      }
+    }, 600);
+  }
 
   return (
     <div className="space-y-5">
@@ -902,54 +1052,167 @@ function CustomerTab(p: CustomerTabProps) {
           Who is this quote for?
         </h3>
         <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Fill in the customer&apos;s details. For existing CRM contacts, create quotes from the CRM page.
+          Enter the customer&apos;s phone number — if they exist in the CRM, their details will fill in automatically.
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-            First Name <span style={{ color: "var(--color-danger)" }}>*</span>
-          </label>
-          <input value={p.firstName} onChange={(e) => p.setFirstName(e.target.value)} placeholder="Jane" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={{ ...fieldStyle, ...errStyle("customerName") }} />
+      {/* Customer picker modal */}
+      {candidates.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.45)" }}>
+          <div
+            className="w-full max-w-md rounded-xl p-6 space-y-4"
+            style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}
+          >
+            <div>
+              <h3 className="text-base font-semibold mb-1" style={{ color: "var(--color-text-primary)" }}>
+                {candidates.length === 1 ? "Existing customer found" : `${candidates.length} customers found`}
+              </h3>
+              <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                Select a customer to use their information, or create a new one.
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {candidates.map((c) => {
+                const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "—";
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => applyCustomer(c)}
+                    className="w-full flex items-start gap-3 px-4 py-3 rounded-lg text-left transition-opacity hover:opacity-80"
+                    style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: "var(--color-text-primary)" }}>{name}</p>
+                      <p className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>
+                        {[c.company, c.email].filter(Boolean).join(" · ") || "No additional info"}
+                      </p>
+                    </div>
+                    <span
+                      className="shrink-0 text-xs font-medium px-2 py-0.5 rounded-full mt-0.5"
+                      style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
+                    >
+                      Select
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
+              <button
+                type="button"
+                onClick={dismissModal}
+                className="w-full py-2 text-sm font-medium rounded-lg transition-opacity hover:opacity-80"
+                style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
+              >
+                + Create new customer with this number
+              </button>
+            </div>
+          </div>
         </div>
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-            Last Name <span style={{ color: "var(--color-danger)" }}>*</span>
-          </label>
-          <input value={p.lastName} onChange={(e) => p.setLastName(e.target.value)} placeholder="Smith" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={{ ...fieldStyle, ...errStyle("customerName") }} />
-        </div>
-      </div>
-      {p.errors?.customerName && (
-        <p className="text-xs -mt-3" style={{ color: "var(--color-danger)" }}>{p.errors.customerName}</p>
       )}
 
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Company</label>
-        <input value={p.company} onChange={(e) => p.setCompany(e.target.value)} placeholder="ACME Corp" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
-      </div>
+      {/* Selected customer banner */}
+      {locked && foundName && (
+        <div
+          className="flex items-center justify-between gap-3 px-4 py-2.5 rounded-lg text-sm"
+          style={{
+            background: "var(--color-success-bg)",
+            border: "1px solid var(--color-success-border)",
+            color: "var(--color-success)",
+          }}
+        >
+          <span className="font-medium">✓ Existing customer: {foundName}</span>
+          <button
+            type="button"
+            onClick={clearLock}
+            className="text-xs underline hover:opacity-70 transition-opacity"
+            style={{ color: "var(--color-success)" }}
+          >
+            Clear
+          </button>
+        </div>
+      )}
 
+      {/* Row 1: Phone | Email */}
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-            Email <span style={{ color: "var(--color-danger)" }}>*</span>
+            Phone <span style={{ color: "var(--color-danger)" }}>*</span>
+            {searching && (
+              <span className="ml-2 text-[10px] font-normal" style={{ color: "var(--color-text-muted)" }}>
+                searching…
+              </span>
+            )}
           </label>
           <div style={errStyle("customerContact") ? { borderRadius: "6px", ...errStyle("customerContact") } : {}}>
-            <EmailInput value={p.email} onChange={(e) => p.setEmail(e.target.value)} />
+            <PhoneInput value={p.phone} onChange={handlePhoneChange} />
           </div>
         </div>
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-            Phone <span style={{ color: "var(--color-danger)" }}>*</span>
+            Email
           </label>
-          <div style={errStyle("customerContact") ? { borderRadius: "6px", ...errStyle("customerContact") } : {}}>
-            <PhoneInput value={p.phone} onChange={(v) => p.setPhone(v)} />
+          <div style={locked ? {} : (errStyle("customerContact") ? { borderRadius: "6px", ...errStyle("customerContact") } : {})}>
+            <EmailInput
+              value={p.email}
+              onChange={(e) => { if (!locked) p.setEmail(e.target.value); }}
+              disabled={locked}
+            />
           </div>
         </div>
       </div>
       {p.errors?.customerContact && (
         <p className="text-xs -mt-3" style={{ color: "var(--color-danger)" }}>{p.errors.customerContact}</p>
       )}
+
+      {/* Row 2: First Name | Last Name */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            First Name <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
+          <input
+            value={p.firstName}
+            onChange={(e) => { if (!locked) p.setFirstName(e.target.value); }}
+            readOnly={locked}
+            placeholder="Jane"
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+            style={{ ...(locked ? lockedStyle : fieldStyle), ...(!locked ? errStyle("customerName") : {}) }}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Last Name <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
+          <input
+            value={p.lastName}
+            onChange={(e) => { if (!locked) p.setLastName(e.target.value); }}
+            readOnly={locked}
+            placeholder="Smith"
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+            style={{ ...(locked ? lockedStyle : fieldStyle), ...(!locked ? errStyle("customerName") : {}) }}
+          />
+        </div>
+      </div>
+      {!locked && p.errors?.customerName && (
+        <p className="text-xs -mt-3" style={{ color: "var(--color-danger)" }}>{p.errors.customerName}</p>
+      )}
+
+      {/* Row 3: Company */}
+      <div>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Company</label>
+        <input
+          value={p.company}
+          onChange={(e) => { if (!locked) p.setCompany(e.target.value); }}
+          readOnly={locked}
+          placeholder="ACME Corp"
+          className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+          style={locked ? lockedStyle : fieldStyle}
+        />
+      </div>
     </div>
   );
 }
@@ -1137,6 +1400,16 @@ interface LineItemsTabProps {
 }
 
 function LineItemsTab({ skus, products, skuLookups, onUpdate, onRemove, onAdd, error }: LineItemsTabProps) {
+  const lastRowRef = useRef<HTMLDivElement>(null);
+  const prevLengthRef = useRef(skus.length);
+
+  useEffect(() => {
+    if (skus.length > prevLengthRef.current) {
+      lastRowRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    prevLengthRef.current = skus.length;
+  }, [skus.length]);
+
   return (
     <div>
       {error && (
@@ -1150,16 +1423,17 @@ function LineItemsTab({ skus, products, skuLookups, onUpdate, onRemove, onAdd, e
       )}
       <div className="space-y-4">
         {skus.map((sku, idx) => (
-          <SkuRow
-            key={idx}
-            idx={idx}
-            sku={sku}
-            products={products}
-            skuLookups={skuLookups}
-            onUpdate={onUpdate}
-            onRemove={onRemove}
-            canRemove={skus.length > 1}
-          />
+          <div key={idx} ref={idx === skus.length - 1 ? lastRowRef : undefined}>
+            <SkuRow
+              idx={idx}
+              sku={sku}
+              products={products}
+              skuLookups={skuLookups}
+              onUpdate={onUpdate}
+              onRemove={onRemove}
+              canRemove={skus.length > 1}
+            />
+          </div>
         ))}
       </div>
 
@@ -1191,7 +1465,41 @@ function SkuRow({
 }) {
   const selectedProduct = products.find((p) => p.name === sku.product_type);
   const allMaterials = selectedProduct?.material_groups.flatMap((g) => g.materials) ?? [];
-  const lineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
+  const computedTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
+  const lineTotal = sku.line_total ?? computedTotal;
+  const [lineTotalRaw, setLineTotalRaw] = useState(sku.line_total != null ? String(sku.line_total) : "");
+
+  const skuFieldStyle = {
+    background: "var(--color-surface)",
+    border: "1px solid var(--color-border)",
+    color: "var(--color-text-primary)",
+  };
+
+  function SkuSelect({ value, onChange, disabled = false, children }: {
+    value: string;
+    onChange: (v: string) => void;
+    disabled?: boolean;
+    children: React.ReactNode;
+  }) {
+    return (
+      <div className="relative">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm border outline-none disabled:opacity-50"
+          style={skuFieldStyle}
+        >
+          {children}
+        </select>
+        <ChevronDown
+          size={14}
+          className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+          style={{ color: "var(--color-text-muted)" }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1217,136 +1525,102 @@ function SkuRow({
       </div>
 
       {/* Row 1: Product Type | Material */}
-      <div className="grid grid-cols-2 gap-3 mb-3">
+      <div className="grid grid-cols-2 gap-4 mb-4">
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Product Type *</label>
-          <select
-            value={sku.product_type}
-            onChange={(e) => {
-              onUpdate(idx, "product_type", e.target.value);
-              onUpdate(idx, "material", "");
-            }}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
-            style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-          >
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Product Type *</label>
+          <SkuSelect value={sku.product_type} onChange={(v) => { onUpdate(idx, "product_type", v); onUpdate(idx, "material", ""); }}>
             <option value="">Select product…</option>
             {products.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
-          </select>
+          </SkuSelect>
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Material *</label>
-          <select
-            value={sku.material ?? ""}
-            onChange={(e) => onUpdate(idx, "material", e.target.value)}
-            disabled={!selectedProduct}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none disabled:opacity-50"
-            style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-          >
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Material *</label>
+          <SkuSelect value={sku.material ?? ""} onChange={(v) => onUpdate(idx, "material", v)} disabled={!selectedProduct}>
             <option value="">Select material…</option>
             {allMaterials.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
-          </select>
+          </SkuSelect>
         </div>
 
         {/* Row 2: Width | Height */}
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Width (in) *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Width (in) *</label>
           <input
             type="number" min={0} placeholder="e.g. 4"
             value={sku.width ?? ""}
             onChange={(e) => onUpdate(idx, "width", e.target.value ? parseFloat(e.target.value) : undefined)}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
             style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
           />
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Height (in) *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Height (in) *</label>
           <input
             type="number" min={0} placeholder="e.g. 3"
             value={sku.height ?? ""}
             onChange={(e) => onUpdate(idx, "height", e.target.value ? parseFloat(e.target.value) : undefined)}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
             style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
           />
         </div>
 
         {/* Row 3: Color Mode | Sides */}
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Color Mode</label>
-          <select
-            value={sku.color_mode ?? ""}
-            onChange={(e) => onUpdate(idx, "color_mode", e.target.value || undefined)}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
-            style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-          >
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Color Mode</label>
+          <SkuSelect value={sku.color_mode ?? ""} onChange={(v) => onUpdate(idx, "color_mode", v || undefined)}>
             <option value="">None</option>
             {renderLookupOptions(skuLookups.color_mode, sku.color_mode)}
-          </select>
+          </SkuSelect>
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Sides</label>
-          <select
-            value={sku.sides ?? ""}
-            onChange={(e) => onUpdate(idx, "sides", e.target.value || undefined)}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
-            style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-          >
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Sides</label>
+          <SkuSelect value={sku.sides ?? ""} onChange={(v) => onUpdate(idx, "sides", v || undefined)}>
             <option value="">None</option>
             {renderLookupOptions(skuLookups.sides, sku.sides)}
-          </select>
+          </SkuSelect>
         </div>
 
         {/* Row 4: Quantity | Unit Price */}
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Quantity *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Quantity *</label>
           <input
             type="number" min={1} placeholder="e.g. 1000"
             value={sku.quantity ?? ""}
             onChange={(e) => onUpdate(idx, "quantity", e.target.value ? parseInt(e.target.value) : undefined)}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
             style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
           />
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Unit Price ($) *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Unit Price ($) *</label>
           <input
             type="number" min={0} step={0.01} placeholder="0.00"
             value={sku.unit_price ?? ""}
             onChange={(e) => onUpdate(idx, "unit_price", e.target.value ? parseFloat(e.target.value) : undefined)}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
             style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
           />
         </div>
 
         {/* Row 5: Lamination | Roll Direction */}
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Lamination</label>
-          <select
-            value={sku.lamination ?? "None"}
-            onChange={(e) => onUpdate(idx, "lamination", e.target.value)}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
-            style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-          >
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Lamination</label>
+          <SkuSelect value={sku.lamination ?? "None"} onChange={(v) => onUpdate(idx, "lamination", v)}>
             {renderLookupOptions(skuLookups.lamination, sku.lamination)}
-          </select>
+          </SkuSelect>
         </div>
         <div>
-          <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Roll Direction</label>
-          <select
-            value={sku.roll_direction ?? ""}
-            onChange={(e) => onUpdate(idx, "roll_direction", e.target.value || undefined)}
-            className="w-full px-2.5 py-1.5 rounded text-sm border outline-none"
-            style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-          >
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Roll Direction</label>
+          <SkuSelect value={sku.roll_direction ?? ""} onChange={(v) => onUpdate(idx, "roll_direction", v || undefined)}>
             <option value="">None</option>
             {renderLookupOptions(skuLookups.roll_direction, sku.roll_direction)}
-          </select>
+          </SkuSelect>
         </div>
       </div>
 
-      {/* Line price banner */}
-      {lineTotal > 0 && (
-        <div className="mb-3 px-3 py-2 rounded text-sm font-medium" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
-          Line price: {formatCurrency(lineTotal)} <span className="font-normal opacity-70">qty × unit</span>
+      {/* Calculated reference — shown only when no manual override */}
+      {computedTotal > 0 && sku.line_total == null && (
+        <div className="mb-3 px-3 py-2 rounded text-xs" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
+          Calculated: {formatCurrency(computedTotal)} <span className="opacity-60">(qty × unit — override below if needed)</span>
         </div>
       )}
 
@@ -1389,17 +1663,56 @@ function SkuRow({
         </div>
       </div>
 
-      {/* Line item comment */}
+      {/* Line Item Comment */}
       <div className="mt-3">
-        <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Line Item Comment</label>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Line Item Comment</label>
         <textarea
           rows={2}
           placeholder="Optional notes for this SKU"
           value={sku.comment ?? ""}
           onChange={(e) => onUpdate(idx, "comment", e.target.value || undefined)}
-          className="w-full px-2.5 py-1.5 rounded text-sm border outline-none resize-none"
+          className="w-full px-3 py-2 rounded-md text-sm border outline-none resize-none"
           style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
         />
+      </div>
+
+      {/* Line Total override */}
+      <div className="mt-3">
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+          Line Total ($) <span className="font-normal opacity-60">— actual price</span>
+        </label>
+        <input
+          type="number"
+          min={0}
+          step={0.01}
+          placeholder={computedTotal > 0 ? formatCurrency(computedTotal).replace("$", "") : "0.00"}
+          value={lineTotalRaw}
+          onChange={(e) => {
+            setLineTotalRaw(e.target.value);
+            const n = parseFloat(e.target.value);
+            onUpdate(idx, "line_total", isNaN(n) ? undefined : n);
+          }}
+          onBlur={() => {
+            const n = parseFloat(lineTotalRaw);
+            setLineTotalRaw(isNaN(n) ? "" : String(n));
+          }}
+          className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+          style={{
+            background: "var(--color-surface)",
+            border: sku.line_total != null ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
+            color: "var(--color-text-primary)",
+          }}
+        />
+        {sku.line_total != null && (
+          <button
+            type="button"
+            onClick={() => { setLineTotalRaw(""); onUpdate(idx, "line_total", undefined); }}
+            className="mt-1 text-[10px] hover:opacity-70 transition-opacity"
+            style={{ color: "var(--color-text-muted)" }}
+          >
+            ✕ Clear override
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1418,10 +1731,12 @@ interface QuoteTabProps {
   taxExempt: boolean; setTaxExempt: (v: boolean) => void;
   salesPermit: string; setSalesPermit: (v: string) => void;
   paymentTypes: string[]; togglePayment: (opt: string) => void;
+  prepayMode: "full" | "partial"; setPrepayMode: (v: "full" | "partial") => void;
   prepayType: "percent" | "fixed"; setPrepayType: (v: "percent" | "fixed") => void;
   prepayValue: string; setPrepayValue: (v: string) => void;
   quoteChannel: string; setQuoteChannel: (v: string) => void;
   quoteDestination: string; setQuoteDestination: (v: string) => void;
+  quoteDestinationError?: string;
   reminderDate: string; setReminderDate: (v: string) => void;
   followUpCycles: number; setFollowUpCycles: (v: number) => void;
   followUpFreq: string; setFollowUpFreq: (v: string) => void;
@@ -1431,11 +1746,30 @@ interface QuoteTabProps {
 }
 
 function QuoteTab(p: QuoteTabProps) {
+  // Local string states so the user can clear and retype without the field snapping back to 0
+  const [shippingRaw, setShippingRaw] = useState(p.shipping === 0 ? "" : String(p.shipping));
+  const [taxRateRaw, setTaxRateRaw] = useState(p.taxRate === 0 ? "" : String(p.taxRate));
+
   const fieldStyle = {
     background: "var(--color-surface)",
     border: "1px solid var(--color-border)",
     color: "var(--color-text-primary)",
   };
+
+  function StyledSelect({ value, onChange, children }: {
+    value: string; onChange: (v: string) => void; children: React.ReactNode;
+  }) {
+    return (
+      <div className="relative">
+        <select value={value} onChange={(e) => onChange(e.target.value)}
+          className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm border outline-none"
+          style={fieldStyle}>
+          {children}
+        </select>
+        <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -1482,8 +1816,16 @@ function QuoteTab(p: QuoteTabProps) {
               type="number"
               min={0}
               step={0.01}
-              value={p.shipping}
-              onChange={(e) => p.setShipping(parseFloat(e.target.value) || 0)}
+              value={shippingRaw}
+              onChange={(e) => {
+                setShippingRaw(e.target.value);
+                p.setShipping(parseFloat(e.target.value) || 0);
+              }}
+              onBlur={() => {
+                const n = parseFloat(shippingRaw);
+                setShippingRaw(isNaN(n) ? "" : String(n));
+              }}
+              placeholder="0.00"
               className="w-full px-3 py-2 rounded-md text-sm border outline-none"
               style={fieldStyle}
             />
@@ -1494,9 +1836,17 @@ function QuoteTab(p: QuoteTabProps) {
               type="number"
               min={0}
               step={0.1}
-              value={p.taxRate}
+              value={taxRateRaw}
               disabled={p.taxExempt}
-              onChange={(e) => p.setTaxRate(parseFloat(e.target.value) || 0)}
+              onChange={(e) => {
+                setTaxRateRaw(e.target.value);
+                p.setTaxRate(parseFloat(e.target.value) || 0);
+              }}
+              onBlur={() => {
+                const n = parseFloat(taxRateRaw);
+                setTaxRateRaw(isNaN(n) ? "" : String(n));
+              }}
+              placeholder="0"
               className="w-full px-3 py-2 rounded-md text-sm border outline-none disabled:opacity-40"
               style={fieldStyle}
             />
@@ -1642,53 +1992,110 @@ function QuoteTab(p: QuoteTabProps) {
             style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}
           >
             <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Payment Methods</h4>
-            <div className="flex flex-wrap gap-2">
-              {(p.paymentOpts.length ? p.paymentOpts.map((o) => o.label) : ["Card Payment", "Zelle", "Offline"]).map((opt) => {
-                const checked = p.paymentTypes.includes(opt);
-                return (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => p.togglePayment(opt)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-all"
-                    style={checked
-                      ? { background: "var(--color-badge-bg)", color: "var(--color-badge-text)", borderColor: "var(--color-accent)" }
-                      : { background: "transparent", color: "var(--color-text-muted)", borderColor: "var(--color-border)" }
-                    }
-                  >
-                    <span
-                      className="w-3.5 h-3.5 rounded-full border flex items-center justify-center shrink-0"
-                      style={checked
-                        ? { background: "var(--color-accent)", borderColor: "var(--color-accent)" }
-                        : { borderColor: "var(--color-border)" }
-                      }
-                    >
-                      {checked && <span className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-btn-primary-text)" }} />}
-                    </span>
-                    {opt}
-                  </button>
-                );
-              })}
+            {(() => {
+              const opts = p.paymentOpts.length ? p.paymentOpts.map((o) => o.label) : ["Card Payment", "Zelle", "Offline"];
+              return (
+                <div
+                  className="grid rounded-md overflow-hidden border"
+                  style={{ gridTemplateColumns: `repeat(${opts.length}, 1fr)`, borderColor: "var(--color-border)" }}
+                >
+                  {opts.map((opt, i) => {
+                    const active = p.paymentTypes.includes(opt);
+                    return (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => p.togglePayment(opt)}
+                        className={`py-2 text-sm font-medium transition-all${i < opts.length - 1 ? " border-r" : ""}`}
+                        style={{
+                          background: active ? "var(--color-accent)" : "var(--color-surface)",
+                          color: active ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
+                          borderColor: "var(--color-border)",
+                        }}
+                      >
+                        {opt}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+
+          {/* Prepayment */}
+          <div className="rounded-lg p-4 space-y-3" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
+            <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Prepayment / Deposit</h4>
+            {/* Full / Partial toggle */}
+            <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-border)", width: "fit-content" }}>
+              {(["full", "partial"] as const).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => p.setPrepayMode(mode)}
+                  className="px-4 py-2 text-sm font-medium transition-colors"
+                  style={
+                    p.prepayMode === mode
+                      ? { background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }
+                      : { background: "var(--color-surface)", color: "var(--color-text-muted)" }
+                  }
+                >
+                  {mode === "full" ? "Full Payment" : "Partial Payment"}
+                </button>
+              ))}
             </div>
-            {/* Prepayment */}
-            <div className="pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
-              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Prepayment</label>
-              <div className="flex gap-2">
-                <select value={p.prepayType} onChange={(e) => p.setPrepayType(e.target.value as "percent" | "fixed")} className="px-2.5 py-2 rounded-md text-sm border outline-none" style={fieldStyle}>
-                  <option value="percent">%</option>
-                  <option value="fixed">$</option>
-                </select>
-                <input type="number" min={0} step={p.prepayType === "percent" ? 1 : 0.01} value={p.prepayValue} onChange={(e) => p.setPrepayValue(e.target.value)} className="w-28 px-2.5 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
-                <span className="text-sm self-center" style={{ color: "var(--color-text-muted)" }}>
-                  = {p.prepayType === "percent" ? formatCurrency(p.pricing.final_total * (parseFloat(p.prepayValue) / 100 || 0)) : formatCurrency(parseFloat(p.prepayValue) || 0)}
-                </span>
+
+            {/* Partial payment controls */}
+            {p.prepayMode === "partial" && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="flex rounded-md overflow-hidden border" style={{ borderColor: "var(--color-border)" }}>
+                    {(["percent", "fixed"] as const).map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => p.setPrepayType(opt)}
+                        className="px-3 py-2 text-sm font-medium transition-colors"
+                        style={
+                          p.prepayType === opt
+                            ? { background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }
+                            : { background: "var(--color-surface)", color: "var(--color-text-muted)" }
+                        }
+                      >
+                        {opt === "percent" ? "%" : "$"}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="number"
+                    min={0}
+                    step={p.prepayType === "percent" ? 1 : 0.01}
+                    value={p.prepayValue}
+                    onChange={(e) => p.setPrepayValue(e.target.value)}
+                    className="w-28 px-3 py-2 rounded-md text-sm border outline-none"
+                    style={fieldStyle}
+                  />
+                  <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    = <strong style={{ color: "var(--color-text-primary)" }}>
+                      {p.prepayType === "percent"
+                        ? formatCurrency(p.pricing.final_total * (parseFloat(p.prepayValue) / 100 || 0))
+                        : formatCurrency(parseFloat(p.prepayValue) || 0)}
+                    </strong>
+                  </span>
+                </div>
+                {p.pricing.final_total > 0 && (() => {
+                  const dueNow = p.prepayType === "percent"
+                    ? Math.round(p.pricing.final_total * (parseFloat(p.prepayValue) / 100 || 0) * 100) / 100
+                    : Math.round(Math.min(parseFloat(p.prepayValue) || 0, p.pricing.final_total) * 100) / 100;
+                  const balance = Math.max(Math.round((p.pricing.final_total - dueNow) * 100) / 100, 0);
+                  return (
+                    <div className="flex gap-6 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                      <span>Due now: <strong style={{ color: "var(--color-text-primary)" }}>{formatCurrency(dueNow)}</strong></span>
+                      <span>Balance: <strong style={{ color: "var(--color-text-primary)" }}>{formatCurrency(balance)}</strong></span>
+                    </div>
+                  );
+                })()}
               </div>
-              {p.pricing.final_total > 0 && (() => {
-                const dueNow = p.prepayType === "percent" ? Math.round(p.pricing.final_total * (parseFloat(p.prepayValue) / 100 || 0) * 100) / 100 : Math.round(Math.min(parseFloat(p.prepayValue) || 0, p.pricing.final_total) * 100) / 100;
-                const balance = Math.max(Math.round((p.pricing.final_total - dueNow) * 100) / 100, 0);
-                return <div className="flex gap-6 mt-2 text-xs" style={{ color: "var(--color-text-muted)" }}><span>Due now: <strong style={{ color: "var(--color-text-primary)" }}>{formatCurrency(dueNow)}</strong></span><span>Balance: <strong style={{ color: "var(--color-text-primary)" }}>{formatCurrency(balance)}</strong></span></div>;
-              })()}
-            </div>
+            )}
           </div>
 
           {/* Send payment link */}
@@ -1699,24 +2106,27 @@ function QuoteTab(p: QuoteTabProps) {
             <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Send Payment Link</h4>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via</label>
-                <select value={p.quoteChannel} onChange={(e) => p.setQuoteChannel(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle}>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via <span style={{ color: "var(--color-danger)" }}>*</span></label>
+                <StyledSelect value={p.quoteChannel} onChange={p.setQuoteChannel}>
                   {renderLookupOptions(
                     p.channelOpts.length ? p.channelOpts : [{ value: "email", label: "Email" }, { value: "sms", label: "SMS" }, { value: "whatsapp", label: "WhatsApp" }, { value: "in_person", label: "In-person" }],
                     p.quoteChannel
                   )}
-                </select>
+                </StyledSelect>
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                  {p.quoteChannel === "Email" ? "Email Address" : p.quoteChannel === "In-person" ? "Location" : "Phone / Contact"}
+                  {p.quoteChannel === "Email" ? "Email Address" : p.quoteChannel === "In-person" ? "Location" : "Phone / Contact"} <span style={{ color: "var(--color-danger)" }}>*</span>
                 </label>
                 {p.quoteChannel === "Email" ? (
-                  <EmailInput value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} showAction />
+                  <EmailInput value={p.quoteDestination} onChange={(e) => { p.setQuoteDestination(e.target.value); }} error={p.quoteDestinationError} showAction />
                 ) : p.quoteChannel === "SMS" || p.quoteChannel === "WhatsApp" ? (
-                  <PhoneInput value={p.quoteDestination} onChange={(val) => p.setQuoteDestination(val)} />
+                  <PhoneInput value={p.quoteDestination} onChange={(val) => p.setQuoteDestination(val)} error={p.quoteDestinationError} />
                 ) : (
-                  <input value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} type="text" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                  <>
+                    <input value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} type="text" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={{ ...fieldStyle, ...(p.quoteDestinationError ? { borderColor: "var(--color-danger)" } : {}) }} />
+                    {p.quoteDestinationError && <p className="mt-1.5 text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">{p.quoteDestinationError}</p>}
+                  </>
                 )}
               </div>
             </div>
@@ -1733,24 +2143,27 @@ function QuoteTab(p: QuoteTabProps) {
             <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Send Quote to Customer</h4>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via</label>
-                <select value={p.quoteChannel} onChange={(e) => p.setQuoteChannel(e.target.value)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle}>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via <span style={{ color: "var(--color-danger)" }}>*</span></label>
+                <StyledSelect value={p.quoteChannel} onChange={p.setQuoteChannel}>
                   {renderLookupOptions(
                     p.channelOpts.length ? p.channelOpts : [{ value: "email", label: "Email" }, { value: "sms", label: "SMS" }, { value: "whatsapp", label: "WhatsApp" }, { value: "in_person", label: "In-person" }],
                     p.quoteChannel
                   )}
-                </select>
+                </StyledSelect>
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                  {p.quoteChannel === "Email" ? "Email Address" : p.quoteChannel === "In-person" ? "Location" : "Phone / Contact"}
+                  {p.quoteChannel === "Email" ? "Email Address" : p.quoteChannel === "In-person" ? "Location" : "Phone / Contact"} <span style={{ color: "var(--color-danger)" }}>*</span>
                 </label>
                 {p.quoteChannel === "Email" ? (
-                  <EmailInput value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} showAction />
+                  <EmailInput value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} error={p.quoteDestinationError} showAction />
                 ) : p.quoteChannel === "SMS" || p.quoteChannel === "WhatsApp" ? (
-                  <PhoneInput value={p.quoteDestination} onChange={(val) => p.setQuoteDestination(val)} />
+                  <PhoneInput value={p.quoteDestination} onChange={(val) => p.setQuoteDestination(val)} error={p.quoteDestinationError} />
                 ) : (
-                  <input value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} type="text" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                  <>
+                    <input value={p.quoteDestination} onChange={(e) => p.setQuoteDestination(e.target.value)} type="text" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={{ ...fieldStyle, ...(p.quoteDestinationError ? { borderColor: "var(--color-danger)" } : {}) }} />
+                    {p.quoteDestinationError && <p className="mt-1.5 text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">{p.quoteDestinationError}</p>}
+                  </>
                 )}
               </div>
             </div>
@@ -1766,21 +2179,21 @@ function QuoteTab(p: QuoteTabProps) {
             </h4>
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>First Reminder</label>
-                <input type="date" value={p.reminderDate} onChange={(e) => p.setReminderDate(e.target.value)} onClick={(e) => (e.target as HTMLInputElement).showPicker?.()} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none cursor-pointer" style={fieldStyle} />
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>First Reminder</label>
+                <DatePicker value={p.reminderDate} onChange={p.setReminderDate} placeholder="Pick a date" />
               </div>
               <div>
-                <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Cycles</label>
-                <input type="number" min={1} max={10} value={p.followUpCycles} onChange={(e) => p.setFollowUpCycles(parseInt(e.target.value) || 3)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle} />
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Cycles</label>
+                <input type="number" min={1} max={10} value={p.followUpCycles} onChange={(e) => p.setFollowUpCycles(parseInt(e.target.value) || 3)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
               </div>
               <div>
-                <label className="block text-xs mb-1" style={{ color: "var(--color-text-muted)" }}>Frequency</label>
-                <select value={p.followUpFreq} onChange={(e) => p.setFollowUpFreq(e.target.value)} className="w-full px-2.5 py-1.5 rounded text-sm border outline-none" style={fieldStyle}>
+                <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Frequency</label>
+                <StyledSelect value={p.followUpFreq} onChange={p.setFollowUpFreq}>
                   {renderLookupOptions(
                     p.followUpFreqOpts.length ? p.followUpFreqOpts : [{ value: "daily", label: "Daily" }, { value: "every_2days", label: "Every 2 days" }, { value: "weekly", label: "Weekly" }],
                     p.followUpFreq
                   )}
-                </select>
+                </StyledSelect>
               </div>
             </div>
           </div>

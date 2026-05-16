@@ -18,6 +18,13 @@ app/
 │   ├── forgot-password/page.tsx      → TO BUILD (proxy.ts already allows this path)
 │   └── reset-password/page.tsx       → TO BUILD (proxy.ts already allows this path)
 │
+├── (public)/
+│   ├── layout.tsx                    ✓ EXISTS — minimal layout, no auth, no sidebar
+│   └── q/[token]/page.tsx            ✓ EXISTS — customer-facing quote/invoice page
+│                                       No login required — proxy.ts allows /q/ paths
+│                                       Shows: line items, pricing, Payment Schedule (partial prepay),
+│                                       payment methods, "Confirm & Accept" CTA (sent status only)
+│
 └── (app)/
     ├── layout.tsx                    ✓ EXISTS (sidebar + mobile nav shell)
     │
@@ -38,24 +45,27 @@ app/
     │   └── [id]/page.tsx             ✓ EXISTS — Quote/Order detail + edit
     │
     ├── orders/page.tsx               ✓ EXISTS — Orders list (OrdersPage component)
-    │   └── Tabs: All | Active | Cancelled
+    │   ├── Tabs: All | Active | Cancelled
+    │   └── [id]/page.tsx             ✓ EXISTS — Order detail (reuses QuoteDetail component)
+    │
+    ├── notifications/page.tsx        ✓ EXISTS — Activity Log (ActivityLogSection); paginated, mobile-card, live refresh
     │
     ├── settings/page.tsx             → TO BUILD (currently stub — personal profile)
     │
     └── admin/
         ├── layout.tsx                ✓ EXISTS — border-b sub-nav strip (Overview / Settings)
-        ├── page.tsx                  ✓ EXISTS — card grid overview (4 cards, all clickable)
+        ├── page.tsx                  ✓ EXISTS — card grid overview (6 built + Broadcast Notifications deferred)
         └── settings/
             ├── layout.tsx            ✓ EXISTS — SettingsTabNav above children
             ├── page.tsx              ✓ EXISTS — redirects → /admin/settings/users
             └── [tab]/page.tsx        ✓ EXISTS — renders section per tab:
-                                        users         → UsersSection (full user management)
-                                        dropdowns     → DropdownsSection (all lookup_values categories)
-                                        products      → ProductsSection (product types, materials, links)
-                                        company       → CompanySection (branding, address, order defaults)
-                                        integrations  → IntegrationsSection (Stripe + Zelle — placeholder)
-                                        roles         → Coming soon placeholder
-                                        notifications → Coming soon placeholder
+                                        users         → UsersSection (full user management) ✅
+                                        roles         → RolesSection (role list + permission matrix) ✅
+                                        dropdowns     → DropdownsSection (all lookup_values categories) ✅
+                                        products      → ProductsSection (product types, materials, links) ✅
+                                        company       → CompanySection (branding, address, order defaults) ✅
+                                        integrations  → IntegrationsSection (Twilio SMS ✅ live, Instantly AI ✅ live, Stripe + Zelle — placeholder) ✅
+                                        notifications → ❌ Not needed — removed from scope
 ```
 
 ---
@@ -226,12 +236,18 @@ No sub-tabs. Single table view with filters (search, role filter, show inactive 
 
 ---
 
-## Notification Bell
+## Activity Log / Notifications Page
 
-- Positioned in the sidebar **above** the Settings / Sign out bottom cluster
-- Shows unread count badge (red pill, max `99+`)
-- Click → dropdown/popover with notification feed (last 20, paginated)
-- Supabase Realtime subscription keeps count live without polling
+`/notifications` — built, accessible to all roles via DB-driven page permissions.
+
+- Shows the system `activities` table — all lead actions, customer merges, etc.
+- Columns: Who (name + role pill) | Action (human-readable label) | Lead / Customer | When (relative, hover for absolute)
+- Paginated 50 per page with "Load more" button; total event count in header
+- Mobile card layout below `sm` breakpoint
+- Live-refreshes when `bazaar:activities-changed` event fires
+- API: `GET /api/admin/activity-log?limit=50&offset=0` (admin-auth required)
+
+> **Notification Bell (V2 — not yet built):** Per-user unread count in the sidebar, popover feed, and Supabase Realtime subscription. Planned after Broadcast Notifications.
 
 ---
 
@@ -254,8 +270,9 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/admin/settings/users` | Users |
 | `/admin/settings/roles` | Roles & Permissions |
 | `/admin/settings/dropdowns` | Dropdown Options |
-| `/admin/settings/notifications` | Notifications |
+| `/notifications` | Activity Log |
 | `/admin/settings/integrations` | Integrations |
+| `/notifications` | Activity Log |
 
 ---
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -120,12 +121,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  // Once a ticket is in 'order' status, only admins can modify it
+  // Once a ticket is in 'order' status, non-admins may only update payment_status
   if (existing.ticket_status === "order" && roleName !== "admin") {
-    return NextResponse.json(
-      { error: "Ticket is locked in order status. Contact an admin.", code: "LOCKED" },
-      { status: 403 }
-    );
+    const keys = Object.keys(body).filter((k) => k !== "payment_status");
+    if (keys.length > 0) {
+      return NextResponse.json(
+        { error: "Ticket is locked in order status. Contact an admin.", code: "LOCKED" },
+        { status: 403 }
+      );
+    }
   }
 
   const ALLOWED_FIELDS = [
@@ -162,6 +166,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "quote_payment_types",
     "prepayment_type",
     "prepayment_value",
+    "prepayment_status",
     "quote_reminder_date",
     "follow_up_cycles",
     "follow_up_frequency",
@@ -169,6 +174,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "follow_up_at",
     "follow_up_completed",
     "quote_approval_last_requested_at",
+    "payment_status",
   ];
 
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -198,6 +204,31 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       payload: { from: existing.ticket_status, to: body.ticket_status },
       created_at: new Date().toISOString(),
     });
+  }
+
+  // Trigger outreach when ticket status is "sent" — covers both first send and resend.
+  // Fire-and-forget, never blocks the response.
+  if (body.ticket_status === "sent") {
+    try {
+      const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
+        admin
+          .from("job_tickets")
+          .select("*, customer:customers(first_name, last_name, email, phone)")
+          .eq("id", id)
+          .single(),
+        admin.from("company_settings").select("*").eq("id", 1).single(),
+      ]);
+      if (fullTicket && companyRow) {
+        // Non-blocking: log the result but don't surface errors to the rep
+        sendQuoteToCustomer(fullTicket, companyRow).then((result) => {
+          if (!result.ok) {
+            console.error("[send-quote] delivery failed:", result.error, { ticketId: id, channel: result.channel });
+          }
+        });
+      }
+    } catch (err) {
+      console.error("[send-quote] unexpected error:", err);
+    }
   }
 
   return NextResponse.json({ ticket: updated });

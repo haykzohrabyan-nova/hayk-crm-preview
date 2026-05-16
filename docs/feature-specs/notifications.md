@@ -1,16 +1,23 @@
-# Feature Spec — Notifications (V1)
+# Feature Spec — Notifications & Activity Log
 
-Component: Sidebar badge counts | Backend: Supabase Realtime on `leads` table + `activities` table
-
----
-
-## Overview
-
-BazaarPrinting CRM V1 uses sidebar nav badge counts as the notification system. When any lead changes, the badge next to "Leads" or "Sales Pipeline" updates instantly — no manual refresh needed. Admins have a dedicated Activity Log showing all system events.
+Component: Activity Log page + Sidebar badge counts | Backend: Supabase Realtime on `leads` + `activities` tables
 
 ---
 
-## Sidebar Badges
+## Build Status
+
+| Feature | Status |
+|---------|--------|
+| Sidebar lead/sales badge counts | ✅ Built |
+| Supabase Realtime live table refresh | ✅ Built |
+| `/notifications` — Activity Log page | ✅ Built |
+| `GET /api/admin/activity-log` | ✅ Built |
+| Admin: Broadcast Notifications | ❌ Removed from scope — not needed |
+| Per-user notification bell (V2) | ⏳ Not built — future |
+
+---
+
+## Sidebar Badges ✅ Built
 
 - **Leads badge** (SDR + Admin): count of leads with `status IN ('Pending', 'Validated')` waiting to be worked
 - **Sales badge** (Sales + Admin): unclaimed routed leads + active in-progress deals
@@ -19,42 +26,51 @@ BazaarPrinting CRM V1 uses sidebar nav badge counts as the notification system. 
 
 ---
 
-## Live Table Refresh
+## Live Table Refresh ✅ Built
 
 When a lead changes, all pages auto-update silently:
 
 - **Sales Pipeline** — table re-fetches in background; if a drawer is open, refresh defers until drawer closes
 - **Leads Workspace** — table re-fetches silently; skipped if drawer is open
+- **Quotes page** — Supabase Realtime channel (independent of sidebar) handles cross-session updates (SDR routes → Sales sees it instantly; Sales claims → others see it disappear)
 
 No loading skeleton appears during Realtime-triggered refreshes — data swaps in place.
 
 ---
 
-## Admin Activity Log
+## Activity Log — `/notifications` ✅ Built
 
-Location: `/admin/settings/notifications` (accessible to Admin role only)
+**Component:** `components/admin/activity-log-section.tsx`
+**Page:** `app/(app)/notifications/page.tsx`
+**API:** `GET /api/admin/activity-log?limit=50&offset=0`
 
-Shows all system activity from the existing `activities` table:
+Shows all system activity from the `activities` table, newest first.
+
+### Columns
 
 | Column | What it shows |
 |--------|---------------|
-| Who | User name + role badge |
+| Who | User full name + role badge (SDR / Sales / Admin color-coded) |
 | Action | Human-readable label (e.g. "Routed lead to Sales") |
 | Lead / Customer | Contact name if present |
-| When | Relative time (hover for absolute) |
+| When | Relative time (hover tooltip shows absolute datetime) |
 
-Paginated, 50 events per page. No delete — read-only history.
+### Features
 
-**API:** `GET /api/admin/activity-log?limit=50&offset=0`
+- Paginated 50 events per page with "Load more" button
+- Total event count shown in header badge
+- Desktop: table layout. Mobile: card layout (`sm:hidden`)
+- Skeleton loader on first load (8-row shimmer)
+- Live-refreshes when `bazaar:activities-changed` custom event fires
+- Empty state handled gracefully
 
----
-
-## Notification Types (Activity Log Labels)
+### Activity Type Labels
 
 | `activities.type` | Displayed as |
 |---|---|
 | `lead_routed_to_sales` | Routed lead to Sales |
 | `lead_sales_claimed` | Claimed lead |
+| `lead_claimed` | Claimed lead |
 | `lead_rejected` | Rejected lead |
 | `lead_held` | Put lead on hold |
 | `lead_resumed` | Resumed lead |
@@ -66,11 +82,12 @@ Paginated, 50 events per page. No delete — read-only history.
 
 ---
 
-## What is V2 / Future
+## Per-User Notification Bell — V2 (Not Built)
 
-- Bell icon in sidebar with unread count badge
-- Per-user notification feed (popover + `/notifications` history page)
-- Admin broadcast notifications
+- Bell icon in sidebar with unread count badge (red pill, max `99+`)
+- Click → popover with notification feed (last 20, paginated)
+- Full history at `/notifications` (already built, currently shows admin activity log)
+- Supabase Realtime subscription keeps count live without polling
 - `lead_assigned` type (Admin assigns inbox lead directly to SDR)
 - `follow_up_due` lazy check
 - `lead_held_reminder` lazy check
@@ -79,9 +96,8 @@ The `notifications` table already exists in the DB — fully ready for V2 withou
 
 ---
 
-## Technical notes
+## Technical Notes
 
-- Realtime requires the `leads` table to have `REPLICA IDENTITY FULL` and be added to the `supabase_realtime` publication — handled by migration `035_enable_leads_realtime.sql`
-- Also enable Realtime toggle in Supabase dashboard for the `leads` table
+- Realtime requires `leads` table to have `REPLICA IDENTITY FULL` and be in the `supabase_realtime` publication — handled by migration `035_enable_leads_realtime.sql`
 - All activity is inserted via the admin Supabase client from Route Handlers — never from client components
-- See `docs/realtime-live-updates.md` for the full pattern guide and checklist for adding Realtime to future entities
+- See `docs/realtime-live-updates.md` for the full Realtime pattern guide and debugging checklist

@@ -1,6 +1,6 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 14, 2026
-**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + PDF export for quotes and orders + all documentation audited and updated. Ready for end-to-end testing.
+**Last updated:** May 16, 2026
+**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + PDF export for quotes and orders + Twilio SMS integration live + Instantly AI email integration live + Activity Log at /notifications + Quote Send & Customer Approval Flow live (public /q/[token] page, email/SMS/WhatsApp delivery, customer confirm → order conversion) + Prepayment / Deposit system built (Full / Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready) + Quote/Order detail UX simplified (2-tab layout, order edit unlock). All documentation audited and corrected.
 
 ---
 
@@ -83,12 +83,55 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - `lib/utils/ticket-math.ts` — QuoteSku interface, computePricing(), skuLineTotal(), formatCurrency()
 - `lib/types/index.ts` — fully updated: QuoteSku (15 fields), JobTicket (40+ columns), TicketForm, CompanySettings, LookupCategory union (all categories)
 - `/quotes/new` — `new-quote-form.tsx` — new quote form with up to 4 tabs: Customer (optional, shown for new customers), Line Items, Quote, Settings; the Customer tab is hidden when a lead or CRM customer is pre-selected via URL params
-- `/quotes/[id]` — `quote-detail.tsx` — full detail view + edit mode, 4-tab layout matching new-quote-form
+- `/quotes/[id]` — `quote-detail.tsx` — full detail view + edit mode, 2-tab layout (Info + History); Info tab contains all sections stacked
 - `/quotes` — `quotes-page.tsx` — 4-tab Quoted Requests list with counts, search, sort
 - `/orders` — `orders-page.tsx` — 3-tab Orders list (All | Active | Cancelled) with counts, search, sort; only `ticket_status IN ('order','cancelled')` tickets shown
 - All dropdowns dynamically loaded from `lookup_values` via `/api/lookups`; `renderLookupOptions` helper prevents data loss for deactivated values
 - Sidebar badges for `/quotes` and `/orders`
 - `GET /api/lookups/products` — public product-type + material lookup for OrderDrawer
+
+### Quote/Order Detail UX Simplification & Email Template Polish (2026-05-16)
+
+- **Quote/Order detail — 2-tab layout**: Collapsed the 4-tab layout (Info | Line Items | Quote | History) into 2 tabs: **Info** (all content) and **History**. The Info tab scrolls through all sections separated by labelled dividers: Info → Line Items → Quote & Pricing.
+- **Edit mode simplified**: Back/Next tab stepping removed. Single **Save Changes** button is always available. No stepping required since all fields are visible at once.
+- **Order edit unlock**: Orders with `payment_status = 'unpaid'` (or unset) now show the Edit button. Editing locks once payment reaches `'partial'` or `'paid'`.
+- **Email template — status badge repositioned**: The "Awaiting Approval" / "Confirmed" badge in the quote email is now a corner tab anchored to the top-right of the reference card (`border-radius:0 7px 0 8px`). Long ticket titles no longer push the badge out of position.
+- **Dev email preview route**: `GET /api/dev/quote-email-preview` renders the full email template in-browser with fake data for visual testing.
+
+### Prepayment / Deposit System — Complete (2026-05-15)
+
+Full prepayment/deposit system built for Direct Order flow:
+
+- **Full / Partial Payment toggle** (segmented button style) replaces the old always-visible % / $ controls
+- **Partial Payment controls** (% / $ type + amount input + Due now / Balance breakdown) only shown when Partial is selected
+- **`prepayment_status` column** (`pending` | `paid`, default `pending`) added to `job_tickets` via migration 054 — ready for Stripe webhook to flip automatically
+- **Deposit status bar** on order detail (read-only): shows deposit amount + Pending / Paid toggle buttons; notes "Will be auto-updated by Stripe". Only visible when ticket is an order with a partial prepayment set.
+- **Public quote page** (`/q/[token]`) now shows a **Payment Schedule** block when partial payment is set:
+  - Amber "Deposit Due Now" box with amount and "Required to begin your order"
+  - "Balance Remaining" row with "Due upon completion / delivery"
+  - Hidden entirely for Full Payment orders
+- `prepayment_type` now accepts `"full"` in addition to `"percent"` and `"fixed"`. Saves `"full"` / `"100"` for full payment mode.
+- `prepayment_status` added to `ALLOWED_FIELDS` in `PATCH /api/tickets/[id]`
+- `JobTicket` type updated with `prepayment_status: 'pending' | 'paid'`
+
+### UI/UX Enhancements — New Quote & Quote Detail (2026-05-15)
+
+Multiple UX improvements applied consistently to both `new-quote-form.tsx` and `quote-detail.tsx`:
+
+- **Phone-first customer search** in New Quote Customer tab: Phone | Email → First Name | Last Name → Company field order. Debounced lookup on phone number. If 1 match found: picker modal shown; fields auto-fill and lock. If 2+ matches: multi-customer picker. If no match: all fields editable.
+- **Customer lock persistence**: `locked` and `foundName` states lifted to parent `NewQuoteForm` component so they survive tab navigation.
+- **Dynamic quote destination pre-fill**: when customer is locked and "Send Via" channel changes, `quoteDestination` is automatically updated to the correct phone or email.
+- **Rush auto-toggle**: Due Date = today or tomorrow → Rush automatically enabled; any later date → Rush disabled. User can override manually.
+- **Shipping / Tax Rate inputs**: local string state prevents snap-back to "0" when field is cleared.
+- **Line total override**: manual "Line Total ($)" input in each SKU row — overrides qty × unit calculation. Shown with gold border when active. Line Item Comment moved to its own row above it.
+- **Auto-scroll to new line item** when "Add Line Item" is clicked.
+- **Standardized selects**: `SkuSelect` helper applies `appearance-none` + custom ChevronDown to all selects in Line Items tab. `StyledSelect` applied to Send Via and Follow-Up Frequency selects.
+- **Payment method buttons**: segmented button group style (same as discount and prepayment toggles).
+- **First Reminder date**: uses custom `DatePicker` component instead of native `<input type="date">`.
+- **`Resend Quote` button**: shown on sent quotes instead of hiding the Send button.
+- **`payment_status` selector** on order detail: Unpaid / Partial / Paid pills shown in read-only action bar for confirmed orders.
+- **Orders page**: row click navigates to `/orders/[id]` (not `/quotes/[id]`). Payment status column with colour-coded pill added.
+- **Sidebar counts**: `/orders` badge now filters by `ticket_status = 'order'` (was `ticket_kind = 'order'`).
 
 ### Quote/Order UI Redesign & Customer Flow (2026-05-13)
 
@@ -185,10 +228,12 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | UI | shadcn (base-nova) + Lucide icons |
 | Hosting | Vercel |
 | Session gate | `proxy.ts` (Next.js 16 Proxy — never `middleware.ts`) |
+| SMS | Twilio — toll-free number, Account SID + Auth Token auth |
+| Email outreach | Instantly AI — v2 API, Bearer token, `INSTANTLY_SENDING_ACCOUNT` as sender |
 
 ---
 
-## Current Navigation (as of 2026-05-13)
+## Current Navigation (as of 2026-05-15)
 
 | Route | Section | Built? |
 |-------|---------|--------|
@@ -199,25 +244,26 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/crm/customers/[id]` | main | ✅ Built — full customer profile page |
 | `/quotes` | main | ✅ Built — Quoted Requests list (4 tabs) |
 | `/quotes/new` | main | ✅ Built — New Quote/Order form (Customer + 3 tabs; Customer tab conditional) |
-| `/quotes/[id]` | main | ✅ Built — Quote/Order detail + edit (4 tabs) |
-| `/orders` | main | ✅ Built — Orders list (3 tabs: All | Active | Cancelled) |
+| `/quotes/[id]` | main | ✅ Built — Quote/Order detail + edit (2 tabs: Info \| History); Info tab combines Info + Line Items + Quote & Pricing sections; Edit unlocked for orders with unpaid status; payment + deposit status bars |
+| `/orders` | main | ✅ Built — Orders list (3 tabs: All | Active | Cancelled); Payment status column |
+| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; same 2-tab layout; deposit status bar for partial prepayment orders |
+| `/q/[token]` | public | ✅ Built — customer-facing quote page; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
-| `/notifications` | main | ⏳ Spec preview |
-| `/admin` | admin | ✅ Built — card grid overview |
+| `/notifications` | main | ✅ Built — Activity Log page (`ActivityLogSection`); paginated, mobile cards, live via `bazaar:activities-changed` event |
+| `/admin` | admin | ✅ Built — card grid overview (all 7 cards correct, 6 built + 1 planned) |
 | `/admin/settings/users` | admin-sub | ✅ Built |
 | `/admin/settings/roles` | admin-sub | ✅ Built |
 | `/admin/settings/dropdowns` | admin-sub | ✅ Built — all lead + order/quote categories |
 | `/admin/settings/products` | admin-sub | ✅ Built — product types, materials, links |
 | `/admin/settings/company` | admin-sub | ✅ Built — with EmailInput + PhoneInput validation |
-| `/admin/settings/integrations` | admin-sub | ✅ Built — Stripe + Zelle placeholder |
-| `/admin/settings/notifications` | admin-sub | ⏳ Spec preview |
-| `/admin/settings/audit-log` | admin-sub | ⏳ Spec preview |
+| `/admin/settings/integrations` | admin-sub | ✅ Built — Twilio SMS + Instantly AI live; Stripe + Zelle placeholder |
+| `/admin/settings/notifications` | admin-sub | ⏳ Not built — broadcast form to send system messages to users/roles |
 
 ---
 
 ## Migrations (in order)
 
-See `docs/schema.md` → Migration File Order for the full list (001–051). Key milestones:
+See `docs/schema.md` → Migration File Order for the full list (001–054). Key milestones:
 
 | # | File | Purpose |
 |---|------|---------|
@@ -238,6 +284,9 @@ See `docs/schema.md` → Migration File Order for the full list (001–051). Key
 | 049 | `remove_statistics_page` | deletes /statistics from pages table (Dashboard handles all analytics) |
 | 050 | `add_urgent_priority` | seeds 'Urgent' to ticket_priority lookup (system-set only; hidden from user UI) |
 | 051 | `backfill_routed_status` | retroactively sets ticket_status = 'routed' for SDR draft quotes over HVT threshold |
+| 052 | `add_public_token_to_tickets` | `public_token` UUID column + unique index on job_tickets |
+| 053 | `add_payment_status_to_tickets` | `payment_status` column (`unpaid`\|`partial`\|`paid`, default `unpaid`) |
+| 054 | `add_prepayment_status_to_tickets` | `prepayment_status` column (`pending`\|`paid`, default `pending`) — Stripe-ready |
 
 ---
 
@@ -310,18 +359,21 @@ SALES PIPELINE (Routed to Sales)
 
 ## What's Next — Build Queue
 
-| Feature | Notes |
-|---------|-------|
-| Dashboard enhancements | Revenue from approved tickets surfaced on Dashboard KPIs. |
-| Notifications | Supabase Realtime bell + feed. Lazy check for hold expiry + follow-up due in v1. |
-| Admin: Broadcast Notifications | Send system messages to all users or by role. |
-| Admin: Audit Log | Full activity history with filters and pagination. |
-| Integrations | Stripe + Zelle configured (placeholder built; wiring deferred). |
-| ~~PDF Export~~ | ✅ Done (2026-05-14) — `@react-pdf/renderer`, direct download link |
-| ~~High-value SDR block~~ | ✅ Done (2026-05-13) |
-| Admin Override (terminal leads) | Admin can reopen Rejected/Won/Dropped leads (TODO-001). |
-| Email / SMS outreach | Future — after Stats + Notifications. |
-| AI/webhook lead ingestion | Future. |
+| Feature | Status | Notes |
+|---------|--------|-------|
+| ~~Twilio SMS~~ | ✅ Done (2026-05-14) | Toll-free number, real credentials, SMS delivering |
+| ~~Instantly AI~~ | ✅ Done (2026-05-14) | v2 API, `INSTANTLY_SENDING_ACCOUNT` env var, email delivering |
+| ~~PDF Export~~ | ✅ Done (2026-05-14) | `@react-pdf/renderer`, direct download link |
+| ~~High-value SDR block~~ | ✅ Done (2026-05-13) | HVT modal + routed status + Sales claim flow |
+| ~~Activity Log (/notifications)~~ | ✅ Done (2026-05-14) | `ActivityLogSection` — paginated activity feed, mobile cards |
+| ~~Quote Send & Approval Flow~~ | ✅ Done (2026-05-14) | Email/SMS/WhatsApp delivery on Send Quote; public `/q/[token]` page; customer confirm → order |
+| ~~Prepayment / Deposit system~~ | ✅ Done (2026-05-15) | Full/Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready |
+| Dashboard enhancements | ⏳ Next | Revenue from approved/ordered tickets surfaced on Admin + Sales KPI cards. |
+| Admin Override (terminal leads) | ⏳ Queued | Admin can reopen Rejected leads (TODO-001 in `docs/TODO.md`). |
+| Integrations — WhatsApp | ⏳ Deferred | Requires Meta Business Manager registration. |
+| Integrations — Stripe + Zelle | ⏳ Deferred | Placeholder built in Integrations tab; API wiring deferred. |
+| Email / SMS outreach from quotes | ⏳ Future | Send quote via Twilio or Instantly directly from `/quotes/[id]`. |
+| AI / webhook lead ingestion | ⏳ Future | Auto-create leads from web form or external webhook. |
 
 ---
 

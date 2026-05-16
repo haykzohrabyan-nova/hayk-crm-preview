@@ -299,8 +299,9 @@ export interface JobTicket {
   tax_exempt: boolean
   sales_permit_number: string | null
   quote_payment_types: string[]     // from `ticket_payment` lookup (multi-select)
-  prepayment_type: 'percent' | 'fixed' | null
-  prepayment_value: string | null
+  prepayment_type: 'full' | 'percent' | 'fixed' | null
+  prepayment_value: string | null   // '100' for full; parsed at runtime for percent/fixed
+  prepayment_status: 'pending' | 'paid' // deposit collected flag — Stripe webhook updates this
   // Delivery / follow-up
   quote_channel: string | null      // from `quote_channel` lookup
   quote_destination: string | null  // digits for SMS/WhatsApp; email for Email
@@ -311,6 +312,8 @@ export interface JobTicket {
   // Status flags
   client_confirmed: boolean
   quote_approval_last_requested_at: string | null
+  public_token: string              // UUID — used for public /q/[token] page (no auth)
+  payment_status: 'unpaid' | 'partial' | 'paid'  // overall order payment state
   created_at: string
   updated_at: string
   // Joined (optional)
@@ -580,7 +583,8 @@ export interface TicketForm {
   sales_permit_number: string
   // Payment
   quote_payment_types: string[]   // single-select (enforced client-side), from ticket_payment lookup
-  prepayment_type: 'percent' | 'fixed' | ''
+  prepayment_mode: 'full' | 'partial'   // UI toggle state; maps to prepayment_type on save
+  prepayment_type: 'full' | 'percent' | 'fixed' | ''
   prepayment_value: string
   // Delivery
   quote_channel: string           // from quote_channel lookup

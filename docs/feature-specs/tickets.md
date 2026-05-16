@@ -2,7 +2,7 @@
 
 Routes: `/quotes` · `/orders` · `/quotes/new` · `/quotes/[id]`
 
-> **Status: Built** — all phases complete as of 2026-05-13.  
+> **Status: Built** — all phases complete as of 2026-05-15.  
 > Original design used an OrderDrawer modal. **Revised design uses dedicated full pages** (better UX, deep-linkable, side-by-side lead info).
 
 ---
@@ -110,20 +110,24 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 ### Customer Tab (only shown when no lead/CRM params)
 
-- First Name \* (required)
-- Last Name \*
-- Email (EmailInput component)
-- Phone (PhoneInput component)
-- Company
+Field order: **Phone** | **Email** → **First Name** | **Last Name** → **Company**
 
-> This data is **not saved to DB** until the user clicks Save Draft (from Line Items tab) or Save & Send Quote. Customer is upserted into `customers` table at save time so they appear in CRM.
+**Phone-first customer search:**
+- As the user types a phone number (600 ms debounce), `GET /api/customers/lookup?phone=...` is called
+- **0 matches** → all fields remain editable; user fills in fresh
+- **1 match** → picker modal shown with the matched customer; user selects it or chooses "Create New"
+- **2+ matches** → same modal with all matches listed; user picks one or creates new
+- When a customer is **selected**: all fields except Phone auto-fill and lock (read-only). Only Phone input is editable.
+- Lock state is **lifted to the parent component** and survives tab navigation (navigating to Info and back does not reset the lock)
+
+> Customer data is **not saved to DB** until the user clicks Save Draft or Save & Send Quote. Customer is upserted into `customers` table at save time so they appear in CRM.
 
 ### Info Tab
 
 - Title \* (required)
 - Priority (Low / Normal / High — from `ticket_priority` lookup; **Urgent** is system-set and filtered from user-facing dropdown)
-- Due Date (custom DatePicker, click anywhere on input to open)
-- Rush toggle
+- Due Date (custom `DatePicker` component — click anywhere on the input to open)
+- Rush toggle — **auto-toggled** by due date: today or tomorrow → Rush ON; any later date → Rush OFF. User can override.
 - Special Requirements
 - Internal Notes
 
@@ -139,11 +143,13 @@ Each SKU row:
 | 4 | Quantity \* | Unit Price ($) \* |
 | 5 | Lamination | Roll Direction |
 
-- Line price banner (qty × unit price)
 - Add-on Finishings (UV Coating, Foil, Perforation checkboxes — pill/chip style)
 - Design on file + Die Cut checkboxes (pill/chip style)
-- Line Item Comment (free-text)
-- Add Line Item — full-width dashed button (no icon)
+- **Line Item Comment** (free-text, full-width row)
+- **Line Total ($) override** — input field that overrides qty × unit price calculation. Shown with gold border when active. When blank, calculated value is used.
+- Add Line Item — full-width dashed button; **page auto-scrolls to the new item** on click
+
+> All selects in Line Items tab use `appearance-none` + custom ChevronDown via `SkuSelect` helper for consistent cross-browser styling.
 
 **Validation:** At least one line item must be fully filled (product type + qty + unit price > 0) before advancing to Quote tab or saving.
 
@@ -151,15 +157,19 @@ Each SKU row:
 
 - **Pricing Summary** (live — updates as you type): Subtotal → Shipping → Discount → Pre-tax Total → Tax → **Total** (gold)
 - **Adjustments card**:
-  - Row 1: Shipping ($) + Tax Rate (%) inputs
+  - Row 1: Shipping ($) + Tax Rate (%) inputs — local string state prevents snap-back to "0" when cleared
   - Row 2: Discount selector (None / % / $) + Tax Exempt toggle; conditional inputs when active
   - "Sales permit #" input shown when Tax Exempt is selected
 - **Order Flow** (segmented control): **Quote First** | **Direct Order**
-  - Quote First → shows "Send Quote to Customer" section (Send Via dropdown + destination field)
-  - Direct Order → shows Payment Methods immediately
-- **Payment Methods** (single-select, from `ticket_payment` lookup)
-- **Send Quote to Customer** (if Quote First): Send Via + destination
-- **Follow-up Schedule**: First Reminder date, Cycles (default 3), Frequency
+  - **Quote First** → "Send Quote to Customer" section (Send Via + destination; destination auto-fills from locked customer)
+  - **Direct Order** → Payment Methods + Prepayment / Deposit section + Send Payment Link
+- **Payment Methods** — segmented button group (one per option from `ticket_payment` lookup)
+- **Prepayment / Deposit** (Direct Order only):
+  - **Full Payment** | **Partial Payment** toggle (default: Full Payment)
+  - When Partial is selected: % / $ type toggle + amount input + live "Due now / Balance" calculation
+  - Saves `prepayment_type = "full"` for Full, or `"percent"/"fixed"` for Partial
+- **Send Quote to Customer** (if Quote First): Send Via `*` + destination field `*` (both required — inline error shown if blank on save or Next). Destination auto-fills from locked customer when channel switches.
+- **Follow-up Schedule**: First Reminder (custom `DatePicker`), Cycles (default 3), Frequency
 
 ### Validation before advancing
 
@@ -168,6 +178,7 @@ Each SKU row:
 | Customer | First Name |
 | Info | Title |
 | Line Items | ≥ 1 fully filled item (product + qty + unit price) |
+| Quote | Destination field (email / phone / location) must not be empty |
 
 ### High-Value Threshold (HVT) — SDR only
 
@@ -199,27 +210,33 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 - Back button
 - Title + reference code badge (ORD-YYYY-NNN for orders)
 - Status pill
-- Edit button (shown for non-locked tickets) / Save Changes + Cancel (edit mode)
+- Save PDF link (`/api/tickets/[id]/pdf`)
+- **Edit button** — visibility rules:
+  - `draft` or `sent` → always shown
+  - `order` with `payment_status = 'unpaid'` (or null) → shown
+  - `order` with `payment_status = 'partial'` or `'paid'` → hidden (locked)
+  - `cancelled` → always hidden (locked)
 
 ### Layout
 
 - **Left sidebar** (sticky): `LinkedLeadCard` if lead is linked; `CustomerInfoCard` if customer exists but no lead; nothing if neither
-- **Right**: 4-tab view (Info | Line Items | Quote | History)
+- **Right**: **2-tab view — Info | History**
 
 ### Info Tab
 
-Same fields as new-quote Info tab. Read-only view or edit mode.
+Single scrollable view combining all three edit sections, separated by labelled dividers:
 
-### Line Items Tab
+**1. General Info** (top, no divider header)
+- Same fields as new-quote Info tab: Title, Priority, Due Date, Rush, Special Requirements, Internal Notes
 
-Read-only: product, material, size, qty, unit price, line total.  
-Edit mode: full SKU rows.
+**2. Line Items** (section divider: "LINE ITEMS")
+- Read-only: product, material, size, qty, unit price, line total cards
+- Edit mode: full `EditableSkuRow` fields + Add Line Item button
 
-### Quote Tab
-
-Read-only: pricing summary + delivery/payment details.  
-Edit mode: full Quote tab fields matching new-quote-form layout.  
-Includes the **Order Flow** segmented control (Quote First / Direct Order).
+**3. Quote & Pricing** (section divider: "QUOTE & PRICING")
+- Read-only: pricing summary + delivery/payment details
+- Edit mode: full Quote tab fields (Adjustments, Order Flow, Payment Methods, Prepayment, Send Channel, Follow-up Schedule)
+- Includes the **Order Flow** segmented control (Quote First / Direct Order)
 
 ### History Tab
 
@@ -232,13 +249,38 @@ Includes the **Order Flow** segmented control (Quote First / Direct Order).
 
 | Action | Condition | Effect |
 |--------|-----------|--------|
-| Send Quote | `status = 'draft'` | `PATCH → ticket_status = 'sent'` |
+| Send Quote | `status = 'draft'` | `PATCH → ticket_status = 'sent'`; email/SMS/WhatsApp triggered via `sendQuoteToCustomer()` |
+| Resend Quote | `status = 'sent'` | Same as Send Quote — re-triggers delivery |
 | Mark Won | `status = 'draft'` or `'sent'` | `PATCH → ticket_status = 'approved'` |
 | Cancel Ticket | any non-locked | `PATCH → ticket_status = 'cancelled'` |
 
+### Edit mode action bar
+
+Simplified to two buttons: **Cancel** (discard changes) and **Save Changes**. No Back/Next tab stepping — all sections are visible on a single scrollable page.
+
+### Payment status bar (orders only)
+
+Visible when `ticket_status = 'order'`, in read-only mode. Shows **Unpaid / Partial / Paid** pill buttons. Clicking any pill calls `PATCH /api/tickets/[id]` with `{ payment_status }` immediately (no edit mode needed).
+
+### Deposit status bar (partial prepayment orders only)
+
+Visible when `ticket_status = 'order'` **and** `prepayment_type` is `"percent"` or `"fixed"`, in read-only mode. Shows:
+- Calculated deposit amount
+- **Pending / Paid** toggle buttons (saves `prepayment_status` via PATCH)
+- "Will be auto-updated by Stripe" note
+
 ### Edit lock
 
-Reps cannot edit tickets in `order` or `cancelled` status.
+| Status | Payment status | Editable? |
+|--------|---------------|-----------|
+| `draft` | — | ✅ Yes |
+| `sent` | — | ✅ Yes |
+| `order` | `unpaid` or null | ✅ Yes |
+| `order` | `partial` | ❌ Locked |
+| `order` | `paid` | ❌ Locked |
+| `cancelled` | — | ❌ Locked |
+
+> `payment_status` can always be updated directly from the payment status bar without entering edit mode.
 
 ### High-Value Threshold (HVT) — SDR editing draft
 
@@ -308,7 +350,95 @@ When a quote is saved (draft or sent) from `new-quote-form.tsx`:
 
 ---
 
+---
+
+## Quote Delivery & Customer Approval Flow ✅ Built (2026-05-14)
+
+### Send Quote
+
+When a rep clicks **Send Quote** on `/quotes/[id]`, `PATCH /api/tickets/[id]` sets `ticket_status = "sent"` and triggers `sendQuoteToCustomer()` from `lib/integrations/send-quote.ts`.
+
+Delivery by channel (stored in `quote_channel`):
+
+| `quote_channel` | Delivery |
+|---|---|
+| `Email` | Instantly AI v2 API — full HTML email with line items, pricing, gold CTA button |
+| `SMS` | Twilio — short text message with total + `/q/[token]` link |
+| `WhatsApp` | Twilio WhatsApp — same short message, `whatsapp:` prefix on `to` |
+| `In-person` | No outreach — status changes to `sent` only |
+
+Delivery is fire-and-forget: errors are logged to console but never block the rep's UI.
+
+### Public Quote Page — `/q/[token]`
+
+Each ticket has a `public_token` (UUID, unique, unguessable). The public URL is `{APP_URL}/q/{public_token}`.
+
+No login required — `proxy.ts` allows `/q/` paths without auth.
+
+**Page contents:**
+- Company branding (logo or name, address, contact)
+- Quote reference + status badge
+- Rush Order banner (if applicable)
+- Line items table (desktop) / cards (mobile)
+- **Pricing Summary**: Subtotal → Shipping → Discount → Tax → **Order Total** (gold)
+- **Payment Schedule** (partial prepayment only):
+  - Amber box: **Deposit Due Now** — calculated amount — "Required to begin your order"
+  - **Balance Remaining** — "Due upon completion / delivery"
+  - Hidden for Full Payment orders
+- Accepted Payment Methods
+- Special requirements (if set)
+- **"Confirm & Accept Quote"** button — only shown when `ticket_status === "sent"`
+
+**On confirm:**
+- `POST /api/public/quotes/[token]/confirm`
+- Sets `client_confirmed = true`, `ticket_status = "order"`, generates `ORD-YYYY-NNN` reference code
+- Logs `order_ticket_status_changed` activity (by_user_id = null — customer action)
+- Returns `{ ok: true, reference_code }`
+- Page transitions to "Order Confirmed" success state
+
+### New API Routes
+
+| Route | Auth | Purpose |
+|-------|------|---------|
+| `GET /api/public/quotes/[token]` | None | Returns safe public ticket fields + company settings |
+| `POST /api/public/quotes/[token]/confirm` | None | Customer confirms → converts to order |
+
+### New Files
+
+| File | Purpose |
+|------|---------|
+| `lib/integrations/send-quote.ts` | Channel router + Twilio/Instantly callers |
+| `lib/integrations/quote-email-template.ts` | HTML email template builder (table-based, fully inline-styled, email-client safe) |
+| `app/(public)/layout.tsx` | Minimal public layout (no auth, no sidebar) |
+| `app/(public)/q/[token]/page.tsx` | Customer-facing quote/order page |
+| `supabase/migrations/052_add_public_token_to_tickets.sql` | `public_token` column + unique index |
+| `app/api/dev/quote-email-preview/route.ts` | Dev-only GET route — renders the email template in-browser with fake data for visual testing |
+
+### Email Template Design Notes (`quote-email-template.ts`)
+
+- 100% table-based layout (no flexbox/grid — stripped by Gmail/Outlook)
+- All styles inline — no `<style>` blocks
+- Both `bgcolor` attribute and `background-color` inline style set on every cell (Outlook compatibility)
+- Line items table uses `border-collapse:separate; border-spacing:0` — allows `border-radius` to work (unlike `border-collapse:collapse` which disables it)
+- **Reference card status badge** (`Awaiting Approval` / `Confirmed`) is anchored to the top-right corner of the reference card using `border-radius:0 7px 0 8px` — independent of title length, no wrapping
+- Contains full quote info: company branding, reference + status, line items table, pricing summary, payment methods, gold CTA button, footer with contact details
+- Preview: `GET /api/dev/quote-email-preview` (dev server only)
+
+### Deferred (Stripe/Zelle Payment)
+
+The confirm endpoint currently auto-converts to `order` without collecting payment. The DB is ready for Stripe:
+- `prepayment_status` column (`pending` | `paid`) on `job_tickets` — webhook will flip to `"paid"` automatically
+- `payment_status` column (`unpaid` | `partial` | `paid`) — tracks overall order payment
+
+When Stripe is wired:
+1. `POST .../confirm` → sets `ticket_status = "approved"` + creates Stripe Payment Intent for deposit amount
+2. Customer pays → Stripe webhook → sets `prepayment_status = "paid"`, `ticket_status = "order"`
+
+---
+
 ## Deferred
 
-- **PDF export** — `lib/utils/order-ticket-pdf.ts` using `jspdf`, pre-filled from `company_settings`
 - **Dashboard revenue integration** — approved ticket totals surfaced on Dashboard KPIs
+- **Stripe payment collection** — see `docs/feature-specs/invoice-payment.md` for full spec
+- **Zelle code matching** — automated memo parsing; manual "Mark as Paid" fallback
+- **WhatsApp delivery** — requires Meta Business Manager registration

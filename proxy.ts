@@ -66,8 +66,11 @@ export async function proxy(request: NextRequest) {
     pathname.startsWith("/api") ||
     pathname.includes(".");
 
+  // Public customer-facing pages — no auth required
+  const isPublic = pathname.startsWith("/q/");
+
   // Not logged in → redirect to login
-  if (!user && !isAuthFlow && !isStatic) {
+  if (!user && !isAuthFlow && !isPublic && !isStatic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.search = "";

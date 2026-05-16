@@ -363,8 +363,11 @@ Create a new ticket.
   "tax_exempt": "boolean",
   "sales_permit_number": "string | null",
   "quote_payment_types": "string[]",
-  "prepayment_type": "percent | fixed | null",
+  "prepayment_type": "full | percent | fixed | null",
   "prepayment_value": "string | null",
+  "prepayment_status": "pending | paid",
+  "payment_status": "unpaid | partial | paid",
+  "public_token": "uuid",
   "quote_channel": "string | null",
   "quote_destination": "string | null",
   "quote_reminder_date": "ISO date | null",
@@ -427,11 +430,13 @@ Body: Any subset of ticket fields plus optional:
 `activity_by_role` is stripped from the stored record but used to attribute the activity log entry.
 
 **Business rules (Mode 2):**
+- If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery via Twilio / Instantly AI)
 - If `quote_approval_last_requested_at` is set → logs `quote_approval_requested`
 - If `follow_up_completed` transitions to `true` → logs `quote_follow_up_completed`
 - If `follow_up_at` is reset → logs `quote_follow_up_reset`
 - If `client_confirmed` transitions to `true` → logs `ticket_client_confirmed`; creates `follow_up_due` notification
 - Otherwise → logs `order_ticket_updated` with `payload.fields`
+- `payment_status` and `prepayment_status` can be updated on `order` status tickets even by non-admins (special relaxed guard)
 
 **Response `200`:**
 ```json
@@ -491,6 +496,88 @@ Returns lightweight tab badge counts. Scoped per role.
 
 - **SDR:** `routed` = count of their own routed tickets (subtracted from `all` on the Quotes page)
 - **Sales/Admin:** `routed` = count of ALL routed tickets from any SDR
+
+---
+
+## Public Quote Routes (no auth required)
+
+These routes are accessible without a session. `proxy.ts` allows `/q/` and `/api/public/` paths without authentication.
+
+### `GET /api/public/quotes/[token]`
+
+Fetches a ticket by its `public_token` for the customer-facing quote page.
+
+**Auth:** None — public route.
+
+**Response `200`:**
+```json
+{
+  "ticket": {
+    "id": "uuid",
+    "ticket_kind": "quote | order",
+    "ticket_status": "sent | approved | order | cancelled",
+    "title": "string | null",
+    "reference_code": "string | null",
+    "quote_skus": "QuoteSku[]",
+    "quote_subtotal": "number | null",
+    "quote_shipping": "number | null",
+    "discount_type": "string | null",
+    "discount_value": "string | null",
+    "quote_pre_tax_total": "number | null",
+    "quote_tax_rate_percent": "number | null",
+    "quote_tax_amount": "number | null",
+    "quote_final_total": "number | null",
+    "tax_exempt": "boolean",
+    "quote_payment_types": "string[]",
+    "prepayment_type": "full | percent | fixed | null",
+    "prepayment_value": "string | null",
+    "order_source": "string | null",
+    "special_requirements": "string | null",
+    "rush": "boolean",
+    "client_confirmed": "boolean",
+    "contact_name": "string | null",
+    "contact_email": "string | null",
+    "contact_company": "string | null",
+    "customer": { "first_name": "string | null", "last_name": "string | null", "company": "string | null", "email": "string | null" }
+  },
+  "company": {
+    "company_name": "string | null",
+    "logo_url": "string | null",
+    "address_line1": "string | null",
+    "city": "string | null",
+    "state": "string | null",
+    "zip": "string | null",
+    "phone": "string | null",
+    "email": "string | null",
+    "website": "string | null"
+  }
+}
+```
+
+**Response `404`:** Token not found or ticket in `draft` status.
+
+---
+
+### `POST /api/public/quotes/[token]/confirm`
+
+Customer confirms a quote, converting it to an order.
+
+**Auth:** None — public route.
+
+**Request body:** Empty `{}`.
+
+**Business rules:**
+- Ticket must have `ticket_status = "sent"`; returns `400` if already confirmed or not in sent state
+- Sets `client_confirmed = true`, `ticket_status = "order"`, `ticket_kind = "order"`
+- Generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
+- Logs `order_ticket_status_changed` activity with `by_user_id = null` (customer action)
+
+**Response `200`:**
+```json
+{ "ok": true, "reference_code": "ORD-2026-042" }
+```
+
+**Response `400`:** Already confirmed or wrong status.
 
 ---
 
@@ -1114,6 +1201,46 @@ Update company settings. Admin only.
 **Body:** Any subset of company_settings fields (except `id`).
 
 **Response `200`:** `{ "settings": CompanySettings }`
+
+---
+
+---
+
+## Admin — Integrations
+
+### `POST /api/admin/integrations/twilio/test`
+
+Send a test SMS or WhatsApp message. Admin only.
+
+**Body:**
+```json
+{ "to": "+1XXXXXXXXXX", "channel": "sms" | "whatsapp" }
+```
+
+**Response `200`:** `{ "ok": true, "sid": "SMxxx", "status": "queued" }`
+**Response `500`:** `{ "ok": false, "error": "..." }` — missing env vars or Twilio error.
+
+**Notes:**
+- SMS sends from `TWILIO_PHONE_NUMBER` (toll-free recommended to avoid A2P 10DLC blocks)
+- WhatsApp sends from `TWILIO_WHATSAPP_FROM` (requires Twilio WhatsApp Sandbox join or Meta Business approval)
+
+---
+
+### `POST /api/admin/integrations/instantly/test`
+
+Send a test email via Instantly AI. Admin only.
+
+**Body:**
+```json
+{ "to_email": "recipient@example.com" }
+```
+
+**Response `200`:** `{ "ok": true, "data": { "status": "success" } }`
+**Response `500`:** `{ "ok": false, "error": "..." }` — missing env vars or Instantly API error.
+
+**Notes:**
+- Uses Instantly AI v2 API (`POST /api/v2/emails/test`)
+- Requires `INSTANTLY_API_KEY` (Bearer token, `all:all` scope) and `INSTANTLY_SENDING_ACCOUNT` (email account connected to Instantly workspace)
 
 ---
 

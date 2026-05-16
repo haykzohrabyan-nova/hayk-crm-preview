@@ -3,6 +3,148 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-16] — Allow editing orders with no payment made
+
+### Changed
+- `components/quote-detail.tsx`: Edit button now shows on orders when `payment_status` is `"unpaid"` (or unset); locks once payment is `"partial"` or `"paid"`
+
+## [2026-05-15] — Merge Info / Line Items / Quote tabs into single Info tab
+
+### Changed
+- `components/quote-detail.tsx`: collapsed the three edit tabs (Info, Line Items, Quote) into a single **Info** tab; History remains its own tab
+- Combined tab renders all three sections stacked with labelled dividers (Info → Line Items → Quote & Pricing)
+- Edit mode bottom bar simplified to just Cancel + Save (Back/Next tab navigation removed)
+- Removed unused `ChevronRight` import
+
+## [2026-05-15] — Prepayment / Deposit redesign + deposit status tracking
+
+### Added
+- `supabase/migrations/054_add_prepayment_status_to_tickets.sql` — new `prepayment_status` column (`pending` | `paid`, default `pending`) on `job_tickets`; ready for Stripe webhook integration
+- Deposit status bar on order detail view: shows **Pending / Paid** toggle buttons when the order has a partial prepayment set; displays the calculated deposit amount; notes "Will be auto-updated by Stripe"
+- `prepayment_status` added to `ALLOWED_FIELDS` in `PATCH /api/tickets/[id]` so it can be saved
+- `prepayment_status: 'pending' | 'paid'` added to `JobTicket` TypeScript type
+
+### Changed
+- Prepayment / Deposit section redesigned in both New Quote form and Quote Detail edit view
+  - Top-level **Full Payment / Partial Payment** toggle (segmented button style)
+  - % and $ sub-controls only appear when **Partial Payment** is selected
+  - Saves `prepayment_type = "full"` for full, or `"percent"/"fixed"` for partial
+  - Loads back correctly from existing tickets
+
+## [2026-05-14] — Fix: Orders detail page and nav highlight
+
+### Added
+- `app/(app)/orders/[id]/page.tsx` — order detail route (reuses `QuoteDetail` component), so `/orders/:id` is a valid page with the correct active nav highlight.
+
+### Fixed
+- `components/orders-page.tsx` — row click and "View" button now navigate to `/orders/${id}` instead of `/quotes/${id}`, so the sidebar highlights Orders (not Quotes) when viewing an order.
+
+## [2026-05-15] — New Quote: phone-first customer lookup on Step 1
+
+### Changed
+- `components/new-quote-form.tsx` — Customer tab redesigned:
+  - Field order is now **Phone | Email → First Name | Last Name → Company**
+  - Phone is always editable and acts as the search key: after 600ms of no typing (with ≥7 digits), calls `GET /api/customers/lookup?phone=…`
+  - If an existing customer is found: all other fields auto-fill and lock (read-only, visually dimmed). A green "✓ Existing customer: Name" banner appears with a **Clear** button to reset.
+  - If no match: all fields remain editable and required fields are validated before advancing.
+
+## [2026-05-14] — Payment status on orders (Unpaid / Partial / Paid)
+
+### Added
+- `supabase/migrations/053_add_payment_status_to_tickets.sql` — adds `payment_status` column (`unpaid` default, `partial`, `paid`) to `job_tickets`. Run in Supabase dashboard SQL editor.
+- `components/orders-page.tsx` — new **Payment** column with color-coded pill: red Unpaid, amber Partial, green Paid.
+- `components/quote-detail.tsx` — payment status bar on order detail page; SDR/admin can click Unpaid / Partial / Paid to update instantly without re-opening edit mode.
+
+### Changed
+- `lib/types/index.ts` — added `payment_status` to `JobTicket` type.
+- `app/api/tickets/[id]/route.ts` — added `payment_status` to `ALLOWED_FIELDS`; relaxed order-lock so non-admin users can update `payment_status` even after a ticket is in order status.
+
+## [2026-05-14] — Fix: Orders count badge showing 0 in sidebar
+
+### Fixed
+- `app/api/sidebar-counts/route.ts` — `/orders` badge now counts by `ticket_status = "order"` instead of `ticket_kind = "order"`. Covers both old tickets (kind=quote, status=order) and new tickets (kind=order, status=order).
+- `app/api/tickets/counts/route.ts` — `orders` count fixed the same way so the Orders tab badge on the Orders page is also accurate.
+
+## [2026-05-14] — Resend Quote button + fix disappearing Send button
+
+### Changed
+- `components/quote-detail.tsx` — when a quote is already in `sent` status, a **Resend Quote** button is shown instead of hiding the action entirely. Clicking it re-sends the quote to the customer via the same channel.
+- `app/api/tickets/[id]/route.ts` — removed the `existing.ticket_status !== "sent"` guard so `sendQuoteToCustomer` is triggered on every PATCH that sets status to `"sent"`, enabling resends.
+
+## [2026-05-14] — Fix: Approved Quotes No Longer Appear in Quoted Requests
+
+### Fixed
+- `app/api/public/quotes/[token]/confirm/route.ts` — now also sets `ticket_kind = "order"` (alongside `ticket_status = "order"`) when a customer confirms. This removes the ticket from the `?kind=quote` API filter used by the Quotes page.
+- `components/quotes-page.tsx` — added defensive filter to exclude any ticket with `ticket_status === "order"` from all tabs, covering tickets confirmed before this fix.
+
+## [2026-05-14] — Quote Send & Customer Approval Flow
+
+### Added
+- `supabase/migrations/052_add_public_token_to_tickets.sql` — adds `public_token uuid DEFAULT gen_random_uuid()` + unique index to `job_tickets`. Each ticket gets a unique, unguessable URL token.
+- `lib/integrations/quote-email-template.ts` — professional HTML email template. Navy/gold design with company header, line items table, pricing summary, gold CTA button, and footer. Works for both quotes and direct orders.
+- `lib/integrations/send-quote.ts` — server-side delivery utility. Routes by `quote_channel`: Email → Instantly AI, SMS → Twilio, WhatsApp → Twilio WhatsApp, In-person → no outreach.
+- `app/(public)/layout.tsx` — minimal public layout (no auth, no sidebar).
+- `app/(public)/q/[token]/page.tsx` — customer-facing quote/order page. Shows company branding, line items, pricing summary, payment methods, and a "Confirm & Accept" button. Mobile-responsive card layout.
+- `app/api/public/quotes/[token]/route.ts` — `GET` returns safe public ticket fields + company settings. No auth required.
+- `app/api/public/quotes/[token]/confirm/route.ts` — `POST` confirms the quote: sets `client_confirmed = true`, `ticket_status = "order"`, generates `ORD-YYYY-NNN` reference code via `increment_order_sequence` RPC, logs activity.
+
+### Changed
+- `app/api/tickets/[id]/route.ts` — PATCH handler now calls `sendQuoteToCustomer()` (fire-and-forget) when `ticket_status` transitions to `"sent"`. Delivery errors are logged to console but never block the response.
+- `proxy.ts` — added `isPublic` check: paths starting with `/q/` are allowed without authentication.
+- `lib/types/index.ts` — added `public_token: string` to `JobTicket` interface.
+
+---
+
+## [2026-05-14] — Remove Broadcast Notifications from scope
+
+### Removed
+- Broadcast Notifications feature removed from scope entirely — the `/notifications` Activity Log page already covers all notification needs
+- Removed "Broadcast Notifications" card from `app/(app)/admin/page.tsx`
+- Removed from build queue in `docs/session-summary.md`, `docs/feature-specs/notifications.md`, `docs/feature-specs/admin.md`, `docs/navigation.md`
+
+---
+
+## [2026-05-14] — Documentation audit & Admin overview fix
+
+### Changed
+- `app/(app)/admin/page.tsx` — fixed all `built` flags: Dropdown Options, Company Info, Products, and Integrations were incorrectly marked `built: false` (showing "Planned" badge). Now correctly marked `built: true`. Added "Broadcast Notifications" card (genuinely planned, `built: false`).
+- `docs/session-summary.md` — corrected route table (`/notifications` marked ✅ Built; `/admin/settings/audit-log` removed — it does not exist); build queue rewritten with accurate status and priorities.
+- `docs/navigation.md` — route tree updated with `/notifications` page entry; admin tab list corrected; "Notification Bell" section replaced with accurate "Activity Log / Notifications Page" description.
+- `docs/feature-specs/notifications.md` — fully rewritten to reflect actual build state: Activity Log ✅ built, Broadcast Notifications ⏳ not built, Per-user bell V2 ⏳ future.
+- `docs/feature-specs/admin.md` — Overview card grid table corrected (all 7 cards with accurate built status); Audit Log section removed (not a real tab); Broadcast Notifications section points to notifications spec.
+
+---
+
+## [2026-05-14] — Twilio & Instantly AI integrations live
+
+### Changed
+- `app/api/admin/integrations/instantly/test/route.ts` — migrated from deprecated Instantly API v1 (`/api/v1/emails/send`) to v2 (`/api/v2/emails/test`). Updated request body to v2 schema: `eaccount`, `to_address_email_list`, `subject`, `body.html`. Added `INSTANTLY_SENDING_ACCOUNT` env var check.
+- `.env.local.example` — added `INSTANTLY_SENDING_ACCOUNT` variable (email account connected to Instantly workspace, required by v2 API).
+- `TWILIO_PHONE_NUMBER` — updated from Twilio magic test number (`+15005550006`) to a real toll-free number. Toll-free numbers bypass US A2P 10DLC registration requirements.
+- `TWILIO_WHATSAPP_FROM` — updated to Twilio WhatsApp Sandbox number (`whatsapp:+14155238886`). Full WhatsApp Business requires Meta Business Manager registration (deferred).
+
+### Fixed
+- Instantly test sending 404 error — v1 endpoint removed by Instantly; code now uses v2.
+- SMS delivery blocked — was using Twilio magic test number which never delivers. Replaced with real toll-free number.
+
+## [2026-05-14] — Twilio & Instantly AI integration scaffold
+
+### Added
+- `app/api/admin/integrations/twilio/test/route.ts` — authenticated POST endpoint; sends a test SMS or WhatsApp message via the Twilio SDK to a provided number. Returns `{ ok, sid, status }` or `{ ok: false, error }`.
+- `app/api/admin/integrations/instantly/test/route.ts` — authenticated POST endpoint; sends a test email via the Instantly AI REST API to a provided address.
+- `components/admin/integrations-section.tsx` — added live **Twilio** and **Instantly AI** cards to the Integrations settings page. Each card has a test-input field, send button with loading spinner, and inline success/error feedback. Existing Stripe/Zelle cards moved to a "Coming soon" section.
+- `.env.local.example` — added `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`, `TWILIO_WHATSAPP_FROM`, and `INSTANTLY_API_KEY` variable names.
+
+### Changed
+- `package.json` — added `twilio` npm package (v5.x) for SMS/WhatsApp sends.
+
+## [2026-05-14] — Quote send validation, mail icon, and Send Quote section required fields
+
+### Changed
+- `components/quote-detail.tsx` — "Send Quote" button now shows a `Mail` icon (lucide-react) to the left of the label, making it immediately clear the quote is sent via email.
+- `components/quote-detail.tsx` — "Send Via" and the contact destination field (email / phone / location) in the **Send Quote to Customer** and **Send Payment Link** sections now show a required `*` asterisk. Saving a draft quote or clicking **Send Quote** blocks and shows an inline error if the destination field is blank; error clears as soon as the user types. Added `quoteDestinationError` state; validation added inside `handleSave` before `setSaving(true)`.
+- `components/new-quote-form.tsx` — Same required-field enforcement for the **Send Quote to Customer** / **Send Payment Link** sections in the Quote tab. `quoteDestinationError` prop added to `QuoteTabProps`; validation added in `validateAndAdvance` (when leaving the Quote tab) and in `handleSave` (when status is `"sent"`). Error clears on input via wrapped setter `clearQuoteDestinationError`. Both `EmailInput` and `PhoneInput` receive the `error` prop; plain text input gets a red border + `<p role="alert">` message.
+
 ## [2026-05-14] — PDF download for quotes and orders
 
 ### Added

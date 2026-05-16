@@ -219,11 +219,16 @@ app/(app)/orders/page.tsx  [Server Component — thin wrapper]
   └── components/orders-page.tsx  [Client Component "use client"]
         ├── Tabs: All | Active | Cancelled (count badge on all)
         ├── Only shows ticket_status = 'order' tickets (draft/sent/approved/routed excluded)
-        ├── Counts: GET /api/tickets/counts
+        ├── Counts: GET /api/tickets/counts (filters by ticket_status = 'order')
         ├── Data: GET /api/tickets?kind=quote (filtered to 'order' status client-side)
+        ├── Columns: Order #, Contact, Title (⚡ Rush), Total, Payment status pill, Priority, Due Date, Created
         ├── No "New Order" button — orders created only through Quotes flow
         ├── Search: client-side filter
-        └── Row click → /quotes/[id]  (same ticket record)
+        └── Row click → /orders/[id]
+
+app/(app)/orders/[id]/page.tsx  [Server Component — thin wrapper]
+  └── components/quote-detail.tsx  [Client Component — same component as /quotes/[id]]
+        └── Deposit status bar shown when order has partial prepayment set
 ```
 
 ---
@@ -242,6 +247,31 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         ├── Tabs: [Customer] | Info | Line Items | Quote
         │         Customer tab hidden when lead_id or CRM params present
         │
+        ├── Customer Tab — phone-first search:
+        │    Phone | Email → First Name | Last Name → Company field order
+        │    600ms debounce → GET /api/customers/lookup?phone=...
+        │    0 matches: all fields editable
+        │    1+ matches: picker modal → select or create new
+        │    Selected: fields lock (read-only except Phone); lock state persists across tab navigation
+        │
+        ├── Info Tab:
+        │    Rush auto-toggles ON for today/tomorrow due dates, OFF for later
+        │
+        ├── Line Items Tab:
+        │    Line Total override per SKU row (overrides qty × unit price)
+        │    Line Item Comment on its own row above Line Total
+        │    Add Line Item auto-scrolls to new row
+        │    SkuSelect helper: appearance-none + ChevronDown on all selects
+        │
+        ├── Quote Tab:
+        │    Shipping/Tax Rate: local string state (no snap-back to 0 on clear)
+        │    Payment Methods: segmented button group
+        │    Prepayment/Deposit: Full Payment | Partial Payment toggle
+        │      → Partial: % / $ type + amount + Due now / Balance summary
+        │    StyledSelect on Send Via and Follow-Up Frequency
+        │    First Reminder: custom DatePicker (not native input)
+        │    Quote destination auto-fills from locked customer when channel changes
+        │
         ├── Validation per tab before advancing:
         │    Customer: first_name required
         │    Info: title required
@@ -253,7 +283,7 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │
         ├── Data: GET /api/lookups, GET /api/lookups/products, GET /api/admin/company
         ├── Save Draft: POST /api/tickets { status: 'draft' } — available from Line Items onwards
-        ├── Save & Send: POST /api/tickets { status: 'sent' } → redirect to /quotes
+        ├── Save & Send: POST /api/tickets { status: 'sent' } → triggers email/SMS/WhatsApp delivery
         └── Customer upsert: POST /api/customers on save if no customer_id yet
 ```
 
@@ -277,9 +307,14 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    Fires when SDR saves a draft quote with total > HVT
         │    Non-dismissible, 30s countdown → PATCH { status: 'routed' } → redirect to /quotes
         │
-        ├── Status actions (read-only mode): Send Quote / Mark Won / Cancel Ticket
+        ├── Status actions (read-only mode):
+        │    Send Quote (draft) / Resend Quote (sent) / Mark Won / Cancel Ticket
+        ├── Payment status bar (orders only): Unpaid | Partial | Paid pill toggle — saves immediately
+        ├── Deposit status bar (partial prepayment orders only):
+        │    Shows deposit amount + Pending | Paid toggle + "Will be auto-updated by Stripe"
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true
-        └── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
+        ├── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
+        └── Also rendered at /orders/[id] (same component, same props)
 ```
 
 ---

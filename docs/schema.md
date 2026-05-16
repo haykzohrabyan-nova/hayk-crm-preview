@@ -385,8 +385,9 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `tax_exempt` | `boolean` NOT NULL DEFAULT `false` | |
 | `sales_permit_number` | `text` | Required when tax_exempt = true |
 | `quote_payment_types` | `text[]` NOT NULL DEFAULT `'{}'` | `'card_default'` \| `'zelle'` \| `'offline'` |
-| `prepayment_type` | `text` | `'percent'` \| `'fixed'` |
-| `prepayment_value` | `text` | Stored as text; parsed at runtime |
+| `prepayment_type` | `text` | `'full'` \| `'percent'` \| `'fixed'` |
+| `prepayment_value` | `text` | Stored as text; parsed at runtime. `'100'` when type is `'full'` |
+| `prepayment_status` | `text` NOT NULL DEFAULT `'pending'` | `'pending'` \| `'paid'` — deposit collected flag; Stripe webhook updates this |
 | `quote_reminder_date` | `date` | First follow-up date |
 | `follow_up_cycles` | `int` | Number of follow-up attempts (default 3) |
 | `follow_up_frequency` | `text` | `'Daily'` \| `'Every 2 days'` \| `'Weekly'` |
@@ -401,6 +402,8 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `follow_up_completed` | `boolean` DEFAULT `false` | |
 | `client_confirmed` | `boolean` DEFAULT `false` | Client has approved quote → transitions to order |
 | `quote_approval_last_requested_at` | `timestamptz` | Last time approval was requested |
+| `public_token` | `uuid` NOT NULL DEFAULT `gen_random_uuid()` UNIQUE | Unguessable token for public `/q/[token]` page — no auth needed |
+| `payment_status` | `text` NOT NULL DEFAULT `'unpaid'` | `'unpaid'` \| `'partial'` \| `'paid'` — overall order payment state |
 | `notes` | `text` | Internal notes |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
@@ -1053,4 +1056,7 @@ When creating Supabase migrations under `supabase/migrations/`:
 049_remove_statistics_page.sql       ← deletes /statistics from pages table; role_permissions cascade-delete
 050_add_urgent_priority.sql          ← seeds 'Urgent' priority to ticket_priority lookup (system-set only; hidden from UI dropdowns)
 051_backfill_routed_status.sql       ← one-time backfill: finds SDR-created draft quotes whose quote_final_total > company_settings.high_value_threshold and sets ticket_status = 'routed'
+052_add_public_token_to_tickets.sql  ← adds public_token UUID column (DEFAULT gen_random_uuid()) + unique index to job_tickets
+053_add_payment_status_to_tickets.sql ← adds payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK ('unpaid','partial','paid') to job_tickets
+054_add_prepayment_status_to_tickets.sql ← adds prepayment_status TEXT NOT NULL DEFAULT 'pending' CHECK ('pending','paid') to job_tickets; Stripe webhook will update this
 ```

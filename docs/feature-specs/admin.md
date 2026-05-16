@@ -4,31 +4,23 @@ Access: Admin role only. `proxy.ts` blocks non-admins and redirects to `/dashboa
 
 ---
 
-## `/admin` — Overview (Card Grid)
+## `/admin` — Overview (Card Grid) ✅ Built
 
-A landing page showing all admin sections as clickable cards in a responsive 3-column grid (2 on tablet, 1 on mobile). Each card contains an icon, title, short description, and an "Open →" link that navigates to the section's settings tab.
+A landing page showing all admin sections as clickable cards in a responsive 3-column grid (2 on tablet, 1 on mobile). Each card contains an icon, title, short description, and an "Open →" or "Coming soon" label.
 
 The page lives at `app/(app)/admin/page.tsx`. A sub-nav strip (Overview / Settings) is rendered by `components/admin/admin-sub-nav.tsx` inside `app/(app)/admin/layout.tsx`.
 
-### Cards (current)
+### Cards
 
-| Title | Route | Description |
-|---|---|---|
-| Users | `/admin/settings/users` | Create, edit, and deactivate team members. Assign roles and reset passwords. |
-| Roles & Permissions | `/admin/settings/roles` | Role definitions and allowed pages per role. |
-| Dropdown Options | `/admin/settings/dropdowns` | ✅ **Built** — edit sources, industries, urgency, hold/reject reasons, and all order/quote dropdown lists. |
-| Notifications | `/admin/settings/notifications` | Send a system broadcast message to all users or a specific role. |
-| Products | `/admin/settings/products` | ✅ **Built** — product types, materials, and material–product links for the OrderDrawer. |
-| Company Info | `/admin/settings/company` | ✅ **Built** — company branding, address, and order/quote defaults (tax rate, high-value threshold, rush surcharge). |
-| Integrations | `/admin/settings/integrations` | 🔜 **Planned** — Stripe (card payment links) and Zelle (business account + PDF instructions). Placeholder page built; configuration deferred. |
-
-All cards are clickable and navigate to their respective tab. Dropdown Options, Products, and Company Info are fully built. Roles & Permissions and Notifications are built.
-
-### Deferred cards (not yet on overview)
-
-| Title | Planned Route | Notes |
-|---|---|---|
-| Audit Log | `/admin/settings/audit-log` | Full history of all changes. |
+| Title | Route | Built? | Notes |
+|---|---|---|---|
+| Users | `/admin/settings/users` | ✅ Built | Full user management |
+| Roles & Permissions | `/admin/settings/roles` | ✅ Built | Role list + permission matrix toggle |
+| Dropdown Options | `/admin/settings/dropdowns` | ✅ Built | All lead + order/quote lookup categories |
+| Company Info | `/admin/settings/company` | ✅ Built | Branding, address, tax rate, HVT, rush surcharge |
+| Products | `/admin/settings/products` | ✅ Built | Product types, materials, material–product links |
+| Integrations | `/admin/settings/integrations` | ✅ Built | Twilio SMS + Instantly AI live; Stripe + Zelle placeholder |
+Built cards show an accent-colored icon + "Open →".
 
 ---
 
@@ -300,28 +292,6 @@ Behind the scenes:
 
 ---
 
-## `/admin/settings/audit-log` — Audit Log (Deferred from MVP)
+## `/admin/settings/notifications` — Not Needed
 
-Not linked from the `/admin` overview card grid yet. Will be added as a card and a settings tab in a later phase.
-
-### Audit Table
-
-**Data:** `GET /api/admin/audit`
-
-| Column | Notes |
-|--------|-------|
-| Actor | User full name + role badge |
-| Action | Human-readable description (derived from `type`) |
-| Entity | Customer name / Lead ID (from payload) |
-| Timestamp | Full datetime |
-| Details | Expandable payload preview |
-
-### Filters
-
-- Search by actor name
-- Filter by activity `type`
-- Date range picker (`from` / `to`)
-
-### Pagination
-
-50 rows per page. "Load more" button fetches next 50. Total count shown in header.
+Broadcast Notifications was removed from scope. The `/notifications` page (Activity Log) covers all current notification needs. No tab for this route will be built.

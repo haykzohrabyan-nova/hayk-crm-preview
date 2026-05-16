@@ -1,8 +1,15 @@
 # Feature Spec — Invoice & Payment Flow
 
-> **Status: Planned — not yet built.**
-> Prereqs (Phases 0–7 of the Tickets module) are complete as of 2026-05-12.
-> This spec covers the next major build: public invoice page + Stripe, Zelle, and Offline payment flows.
+> **Status: Phase A + B Built (2026-05-14/15). Phases C–E deferred.**
+>
+> | Phase | What | Status |
+> |-------|------|--------|
+> | A | DB columns + public token | ✅ Built (migrations 052, 053, 054) |
+> | B | Public quote/invoice page at `/q/[token]` | ✅ Built — customer views + confirms quote |
+> | B+ | Prepayment / Deposit display on public page | ✅ Built — Payment Schedule block for partial prepayments |
+> | C | Stripe Card payment | ⏳ Deferred — DB ready, API wiring not started |
+> | D | Zelle code matching | ⏳ Deferred |
+> | E | Dashboard revenue KPIs | ⏳ Deferred |
 
 ---
 
@@ -54,77 +61,88 @@ flowchart TD
 
 ---
 
-## Phase A — Database + Public Token
+## Phase A — Database + Public Token ✅ BUILT
 
-### Migration `050_payment_fields.sql`
+### Migrations applied
 
-New columns on `job_tickets`:
+| Migration | File | What it adds |
+|-----------|------|-------------|
+| 052 | `add_public_token_to_tickets.sql` | `public_token UUID DEFAULT gen_random_uuid()` + unique index |
+| 053 | `add_payment_status_to_tickets.sql` | `payment_status TEXT NOT NULL DEFAULT 'unpaid'` — `'unpaid'` \| `'partial'` \| `'paid'` |
+| 054 | `add_prepayment_status_to_tickets.sql` | `prepayment_status TEXT NOT NULL DEFAULT 'pending'` — `'pending'` \| `'paid'` — Stripe webhook will update this |
 
-```sql
-alter table public.job_tickets
-  add column if not exists public_token          text unique,
-  add column if not exists zelle_code            text,
-  add column if not exists payment_status        text,   -- null | 'pending_zelle' | 'paid' | 'failed'
-  add column if not exists payment_amount_received numeric,
-  add column if not exists payment_paid_at       timestamptz,
-  add column if not exists payment_method_used   text,
-  add column if not exists stripe_session_id     text,
-  add column if not exists stripe_payment_intent_id text;
-```
-
-RLS: add an anon-safe SELECT policy on `job_tickets` scoped to `public_token IS NOT NULL`
-so the public invoice page can fetch the ticket without auth (service-role client is the
-cleaner alternative — either works).
-
-Update `supabase/schema.sql` to include the new columns.
+> Columns added for the future: `zelle_code`, `payment_amount_received`, `payment_paid_at`, `payment_method_used`, `stripe_session_id`, `stripe_payment_intent_id` — **not yet added to DB**. Add them in a future migration when Stripe/Zelle is wired.
 
 ### Token generation
 
-In `PATCH /api/tickets/[id]`:
-- When `ticket_status` is set to `'sent'` **and** `public_token` is currently null:
-  - Generate `public_token = crypto.randomUUID()`
-  - Generate `zelle_code = 8 random alphanumeric chars` (e.g. `Z-38291047`)
-  - Save both to the ticket in the same PATCH
-- Return the `invoice_url` (`${NEXT_PUBLIC_APP_URL}/invoice/${public_token}`) in the response
+`public_token` is set as a DB default (`gen_random_uuid()`) so every ticket has one from creation. The public URL is `{NEXT_PUBLIC_APP_URL}/q/{public_token}`.
 
-New route: `GET /api/tickets/[id]/public-link`
-- Returns `{ public_token, invoice_url }` for the "Copy Link" button in the CRM
-- Scoped: rep must own the ticket or be admin
+`sendQuoteToCustomer()` in `lib/integrations/send-quote.ts` reads `ticket.public_token` to build the link included in every email/SMS delivery.
 
 ---
 
-## Phase B — Public Invoice Page
+## Phase B — Public Quote Page ✅ BUILT
 
 ### Route
 
-`app/(app)/invoice/[token]/page.tsx`
+`app/(public)/q/[token]/page.tsx`
 
-- **No auth required** — standalone page outside the `(app)` layout shell (no sidebar)
-- Server component — fetches ticket by `public_token` using the admin/service-role client
-- If not found or `ticket_status = 'draft'` → 404 page: *"This quote is not available."*
+- **No auth required** — `proxy.ts` allows `/q/` paths without authentication
+- Client component — fetches via `GET /api/public/quotes/[token]` (uses admin client server-side, returns safe public fields only)
+- Not found or draft → "Quote Not Found" screen
+- Already confirmed → "Order Confirmed" screen with reference code
 
-### Component: `components/invoice-page.tsx`
+### Layout sections (as built)
 
-Layout sections:
+1. **Header** — company logo or name + "PROFESSIONAL PRINTING SERVICES" sub-label (navy background)
+2. **Greeting** — "Hi [Customer Name], your quote is ready" (or order variant)
+3. **Reference card** — reference code + status badge (Awaiting Approval / Order / Cancelled)
+4. **Rush Order banner** — amber, shown when `rush = true`
+5. **Line items** — desktop table (Product, Qty, Unit Price, Total) + mobile card layout
+6. **Pricing Summary** — subtotal → shipping → discount → tax → **Order Total** (gold)
+7. **Payment Schedule** *(partial prepayment only)*:
+   - Amber box: **Deposit Due Now** + amount + "Required to begin your order"
+   - **Balance Remaining** + "Due upon completion / delivery"
+   - Gold border wrapping the entire block for prominence
+   - Hidden entirely for Full Payment orders
+8. **Accepted Payment Methods** — green badge block
+9. **Special Requirements** — amber block (if set)
+10. **"Confirm & Accept Quote"** CTA — gold button, only when `ticket_status = "sent"`
+11. **Footer** — company name, address, phone, email, website
 
-1. **Header** — company logo + name + address (from `company_settings`)
-2. **Quote / Order info** — reference code, title, date, status
-3. **Contact info** — customer name, company, email, phone
-4. **Line items table** — product, material, size, qty × unit price = line total
-5. **Pricing summary** — subtotal → shipping → discount → pre-tax → tax → **Total**
-6. **Payment section** — rendered based on `quote_payment_types`:
-   - **Offline**: *"Please pay at our office. Reference: [zelle_code]"*
-   - **Zelle**: *"Send to [company Zelle email]. Memo: **Z-38291047**"* — large copy button
-   - **Card**: *"Pay Now"* button → Stripe Checkout
-7. **Footer** — follow-up date if set; "Print this page" button (`window.print()`)
+### On Confirm
 
-Print CSS: hide action buttons, expand table to full width.
+`POST /api/public/quotes/[token]/confirm`:
+- Sets `client_confirmed = true`, `ticket_status = "order"`, `ticket_kind = "order"`
+- Generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
+- Logs `order_ticket_status_changed` activity (`by_user_id = null` — customer action)
+- Returns `{ ok: true, reference_code }`
+- Page transitions to "Order Confirmed!" success state
 
-### CRM changes (`components/quote-detail.tsx`)
+### New API routes
 
-- After Send Quote succeeds, show a **Copy Link** icon next to the status pill
-- `navigator.clipboard.writeText(invoice_url)` with toast *"Invoice link copied"*
-- Rep pastes the link into SMS / WhatsApp / email manually
+| Route | Auth | Purpose |
+|-------|------|---------|
+| `GET /api/public/quotes/[token]` | None | Returns safe public ticket fields + company settings |
+| `POST /api/public/quotes/[token]/confirm` | None | Customer confirms → converts to order |
+
+---
+
+## Phase B+ — Prepayment / Deposit on Public Page ✅ BUILT
+
+**Prepayment / Deposit section in CRM (New Quote + Quote Detail):**
+
+- **Full Payment / Partial Payment** toggle (segmented button, default Full Payment)
+- When Partial selected: % / $ type toggle + amount input + "Due now / Balance" summary
+- Saves to `prepayment_type` (`"full"` | `"percent"` | `"fixed"`) and `prepayment_value`
+
+**Deposit status bar on Order detail (read-only mode):**
+
+- Visible when `ticket_status = "order"` AND `prepayment_type IN ('percent', 'fixed')`
+- Shows calculated deposit amount
+- **Pending / Paid** toggle — saves `prepayment_status` via `PATCH /api/tickets/[id]`
+- "Will be auto-updated by Stripe" note
+- `payment_status` bar (Unpaid / Partial / Paid) shown for all orders
 
 ---
 
@@ -239,20 +257,24 @@ Dashboard KPI cards:
 
 ## File Inventory
 
-| File | Phase | Notes |
-|---|---|---|
-| `supabase/migrations/050_payment_fields.sql` | A | New columns on job_tickets |
-| `supabase/schema.sql` | A | Update with new columns |
-| `app/(app)/invoice/[token]/page.tsx` | B | Public invoice page (no auth shell) |
-| `components/invoice-page.tsx` | B | Invoice UI component |
-| `app/api/tickets/[id]/route.ts` | A | Token generation on send |
-| `app/api/tickets/[id]/public-link/route.ts` | A | Copy link endpoint |
-| `components/quote-detail.tsx` | B, D | Copy Link + Mark as Paid buttons |
-| `app/api/payments/stripe/create-session/route.ts` | C | Stripe Checkout session |
-| `app/api/payments/stripe/webhook/route.ts` | C | Stripe payment confirmation |
-| `app/api/payments/zelle/inbound/route.ts` | D | Inbound email parsing |
-| `app/api/dashboard/kpis/route.ts` | E | Revenue from paid tickets |
-| `docs/CHANGELOG.md` | each phase | Update as built |
+| File | Phase | Status | Notes |
+|---|---|---|---|
+| `supabase/migrations/052_add_public_token_to_tickets.sql` | A | ✅ Built | `public_token` column + unique index |
+| `supabase/migrations/053_add_payment_status_to_tickets.sql` | A | ✅ Built | `payment_status` column |
+| `supabase/migrations/054_add_prepayment_status_to_tickets.sql` | A | ✅ Built | `prepayment_status` column — Stripe-ready |
+| `lib/integrations/send-quote.ts` | A | ✅ Built | Channel router — includes public_token URL |
+| `lib/integrations/quote-email-template.ts` | A | ✅ Built | HTML email template builder |
+| `app/(public)/layout.tsx` | B | ✅ Built | Minimal public layout (no auth) |
+| `app/(public)/q/[token]/page.tsx` | B | ✅ Built | Customer-facing quote/order page |
+| `app/api/public/quotes/[token]/route.ts` | B | ✅ Built | Public GET — safe ticket fields |
+| `app/api/public/quotes/[token]/confirm/route.ts` | B | ✅ Built | Customer confirm → convert to order |
+| `app/api/tickets/[id]/route.ts` | A | ✅ Built | `prepayment_status` in ALLOWED_FIELDS; triggers send on status=sent |
+| `components/quote-detail.tsx` | B+ | ✅ Built | Payment status bar + deposit status bar |
+| `components/new-quote-form.tsx` | B+ | ✅ Built | Full/Partial prepayment toggle |
+| `app/api/payments/stripe/create-session/route.ts` | C | ⏳ Deferred | Stripe Checkout session |
+| `app/api/payments/stripe/webhook/route.ts` | C | ⏳ Deferred | Stripe payment confirmation |
+| `app/api/payments/zelle/inbound/route.ts` | D | ⏳ Deferred | Inbound email parsing |
+| `app/api/dashboard/kpis/route.ts` | E | ⏳ Deferred | Revenue from paid tickets |
 
 ---
 

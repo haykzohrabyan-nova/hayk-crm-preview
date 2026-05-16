@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { DayPicker } from "react-day-picker";
+import "react-day-picker/style.css";
 import { format, parse, isValid } from "date-fns";
 import { CalendarDays, X } from "lucide-react";
 
@@ -28,7 +29,6 @@ export function DatePicker({
   const parsed = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined;
   const selected = parsed && isValid(parsed) ? parsed : undefined;
 
-  // Close on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) {
@@ -40,11 +40,7 @@ export function DatePicker({
   }, [open]);
 
   function handleSelect(day: Date | undefined) {
-    if (day) {
-      onChange(format(day, "yyyy-MM-dd"));
-    } else {
-      onChange("");
-    }
+    onChange(day ? format(day, "yyyy-MM-dd") : "");
     setOpen(false);
   }
 
@@ -84,92 +80,107 @@ export function DatePicker({
       {/* Popover */}
       {open && (
         <div
-          className="absolute z-50 mt-1 rounded-xl shadow-lg border p-3"
+          className="absolute z-50 mt-1 rounded-xl border p-3"
           style={{
             background: "var(--color-surface)",
             borderColor: "var(--color-border)",
-            minWidth: "280px",
             boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
           }}
         >
+          {/* Override react-day-picker v10 tokens to match design system */}
           <style>{`
-            .rdp-root {
+            .bazaar-rdp.rdp-root {
               --rdp-accent-color: var(--color-accent);
               --rdp-accent-background-color: var(--color-badge-bg);
+              --rdp-today-color: var(--color-accent);
+              --rdp-day-height: 36px;
+              --rdp-day-width: 36px;
+              --rdp-day_button-height: 34px;
+              --rdp-day_button-width: 34px;
+              --rdp-day_button-border-radius: 8px;
+              --rdp-day_button-border: 2px solid transparent;
+              --rdp-selected-border: 2px solid transparent;
+              --rdp-nav_button-height: 28px;
+              --rdp-nav_button-width: 28px;
+              --rdp-nav-height: 32px;
+              --rdp-outside-opacity: 0.35;
+              --rdp-disabled-opacity: 0.25;
               font-size: 13px;
+              color: var(--color-text-primary);
             }
-            .rdp-month_caption {
+
+            /* Month caption / header */
+            .bazaar-rdp .rdp-month_caption {
               font-size: 13px;
               font-weight: 600;
               color: var(--color-text-primary);
-              padding-bottom: 8px;
-              display: flex;
-              align-items: center;
-              justify-content: space-between;
+              justify-content: center;
             }
-            .rdp-nav { display: flex; gap: 4px; }
-            .rdp-button_previous, .rdp-button_next {
+
+            /* Nav buttons */
+            .bazaar-rdp .rdp-button_previous,
+            .bazaar-rdp .rdp-button_next {
               background: var(--color-bg);
               border: 1px solid var(--color-border);
               border-radius: 6px;
-              width: 28px;
-              height: 28px;
-              display: flex;
-              align-items: center;
-              justify-content: center;
-              cursor: pointer;
               color: var(--color-text-muted);
               transition: opacity 0.15s;
             }
-            .rdp-button_previous:hover, .rdp-button_next:hover { opacity: 0.7; }
-            .rdp-weekdays { border-bottom: 1px solid var(--color-border); margin-bottom: 4px; }
-            .rdp-weekday {
+            .bazaar-rdp .rdp-button_previous:hover,
+            .bazaar-rdp .rdp-button_next:hover { opacity: 0.7; }
+
+            /* Chevron icon color */
+            .bazaar-rdp .rdp-chevron { fill: var(--color-text-muted); }
+
+            /* Weekday labels */
+            .bazaar-rdp .rdp-weekday {
               font-size: 11px;
               font-weight: 500;
               text-transform: uppercase;
               letter-spacing: 0.05em;
               color: var(--color-text-muted);
+              opacity: 1;
               width: 36px;
               text-align: center;
-              padding: 4px 0;
             }
-            .rdp-week { display: flex; }
-            .rdp-day { width: 36px; height: 36px; }
-            .rdp-day_button {
-              width: 34px;
-              height: 34px;
-              border-radius: 8px;
-              border: none;
-              background: transparent;
-              cursor: pointer;
-              font-size: 13px;
+
+            /* Weekday separator */
+            .bazaar-rdp .rdp-weekdays {
+              border-bottom: 1px solid var(--color-border);
+              margin-bottom: 2px;
+            }
+
+            /* Day cells */
+            .bazaar-rdp .rdp-day_button {
               color: var(--color-text-primary);
-              transition: background 0.12s, color 0.12s;
-              display: flex;
-              align-items: center;
-              justify-content: center;
+              transition: background 0.1s, color 0.1s;
             }
-            .rdp-day_button:hover {
+            .bazaar-rdp .rdp-day_button:hover {
               background: var(--color-badge-bg);
               color: var(--color-badge-text);
             }
-            .rdp-selected .rdp-day_button {
+
+            /* Selected day */
+            .bazaar-rdp .rdp-selected .rdp-day_button {
               background: var(--color-accent) !important;
               color: var(--color-btn-primary-text) !important;
+              border-color: transparent !important;
               font-weight: 600;
             }
-            .rdp-today:not(.rdp-selected) .rdp-day_button {
-              font-weight: 600;
+
+            /* Today (unselected) */
+            .bazaar-rdp .rdp-today:not(.rdp-selected) .rdp-day_button {
               color: var(--color-accent);
+              font-weight: 600;
             }
-            .rdp-outside .rdp-day_button { opacity: 0.35; }
-            .rdp-disabled .rdp-day_button { opacity: 0.25; cursor: not-allowed; }
           `}</style>
           <DayPicker
+            className="bazaar-rdp"
             mode="single"
             selected={selected}
             onSelect={handleSelect}
             defaultMonth={selected ?? new Date()}
+            navLayout="around"
           />
         </div>
       )}

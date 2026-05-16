@@ -77,9 +77,8 @@ export async function GET() {
       counts["/quotes"] = quoteCount;
     })(),
 
-    // /orders badge — confirmed order tickets only
+    // /orders badge — any ticket with status "order" (regardless of kind)
     ticketQuery()
-      .eq("ticket_kind", "quote")
       .eq("ticket_status", "order")
       .then(({ data }) => {
         counts["/orders"] = (data ?? []).length;

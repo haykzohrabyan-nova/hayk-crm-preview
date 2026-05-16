@@ -268,6 +268,9 @@ export interface JobTicket {
   // Identity
   title: string | null
   reference_code: string | null   // ORD-YYYY-NNN (orders only)
+  public_token: string            // UUID used for the public customer-facing quote URL /q/[token]
+  payment_status: 'unpaid' | 'partial' | 'paid'
+  prepayment_status: 'pending' | 'paid'
 
   // Quote delivery
   quote_channel: string | null
