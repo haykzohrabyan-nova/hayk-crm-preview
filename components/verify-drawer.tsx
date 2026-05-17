@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   User,
   ChevronRight,
+  ShieldCheck,
 } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
@@ -50,6 +51,7 @@ interface VerifyDrawerProps {
   lookups: LookupMap;
   readOnly?: boolean;
   lockedByName?: string | null;
+  isAdmin?: boolean;
   onClose: () => void;
   onLeadUpdated: (lead: Lead) => void;
   onLeadRemoved: (leadId: string) => void;
@@ -164,6 +166,7 @@ export function VerifyDrawer({
   lookups,
   readOnly = false,
   lockedByName = null,
+  isAdmin = false,
   onClose,
   onLeadUpdated,
   onLeadRemoved,
@@ -183,7 +186,7 @@ export function VerifyDrawer({
   const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
 
   const isRejected = lead.status === "Rejected";
-  const isReadOnly = readOnly || isRejected;
+  const isReadOnly = readOnly || (isRejected && !isAdmin);
 
   // Product types from admin panel
   const [productTypes, setProductTypes] = useState<{ id: string; name: string }[]>([]);
@@ -484,7 +487,7 @@ export function VerifyDrawer({
           )}
         </div>
 
-        {/* Lock banner */}
+        {/* Lock / terminal banners */}
         {lockedByName && (
           <div
             className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
@@ -492,6 +495,24 @@ export function VerifyDrawer({
           >
             <Lock className="h-3.5 w-3.5" />
             {lockedByName} is currently working this lead — view only
+          </div>
+        )}
+        {isRejected && !lockedByName && isAdmin && (
+          <div
+            className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
+            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)", borderBottom: "1px solid var(--color-warning-border)" }}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Admin override — this lead was rejected. You can re-route or edit it.
+          </div>
+        )}
+        {isRejected && !lockedByName && !isAdmin && (
+          <div
+            className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
+            style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", borderBottom: "1px solid var(--color-danger-border)" }}
+          >
+            <Lock className="h-3.5 w-3.5" />
+            This lead was rejected and cannot be modified.
           </div>
         )}
 

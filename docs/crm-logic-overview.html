@@ -463,7 +463,7 @@
     <div class="header-subtitle">CRM System — Application Logic Overview</div>
   </div>
   <div class="header-right">
-    <span class="date-badge">Version: May 2026</span>
+    <span class="date-badge">Updated: May 17, 2026</span>
   </div>
 </header>
 
@@ -491,11 +491,16 @@
     <div class="sidebar-section-label">Business Rules</div>
     <a href="#hvt"><span class="icon">⚡</span> High-Value Threshold</a>
     <a href="#record-locking"><span class="icon">🔒</span> Record Locking</a>
+    <a href="#admin-override"><span class="icon">🛡️</span> Admin Override</a>
+    <a href="#user-sessions"><span class="icon">🕐</span> User Sessions</a>
     <a href="#notifications"><span class="icon">🔔</span> Activity Log</a>
 
     <div class="sidebar-section-label">System</div>
     <a href="#integrations"><span class="icon">🔗</span> Integrations</a>
     <a href="#admin"><span class="icon">⚙️</span> Admin Panel</a>
+
+    <div class="sidebar-section-label">Roadmap</div>
+    <a href="#whats-left"><span class="icon">❓</span> What's Left?</a>
   </nav>
 
   <!-- Main Content -->
@@ -588,11 +593,13 @@
           <span class="role-tag" style="background:#e0e7ff;color:#3730a3;">Administrator</span>
           <ul class="role-abilities">
             <li>Full access to all leads, quotes, orders</li>
-            <li>Override any locked record</li>
+            <li>Override any locked or terminal record</li>
             <li>Cancel or edit confirmed orders</li>
+            <li>Advance orders through production lifecycle</li>
             <li>Manage users, roles, permissions</li>
             <li>Configure dropdowns, products, company info</li>
-            <li>Test and manage integrations</li>
+            <li>Set idle sign-out timeout for all users</li>
+            <li>View per-user session KPIs</li>
           </ul>
         </div>
       </div>
@@ -1040,7 +1047,36 @@
         </div>
       </div>
 
-      <div class="two-col">
+      <div class="info-box info" style="margin-bottom:16px;">
+        <span class="info-icon">🛡️</span>
+        <div><strong>Admin action — lifecycle buttons</strong> appear on the order detail page for admins only. After an order is confirmed, the admin advances it through the production stages using one-click buttons. Non-admin users see the status badge but cannot change it.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🖱️ Admin Lifecycle Buttons (Order Detail Page)</div>
+        <table class="data-table">
+          <thead><tr><th>Current Status</th><th>Button Shown</th><th>Result</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="pill order">order</span></td>
+              <td><span style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:500;">Mark In Production</span></td>
+              <td>Status → <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;">in_production</code></td>
+            </tr>
+            <tr>
+              <td><span style="background:#f5f3ff;color:#6d28d9;border:1px solid #c4b5fd;padding:2px 10px;border-radius:20px;font-size:11.5px;font-weight:500;">in_production</span></td>
+              <td><span style="background:#f0fdf4;color:#15803d;border:1px solid #86efac;padding:2px 10px;border-radius:6px;font-size:12px;font-weight:500;">Mark Completed</span></td>
+              <td>Status → <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;">completed</code></td>
+            </tr>
+            <tr>
+              <td><span style="background:#1B2B4B;color:#E8C97A;padding:2px 10px;border-radius:20px;font-size:11.5px;font-weight:500;">completed</span></td>
+              <td><em style="color:var(--muted);font-size:12.5px;">Green "Order completed" badge — no further action</em></td>
+              <td>—</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="two-col" style="margin-top:4px;">
         <div class="card">
           <div class="card-title">📋 Orders Page Tabs</div>
           <table class="data-table">
@@ -1238,6 +1274,141 @@
     </section>
 
     <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: ADMIN OVERRIDE -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="admin-override">
+      <div class="section-header">
+        <div class="section-icon">🛡️</div>
+        <div>
+          <div class="section-title">Admin Override for Terminal Leads</div>
+          <div class="section-desc">Admins can reopen and edit any lead, even after it reaches a terminal state</div>
+        </div>
+      </div>
+
+      <div class="info-box warning">
+        <span class="info-icon">🛡️</span>
+        <div>A <strong>terminal lead</strong> is one that has been Rejected, Won, or Dropped. Normally these are fully read-only for everyone. Admins are the exception — they see an amber "Admin Override" banner and can edit any field, re-route the lead, or change its status.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Terminal State Behaviour by Role</div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Terminal State</th><th>SDR / Sales</th><th>Admin</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="pill cancelled">Rejected</span></td>
+              <td>🔒 Red banner — view only, no actions</td>
+              <td>🟡 Amber "Admin Override" banner — fully editable, can re-route</td>
+            </tr>
+            <tr>
+              <td><span class="pill success">Won</span></td>
+              <td>🔒 Red banner — view only</td>
+              <td>🟡 Amber banner with caution: "Editing will NOT cancel the linked order — handle that manually in Tickets"</td>
+            </tr>
+            <tr>
+              <td><span class="pill warning">Dropped</span></td>
+              <td>🔒 Red banner — view only</td>
+              <td>🟡 Amber banner — fully editable</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="info-box success">
+        <span class="info-icon">✅</span>
+        <div>The API already enforces this — it allows admin edits on terminal leads. Only the UI was updated to match. Non-admins still hit a <code style="background:rgba(22,163,74,0.08);padding:1px 5px;border-radius:3px;">403</code> if they somehow call the endpoint.</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: USER SESSIONS -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="user-sessions">
+      <div class="section-header">
+        <div class="section-icon">🕐</div>
+        <div>
+          <div class="section-title">User Sessions &amp; Security</div>
+          <div class="section-desc">Idle sign-out, session logging, and admin visibility</div>
+        </div>
+      </div>
+
+      <div class="highlight">
+        <h3>Why It Exists</h3>
+        <p>The CRM contains sensitive customer and pricing data. If a user walks away from their computer, the system will automatically sign them out after a configurable idle period — protecting the account and logging the event for the admin.</p>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">⏱️ How Idle Detection Works</div>
+          <div class="timeline">
+            <div class="timeline-item">
+              <div class="timeline-dot" style="background:#3b82f6;"></div>
+              <div class="timeline-item-content">
+                <div class="timeline-item-title">User is active</div>
+                <div class="timeline-item-desc">Any mouse move, click, key press, or scroll resets the idle clock.</div>
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-dot" style="background:var(--warning);"></div>
+              <div class="timeline-item-content">
+                <div class="timeline-item-title">2 minutes before timeout</div>
+                <div class="timeline-item-desc">A blocking warning modal appears with a live countdown and a "Stay Signed In" button.</div>
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-dot" style="background:var(--danger);"></div>
+              <div class="timeline-item-content">
+                <div class="timeline-item-title">Timeout reached</div>
+                <div class="timeline-item-desc">Session is ended, event logged as "auto" sign-out, user redirected to /login.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">⚙️ Configuration</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Set in <strong>Admin → Company Settings → Session &amp; Security</strong>:</p>
+          <table class="data-table">
+            <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Idle timeout</td><td>5 – 480 minutes (default: 20)</td></tr>
+              <tr><td>Warning shown</td><td>Always, 2 min before sign-out</td></tr>
+              <tr><td>Applies to</td><td>All roles — SDR, Sales, Admin</td></tr>
+            </tbody>
+          </table>
+          <div class="info-box info" style="margin-top:12px;font-size:12px;">
+            <span class="info-icon">📄</span>
+            <div>A plain-English <strong>/policy</strong> page explains session tracking to users. No login required. Linked from the idle warning modal.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">📊 Admin: User Activity Tab (in /notifications)</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">The second tab of the Notifications page shows admin-only session KPIs:</p>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:8px;">
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;">
+            <strong style="display:block;margin-bottom:4px;">Per-user KPI cards</strong>
+            <span style="color:var(--muted);">Total sessions · Active time · Auto sign-out count · Green "active now" dot</span>
+          </div>
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;">
+            <strong style="display:block;margin-bottom:4px;">Session history table</strong>
+            <span style="color:var(--muted);">Filterable by user and date range (Today / 7d / 30d). Shows sign-in time, sign-out time, duration, and reason (manual / auto).</span>
+          </div>
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;">
+            <strong style="display:block;margin-bottom:4px;">Dashboard KPI cards</strong>
+            <span style="color:var(--muted);">"Active Users" (signed in right now) and "Idle Sign-outs (7d)" on the Admin dashboard.</span>
+          </div>
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;">
+            <strong style="display:block;margin-bottom:4px;">Sign-out reasons logged</strong>
+            <span style="color:var(--muted);"><strong>manual</strong> — user clicked Sign Out · <strong>auto</strong> — idle timeout · <strong>unknown</strong> — browser crash / session expired</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
     <!-- SECTION: ACTIVITY LOG -->
     <!-- ═══════════════════════════════════════════════ -->
     <section class="section" id="notifications">
@@ -1251,7 +1422,7 @@
 
       <div class="info-box info">
         <span class="info-icon">📜</span>
-        <div>Every action in the CRM is logged automatically. The Activity Log page (<code style="background:rgba(37,99,235,0.08);padding:1px 5px;border-radius:3px;">/notifications</code>) shows a paginated feed of all events across all users, leads, and tickets. Each entry shows who did what, when, and on which record.</div>
+        <div>The <strong>/notifications</strong> page has <strong>two tabs</strong>: <strong>Order / Lead Activity</strong> (paginated feed of all events across all leads and tickets) and <strong>User Activity</strong> (admin-only session KPIs — see User Sessions section). Each activity entry shows who did what, when, and on which record.</div>
       </div>
 
       <div class="two-col">
@@ -1354,7 +1525,7 @@
         </div>
         <div class="feature-item">
           <div class="feature-item-title">🏢 Company Settings</div>
-          <p>Logo, company name, address, phone, email, website. Default tax rate. High-Value Threshold amount. Rush surcharge %. All used in PDF exports and email templates.</p>
+          <p>Logo, company name, address, phone, email, website. Default tax rate. High-Value Threshold. Rush surcharge %. <strong>Idle sign-out timeout</strong> (minutes) — how long before an inactive user is automatically signed out.</p>
         </div>
         <div class="feature-item">
           <div class="feature-item-title">🔗 Integrations</div>
@@ -1365,6 +1536,173 @@
       <div class="info-box navy" style="margin-top:12px;">
         <span class="info-icon">🔐</span>
         <div>All users must log in with email + password, then complete a <strong>TOTP 2-Factor Authentication</strong> step (authenticator app). New users must change their temporary password on first login before accessing any page.</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: WHAT'S LEFT -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="whats-left">
+      <div class="section-header">
+        <div class="section-icon">❓</div>
+        <div>
+          <div class="section-title">What's Left? — Needs Discussion with Owner</div>
+          <div class="section-desc">Features not yet built that require a decision before implementation can start</div>
+        </div>
+      </div>
+
+      <div class="info-box warning" style="margin-bottom:20px;">
+        <span class="info-icon">⚠️</span>
+        <div>Everything below is <strong>designed and specced</strong> but not yet built. Each item has open questions that need an owner decision before development begins. Items marked <strong>❓</strong> require input on direction, scope, or business logic.</div>
+      </div>
+
+      <!-- STRIPE -->
+      <div class="card" style="border-left:4px solid #635bff;">
+        <div class="card-title" style="font-size:15px;">💳 Stripe Card Payments ❓</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">The public quote page is ready. The DB columns exist. What's missing is the Stripe wiring and a few key decisions:</p>
+        <table class="data-table">
+          <thead><tr><th>Question</th><th>Options</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>❓ <strong>Full order total or deposit only?</strong></td>
+              <td>Does the customer pay 100% upfront via Stripe, or just the deposit (prepayment_amount)?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Stripe account setup</strong></td>
+              <td>Do you have a Stripe account? What currency? Do you want to use Stripe Checkout (hosted) or Payment Intents (custom)?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Webhook handling</strong></td>
+              <td>After Stripe confirms payment, should the CRM mark the order as "Paid" automatically? Or does a rep confirm it?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Refunds</strong></td>
+              <td>Will refunds be handled in Stripe directly, or do you need a refund flow in the CRM?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ZELLE -->
+      <div class="card" style="border-left:4px solid #00b5ad;margin-top:16px;">
+        <div class="card-title" style="font-size:15px;">🏦 Zelle Code Matching ❓</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Each order gets an 8-digit code. The customer includes it in the Zelle transfer memo. The CRM then auto-confirms payment by parsing inbound notifications.</p>
+        <table class="data-table">
+          <thead><tr><th>Question</th><th>Options</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>❓ <strong>How does the CRM receive Zelle notifications?</strong></td>
+              <td>Bank email forwarding? Webhook from a Zelle integration service? Manual entry by the team?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Is Zelle even needed?</strong></td>
+              <td>If most customers pay offline (cash/check) or will use Stripe, Zelle may be low priority. Confirm with owner.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- NOTIFICATION BELL -->
+      <div class="card" style="border-left:4px solid #3b82f6;margin-top:16px;">
+        <div class="card-title" style="font-size:15px;">🔔 Notification Bell ❓</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">A bell icon in the sidebar/header that lights up when there are unread events for the current user. Clicking it opens a dropdown feed.</p>
+        <table class="data-table">
+          <thead><tr><th>Question</th><th>Options</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>❓ <strong>What triggers a notification?</strong></td>
+              <td>Examples: "Lead assigned to you", "Order confirmed by customer", "Payment received". Which events matter to each role?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Per-user or broadcast?</strong></td>
+              <td>Should each user see only their own events, or should there be team-wide announcements too?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Persistence</strong></td>
+              <td>Should notifications persist in a DB table (mark as read) or just show real-time events that disappear on close?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- FOLLOW-UP REMINDERS -->
+      <div class="card" style="border-left:4px solid var(--gold-dark);margin-top:16px;">
+        <div class="card-title" style="font-size:15px;">📅 Follow-Up Reminders — Cron Job ❓</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Every quote already collects a follow-up date, frequency, and cycle count. The data is saved. What's missing is the <strong>sending logic</strong> — a scheduled job that fires the reminders.</p>
+        <table class="data-table">
+          <thead><tr><th>Question</th><th>Options</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>❓ <strong>How should follow-ups be sent?</strong></td>
+              <td>Same Email/SMS/WhatsApp as the original quote? Or always email? Should the message be the same template or a shorter reminder?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Who gets notified in the CRM?</strong></td>
+              <td>Should the rep who created the quote be notified in the CRM when a follow-up is sent?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Opt-out</strong></td>
+              <td>Can customers opt out of follow-ups? Is there a legal requirement to include an unsubscribe link?</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- REPORTS -->
+      <div class="card" style="border-left:4px solid var(--gold-dark);margin-top:16px;">
+        <div class="card-title" style="font-size:15px;">📊 Reports Page — Placeholder Built ✅ / Full Charts Pending ❓</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">The <strong>/reports</strong> page is live in the navigation with all 7 planned report types shown. Full interactive charts will be built after Stripe is connected so revenue data is accurate.</p>
+        <table class="data-table">
+          <thead><tr><th>Report</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr><td>Win Rate &amp; Close Time</td><td><span class="pill success">Ready to build — no Stripe needed</span></td></tr>
+            <tr><td>Revenue Over Time</td><td><span class="pill draft">After Stripe</span></td></tr>
+            <tr><td>Pipeline Forecast</td><td><span class="pill draft">After Stripe</span></td></tr>
+            <tr><td>Revenue by Product Type</td><td><span class="pill draft">After Stripe</span></td></tr>
+            <tr><td>Revenue by Lead Source</td><td><span class="pill draft">After Stripe</span></td></tr>
+            <tr><td>Rep Scorecards</td><td><span class="pill draft">After Stripe</span></td></tr>
+            <tr><td>Quote-to-Order Funnel</td><td><span class="pill draft">After Stripe</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ORDERS "IN PRODUCTION" TAB -->
+      <div class="card" style="border-left:4px solid var(--purple);margin-top:16px;">
+        <div class="card-title" style="font-size:15px;">🏭 Orders Page — "In Production" Tab ❓</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">The "Mark In Production" button exists on order detail pages. But the Orders list doesn't yet have a separate "In Production" tab — those orders are currently mixed into the "Active" tab.</p>
+        <table class="data-table">
+          <thead><tr><th>Question</th><th>Options</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>❓ <strong>Do you want a dedicated "In Production" tab?</strong></td>
+              <td>Would be: <strong>All · Queue · In Production · Completed · Cancelled</strong>. Adds clarity but more tabs. Confirm if this is useful day-to-day.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- AI LEAD INGESTION -->
+      <div class="card" style="border-left:4px solid var(--navy);margin-top:16px;">
+        <div class="card-title" style="font-size:15px;">🤖 AI / Webhook Lead Ingestion ❓</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;">Leads are currently created manually by SDRs. Auto-ingestion from web forms, chatbots, or external tools is not built.</p>
+        <table class="data-table">
+          <thead><tr><th>Question</th><th>Options</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>❓ <strong>Do you have a web form or chatbot that collects leads?</strong></td>
+              <td>If yes, we can add a webhook endpoint that auto-creates leads. What fields does it send?</td>
+            </tr>
+            <tr>
+              <td>❓ <strong>Which AI tool?</strong></td>
+              <td>Manychat, Typeform, custom GPT, or other? Each has a different webhook format.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="info-box navy" style="margin-top:20px;">
+        <span class="info-icon">💡</span>
+        <div>Priority recommendation: <strong>Stripe → Notification Bell → Follow-up Reminders → Zelle</strong>. Stripe is the most direct revenue impact. Notification bell improves daily team UX. Zelle and AI ingestion can wait until after the core payment flow is live.</div>
       </div>
     </section>
 
@@ -1412,7 +1750,7 @@
 
 <footer class="footer">
   <strong>BazaarPrinting CRM</strong> — Built with Next.js 16, Supabase, Tailwind CSS, Twilio, and Instantly AI.<br>
-  <span style="font-size:11px;margin-top:4px;display:block;">This document reflects the system as of May 2026. All features described are live and operational.</span>
+  <span style="font-size:11px;margin-top:4px;display:block;">Last updated: May 17, 2026 — includes session tracking, admin overrides, order lifecycle, and dashboard revenue fixes. See the <a href="#whats-left" style="color:var(--gold);">What's Left?</a> section for open items.</span>
 </footer>
 
 <script>

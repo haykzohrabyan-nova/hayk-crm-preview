@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
 
   // ── Sales ─────────────────────────────────────────────────────────────────
   if (roleName === "sales") {
-    const [unclaimed, myLeads, wonLeads] = await Promise.all([
+    const [unclaimed, myLeads, wonTickets, pipelineTickets] = await Promise.all([
       admin
         .from("leads")
         .select("id", { count: "exact", head: true })
@@ -84,33 +84,38 @@ export async function GET(request: NextRequest) {
         .is("sales_owner_id", null),
       admin
         .from("leads")
-        .select("id, status, sales_status, quote_total")
+        .select("id, status, sales_status")
         .eq("sales_owner_id", userId),
+      // Won value: sum final totals from actual orders created by this rep in period
       admin
-        .from("leads")
-        .select("id, quote_total")
-        .eq("sales_owner_id", userId)
-        .eq("sales_status", "Won")
-        .gte("updated_at", periodStart),
+        .from("job_tickets")
+        .select("quote_final_total")
+        .eq("created_by_id", userId)
+        .in("ticket_status", ["order", "in_production", "completed"])
+        .gte("created_at", periodStart),
+      // Pipeline value: active deal tickets created by this rep
+      admin
+        .from("job_tickets")
+        .select("quote_final_total")
+        .eq("created_by_id", userId)
+        .in("ticket_status", ["draft", "sent"]),
     ]);
 
     const all = myLeads.data ?? [];
-    const won = wonLeads.data ?? [];
-
     const activeDeals = all.filter(
       (l) =>
         l.status === "Routed to Sales" &&
         (l.sales_status === "Ongoing" || l.sales_status === "Quote Sent")
     );
-    const wonValue = won.reduce((s, l) => s + (l.quote_total ?? 0), 0);
-    const pipelineValue = activeDeals.reduce((s, l) => s + (l.quote_total ?? 0), 0);
+    const wonValue = (wonTickets.data ?? []).reduce((s, t) => s + (t.quote_final_total ?? 0), 0);
+    const pipelineValue = (pipelineTickets.data ?? []).reduce((s, t) => s + (t.quote_final_total ?? 0), 0);
 
     return NextResponse.json({
       role: "sales",
       new_in_pipeline: unclaimed.count ?? 0,
       active_deals: activeDeals.length,
       on_hold: all.filter((l) => l.sales_status === "On Hold").length,
-      won: won.length,
+      won: all.filter((l) => l.sales_status === "Won").length,
       won_value: wonValue,
       pipeline_value: pipelineValue,
     });
@@ -155,15 +160,17 @@ export async function GET(request: NextRequest) {
       .from("leads")
       .select("id", { count: "exact", head: true })
       .eq("status", "Routed to Sales"),
+    // Won revenue: sum final totals from actual orders in period
     admin
-      .from("leads")
-      .select("id, quote_total")
-      .eq("sales_status", "Won")
-      .gte("updated_at", periodStart),
+      .from("job_tickets")
+      .select("quote_final_total")
+      .in("ticket_status", ["order", "in_production", "completed"])
+      .gte("created_at", periodStart),
+    // Pipeline value: sum final totals from active quotes/drafts
     admin
-      .from("leads")
-      .select("quote_total")
-      .eq("status", "Routed to Sales"),
+      .from("job_tickets")
+      .select("quote_final_total")
+      .in("ticket_status", ["draft", "sent"]),
     // SDR performance: all workspace leads with an sdr_id in the period
     admin
       .from("leads")
@@ -186,7 +193,7 @@ export async function GET(request: NextRequest) {
       .not("source", "is", null),
   ]);
 
-  const won = wonLeads.data ?? [];
+  const wonTickets = wonLeads.data ?? [];
   const pipeline = pipelineLeads.data ?? [];
   const sdrLeads = sdrLeadsRaw.data ?? [];
   const rejectedLeads = rejectedLeadsRaw.data ?? [];
@@ -257,9 +264,9 @@ export async function GET(request: NextRequest) {
     claimed_leads:     claimedLeads.count ?? 0,
     inbox_leads:       inboxLeads.count ?? 0,
     routed_leads:      routedLeads.count ?? 0,
-    won_leads:         won.length,
-    total_revenue:     won.reduce((s, l) => s + ((l.quote_total as number) ?? 0), 0),
-    pipeline_value:    pipeline.reduce((s, l) => s + ((l.quote_total as number) ?? 0), 0),
+    won_leads:         wonTickets.length,
+    total_revenue:     wonTickets.reduce((s, t) => s + ((t.quote_final_total as number) ?? 0), 0),
+    pipeline_value:    pipeline.reduce((s, t) => s + ((t.quote_final_total as number) ?? 0), 0),
     sdr_performance,
     rejection_reasons,
     source_breakdown,

@@ -856,6 +856,7 @@ export function SalesPage() {
           readOnly={drawerReadOnly}
           lockedByName={drawerLockedBy}
           currentUserId={userId}
+          isAdmin={isAdmin}
           onClose={() => {
             setDrawerLead(null);
             setDrawerReadOnly(false);

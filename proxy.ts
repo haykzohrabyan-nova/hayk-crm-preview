@@ -67,7 +67,7 @@ export async function proxy(request: NextRequest) {
     pathname.includes(".");
 
   // Public customer-facing pages — no auth required
-  const isPublic = pathname.startsWith("/q/");
+  const isPublic = pathname.startsWith("/q/") || pathname === "/policy";
 
   // Not logged in → redirect to login
   if (!user && !isAuthFlow && !isPublic && !isStatic) {

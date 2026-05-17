@@ -3,6 +3,62 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-17] — Documentation audit + clean build confirmed
+
+### Changed
+- `docs/TODO.md` — marked Reports placeholder page as `[DONE]`; added section with migration/activation notes
+- `docs/session-summary.md` — `/reports` added to navigation table; migration 058 added to migrations table; Reports row added to build queue as ✅ Done
+- `docs/component-architecture.md` — added `/reports` section describing `reports-page.tsx` structure
+- `docs/crm-logic-overview.html` — replaced "What's Left?" reports open-question card with actual status table showing all 7 planned reports and Stripe dependency
+- `npx next build` verified clean (all 22 routes, zero TS errors)
+
+## [2026-05-17] — Reports placeholder page
+
+### Added
+- `supabase/migrations/058_add_reports_page.sql` — adds `/reports` to the `pages` table (section: main, sort_order: 9)
+- `app/(app)/reports/page.tsx` — thin server wrapper
+- `components/reports-page.tsx` — placeholder page explaining all 7 planned report types, each with a dependency note (most require Stripe), plus a "Go to Dashboard" CTA for what's available now. One report (Win Rate & Close Time) is flagged as buildable without payment data.
+
+### Changed
+- Admin must grant `/reports` access to roles via Admin → Roles & Permissions after running the migration
+
+## [2026-05-17] — Dashboard fixes, admin overrides, order lifecycle
+
+### Fixed
+- `app/api/dashboard/kpis/route.ts` — **TODO-004**: Revenue and won-value KPIs now sum `job_tickets.quote_final_total` (actual final prices) instead of `leads.quote_total` (stale snapshot). Pipeline value also reads from `job_tickets`. Applies to both Sales and Admin dashboard variants.
+
+### Added
+- `components/quote-detail.tsx` — **TODO-005**: "Mark In Production" / "Mark Completed" lifecycle buttons visible to admin on orders. Advances `ticket_status`: `order → in_production → completed`. Completed orders show a green "Order completed" badge. Uses existing `handleSave(undefined, extraFields)` path.
+- `components/admin-dashboard.tsx` — **Dashboard session KPIs**: two new KPI cards — "Active Users" (users with an open session right now) and "Idle Sign-outs" (auto sign-outs in the last 7 days). Data sourced from `/api/admin/sessions`.
+
+### Changed
+- `components/sales-drawer.tsx` — **TODO-001**: Added `isAdmin` prop. When admin views a terminal lead (Won / Dropped / Rejected) an amber "Admin override" banner replaces the red lock banner, and the drawer is fully editable. Won leads show a caution note to handle the linked ticket separately.
+- `components/verify-drawer.tsx` — **TODO-001**: Same admin override pattern for rejected leads. Non-admin users still see the red lock banner and a read-only drawer.
+- `components/sales-page.tsx` — passes `isAdmin={isAdmin}` to `<SalesDrawer />`
+- `components/leads-page.tsx` — passes `isAdmin={isAdmin}` to `<VerifyDrawer />`
+
+## [2026-05-17] — User session tracking + idle sign-out
+
+### Added
+- `supabase/migrations/056_add_idle_timeout_to_company_settings.sql` — `session_idle_timeout_minutes` int (default 20, min 5, max 480) on `company_settings`
+- `supabase/migrations/057_create_user_sessions.sql` — `user_sessions` table with indexes and RLS; one row per login session, tracks sign-in/out times and sign-out reason
+- `app/api/auth/session/route.ts` — `POST /api/auth/session` — logs session start (after MFA) and end (manual/auto/deactivated); closes stale open sessions on new login
+- `app/api/admin/sessions/route.ts` — `GET /api/admin/sessions` — returns per-user KPI summary + paginated session history; filterable by user and date range; admin only
+- `components/idle-timer.tsx` — client component mounted in app layout; reads timeout from company settings; tracks mouse/keyboard/touch activity; shows blocking warning modal 2 min before sign-out; auto sign-outs with session logging
+- `app/(public)/policy/page.tsx` — plain-English security & privacy policy page at `/policy`; no auth required; explains session logging and admin visibility
+- `components/admin/user-activity-section.tsx` — admin view with per-user KPI cards (sessions, active time, auto sign-out count, currently active indicator) + filterable session history table (today / 7d / 30d + user filter)
+
+### Changed
+- `app/(app)/layout.tsx` — mounts `<IdleTimer />` so it runs on every app page
+- `app/(auth)/verify-2fa/page.tsx` — calls `POST /api/auth/session { action: "start" }` after successful MFA verify (fire-and-forget)
+- `components/sidebar.tsx` — calls `POST /api/auth/session { action: "end", reason: "manual" }` before sign-out
+- `components/mobile-nav.tsx` — same session-end call as sidebar
+- `components/admin/company-section.tsx` — added "Session & Security" section with idle timeout input and link to `/policy`
+- `app/api/admin/company/route.ts` — added `session_idle_timeout_minutes` to `ALLOWED_FIELDS`
+- `lib/types/index.ts` — added `session_idle_timeout_minutes` to `CompanySettings`; added `UserSession`, `UserSessionSummary`, `SignOutReason` types
+- `app/(app)/notifications/page.tsx` — converted to 2-tab layout: "Order / Lead Activity" (existing) + "User Activity" (new)
+- `proxy.ts` — `/policy` added to `isPublic` paths (no auth required)
+
 ## [2026-05-16] — TODO cleanup + new open items
 
 ### Changed

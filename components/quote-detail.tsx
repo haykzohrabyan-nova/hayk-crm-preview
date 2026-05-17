@@ -590,8 +590,8 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
     // Keep ref current for the HV countdown timer
     handleSaveRef.current = handleSave;
 
-    // Payment-status-only update — skip all form validation and just PATCH the extra fields
-    if (!newStatus && extraFields && Object.keys(extraFields).length > 0 && ticket?.ticket_status === "order") {
+    // Extra-fields-only update (payment status, lifecycle transitions) — skip form validation
+    if (!newStatus && extraFields && Object.keys(extraFields).length > 0) {
       setSaving(true);
       try {
         const res = await fetch(`/api/tickets/${ticketId}`, {
@@ -1047,6 +1047,64 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
               paymentTypes={ticket.quote_payment_types ?? []}
               ticketId={ticketId}
             />
+          )}
+
+          {/* Order lifecycle buttons — admin only.
+              Advances order → in_production → completed.
+              API already handles arbitrary ticket_status PATCHes from admin. */}
+          {!editing && userRole === "admin" && (
+            ticket.ticket_status === "order" ? (
+              <div
+                className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-3"
+                style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
+              >
+                <span className="text-[12px] font-medium uppercase tracking-wider mr-auto" style={{ color: "var(--color-text-muted)" }}>
+                  Order Progress
+                </span>
+                <button
+                  disabled={saving}
+                  onClick={() => handleSave(undefined, { ticket_status: "in_production" })}
+                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                  style={{ background: "var(--color-info-bg)", color: "var(--color-info-text)", border: "1px solid var(--color-info-border)" }}
+                >
+                  Mark In Production
+                </button>
+              </div>
+            ) : ticket.ticket_status === "in_production" ? (
+              <div
+                className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-3"
+                style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
+              >
+                <span className="text-[12px] font-medium uppercase tracking-wider mr-auto" style={{ color: "var(--color-text-muted)" }}>
+                  Order Progress
+                </span>
+                <div
+                  className="flex items-center gap-1.5 text-[12px] font-medium"
+                  style={{ color: "var(--color-info-text)" }}
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ background: "var(--color-info-text)" }} />
+                  In Production
+                </div>
+                <button
+                  disabled={saving}
+                  onClick={() => handleSave(undefined, { ticket_status: "completed" })}
+                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                  style={{ background: "var(--color-success-bg)", color: "var(--color-success)", border: "1px solid var(--color-success-border)" }}
+                >
+                  Mark Completed
+                </button>
+              </div>
+            ) : ticket.ticket_status === "completed" ? (
+              <div
+                className="mt-4 rounded-xl px-4 py-3 md:px-5 flex items-center gap-2"
+                style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" }}
+              >
+                <span className="h-2 w-2 rounded-full" style={{ background: "var(--color-success)" }} />
+                <span className="text-[13px] font-medium" style={{ color: "var(--color-success)" }}>
+                  Order completed
+                </span>
+              </div>
+            ) : null
           )}
 
           {/* Payment status bar — only for offline payments (cash/check/transfer).

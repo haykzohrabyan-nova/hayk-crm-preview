@@ -139,6 +139,7 @@ export function Sidebar() {
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
   const [userFullName, setUserFullName] = useState<string | null>(null);
   const [userRoleName, setUserRoleName] = useState<string | undefined>(undefined);
+  const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
@@ -152,6 +153,7 @@ export function Sidebar() {
         data: { user },
       } = await supabase.auth.getUser();
       if (!user) return;
+      setUserId(user.id);
 
       const { data: profile } = await supabase
         .from("user_profiles")
@@ -314,6 +316,15 @@ export function Sidebar() {
   }
 
   async function handleSignOut() {
+    try {
+      await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "end", reason: "manual", user_id: userId }),
+      });
+    } catch {
+      // best-effort — never block sign-out
+    }
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.assign("/login");

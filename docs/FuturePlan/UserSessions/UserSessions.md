@@ -1,5 +1,9 @@
 # User Session Tracking + Auto Sign-Out
 
+> **Status: ✅ BUILT — 2026-05-17**
+> See `docs/CHANGELOG.md` for the full change list.
+> Key files: `components/idle-timer.tsx`, `app/api/auth/session/route.ts`, `app/api/admin/sessions/route.ts`, `components/admin/user-activity-section.tsx`, `app/(public)/policy/page.tsx`
+
 ## Overview
 
 Three connected features:

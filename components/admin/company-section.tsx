@@ -23,6 +23,7 @@ type CompanySettings = {
   default_tax_rate: number;
   high_value_threshold: number;
   rush_surcharge_percent: number | null;
+  session_idle_timeout_minutes: number;
   updated_at: string;
 };
 
@@ -164,6 +165,8 @@ export function CompanySection() {
   const [dirty, setDirty] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof CompanySettings, string>>>({});
+  // Separate string state for idle timeout so the field can be cleared while typing
+  const [idleTimeoutRaw, setIdleTimeoutRaw] = useState<string>("");
 
   function setError(key: keyof CompanySettings, msg: string | undefined) {
     setErrors((e) => ({ ...e, [key]: msg }));
@@ -196,6 +199,7 @@ export function CompanySection() {
       .then((d) => {
         setSettings(d.settings);
         setForm(d.settings ?? {});
+        setIdleTimeoutRaw(String(d.settings?.session_idle_timeout_minutes ?? 20));
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -224,7 +228,10 @@ export function CompanySection() {
   }
 
   function handleDiscard() {
-    if (settings) setForm(settings);
+    if (settings) {
+      setForm(settings);
+      setIdleTimeoutRaw(String(settings.session_idle_timeout_minutes ?? 20));
+    }
     setDirty(false);
   }
 
@@ -431,6 +438,50 @@ export function CompanySection() {
           <p className="mt-1 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
             If blank, the Rush toggle on a ticket shows a badge only and does not affect the total.
           </p>
+        </div>
+
+        {/* ── Session & Security ── */}
+        <SectionDivider title="Session & Security" />
+
+        <p className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
+          Users are automatically signed out after this many minutes of inactivity. A warning
+          appears 2 minutes before sign-out. Sessions are logged and visible to admins.{" "}
+          <a
+            href="/policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2"
+            style={{ color: "var(--color-accent)" }}
+          >
+            View privacy policy
+          </a>
+        </p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <FieldLabel>Idle Sign-Out Timeout (minutes)</FieldLabel>
+            <FieldInput
+              type="number"
+              value={idleTimeoutRaw}
+              onChange={(v) => {
+                setIdleTimeoutRaw(v);
+                const n = parseInt(v);
+                if (!isNaN(n)) {
+                  set("session_idle_timeout_minutes", n);
+                }
+              }}
+              onBlur={() => {
+                const n = parseInt(idleTimeoutRaw);
+                const clamped = isNaN(n) ? 20 : Math.min(480, Math.max(5, n));
+                setIdleTimeoutRaw(String(clamped));
+                set("session_idle_timeout_minutes", clamped);
+              }}
+              placeholder="20"
+            />
+            <p className="mt-1 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+              Any value between 5 and 480 minutes (8 hours)
+            </p>
+          </div>
         </div>
 
         {/* ── Actions ── */}

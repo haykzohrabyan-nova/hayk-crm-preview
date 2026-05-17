@@ -34,6 +34,7 @@ export async function PATCH(request: Request) {
     "default_tax_rate",
     "high_value_threshold",
     "rush_surcharge_percent",
+    "session_idle_timeout_minutes",
   ];
 
   const patch: Record<string, unknown> = {};

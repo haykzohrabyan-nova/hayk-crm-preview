@@ -1619,6 +1619,7 @@ export function LeadsPage() {
           lookups={lookups}
           readOnly={drawerReadOnly}
           lockedByName={drawerLockedBy}
+          isAdmin={isAdmin}
           onClose={() => setDrawerLead(null)}
           onLeadUpdated={(updated) => {
             const tabConf = TAB_CONFIG.find((t) => t.id === activeTab);

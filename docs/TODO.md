@@ -6,9 +6,17 @@ Payment-related work (Stripe card, Zelle matching) is tracked separately in `doc
 
 ---
 
-## [TODO-001] Admin Override for Terminal Leads
+## [DONE] Admin Override for Terminal Leads (TODO-001)
 
-**Status:** Pending — ready to build (Tickets phase is complete, dependency cleared)
+**Status:** ✅ Built 2026-05-17
+**Files changed:** `components/sales-drawer.tsx`, `components/verify-drawer.tsx`, `components/sales-page.tsx`, `components/leads-page.tsx`
+
+Admin users see an amber "Admin override" banner and a fully editable drawer on terminal leads. Won leads show a caution note about the linked order. Non-admins keep the existing red lock banner.
+
+---
+
+## [TODO-001 — archived spec] Admin Override for Terminal Leads
+
 **Priority:** Medium
 **Files to touch:** `components/sales-drawer.tsx`, `components/verify-drawer.tsx`
 
@@ -54,9 +62,17 @@ For non-admins, keep the existing red read-only banner.
 
 ---
 
-## [TODO-004] Dashboard Revenue — Pull from Actual Orders, Not Lead Snapshots
+## [DONE] Dashboard Revenue Fix (TODO-004)
 
-**Status:** Pending — quick win
+**Status:** ✅ Built 2026-05-17
+**Files changed:** `app/api/dashboard/kpis/route.ts`
+
+Revenue, won-value, and pipeline-value KPIs now sum `job_tickets.quote_final_total` instead of `leads.quote_total`. Applies to Sales and Admin dashboard variants.
+
+---
+
+## [TODO-004 — archived spec] Dashboard Revenue — Pull from Actual Orders, Not Lead Snapshots
+
 **Priority:** High
 **Files to touch:** `app/api/dashboard/kpis/route.ts`
 
@@ -98,9 +114,17 @@ Apply to all three dashboard variants (SDR quote value, Sales won value, Admin t
 
 ---
 
-## [TODO-005] Order Lifecycle — In Production & Completed Status Transitions
+## [DONE] Order Lifecycle Buttons (TODO-005)
 
-**Status:** Pending — no UI exists at all
+**Status:** ✅ Built 2026-05-17
+**Files changed:** `components/quote-detail.tsx`
+
+"Mark In Production" and "Mark Completed" buttons added for admins on the order detail page. Uses existing `handleSave(undefined, extraFields)` path — no API change needed.
+
+---
+
+## [TODO-005 — archived spec] Order Lifecycle — In Production & Completed Status Transitions
+
 **Priority:** Medium
 **Files to touch:** `components/quote-detail.tsx`, `app/api/tickets/[id]/route.ts`
 
@@ -165,3 +189,28 @@ Options (pick one based on hosting):
 This is low priority until the business is actively using follow-up reminders at scale.
 
 ---
+
+## [DONE] User Session Tracking + Idle Sign-Out
+
+**Status:** ✅ Built 2026-05-17
+See CHANGELOG for full details. Key deliverables:
+- `supabase/migrations/056` + `057` — DB columns and table
+- `components/idle-timer.tsx` — warning modal + auto sign-out
+- `app/api/auth/session/route.ts` — session start/end logging
+- `app/api/admin/sessions/route.ts` — admin KPI API
+- `components/admin/user-activity-section.tsx` — admin view
+- `/notifications` page now has 2 tabs (Order/Lead Activity + User Activity)
+- `/policy` public page
+
+**Dashboard KPI cards** — ✅ Built 2026-05-17: "Active Users" and "Idle Sign-outs (7d)" cards added to admin dashboard. Data sourced from `/api/admin/sessions`.
+
+---
+
+## [DONE] Reports Page Placeholder
+
+**Status:** ✅ Built 2026-05-17
+**Files:** `supabase/migrations/058_add_reports_page.sql`, `app/(app)/reports/page.tsx`, `components/reports-page.tsx`
+
+`/reports` added to navigation (sort_order 9). Placeholder page shows all 7 planned report types with dependency notes. Full charts will be built after Stripe is connected. Win Rate & Close Time report flagged as buildable without payment data.
+
+**To activate:** Run migration 058 in Supabase, then grant `/reports` to desired roles in Admin → Roles & Permissions.

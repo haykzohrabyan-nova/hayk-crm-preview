@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/sidebar";
 import { MobileNav } from "@/components/mobile-nav";
+import { IdleTimer } from "@/components/idle-timer";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,6 +22,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </div>
         </main>
       </div>
+
+      {/* Idle session timer — monitors inactivity, shows warning modal, auto sign-out */}
+      <IdleTimer />
     </div>
   );
 }

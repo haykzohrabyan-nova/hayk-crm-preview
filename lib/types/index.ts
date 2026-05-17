@@ -405,7 +405,38 @@ export interface CompanySettings {
   default_tax_rate: number
   high_value_threshold: number
   rush_surcharge_percent: number | null
+  session_idle_timeout_minutes: number
   updated_at: string
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// User Sessions
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SignOutReason = 'manual' | 'auto' | 'deactivated' | 'unknown'
+
+export interface UserSession {
+  id: string
+  user_id: string
+  full_name: string | null
+  role_name: string | null
+  role_display_name: string | null
+  signed_in_at: string
+  signed_out_at: string | null
+  sign_out_reason: SignOutReason | null
+  duration_minutes: number | null
+}
+
+export interface UserSessionSummary {
+  user_id: string
+  full_name: string | null
+  role_name: string | null
+  role_display_name: string | null
+  total_sessions: number
+  auto_signouts: number
+  total_minutes: number
+  last_signed_in_at: string | null
+  currently_active: boolean
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

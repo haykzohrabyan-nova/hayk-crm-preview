@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { X, Lock } from "lucide-react";
+import { X, Lock, ShieldCheck } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { Activity, HoldForm, Lead, LookupMap } from "@/lib/types";
@@ -49,6 +49,7 @@ interface SalesDrawerProps {
   readOnly?: boolean;
   lockedByName?: string | null;
   currentUserId?: string | null;
+  isAdmin?: boolean;
   onClose: () => void;
   onLeadUpdated: (lead: Lead) => void;
   onLeadRemoved: (leadId: string) => void;
@@ -123,6 +124,7 @@ export function SalesDrawer({
   readOnly = false,
   lockedByName = null,
   currentUserId = null,
+  isAdmin = false,
   onClose,
   onLeadUpdated,
   onLeadRemoved,
@@ -142,7 +144,7 @@ export function SalesDrawer({
   const unlockRef = useRef(false);
 
   const isTerminal = lead.status === "Rejected" || lead.sales_status === "Won" || lead.sales_status === "Dropped";
-  const isReadOnly = readOnly || isTerminal;
+  const isReadOnly = readOnly || (isTerminal && !isAdmin);
 
   const holdReasons = lookups.hold_reason ?? [];
   const rejectReasons = lookups.reject_reason ?? [];
@@ -320,7 +322,17 @@ export function SalesDrawer({
             {lockedByName} is currently working this lead — view only
           </div>
         )}
-        {isTerminal && !lockedByName && (
+        {isTerminal && !lockedByName && isAdmin && (
+          <div
+            className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
+            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)", borderBottom: "1px solid var(--color-warning-border)" }}
+          >
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Admin override — this lead is in a terminal state.
+            {lead.sales_status === "Won" && " Editing will NOT cancel the linked order — handle that manually in Tickets."}
+          </div>
+        )}
+        {isTerminal && !lockedByName && !isAdmin && (
           <div
             className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
             style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", borderBottom: "1px solid var(--color-danger-border)" }}

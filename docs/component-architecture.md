@@ -63,8 +63,8 @@ app/(app)/leads/page.tsx                    app/(app)/sales/page.tsx
 
 | Component | File | Role |
 |-----------|------|------|
-| `VerifyDrawer` | `components/verify-drawer.tsx` | SDR (edit), Admin (read-only view) |
-| `SalesDrawer` | `components/sales-drawer.tsx` | Sales (edit), Admin (read-only view) |
+| `VerifyDrawer` | `components/verify-drawer.tsx` | SDR (edit), Admin (full edit with amber override banner on rejected leads) |
+| `SalesDrawer` | `components/sales-drawer.tsx` | Sales (edit), Admin (full edit with amber override banner on Won/Dropped/Rejected leads) |
 | `SdrDashboard` | `components/sdr-dashboard.tsx` | SDR only |
 | `SalesDashboard` | `components/sales-dashboard.tsx` | Sales only |
 | `AdminDashboard` | `components/admin-dashboard.tsx` | Admin only |
@@ -315,12 +315,34 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    Send Quote (draft) / Resend Quote (sent) / Convert to Order / Cancel Ticket (admin only on locked)
         │    Payment status bar (orders, offline payment only): Unpaid | Partial | Paid pill — saves immediately
         │    Payment Link Bar (confirmed unpaid orders): copyable public URL + channel/destination selector + Send button
+        ├── Order lifecycle bar (admin only):
+        │    ticket_status = 'order'        → "Mark In Production" button (blue)
+        │    ticket_status = 'in_production' → "In Production" indicator + "Mark Completed" button (green)
+        │    ticket_status = 'completed'    → green "Order completed" badge
+        │    Uses handleSave(undefined, { ticket_status }) — no API changes needed
         ├── Deposit status bar (partial prepayment orders only):
         │    Shows deposit amount + Pending | Paid toggle + "Will be auto-updated by Stripe"
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true
         ├── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
         └── Also rendered at /orders/[id] (same component, same props)
 ```
+
+---
+
+### `/reports` — Reports (placeholder)
+
+```
+app/(app)/reports/page.tsx  [Server Component — thin wrapper]
+  └── components/reports-page.tsx  [Client Component]
+        ├── Navy "Coming After Payment Processing" banner
+        ├── 7 planned report cards in 2-column grid
+        │     Each card: title, description, dependency pill
+        │     Green pill: "Available now" (Win Rate — no Stripe needed)
+        │     Amber pill: "Requires Stripe payment data" (all others)
+        └── "Go to Dashboard →" CTA at bottom
+```
+
+**Access:** Admin only (grant via Admin → Roles & Permissions after running migration 058)
 
 ---
 
@@ -413,3 +435,44 @@ Admin accessing `/leads` or `/sales` sees the same pages but:
 - On `/leads` All Leads: **Owner** column shows which SDR owns each lead
 - Scoped tabs (On Hold, Directed to Sales, Rejected) show **all** leads, not just admin's own
 - Tab counts also reflect all leads for admin
+- **Terminal lead override**: Admin opening a terminal lead (Won/Dropped/Rejected) sees an amber "Admin override" banner instead of the red lock banner. The drawer is fully editable. Won leads include a caution note about the linked order.
+- **Order lifecycle buttons**: Admin sees "Mark In Production" / "Mark Completed" buttons on order detail pages. Non-admins see no lifecycle controls.
+- **Dashboard session KPIs**: Admin dashboard shows "Active Users" and "Idle Sign-outs (7d)" KPI cards sourced from `GET /api/admin/sessions`.
+
+---
+
+## Idle Timer
+
+`components/idle-timer.tsx` — mounted once in `app/(app)/layout.tsx`, runs on every app page for all roles.
+
+```
+app/(app)/layout.tsx
+  └── <IdleTimer />   ← single instance, client component
+```
+
+On mount:
+1. Fetches `session_idle_timeout_minutes` from `GET /api/admin/company`
+2. Reads the current user's ID from Supabase (`getUser()`)
+3. Registers activity listeners: `mousemove`, `mousedown`, `keydown`, `touchstart`, `scroll`, `click`
+4. Polls every 10 seconds — if idle ≥ (timeout − 2 min): shows `IdleWarningModal` with countdown
+5. If user does nothing: `POST /api/auth/session { action: "end", reason: "auto", user_id }` → `supabase.auth.signOut()` → `/login`
+
+`IdleWarningModal` is a blocking overlay (cannot dismiss by clicking outside). Contains a live countdown and a "Stay Signed In" button that resets the idle clock.
+
+---
+
+## Notifications Page — 2 Tabs
+
+`app/(app)/notifications/page.tsx` — client component with tab state.
+
+```
+/notifications
+  ├── Tab 1: Order / Lead Activity  → <ActivityLogSection />   (existing — lead/ticket events)
+  └── Tab 2: User Activity          → <UserActivitySection />  (new — session KPIs per user)
+```
+
+`components/admin/user-activity-section.tsx`:
+- Fetches `GET /api/admin/sessions?from=&limit=&offset=&user_id=`
+- Per-user KPI cards: avatar, name, role pill, green "active now" dot, sessions count, active time, amber "⚠ N idle sign-outs" badge
+- Filterable session history table: Today / Last 7 days / Last 30 days range selector + per-user filter dropdown
+- Mobile card layout below `sm` breakpoint

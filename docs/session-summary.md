@@ -1,6 +1,6 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 16, 2026
-**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + PDF export for quotes and orders + Twilio SMS integration live + Instantly AI email integration live + Activity Log at /notifications + Quote Send & Customer Approval Flow live (public /q/[token] page, email/SMS/WhatsApp delivery, customer confirm → order conversion) + Prepayment / Deposit system built (Full / Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready) + Quote/Order detail UX simplified (2-tab layout, order edit unlock) + Record Locking for customer-approved tickets + "Convert to Order" manual conversion flow + SDR/Sales "Won" tracking + Payment Link Bar for sending reminders + Mobile-responsive order/quote detail page. All documentation audited and corrected.
+**Last updated:** May 17, 2026
+**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + PDF export for quotes and orders + Twilio SMS integration live + Instantly AI email integration live + Activity Log at /notifications + Quote Send & Customer Approval Flow live (public /q/[token] page, email/SMS/WhatsApp delivery, customer confirm → order conversion) + Prepayment / Deposit system built (Full / Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready) + Quote/Order detail UX simplified (2-tab layout, order edit unlock) + Record Locking for customer-approved tickets + "Convert to Order" manual conversion flow + SDR/Sales "Won" tracking + Payment Link Bar for sending reminders + Mobile-responsive order/quote detail page + User Session Tracking + Idle Auto Sign-Out system built + Dashboard revenue fixed to use actual ticket totals + Admin override for terminal leads + Order lifecycle buttons (In Production / Completed) + Dashboard session KPI cards. All documentation audited and corrected.
 
 ---
 
@@ -271,7 +271,8 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; locked for non-admins after confirmation; Payment Link Bar; payment status badge; deposit status bar; mobile-responsive |
 | `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
-| `/notifications` | main | ✅ Built — Activity Log page (`ActivityLogSection`); paginated, mobile cards, live via `bazaar:activities-changed` event |
+| `/reports` | main | ✅ Built (placeholder) — 7 planned report types shown; full charts after Stripe; migration 058 adds page to DB |
+| `/notifications` | main | ✅ Built — 2-tab layout: "Order / Lead Activity" (`ActivityLogSection`) + "User Activity" (`UserActivitySection` — session KPIs per user, admin only) |
 | `/admin` | admin | ✅ Built — card grid overview (all 7 cards correct, 6 built + 1 planned) |
 | `/admin/settings/users` | admin-sub | ✅ Built |
 | `/admin/settings/roles` | admin-sub | ✅ Built |
@@ -310,6 +311,9 @@ See `docs/schema.md` → Migration File Order for the full list (001–054). Key
 | 053 | `add_payment_status_to_tickets` | `payment_status` column (`unpaid`\|`partial`\|`paid`, default `unpaid`) |
 | 054 | `add_prepayment_status_to_tickets` | `prepayment_status` column (`pending`\|`paid`, default `pending`) — Stripe-ready |
 | 055 | `reset_tickets_for_testing` | **DEV ONLY** — deletes all job_tickets + ticket activities; resets order sequence counter; resets Won/Quoted leads |
+| 056 | `add_idle_timeout_to_company_settings` | adds `session_idle_timeout_minutes` INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to `company_settings` |
+| 057 | `create_user_sessions` | `user_sessions` table: one row per login session; tracks `signed_in_at`, `signed_out_at`, `sign_out_reason`; RLS: users read/write own rows, admin reads all via service role |
+| 058 | `add_reports_page` | adds `/reports` to `pages` table (section: main, sort_order: 9); access granted per-role via Admin panel |
 
 ---
 
@@ -366,6 +370,24 @@ SALES PIPELINE (Routed to Sales)
        └─ Convert to Order → (Tickets phase)
 ```
 
+### User Session Tracking + Idle Sign-Out (2026-05-17)
+
+- **Idle auto sign-out** — `components/idle-timer.tsx` mounted in app layout; tracks mouse/keyboard/touch; shows blocking warning modal 2 min before timeout; auto signs out with session logging
+- **Configurable timeout** — `session_idle_timeout_minutes` on `company_settings` (migration 056); Admin sets it in Company Info → Session & Security; min 5 min, max 480 min, default 20
+- **Session logging** — `user_sessions` table (migration 057); one row per login session with `signed_in_at`, `signed_out_at`, `sign_out_reason` (`manual`/`auto`/`deactivated`/`unknown`)
+- **Session start** logged after MFA verify in `verify-2fa/page.tsx`; stale open sessions auto-closed on new login
+- **Session end** logged before sign-out in sidebar + mobile nav (reason: `manual`) and idle timer (reason: `auto`)
+- **Admin User Activity tab** — second tab on `/notifications` page; per-user KPI cards (sessions, active time, auto sign-out count, green dot for active now) + filterable session history table (Today / 7d / 30d + user filter)
+- **`/policy` page** — plain-English security policy (no auth required); linked from idle warning modal and Company Info
+- **API routes** — `POST /api/auth/session` (start/end), `GET /api/admin/sessions` (admin KPI + history)
+
+### Dashboard Fixes + Admin Overrides + Order Lifecycle (2026-05-17)
+
+- **Dashboard revenue** — `GET /api/dashboard/kpis` now sums `job_tickets.quote_final_total` for all revenue/won-value/pipeline-value KPIs. Previously used `leads.quote_total` (stale snapshot never updated after quote edits). Applies to both Sales and Admin dashboard variants.
+- **Admin override for terminal leads** — `SalesDrawer` and `VerifyDrawer` accept an `isAdmin` prop. When admin opens a Won/Dropped/Rejected lead: amber "Admin override" banner shown, drawer fully editable. Won leads show a caution note to handle the linked order manually in Tickets. Non-admins still see the red lock banner.
+- **Order lifecycle buttons** — Admin-only action bar on order detail (`quote-detail.tsx`): "Mark In Production" (order → in_production), "Mark Completed" (in_production → completed), and a green "Order completed" badge on completed orders. Uses existing `handleSave(undefined, extraFields)` path — no API changes required.
+- **Dashboard session KPI cards** — Two new cards on admin dashboard: "Active Users" (users with an open session right now) and "Idle Sign-outs" (auto sign-outs in the last 7 days). Data sourced from `GET /api/admin/sessions`.
+
 ### 7. Count Badges Pattern
 - Every tabbed UI fetches counts from a dedicated API endpoint on mount
 - Badges show on **all tabs** before the user clicks (not just the active tab)
@@ -396,10 +418,15 @@ SALES PIPELINE (Routed to Sales)
 | ~~SDR/Sales Won tracking~~ | ✅ Done (2026-05-16) | `leads.sales_status = "Won"` auto-set on order conversion; "Won" tab in SDR workspace |
 | ~~Payment Link Bar~~ | ✅ Done (2026-05-16) | Send payment reminders via Email/SMS/WhatsApp from locked order detail |
 | ~~Mobile-responsive detail page~~ | ✅ Done (2026-05-16) | `flex-col lg:flex-row`, wrapping header, responsive grids, swipeable tabs |
-| Dashboard enhancements | ⏳ Next | Revenue from ordered tickets surfaced on Admin + Sales KPI cards. |
-| Admin Override (terminal leads) | ⏳ Queued | Admin can reopen Rejected leads (TODO-001 in `docs/TODO.md`). |
-| Integrations — WhatsApp | ⏳ Deferred | Requires Meta Business Manager registration. |
+| ~~User Session Tracking~~ | ✅ Done (2026-05-17) | Idle sign-out timer, session logging, admin User Activity tab, `/policy` page. |
+| ~~Dashboard revenue fix~~ | ✅ Done (2026-05-17) | KPIs now use `job_tickets.quote_final_total` (actual final prices). |
+| ~~Admin Override (terminal leads)~~ | ✅ Done (2026-05-17) | Amber banner + fully editable drawer for admins on terminal leads. |
+| ~~Order lifecycle buttons~~ | ✅ Done (2026-05-17) | `order → in_production → completed` admin-only buttons on order detail. |
+| ~~Dashboard session KPI cards~~ | ✅ Done (2026-05-17) | "Active Users" + "Idle Sign-outs (7d)" cards on admin dashboard. |
 | Integrations — Stripe + Zelle | ⏳ Deferred | Placeholder built in Integrations tab; API wiring deferred. |
+| Follow-up reminders cron | ⏳ Deferred | Data saved, no sending logic built (TODO-006). |
+| ~~Reports placeholder~~ | ✅ Done (2026-05-17) | `/reports` page in nav; 7 planned charts shown; builds after Stripe. |
+| Notification bell | ⏳ Next | Per-user notification feed; bell icon in header/sidebar. |
 | AI / webhook lead ingestion | ⏳ Future | Auto-create leads from web form or external webhook. |
 
 ---

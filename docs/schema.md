@@ -668,6 +668,7 @@ Single-row configuration table (always `id = 1`). Seeded in migration 045. Used 
 | `default_tax_rate` | `numeric` NOT NULL DEFAULT `8.25` | percent, e.g. `8.25` = 8.25% |
 | `high_value_threshold` | `numeric` NOT NULL DEFAULT `5000` | SDR hard-block amount in $ |
 | `rush_surcharge_percent` | `numeric` | `null` = rush is badge-only, no price impact |
+| `session_idle_timeout_minutes` | `integer` NOT NULL DEFAULT `20` | Idle sign-out timer; CHECK 5–480; configurable in Admin → Company Info |
 | `updated_at` | `timestamptz` NOT NULL DEFAULT `now()` | |
 
 **RLS:** All authenticated users can SELECT (OrderDrawer reads tax rate + threshold). Only Admin can UPDATE. No INSERT / DELETE — single seeded row.
@@ -960,6 +961,25 @@ create policy "admin_all_sequence_counters" on public.order_sequence_counters
 -- No user-facing policies — written exclusively by the service-role client in POST /api/tickets
 ```
 
+### `user_sessions`
+
+One row per authenticated login session. Written by `POST /api/auth/session` (start/end). Read by admin via `GET /api/admin/sessions`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `uuid` PK | |
+| `user_id` | `uuid` NOT NULL | FK → `auth.users(id)` ON DELETE CASCADE |
+| `signed_in_at` | `timestamptz` NOT NULL DEFAULT `now()` | Set on session start (after MFA verify) |
+| `signed_out_at` | `timestamptz` | NULL while session is active |
+| `sign_out_reason` | `text` | `'manual'` \| `'auto'` \| `'deactivated'` \| `'unknown'` |
+| `created_at` | `timestamptz` NOT NULL DEFAULT `now()` | |
+
+RLS: users can select/insert/update their own rows. Admin reads all via service-role API (`/api/admin/sessions`).
+
+Duration is computed at query time (`signed_out_at - signed_in_at`) — not stored — so it is always accurate for open sessions.
+
+---
+
 ### Permanent-record rules (no DELETE policies — enforced at DB level)
 
 | Table | Why no DELETE |
@@ -1060,4 +1080,6 @@ When creating Supabase migrations under `supabase/migrations/`:
 053_add_payment_status_to_tickets.sql ← adds payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK ('unpaid','partial','paid') to job_tickets
 054_add_prepayment_status_to_tickets.sql ← adds prepayment_status TEXT NOT NULL DEFAULT 'pending' CHECK ('pending','paid') to job_tickets; Stripe webhook will update this
 055_reset_tickets_for_testing.sql    ← DEV ONLY: deletes all job_tickets + ticket activities, resets order_sequence_counters, resets Won/Quoted leads back to Ongoing/Validated
+056_add_idle_timeout_to_company_settings.sql ← adds session_idle_timeout_minutes INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to company_settings
+057_create_user_sessions.sql         ← user_sessions table: one row per login session; tracks signed_in_at, signed_out_at, sign_out_reason ('manual'|'auto'|'deactivated'|'unknown'); RLS: users read/write own rows, admin reads all via service role
 ```

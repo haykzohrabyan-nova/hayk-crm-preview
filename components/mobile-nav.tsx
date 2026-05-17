@@ -50,6 +50,7 @@ export function MobileNav() {
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
   const [userFullName, setUserFullName] = useState<string | null>(null);
   const [userRoleName, setUserRoleName] = useState<string | undefined>(undefined);
+  const [userId, setUserId] = useState<string | null>(null);
 
   // Load role-based nav pages (same logic as Sidebar)
   useEffect(() => {
@@ -57,6 +58,7 @@ export function MobileNav() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      setUserId(user.id);
 
       const { data: profile } = await supabase
         .from("user_profiles")
@@ -121,6 +123,15 @@ export function MobileNav() {
   }, [open]);
 
   async function handleSignOut() {
+    try {
+      await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "end", reason: "manual", user_id: userId }),
+      });
+    } catch {
+      // best-effort — never block sign-out
+    }
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.assign("/login");

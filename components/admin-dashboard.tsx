@@ -7,6 +7,7 @@ import {
   Clock,
   CheckCircle,
   DollarSign,
+  Activity,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -41,6 +42,11 @@ interface AdminKpis {
   sdr_performance: SdrPerformanceRow[];
   rejection_reasons: BreakdownItem[];
   source_breakdown: BreakdownItem[];
+}
+
+interface SessionStats {
+  active_now: number;
+  auto_signouts_7d: number;
 }
 
 interface TeamMember {
@@ -256,6 +262,7 @@ export function AdminDashboard() {
   const [period, setPeriod] = useState<Period>("month");
   const [data, setData] = useState<AdminKpis | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
 
   const fetchKpis = useCallback(async () => {
     setLoading(true);
@@ -269,6 +276,21 @@ export function AdminDashboard() {
   }, [period]);
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
+
+  // Fetch session stats once on mount (not period-scoped)
+  useEffect(() => {
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    fetch(`/api/admin/sessions?from=${sevenDaysAgo}&limit=500`)
+      .then((r) => r.json())
+      .then((d) => {
+        const summary: { currently_active: boolean; auto_signouts: number }[] = d.summary ?? [];
+        setSessionStats({
+          active_now: summary.filter((u) => u.currently_active).length,
+          auto_signouts_7d: summary.reduce((s, u) => s + u.auto_signouts, 0),
+        });
+      })
+      .catch(() => {});
+  }, []);
 
   // Silent re-fetch when any lead changes (Realtime → sidebar → bazaar:leads-changed).
   // Does NOT set loading=true so the cards don't flash skeleton.
@@ -359,6 +381,18 @@ export function AdminDashboard() {
               value={formatCurrency(data.pipeline_value)}
               subtext="current total"
               icon={<DollarSign className="h-4 w-4" />}
+            />
+            <KpiCard
+              label="Active Users"
+              value={sessionStats?.active_now ?? "—"}
+              subtext="signed in right now"
+              icon={<Activity className="h-4 w-4" />}
+            />
+            <KpiCard
+              label="Idle Sign-outs"
+              value={sessionStats?.auto_signouts_7d ?? "—"}
+              subtext="last 7 days"
+              icon={<Clock className="h-4 w-4" />}
             />
           </>
         ) : null}

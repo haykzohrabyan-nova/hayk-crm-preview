@@ -63,6 +63,14 @@ function Verify2FAForm() {
     }
 
     await supabase.auth.refreshSession();
+
+    // Log session start — fire-and-forget, never block navigation
+    fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "start" }),
+    }).catch(() => {});
+
     const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
     window.location.assign(next);
   }
