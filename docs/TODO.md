@@ -1,139 +1,167 @@
-# BazarCRM — Deferred TODO Items
+# BazarCRM — Open TODO Items
 
-Items that are intentionally deferred and require careful planning before building.
-Each entry explains the current behaviour, the problem, the intended fix, and any future considerations.
+Items that still need to be built. Each entry describes the problem, the intended fix, and which files to touch.
 
----
-
-## [TODO-003] High-Value Threshold (HVT) SDR Block
-
-**Status:** ✅ DONE (2026-05-13) — fully implemented  
-**Files affected:** `components/new-quote-form.tsx`, `components/quote-detail.tsx`, `app/api/tickets/route.ts`, `app/api/tickets/[id]/route.ts`, `app/api/tickets/counts/route.ts`, `app/api/sidebar-counts/route.ts`, `components/quotes-page.tsx`, `lib/types/index.ts`, `supabase/migrations/051_backfill_routed_status.sql`
-
-See `docs/feature-specs/tickets.md` → High-Value Threshold section for full documentation.
-
----
-
-## [TODO-002] Auto-set `Validated` and `Quoted` status on ticket creation
-
-**Status:** ✅ DONE (2026-05-12) — implemented in `app/api/tickets/route.ts` `POST` handler  
-**Files affected:** `app/api/tickets/route.ts`
-
----
-
-### The Rule
-
-`status` on a lead is **never set to `Validated` or `Quoted` manually**. These are system-set based on ticket creation:
-
-| Action | `status` result |
-|--------|----------------|
-| SDR or Sales creates a ticket with a quote linked to this lead | `Quoted` |
-| SDR or Sales creates a ticket (order only, no quote) linked to this lead | `Validated` |
-
-### Where to implement
-
-When the Tickets module's create-ticket endpoint (`POST /api/tickets`) is built, after inserting the `job_tickets` row, add a step:
-
-```typescript
-// Determine new lead status from ticket kind
-const newLeadStatus = ticket.quote_skus?.length > 0 ? "Quoted" : "Validated";
-
-await admin.from("leads")
-  .update({ status: newLeadStatus, updated_at: now })
-  .eq("id", ticket.linked_lead_id);
-```
-
-Log a `lead_status_changed` activity for the transition.
-
-### What NOT to do
-- Never add a `Validate` or `Quote` button to any SDR/Sales UI — status changes from ticket creation only.
-- Do not restore a held lead to `Validated` on resume — resume always goes back to `Pending` (already fixed in `app/api/leads/[id]/resume/route.ts`).
+Payment-related work (Stripe card, Zelle matching) is tracked separately in `docs/feature-specs/invoice-payment.md`.
 
 ---
 
 ## [TODO-001] Admin Override for Terminal Leads
 
-**Status:** Deferred — build during Admin Enhancements phase  
-**Files affected:** `components/sales-drawer.tsx`, `components/verify-drawer.tsx`, `app/api/leads/[id]/route.ts`
-
----
+**Status:** Pending — ready to build (Tickets phase is complete, dependency cleared)
+**Priority:** Medium
+**Files to touch:** `components/sales-drawer.tsx`, `components/verify-drawer.tsx`
 
 ### The Problem
 
-When a lead reaches a **terminal state**, the drawer becomes fully read-only for **everyone** — including admins. Terminal states are:
+When a lead reaches a **terminal state**, the drawer becomes fully read-only for **everyone** — including admins. There is no role check in the UI. Terminal states are:
 
-| State | Set by | Where checked |
-|-------|--------|---------------|
-| `status = "Rejected"` | SDR or Sales | Both drawers |
-| `sales_status = "Won"` | Sales (future — Tickets phase) | Sales Drawer only |
-| `sales_status = "Dropped"` | Sales (future — Tickets phase) | Sales Drawer only |
+| State | Set by |
+|-------|--------|
+| `status = "Rejected"` | SDR or Sales |
+| `sales_status = "Won"` | Auto-set when linked ticket becomes an order |
+| `sales_status = "Dropped"` | Sales rep |
 
-In `sales-drawer.tsx`:
-```typescript
-const isTerminal = lead.status === "Rejected" || lead.sales_status === "Won" || lead.sales_status === "Dropped";
-const isReadOnly = readOnly || isTerminal;
-```
-
-In `verify-drawer.tsx`:
-```typescript
-const isRejected = lead.status === "Rejected";
-const isReadOnly = readOnly || isRejected;
-```
-
-The `isReadOnly` flag disables every input and hides all action buttons. There is no role check — even an admin hits the same wall. This means:
-- An SDR who accidentally rejected a lead cannot be helped without direct DB access
-- A mistakenly closed/dropped deal in the Sales pipeline cannot be recovered from the UI
-
----
+The `isReadOnly` flag disables all inputs and hides all action buttons. An SDR who accidentally rejected a lead cannot be helped without direct DB access.
 
 ### The Fix
 
-When the viewing user is an **admin**, `isTerminal` should NOT force `isReadOnly`. Instead:
+The API already allows admin edits (`app/api/leads/[id]/route.ts` already has the `roleName !== "admin"` guard). Only the client UI needs updating.
 
-1. **Show an amber "Admin Override" banner** instead of the red "terminal state" banner:
-   > "This lead is in a terminal state. As an admin you can override — proceed carefully."
+**`sales-drawer.tsx` + `verify-drawer.tsx`:**
+```typescript
+// isAdmin comes from userRole prop (already available)
+const isTerminal = lead.status === "Rejected" || lead.sales_status === "Won" || lead.sales_status === "Dropped";
+const isReadOnly = readOnly || (isTerminal && !isAdmin);
+```
 
-2. **Re-enable all action buttons** for admin users (Save, Hold, Route, Reject, etc.)
+**UI behaviour for admin on terminal leads:**
 
-3. **The API already supports admin edits** — `app/api/leads/[id]/route.ts` line 53 already has:
-   ```typescript
-   if (current.status === "Rejected" && roleName !== "admin") {
-     return 403;
-   }
-   ```
-   So the server side is already correct. Only the client UI needs updating.
+- **Rejected lead** — show amber "Admin Override" banner; re-enable all action buttons (Save, Route, Hold, etc.)
+- **Won lead** — show amber banner with warning: "This lead has a linked order. Resetting Won status will NOT cancel the order — handle that manually in Tickets." Re-enable editing.
+- **Dropped lead** — show amber banner; re-enable editing; clear `sales_drop_reason` on save.
 
-4. **Implementation sketch (sales-drawer.tsx):**
-   ```typescript
-   // isAdmin prop passed from sales-page.tsx (already available there)
-   const isTerminal = lead.status === "Rejected" || lead.sales_status === "Won" || lead.sales_status === "Dropped";
-   const isReadOnly = readOnly || (isTerminal && !isAdmin);
-   ```
+For non-admins, keep the existing red read-only banner.
 
----
-
-### Future Consideration — Won and Dropped need separate handling
-
-When the Tickets phase is built, `Won` and `Dropped` will have richer semantics:
-
-- **`Won`** — a job ticket (order) was created and confirmed. Reversing it should also void or cancel the linked ticket. An admin override should prompt: "This lead has an associated order. Reversing Won status will not automatically cancel the order — do this manually in Tickets."
-
-- **`Dropped`** — the sales rep gave up on a lead. May have a `sales_drop_reason`. Reversing it is simpler but should still clear the `sales_drop_reason` and reset `sales_status = "Ongoing"`.
-
-**Do not build admin override for Won/Dropped until the Tickets module is complete.** At that point, the override logic needs to be aware of linked `job_tickets`.
-
-For now, if needed, the admin override banner for Won/Dropped can show a more restrictive message:
-> "This lead is Won/Dropped and linked to the Tickets system. Contact the dev team to reverse this state."
-
----
-
-### Testing checklist (when built)
+### Testing checklist
 - [ ] Admin opens a Rejected lead in Sales Drawer — sees amber banner, action buttons visible
 - [ ] Admin opens a Rejected lead in Verify Drawer — same
 - [ ] Non-admin opens a Rejected lead — sees red terminal banner, no actions
 - [ ] Admin saves changes on a Rejected lead — PATCH succeeds (API already allows it)
 - [ ] Admin re-routes a Rejected lead → appears in Sales Pipeline
-- [ ] Activity log shows the override action (status_changed from Rejected → Routed to Sales)
-- [ ] Won/Dropped leads show read-only even for admin (until Tickets phase)
+- [ ] Activity log shows `lead_status_changed` from Rejected → Routed to Sales
+- [ ] Won lead shows amber warning about linked order; admin can edit but order is not auto-cancelled
+
+---
+
+## [TODO-004] Dashboard Revenue — Pull from Actual Orders, Not Lead Snapshots
+
+**Status:** Pending — quick win
+**Priority:** High
+**Files to touch:** `app/api/dashboard/kpis/route.ts`
+
+### The Problem
+
+The Admin and Sales dashboards show "Won Value" / "Total Revenue" by summing `leads.quote_total`. This is a snapshot field set when a quote is first linked to a lead and is **never updated** when the rep edits the final price in the quote builder. Real totals live in `job_tickets.quote_final_total`.
+
+As a result, dashboard revenue figures can be wrong — sometimes significantly — any time a quote was revised after creation.
+
+### The Fix
+
+Replace the `leads.quote_total` sum with a join/subquery against `job_tickets`:
+
+```typescript
+// Instead of:
+.select("id, quote_total").eq("sales_status", "Won")
+
+// Do:
+.select("id, job_tickets(quote_final_total)")
+.eq("sales_status", "Won")
+// then sum job_tickets.quote_final_total, fallback to 0 if null
+```
+
+Or issue a separate query directly against `job_tickets`:
+```typescript
+const { data: wonOrders } = await admin
+  .from("job_tickets")
+  .select("quote_final_total, created_at")
+  .in("ticket_status", ["order", "in_production", "completed"])
+  .gte("created_at", periodStart);
+
+const revenue = wonOrders?.reduce((s, t) => s + (t.quote_final_total ?? 0), 0) ?? 0;
+```
+
+Apply to all three dashboard variants (SDR quote value, Sales won value, Admin total revenue).
+
+### What NOT to do
+- Do not remove `leads.quote_total` — it is still used for HVT routing threshold comparisons.
+
+---
+
+## [TODO-005] Order Lifecycle — In Production & Completed Status Transitions
+
+**Status:** Pending — no UI exists at all
+**Priority:** Medium
+**Files to touch:** `components/quote-detail.tsx`, `app/api/tickets/[id]/route.ts`
+
+### The Problem
+
+The DB and types define a full order lifecycle:
+
+```
+order → in_production → completed
+```
+
+But there are **no buttons, no UI, and no API calls** to advance an order past `order` status. Every order stays in `order` status forever, even after the job ships. This means:
+- The orders list has no way to filter "in production" vs "done"
+- Dashboard "completed" revenue will always be zero
+- There is no way to close out a job in the CRM without direct DB access
+
+### The Fix
+
+Add two action buttons to the order detail page (`quote-detail.tsx`), visible to admins only (or based on a permission), inside the action bar in read-only mode:
+
+| Current status | Button shown | Action |
+|----------------|--------------|--------|
+| `order` | **Mark In Production** | PATCH `ticket_status = 'in_production'`; log `ticket_status_changed` activity |
+| `in_production` | **Mark Completed** | PATCH `ticket_status = 'completed'`; log `ticket_status_changed` activity |
+| `completed` | _(no button — show "Completed" pill only)_ | — |
+
+The API (`PATCH /api/tickets/[id]`) already accepts arbitrary `ticket_status` values from admin users — no API change needed, only the UI.
+
+Also update the Orders page (`components/orders-page.tsx`) to surface an "In Production" count in the tab badges.
+
+---
+
+## [TODO-006] Follow-Up Reminders — Sending Logic Not Built
+
+**Status:** Pending — data collected, no sending
+**Priority:** Low (deferred)
+**Files to touch:** New cron/scheduled route + `lib/integrations/send-quote.ts`
+
+### The Problem
+
+The quote form collects follow-up scheduling fields that are saved to `job_tickets`:
+
+| Field | What it holds |
+|-------|--------------|
+| `follow_up_frequency` | e.g. `"3days"`, `"weekly"` |
+| `follow_up_at` | date of first reminder |
+| `follow_up_cycles` | how many times to repeat |
+| `follow_up_completed` | boolean — stops the loop |
+
+But there is **no background job** that reads these fields and sends the reminder. The data sits unused.
+
+### The Fix
+
+Options (pick one based on hosting):
+
+1. **Vercel Cron** — add `vercel.json` with a cron schedule pointing to `GET /api/cron/follow-ups`. The route queries tickets where `follow_up_at <= today AND follow_up_completed = false`, sends the reminder via Instantly AI or Twilio, then advances `follow_up_at` by the `follow_up_frequency` interval and decrements `follow_up_cycles`. When cycles reach 0, set `follow_up_completed = true`.
+
+2. **Supabase pg_cron** — a Postgres cron job calls a database function that marks tickets as needing a reminder; a webhook then triggers the Next.js send route.
+
+**Suggested route:** `app/api/cron/follow-ups/route.ts`
+
+This is low priority until the business is actively using follow-up reminders at scale.
 
 ---

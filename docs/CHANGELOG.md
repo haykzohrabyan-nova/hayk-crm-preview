@@ -3,6 +3,14 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-16] — TODO cleanup + new open items
+
+### Changed
+- `docs/TODO.md`: Removed completed items TODO-002 (auto-set Validated/Quoted) and TODO-003 (HVT SDR block). Updated TODO-001 (Admin Override) now that Tickets phase is complete — Won/Dropped override notes are no longer blocked. Added three new open items:
+  - **TODO-004**: Dashboard revenue should pull from `job_tickets.quote_final_total`, not the stale `leads.quote_total` snapshot
+  - **TODO-005**: No UI exists to advance orders through `in_production → completed` lifecycle stages
+  - **TODO-006**: Follow-up reminder fields are saved to DB but no background job sends them
+
 ## [2026-05-16] — Documentation audit pass
 
 ### Fixed
