@@ -668,15 +668,7 @@ export default function NewQuoteForm() {
               <InfoTab
                 title={title} setTitle={(v) => { setTitle(v); setFieldErrors((e) => ({ ...e, title: "" })); }}
                 priority={priority} setPriority={setPriority}
-                dueDate={dueDate} setDueDate={(v) => {
-                  setDueDate(v);
-                  if (v) {
-                    const today = new Date(); today.setHours(0, 0, 0, 0);
-                    const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-                    const picked = new Date(v + "T00:00:00");
-                    setRush(picked <= tomorrow);
-                  }
-                }}
+                dueDate={dueDate} setDueDate={setDueDate}
                 rush={rush} setRush={setRush}
                 specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
                 notes={notes} setNotes={setNotes}
@@ -927,7 +919,10 @@ function priorityStyle(opt: string, active: boolean): React.CSSProperties {
 function quickDate(offsetDays: number): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 // ─── Customer Tab ─────────────────────────────────────────────────────────────
@@ -1229,7 +1224,6 @@ interface InfoTabProps {
 }
 
 function InfoTab(p: InfoTabProps) {
-  const [notesOpen, setNotesOpen] = useState(!!p.notes);
   const fieldStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" };
   const PRIORITY_OPTS = (p.priorityOpts.length ? p.priorityOpts.map((o) => o.label) : ["Low", "Normal", "High"]).filter((o) => o.toLowerCase() !== "urgent");
 
@@ -1352,36 +1346,17 @@ function InfoTab(p: InfoTabProps) {
         />
       </div>
 
-      {/* Internal Notes — collapsible */}
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
-        <button
-          type="button"
-          onClick={() => setNotesOpen((o) => !o)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-left"
-          style={{ background: "var(--color-surface)", color: "var(--color-text-primary)" }}
-        >
-          <span>Internal Notes</span>
-          <ChevronDown
-            size={16}
-            style={{
-              color: "var(--color-text-muted)",
-              transform: notesOpen ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 0.2s",
-            }}
-          />
-        </button>
-        {notesOpen && (
-          <div className="px-4 pb-4 pt-1" style={{ background: "var(--color-surface)" }}>
-            <textarea
-              value={p.notes}
-              onChange={(e) => p.setNotes(e.target.value)}
-              rows={3}
-              placeholder="Notes visible to staff only…"
-              className="w-full px-3 py-2 rounded-md text-sm border outline-none resize-y"
-              style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-            />
-          </div>
-        )}
+      {/* Internal Notes */}
+      <div>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Internal Notes</label>
+        <textarea
+          value={p.notes}
+          onChange={(e) => p.setNotes(e.target.value)}
+          rows={3}
+          placeholder="Notes visible to staff only…"
+          className="w-full px-3 py-2 rounded-md text-sm border outline-none resize-y"
+          style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
+        />
       </div>
     </div>
   );

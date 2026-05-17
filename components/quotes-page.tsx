@@ -70,9 +70,14 @@ function displayName(q: QuoteTicket): string {
   return [c?.first_name, c?.last_name].filter(Boolean).join(" ") || "—";
 }
 
+// Parse a YYYY-MM-DD date string as local midnight (not UTC midnight)
+function parseLocalDate(dateStr: string): Date {
+  return new Date(dateStr + "T00:00:00");
+}
+
 function isOverdue(dateStr: string | null): boolean {
   if (!dateStr) return false;
-  return new Date(dateStr) < new Date();
+  return parseLocalDate(dateStr) < new Date();
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -210,7 +215,8 @@ export default function QuotesPage() {
       const company = (q.customer?.company ?? "").toLowerCase();
       const title = (q.title ?? "").toLowerCase();
       const ref = (q.reference_code ?? "").toLowerCase();
-      if (!name.includes(s) && !company.includes(s) && !title.includes(s) && !ref.includes(s)) return false;
+      const shortId = q.id.slice(0, 8).toLowerCase();
+      if (!name.includes(s) && !company.includes(s) && !title.includes(s) && !ref.includes(s) && !shortId.includes(s)) return false;
     }
     return true;
   });
@@ -460,7 +466,7 @@ export default function QuotesPage() {
                           style={{ color: overdue ? "var(--color-danger)" : "var(--color-text-muted)" }}
                         >
                           <Clock size={12} />
-                          {new Date(q.quote_reminder_date).toLocaleDateString()}
+                          {new Date(q.quote_reminder_date + "T00:00:00").toLocaleDateString()}
                         </span>
                       ) : (
                         <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>

@@ -15,17 +15,23 @@ The Tickets module manages all job tickets: quotes sent to clients and productio
 
 ```
 [New Quote Created]
-  └─ draft  ──► sent ──► approved (Won) ──► order ──► in_production ──► completed
+  └─ draft  ──► sent ──► order ──► in_production ──► completed
+       │           │       ▲
+       │           └───────┘  (customer confirms via /q/[token])
+       │                ▲
+       │                └─── (rep clicks "Convert to Order")
        │
        └─ [SDR total > HV threshold] ──► routed ──► [Sales claims] ──► draft (new owner)
 ```
 
 - `draft` — in progress, not yet sent to client
 - `sent` — quote delivered to client; awaiting approval
-- `approved` — client approved (transitions to Order page)
+- `approved` — **retired** — kept in `TicketStatus` type for backwards compatibility only; new code never sets this
 - `routed` — SDR's quote exceeded High-Value Threshold; routed to Sales for claiming
-- `order` — confirmed order, in production queue
+- `order` — confirmed production order. Set by: (a) customer confirms via public `/q/[token]` page, or (b) rep clicks "Convert to Order" button. Auto-generates `ORD-YYYY-NNN` reference code. Auto-sets `client_confirmed = true` for path (a).
 - `cancelled` — terminal; no payment recorded
+
+> **Record Locking:** Once a ticket becomes an `order` via **customer confirmation** (`client_confirmed = true`), the record is locked for SDR/Sales users. Only Admins can edit or cancel. Locking applies to the order detail header buttons, action bar, and editing mode.
 
 ---
 
@@ -245,22 +251,52 @@ Single scrollable view combining all three edit sections, separated by labelled 
 - Per-event icons, human-readable labels, actor name, relative timestamp
 - Auto-refreshes on `bazaar:activities-changed`
 
+### Header — status badges
+
+- **Quotes:** Standard status pill (draft / sent / cancelled). Short ID `/{XXXXXXXX}` shown next to title.
+- **Orders (customer-confirmed, `client_confirmed = true`):** Green "Confirmed by Customer" badge + payment status pill. `ORD-YYYY-NNN` is the primary heading, original title as subtitle.
+- **Orders (manually converted):** Blue "Converted to Order" badge + payment status pill.
+
+### Record Locking
+
+| Condition | isLocked? | Effect |
+|-----------|-----------|--------|
+| `ticket_status = 'cancelled'` | ✅ Yes | All edit/cancel controls hidden |
+| `client_confirmed = true` AND `userRole ≠ 'admin'` | ✅ Yes | Edit/cancel hidden; amber "Record Locked" banner shown |
+| `client_confirmed = true` AND `userRole = 'admin'` | ❌ No | Admin retains full control |
+| Any non-confirmed ticket | ❌ No | Normal edit flow |
+
 ### Action bar (read-only mode)
+
+Hidden entirely when record is locked (`isLocked = true`).
 
 | Action | Condition | Effect |
 |--------|-----------|--------|
-| Send Quote | `status = 'draft'` | `PATCH → ticket_status = 'sent'`; email/SMS/WhatsApp triggered via `sendQuoteToCustomer()` |
-| Resend Quote | `status = 'sent'` | Same as Send Quote — re-triggers delivery |
-| Mark Won | `status = 'draft'` or `'sent'` | `PATCH → ticket_status = 'approved'` |
-| Cancel Ticket | any non-locked | `PATCH → ticket_status = 'cancelled'` |
+| Send Quote | `status = 'draft'` | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; logs `ticket_sent` |
+| Resend Quote | `status = 'sent'` | Same — re-triggers delivery; logs `ticket_sent` with `resend: true` in payload |
+| Convert to Order | `status = 'draft'` or `'sent'` | `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`; updates linked lead `sales_status = 'Won'` |
+| Cancel Ticket | non-locked only | `PATCH → ticket_status = 'cancelled'` |
+
+### Payment Link Bar
+
+Visible on all confirmed (`client_confirmed = true`) unpaid orders where `public_token` is set. Always shown — even non-admins can send payment reminders.
+
+| Element | Description |
+|---------|-------------|
+| URL | Copyable `/q/[token]` payment page link |
+| Channel | Email / SMS / WhatsApp segmented selector |
+| Destination | Pre-filled with customer email (Email) or phone (SMS/WhatsApp); user-editable |
+| Send | `PATCH /api/tickets/[id]` with `{ send_payment_reminder: true, reminder_channel, reminder_destination }` |
+
+On success: logs `ticket_payment_reminder_sent` activity with channel + destination.
 
 ### Edit mode action bar
 
-Simplified to two buttons: **Cancel** (discard changes) and **Save Changes**. No Back/Next tab stepping — all sections are visible on a single scrollable page.
+Two buttons: **Cancel** (discard changes) and **Save Changes**. No stepping — all sections on one scrollable page.
 
-### Payment status bar (orders only)
+### Payment status bar (offline payment orders only)
 
-Visible when `ticket_status = 'order'`, in read-only mode. Shows **Unpaid / Partial / Paid** pill buttons. Clicking any pill calls `PATCH /api/tickets/[id]` with `{ payment_status }` immediately (no edit mode needed).
+Visible when `ticket_status = 'order'` AND `quote_payment_types` includes `"offline"`. Shows **Unpaid / Partial / Paid** pill buttons. Clicking any pill calls `PATCH /api/tickets/[id]` with `{ payment_status }` immediately (no edit mode).
 
 ### Deposit status bar (partial prepayment orders only)
 
@@ -271,16 +307,14 @@ Visible when `ticket_status = 'order'` **and** `prepayment_type` is `"percent"` 
 
 ### Edit lock
 
-| Status | Payment status | Editable? |
-|--------|---------------|-----------|
-| `draft` | — | ✅ Yes |
-| `sent` | — | ✅ Yes |
-| `order` | `unpaid` or null | ✅ Yes |
-| `order` | `partial` | ❌ Locked |
-| `order` | `paid` | ❌ Locked |
-| `cancelled` | — | ❌ Locked |
+| Condition | Editable? |
+|-----------|-----------|
+| `draft` or `sent` ticket | ✅ Yes |
+| `order`, `client_confirmed = true`, non-admin | ❌ Locked — "Record Locked" banner shown |
+| `order`, `client_confirmed = true`, admin | ✅ Yes (admin only) |
+| `cancelled` | ❌ Locked |
 
-> `payment_status` can always be updated directly from the payment status bar without entering edit mode.
+> `payment_status` can always be updated from the payment status bar without entering edit mode.
 
 ### High-Value Threshold (HVT) — SDR editing draft
 
@@ -301,12 +335,28 @@ When an SDR clicks "Save Changes" on a `draft` quote and `pricing.final_total > 
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `GET /api/tickets` | GET | List tickets. SDRs see own. Sales/Admin see own + all `routed`. `kind`, `search` params. |
+| `GET /api/tickets` | GET | List tickets. SDRs see own. Sales/Admin see own + all `routed`. `kind`, `search`, `short_id` params. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates ORD-YYYY-NNN for orders. Logs activity. Updates linked lead status. Accepts `ticket_status = 'routed'` for HVT saves. |
 | `GET /api/tickets/[id]` | GET | Single ticket. Sales/Admin can GET `routed` tickets they don't own. |
-| `PATCH /api/tickets/[id]` | PATCH | Update ticket. If `claim_ownership: true`: Sales/Admin only, ticket must be `routed`; sets `draft` + transfers `created_by_id`. Logs `order_ticket_status_changed` activity. |
-| `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, routed, total }`. SDRs get own routed count. Sales/Admin get global routed count. |
+| `PATCH /api/tickets/[id]` | PATCH | Multi-mode update: (1) `claim_ownership: true` — Sales claim a routed ticket; (2) `send_payment_reminder: true` — send payment reminder email/SMS/WhatsApp; (3) normal update. On `ticket_status = 'sent'`: triggers `sendQuoteToCustomer()`; logs `ticket_sent`. On `ticket_status = 'order'` (manual): generates ORD-YYYY-NNN, logs `ticket_converted`, updates linked lead `sales_status = 'Won'`. |
+| `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, routed, cancelled, total }`. |
 | `GET /api/activities` | GET | `?ticket_id=xxx&include_linked_lead=true` → full lifetime (lead + ticket activities merged) |
+| `GET /api/public/quotes/[token]` | GET (no auth) | Public ticket data for `/q/[token]` customer page |
+| `POST /api/public/quotes/[token]/confirm` | POST (no auth) | Customer confirms quote → sets `client_confirmed = true`, `ticket_status = 'order'`, generates ORD ref; updates linked lead `sales_status = 'Won'` |
+
+---
+
+## Activity Types (ticket-related)
+
+| Type | When logged |
+|------|-------------|
+| `order_ticket_created` | Ticket created |
+| `order_ticket_updated` | Fields updated (edit mode save) |
+| `order_ticket_status_changed` | Status transition (claim, route, etc.) |
+| `ticket_sent` | Quote sent or resent. Payload: `{ channel, destination, resend?: true }` |
+| `ticket_client_confirmed` | Customer confirms via public page |
+| `ticket_converted` | Rep clicks "Convert to Order". Payload: `{ from, to: 'order', reference_code }` |
+| `ticket_payment_reminder_sent` | Payment reminder sent. Payload: `{ channel, destination }` |
 
 ---
 
@@ -314,7 +364,7 @@ When an SDR clicks "Save Changes" on a `draft` quote and `pricing.final_total > 
 
 | Badge | SDR | Sales / Admin |
 |-------|-----|---------------|
-| `/quotes` | `draft` + `sent` + `approved` (own) | same + all `routed` |
+| `/quotes` | `draft` + `sent` (own) | same + all `routed` |
 | `/orders` | `order` status (own) | `order` status (all) |
 
 Both updated in `app/api/sidebar-counts/route.ts` and refresh via `bazaar:refresh-counts`.
@@ -407,12 +457,15 @@ No login required — `proxy.ts` allows `/q/` paths without auth.
 
 | File | Purpose |
 |------|---------|
-| `lib/integrations/send-quote.ts` | Channel router + Twilio/Instantly callers |
-| `lib/integrations/quote-email-template.ts` | HTML email template builder (table-based, fully inline-styled, email-client safe) |
+| `lib/integrations/send-quote.ts` | Channel router + Twilio/Instantly callers + `toE164()` phone normaliser + `sendPaymentReminder()` |
+| `lib/integrations/quote-email-template.ts` | HTML email template for quote delivery (table-based, inline-styled, email-client safe) |
+| `lib/integrations/payment-reminder-template.ts` | HTML email template for payment reminders — "Pay Now" focused, no line items |
 | `app/(public)/layout.tsx` | Minimal public layout (no auth, no sidebar) |
-| `app/(public)/q/[token]/page.tsx` | Customer-facing quote/order page |
+| `app/(public)/q/[token]/page.tsx` | Customer-facing quote/order page — shows "Quote Confirmed!" or "Order Confirmed!" based on ticket kind |
 | `supabase/migrations/052_add_public_token_to_tickets.sql` | `public_token` column + unique index |
-| `app/api/dev/quote-email-preview/route.ts` | Dev-only GET route — renders the email template in-browser with fake data for visual testing |
+| `app/api/dev/quote-email-preview/route.ts` | Dev-only GET route — renders the email template in-browser with fake data |
+| `app/api/public/quotes/[token]/route.ts` | Public ticket fetch (no auth) |
+| `app/api/public/quotes/[token]/confirm/route.ts` | Customer confirmation endpoint (no auth) |
 
 ### Email Template Design Notes (`quote-email-template.ts`)
 

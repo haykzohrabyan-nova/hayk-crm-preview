@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
-import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
+import { sendQuoteToCustomer, sendPaymentReminder } from "@/lib/integrations/send-quote";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -73,12 +73,64 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id")
+    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email")
     .eq("id", id)
     .single();
 
   if (fetchErr || !existing) {
     return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
+  }
+
+  // ── Payment reminder: send payment link via selected channel ───────────────
+  if (body.send_payment_reminder === true) {
+    const now = new Date().toISOString();
+    const reminderChannel     = (body.reminder_channel as string | undefined) ?? existing.quote_channel ?? "email";
+    const reminderDestination = (body.reminder_destination as string | undefined) ?? existing.quote_destination ?? null;
+
+    try {
+      const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
+        admin
+          .from("job_tickets")
+          .select("*, customer:customers(first_name, last_name, email, phone)")
+          .eq("id", id)
+          .single(),
+        admin.from("company_settings").select("*").eq("id", 1).single(),
+      ]);
+      if (fullTicket && companyRow && fullTicket.reference_code) {
+        sendPaymentReminder(
+          fullTicket as typeof fullTicket & { reference_code: string },
+          companyRow,
+          { channel: reminderChannel, destination: reminderDestination ?? undefined }
+        ).then((result) => {
+          if (!result.ok) {
+            console.error("[payment-reminder] delivery failed:", result.error, { ticketId: id, channel: result.channel, destination: reminderDestination });
+          } else {
+            console.log("[payment-reminder] delivered ok:", { ticketId: id, channel: result.channel, destination: reminderDestination });
+          }
+        });
+      } else {
+        console.warn("[payment-reminder] skipped — missing ticket, company, or reference_code", {
+          ticketId: id,
+          hasTicket: !!fullTicket,
+          hasCompany: !!companyRow,
+          referenceCode: fullTicket?.reference_code ?? null,
+        });
+      }
+    } catch (err) {
+      console.error("[payment-reminder] unexpected error:", err);
+    }
+
+    await admin.from("activities").insert({
+      type: "ticket_payment_reminder_sent",
+      lead_id: existing.linked_lead_id ?? null,
+      customer_id: existing.customer_id ?? null,
+      ticket_id: id,
+      by_user_id: userId,
+      payload: { channel: reminderChannel, destination: reminderDestination },
+      created_at: now,
+    });
+
+    return NextResponse.json({ ok: true });
   }
 
   // ── Claim action: sales/admin can claim a routed ticket ────────────────────
@@ -177,9 +229,27 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "payment_status",
   ];
 
-  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = { updated_at: now };
   for (const key of ALLOWED_FIELDS) {
     if (key in body) patch[key] = body[key];
+  }
+
+  // When manually converting a quote to an order (not via customer public link),
+  // auto-generate the ORD-YYYY-NNN reference code and flip ticket_kind to "order".
+  const isManualConvertToOrder =
+    body.ticket_status === "order" && existing.ticket_status !== "order";
+
+  if (isManualConvertToOrder) {
+    patch.ticket_kind = "order";
+    // Only generate a reference code if one doesn't already exist
+    if (!("reference_code" in body)) {
+      const year = new Date().getFullYear();
+      const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
+      if (!seqErr && seq) {
+        patch.reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
+      }
+    }
   }
 
   const { data: updated, error: updateErr } = await admin
@@ -193,17 +263,57 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  // Log activity if ticket_status changed
-  if ("ticket_status" in body && body.ticket_status !== existing.ticket_status) {
-    await admin.from("activities").insert({
-      type: "order_ticket_status_changed",
-      lead_id: existing.linked_lead_id ?? null,
-      customer_id: existing.customer_id ?? null,
-      ticket_id: id,
-      by_user_id: userId,
-      payload: { from: existing.ticket_status, to: body.ticket_status },
-      created_at: new Date().toISOString(),
-    });
+  // Log activity for every meaningful action
+  if ("ticket_status" in body) {
+    const isResend = body.ticket_status === "sent" && existing.ticket_status === "sent";
+
+    if (body.ticket_status === "sent") {
+      // Log every send/resend — not just the first one.
+      await admin.from("activities").insert({
+        type: "ticket_sent",
+        lead_id: existing.linked_lead_id ?? null,
+        customer_id: existing.customer_id ?? null,
+        ticket_id: id,
+        by_user_id: userId,
+        payload: {
+          channel: (body.quote_channel as string | undefined) ?? existing.quote_channel ?? "unknown",
+          destination: (body.quote_destination as string | undefined) ?? existing.quote_destination ?? null,
+          recipient: (body.contact_name as string | undefined) ?? existing.contact_name ?? existing.contact_email ?? null,
+          resend: isResend,
+        },
+        created_at: now,
+      });
+    } else if (isManualConvertToOrder) {
+      // Dedicated activity for manual conversion — distinct from customer confirmation
+      await admin.from("activities").insert({
+        type: "ticket_converted",
+        lead_id: existing.linked_lead_id ?? null,
+        customer_id: existing.customer_id ?? null,
+        ticket_id: id,
+        by_user_id: userId,
+        payload: { reference_code: patch.reference_code ?? null },
+        created_at: now,
+      });
+
+      // Mark the linked lead as Won — gives SDR and Sales credit.
+      // Case 1: SDR routed → Sales converted  Case 2: SDR converted directly  Case 3: no lead (skip)
+      if (existing.linked_lead_id) {
+        await admin
+          .from("leads")
+          .update({ sales_status: "Won", updated_at: now })
+          .eq("id", existing.linked_lead_id);
+      }
+    } else if (body.ticket_status !== existing.ticket_status) {
+      await admin.from("activities").insert({
+        type: "order_ticket_status_changed",
+        lead_id: existing.linked_lead_id ?? null,
+        customer_id: existing.customer_id ?? null,
+        ticket_id: id,
+        by_user_id: userId,
+        payload: { from: existing.ticket_status, to: body.ticket_status },
+        created_at: now,
+      });
+    }
   }
 
   // Trigger outreach when ticket status is "sent" — covers both first send and resend.

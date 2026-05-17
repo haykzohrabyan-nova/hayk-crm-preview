@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BazaarPrinting CRM — System Logic Overview</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy: #1B2B4B;
+    --navy-light: #243a63;
+    --gold: #E8C97A;
+    --gold-dark: #C9A84C;
+    --bg: #f0f4f8;
+    --surface: #ffffff;
+    --text: #1a202c;
+    --muted: #64748b;
+    --border: #e2e8f0;
+    --success: #16a34a;
+    --success-bg: #f0fdf4;
+    --warning: #d97706;
+    --warning-bg: #fffbeb;
+    --danger: #dc2626;
+    --danger-bg: #fef2f2;
+    --info: #2563eb;
+    --info-bg: #eff6ff;
+    --purple: #7c3aed;
+    --purple-bg: #f5f3ff;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  /* ── Top Header ── */
+  .top-header {
+    background: var(--navy);
+    color: white;
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 60px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  }
+  .brand {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    color: var(--gold);
+  }
+  .header-subtitle {
+    font-size: 12px;
+    color: rgba(255,255,255,0.55);
+    letter-spacing: 0.04em;
+  }
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .date-badge {
+    font-size: 11px;
+    color: rgba(255,255,255,0.5);
+    background: rgba(255,255,255,0.08);
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.12);
+  }
+
+  /* ── Layout ── */
+  .layout {
+    display: flex;
+    min-height: calc(100vh - 60px);
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 220px;
+    background: var(--navy);
+    padding: 24px 0;
+    position: sticky;
+    top: 60px;
+    height: calc(100vh - 60px);
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .sidebar-section-label {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.3);
+    padding: 12px 20px 6px;
+  }
+  .sidebar a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 20px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.65);
+    text-decoration: none;
+    transition: all 0.15s;
+    border-left: 3px solid transparent;
+  }
+  .sidebar a:hover { color: white; background: rgba(255,255,255,0.07); }
+  .sidebar a.active {
+    color: var(--gold);
+    background: rgba(232,201,122,0.1);
+    border-left-color: var(--gold);
+    font-weight: 500;
+  }
+  .sidebar .icon { width: 16px; text-align: center; flex-shrink: 0; }
+
+  /* ── Main Content ── */
+  .main {
+    flex: 1;
+    padding: 32px;
+    max-width: 960px;
+  }
+
+  /* ── Sections ── */
+  .section { margin-bottom: 48px; scroll-margin-top: 80px; }
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid var(--gold);
+  }
+  .section-icon {
+    width: 36px; height: 36px;
+    background: var(--navy);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px;
+  }
+  .section-title { font-size: 20px; font-weight: 600; color: var(--navy); }
+  .section-desc { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Cards ── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--navy);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* ── Role Cards ── */
+  .roles-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 700px) { .roles-grid { grid-template-columns: 1fr; } }
+  .role-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+  }
+  .role-card.sdr { border-top: 3px solid #3b82f6; }
+  .role-card.sales { border-top: 3px solid var(--gold-dark); }
+  .role-card.admin { border-top: 3px solid var(--navy); }
+  .role-name {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--text);
+  }
+  .role-tag {
+    font-size: 11px;
+    font-weight: 500;
+    padding: 2px 8px;
+    border-radius: 20px;
+    display: inline-block;
+    margin-bottom: 12px;
+  }
+  .role-tag.sdr { background: #dbeafe; color: #1d4ed8; }
+  .role-tag.sales { background: #fef3c7; color: #92400e; }
+  .role-tag.admin { background: #e0e7ff; color: #3730a3; }
+  .role-abilities li {
+    font-size: 12.5px;
+    color: var(--muted);
+    padding: 3px 0;
+    padding-left: 14px;
+    position: relative;
+  }
+  .role-abilities li::before {
+    content: '✓';
+    position: absolute;
+    left: 0;
+    color: var(--success);
+    font-weight: 600;
+  }
+
+  /* ── Flow Diagrams ── */
+  .flow {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+  }
+  .flow-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 20px;
+  }
+
+  /* ── Linear Flow ── */
+  .flow-steps {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    flex-wrap: nowrap;
+    min-width: max-content;
+  }
+  .flow-step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .flow-node {
+    padding: 10px 16px;
+    border-radius: 8px;
+    font-size: 12.5px;
+    font-weight: 500;
+    text-align: center;
+    white-space: nowrap;
+    border: 1.5px solid;
+    min-width: 110px;
+  }
+  .flow-node.draft { background: #f8fafc; border-color: #cbd5e1; color: #475569; }
+  .flow-node.sent { background: #eff6ff; border-color: #93c5fd; color: #1d4ed8; }
+  .flow-node.routed { background: var(--warning-bg); border-color: #fcd34d; color: var(--warning); }
+  .flow-node.order { background: #f0fdf4; border-color: #86efac; color: var(--success); }
+  .flow-node.production { background: #f5f3ff; border-color: #c4b5fd; color: var(--purple); }
+  .flow-node.completed { background: #1B2B4B; border-color: #1B2B4B; color: var(--gold); }
+  .flow-node.cancelled { background: var(--danger-bg); border-color: #fca5a5; color: var(--danger); }
+  .flow-node.pending { background: #fafafa; border-color: #e2e8f0; color: #64748b; }
+  .flow-node.validated { background: #eff6ff; border-color: #93c5fd; color: #2563eb; }
+  .flow-node.on-hold { background: var(--warning-bg); border-color: #fcd34d; color: var(--warning); }
+  .flow-node.rejected { background: var(--danger-bg); border-color: #fca5a5; color: var(--danger); }
+  .flow-node.won { background: #f0fdf4; border-color: #86efac; color: var(--success); }
+  .flow-node.action {
+    background: var(--navy);
+    border-color: var(--navy);
+    color: var(--gold);
+    font-size: 11.5px;
+  }
+
+  .flow-arrow {
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    color: #94a3b8;
+    font-size: 18px;
+    font-weight: 300;
+  }
+  .flow-note {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 6px;
+    text-align: center;
+    max-width: 120px;
+  }
+
+  /* ── Branch Flows ── */
+  .branch-flow { padding: 0; }
+  .branch-row { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+  .branch-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    width: 70px;
+    flex-shrink: 0;
+    padding-top: 10px;
+    text-align: right;
+  }
+  .branch-steps { display: flex; align-items: center; gap: 0; flex-wrap: wrap; }
+
+  /* ── Status Pills ── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11.5px;
+    font-weight: 500;
+    border: 1px solid transparent;
+  }
+  .pill.draft { background: #f1f5f9; color: #475569; border-color: #cbd5e1; }
+  .pill.sent { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+  .pill.order { background: #dcfce7; color: #15803d; border-color: #86efac; }
+  .pill.cancelled { background: #fee2e2; color: #b91c1c; border-color: #fca5a5; }
+  .pill.routed { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+  .pill.success { background: #dcfce7; color: #15803d; border-color: #86efac; }
+  .pill.warning { background: #fef3c7; color: #92400e; border-color: #fcd34d; }
+  .pill.info { background: #dbeafe; color: #1d4ed8; border-color: #93c5fd; }
+
+  /* ── Info Boxes ── */
+  .info-box {
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .info-box.info { background: var(--info-bg); border: 1px solid #bfdbfe; color: #1e40af; }
+  .info-box.success { background: var(--success-bg); border: 1px solid #bbf7d0; color: #166534; }
+  .info-box.warning { background: var(--warning-bg); border: 1px solid #fde68a; color: #92400e; }
+  .info-box.danger { background: var(--danger-bg); border: 1px solid #fecaca; color: #991b1b; }
+  .info-box.navy { background: #e8edf5; border: 1px solid #c7d2e7; color: var(--navy); }
+  .info-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── Tables ── */
+  .data-table { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  .data-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    padding: 10px 12px;
+    border-bottom: 2px solid var(--border);
+    background: #f8fafc;
+  }
+  .data-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .data-table tr:last-child td { border-bottom: none; }
+  .data-table tr:hover td { background: #f8fafc; }
+
+  /* ── Two Column Layout ── */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ── Feature Grid ── */
+  .feature-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+  @media (max-width: 640px) { .feature-grid { grid-template-columns: 1fr; } }
+  .feature-item {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .feature-item-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--navy);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .feature-item p { font-size: 12.5px; color: var(--muted); }
+
+  /* ── Divider ── */
+  .divider { height: 1px; background: var(--border); margin: 24px 0; }
+
+  /* ── Highlight Block ── */
+  .highlight {
+    background: linear-gradient(135deg, #1B2B4B 0%, #243a63 100%);
+    border-radius: 12px;
+    padding: 24px;
+    color: white;
+    margin-bottom: 20px;
+  }
+  .highlight h3 { color: var(--gold); font-size: 16px; margin-bottom: 8px; }
+  .highlight p { font-size: 13px; color: rgba(255,255,255,0.75); }
+
+  /* ── Lock Box ── */
+  .lock-box {
+    background: #fef3c7;
+    border: 1.5px solid #fde68a;
+    border-left: 4px solid var(--warning);
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: #78350f;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  /* ── Timeline ── */
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px; top: 4px; bottom: 4px;
+    width: 2px;
+    background: var(--border);
+  }
+  .timeline-item { position: relative; margin-bottom: 16px; }
+  .timeline-dot {
+    position: absolute;
+    left: -20px;
+    top: 4px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid var(--surface);
+    flex-shrink: 0;
+  }
+  .timeline-item-content { padding-left: 4px; }
+  .timeline-item-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .timeline-item-desc { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+  /* ── Footer ── */
+  .footer {
+    background: var(--navy);
+    color: rgba(255,255,255,0.5);
+    text-align: center;
+    padding: 20px;
+    font-size: 12px;
+    margin-top: 40px;
+  }
+  .footer strong { color: var(--gold); }
+
+  /* ── Dot ── */
+  .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; margin-top: 5px; }
+  .dot.green { background: var(--success); }
+  .dot.gold { background: var(--gold-dark); }
+  .dot.blue { background: #3b82f6; }
+  .dot.red { background: var(--danger); }
+  .dot.orange { background: var(--warning); }
+  .dot.purple { background: var(--purple); }
+  .dot.navy { background: var(--navy); }
+  .dot.grey { background: #94a3b8; }
+</style>
+</head>
+<body>
+
+<!-- Top Header -->
+<header class="top-header">
+  <div>
+    <div class="brand">BAZAARPRINTING</div>
+    <div class="header-subtitle">CRM System — Application Logic Overview</div>
+  </div>
+  <div class="header-right">
+    <span class="date-badge">Version: May 2026</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- Sidebar Navigation -->
+  <nav class="sidebar">
+    <div class="sidebar-section-label">Overview</div>
+    <a href="#what-is-this" class="active"><span class="icon">🏠</span> What Is This CRM</a>
+    <a href="#roles"><span class="icon">👥</span> User Roles</a>
+
+    <div class="sidebar-section-label">Lead Pipeline</div>
+    <a href="#lead-intake"><span class="icon">📥</span> Lead Intake</a>
+    <a href="#sdr-workflow"><span class="icon">🔍</span> SDR Workflow</a>
+    <a href="#sales-workflow"><span class="icon">💼</span> Sales Workflow</a>
+    <a href="#won-tracking"><span class="icon">🏆</span> Won Tracking</a>
+
+    <div class="sidebar-section-label">Quotes & Orders</div>
+    <a href="#quote-creation"><span class="icon">📝</span> Creating a Quote</a>
+    <a href="#quote-delivery"><span class="icon">📤</span> Quote Delivery</a>
+    <a href="#customer-approval"><span class="icon">✅</span> Customer Approval</a>
+    <a href="#order-management"><span class="icon">📦</span> Order Management</a>
+    <a href="#payment-flow"><span class="icon">💳</span> Payment Flow</a>
+
+    <div class="sidebar-section-label">Business Rules</div>
+    <a href="#hvt"><span class="icon">⚡</span> High-Value Threshold</a>
+    <a href="#record-locking"><span class="icon">🔒</span> Record Locking</a>
+    <a href="#notifications"><span class="icon">🔔</span> Activity Log</a>
+
+    <div class="sidebar-section-label">System</div>
+    <a href="#integrations"><span class="icon">🔗</span> Integrations</a>
+    <a href="#admin"><span class="icon">⚙️</span> Admin Panel</a>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main">
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: WHAT IS THIS -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="what-is-this">
+      <div class="section-header">
+        <div class="section-icon">🏠</div>
+        <div>
+          <div class="section-title">What Is BazaarPrinting CRM?</div>
+          <div class="section-desc">A full internal CRM built for a B2B printing company</div>
+        </div>
+      </div>
+
+      <div class="highlight">
+        <h3>Purpose</h3>
+        <p>BazaarPrinting CRM manages the full customer journey — from the first contact (lead) through quote generation, customer approval, production, and payment. Every step is tracked, every action is logged, and the right people see the right information at the right time.</p>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-item">
+          <div class="feature-item-title">📥 Lead Management</div>
+          <p>SDRs capture and validate incoming leads. They screen, hold, or route leads to the Sales team. All activity is tracked in a full timeline.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">📝 Quotes &amp; Orders</div>
+          <p>Sales or SDRs create quotes with line items, pricing, discounts, and delivery details. Quotes are sent to customers via Email, SMS, or WhatsApp.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">✅ Customer Approval</div>
+          <p>Each quote has a private link. The customer clicks, reviews the quote, and confirms — converting it into an order automatically with an ORD-YYYY-NNN reference code.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">💳 Payment Tracking</div>
+          <p>Orders track payment status (Unpaid / Partial / Paid) and deposit status. Payment reminder links can be sent via Email, SMS, or WhatsApp directly from the order page.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">👥 CRM &amp; Customers</div>
+          <p>Every customer is saved to the CRM. Quotes auto-create customer profiles. Duplicate customer detection runs in real time when entering phone numbers.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">📊 Role-Based Access</div>
+          <p>SDRs, Sales reps, and Admins each see a different view. Actions are gated by role. Admins have full override capability on any record.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: USER ROLES -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="roles">
+      <div class="section-header">
+        <div class="section-icon">👥</div>
+        <div>
+          <div class="section-title">User Roles</div>
+          <div class="section-desc">Three system roles — each with a dedicated workflow</div>
+        </div>
+      </div>
+
+      <div class="roles-grid">
+        <div class="role-card sdr">
+          <div class="role-name">SDR</div>
+          <span class="role-tag sdr">Sales Development Rep</span>
+          <ul class="role-abilities">
+            <li>View and validate incoming leads</li>
+            <li>Hold, reject, or route leads to Sales</li>
+            <li>Create quotes for leads under HV threshold</li>
+            <li>Send quotes via Email/SMS/WhatsApp</li>
+            <li>See their own "Won" leads</li>
+            <li>Send payment reminders to customers</li>
+          </ul>
+        </div>
+        <div class="role-card sales">
+          <div class="role-name">Sales Rep</div>
+          <span class="role-tag sales">Sales Pipeline</span>
+          <ul class="role-abilities">
+            <li>Claim routed leads from SDR</li>
+            <li>Work leads: hold, reject, or convert</li>
+            <li>Create and manage quotes &amp; orders</li>
+            <li>Handle high-value quotes (no block)</li>
+            <li>Convert quotes to orders manually</li>
+            <li>Send payment reminders to customers</li>
+          </ul>
+        </div>
+        <div class="role-card admin">
+          <div class="role-name">Admin</div>
+          <span class="role-tag" style="background:#e0e7ff;color:#3730a3;">Administrator</span>
+          <ul class="role-abilities">
+            <li>Full access to all leads, quotes, orders</li>
+            <li>Override any locked record</li>
+            <li>Cancel or edit confirmed orders</li>
+            <li>Manage users, roles, permissions</li>
+            <li>Configure dropdowns, products, company info</li>
+            <li>Test and manage integrations</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="info-box info" style="margin-top:12px;">
+        <span class="info-icon">ℹ️</span>
+        <div>Admins can create custom roles with fine-grained page-level access control. Every page in the system is listed in the database, and role permissions are toggled through the Admin panel — no code changes required.</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: LEAD INTAKE -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="lead-intake">
+      <div class="section-header">
+        <div class="section-icon">📥</div>
+        <div>
+          <div class="section-title">Lead Intake</div>
+          <div class="section-desc">How new leads enter the system</div>
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-title">Lead Entry Path</div>
+        <div class="flow-steps">
+          <div class="flow-step">
+            <div class="flow-node action">SDR Adds Lead</div>
+            <div class="flow-note">Manual entry from phone/walk-in/referral</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node pending">Pending (Inbox)</div>
+            <div class="flow-note">Appears in SDR workspace</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node action">SDR Opens + Locks</div>
+            <div class="flow-note">Record locked while being worked</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node validated">Validated</div>
+            <div class="flow-note">SDR confirms it's a real opportunity</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📱 Duplicate Detection</div>
+        <p style="font-size:13px;color:var(--muted);">When an SDR types a phone number, the system instantly searches for matching customer profiles. If a match is found, the SDR can select the existing customer — preventing duplicate records in the CRM.</p>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:150px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;">
+            <strong style="display:block;margin-bottom:4px;">0 matches</strong>
+            <span style="color:var(--muted);">All fields editable — new customer created on save</span>
+          </div>
+          <div style="flex:1;min-width:150px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;font-size:12.5px;">
+            <strong style="display:block;margin-bottom:4px;">1 match found</strong>
+            <span style="color:var(--muted);">Picker shown — select existing or continue new</span>
+          </div>
+          <div style="flex:1;min-width:150px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12.5px;">
+            <strong style="display:block;margin-bottom:4px;">2+ matches</strong>
+            <span style="color:var(--muted);">List shown — pick one or create fresh</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: SDR WORKFLOW -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="sdr-workflow">
+      <div class="section-header">
+        <div class="section-icon">🔍</div>
+        <div>
+          <div class="section-title">SDR Workflow</div>
+          <div class="section-desc">What happens after a lead is validated</div>
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-title">SDR Decision Tree (after validation)</div>
+        <div class="branch-flow">
+          <div class="branch-row">
+            <div class="branch-label">Route 1</div>
+            <div class="branch-steps">
+              <div class="flow-step"><div class="flow-node validated">Validated</div></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step"><div class="flow-node order">Route to Sales</div><div class="flow-note">Appears in Sales Pipeline</div></div>
+            </div>
+          </div>
+          <div class="branch-row">
+            <div class="branch-label">Route 2</div>
+            <div class="branch-steps">
+              <div class="flow-step"><div class="flow-node validated">Validated</div></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step"><div class="flow-node on-hold">On Hold</div><div class="flow-note">With reason + date</div></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step"><div class="flow-node validated">Resumed</div></div>
+            </div>
+          </div>
+          <div class="branch-row">
+            <div class="branch-label">Route 3</div>
+            <div class="branch-steps">
+              <div class="flow-step"><div class="flow-node validated">Validated</div></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step"><div class="flow-node rejected">Rejected</div><div class="flow-note">Terminal — Admin only to reopen</div></div>
+            </div>
+          </div>
+          <div class="branch-row">
+            <div class="branch-label">Route 4</div>
+            <div class="branch-steps">
+              <div class="flow-step"><div class="flow-node validated">Validated</div></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step"><div class="flow-node sent">Create Quote</div><div class="flow-note">If total ≤ HV Threshold</div></div>
+              <div class="flow-arrow">→</div>
+              <div class="flow-step"><div class="flow-node order">Order Won 🏆</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="info-box warning">
+        <span class="info-icon">⚡</span>
+        <div><strong>High-Value Threshold:</strong> If an SDR builds a quote that exceeds the company-configured threshold (e.g. $5,000), a blocking modal appears with a 30-second countdown. The quote is automatically saved as "Routed to Sales" — the SDR cannot proceed, and the quote appears in the Sales team's queue.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">🔒 Lead Locking</div>
+        <p style="font-size:13px;color:var(--muted);">When an SDR opens a lead, it is instantly locked to them. Other SDRs see a "Being worked by [Name]" banner and view it in read-only mode. The lock releases automatically when the SDR closes the lead. Admins can force-release any lock.</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: SALES WORKFLOW -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="sales-workflow">
+      <div class="section-header">
+        <div class="section-icon">💼</div>
+        <div>
+          <div class="section-title">Sales Workflow</div>
+          <div class="section-desc">What Sales reps see and do with routed leads</div>
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-title">Sales Pipeline Flow</div>
+        <div class="flow-steps">
+          <div class="flow-step">
+            <div class="flow-node routed">Routed to Sales</div>
+            <div class="flow-note">From SDR or HV threshold</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node action">Sales Claims It</div>
+            <div class="flow-note">Disappears from others' queue instantly</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node sent">Quote / Negotiate</div>
+            <div class="flow-note">Can create quotes freely (no HV block)</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node order">Won → Order</div>
+            <div class="flow-note">Customer approves or rep converts</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">📋 Sales Pipeline Tabs</div>
+          <table class="data-table">
+            <thead><tr><th>Tab</th><th>Content</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill info">Pipeline</span></td><td>All active routed leads owned by this rep</td></tr>
+              <tr><td><span class="pill warning">On Hold</span></td><td>Leads paused with a reason and resume date</td></tr>
+              <tr><td><span class="pill cancelled">Rejected</span></td><td>Leads rejected by this rep (terminal)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">📜 Activity History</div>
+          <p style="font-size:13px;color:var(--muted);">Every lead has a full activity timeline: who created it, when it was routed, every status change, every note, every quote sent. Sales reps can see the full SDR history before working a lead.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: WON TRACKING -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="won-tracking">
+      <div class="section-header">
+        <div class="section-icon">🏆</div>
+        <div>
+          <div class="section-title">Won Tracking</div>
+          <div class="section-desc">How the system tracks successful conversions for SDRs and Sales</div>
+        </div>
+      </div>
+
+      <div class="info-box success">
+        <span class="info-icon">🏆</span>
+        <div>A lead is marked <strong>"Won"</strong> automatically — not manually — when the linked quote becomes a confirmed order. This happens whether the customer approves via the public link, or a rep clicks "Convert to Order".</div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">🔍 SDR Won Tab</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">SDRs have a "Won" tab in their workspace showing all their leads that converted to orders. Each row shows:</p>
+          <ul style="font-size:12.5px;color:var(--muted);padding-left:16px;">
+            <li>Order reference (ORD-YYYY-NNN)</li>
+            <li>Total value ($)</li>
+            <li>Closer's name (who closed the deal)</li>
+            <li>Customer info</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title">💼 Sales Won</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Sales reps see "Won" in their pipeline stats. The lead's <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;">sales_status</code> is auto-updated to "Won" when:</p>
+          <ul style="font-size:12.5px;color:var(--muted);padding-left:16px;">
+            <li>Customer clicks "Confirm &amp; Accept" on the public quote page</li>
+            <li>Rep clicks "Convert to Order" in the CRM</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: QUOTE CREATION -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="quote-creation">
+      <div class="section-header">
+        <div class="section-icon">📝</div>
+        <div>
+          <div class="section-title">Creating a Quote</div>
+          <div class="section-desc">Where quotes can be started and what they contain</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">📌 3 Entry Points</div>
+          <div class="timeline">
+            <div class="timeline-item">
+              <div class="timeline-dot" style="background:#3b82f6;"></div>
+              <div class="timeline-item-content">
+                <div class="timeline-item-title">From a Lead</div>
+                <div class="timeline-item-desc">SDR/Sales clicks "New Quote" from within a lead. Customer info pre-filled. Customer tab hidden.</div>
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-dot" style="background:var(--gold-dark);"></div>
+              <div class="timeline-item-content">
+                <div class="timeline-item-title">From CRM</div>
+                <div class="timeline-item-desc">"Add Quote" button on a customer profile. Customer pre-filled and locked.</div>
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-dot" style="background:var(--navy);"></div>
+              <div class="timeline-item-content">
+                <div class="timeline-item-title">New Quote button</div>
+                <div class="timeline-item-desc">Blank form. Rep enters customer details. Duplicate detection runs on phone entry.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">📋 Quote Contents</div>
+          <ul style="font-size:13px;color:var(--muted);line-height:2;padding-left:16px;">
+            <li>Title, priority, due date, rush flag</li>
+            <li>Line items: product type, material, size, qty, unit price</li>
+            <li>Add-on finishings (UV, foil, perforation, die cut)</li>
+            <li>Shipping + tax rate + discount (% or $)</li>
+            <li>Payment methods</li>
+            <li>Prepayment: Full or Partial (% / fixed amount)</li>
+            <li>Send via: Email / SMS / WhatsApp / In-person</li>
+            <li>Follow-up schedule</li>
+            <li>Special requirements &amp; internal notes</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">💰 Two Order Flows</div>
+        <div class="two-col" style="margin-top:8px;">
+          <div style="background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:14px;">
+            <strong style="font-size:13px;color:var(--navy);">Quote First</strong>
+            <p style="font-size:12.5px;color:var(--muted);margin-top:6px;">Send a quote for the customer to review and approve online. They get a private link, review everything, and click "Confirm &amp; Accept." This auto-generates the order.</p>
+          </div>
+          <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;">
+            <strong style="font-size:13px;color:#166534;">Direct Order</strong>
+            <p style="font-size:12.5px;color:var(--muted);margin-top:6px;">Customer is already committed. Skip the quote step — send a payment link directly. Good for walk-in customers or repeat clients.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: QUOTE DELIVERY -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="quote-delivery">
+      <div class="section-header">
+        <div class="section-icon">📤</div>
+        <div>
+          <div class="section-title">Quote Delivery</div>
+          <div class="section-desc">How quotes reach the customer</div>
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-title">Delivery Channels</div>
+        <div class="flow-steps">
+          <div class="flow-step">
+            <div class="flow-node action">Rep clicks "Send Quote"</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node sent">Status → "Sent"</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node action">Delivery fired</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-item" style="border-left:3px solid #3b82f6;">
+          <div class="feature-item-title">📧 Email</div>
+          <p>Full HTML email with company branding, all line items, pricing summary, and a gold "View &amp; Confirm Quote" button. Sent via <strong>Instantly AI</strong>.</p>
+        </div>
+        <div class="feature-item" style="border-left:3px solid #16a34a;">
+          <div class="feature-item-title">💬 SMS</div>
+          <p>Short text message with the order total and a direct link to the quote page. Sent via <strong>Twilio</strong>. Phone numbers auto-normalised to international format.</p>
+        </div>
+        <div class="feature-item" style="border-left:3px solid #16a34a;">
+          <div class="feature-item-title">📱 WhatsApp</div>
+          <p>Same message as SMS, delivered to the customer's WhatsApp number. Sent via <strong>Twilio</strong> WhatsApp channel.</p>
+        </div>
+        <div class="feature-item" style="border-left:3px solid var(--muted);">
+          <div class="feature-item-title">🤝 In-Person</div>
+          <p>No message is sent. Status changes to "Sent" so the rep knows the quote has been presented. The public link is still available for the customer to sign off on.</p>
+        </div>
+      </div>
+
+      <div class="info-box navy" style="margin-top:12px;">
+        <span class="info-icon">🔗</span>
+        <div>Every quote has a unique, unguessable private URL (<code style="background:rgba(27,43,75,0.1);padding:1px 5px;border-radius:3px;">/q/[token]</code>). No login is required for the customer. The link can be resent at any time from the quote detail page.</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: CUSTOMER APPROVAL -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="customer-approval">
+      <div class="section-header">
+        <div class="section-icon">✅</div>
+        <div>
+          <div class="section-title">Customer Approval</div>
+          <div class="section-desc">The customer-facing quote page and confirmation flow</div>
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-title">Customer Journey</div>
+        <div class="flow-steps">
+          <div class="flow-step">
+            <div class="flow-node action">Receives link</div>
+            <div class="flow-note">Via email / SMS / WhatsApp</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node sent">Reviews quote</div>
+            <div class="flow-note">Line items, pricing, payment schedule</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node action">Clicks "Confirm &amp; Accept"</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node order">Order created</div>
+            <div class="flow-note">ORD-YYYY-NNN generated</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node completed">"Quote Confirmed!" shown</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📄 What the Customer Sees</div>
+        <div class="two-col" style="margin-top:8px;">
+          <ul style="font-size:13px;color:var(--muted);line-height:2;padding-left:16px;">
+            <li>Company logo and branding</li>
+            <li>Quote reference number</li>
+            <li>Rush order banner (if applicable)</li>
+            <li>All line items (product, size, qty, price)</li>
+          </ul>
+          <ul style="font-size:13px;color:var(--muted);line-height:2;padding-left:16px;">
+            <li>Pricing summary (subtotal → tax → total)</li>
+            <li>Payment schedule (deposit + balance if partial)</li>
+            <li>Accepted payment methods</li>
+            <li>Special requirements</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="info-box success">
+        <span class="info-icon">✅</span>
+        <div>Once the customer confirms, the CRM instantly: creates the order, assigns the ORD-YYYY-NNN reference, marks the linked lead as "Won", locks the record so only admins can modify it, and makes the payment link available for the rep to send.</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: ORDER MANAGEMENT -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="order-management">
+      <div class="section-header">
+        <div class="section-icon">📦</div>
+        <div>
+          <div class="section-title">Order Management</div>
+          <div class="section-desc">What happens to an order after it's confirmed</div>
+        </div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-title">Order Status Flow</div>
+        <div class="flow-steps">
+          <div class="flow-step">
+            <div class="flow-node order">order</div>
+            <div class="flow-note">Confirmed — in queue</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node production">in_production</div>
+            <div class="flow-note">Being printed/made</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node completed">completed</div>
+            <div class="flow-note">Delivered &amp; done</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">📋 Orders Page Tabs</div>
+          <table class="data-table">
+            <thead><tr><th>Tab</th><th>Content</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill order">All</span></td><td>Active orders + cancelled</td></tr>
+              <tr><td><span class="pill success">Active</span></td><td>Orders in production queue</td></tr>
+              <tr><td><span class="pill cancelled">Cancelled</span></td><td>Cancelled orders (terminal)</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card">
+          <div class="card-title">📊 Order Detail Header</div>
+          <ul style="font-size:13px;color:var(--muted);line-height:2;padding-left:16px;">
+            <li>Order reference (ORD-YYYY-NNN)</li>
+            <li>Original quote title as subtitle</li>
+            <li>Customer confirmation status badge</li>
+            <li>Payment status badge (Unpaid / Partial / Paid)</li>
+            <li>Save PDF button</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">📱 Mobile-Friendly Design</div>
+        <p style="font-size:13px;color:var(--muted);">The order/quote detail page is fully responsive. On mobile: the customer info card stacks above the content, tabs scroll horizontally, form fields go single-column, and action buttons wrap. The header abbreviates badge labels automatically.</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: PAYMENT FLOW -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="payment-flow">
+      <div class="section-header">
+        <div class="section-icon">💳</div>
+        <div>
+          <div class="section-title">Payment Flow</div>
+          <div class="section-desc">How deposits and payments are tracked and communicated</div>
+        </div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">💰 Prepayment Options</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Set at quote creation time:</p>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;font-size:12.5px;">
+              <strong style="color:#166534;">Full Payment</strong> — customer pays 100% upfront. No deposit breakdown shown on the quote page.
+            </div>
+            <div style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;padding:12px;font-size:12.5px;">
+              <strong style="color:#92400e;">Partial Payment</strong> — set a % or fixed deposit. Quote page shows "Deposit Due Now" + "Balance Due on Completion."
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">📊 Payment Status Tracking</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Two independent trackers on every order:</p>
+          <table class="data-table">
+            <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+            <tbody>
+              <tr><td><span class="pill cancelled">Unpaid</span></td><td>No payment received yet</td></tr>
+              <tr><td><span class="pill warning">Partial</span></td><td>Deposit received; balance pending</td></tr>
+              <tr><td><span class="pill success">Paid</span></td><td>Fully paid — record locks</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">📨 Payment Link Bar</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">On any confirmed, unpaid order — even if the record is locked — any team member can send a payment reminder directly from the order page:</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <div style="flex:1;min-width:130px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:12px;font-size:12.5px;text-align:center;">
+            <div style="font-size:18px;margin-bottom:4px;">📧</div>
+            <strong>Email</strong><br><span style="color:var(--muted);">Full payment reminder email with "Pay Now" button</span>
+          </div>
+          <div style="flex:1;min-width:130px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;font-size:12.5px;text-align:center;">
+            <div style="font-size:18px;margin-bottom:4px;">💬</div>
+            <strong>SMS</strong><br><span style="color:var(--muted);">Short text with amount + payment link</span>
+          </div>
+          <div style="flex:1;min-width:130px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;font-size:12.5px;text-align:center;">
+            <div style="font-size:18px;margin-bottom:4px;">📱</div>
+            <strong>WhatsApp</strong><br><span style="color:var(--muted);">Same message to WhatsApp number</span>
+          </div>
+          <div style="flex:1;min-width:130px;background:#f8fafc;border:1px solid var(--border);border-radius:8px;padding:12px;font-size:12.5px;text-align:center;">
+            <div style="font-size:18px;margin-bottom:4px;">🔗</div>
+            <strong>Copy Link</strong><br><span style="color:var(--muted);">Paste into any channel manually</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: HIGH-VALUE THRESHOLD -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="hvt">
+      <div class="section-header">
+        <div class="section-icon">⚡</div>
+        <div>
+          <div class="section-title">High-Value Threshold</div>
+          <div class="section-desc">Automatic routing of large deals from SDRs to Sales</div>
+        </div>
+      </div>
+
+      <div class="info-box warning">
+        <span class="info-icon">⚡</span>
+        <div><strong>Business Rule:</strong> If an SDR creates a quote above the configured dollar threshold, they cannot send it directly to the customer. The system automatically routes it to the Sales team, who review and take ownership.</div>
+      </div>
+
+      <div class="flow">
+        <div class="flow-title">High-Value Quote Flow</div>
+        <div class="flow-steps">
+          <div class="flow-step">
+            <div class="flow-node action">SDR builds quote</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node warning" style="background:#fef3c7;border-color:#fde68a;color:#92400e;">Total &gt; $5,000</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node routed">Auto-Routed ⚡</div>
+            <div class="flow-note">30s countdown modal</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node action">Sales sees it</div>
+            <div class="flow-note">"Routed to Sales" tab</div>
+          </div>
+          <div class="flow-arrow">→</div>
+          <div class="flow-step">
+            <div class="flow-node order">Sales Claims &amp; Sends</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">⚙️ Configurable</div>
+        <p style="font-size:13px;color:var(--muted);">The high-value threshold ($) is set in <strong>Admin → Company Settings</strong>. The admin can change it at any time. Only Sales and Admin users can build and send quotes above this amount without restriction.</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: RECORD LOCKING -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="record-locking">
+      <div class="section-header">
+        <div class="section-icon">🔒</div>
+        <div>
+          <div class="section-title">Record Locking</div>
+          <div class="section-desc">Protecting confirmed orders from accidental changes</div>
+        </div>
+      </div>
+
+      <div class="lock-box">
+        <span style="font-size:18px;">🔒</span>
+        <div><strong>Once a customer confirms a quote</strong>, the record is locked for all SDR and Sales users. They can view it and send payment reminders, but they cannot edit the line items, pricing, or cancel the order. Only an Admin can make changes or cancel a confirmed order.</div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📋 Lock States</div>
+        <table class="data-table">
+          <thead>
+            <tr><th>Situation</th><th>SDR / Sales</th><th>Admin</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Draft or Sent quote</td>
+              <td>✅ Can edit &amp; cancel</td>
+              <td>✅ Full access</td>
+            </tr>
+            <tr>
+              <td>Customer-confirmed order</td>
+              <td>🔒 View only + send payment reminders</td>
+              <td>✅ Full access (edit &amp; cancel)</td>
+            </tr>
+            <tr>
+              <td>Manually converted order (rep)</td>
+              <td>🔒 View only + send payment reminders</td>
+              <td>✅ Full access</td>
+            </tr>
+            <tr>
+              <td>Cancelled ticket</td>
+              <td>🔒 View only</td>
+              <td>🔒 View only</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="info-box success">
+        <span class="info-icon">✅</span>
+        <div>Payment reminders are <strong>always available</strong> regardless of lock state. A locked order can still have its payment link sent via Email, SMS, or WhatsApp directly from the order page — this is a separate action from editing.</div>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: ACTIVITY LOG -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="notifications">
+      <div class="section-header">
+        <div class="section-icon">🔔</div>
+        <div>
+          <div class="section-title">Activity Log</div>
+          <div class="section-desc">Full audit trail of everything that happens in the system</div>
+        </div>
+      </div>
+
+      <div class="info-box info">
+        <span class="info-icon">📜</span>
+        <div>Every action in the CRM is logged automatically. The Activity Log page (<code style="background:rgba(37,99,235,0.08);padding:1px 5px;border-radius:3px;">/notifications</code>) shows a paginated feed of all events across all users, leads, and tickets. Each entry shows who did what, when, and on which record.</div>
+      </div>
+
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">📋 Lead Activity Events</div>
+          <ul style="font-size:12.5px;color:var(--muted);line-height:2;padding-left:16px;">
+            <li>Lead created / edited</li>
+            <li>Lead validated / status changed</li>
+            <li>Lead routed to Sales</li>
+            <li>Lead put on hold / resumed</li>
+            <li>Lead rejected (with reason)</li>
+            <li>Lead merged (duplicate resolution)</li>
+            <li>Sales rep claimed a lead</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="card-title">📋 Ticket/Order Activity Events</div>
+          <ul style="font-size:12.5px;color:var(--muted);line-height:2;padding-left:16px;">
+            <li>Ticket created / updated</li>
+            <li>Quote sent (or resent)</li>
+            <li>Customer confirmed the quote</li>
+            <li>Rep converted quote to order</li>
+            <li>Payment reminder sent (channel + destination logged)</li>
+            <li>Status changed (routed, claimed, cancelled)</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">⚡ Real-Time Updates</div>
+        <p style="font-size:13px;color:var(--muted);">The system uses Supabase Realtime. When any lead or ticket changes — from any user, in any browser — everyone sees the update instantly without refreshing. Tab badge counts update live. The Activity Log refreshes automatically.</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: INTEGRATIONS -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="integrations">
+      <div class="section-header">
+        <div class="section-icon">🔗</div>
+        <div>
+          <div class="section-title">Integrations</div>
+          <div class="section-desc">External services connected to the CRM</div>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-item" style="border-left:3px solid #3b82f6;">
+          <div class="feature-item-title">📧 Instantly AI <span class="pill info" style="font-size:10px;">Live ✓</span></div>
+          <p>Sends all quote emails and payment reminder emails. Full HTML templates with company branding, line items, pricing, and CTA buttons. Configured in Admin → Integrations.</p>
+        </div>
+        <div class="feature-item" style="border-left:3px solid #e5393b;">
+          <div class="feature-item-title">📱 Twilio <span class="pill info" style="font-size:10px;">Live ✓</span></div>
+          <p>Sends all SMS and WhatsApp messages. Toll-free number. Phone numbers are automatically formatted to international E.164 standard (+1XXXXXXXXXX). Configured in Admin → Integrations.</p>
+        </div>
+        <div class="feature-item" style="border-left:3px solid #635bff;">
+          <div class="feature-item-title">💳 Stripe <span class="pill draft" style="font-size:10px;">Planned</span></div>
+          <p>Will handle online payment collection via the public quote page. Prepayment webhooks will auto-update deposit status. Placeholder is built; wiring is deferred.</p>
+        </div>
+        <div class="feature-item" style="border-left:3px solid #00b5ad;">
+          <div class="feature-item-title">🏦 Zelle <span class="pill draft" style="font-size:10px;">Planned</span></div>
+          <p>Will match Zelle transfers via memo code. Manual "Mark as Paid" fallback available. Placeholder is built; wiring is deferred.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">📄 PDF Export</div>
+        <p style="font-size:13px;color:var(--muted);">Every quote and order can be downloaded as a PDF directly from the detail page. The PDF includes company letterhead, Bill To block, line items table, full pricing breakdown, payment methods, and a gold footer. One click — no print dialog.</p>
+      </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: ADMIN -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="admin">
+      <div class="section-header">
+        <div class="section-icon">⚙️</div>
+        <div>
+          <div class="section-title">Admin Panel</div>
+          <div class="section-desc">Full control over users, settings, and the CRM configuration</div>
+        </div>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-item">
+          <div class="feature-item-title">👤 Users</div>
+          <p>Create users with a temporary password (no email needed). Assign roles. Deactivate accounts. Reset passwords. Require password change on next login.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">🔑 Roles &amp; Permissions</div>
+          <p>Create custom roles. Toggle page-level access for every role using a permissions matrix. All changes take effect immediately — no code changes required.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">📋 Dropdown Options</div>
+          <p>All dropdown options (lead sources, industries, payment types, quote channels, product priorities, etc.) are managed here. Add, rename, reorder, or deactivate options.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">🖨️ Products Catalog</div>
+          <p>Manage product types and materials available in the Line Items tab of quotes. Link materials to product types. Deactivate products without deleting historical data.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">🏢 Company Settings</div>
+          <p>Logo, company name, address, phone, email, website. Default tax rate. High-Value Threshold amount. Rush surcharge %. All used in PDF exports and email templates.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-item-title">🔗 Integrations</div>
+          <p>Configure and test Twilio (SMS/WhatsApp) and Instantly AI (email) directly from the admin panel. Send a test message to verify everything is working.</p>
+        </div>
+      </div>
+
+      <div class="info-box navy" style="margin-top:12px;">
+        <span class="info-icon">🔐</span>
+        <div>All users must log in with email + password, then complete a <strong>TOTP 2-Factor Authentication</strong> step (authenticator app). New users must change their temporary password on first login before accessing any page.</div>
+      </div>
+    </section>
+
+    <!-- Summary Flow -->
+    <section class="section">
+      <div class="section-header">
+        <div class="section-icon">🗺️</div>
+        <div>
+          <div class="section-title">Full Journey Summary</div>
+          <div class="section-desc">From first contact to completed order — at a glance</div>
+        </div>
+      </div>
+
+      <div class="flow" style="overflow-x:auto;">
+        <div class="flow-title">Complete Lead → Order → Payment Flow</div>
+        <div style="min-width:680px;">
+          <div style="display:flex;align-items:center;gap:0;margin-bottom:12px;flex-wrap:nowrap;">
+            <div class="flow-step"><div class="flow-node action" style="font-size:11px;min-width:90px;">Contact<br>arrives</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><div class="flow-node pending" style="min-width:90px;">Lead<br>created</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><div class="flow-node validated" style="min-width:90px;">SDR<br>validates</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><div class="flow-node order" style="min-width:90px;background:#eff6ff;border-color:#93c5fd;color:#1d4ed8;">Sales<br>works it</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><div class="flow-node sent" style="min-width:90px;">Quote<br>created</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><div class="flow-node action" style="min-width:90px;font-size:11px;">Quote sent<br>to customer</div></div>
+          </div>
+          <div style="padding-left:380px;display:flex;align-items:center;gap:0;flex-wrap:nowrap;">
+            <div class="flow-step"><div class="flow-node order" style="min-width:90px;">Customer<br>confirms ✅</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><div class="flow-node production" style="min-width:90px;">Order<br>ORD-YYYY-NNN</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><div class="flow-node action" style="min-width:90px;font-size:11px;">Payment<br>reminder sent</div></div>
+            <div class="flow-arrow">→</div>
+            <div class="flow-step"><div class="flow-node completed" style="min-width:90px;">Paid ✓<br>Complete</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="footer">
+  <strong>BazaarPrinting CRM</strong> — Built with Next.js 16, Supabase, Tailwind CSS, Twilio, and Instantly AI.<br>
+  <span style="font-size:11px;margin-top:4px;display:block;">This document reflects the system as of May 2026. All features described are live and operational.</span>
+</footer>
+
+<script>
+  // Highlight active sidebar link on scroll
+  const sections = document.querySelectorAll('.section');
+  const links = document.querySelectorAll('.sidebar a');
+  const obs = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        links.forEach(l => l.classList.remove('active'));
+        const target = document.querySelector('.sidebar a[href="#' + e.target.id + '"]');
+        if (target) target.classList.add('active');
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+  sections.forEach(s => { if (s.id) obs.observe(s); });
+</script>
+
+</body>
+</html>

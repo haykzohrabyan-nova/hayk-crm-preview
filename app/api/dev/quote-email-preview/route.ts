@@ -9,7 +9,7 @@ export async function GET() {
   const { html } = buildQuoteEmail({
     customerName: "John Smith",
     title: "Business Cards — Double Sided Gloss",
-    referenceCode: null,
+    referenceCode: "6E8E2B03",
     skus: [
       {
         product_type: "Business Cards",

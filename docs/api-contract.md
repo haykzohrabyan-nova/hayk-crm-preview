@@ -25,9 +25,10 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 | Param | Type | Description |
 |-------|------|-------------|
 | `status` | `string` | Filter by `status` value |
-| `prev_status` | `string` | Filter by `prev_status` value — used by Sales Rejected tab to restrict to `Routed to Sales` (sales-pipeline rejections only) |
-| `scope` | `string` | `mine` — restrict to leads where `sdr_id = current user` (SDR scoped tabs) |
+| `prev_status` | `string` | Filter by `prev_status` value — used by Sales Rejected tab to restrict to `Routed to Sales` |
+| `scope` | `string` | `mine` — restrict to leads where `sdr_id = current user` |
 | `search` | `string` | Full-text search on name, email, phone, company |
+| `won` | `"true"` | Return leads where `sales_status = 'Won'`. SDR sees own won leads; admin sees all. Response rows include joined order fields: `reference_code`, `quote_final_total`, and `created_by` (closer's full name from `user_profiles`). |
 
 **Response `200`:**
 ```json
@@ -35,6 +36,28 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
   "leads": [Lead]
 }
 ```
+
+---
+
+### `GET /api/leads/workspace/counts`
+
+Returns tab badge counts for the SDR leads workspace. Scoped per role same as the workspace endpoint.
+
+**Response `200`:**
+```json
+{
+  "counts": {
+    "all": 0,
+    "hold": 0,
+    "routed": 0,
+    "rejected": 0,
+    "won": 0
+  }
+}
+```
+
+- `won` — count of leads where `sales_status = 'Won'` (SDR sees own; admin sees all)
+- All counts refresh when `bazaar:refresh-counts` fires
 
 ---
 
@@ -418,7 +441,23 @@ Partial ticket update. Two distinct operation modes:
 - Logs `order_ticket_status_changed` activity with `payload: { from: "routed", to: "draft", action: "claimed" }`
 - Bypasses the normal ownership check (`created_by_id = userId`)
 
-**Mode 2 — Normal update:**
+**Mode 2 — Payment Reminder:**
+```json
+{
+  "send_payment_reminder": true,
+  "reminder_channel": "email | sms | whatsapp",
+  "reminder_destination": "string"
+}
+```
+- Ticket must be `client_confirmed = true` (confirmed order)
+- Fetches full ticket + company settings, calls `sendPaymentReminder()` from `lib/integrations/send-quote.ts`
+- Uses `lib/integrations/payment-reminder-template.ts` for email channel; short SMS body for SMS/WhatsApp
+- Phone numbers are auto-normalised to E.164 format via `toE164()` (e.g. `3233413620` → `+13233413620`)
+- Delivery is fire-and-forget — errors logged to console, never block the API response
+- Logs `ticket_payment_reminder_sent` activity with `{ channel, destination }` in payload
+- Returns `200` immediately; `ok: true` in body
+
+**Mode 3 — Normal update:**
 
 Body: Any subset of ticket fields plus optional:
 ```json
@@ -429,8 +468,13 @@ Body: Any subset of ticket fields plus optional:
 
 `activity_by_role` is stripped from the stored record but used to attribute the activity log entry.
 
-**Business rules (Mode 2):**
-- If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery via Twilio / Instantly AI)
+**Business rules (Mode 3):**
+- If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
+- If `ticket_status` transitions to `"order"` (manual "Convert to Order"):
+  - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
+  - Sets `ticket_kind = "order"`
+  - Logs `ticket_converted` activity
+  - If ticket has `linked_lead_id`: updates `leads.sales_status = 'Won'` on the linked lead
 - If `quote_approval_last_requested_at` is set → logs `quote_approval_requested`
 - If `follow_up_completed` transitions to `true` → logs `quote_follow_up_completed`
 - If `follow_up_at` is reset → logs `quote_follow_up_reset`
@@ -489,6 +533,7 @@ Returns lightweight tab badge counts. Scoped per role.
     "approved": 0,
     "orders": 0,
     "routed": 0,
+    "cancelled": 0,
     "total": 0
   }
 }
@@ -496,6 +541,7 @@ Returns lightweight tab badge counts. Scoped per role.
 
 - **SDR:** `routed` = count of their own routed tickets (subtracted from `all` on the Quotes page)
 - **Sales/Admin:** `routed` = count of ALL routed tickets from any SDR
+- `cancelled` = count of cancelled tickets (used by Orders page "Cancelled" tab badge)
 
 ---
 
@@ -570,7 +616,8 @@ Customer confirms a quote, converting it to an order.
 - Ticket must have `ticket_status = "sent"`; returns `400` if already confirmed or not in sent state
 - Sets `client_confirmed = true`, `ticket_status = "order"`, `ticket_kind = "order"`
 - Generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
-- Logs `order_ticket_status_changed` activity with `by_user_id = null` (customer action)
+- Logs `order_ticket_status_changed` and `ticket_client_confirmed` activities with `by_user_id = null` (customer action)
+- If ticket has `linked_lead_id`: updates `leads.sales_status = 'Won'` on the linked lead (SDR/Sales Won tracking)
 
 **Response `200`:**
 ```json

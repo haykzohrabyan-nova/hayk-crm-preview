@@ -11,11 +11,51 @@ export async function GET(request: NextRequest) {
   const search = searchParams.get("search")?.trim().toLowerCase() ?? "";
   // scope=mine → filter to leads the current SDR worked (sdr_id = userId)
   const scope = searchParams.get("scope") ?? "";
-  // prev_status → restrict rows to those whose previous status matches (e.g.
-  // "Routed to Sales" to show only sales-pipeline rejections, not SDR rejections)
+  // prev_status → restrict rows to those whose previous status matches
   const prevStatus = searchParams.get("prev_status") ?? "";
+  // won=true → fetch won leads (sales_status = "Won"), scoped to this SDR
+  const won = searchParams.get("won") === "true";
 
   const admin = createAdminClient();
+
+  // Won tab: leads where sales_status = "Won", scoped to this SDR (or all for admin)
+  if (won) {
+    let wonQuery = admin
+      .from("leads")
+      .select(
+        "*, customer:customers(*), sales_owner:user_profiles!leads_sales_owner_id_fkey(id,full_name), tickets:job_tickets(id,reference_code,quote_final_total,ticket_status,created_by_id,created_by:user_profiles!job_tickets_created_by_id_fkey(id,full_name))"
+      )
+      .eq("is_inbox", false)
+      .eq("sales_status", "Won")
+      .order("updated_at", { ascending: false });
+
+    if (roleName !== "admin" && userId) {
+      wonQuery = wonQuery.eq("sdr_id", userId);
+    }
+
+    if (search) {
+      // search applied client-side below
+    }
+
+    const { data, error } = await wonQuery;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    let leads = data ?? [];
+    if (search) {
+      leads = leads.filter((lead) => {
+        const c = lead.customer;
+        return (
+          c?.first_name?.toLowerCase().includes(search) ||
+          c?.last_name?.toLowerCase().includes(search) ||
+          c?.email?.toLowerCase().includes(search) ||
+          c?.phone?.includes(search) ||
+          c?.company?.toLowerCase().includes(search)
+        );
+      });
+    }
+    return NextResponse.json({ leads });
+  }
+
   let query = admin
     .from("leads")
     .select(

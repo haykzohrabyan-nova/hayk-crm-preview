@@ -31,7 +31,7 @@ app/
     ├── dashboard/page.tsx            ✓ EXISTS — role router (SDR / Sales / Admin dashboards)
     │
     ├── leads/page.tsx                ✓ EXISTS (SDR + Admin only)
-    │   └── Tabs: All Leads | On Hold | Directed to Sales | Rejected
+    │   └── Tabs: All Leads | On Hold | Directed to Sales | Rejected | Won (shows orders from SDR's leads)
     │
     ├── sales/page.tsx                ✓ EXISTS (Sales + Admin only)
     │   └── Tabs: Pipeline | On Hold | Rejected
@@ -46,7 +46,7 @@ app/
     │
     ├── orders/page.tsx               ✓ EXISTS — Orders list (OrdersPage component)
     │   ├── Tabs: All | Active | Cancelled
-    │   └── [id]/page.tsx             ✓ EXISTS — Order detail (reuses QuoteDetail component)
+    │   └── [id]/page.tsx             ✓ EXISTS — Order detail (reuses QuoteDetail); record locked for non-admins after customer confirmation; Payment Link Bar; payment status badge in header; mobile-responsive
     │
     ├── notifications/page.tsx        ✓ EXISTS — Activity Log (ActivityLogSection); paginated, mobile-card, live refresh
     │
@@ -201,6 +201,7 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 | On Hold | `status = 'On Hold'` | count |
 | Directed to Sales | `status = 'Routed to Sales'` (just routed, not yet claimed) | count |
 | Rejected | `status = 'Rejected'` | — |
+| Won | `sales_status = 'Won'` — shows leads that converted to orders. SDR sees own; admin sees all. Table shows order reference, total, and closer's name. | count |
 
 ### `/sales` — Sales Pipeline
 
@@ -217,7 +218,7 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 | All | All non-order, non-routed tickets | count | All roles |
 | Draft | `ticket_status = 'draft'` | count | All roles |
 | Sent | `ticket_status = 'sent'` | count | All roles |
-| Won | `ticket_status = 'approved'` | count | All roles |
+| Won | `ticket_status = 'approved'` (legacy — `approved` status retired; tab remains for historical records) | count | All roles |
 | Routed to Sales | `ticket_status = 'routed'` | count | Sales + Admin only |
 
 ### `/orders` — Orders

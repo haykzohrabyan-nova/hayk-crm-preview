@@ -24,13 +24,13 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { VerifyDrawer } from "@/components/verify-drawer";
 import { Lead, Customer, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
-import { formatPhone } from "@/lib/utils/phone";
-import { validatePhone } from "@/lib/utils/phone";
+import { formatPhone, validatePhone } from "@/lib/utils/phone";
+import { formatCurrency } from "@/lib/utils/ticket-math";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "all" | "hold" | "routed" | "rejected";
+type Tab = "all" | "hold" | "routed" | "rejected" | "won";
 
 interface Toast {
   message: string;
@@ -735,10 +735,11 @@ export function LeadsPage() {
     statuses?: string[];
     scope?: string;
   }[] = [
-    { id: "all", label: "All Leads", status: null, statuses: ["Pending", "Validated"] },
-    { id: "hold", label: "On Hold", status: "On Hold", scope: "mine" },
-    { id: "routed", label: "Directed to Sales", status: "Routed to Sales", scope: "mine" },
-    { id: "rejected", label: "Rejected", status: "Rejected", scope: "mine" },
+    { id: "all",      label: "All Leads",         status: null,              statuses: ["Pending", "Validated"] },
+    { id: "hold",     label: "On Hold",            status: "On Hold",         scope: "mine" },
+    { id: "routed",   label: "Directed to Sales",  status: "Routed to Sales", scope: "mine" },
+    { id: "rejected", label: "Rejected",           status: "Rejected",        scope: "mine" },
+    { id: "won",      label: "Won",                status: null,              scope: "mine" },
   ];
 
   // ── Fetch leads ───────────────────────────────────────────────────────────
@@ -750,6 +751,7 @@ export function LeadsPage() {
     if (tabConf.status) params.set("status", tabConf.status);
     if (tabConf.scope) params.set("scope", tabConf.scope);
     if (search) params.set("search", search);
+    if (activeTab === "won") params.set("won", "true");
 
     const res = await fetch(`/api/leads/workspace?${params}`);
     const data = await res.json();
@@ -872,10 +874,11 @@ export function LeadsPage() {
 
   // Tabs
   const TABS: { id: Tab; label: string }[] = [
-    { id: "all", label: "All Leads" },
-    { id: "hold", label: "On Hold" },
-    { id: "routed", label: "Directed to Sales" },
+    { id: "all",      label: "All Leads" },
+    { id: "hold",     label: "On Hold" },
+    { id: "routed",   label: "Directed to Sales" },
     { id: "rejected", label: "Rejected" },
+    { id: "won",      label: "Won" },
   ];
 
   // Filtered leads (client-side search + owner filter)
@@ -1529,6 +1532,70 @@ export function LeadsPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* ── Won tab ── */}
+      {activeTab === "won" && (
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+          <table className="w-full text-sm">
+            <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
+              <tr>
+                {["Customer", "Company", "Order", "Amount", "Closed By", "Won"].map((h) => (
+                  <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <TableSkeleton cols={6} />
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    No won leads yet. Won leads appear here when a linked quote becomes an order.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((lead, idx) => {
+                  // Find the order ticket — the one with ticket_status = "order"
+                  const tickets = (lead as Lead & { tickets?: { id: string; reference_code: string | null; quote_final_total: number | null; ticket_status: string; created_by: { id: string; full_name: string | null } | null }[] }).tickets ?? [];
+                  const orderTicket = tickets.find((t) => t.ticket_status === "order") ?? tickets[0];
+                  return (
+                    <tr
+                      key={lead.id}
+                      className="cursor-pointer transition-colors"
+                      style={{
+                        background: idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
+                        borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
+                      onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)}
+                    >
+                      <td className="px-3 py-3 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
+                      <td className="px-3 py-3 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
+                      <td className="px-3 py-3">
+                        {orderTicket?.reference_code ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium" style={{ background: "var(--color-success-bg)", color: "var(--color-success)" }}>
+                            {orderTicket.reference_code}
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>
+                        {orderTicket?.quote_final_total != null ? formatCurrency(orderTicket.quote_final_total) : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {orderTicket?.created_by?.full_name ?? "—"}
+                      </td>
+                      <td className="px-3 py-3 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {relativeTime(lead.updated_at)}
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {/* Add Lead Modal */}

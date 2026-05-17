@@ -129,20 +129,21 @@ function NotFound() {
   );
 }
 
-function AlreadyConfirmed({ referenceCode, companyName }: { referenceCode: string | null; companyName: string }) {
+function AlreadyConfirmed({ referenceCode, companyName, isOrder }: { referenceCode: string | null; companyName: string; isOrder: boolean }) {
+  const label = isOrder ? "Order" : "Quote";
   return (
     <div style={{ minHeight: "100vh", background: BG, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ textAlign: "center", maxWidth: 440, background: SURFACE, borderRadius: 16, padding: 40, boxShadow: "0 4px 24px rgba(0,0,0,0.08)" }}>
         <CheckCircle2 size={56} style={{ color: "#16A34A", margin: "0 auto 20px" }} />
-        <h1 style={{ fontSize: 22, fontWeight: 600, color: TEXT, marginBottom: 8 }}>Order Confirmed!</h1>
+        <h1 style={{ fontSize: 22, fontWeight: 600, color: TEXT, marginBottom: 8 }}>{label} Confirmed!</h1>
         {referenceCode && (
           <div style={{ display: "inline-block", background: BG, border: `1px solid ${BORDER}`, borderRadius: 8, padding: "8px 20px", margin: "8px 0 16px", fontWeight: 600, color: NAVY, fontSize: 15 }}>
             {referenceCode}
           </div>
         )}
         <p style={{ fontSize: 14, color: MUTED, lineHeight: 1.6 }}>
-          Thank you! Your order has been confirmed and is being processed by <strong style={{ color: TEXT }}>{companyName}</strong>.
-          You will be contacted with updates on your order.
+          Thank you! Your {label.toLowerCase()} has been confirmed and is being processed by <strong style={{ color: TEXT }}>{companyName}</strong>.
+          You will be contacted with updates.
         </p>
       </div>
     </div>
@@ -211,13 +212,13 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
     [company?.city, company?.state, company?.zip].filter(Boolean).join(", "),
   ].filter(Boolean) as string[];
 
-  if (confirmed) {
-    return <AlreadyConfirmed referenceCode={confirmedRef} companyName={companyName} />;
-  }
-
-  const isSent = ticket?.ticket_status === "sent";
   const isOrder = ticket?.order_source === "direct";
+  const isSent = ticket?.ticket_status === "sent";
   const isCancelled = ticket?.ticket_status === "cancelled";
+
+  if (confirmed) {
+    return <AlreadyConfirmed referenceCode={confirmedRef} companyName={companyName} isOrder={isOrder ?? false} />;
+  }
 
   const skus = ticket?.quote_skus ?? [];
   const paymentTypes = ticket?.quote_payment_types ?? [];

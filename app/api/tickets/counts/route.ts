@@ -30,13 +30,14 @@ export async function GET() {
   const rows = data ?? [];
 
   const counts: Record<string, number> = {
-    drafts:   rows.filter((r) => r.ticket_status === "draft").length,
-    sent:     rows.filter((r) => r.ticket_status === "sent").length,
-    approved: rows.filter((r) => r.ticket_status === "approved").length,
-    orders:   rows.filter((r) => r.ticket_status === "order").length,
-    total:    rows.length,
+    drafts:    rows.filter((r) => r.ticket_status === "draft").length,
+    sent:      rows.filter((r) => r.ticket_status === "sent").length,
+    approved:  rows.filter((r) => r.ticket_status === "approved").length,
+    orders:    rows.filter((r) => r.ticket_status === "order").length,
+    cancelled: rows.filter((r) => r.ticket_status === "cancelled").length,
+    total:     rows.length,
     // Count routed tickets from this user's own rows (SDR) — overridden below for sales/admin
-    routed:   rows.filter((r) => r.ticket_status === "routed").length,
+    routed:    rows.filter((r) => r.ticket_status === "routed").length,
   };
 
   // For sales/admin: replace with global routed count (all SDRs)

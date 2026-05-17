@@ -78,16 +78,28 @@ export async function POST(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  // Log activity
+  // Log activity — dedicated type so History tab shows this as a customer action
   await admin.from("activities").insert({
-    type: "order_ticket_status_changed",
+    type: "ticket_client_confirmed",
     lead_id: ticket.linked_lead_id ?? null,
     customer_id: ticket.customer_id ?? null,
     ticket_id: ticket.id,
-    by_user_id: null, // customer action, no CRM user
-    payload: { from: "sent", to: "order", action: "client_confirmed" },
+    by_user_id: null, // customer action — no CRM user
+    payload: { via: "public_link", reference_code },
     created_at: now,
   });
+
+  // Mark the linked lead as Won so the SDR and Sales get credit.
+  // This covers all three cases:
+  //   Case 1: SDR routed → Sales closed (sdr_id ≠ created_by_id)
+  //   Case 2: SDR built quote directly below threshold (sdr_id = created_by_id)
+  //   Case 3: Direct order with no lead (linked_lead_id is null — skip)
+  if (ticket.linked_lead_id) {
+    await admin
+      .from("leads")
+      .update({ sales_status: "Won", updated_at: now })
+      .eq("id", ticket.linked_lead_id);
+  }
 
   return NextResponse.json({ ok: true, reference_code });
 }

@@ -76,9 +76,14 @@ function displayName(o: OrderTicket): string {
   return [c?.first_name, c?.last_name].filter(Boolean).join(" ") || "—";
 }
 
+// Parse a YYYY-MM-DD date string as local midnight (not UTC midnight)
+function parseLocalDate(dateStr: string): Date {
+  return new Date(dateStr + "T00:00:00");
+}
+
 function isDueSoon(dateStr: string | null): boolean {
   if (!dateStr) return false;
-  const due = new Date(dateStr);
+  const due = parseLocalDate(dateStr);
   const now = new Date();
   const diffDays = (due.getTime() - now.getTime()) / 86400000;
   return diffDays <= 2 && diffDays >= 0;
@@ -86,7 +91,7 @@ function isDueSoon(dateStr: string | null): boolean {
 
 function isOverdue(dateStr: string | null): boolean {
   if (!dateStr) return false;
-  return new Date(dateStr) < new Date();
+  return parseLocalDate(dateStr) < new Date();
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -107,9 +112,9 @@ export default function OrdersPage() {
       .then((d) => {
         if (d.counts) {
           setTabCounts({
-            all:       d.counts.orders,
-            active:    d.counts.orders,
-            cancelled: 0,
+            all:       (d.counts.orders ?? 0) + (d.counts.cancelled ?? 0),
+            active:    d.counts.orders   ?? 0,
+            cancelled: d.counts.cancelled ?? 0,
           });
         }
       })
@@ -322,7 +327,7 @@ export default function OrdersPage() {
                                    "var(--color-text-muted)",
                           }}
                         >
-                          {new Date(o.due_date).toLocaleDateString()}
+                          {new Date(o.due_date + "T00:00:00").toLocaleDateString()}
                           {overdue && " ⚠"}
                         </span>
                       ) : (

@@ -227,9 +227,9 @@ export type TicketKind = 'quote' | 'order'
 export type TicketStatus =
   | 'draft'
   | 'sent'
-  | 'approved'
-  | 'routed'      // SDR quote exceeded high-value threshold — awaiting Sales claim
-  | 'order'       // confirmed production order (appears on Orders page)
+  | 'approved'      // RETIRED — kept for backwards compat only; new code never sets this
+  | 'routed'        // SDR quote exceeded high-value threshold — awaiting Sales claim
+  | 'order'         // confirmed production order — set by customer confirm OR "Convert to Order" button
   | 'rejected'
   | 'in_production'
   | 'completed'
@@ -363,14 +363,14 @@ export interface CompanySettings {
 export type ActivityType =
   | 'lead_verified'
   | 'lead_manual_created'
-  | 'lead_edited'           // tracked field changes (no status change)
+  | 'lead_edited'                   // tracked field changes (no status change)
   | 'lead_status_changed'
   | 'lead_routed_to_sales'
-  | 'lead_rejected'         // payload: { from, reason, notes }
+  | 'lead_rejected'                 // payload: { from, reason, notes }
   | 'lead_held'
   | 'lead_resumed'
   | 'lead_merged'
-  | 'lead_sales_claimed'    // Sales rep claims an unclaimed routed lead
+  | 'lead_sales_claimed'            // Sales rep claims an unclaimed routed lead
   | 'contact_edited'
   | 'call_logged'
   | 'email_opened'
@@ -381,8 +381,11 @@ export type ActivityType =
   | 'quote_follow_up_reset'
   | 'order_ticket_created'
   | 'order_ticket_updated'
-  | 'order_ticket_status_changed'  // ticket_status transition (e.g. draft→routed, routed→draft on claim)
-  | 'ticket_client_confirmed'
+  | 'order_ticket_status_changed'   // ticket_status transition (e.g. draft→routed, routed→draft on claim)
+  | 'ticket_sent'                   // quote delivered to customer (send or resend). payload: { channel, destination, resend?: true }
+  | 'ticket_client_confirmed'       // customer confirmed via /q/[token] public page
+  | 'ticket_converted'              // rep clicked "Convert to Order". payload: { from, to: 'order', reference_code }
+  | 'ticket_payment_reminder_sent'  // payment reminder sent. payload: { channel, destination }
 
 export type ActivityChannel = 'SMS' | 'WhatsApp' | 'Email' | 'Call' | 'In-person'
 

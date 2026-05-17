@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
       },
       body: JSON.stringify({
         eaccount: sendingAccount,
-        to_address_email_list: to_email,
+        to_address_email_list: [to_email],
         subject: "BazaarPrinting CRM — Instantly connection test",
         body: {
           html: "<p>If you received this email, the Instantly AI integration with BazaarPrinting CRM is working correctly.</p>",

@@ -3,6 +3,94 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-16] — SMS E.164 fix + mobile-friendly order detail
+
+### Fixed
+- `lib/integrations/send-quote.ts`: Added `toE164()` phone normaliser — bare 10-digit US numbers (e.g. `3233413620`) are now auto-prefixed to `+13233413620` so Twilio delivers the SMS correctly. Applied to both `sendSms` and `sendPaymentReminder`.
+- `app/api/tickets/[id]/route.ts`: Improved payment reminder logging — logs success (channel + destination) and warns when reminder is skipped due to missing data.
+
+### Changed
+- `components/quote-detail.tsx` — mobile-responsive overhaul:
+  - Header: `flex-wrap`, `px-4 md:px-6`, title shrinks gracefully, badges abbreviated on small screens, PDF/Edit buttons are icon-only on mobile
+  - Error and lock banners: `mx-4 md:mx-6` responsive margin
+  - Two-column layout: `flex-col lg:flex-row` so customer info card stacks above content on mobile
+  - Customer info aside: `w-full lg:w-72` (no fixed width on mobile)
+  - Tabs: `overflow-x-auto` + `whitespace-nowrap` so they swipe horizontally
+  - Form grids: `grid-cols-1 sm:grid-cols-2` on all multi-column input rows
+  - Action bars: `flex-wrap` so buttons don't clip off-screen
+
+## [2026-05-16] — Payment reminder with channel selector
+
+### Added
+- `lib/integrations/payment-reminder-template.ts`: Dedicated email template for payment reminders — "Pay Now" focused, shows order reference + amount due + payment methods + big "Pay Now" CTA. No line items (customer already confirmed, they just need to pay).
+- `lib/integrations/send-quote.ts`: `sendPaymentReminder()` — sends payment reminder via Email (Instantly), SMS (Twilio), or WhatsApp (Twilio). Accepts channel + destination overrides independent of the original quote channel.
+- `components/quote-detail.tsx`: `PaymentLinkBar` now has a 3-way channel selector (Email / SMS / WhatsApp), a destination input pre-filled with the original channel destination, and a "Send Payment Link" button. Rep can switch channels before sending (e.g. originally emailed, now want to WhatsApp).
+- `app/api/tickets/[id]/route.ts`: `send_payment_reminder` now accepts `reminder_channel` and `reminder_destination` overrides, passed to `sendPaymentReminder()`.
+
+## [2026-05-16] — Payment link bar on confirmed orders
+
+### Added
+- `components/quote-detail.tsx`: **Payment link bar** shown on all confirmed (customer-approved) orders where payment is not yet complete. Visible to all roles regardless of record lock. Contains:
+  - Copyable public URL (`/q/[token]`) to paste into any channel
+  - "Resend via Email/SMS" button that re-sends the original quote email (the same link the customer already has) and logs a `ticket_payment_reminder_sent` activity
+  - Payment method label (Offline / Zelle / Card)
+- `app/api/tickets/[id]/route.ts`: `send_payment_reminder: true` body flag triggers re-delivery and activity log without touching the ticket fields.
+- `components/quote-detail.tsx`: History tab shows `ticket_payment_reminder_sent` events ("Payment reminder sent").
+
+## [2026-05-16] — SDR/Sales Won tracking + Won tab
+
+### Added
+- `components/leads-page.tsx`: New **Won** tab shows all leads where `sales_status = "Won"` — the leads that became real orders. Shows customer name, company, order reference code, final amount, who closed it, and when.
+- `app/api/leads/workspace/counts/route.ts`: `won` count added to the counts response, scoped to the SDR's own leads (admins see all).
+- `app/api/leads/workspace/route.ts`: `?won=true` query param returns won leads with linked ticket data (reference code, amount, closer name).
+
+### Changed
+- `app/api/public/quotes/[token]/confirm/route.ts`: When a customer confirms a quote, the linked lead's `sales_status` is now automatically set to `"Won"`. Covers Case 1 (SDR routed → Sales closed), Case 2 (SDR did it directly), and skips Case 3 (direct order, no lead).
+- `app/api/tickets/[id]/route.ts`: Same auto-update when a rep manually clicks "Convert to Order".
+
+## [2026-05-16] — HubSpot-style "Convert to Order" flow
+
+### Changed
+- `components/quote-detail.tsx`: "Mark Won" button renamed to **"Convert to Order"** and now targets `ticket_status = "order"` (not the orphan `approved` status).
+- `app/api/tickets/[id]/route.ts`: When a ticket is manually converted to `order` status, the API now auto-generates an `ORD-YYYY-NNN` reference code (same as customer confirmation path) and flips `ticket_kind` to `"order"`.
+- `app/api/tickets/[id]/route.ts`: Manual conversion logs a dedicated `ticket_converted` activity (distinct from `ticket_client_confirmed`), so History always shows who converted it.
+- `components/quote-detail.tsx`: Header badge is now three-way — **"Confirmed by Customer"** (green, customer clicked link), **"Converted to Order"** (blue, sales rep converted manually), or the regular status pill for quotes still in progress.
+- `components/quote-detail.tsx`: History tab handles `ticket_converted` activity type with label "Converted to order" and the generated reference code.
+
+## [2026-05-16] — Confirmed by Customer badge + edit lock
+
+### Changed
+- `components/quote-detail.tsx`: Header status badge replaced with a green "✓ Confirmed by Customer" badge when `client_confirmed = true`, instead of the generic "order" pill.
+- `components/quote-detail.tsx`: Edit button is now hidden for **all users** (including admin) once the customer has confirmed. Admin can still cancel via the bottom action bar.
+
+## [2026-05-16] — Record locking after customer approval
+
+### Changed
+- `components/quote-detail.tsx`: Once a quote is customer-approved and becomes an order (`ticket_status` is `order`, `in_production`, or `completed`), the record is now locked for all non-admin users. SDR and Sales roles cannot edit or cancel the ticket.
+- `components/quote-detail.tsx`: Admins retain full control — they can still edit and cancel orders.
+- `components/quote-detail.tsx`: A warning banner ("This record is locked…") is shown to non-admin users when viewing a locked order, explaining that only an admin can make changes.
+
+## [2026-05-16] — Log quote resend in history
+
+### Fixed
+- `app/api/tickets/[id]/route.ts`: Resending a quote (clicking "Resend Quote" when status is already `sent`) now always logs a `ticket_sent` activity, not just on the first send. The payload includes `resend: true` to distinguish it.
+- `components/quote-detail.tsx`: History shows "Quote resent to customer" (vs "Quote sent to customer") when `payload.resend` is `true`
+
+## [2026-05-16] — Short reference ID visible on quote detail and searchable
+
+### Changed
+- `components/quote-detail.tsx`: Title row now shows `/ #XXXXXXXX` (first 8 chars of ticket UUID, uppercased) next to the quote/order title so customers and staff can reference the same ID seen on the PDF
+- `components/quotes-page.tsx`: Search now also matches the short 8-char ID so you can search `1649D8D7` and find the quote
+- `lib/integrations/send-quote.ts`: Email now shows the short ID as the quote reference when no `reference_code` exists (quotes), matching the PDF filename
+- `app/api/dev/quote-email-preview/route.ts`: Preview now passes a realistic short ID for testing
+
+## [2026-05-16] — Rich history events for quote sent and customer confirmed
+
+### Changed
+- `app/api/tickets/[id]/route.ts`: When `ticket_status` changes to `"sent"`, now logs a dedicated `ticket_sent` activity with `channel`, `destination`, and `recipient` in the payload instead of the generic `order_ticket_status_changed`
+- `app/api/public/quotes/[token]/confirm/route.ts`: Customer confirmation now logs `ticket_client_confirmed` instead of `order_ticket_status_changed`, with `via: "public_link"` and the generated `reference_code`
+- `components/quote-detail.tsx` History tab: updated `ACTIVITY_META` labels ("Quote sent to customer", "Customer confirmed quote") and `activityDetail` to show channel + recipient for sent events and order reference for confirmation
+
 ## [2026-05-16] — Allow editing orders with no payment made
 
 ### Changed

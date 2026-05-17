@@ -8,6 +8,7 @@
 
 import twilio from "twilio";
 import { buildQuoteEmail } from "./quote-email-template";
+import { buildPaymentReminderEmail } from "./payment-reminder-template";
 import { computePricing } from "@/lib/utils/ticket-math";
 import type { QuoteSku } from "@/lib/types";
 
@@ -88,7 +89,9 @@ function buildSmsBody(ticket: TicketForSend, company: CompanyForSend): string {
 
 // ─── Email via Instantly AI ───────────────────────────────────────────────────
 
-async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promise<SendResult> {
+// Low-level Instantly sender. The v2/emails/send endpoint does not exist —
+// v2/emails/test is the real delivery endpoint (naming is Instantly's quirk).
+async function instantlySend(destination: string, subject: string, html: string): Promise<SendResult> {
   const apiKey = process.env.INSTANTLY_API_KEY;
   const sendingAccount = process.env.INSTANTLY_SENDING_ACCOUNT;
 
@@ -96,6 +99,32 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
     return { ok: false, channel: "email", error: "Instantly credentials not configured." };
   }
 
+  const payload = {
+    eaccount: sendingAccount,
+    to_address_email_list: [destination],
+    subject,
+    body: { html },
+  };
+
+  try {
+    const res = await fetch("https://api.instantly.ai/api/v2/emails/test", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      return { ok: false, channel: "email", error: `Instantly API error (${res.status}): ${errText}` };
+    }
+
+    return { ok: true, channel: "email" };
+  } catch (err) {
+    return { ok: false, channel: "email", error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promise<SendResult> {
   const destination = ticket.quote_destination?.trim();
   if (!destination) {
     return { ok: false, channel: "email", error: "No destination email address." };
@@ -114,7 +143,7 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
   const { subject, html } = buildQuoteEmail({
     customerName: customerDisplayName(ticket),
     title: ticket.title ?? "Your Quote",
-    referenceCode: ticket.reference_code,
+    referenceCode: ticket.reference_code ?? ticket.id.slice(0, 8).toUpperCase(),
     skus: ticket.quote_skus,
     subtotal: pricing.subtotal,
     shipping: pricing.shipping,
@@ -129,46 +158,24 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
     isOrder,
   });
 
-  try {
-    const res = await fetch("https://api.instantly.ai/api/v2/emails/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        eaccount: sendingAccount,
-        to_address_email_list: destination,
-        subject,
-        body: { html },
-      }),
-    });
+  return instantlySend(destination, subject, html);
+}
 
-    if (!res.ok) {
-      // Fall back to test endpoint if send endpoint is unavailable
-      const testRes = await fetch("https://api.instantly.ai/api/v2/emails/test", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          eaccount: sendingAccount,
-          to_address_email_list: destination,
-          subject,
-          body: { html },
-        }),
-      });
-      if (!testRes.ok) {
-        const errText = await testRes.text();
-        return { ok: false, channel: "email", error: `Instantly API error: ${errText}` };
-      }
-    }
+// ─── Phone number normalisation ───────────────────────────────────────────────
 
-    return { ok: true, channel: "email" };
-  } catch (err) {
-    return { ok: false, channel: "email", error: err instanceof Error ? err.message : String(err) };
-  }
+/**
+ * Normalise a phone number to E.164 format required by Twilio.
+ * - Already starts with '+' → returned as-is
+ * - 10 bare digits (US/CA) → prepend +1
+ * - 11 digits starting with 1 (US/CA with country code) → prepend +
+ * - Anything else → strip non-digit chars and prepend '+'
+ */
+function toE164(phone: string): string {
+  const stripped = phone.replace(/\D/g, "");
+  if (phone.startsWith("+")) return phone;
+  if (stripped.length === 10) return `+1${stripped}`;
+  if (stripped.length === 11 && stripped.startsWith("1")) return `+${stripped}`;
+  return `+${stripped}`;
 }
 
 // ─── SMS via Twilio ───────────────────────────────────────────────────────────
@@ -193,7 +200,8 @@ async function sendSms(ticket: TicketForSend, company: CompanyForSend, channel: 
     return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
   }
 
-  const toFormatted = channel === "whatsapp" ? `whatsapp:${destination}` : destination;
+  const normalised = toE164(destination);
+  const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
   const body = buildSmsBody(ticket, company);
 
   try {
@@ -230,5 +238,70 @@ export async function sendQuoteToCustomer(
   }
 
   // In-person or unknown — no outreach needed
+  return { ok: true, channel: channel || "in-person" };
+}
+
+// ─── Payment reminder ─────────────────────────────────────────────────────────
+
+/**
+ * Sends a payment reminder to the customer after their quote has been confirmed.
+ * Uses a dedicated "Pay Now" email/SMS — different from the quote delivery.
+ * Supports channel + destination overrides so the rep can change the channel
+ * before sending (e.g. switch from email to WhatsApp).
+ */
+export async function sendPaymentReminder(
+  ticket: TicketForSend & { reference_code: string },
+  company: CompanyForSend,
+  override?: { channel?: string; destination?: string }
+): Promise<SendResult> {
+  const channel = ((override?.channel ?? ticket.quote_channel) ?? "").toLowerCase();
+  const destination = override?.destination ?? ticket.quote_destination ?? null;
+  const paymentUrl = publicUrl(ticket.public_token);
+  const customerName = customerDisplayName(ticket);
+  const companyName = company.company_name ?? "BazaarPrinting";
+
+  if (channel === "email") {
+    if (!destination) return { ok: false, channel: "email", error: "No destination email address." };
+
+    const { subject, html } = buildPaymentReminderEmail({
+      customerName,
+      referenceCode: ticket.reference_code,
+      finalTotal: ticket.quote_final_total ?? 0,
+      paymentTypes: ticket.quote_payment_types ?? [],
+      paymentUrl,
+      company,
+    });
+
+    return instantlySend(destination, subject, html);
+  }
+
+  if (channel === "sms" || channel === "whatsapp") {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const whatsappFrom = process.env.TWILIO_WHATSAPP_FROM;
+    if (!accountSid || !authToken) return { ok: false, channel, error: "Twilio credentials not configured." };
+    if (!destination) return { ok: false, channel, error: "No destination phone number." };
+
+    const from = channel === "whatsapp" ? whatsappFrom : phoneNumber;
+    if (!from) return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
+
+    const firstName = customerName.split(" ")[0];
+    const total = ticket.quote_final_total
+      ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ticket.quote_final_total)
+      : "";
+    const body = `Hi ${firstName}, your order ${ticket.reference_code} from ${companyName} is confirmed. Please pay ${total} here: ${paymentUrl}`;
+    const normalised = toE164(destination);
+    const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
+
+    try {
+      const client = twilio(accountSid, authToken);
+      await client.messages.create({ from, to: toFormatted, body });
+      return { ok: true, channel };
+    } catch (err) {
+      return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
   return { ok: true, channel: channel || "in-person" };
 }

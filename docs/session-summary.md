@@ -1,6 +1,6 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 16, 2026
-**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + PDF export for quotes and orders + Twilio SMS integration live + Instantly AI email integration live + Activity Log at /notifications + Quote Send & Customer Approval Flow live (public /q/[token] page, email/SMS/WhatsApp delivery, customer confirm → order conversion) + Prepayment / Deposit system built (Full / Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready) + Quote/Order detail UX simplified (2-tab layout, order edit unlock). All documentation audited and corrected.
+**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + PDF export for quotes and orders + Twilio SMS integration live + Instantly AI email integration live + Activity Log at /notifications + Quote Send & Customer Approval Flow live (public /q/[token] page, email/SMS/WhatsApp delivery, customer confirm → order conversion) + Prepayment / Deposit system built (Full / Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready) + Quote/Order detail UX simplified (2-tab layout, order edit unlock) + Record Locking for customer-approved tickets + "Convert to Order" manual conversion flow + SDR/Sales "Won" tracking + Payment Link Bar for sending reminders + Mobile-responsive order/quote detail page. All documentation audited and corrected.
 
 ---
 
@@ -89,6 +89,28 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - All dropdowns dynamically loaded from `lookup_values` via `/api/lookups`; `renderLookupOptions` helper prevents data loss for deactivated values
 - Sidebar badges for `/quotes` and `/orders`
 - `GET /api/lookups/products` — public product-type + material lookup for OrderDrawer
+
+### Record Locking, "Convert to Order", Won Tracking & Payment Link Bar (2026-05-16)
+
+Full business-rule enforcement and payment workflow built:
+
+- **Record locking**: Once a customer approves a quote (`client_confirmed = true`), the record is **locked for SDR/Sales users**. Only admins can cancel or edit it. A "Record Locked" banner is shown to non-admins. `isLocked` logic: `ticket.ticket_status === "cancelled" || (isCustomerApproved && userRole !== "admin")`.
+- **"Convert to Order" (was "Mark Won")**: The "Mark Won" button was replaced with **"Convert to Order"**. Clicking it sets `ticket_status = "order"`, auto-generates `ORD-YYYY-NNN` reference code, sets `ticket_kind = "order"`, and logs `ticket_converted` activity. Mirrors the customer confirmation flow exactly.
+- **`approved` status phased out**: The intermediate `approved` state is no longer used. Tickets go directly `sent → order` (either by customer or by rep clicking "Convert to Order"). The `approved` status is kept in the `TicketStatus` type for backwards compatibility only.
+- **SDR/Sales Won tracking**: When a ticket becomes an order (either path), the linked lead's `sales_status` is automatically updated to `"Won"`. Handled in both `PATCH /api/tickets/[id]` (manual conversion) and `POST /api/public/quotes/[token]/confirm` (customer confirmation).
+- **SDR workspace "Won" tab**: New "Won" tab added to `/leads` (SDR workspace) at `components/leads-page.tsx`. Shows all leads where `sales_status = "Won"` for the current SDR (admin sees all). Displays order reference code, total, and closer name. API: `GET /api/leads/workspace?won=true`. Count: `GET /api/leads/workspace/counts` now includes `won`.
+- **Payment Link Bar**: New `PaymentLinkBar` component visible on confirmed, unpaid orders. Shows: copyable public URL `/q/[token]` + channel selector (Email/SMS/WhatsApp) + pre-filled destination (switches to email or phone on channel change, user can override) + "Send Payment Link" button. Triggers `PATCH /api/tickets/[id]` with `{ send_payment_reminder: true, reminder_channel, reminder_destination }`.
+- **Payment reminder email template**: New `lib/integrations/payment-reminder-template.ts` — dedicated "Pay Now" focused email. Shows order reference, amount due, payment methods, large "Pay Now" CTA. No line items.
+- **Payment reminder SMS**: `sendPaymentReminder()` in `lib/integrations/send-quote.ts` handles Email/SMS/WhatsApp. SMS uses `toE164()` phone normalizer to ensure E.164 format (`+13233413620`) required by Twilio.
+- **Payment status badge in order header**: Payment status (`Unpaid` / `Partial` / `Paid`) now shown as a colour-coded badge directly in the sticky header on order detail pages.
+- **Activity logging enriched**:
+  - `ticket_sent` — logged on every send/resend (not just status change). Resend adds `resend: true` to payload.
+  - `ticket_converted` — logged when a rep clicks "Convert to Order".
+  - `ticket_payment_reminder_sent` — logged every time a payment reminder is sent (channel + destination in payload).
+- **Public confirmation page**: `/q/[token]` now dynamically shows "Quote Confirmed!" or "Order Confirmed!" based on `ticket_kind`.
+- **Short reference code**: Quotes show `/{XXXXXXXX}` (first 8 chars of UUID, uppercase) next to the title in the header and in history. Orders show `ORD-YYYY-NNN` as the primary title. Searchable on quotes list.
+- **Mobile-responsive order/quote detail page**: Header wraps (`flex-wrap`), badges abbreviated on small screens, PDF/Edit icon-only on mobile, layout stacks vertically (`flex-col lg:flex-row`), tabs `overflow-x-auto`, form grids `grid-cols-1 sm:grid-cols-2`, action bars `flex-wrap`.
+- **SMS phone normalisation (`toE164`)**: Bare 10-digit US numbers (e.g. `3233413620`) are now auto-prefixed to `+13233413620`. Applied to `sendSms()` and `sendPaymentReminder()` in `lib/integrations/send-quote.ts`.
 
 ### Quote/Order Detail UX Simplification & Email Template Polish (2026-05-16)
 
@@ -233,21 +255,21 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 
 ---
 
-## Current Navigation (as of 2026-05-15)
+## Current Navigation (as of 2026-05-16)
 
 | Route | Section | Built? |
 |-------|---------|--------|
 | `/dashboard` | main | ✅ Built — role router (SDR / Sales / Admin dashboards) |
-| `/leads` | main | ✅ Built |
+| `/leads` | main | ✅ Built — SDR workspace with All / On Hold / Directed to Sales / Rejected / **Won** tabs |
 | `/sales` | main | ✅ Built |
 | `/crm` | main | ✅ Built |
 | `/crm/customers/[id]` | main | ✅ Built — full customer profile page |
-| `/quotes` | main | ✅ Built — Quoted Requests list (4 tabs) |
+| `/quotes` | main | ✅ Built — Quoted Requests list (All / Draft / Sent / Won / Routed to Sales tabs) |
 | `/quotes/new` | main | ✅ Built — New Quote/Order form (Customer + 3 tabs; Customer tab conditional) |
-| `/quotes/[id]` | main | ✅ Built — Quote/Order detail + edit (2 tabs: Info \| History); Info tab combines Info + Line Items + Quote & Pricing sections; Edit unlocked for orders with unpaid status; payment + deposit status bars |
-| `/orders` | main | ✅ Built — Orders list (3 tabs: All | Active | Cancelled); Payment status column |
-| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; same 2-tab layout; deposit status bar for partial prepayment orders |
-| `/q/[token]` | public | ✅ Built — customer-facing quote page; Confirm & Accept; Payment Schedule for partial prepayments |
+| `/quotes/[id]` | main | ✅ Built — Quote/Order detail; record locked after customer approval (non-admins); "Convert to Order" button; Payment Link Bar; payment status badge; mobile-responsive |
+| `/orders` | main | ✅ Built — Orders list (3 tabs: All / Active / Cancelled); Payment status column |
+| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; locked for non-admins after confirmation; Payment Link Bar; payment status badge; deposit status bar; mobile-responsive |
+| `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
 | `/notifications` | main | ✅ Built — Activity Log page (`ActivityLogSection`); paginated, mobile cards, live via `bazaar:activities-changed` event |
 | `/admin` | admin | ✅ Built — card grid overview (all 7 cards correct, 6 built + 1 planned) |
@@ -368,11 +390,15 @@ SALES PIPELINE (Routed to Sales)
 | ~~Activity Log (/notifications)~~ | ✅ Done (2026-05-14) | `ActivityLogSection` — paginated activity feed, mobile cards |
 | ~~Quote Send & Approval Flow~~ | ✅ Done (2026-05-14) | Email/SMS/WhatsApp delivery on Send Quote; public `/q/[token]` page; customer confirm → order |
 | ~~Prepayment / Deposit system~~ | ✅ Done (2026-05-15) | Full/Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready |
-| Dashboard enhancements | ⏳ Next | Revenue from approved/ordered tickets surfaced on Admin + Sales KPI cards. |
+| ~~Record Locking~~ | ✅ Done (2026-05-16) | Customer-approved records locked for non-admins; "Record Locked" banner |
+| ~~Convert to Order flow~~ | ✅ Done (2026-05-16) | "Convert to Order" button replaces "Mark Won"; auto ORD-YYYY-NNN; `approved` status retired |
+| ~~SDR/Sales Won tracking~~ | ✅ Done (2026-05-16) | `leads.sales_status = "Won"` auto-set on order conversion; "Won" tab in SDR workspace |
+| ~~Payment Link Bar~~ | ✅ Done (2026-05-16) | Send payment reminders via Email/SMS/WhatsApp from locked order detail |
+| ~~Mobile-responsive detail page~~ | ✅ Done (2026-05-16) | `flex-col lg:flex-row`, wrapping header, responsive grids, swipeable tabs |
+| Dashboard enhancements | ⏳ Next | Revenue from ordered tickets surfaced on Admin + Sales KPI cards. |
 | Admin Override (terminal leads) | ⏳ Queued | Admin can reopen Rejected leads (TODO-001 in `docs/TODO.md`). |
 | Integrations — WhatsApp | ⏳ Deferred | Requires Meta Business Manager registration. |
 | Integrations — Stripe + Zelle | ⏳ Deferred | Placeholder built in Integrations tab; API wiring deferred. |
-| Email / SMS outreach from quotes | ⏳ Future | Send quote via Twilio or Instantly directly from `/quotes/[id]`. |
 | AI / webhook lead ingestion | ⏳ Future | Auto-create leads from web form or external webhook. |
 
 ---

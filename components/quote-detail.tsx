@@ -27,6 +27,9 @@ import {
   Zap,
   ChevronDown,
   Printer,
+  Lock,
+  Link,
+  Copy,
 } from "lucide-react";
 import { computePricing, formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { formatPhone } from "@/lib/utils/phone";
@@ -103,6 +106,7 @@ interface Ticket {
   follow_up_cycles: number | null;
   follow_up_frequency: string | null;
   client_confirmed: boolean;
+  public_token: string | null;
   lead: Lead | null;
   created_by: { id: string; full_name: string | null } | null;
   customer: {
@@ -218,6 +222,179 @@ function CustomerInfoCard({ ticket }: { ticket: Ticket }) {
           <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>No customer details recorded.</p>
         )}
       </div>
+    </div>
+  );
+}
+
+// ─── Payment Link Bar ─────────────────────────────────────────────────────────
+// Shown on confirmed unpaid orders regardless of lock status.
+// Lets any CRM user copy the payment link OR send it via Email / SMS / WhatsApp.
+// Defaults to the original channel used to send the quote, but the rep can switch.
+
+const SEND_CHANNELS = [
+  { id: "email",     label: "Email",     icon: Mail },
+  { id: "sms",       label: "SMS",       icon: MessageSquare },
+  { id: "whatsapp",  label: "WhatsApp",  icon: MessageSquare },
+] as const;
+
+function PaymentLinkBar({
+  token,
+  channel: originalChannel,
+  destination: originalDestination,
+  contactEmail,
+  contactPhone,
+  paymentTypes,
+  ticketId,
+}: {
+  token: string;
+  channel: string | null;
+  destination: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  paymentTypes: string[];
+  ticketId: string;
+}) {
+  const [copied, setCopied]       = useState(false);
+  const [sending, setSending]     = useState(false);
+  const [sent, setSent]           = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
+
+  const [selectedChannel, setSelectedChannel] = useState<string>(originalChannel ?? "email");
+  const [destination, setDestination]         = useState<string>(originalDestination ?? "");
+
+  // When channel switches, auto-fill the appropriate contact value.
+  // Email → customer email. SMS/WhatsApp → customer phone.
+  function handleChannelChange(ch: string) {
+    setSelectedChannel(ch);
+    if (ch === "email") {
+      setDestination(contactEmail ?? originalDestination ?? "");
+    } else {
+      setDestination(contactPhone ?? originalDestination ?? "");
+    }
+    setSendError(null);
+  }
+
+  const baseUrl    = typeof window !== "undefined" ? window.location.origin : "";
+  const paymentUrl = `${baseUrl}/q/${token}`;
+
+  function handleCopy() {
+    navigator.clipboard.writeText(paymentUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  async function handleSend() {
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch(`/api/tickets/${ticketId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          send_payment_reminder: true,
+          reminder_channel:     selectedChannel,
+          reminder_destination: destination.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setSendError(d.error ?? "Failed to send. Try again.");
+      } else {
+        setSent(true);
+        setTimeout(() => setSent(false), 4000);
+      }
+    } catch {
+      setSendError("Network error. Try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  const paymentMethodLabel = paymentTypes.includes("card_default") ? "Card"
+    : paymentTypes.includes("zelle") ? "Zelle"
+    : paymentTypes.includes("offline") ? "Offline"
+    : null;
+
+  const destinationPlaceholder = selectedChannel === "email" ? "customer@email.com" : "+1 555 000 0000";
+
+  return (
+    <div
+      className="mt-4 rounded-xl px-5 py-4 space-y-3"
+      style={{ background: "var(--color-info-bg)", border: "1px solid var(--color-info-border)" }}
+    >
+      {/* Header row */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Link size={14} style={{ color: "var(--color-info-text)", flexShrink: 0 }} />
+          <span className="text-xs font-semibold" style={{ color: "var(--color-info-text-deep)" }}>
+            Send payment link to customer
+          </span>
+          {paymentMethodLabel && (
+            <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: "var(--color-surface)", color: "var(--color-text-muted)", border: "1px solid var(--color-border)" }}>
+              {paymentMethodLabel}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-opacity hover:opacity-80"
+          style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)" }}
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />}
+          {copied ? "Copied!" : "Copy link"}
+        </button>
+      </div>
+
+      {/* Channel selector + destination + send */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Channel tabs */}
+        <div className="flex rounded-md overflow-hidden border text-[12px] font-medium shrink-0" style={{ borderColor: "var(--color-border)" }}>
+          {SEND_CHANNELS.map((ch) => (
+            <button
+              key={ch.id}
+              onClick={() => handleChannelChange(ch.id)}
+              className="px-3 py-1.5 transition-colors"
+              style={{
+                background: selectedChannel === ch.id ? "var(--color-info-text)" : "var(--color-surface)",
+                color: selectedChannel === ch.id ? "#fff" : "var(--color-text-muted)",
+                borderRight: ch.id !== "whatsapp" ? `1px solid var(--color-border)` : undefined,
+              }}
+            >
+              {ch.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Destination input */}
+        <input
+          type={selectedChannel === "email" ? "email" : "tel"}
+          value={destination}
+          onChange={(e) => setDestination(e.target.value)}
+          placeholder={destinationPlaceholder}
+          className="flex-1 min-w-[180px] px-3 py-1.5 text-sm rounded-md border outline-none"
+          style={{
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            color: "var(--color-text-primary)",
+          }}
+        />
+
+        {/* Send button */}
+        <button
+          onClick={handleSend}
+          disabled={sending || !destination.trim()}
+          className="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 shrink-0"
+          style={{ background: "var(--color-info-text)", color: "#fff" }}
+        >
+          <Mail size={13} />
+          {sent ? "Sent!" : sending ? "Sending…" : "Send Payment Link"}
+        </button>
+      </div>
+
+      {sendError && (
+        <p className="text-xs" style={{ color: "var(--color-danger)" }}>{sendError}</p>
+      )}
     </div>
   );
 }
@@ -563,59 +740,118 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
 
   const statusColors = STATUS_COLORS[ticket.ticket_status] ?? STATUS_COLORS.draft;
   const hasPayment = ticket.payment_status === "partial" || ticket.payment_status === "paid";
-  const isLocked = ticket.ticket_status === "cancelled" || (ticket.ticket_status === "order" && hasPayment);
+
+  // Once a quote is customer-approved and becomes an order, the record is locked.
+  // Non-admins cannot edit or cancel. Admins retain full control.
+  const isCustomerApproved = ticket.ticket_status === "order" || ticket.ticket_status === "in_production" || ticket.ticket_status === "completed";
+  const isLocked = ticket.ticket_status === "cancelled" || (isCustomerApproved && userRole !== "admin");
 
   return (
     <>
     <div className="min-h-screen" style={{ background: "var(--color-bg)" }}>
       {/* Header */}
       <div
-        className="sticky top-0 z-10 border-b flex items-center gap-3 px-6 py-4"
+        className="sticky top-0 z-10 border-b flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-1 text-sm font-medium hover:opacity-70 transition-opacity"
+          className="flex items-center gap-1 text-sm font-medium hover:opacity-70 transition-opacity shrink-0"
           style={{ color: "var(--color-text-muted)" }}
         >
           <ChevronLeft size={16} /> Back
         </button>
-        <div className="w-px h-5" style={{ background: "var(--color-border)" }} />
-        <h1 className="text-xl font-semibold flex-1 truncate" style={{ color: "var(--color-text-primary)" }}>
-          {ticket.title ?? "Untitled Quote"}
-        </h1>
+        <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
+        {ticket.reference_code ? (
+          /* Order — show reference code as primary title, title as subtitle */
+          <div className="flex-1 min-w-0 flex flex-col justify-center">
+            <h1 className="text-base md:text-xl font-semibold font-mono leading-tight truncate" style={{ color: "var(--color-text-primary)" }}>
+              {ticket.reference_code}
+            </h1>
+            {ticket.title && (
+              <span className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
+                {ticket.title}
+              </span>
+            )}
+          </div>
+        ) : (
+          /* Quote — show title + short ID */
+          <div className="flex-1 min-w-0 flex items-baseline gap-1.5 overflow-hidden">
+            <h1 className="text-base md:text-xl font-semibold truncate" style={{ color: "var(--color-text-primary)" }}>
+              {ticket.title ?? "Untitled Quote"}
+            </h1>
+            <span className="text-xs md:text-sm font-mono shrink-0" style={{ color: "var(--color-text-muted)" }}>
+              /{ticket.id.slice(0, 8).toUpperCase()}
+            </span>
+          </div>
+        )}
 
-        {ticket.reference_code && (
-          <span className="text-xs font-mono px-2 py-1 rounded" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
-            {ticket.reference_code}
+        {ticket.client_confirmed ? (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
+            style={{ background: "var(--color-success-bg)", color: "var(--color-success)", border: "1px solid var(--color-success-border)" }}
+          >
+            <BadgeCheck size={12} />
+            <span className="hidden sm:inline">Confirmed by Customer</span>
+            <span className="sm:hidden">Confirmed</span>
+          </span>
+        ) : isCustomerApproved ? (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
+            style={{ background: "var(--color-info-bg)", color: "var(--color-info-text)", border: "1px solid var(--color-info-border)" }}
+          >
+            <BadgeCheck size={12} />
+            <span className="hidden sm:inline">Converted to Order</span>
+            <span className="sm:hidden">Order</span>
+          </span>
+        ) : (
+          <span
+            className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium capitalize shrink-0"
+            style={{ background: statusColors.bg, color: statusColors.text }}
+          >
+            {ticket.ticket_status}
           </span>
         )}
 
-        <span
-          className="px-2.5 py-1 rounded-full text-xs font-medium capitalize"
-          style={{ background: statusColors.bg, color: statusColors.text }}
-        >
-          {ticket.ticket_status}
-        </span>
+        {/* Payment status badge — shown on all orders */}
+        {isCustomerApproved && (() => {
+          const ps = ticket.payment_status ?? "unpaid";
+          const PAYMENT_BADGE: Record<string, { bg: string; text: string; border: string; label: string }> = {
+            unpaid:  { bg: "var(--color-danger-bg)",  text: "var(--color-danger)",  border: "var(--color-danger-border)",  label: "Unpaid"  },
+            partial: { bg: "var(--color-warning-bg)", text: "var(--color-warning)", border: "var(--color-warning-border)", label: "Partial" },
+            paid:    { bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)", label: "Paid"    },
+          };
+          const style = PAYMENT_BADGE[ps] ?? PAYMENT_BADGE.unpaid;
+          return (
+            <span
+              className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
+              style={{ background: style.bg, color: style.text, border: `1px solid ${style.border}` }}
+            >
+              {style.label}
+            </span>
+          );
+        })()}
 
-        {/* Download PDF */}
+        {/* Download PDF — icon only on mobile */}
         <a
           href={`/api/tickets/${ticketId}/pdf`}
           download
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80 shrink-0"
           style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)", textDecoration: "none" }}
           title="Download PDF"
         >
-          <Printer size={14} /> Save PDF
+          <Printer size={14} />
+          <span className="hidden sm:inline">Save PDF</span>
         </a>
 
-        {!editing && !isLocked && (
+        {!editing && !isLocked && !ticket.client_confirmed && (
           <button
             onClick={() => setEditing(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80 shrink-0"
             style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
           >
-            <Pencil size={14} /> Edit
+            <Pencil size={14} />
+            <span className="hidden sm:inline">Edit</span>
           </button>
         )}
       </div>
@@ -623,21 +859,32 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
       {/* Error banner */}
       {error && (
         <div
-          className="mx-6 mt-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm"
+          className="mx-4 mt-3 md:mx-6 md:mt-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm"
           style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", border: "1px solid var(--color-danger-border)" }}
         >
           <AlertCircle size={15} /> {error}
         </div>
       )}
 
-      <div className="w-full px-6 py-6 flex gap-6">
+      {/* Record-locked notice for non-admin users */}
+      {isCustomerApproved && userRole !== "admin" && (
+        <div
+          className="mx-4 mt-3 md:mx-6 md:mt-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm"
+          style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
+        >
+          <Lock size={15} />
+          This record is locked. The customer has approved this quote — only an admin can make changes or cancel.
+        </div>
+      )}
+
+      <div className="w-full px-4 py-4 md:px-6 md:py-6 flex flex-col lg:flex-row gap-4 lg:gap-6">
         {/* Left: Lead info card OR Customer info card */}
         {ticket.lead ? (
-          <aside className="w-72 shrink-0">
+          <aside className="w-full lg:w-72 lg:shrink-0">
             <LinkedLeadCard lead={ticket.lead} />
           </aside>
         ) : (ticket.customer || ticket.contact_name || ticket.contact_email || ticket.contact_phone) ? (
-          <aside className="w-72 shrink-0">
+          <aside className="w-full lg:w-72 lg:shrink-0">
             <CustomerInfoCard ticket={ticket} />
           </aside>
         ) : null}
@@ -645,12 +892,12 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
         {/* Right: Content */}
         <div className="flex-1 min-w-0">
           {/* Tabs */}
-          <div className="flex border-b mb-6" style={{ borderColor: "var(--color-border)" }}>
+          <div className="flex overflow-x-auto border-b mb-6 -mx-1 px-1" style={{ borderColor: "var(--color-border)" }}>
             {VIEW_TABS.map((t) => (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className="px-4 py-2.5 text-sm font-medium transition-colors relative"
+                className="px-4 py-2.5 text-sm font-medium transition-colors relative whitespace-nowrap shrink-0"
                 style={{
                   color: tab === t.id ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
                   fontWeight: tab === t.id ? 500 : 400,
@@ -672,15 +919,7 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
                   editing={editing}
                   title={title} setTitle={setTitle}
                   priority={priority} setPriority={setPriority}
-                  dueDate={dueDate} setDueDate={(v) => {
-                    setDueDate(v);
-                    if (v) {
-                      const today = new Date(); today.setHours(0, 0, 0, 0);
-                      const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-                      const picked = new Date(v + "T00:00:00");
-                      setRush(picked <= tomorrow);
-                    }
-                  }}
+                  dueDate={dueDate} setDueDate={setDueDate}
                   rush={rush} setRush={setRush}
                   specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
                   notes={notes} setNotes={setNotes}
@@ -744,10 +983,10 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
             {tab === "history" && <HistorySection ticketId={ticketId} />}
           </div>
 
-          {/* Bottom action bar — view mode */}
-          {!editing && !isLocked && (
+          {/* Bottom action bar — view mode. Hidden once customer has confirmed (record is committed). */}
+          {!editing && !isLocked && !ticket.client_confirmed && (
             <div
-              className="mt-4 rounded-xl px-5 py-3 flex items-center gap-3"
+              className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-2 md:gap-3"
               style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
             >
               {ticket.ticket_status === "draft" && (
@@ -775,11 +1014,12 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
               {(ticket.ticket_status === "sent" || ticket.ticket_status === "draft") && (
                 <button
                   disabled={saving}
-                  onClick={() => handleSave("approved")}
-                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50"
-                  style={{ background: "var(--color-success-bg)", color: "var(--color-success)" }}
+                  onClick={() => handleSave("order")}
+                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                  style={{ background: "var(--color-success-bg)", color: "var(--color-success)", border: "1px solid var(--color-success-border)" }}
                 >
-                  Mark Won
+                  <BadgeCheck size={14} />
+                  Convert to Order
                 </button>
               )}
               <div className="ml-auto">
@@ -795,8 +1035,23 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
             </div>
           )}
 
-          {/* Payment status bar — visible when ticket is a confirmed order */}
-          {!editing && ticket.ticket_status === "order" && (
+          {/* Payment link bar — visible to all roles on confirmed unpaid orders.
+              This is NOT editing — it's a separate action available even when the record is locked. */}
+          {!editing && ticket.client_confirmed && ticket.payment_status !== "paid" && ticket.public_token && (
+            <PaymentLinkBar
+              token={ticket.public_token}
+              channel={ticket.quote_channel}
+              destination={ticket.quote_destination}
+              contactEmail={ticket.customer?.email ?? ticket.contact_email ?? null}
+              contactPhone={ticket.customer?.phone ?? ticket.contact_phone ?? null}
+              paymentTypes={ticket.quote_payment_types ?? []}
+              ticketId={ticketId}
+            />
+          )}
+
+          {/* Payment status bar — only for offline payments (cash/check/transfer).
+              Card and Zelle will be controlled automatically via Stripe in the future. */}
+          {!editing && ticket.ticket_status === "order" && (ticket.quote_payment_types as string[] | null)?.includes("offline") && (
             <div
               className="mt-4 rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap"
               style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
@@ -829,7 +1084,7 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
                 );
               })}
               <span className="ml-auto text-xs" style={{ color: "var(--color-text-muted)" }}>
-                Click to update payment status
+                Mark when offline payment is received
               </span>
             </div>
           )}
@@ -885,7 +1140,7 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
           {/* Bottom action bar — edit mode */}
           {editing && (
             <div
-              className="mt-4 rounded-xl px-5 py-3 flex items-center justify-between gap-2"
+              className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center justify-between gap-2"
               style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
             >
               <button
@@ -1001,16 +1256,18 @@ function priorityStyle(opt: string, active: boolean): React.CSSProperties {
 function quickDate(offsetDays: number): string {
   const d = new Date();
   d.setDate(d.getDate() + offsetDays);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function InfoSection(p: InfoSectionProps) {
-  const [notesOpen, setNotesOpen] = useState(!!p.notes);
   const fieldStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" };
 
   if (!p.editing) {
     return (
-      <dl className="grid grid-cols-2 gap-x-8 gap-y-4">
+      <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
         {[
           ["Title", p.ticket.title],
           ["Priority", p.ticket.priority],
@@ -1144,36 +1401,17 @@ function InfoSection(p: InfoSectionProps) {
         />
       </div>
 
-      {/* Internal Notes — collapsible */}
-      <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
-        <button
-          type="button"
-          onClick={() => setNotesOpen((o) => !o)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-left"
-          style={{ background: "var(--color-surface)", color: "var(--color-text-primary)" }}
-        >
-          <span>Internal Notes</span>
-          <ChevronDown
-            size={16}
-            style={{
-              color: "var(--color-text-muted)",
-              transform: notesOpen ? "rotate(180deg)" : "rotate(0deg)",
-              transition: "transform 0.2s",
-            }}
-          />
-        </button>
-        {notesOpen && (
-          <div className="px-4 pb-4 pt-1" style={{ background: "var(--color-surface)" }}>
-            <textarea
-              value={p.notes}
-              onChange={(e) => p.setNotes(e.target.value)}
-              rows={3}
-              placeholder="Internal notes visible only to staff…"
-              className="w-full px-3 py-2 rounded-md text-sm border outline-none resize-y"
-              style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-            />
-          </div>
-        )}
+      {/* Internal Notes */}
+      <div>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Internal Notes</label>
+        <textarea
+          value={p.notes}
+          onChange={(e) => p.setNotes(e.target.value)}
+          rows={3}
+          placeholder="Internal notes visible only to staff…"
+          className="w-full px-3 py-2 rounded-md text-sm border outline-none resize-y"
+          style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
+        />
       </div>
     </div>
   );
@@ -1295,7 +1533,7 @@ function EditableSkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, ca
         )}
       </div>
       {/* Row 1: Product Type | Material */}
-      <div className="grid grid-cols-2 gap-4 mb-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Product Type</label>
           <SkuSelect value={sku.product_type} onChange={(v) => { onUpdate(idx, "product_type", v); onUpdate(idx, "material", ""); }}>
@@ -1560,7 +1798,7 @@ function QuoteSection(p: QuoteSectionProps) {
             <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Adjustments</h4>
 
             {/* Row 1: Shipping + Tax Rate inputs */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Shipping ($)</label>
                 <input type="number" min={0} step={0.01} placeholder="0.00"
@@ -1580,7 +1818,7 @@ function QuoteSection(p: QuoteSectionProps) {
             </div>
 
             {/* Row 2: Discount selector + Tax Exempt toggle */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Discount</label>
                 <div className="grid grid-cols-3 rounded-md overflow-hidden border" style={{ borderColor: "var(--color-border)" }}>
@@ -1627,7 +1865,7 @@ function QuoteSection(p: QuoteSectionProps) {
 
             {/* Row 3: conditional inputs */}
             {(p.discountType || p.taxExempt) && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   {p.discountType ? (
                     <>
@@ -1790,7 +2028,7 @@ function QuoteSection(p: QuoteSectionProps) {
               {/* Send payment link */}
               <div className="rounded-lg p-4 space-y-3" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
                 <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Send Payment Link</h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via <span style={{ color: "var(--color-danger)" }}>*</span></label>
                     <StyledSelect value={p.quoteChannel} onChange={p.setQuoteChannel}>
@@ -1821,7 +2059,7 @@ function QuoteSection(p: QuoteSectionProps) {
               {/* Send quote */}
               <div className="rounded-lg p-4 space-y-3" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
                 <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Send Quote to Customer</h4>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Send Via <span style={{ color: "var(--color-danger)" }}>*</span></label>
                     <StyledSelect value={p.quoteChannel} onChange={p.setQuoteChannel}>
@@ -1902,7 +2140,7 @@ function QuoteSection(p: QuoteSectionProps) {
           )}
         </div>
       ) : (
-        <dl className="grid grid-cols-2 gap-x-8 gap-y-4">
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
           {[
             ["Order Flow", p.ticket.order_source === "direct" ? "Direct order" : "Quote first"],
             ["Shipping", p.ticket.quote_shipping != null ? formatCurrency(p.ticket.quote_shipping) : null],
@@ -1950,14 +2188,20 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; label: string; co
   lead_rejected:               { icon: XCircle,       label: "Lead rejected",              color: "var(--color-danger)" },
   lead_note_added:             { icon: MessageSquare, label: "Note added",                 color: "var(--color-text-muted)" },
   order_ticket_created:        { icon: FileText,      label: "Quote / Order created",      color: "var(--color-accent)" },
-  order_ticket_status_changed: { icon: FileCheck2,    label: "Ticket status changed",      color: "var(--color-info-text)" },
-  ticket_client_confirmed:     { icon: BadgeCheck,    label: "Client confirmed",           color: "var(--color-success)" },
-  ticket_sent:                 { icon: MessageSquare, label: "Quote sent to client",       color: "var(--color-info-text)" },
+  order_ticket_status_changed: { icon: RefreshCw,     label: "Status changed",             color: "var(--color-info-text)" },
+  ticket_sent:                 { icon: Mail,          label: "Quote sent to customer",     color: "var(--color-info-text)" },
+  ticket_resent:               { icon: Mail,          label: "Quote resent to customer",   color: "var(--color-info-text)" },
+  ticket_client_confirmed:     { icon: BadgeCheck,    label: "Customer confirmed quote",   color: "var(--color-success)" },
+  ticket_converted:                { icon: BadgeCheck,    label: "Converted to order",          color: "var(--color-info-text)" },
+  ticket_payment_reminder_sent:    { icon: Mail,          label: "Payment reminder sent",        color: "var(--color-info-text)" },
   ticket_won:                  { icon: BadgeCheck,    label: "Quote won / converted",      color: "var(--color-success)" },
   ticket_cancelled:            { icon: XCircle,       label: "Ticket cancelled",           color: "var(--color-danger)" },
 };
 
-function activityMeta(type: string) {
+function activityMeta(type: string, payload?: Record<string, unknown> | null) {
+  if (type === "ticket_sent" && payload?.resend) {
+    return ACTIVITY_META["ticket_resent"] ?? ACTIVITY_META["ticket_sent"];
+  }
   return ACTIVITY_META[type] ?? { icon: Clock, label: type.replace(/_/g, " "), color: "var(--color-text-muted)" };
 }
 
@@ -1967,6 +2211,19 @@ function activityDetail(a: ActivityRow): string | null {
   if (a.type === "lead_status_changed" || a.type === "order_ticket_status_changed") {
     if (p.from && p.to) return `${p.from} → ${p.to}`;
     if (p.to) return String(p.to);
+  }
+  if (a.type === "ticket_sent") {
+    const channel = p.channel ? String(p.channel) : null;
+    const recipient = p.recipient ?? p.destination ?? null;
+    if (channel && recipient) return `via ${channel} to ${recipient}`;
+    if (channel) return `via ${channel}`;
+    return null;
+  }
+  if (a.type === "ticket_client_confirmed") {
+    return p.reference_code ? `Order ${p.reference_code} created` : "Confirmed via link";
+  }
+  if (a.type === "ticket_converted") {
+    return p.reference_code ? `Order ${p.reference_code} created` : "Converted manually";
   }
   if (a.type === "lead_put_on_hold" && p.hold_reason) return String(p.hold_reason);
   if (a.type === "lead_rejected" || a.type === "lead_routed_to_sales") {
@@ -2062,7 +2319,7 @@ function HistorySection({ ticketId }: { ticketId: string }) {
 
             <div className="space-y-3">
               {group.items.map((a, i) => {
-                const meta = activityMeta(a.type);
+                const meta = activityMeta(a.type, a.payload);
                 const Icon = meta.icon;
                 const detail = activityDetail(a);
                 const isLeadActivity = a._source === "lead";
