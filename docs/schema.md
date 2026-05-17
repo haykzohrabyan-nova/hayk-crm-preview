@@ -1059,4 +1059,5 @@ When creating Supabase migrations under `supabase/migrations/`:
 052_add_public_token_to_tickets.sql  ← adds public_token UUID column (DEFAULT gen_random_uuid()) + unique index to job_tickets
 053_add_payment_status_to_tickets.sql ← adds payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK ('unpaid','partial','paid') to job_tickets
 054_add_prepayment_status_to_tickets.sql ← adds prepayment_status TEXT NOT NULL DEFAULT 'pending' CHECK ('pending','paid') to job_tickets; Stripe webhook will update this
+055_reset_tickets_for_testing.sql    ← DEV ONLY: deletes all job_tickets + ticket activities, resets order_sequence_counters, resets Won/Quoted leads back to Ongoing/Validated
 ```

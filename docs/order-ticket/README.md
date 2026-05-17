@@ -55,7 +55,7 @@ This folder contains all research, analysis, and planning documents for the **Ti
 - **API routes** — `GET/POST /api/tickets`, `GET/PATCH /api/tickets/[id]`, `GET /api/tickets/counts`, `GET /api/activities` (combined lead+ticket lifetime)
 - **`lib/utils/ticket-math.ts`** — `computePricing()`, `skuLineTotal()`, `formatCurrency()` pure helpers
 - **`/quotes/new`** — new quote creation page with lead info card + 3-tab form (Info → Line Items → Quote); Save Draft + Save & Send actions
-- **`/quotes/[id]`** — permanent quote/order detail page; 4-tab view (Info | Line Items | Quote | History); read-only by default, edit toggled; status-aware action bar
+- **`/quotes/[id]`** — permanent quote/order detail page; 2-tab view (Info | History); read-only by default, edit toggled; record-locked for non-admins once customer approves; "Convert to Order" + Payment Link Bar for confirmed orders
 - **`/quotes`** — Quoted Requests list with tabs (All / Draft / Sent / Approved), search, count badges, realtime refresh
 - **`/orders`** — Orders list with tabs (All / Active / Won / Cancelled), Rush indicator, due-date warnings, realtime refresh
 - **"Create Quote / Order" button** — wired in both `verify-drawer.tsx` and `sales-drawer.tsx`: saves lead silently → navigates to `/quotes/new?lead_id=xxx`

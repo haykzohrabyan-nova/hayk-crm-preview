@@ -133,7 +133,7 @@ Field order: **Phone** | **Email** → **First Name** | **Last Name** → **Comp
 - Title \* (required)
 - Priority (Low / Normal / High — from `ticket_priority` lookup; **Urgent** is system-set and filtered from user-facing dropdown)
 - Due Date (custom `DatePicker` component — click anywhere on the input to open)
-- Rush toggle — **auto-toggled** by due date: today or tomorrow → Rush ON; any later date → Rush OFF. User can override.
+- Rush toggle — manual only. No automatic connection to the due date (auto-toggle was removed).
 - Special Requirements
 - Internal Notes
 

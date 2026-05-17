@@ -143,7 +143,7 @@ Multiple UX improvements applied consistently to both `new-quote-form.tsx` and `
 - **Phone-first customer search** in New Quote Customer tab: Phone | Email → First Name | Last Name → Company field order. Debounced lookup on phone number. If 1 match found: picker modal shown; fields auto-fill and lock. If 2+ matches: multi-customer picker. If no match: all fields editable.
 - **Customer lock persistence**: `locked` and `foundName` states lifted to parent `NewQuoteForm` component so they survive tab navigation.
 - **Dynamic quote destination pre-fill**: when customer is locked and "Send Via" channel changes, `quoteDestination` is automatically updated to the correct phone or email.
-- **Rush auto-toggle**: Due Date = today or tomorrow → Rush automatically enabled; any later date → Rush disabled. User can override manually.
+- **Rush toggle**: Manual only — no connection to the due date. The auto-toggle was built then removed at owner request.
 - **Shipping / Tax Rate inputs**: local string state prevents snap-back to "0" when field is cleared.
 - **Line total override**: manual "Line Total ($)" input in each SKU row — overrides qty × unit calculation. Shown with gold border when active. Line Item Comment moved to its own row above it.
 - **Auto-scroll to new line item** when "Add Line Item" is clicked.
@@ -309,6 +309,7 @@ See `docs/schema.md` → Migration File Order for the full list (001–054). Key
 | 052 | `add_public_token_to_tickets` | `public_token` UUID column + unique index on job_tickets |
 | 053 | `add_payment_status_to_tickets` | `payment_status` column (`unpaid`\|`partial`\|`paid`, default `unpaid`) |
 | 054 | `add_prepayment_status_to_tickets` | `prepayment_status` column (`pending`\|`paid`, default `pending`) — Stripe-ready |
+| 055 | `reset_tickets_for_testing` | **DEV ONLY** — deletes all job_tickets + ticket activities; resets order sequence counter; resets Won/Quoted leads |
 
 ---
 

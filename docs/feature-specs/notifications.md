@@ -79,6 +79,13 @@ Shows all system activity from the `activities` table, newest first.
 | `lead_manual_created` | Created lead manually |
 | `lead_status_changed` | Changed lead status |
 | `customer_merged` | Merged customer records |
+| `order_ticket_created` | Created quote/order |
+| `order_ticket_updated` | Updated ticket |
+| `order_ticket_status_changed` | Status changed (routed, claimed, etc.) |
+| `ticket_sent` | Sent quote to customer. Payload: `{ channel, destination, resend?: true }` |
+| `ticket_client_confirmed` | Customer confirmed quote via public page |
+| `ticket_converted` | Rep converted quote to order. Payload: `{ from, to: 'order', reference_code }` |
+| `ticket_payment_reminder_sent` | Payment reminder sent. Payload: `{ channel, destination }` |
 
 ---
 

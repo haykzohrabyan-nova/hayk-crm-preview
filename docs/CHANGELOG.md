@@ -3,6 +3,16 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-16] — Documentation audit pass
+
+### Fixed
+- `docs/schema.md`: Added migration 055 (`reset_tickets_for_testing`) to the migration file order list.
+- `docs/feature-specs/notifications.md`: Added missing ticket activity type labels (`ticket_sent`, `ticket_client_confirmed`, `ticket_converted`, `ticket_payment_reminder_sent`) to the Activity Type Labels table.
+- `docs/session-summary.md`: Added migration 055 to the migration table; corrected Rush toggle description (auto-toggle was removed, manual only).
+- `docs/feature-specs/tickets.md`: Corrected Rush toggle line — no longer auto-toggled by due date (auto-toggle removed).
+- `docs/component-architecture.md`: Updated `/quotes/[id]` detail section to reflect 2-tab layout, record locking, new header badges, "Convert to Order" action, Payment Link Bar, and removed Rush auto-toggle from `new-quote-form.tsx` Info Tab description.
+- `docs/order-ticket/README.md`: Updated `/quotes/[id]` description to reflect 2-tab layout and latest features.
+
 ## [2026-05-16] — SMS E.164 fix + mobile-friendly order detail
 
 ### Fixed

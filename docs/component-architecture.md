@@ -255,7 +255,7 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │    Selected: fields lock (read-only except Phone); lock state persists across tab navigation
         │
         ├── Info Tab:
-        │    Rush auto-toggles ON for today/tomorrow due dates, OFF for later
+        │    Rush toggle — manual only (auto-toggle removed)
         │
         ├── Line Items Tab:
         │    Line Total override per SKU row (overrides qty × unit price)
@@ -300,16 +300,21 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    CustomerInfoCard — if ticket has customer but no lead
         │    (nothing)        — if neither
         │
-        ├── 4-tab view: Info | Line Items | Quote | History
+        ├── 2-tab view: Info (all content) | History
+        │    Info tab scrolls through: Info → Line Items → Quote & Pricing (divided by labelled separators)
         ├── View mode default; Edit button toggles edit mode
+        │    Edit lock: customer-approved tickets (status: order/in_production/completed) are read-only
+        │    for non-admins. "Record Locked" banner shown. Admin can still edit/cancel.
         │
-        ├── High-Value Threshold modal (SDR only):
-        │    Fires when SDR saves a draft quote with total > HVT
-        │    Non-dismissible, 30s countdown → PATCH { status: 'routed' } → redirect to /quotes
+        ├── Header badges:
+        │    Confirmed by Customer (green) — if client_confirmed = true
+        │    Converted to Order (blue) — if manually converted (order but not client_confirmed)
+        │    Payment status badge (Unpaid/Partial/Paid) — orders only
         │
         ├── Status actions (read-only mode):
-        │    Send Quote (draft) / Resend Quote (sent) / Mark Won / Cancel Ticket
-        ├── Payment status bar (orders only): Unpaid | Partial | Paid pill toggle — saves immediately
+        │    Send Quote (draft) / Resend Quote (sent) / Convert to Order / Cancel Ticket (admin only on locked)
+        │    Payment status bar (orders, offline payment only): Unpaid | Partial | Paid pill — saves immediately
+        │    Payment Link Bar (confirmed unpaid orders): copyable public URL + channel/destination selector + Send button
         ├── Deposit status bar (partial prepayment orders only):
         │    Shows deposit amount + Pending | Paid toggle + "Will be auto-updated by Stripe"
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true
