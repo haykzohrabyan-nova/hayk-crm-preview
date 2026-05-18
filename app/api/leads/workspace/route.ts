@@ -64,9 +64,20 @@ export async function GET(request: NextRequest) {
     .eq("is_inbox", false)
     .order("updated_at", { ascending: false });
 
-  if (status) {
+  // statuses = comma-separated list (e.g. "Routed to Sales,Quoted") — used by the
+  // "Directed to Sales" tab to show all pipeline stages the SDR's lead may be in.
+  const statusesParam = searchParams.get("statuses") ?? "";
+  const statusList = statusesParam ? statusesParam.split(",").map((s) => s.trim()) : [];
+
+  if (statusList.length > 0) {
+    query = query.in("status", statusList);
+    // Exclude Won leads from the routed tab — they belong in the Won tab only.
+    // A "Quoted" lead that closed as Won would otherwise appear in both tabs.
+    query = query.not("sales_status", "eq", "Won");
+  } else if (status) {
     query = query.eq("status", status);
   }
+
 
   if (prevStatus) {
     query = query.eq("prev_status", prevStatus);
@@ -78,15 +89,18 @@ export async function GET(request: NextRequest) {
     query = query.eq("sdr_id", userId);
   }
 
+
   // Sales reps only see unclaimed leads + leads they own.
   if (roleName === "sales" && userId) {
     query = query.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
   }
 
   // SDRs only see unlocked leads + leads they themselves have open.
-  // Applies to the all-leads tab only (no status param = Pending/Validated queue).
-  // Hold/routed/rejected tabs pass a status param and use scope=mine, so they are unaffected.
-  if (roleName === "sdr" && userId && !status) {
+  // Applies to the all-leads tab only (no status param AND no statuses param).
+  // Hold/routed/rejected tabs either pass a status param or a statuses list and use
+  // scope=mine — the locked_by_id filter must not apply there, because a sales rep
+  // locking the lead (after claiming) would otherwise hide it from the SDR's routed tab.
+  if (roleName === "sdr" && userId && !status && statusList.length === 0) {
     query = query.or(`locked_by_id.is.null,locked_by_id.eq.${userId}`);
   }
 

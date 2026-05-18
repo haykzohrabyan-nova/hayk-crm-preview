@@ -30,7 +30,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 | Status | All | `StatusPill` — Pending / Validated |
 | Created | All | Relative time (e.g. "2 hours ago") |
 | Working | Admin only | Name of SDR currently working the lead; "—" if unlocked; "You" if admin themselves has it open |
-| Action | All | **Verify** (SDR) / **View** + **Reassign** (Admin) |
+| Action | All | **Verify** (SDR) / **Edit** + **Assign/Reassign** (Admin) |
 
 ### Behaviors
 
@@ -38,8 +38,8 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 - **Sort:** by `updated_at` (newest first)
 - **Skeleton loader** while data fetches — never full-page spinner
 - **Verify button** (SDR) → acquires lock → opens **Verify Drawer** in edit mode
-- **View button** (Admin) → opens **Verify Drawer** in read-only mode, **no lock acquired**
-- **Reassign button** (Admin only, shown only when `locked_by_id IS NOT NULL`) → opens a modal to reassign the lead to a different active SDR or unassign it entirely; the row updates in place and tab counts refresh
+- **Edit button** (Admin) → opens **Verify Drawer** in **edit mode** with no lock acquired — Admin can view and save any field changes via "Save Changes" button; the active SDR's lock is undisturbed
+- **Assign / Reassign button** (Admin only) → "Assign" label when `locked_by_id IS NULL`; "Reassign" label when lead is already owned. Opens a modal with a dropdown of all active SDR users plus an "Unassign" option. Disabled until an SDR is selected. On confirm → updates `locked_by_id`, `locked_at`, and `sdr_id`; row updates in place and tab counts refresh
 - **Empty state:** "No leads found." with muted text
 
 ### Badge
@@ -76,12 +76,25 @@ Tab count reflects the filtered list — only leads the current SDR can work (un
 
 ## Tab: Directed to Sales
 
-**Data:** `GET /api/leads/workspace?status=Routed to Sales&scope=mine`
+**Data:** `GET /api/leads/workspace?statuses=Routed+to+Sales,Quoted,Validated&scope=mine`
 
-- **SDR:** only leads they personally routed (`sdr_id = currentUserId`) — they cannot see other SDRs' routed leads
-- **Admin:** all routed leads across every SDR (scope filter is skipped server-side)
+- **SDR:** only leads they personally routed (`sdr_id = currentUserId`). SDRs cannot see other SDRs' routed leads.
+- **Admin:** all leads in those three statuses across every SDR (scope filter is skipped server-side).
 
-This is a **status-tracking view only**. The SDR's job is done once they route a lead. This tab lets them see what happened to their leads after handoff — no actions, no drawer.
+This tab covers the **full Sales pipeline** for leads the SDR originated. It is read-only for SDRs — they cannot edit or take actions on these leads. The tab includes sub-filter pills to slice the list by pipeline stage.
+
+### Sub-filter Pills
+
+Client-side filters applied to the fetched result set:
+
+| Pill | Filter logic |
+|------|-------------|
+| **All** | All leads returned by the API (Routed to Sales + Quoted + Validated, excluding Won) |
+| **Awaiting Claim** | `status = "Routed to Sales"` AND `sales_owner_id IS NULL` |
+| **In Progress** | `sales_owner_id IS NOT NULL` AND `sales_status IN ("Ongoing", null)` |
+| **Quote Sent** | `sales_status = "Quote Sent"` |
+| **On Hold** | `sales_status = "On Hold"` |
+| **Dropped** | `sales_status = "Dropped"` |
 
 ### Table Columns
 
@@ -90,25 +103,29 @@ This is a **status-tracking view only**. The SDR's job is done once they route a
 | Name | |
 | Company | |
 | Phone | |
-| Sales Status | `StatusPill` — current Sales progress; "Unclaimed" if no Sales rep has picked it up yet |
-| Sales Rep | Name of the Sales rep who claimed it, or "—" if unclaimed |
-| Routed | `updated_at` relative time |
+| Lead Status | `status` field (e.g. "Routed to Sales", "Quoted", "Validated") |
+| Sales Status | Current sales pipeline stage; shows "—" if unclaimed |
+| Sales Rep | Name of the Sales rep who claimed the lead, or "—" if unclaimed |
+| Updated | `updated_at` relative time |
 
 ### Behaviors
 
-- **No action buttons** — read-only list, no drawer opens
-- **No hover state** — rows are not interactive
-- **Search** applies (client-side filter on name, email, phone, company)
+- **Rows are clickable** — clicking any row opens the Verify Drawer in **read-only mode** (no lock acquired). SDR can view all lead details and history but cannot save, route, hold, or reject.
+- **No action buttons in the drawer** — footer shows only "Close".
+- **Sub-filter pills** persist until the SDR navigates away; pills reset to "All" when switching tabs.
+- **Search** applies (client-side filter on name, email, phone, company).
 
-### What "Sales Status" tells the SDR
+### Lead Status Meanings on This Tab
 
-| Sales Status | Meaning |
-|---|---|
-| Unclaimed | Routed but no Sales rep has picked it up yet |
-| Ongoing | A Sales rep claimed it and is working it |
-| Quote Sent | Sales rep has sent a quote |
-| On Hold | Sales rep put it on hold |
-| Won | Deal closed |
+| Lead status | sales_status | Sub-filter pill | Meaning |
+|---|---|---|---|
+| `Routed to Sales` | `null` | Awaiting Claim | SDR routed — no Sales rep has claimed it yet |
+| `Routed to Sales` | `Ongoing` | In Progress | Sales rep claimed and is actively working it |
+| `Validated` | `Ongoing` or `null` | In Progress | Sales rep created a stub ticket (no SKUs) |
+| `Quoted` | `Quote Sent` | Quote Sent | Sales rep created a quote with line items and sent it |
+| `Routed to Sales` | `On Hold` | On Hold | Sales rep put the lead on hold |
+| `Routed to Sales` | `Dropped` | Dropped | Sales rep dropped the deal without formal reject |
+| `Quoted` | `Won` | _(excluded)_ | Order confirmed — lead exits this tab, appears in Won tab |
 
 ---
 
@@ -381,9 +398,9 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 |---------|-------|
 | All Leads / On Hold / Directed to Sales / Rejected tabs | Tab counts visible before clicking; scoped correctly per SDR |
 | Lock-based lead visibility (soft lock / permanent ownership) | SDRs only see unlocked leads + their own; locked-by-other leads hidden; closing drawer does NOT release lock |
-| Admin View action (no lock) | Admin opens any lead read-only without acquiring a lock |
+| Admin Edit action (no lock) | Admin opens any lead in **edit mode** without acquiring a lock — "Save Changes" button in footer; active SDR's lock untouched |
 | Admin "Working" column | All Leads table shows which SDR owns each lead; mobile cards too |
-| Admin Reassign action | Button shown on owned leads; modal with SDR dropdown + Unassign option; logs `lead_reassigned` activity |
+| Admin Assign / Reassign action | "Assign" on unclaimed leads; "Reassign" on owned leads. Modal with active SDR dropdown + Unassign; logs `lead_reassigned` |
 | Race condition safety net | If SDR clicks Verify on a stale lead, 409 → read-only drawer with locker banner |
 | Manual Add Lead modal | Phone lookup + deduplication banner + customer auto-fill |
 | Verify Drawer (soft lock, lock banner) | Lock acquired on Verify; ownership persists across close/save/validate/hold until Route or Reject |
@@ -391,9 +408,10 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Hold action (with reason, notes, hold-until date) | Full hold sub-form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
 | Reject (terminal) | Reason + notes; read-only after; ownership released |
-| Route to Sales | Available from any status (Pending, Validated, On Hold). Sets status + sales_status = Ongoing; ownership released; Directed to Sales tab shows Sales Rep + Sales Status — no drawer, no actions |
+| Route to Sales | Available from any status (Pending, Validated, On Hold). Sets status + sales_status = Ongoing; ownership released |
+| Directed to Sales — expanded pipeline visibility | API queries `?statuses=Routed+to+Sales,Quoted,Validated&scope=mine`; rows clickable (read-only drawer); sub-filter pills: All / Awaiting Claim / In Progress / Quote Sent / On Hold / Dropped; Won excluded |
 | Save without status change | PATCH lead fields; logs `lead_edited` for tracked field changes |
-| Context-aware action buttons | On Hold → Resume shown; Routed leads → view-only |
+| Context-aware action buttons | On Hold → Resume shown; Routed leads → read-only drawer |
 | Counts refresh after every action | bazaar:refresh-counts event fired |
 | Activity logging | `lead_claimed` on Verify, `lead_edited` on field save, `lead_reassigned` on Admin reassign |
 

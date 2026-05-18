@@ -3,6 +3,119 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-17] — Lock system roles in Admin → Roles panel
+
+### Changed
+- `components/admin/roles-section.tsx` — removed "New Role" button; system roles (SDR, Sales Rep, Admin) now show a locked message instead of editable checkboxes — page permissions for system roles cannot be changed from the UI
+
+## [2026-05-17] — Feature spec documentation audit and update
+
+### Changed
+- `docs/feature-specs/leads-sdr.md`
+  - "Directed to Sales" tab API updated from `?status=Routed+to+Sales` to `?statuses=Routed+to+Sales,Quoted,Validated`
+  - Documented that rows are clickable and open the Verify Drawer in read-only mode (previously said "no drawer opens")
+  - Added sub-filter pills table (All / Awaiting Claim / In Progress / Quote Sent / On Hold / Dropped)
+  - Added "Lead Status" and "Sales Rep" columns to the table column list
+  - Admin "View" action renamed to "Edit" action (opens in edit mode, no lock acquired)
+  - Admin "Reassign" button updated to "Assign / Reassign" with dynamic label
+  - Build status table updated to reflect all the above
+
+- `docs/feature-specs/lead-locking.md`
+  - "Admin View Mode" → "Admin Edit Mode" — Admin opens in edit mode (no lock), can save changes
+  - Removed outdated "Future — Admin Edit Override" note (the feature is built)
+  - Updated lock lifecycle diagram: "Admin clicks View" → "Admin clicks Edit"
+
+- `docs/feature-specs/leads-sales.md`
+  - "Sales Drawer" → "Sales Modal" (centered modal, `780px` max-width, `80vh`)
+  - Claim behavior: modal now opens immediately after claim (not just row update)
+  - Close button documented as inline with other action buttons, just before Save
+  - Build status table updated
+
+- `docs/api-contract.md`
+  - Added `statuses` query param (comma-separated) to `GET /api/leads/workspace`
+  - Updated SDR scoping description to mention `statuses` param and Won-lead exclusion
+
+- `docs/rbac.md`
+  - "Leads: View button (Admin — no lock, always read-only)" → "Edit button (Admin — no lock, opens in edit mode)"
+  - Lock acquisition table: Admin row updated to edit mode
+
+## [2026-05-17] — Quote visibility E2E matrix and test scenarios added to crm-logic-overview.html
+
+### Added
+- `docs/crm-logic-overview.html` — new "Quote / Ticket Visibility & Edit Rights" section under the Test Coverage Guide:
+  - **API Scope Rules table** — exact GET / PATCH / claim permissions per role, sourced directly from `app/api/tickets/route.ts` and `app/api/tickets/[id]/route.ts`
+  - **Quote Visibility Matrix** — 8-row table mapping every ticket status × every role to view/edit/forbidden; includes HVT routed flow and post-claim SDR access loss
+  - **Lead Status Sync table** — documents when `POST /api/tickets` mutates the linked lead (Quoted / Validated / Won) and the downstream effect on Sales Pipeline and SDR tabs
+  - **SDR quote E2E scenarios (Q1–Q8)** — edit vs view-only on own quotes, HVT modal trigger, routed-then-claimed access loss (403), and cross-SDR 403
+  - **Sales quote E2E scenarios (Q9–Q16)** — own/other-sales 403, HVT claim flow, lead status sync after ticket creation, order conversion, and customer confirmation
+  - **Admin quote E2E scenarios (Q17–Q20)** — full list visibility, order lock override, PATCH LOCKED enforcement for non-admins
+
+## [2026-05-17] — Comprehensive E2E test coverage guide added to crm-logic-overview.html
+
+### Added
+- `docs/crm-logic-overview.html` — new "Test Coverage Guide" section:
+  - **Lead Visibility Matrix** — 13-row table mapping every lead DB state to which role sees it, where, and whether it's editable vs read-only
+  - **SDR E2E scenarios (S1–S9)** — tests SDR visibility, lock exclusion, soft-lock attribution persistence, and read-only enforcement on Directed to Sales
+  - **Sales E2E scenarios (P1–P8)** — tests pipeline scope (own + unclaimed only), Quoted-status exclusion from Sales page, claim-then-open, On Hold and Rejected tab scope
+  - **Admin E2E scenarios (A1–A8)** — tests editability without lock, assign/reassign/unassign, terminal override, and won-tab all-leads visibility
+  - **Cross-role lifecycle scenarios (L1–L7)** — full journey from lead creation to Won, concurrent claim race condition, sdr_id protection, session-refresh resilience, Won exclusion from active tabs, and counts badge accuracy
+- Deleted leftover `.cursor/debug-0b4363.log` file
+
+## [2026-05-17] — Documentation accuracy audit + debug instrumentation cleanup
+
+### Fixed
+- `app/api/leads/workspace/route.ts` — removed leftover `import fs` + `_dbgLog` debug instrumentation that was never cleaned up (dead code, no functional impact, but should not ship)
+- `docs/crm-logic-overview.html` — full accuracy audit against source code; corrected 6 documentation errors:
+  1. **"Directed to Sales" serverStatuses** — added `"Validated"` to the listed statuses (code sends `Routed to Sales,Quoted,Validated`)
+  2. **All Leads tab scope** — documented that the tab only renders `status = "Pending"` or `"Validated"` leads (server returns all non-inbox leads; client filters to those two statuses)
+  3. **Sales Pipeline tab scope** — added prominent warning that the Sales page only fetches `status = "Routed to Sales"`; once a quote is created and the lead status advances to `"Quoted"`, the lead exits the Sales Pipeline page and is tracked through Tickets
+  4. **Admin Assign/Reassign trigger** — corrected: button label and "Unassign" option are driven by `locked_by_id` (not `sdr_id`)
+  5. **Soft-lock model** — documented that closing the lead drawer does NOT release `locked_by_id`; lock is only released on Route or Reject
+  6. **"In Progress" sub-filter condition** — corrected to `!!sales_owner_id AND (sales_status === "Ongoing" OR sales_status === null)`
+
+## [2026-05-17] — Documentation update: crm-logic-overview + CHANGELOG reflect all May 17 changes
+
+### Changed
+- `docs/crm-logic-overview.html`:
+  - **User Roles** — SDR abilities: added "Track routed leads through full sales pipeline (read-only)"; Admin abilities: added Edit any lead, Assign/Reassign SDR
+  - **SDR Workflow** — new "SDR Workspace Tabs" table and "Directed to Sales — Full Pipeline Visibility" card documenting sub-filters (Awaiting Claim, In Progress, Quote Sent, On Hold, Dropped) and read-only access rules
+  - **Sales Workflow** — new "Claim Behaviour" card explaining immediate modal open, permanent `sales_owner_id` assignment, and SDR `sdr_id` attribution preservation
+  - **Record Locking** — new "Lead Lock vs SDR Attribution" table clarifying `locked_by_id` vs `sdr_id` semantics
+  - **Admin Override section** — renamed to "Admin Lead Management & Override"; added two-column cards for Admin Lead Editing and Admin SDR Assignment; terminal override table moved inside the section
+  - Footer last-updated text updated to reflect all May 17 changes
+
+## [2026-05-17] — Fix: sales user claiming a lead no longer overwrites sdr_id
+
+### Fixed
+- `app/api/leads/[id]/lock/route.ts` — lock API now only sets `sdr_id = userId` when the caller has role `sdr`; sales users acquiring a lock to open a lead were silently overwriting the original SDR's `sdr_id`, causing the lead to vanish from the SDR's "Directed to Sales" scoped tab (`scope=mine` filters on `sdr_id`)
+
+## [2026-05-17] — SDR full pipeline visibility in "Directed to Sales" tab
+
+### Changed
+- `app/api/leads/workspace/route.ts` — added `?statuses=` param (comma-separated) so the routed tab can query multiple statuses (`Routed to Sales,Quoted`) server-side
+- `app/api/leads/workspace/counts/route.ts` — routed badge count now includes `Quoted` leads (not just `Routed to Sales`), so the tab badge stays accurate after a quote is created
+- `components/leads-page.tsx`:
+  - "Directed to Sales" tab now fetches `Routed to Sales` + `Quoted` leads (SDR keeps visibility after sales creates a quote)
+  - Added **sub-filter pills** inside the tab: All · Awaiting Claim · In Progress · Quote Sent — each with a live count badge
+  - Added **Lead Status** column to the table so SDR can see whether a lead is still "Routed to Sales" or has advanced to "Quoted"
+  - **Unclaimed** badge (amber) in Sales Rep column when no sales rep has picked up the lead yet
+  - Rows and mobile cards are now **clickable** — opens the lead read-only in the VerifyDrawer so SDR can review full context when a customer calls back
+
+## [2026-05-17] — Convert SalesDrawer from slide-in panel to centered modal
+
+### Changed
+- `components/sales-drawer.tsx` — replaced fixed right-side slide-in panel (`max-w-[600px]`, full height, `borderLeft`) with a centered modal overlay (`max-w-[780px]`, `80vh`, `border-radius: 12px`, all-border) matching the `VerifyDrawer` pattern; interior content unchanged
+
+## [2026-05-17] — Admin lead editing and SDR assignment
+
+### Added
+- Admin can now **assign unclaimed leads** to any SDR directly from the All Leads table — an "Assign" button appears on every unclaimed row; claimed rows show "Reassign"
+- "Unassign" option in the modal is only shown when the lead already has an SDR; Confirm is disabled until an SDR is selected for fresh assignments
+
+### Changed
+- `components/leads-page.tsx` — admin action column: "View" renamed to "Edit"; Assign/Reassign button always visible regardless of `locked_by_id`; Reassign/Assign modal title and SDR picker updated dynamically
+- `components/verify-drawer.tsx` — when opened by an admin (`isAdmin=true`), the drawer is now editable (not read-only) and the footer shows "Close" + "Save Changes" instead of SDR workflow buttons (Route to Sales, Hold, Reject)
+
 ## [2026-05-17] — Documentation audit + clean build confirmed
 
 ### Changed

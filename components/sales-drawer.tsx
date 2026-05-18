@@ -282,10 +282,23 @@ export function SalesDrawer({
         aria-hidden="true"
       />
 
-      {/* Drawer panel */}
+      {/* Modal centering wrapper */}
       <div
-        className="fixed right-0 top-0 z-50 flex h-full w-full max-w-[600px] flex-col overflow-hidden shadow-2xl"
-        style={{ background: "var(--color-surface)", borderLeft: "1px solid var(--color-border)" }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+        aria-modal="true"
+        role="dialog"
+      >
+      {/* Modal panel */}
+      <div
+        className="pointer-events-auto flex w-full max-w-[780px] flex-col overflow-hidden shadow-2xl"
+        style={{
+          background: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "12px",
+          minHeight: "600px",
+          maxHeight: "90vh",
+          height: "80vh",
+        }}
       >
         {/* Header */}
         <div
@@ -846,6 +859,14 @@ export function SalesDrawer({
               </button>
               <div className="flex-1" />
               <button
+                onClick={handleClose}
+                disabled={saving}
+                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+              >
+                Close
+              </button>
+              <button
                 onClick={handleSave}
                 disabled={saving}
                 className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
@@ -856,8 +877,8 @@ export function SalesDrawer({
             </div>
           )}
 
-          {/* Close button (always shown, or only button in read-only mode) */}
-          {(isReadOnly || footerMode === "actions") && (
+          {/* Close button — read-only mode only */}
+          {isReadOnly && (
             <button
               onClick={handleClose}
               className="w-full rounded-[6px] border py-2 text-[13px] font-medium transition-all"
@@ -867,6 +888,7 @@ export function SalesDrawer({
             </button>
           )}
         </div>
+      </div>
       </div>
     </>
   );

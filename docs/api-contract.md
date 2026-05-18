@@ -15,8 +15,8 @@ All endpoints are Next.js 16 Route Handlers under `app/api/`. Every handler uses
 ### `GET /api/leads/workspace`
 
 Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server-side**:
-- **SDR (no `status` param):** only leads where `locked_by_id IS NULL OR locked_by_id = currentUserId` — SDRs never see leads being worked by another SDR
-- **SDR (with `status` param):** scoped to their own leads (`sdr_id = currentUserId`), used for Hold / Rejected / Directed-to-Sales tabs
+- **SDR (no `status`/`statuses` param):** only leads where `locked_by_id IS NULL OR locked_by_id = currentUserId` — SDRs never see leads being worked by another SDR
+- **SDR (with `status` or `statuses` param):** scoped to their own leads (`sdr_id = currentUserId`), used for Hold / Rejected / Directed-to-Sales tabs. When `statuses` is provided and `sales_status = 'Won'` is present in the set, Won leads are automatically excluded (they have a dedicated Won tab).
 - **Admin:** all leads, no lock filter — also returns a `locked_by` profile join on each row
 - **Sales:** only leads where `status = 'Routed to Sales'` or `sales_owner_id = currentUserId`
 
@@ -24,7 +24,8 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `status` | `string` | Filter by `status` value |
+| `status` | `string` | Filter by a single `status` value (e.g. `?status=On+Hold`) |
+| `statuses` | `string` | Comma-separated list of status values — server applies `status IN (...)` filter. Used by SDR "Directed to Sales" tab: `?statuses=Routed+to+Sales,Quoted,Validated`. Takes precedence over `status` when present. |
 | `prev_status` | `string` | Filter by `prev_status` value — used by Sales Rejected tab to restrict to `Routed to Sales` |
 | `scope` | `string` | `mine` — restrict to leads where `sdr_id = current user` |
 | `search` | `string` | Full-text search on name, email, phone, company |

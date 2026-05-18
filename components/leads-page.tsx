@@ -663,6 +663,9 @@ export function LeadsPage() {
   // Owner filter (SDR users only): "all" = unclaimed + mine, "mine" = only my leads
   const [ownerFilter, setOwnerFilter] = useState<"all" | "mine">("all");
 
+  // Routed tab sub-filter — breaks "Directed to Sales" into pipeline stages
+  const [routedFilter, setRoutedFilter] = useState<"all" | "awaiting" | "in_progress" | "quote_sent" | "on_hold" | "dropped">("all");
+
   // Sort — field + direction
   type SortField = "created" | "urgency";
   type SortDir   = "asc" | "desc";
@@ -732,12 +735,13 @@ export function LeadsPage() {
     id: Tab;
     label: string;
     status: string | null;
-    statuses?: string[];
+    statuses?: string[];       // client-side filter (all tab)
+    serverStatuses?: string[]; // server-side multi-status filter sent as ?statuses=
     scope?: string;
   }[] = [
     { id: "all",      label: "All Leads",         status: null,              statuses: ["Pending", "Validated"] },
     { id: "hold",     label: "On Hold",            status: "On Hold",         scope: "mine" },
-    { id: "routed",   label: "Directed to Sales",  status: "Routed to Sales", scope: "mine" },
+    { id: "routed",   label: "Directed to Sales",  status: null,              serverStatuses: ["Routed to Sales", "Quoted", "Validated"], scope: "mine" },
     { id: "rejected", label: "Rejected",           status: "Rejected",        scope: "mine" },
     { id: "won",      label: "Won",                status: null,              scope: "mine" },
   ];
@@ -749,6 +753,7 @@ export function LeadsPage() {
     const tabConf = TAB_CONFIG.find((t) => t.id === activeTab)!;
     const params = new URLSearchParams();
     if (tabConf.status) params.set("status", tabConf.status);
+    if (tabConf.serverStatuses) params.set("statuses", tabConf.serverStatuses.join(","));
     if (tabConf.scope) params.set("scope", tabConf.scope);
     if (search) params.set("search", search);
     if (activeTab === "won") params.set("won", "true");
@@ -787,9 +792,9 @@ export function LeadsPage() {
   }
 
   function handleViewLead(lead: Lead) {
-    // Admin view — no lock acquired, opens read-only
+    // Admin opens in edit mode; SDR and all other roles get read-only
     setDrawerLead(lead);
-    setDrawerReadOnly(true);
+    setDrawerReadOnly(!isAdmin);
     setDrawerLockedBy(null);
   }
 
@@ -854,6 +859,7 @@ export function LeadsPage() {
       if (!tabConf) return;
       const params = new URLSearchParams();
       if (tabConf.status) params.set("status", tabConf.status);
+      if (tabConf.serverStatuses) params.set("statuses", tabConf.serverStatuses.join(","));
       if (tabConf.scope) params.set("scope", tabConf.scope);
       if (search) params.set("search", search);
       fetch(`/api/leads/workspace?${params}`)
@@ -902,9 +908,29 @@ export function LeadsPage() {
       ? searchFiltered.filter((l) => l.locked_by_id === userId)
       : searchFiltered;
 
+  // "Directed to Sales" sub-filter — applied on routed tab only
+  const routedSubCounts = {
+    all:         ownerFiltered.length,
+    awaiting:    ownerFiltered.filter((l) => !l.sales_owner_id).length,
+    in_progress: ownerFiltered.filter((l) => !!l.sales_owner_id && (l.sales_status === "Ongoing" || !l.sales_status)).length,
+    quote_sent:  ownerFiltered.filter((l) => l.sales_status === "Quote Sent").length,
+    on_hold:     ownerFiltered.filter((l) => l.sales_status === "On Hold").length,
+    dropped:     ownerFiltered.filter((l) => l.sales_status === "Dropped").length,
+  };
+  const routedFiltered = activeTab === "routed" ? (() => {
+    switch (routedFilter) {
+      case "awaiting":    return ownerFiltered.filter((l) => !l.sales_owner_id);
+      case "in_progress": return ownerFiltered.filter((l) => !!l.sales_owner_id && (l.sales_status === "Ongoing" || !l.sales_status));
+      case "quote_sent":  return ownerFiltered.filter((l) => l.sales_status === "Quote Sent");
+      case "on_hold":     return ownerFiltered.filter((l) => l.sales_status === "On Hold");
+      case "dropped":     return ownerFiltered.filter((l) => l.sales_status === "Dropped");
+      default:            return ownerFiltered;
+    }
+  })() : ownerFiltered;
+
   // Client-side sort
   const URGENCY_ORDER: Record<string, number> = { High: 1, Medium: 2, Low: 3 };
-  const filtered = [...ownerFiltered].sort((a, b) => {
+  const filtered = [...routedFiltered].sort((a, b) => {
     if (sortField === "urgency") {
       const ua = URGENCY_ORDER[a.urgency ?? ""] ?? 4;
       const ub = URGENCY_ORDER[b.urgency ?? ""] ?? 4;
@@ -943,7 +969,7 @@ export function LeadsPage() {
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => { setActiveTab(tab.id); if (tab.id !== "routed") setRoutedFilter("all"); }}
             className="whitespace-nowrap px-4 py-2.5 text-[13px] font-medium transition-colors"
             style={{
               borderBottom: activeTab === tab.id ? "2px solid var(--color-tab-underline)" : "2px solid transparent",
@@ -1112,17 +1138,15 @@ export function LeadsPage() {
                               className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
                               style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                             >
-                              View
+                              Edit
                             </button>
-                            {lead.locked_by_id && (
-                              <button
-                                onClick={() => { setReassignLead(lead); setReassignUserId("unassign"); }}
-                                className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
-                                style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
-                              >
-                                Reassign
-                              </button>
-                            )}
+                            <button
+                              onClick={() => { setReassignLead(lead); setReassignUserId(lead.locked_by_id ? "unassign" : ""); }}
+                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                              style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                            >
+                              {lead.locked_by_id ? "Reassign" : "Assign"}
+                            </button>
                           </div>
                         ) : lead.locked_by_id === userId ? (
                           <button
@@ -1230,17 +1254,15 @@ export function LeadsPage() {
                         className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
                         style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                       >
-                        View
+                        Edit
                       </button>
-                      {lead.locked_by_id && (
-                        <button
-                          onClick={() => { setReassignLead(lead); setReassignUserId("unassign"); }}
-                          className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
-                          style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
-                        >
-                          Reassign
-                        </button>
-                      )}
+                      <button
+                        onClick={() => { setReassignLead(lead); setReassignUserId(lead.locked_by_id ? "unassign" : ""); }}
+                        className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
+                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                      >
+                        {lead.locked_by_id ? "Reassign" : "Assign"}
+                      </button>
                     </div>
                   ) : lead.locked_by_id === userId ? (
                     <button
@@ -1368,45 +1390,100 @@ export function LeadsPage() {
       {/* ── Directed to Sales tab ── */}
       {activeTab === "routed" && (
         <>
+          {/* Sub-filter pills */}
+          <div className="flex flex-wrap gap-1.5">
+            {(["all", "awaiting", "in_progress", "quote_sent", "on_hold", "dropped"] as const).map((f) => {
+              const labels: Record<typeof f, string> = {
+                all: "All",
+                awaiting: "Awaiting Claim",
+                in_progress: "In Progress",
+                quote_sent: "Quote Sent",
+                on_hold: "On Hold",
+                dropped: "Dropped",
+              };
+              const count = routedSubCounts[f];
+              const isActive = routedFilter === f;
+              return (
+                <button
+                  key={f}
+                  onClick={() => setRoutedFilter(f)}
+                  className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors"
+                  style={{
+                    background: isActive ? "var(--color-tab-active)" : "var(--color-surface)",
+                    borderColor: isActive ? "var(--color-tab-active)" : "var(--color-border)",
+                    color: isActive ? "#fff" : "var(--color-text-muted)",
+                  }}
+                >
+                  {labels[f]}
+                  {count > 0 && (
+                    <span
+                      className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+                      style={{
+                        background: isActive ? "rgba(255,255,255,0.25)" : "color-mix(in srgb, var(--color-border) 60%, transparent)",
+                        color: isActive ? "#fff" : "var(--color-text-muted)",
+                      }}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Desktop table */}
           <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Phone", "Sales Status", "Sales Rep", "Routed"].map((h) => (
+                  {["Name", "Company", "Phone", "Lead Status", "Sales Status", "Sales Rep", "Updated"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={6} />
+                  <TableSkeleton cols={7} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No leads directed to sales.</td>
+                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No leads directed to sales.</td>
                   </tr>
                 ) : (
                   filtered.map((lead, idx) => (
                     <tr
                       key={lead.id}
+                      className="cursor-pointer transition-colors"
                       style={{
                         background: idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
                         borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
                       }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
+                      onClick={() => handleViewLead(lead)}
                     >
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {lead.customer?.phone ? formatPhone(lead.customer.phone) : "—"}
                       </td>
+                      <td className="px-3 py-2.5"><StatusPill status={lead.status} /></td>
                       <td className="px-3 py-2.5">
                         {lead.sales_status
                           ? <StatusPill status={lead.sales_status} />
-                          : <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Unclaimed</span>}
+                          : <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>}
                       </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-primary)" }}>
-                        {(lead.sales_owner as { full_name?: string | null } | undefined)?.full_name ?? (
-                          <span style={{ color: "var(--color-text-muted)" }}>—</span>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                        {(lead.sales_owner as { full_name?: string | null } | undefined)?.full_name ? (
+                          <span style={{ color: "var(--color-text-primary)" }}>
+                            {(lead.sales_owner as { full_name?: string | null }).full_name}
+                          </span>
+                        ) : (
+                          <span
+                            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
+                          >
+                            Unclaimed
+                          </span>
                         )}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
@@ -1429,7 +1506,12 @@ export function LeadsPage() {
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>No leads directed to sales.</div>
             ) : (
               filtered.map((lead) => (
-                <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+                <div
+                  key={lead.id}
+                  className="rounded-[10px] border p-4 space-y-3 cursor-pointer"
+                  style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+                  onClick={() => handleViewLead(lead)}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</p>
@@ -1437,21 +1519,31 @@ export function LeadsPage() {
                         <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer.company}</p>
                       )}
                     </div>
-                    {lead.sales_status
-                      ? <StatusPill status={lead.sales_status} />
-                      : <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}>Unclaimed</span>}
+                    <div className="flex flex-col items-end gap-1">
+                      <StatusPill status={lead.status} />
+                      {lead.sales_status && <StatusPill status={lead.sales_status} />}
+                    </div>
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
                     {lead.customer?.phone && (
                       <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>
                     )}
-                    <div className="flex justify-between">
+                    <div className="flex justify-between items-center">
                       <span>Sales Rep</span>
-                      <span className="normal-case tracking-normal" style={{ color: "var(--color-text-primary)" }}>
-                        {(lead.sales_owner as { full_name?: string | null } | undefined)?.full_name ?? "—"}
-                      </span>
+                      {(lead.sales_owner as { full_name?: string | null } | undefined)?.full_name ? (
+                        <span className="normal-case tracking-normal" style={{ color: "var(--color-text-primary)" }}>
+                          {(lead.sales_owner as { full_name?: string | null }).full_name}
+                        </span>
+                      ) : (
+                        <span
+                          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal"
+                          style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
+                        >
+                          Unclaimed
+                        </span>
+                      )}
                     </div>
-                    <div className="flex justify-between"><span>Routed</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
+                    <div className="flex justify-between"><span>Updated</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
                   </div>
                 </div>
               ))
@@ -1642,11 +1734,11 @@ export function LeadsPage() {
         />
       )}
 
-      {/* Reassign modal (admin only) */}
+      {/* Reassign / Assign modal (admin only) */}
       <Dialog open={!!reassignLead} onOpenChange={(o) => { if (!o) setReassignLead(null); }}>
         <DialogContent className="sm:max-w-[400px]">
           <DialogHeader>
-            <DialogTitle>Reassign Lead</DialogTitle>
+            <DialogTitle>{reassignLead?.locked_by_id ? "Reassign Lead" : "Assign Lead"}</DialogTitle>
           </DialogHeader>
           {reassignLead && (
             <div className="space-y-4 pt-1">
@@ -1658,14 +1750,20 @@ export function LeadsPage() {
                   className="block text-[11px] font-medium uppercase tracking-[0.06em] mb-1.5"
                   style={{ color: "var(--color-text-muted)" }}
                 >
-                  Assign to SDR
+                  {reassignLead.locked_by_id ? "Reassign to SDR" : "Assign to SDR"}
                 </label>
-                <Select value={reassignUserId} onValueChange={(v) => setReassignUserId(v ?? "unassign")}>
+                <Select value={reassignUserId} onValueChange={(v) => setReassignUserId(v ?? "")}>
                   <SelectTrigger className="h-9 text-sm w-full">
-                    <SelectValue />
+                    <SelectValue placeholder="Select an SDR…">
+                      {reassignUserId === "unassign"
+                        ? "— Unassign (remove from SDR)"
+                        : sdrList.find((s) => s.id === reassignUserId)?.full_name ?? "Select an SDR…"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="unassign">— Unassign (remove from SDR)</SelectItem>
+                    {reassignLead.locked_by_id && (
+                      <SelectItem value="unassign">— Unassign (remove from SDR)</SelectItem>
+                    )}
                     {sdrList.map((sdr) => (
                       <SelectItem key={sdr.id} value={sdr.id}>
                         {sdr.full_name}
@@ -1678,7 +1776,7 @@ export function LeadsPage() {
                 <Button variant="outline" onClick={() => setReassignLead(null)} disabled={reassigning}>
                   Cancel
                 </Button>
-                <Button onClick={handleReassign} disabled={reassigning}>
+                <Button onClick={handleReassign} disabled={reassigning || !reassignUserId}>
                   {reassigning ? "Saving…" : "Confirm"}
                 </Button>
               </div>

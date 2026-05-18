@@ -1000,64 +1000,87 @@ export function VerifyDrawer({
           {/* Main action buttons */}
           {footerMode === "actions" && !isReadOnly && (
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                onClick={handleRoute}
-                disabled={saving}
-                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
-                style={{
-                  background: "var(--color-btn-primary-bg)",
-                  color: "var(--color-btn-primary-text)",
-                }}
-              >
-                Route to Sales
-              </button>
-              <button
-                title="Available in the Tickets phase"
-                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
-                style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-                onClick={handleCreateQuote}
-                disabled={saving}
-              >
-                {saving ? "Saving…" : "Create Quote / Order"}
-              </button>
-              {lead.status === "On Hold" ? (
-                <button
-                  onClick={handleResume}
-                  disabled={saving}
-                  className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
-                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                >
-                  Resume
-                </button>
+              {isAdmin ? (
+                <>
+                  <button
+                    onClick={handleClose}
+                    disabled={saving}
+                    className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                    style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={() => promptThenRun(handleSave)}
+                    disabled={saving}
+                    className="ml-auto rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                    style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                  >
+                    {saving ? "Saving…" : "Save Changes"}
+                  </button>
+                </>
               ) : (
-                <button
-                  onClick={() => setFooterMode("hold")}
-                  disabled={saving}
-                  className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
-                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                >
-                  On Hold
-                </button>
+                <>
+                  <button
+                    onClick={handleRoute}
+                    disabled={saving}
+                    className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                    style={{
+                      background: "var(--color-btn-primary-bg)",
+                      color: "var(--color-btn-primary-text)",
+                    }}
+                  >
+                    Route to Sales
+                  </button>
+                  <button
+                    title="Available in the Tickets phase"
+                    className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                    style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                    onClick={handleCreateQuote}
+                    disabled={saving}
+                  >
+                    {saving ? "Saving…" : "Create Quote / Order"}
+                  </button>
+                  {lead.status === "On Hold" ? (
+                    <button
+                      onClick={handleResume}
+                      disabled={saving}
+                      className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                    >
+                      Resume
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => setFooterMode("hold")}
+                      disabled={saving}
+                      className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                    >
+                      On Hold
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setFooterMode("reject")}
+                    disabled={saving}
+                    className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium text-white transition-all"
+                    style={{ background: "var(--color-danger)" }}
+                  >
+                    Reject
+                  </button>
+                  <button
+                    onClick={() => promptThenRun(handleSave)}
+                    disabled={saving}
+                    className="ml-auto rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                    style={{
+                      background: "var(--color-btn-verify-bg)",
+                      color: "var(--color-btn-verify-text)",
+                    }}
+                  >
+                    {saving ? "Saving…" : "Save"}
+                  </button>
+                </>
               )}
-              <button
-                onClick={() => setFooterMode("reject")}
-                disabled={saving}
-                className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium text-white transition-all"
-                style={{ background: "var(--color-danger)" }}
-              >
-                Reject
-              </button>
-              <button
-                onClick={() => promptThenRun(handleSave)}
-                disabled={saving}
-                className="ml-auto rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
-                style={{
-                  background: "var(--color-btn-verify-bg)",
-                  color: "var(--color-btn-verify-text)",
-                }}
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
             </div>
           )}
 

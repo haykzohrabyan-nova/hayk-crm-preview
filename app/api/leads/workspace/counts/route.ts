@@ -24,11 +24,13 @@ export async function GET() {
   // Scoped tabs (Hold / Routed / Rejected / Won):
   // - SDRs see only their own leads (sdr_id = userId)
   // - Admins see all leads across every SDR
+  // "Routed" count includes "Quoted" and "Validated" so SDRs keep visibility through
+  // all sales pipeline stages (quote shell started, quote with SKUs sent, etc.).
   let scopedQuery = admin
     .from("leads")
     .select("status, sales_status")
     .eq("is_inbox", false)
-    .in("status", ["On Hold", "Routed to Sales", "Rejected"]);
+    .in("status", ["On Hold", "Routed to Sales", "Rejected", "Quoted", "Validated"]);
 
   // Won leads: status = "Routed to Sales" AND sales_status = "Won"
   let wonQuery = admin
@@ -50,7 +52,7 @@ export async function GET() {
   const counts = {
     all:      allLeads.length,
     hold:     scopedLeads.filter((l) => l.status === "On Hold").length,
-    routed:   scopedLeads.filter((l) => l.status === "Routed to Sales").length,
+    routed:   scopedLeads.filter((l) => ["Routed to Sales", "Quoted", "Validated"].includes(l.status) && l.sales_status !== "Won").length,
     rejected: scopedLeads.filter((l) => l.status === "Rejected").length,
     won:      wonResult.count ?? 0,
   };

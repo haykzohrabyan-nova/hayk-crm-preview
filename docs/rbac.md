@@ -208,7 +208,7 @@ When an SDR clicks Verify, the client calls `POST /api/leads/[id]/lock`:
 | Lead is unlocked | Lock granted — drawer opens in edit mode |
 | Lead is locked by the same user | Lock refreshed — drawer opens in edit mode |
 | Lead is locked by a different SDR (race condition) | `409` returned — drawer opens in read-only mode with banner |
-| Admin opens any lead | **No lock call** — drawer opens read-only directly (View action) |
+| Admin opens any lead | **No lock call** — drawer opens in **edit mode** directly (Edit action) |
 
 ### Read-Only Mode (Race Condition — Locked by Another)
 
@@ -268,7 +268,7 @@ Role is read directly from Supabase (`user_profiles.roles(name)`) in each compon
 | Dashboard: global KPIs + Team grid | ✗ | ✗ | ✓ |
 | Leads: **Claim** button (unclaimed — acquires lock + permanent ownership) | ✓ | ✗ | ✗ |
 | Leads: **View** button (SDR re-opens their own lead) | ✓ | ✗ | ✗ |
-| Leads: **View** button (Admin — no lock, always read-only) | ✗ | ✗ | ✓ |
+| Leads: **Edit** button (Admin — no lock, opens in edit mode) | ✗ | ✗ | ✓ |
 | Leads: **Reassign** button (owned leads only) | ✗ | ✗ | ✓ |
 | Leads: **Owner** column (SDR name or "Unclaimed" badge) | ✓ | ✗ | ✓ |
 | Leads: My Leads / All Leads toggle filter | ✓ | ✗ | ✗ |

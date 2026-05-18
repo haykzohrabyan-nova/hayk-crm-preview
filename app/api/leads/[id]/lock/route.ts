@@ -46,14 +46,15 @@ export async function POST(
   // Detect new claim vs self-refresh (same user reopening their own lead)
   const isNewClaim = !lead.locked_by_id || lead.locked_by_id !== userId;
 
-  // Acquire (or refresh) lock. Also set sdr_id so the SDR's scoped tabs
-  // (Hold / Routed / Rejected) correctly show this lead under scope=mine.
+  // Acquire (or refresh) lock. Set sdr_id only when the caller is an SDR —
+  // sales users locking a lead to work it must NOT overwrite the original sdr_id
+  // or the SDR loses visibility in their "Directed to Sales" scoped tab.
   await admin
     .from("leads")
     .update({
       locked_by_id: userId,
       locked_at: new Date().toISOString(),
-      sdr_id: userId,
+      ...(roleName === "sdr" ? { sdr_id: userId } : {}),
     })
     .eq("id", id);
 

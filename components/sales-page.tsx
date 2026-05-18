@@ -285,6 +285,8 @@ export function SalesPage() {
     }
     setRoutedLeads((prev) => prev.map((l) => (l.id === lead.id ? data.lead : l)));
     showToast("Lead claimed.");
+    // Open the modal immediately after claiming — assignment is already persisted in DB
+    await handleOpenLead(data.lead);
   }
 
   async function handleOpenLead(lead: Lead) {

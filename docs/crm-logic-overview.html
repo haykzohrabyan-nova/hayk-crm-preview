@@ -154,6 +154,9 @@
     border-radius: 12px;
     padding: 20px 24px;
     margin-bottom: 16px;
+    max-width: 1280px;
+    min-width: fit-content;
+    overflow-x: auto;
   }
   .card-title {
     font-size: 14px;
@@ -217,6 +220,7 @@
     padding: 24px;
     margin-bottom: 16px;
     overflow-x: auto;
+    min-width: fit-content;
   }
   .flow-title {
     font-size: 13px;
@@ -501,6 +505,7 @@
 
     <div class="sidebar-section-label">Roadmap</div>
     <a href="#whats-left"><span class="icon">❓</span> What's Left?</a>
+    <a href="#test-coverage"><span class="icon">🧪</span> Test Coverage Guide</a>
   </nav>
 
   <!-- Main Content -->
@@ -572,6 +577,7 @@
             <li>Hold, reject, or route leads to Sales</li>
             <li>Create quotes for leads under HV threshold</li>
             <li>Send quotes via Email/SMS/WhatsApp</li>
+            <li>Track routed leads through full sales pipeline (read-only)</li>
             <li>See their own "Won" leads</li>
             <li>Send payment reminders to customers</li>
           </ul>
@@ -593,6 +599,9 @@
           <span class="role-tag" style="background:#e0e7ff;color:#3730a3;">Administrator</span>
           <ul class="role-abilities">
             <li>Full access to all leads, quotes, orders</li>
+            <li>Edit any lead directly (no lock required)</li>
+            <li>Assign unclaimed leads to any SDR</li>
+            <li>Reassign claimed leads between SDRs</li>
             <li>Override any locked or terminal record</li>
             <li>Cancel or edit confirmed orders</li>
             <li>Advance orders through production lifecycle</li>
@@ -727,8 +736,85 @@
       </div>
 
       <div class="card">
-        <div class="card-title">🔒 Lead Locking</div>
-        <p style="font-size:13px;color:var(--muted);">When an SDR opens a lead, it is instantly locked to them. Other SDRs see a "Being worked by [Name]" banner and view it in read-only mode. The lock releases automatically when the SDR closes the lead. Admins can force-release any lock.</p>
+        <div class="card-title">🔒 Lead Locking (Soft-Lock)</div>
+        <p style="font-size:13px;color:var(--muted);">When an SDR claims a lead, <code style="font-size:11px;">locked_by_id</code> is set. Other SDRs see a "Being worked by [Name]" banner and view it in read-only mode. <strong>The lock is NOT released on drawer close</strong> — only when the SDR Routes, Rejects, or an admin force-releases it. This keeps the lead attributed to the right SDR even across sessions.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">📊 SDR Workspace Tabs</div>
+        <table class="data-table">
+          <thead><tr><th>Tab</th><th>API query (server-side)</th><th>Client-side filter</th><th>SDR Can</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="pill info">All Leads</span></td>
+              <td>No status filter — returns all non-inbox leads visible to SDR (<code style="font-size:11px;">locked_by_id IS NULL OR locked_by_id = me</code>)</td>
+              <td>Keep only <code style="font-size:11px;">status = "Pending"</code> or <code style="font-size:11px;">"Validated"</code></td>
+              <td>Claim, edit, route, hold, reject</td>
+            </tr>
+            <tr>
+              <td><span class="pill warning">On Hold</span></td>
+              <td><code style="font-size:11px;">status = "On Hold"</code>, <code style="font-size:11px;">sdr_id = me</code></td>
+              <td>—</td>
+              <td>Resume or view</td>
+            </tr>
+            <tr>
+              <td><span class="pill routed">Directed to Sales</span></td>
+              <td><code style="font-size:11px;">status IN ("Routed to Sales", "Quoted", "Validated")</code>, <code style="font-size:11px;">sdr_id = me</code>, excludes <code style="font-size:11px;">sales_status = "Won"</code></td>
+              <td>Sub-filters (see below)</td>
+              <td>View only (read-only)</td>
+            </tr>
+            <tr>
+              <td><span class="pill cancelled">Rejected</span></td>
+              <td><code style="font-size:11px;">status = "Rejected"</code>, <code style="font-size:11px;">sdr_id = me</code></td>
+              <td>—</td>
+              <td>View only</td>
+            </tr>
+            <tr>
+              <td><span class="pill success">Won</span></td>
+              <td><code style="font-size:11px;">sales_status = "Won"</code>, <code style="font-size:11px;">sdr_id = me</code></td>
+              <td>—</td>
+              <td>View only</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="info-box info" style="margin-top:10px;margin-bottom:0;">
+          <span class="info-icon">ℹ️</span>
+          <div style="font-size:12.5px;"><strong>Soft-lock model:</strong> Closing the lead drawer does NOT release <code>locked_by_id</code>. The SDR retains the lock (and "My Leads" attribution) until they Route, Reject, or Hold the lead — at which point the lock is released. Admins can force-release any lock at any time.</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🔍 Directed to Sales — Full Pipeline Visibility</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:12px;">Once the SDR routes a lead, they maintain <strong>read-only visibility</strong> through the entire sales pipeline. This allows SDRs to handle customer callbacks without needing to ask sales reps for status. The tab includes sub-filters:</p>
+        <table class="data-table">
+          <thead><tr><th>Sub-filter</th><th>Exact code condition</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><span class="pill draft">Awaiting Claim</span></td>
+              <td><code style="font-size:11px;">!sales_owner_id</code> — no sales rep has picked it up</td>
+            </tr>
+            <tr>
+              <td><span class="pill info">In Progress</span></td>
+              <td><code style="font-size:11px;">!!sales_owner_id AND (sales_status === "Ongoing" OR sales_status === null)</code> — claimed but no quote sent yet</td>
+            </tr>
+            <tr>
+              <td><span class="pill sent">Quote Sent</span></td>
+              <td><code style="font-size:11px;">sales_status === "Quote Sent"</code></td>
+            </tr>
+            <tr>
+              <td><span class="pill warning">On Hold</span></td>
+              <td><code style="font-size:11px;">sales_status === "On Hold"</code></td>
+            </tr>
+            <tr>
+              <td><span class="pill cancelled">Dropped</span></td>
+              <td><code style="font-size:11px;">sales_status === "Dropped"</code></td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="info-box info" style="margin-top:12px;margin-bottom:0;">
+          <span class="info-icon">ℹ️</span>
+          <div>Leads with <code style="background:rgba(37,99,235,0.08);padding:1px 5px;border-radius:3px;">sales_status = Won</code> are excluded from this tab — they appear in the SDR's <strong>Won</strong> tab instead. The "All" sub-filter count = all leads returned by the server query; individual sub-filter counts are computed client-side.</div>
+        </div>
       </div>
     </section>
 
@@ -749,22 +835,22 @@
         <div class="flow-steps">
           <div class="flow-step">
             <div class="flow-node routed">Routed to Sales</div>
-            <div class="flow-note">From SDR or HV threshold</div>
+            <div class="flow-note">Visible in Sales Pipeline tab</div>
           </div>
           <div class="flow-arrow">→</div>
           <div class="flow-step">
             <div class="flow-node action">Sales Claims It</div>
-            <div class="flow-note">Disappears from others' queue instantly</div>
+            <div class="flow-note">sales_owner_id set; modal opens immediately</div>
           </div>
           <div class="flow-arrow">→</div>
           <div class="flow-step">
-            <div class="flow-node sent">Quote / Negotiate</div>
-            <div class="flow-note">Can create quotes freely (no HV block)</div>
+            <div class="flow-node sent">Creates Quote</div>
+            <div class="flow-note">Status → "Quoted"; lead leaves Sales Pipeline page</div>
           </div>
           <div class="flow-arrow">→</div>
           <div class="flow-step">
             <div class="flow-node order">Won → Order</div>
-            <div class="flow-note">Customer approves or rep converts</div>
+            <div class="flow-note">Customer approves or rep converts via Tickets</div>
           </div>
         </div>
       </div>
@@ -773,17 +859,61 @@
         <div class="card">
           <div class="card-title">📋 Sales Pipeline Tabs</div>
           <table class="data-table">
-            <thead><tr><th>Tab</th><th>Content</th></tr></thead>
+            <thead><tr><th>Tab</th><th>API query</th><th>Client filter</th></tr></thead>
             <tbody>
-              <tr><td><span class="pill info">Pipeline</span></td><td>All active routed leads owned by this rep</td></tr>
-              <tr><td><span class="pill warning">On Hold</span></td><td>Leads paused with a reason and resume date</td></tr>
-              <tr><td><span class="pill cancelled">Rejected</span></td><td>Leads rejected by this rep (terminal)</td></tr>
+              <tr>
+                <td><span class="pill info">Pipeline</span></td>
+                <td><code style="font-size:11px;">status = "Routed to Sales"</code>, unclaimed + own</td>
+                <td><code style="font-size:11px;">sales_status IN (null, "Ongoing", "Quote Sent")</code></td>
+              </tr>
+              <tr>
+                <td><span class="pill warning">On Hold</span></td>
+                <td>Same fetch as Pipeline</td>
+                <td><code style="font-size:11px;">sales_status = "On Hold"</code></td>
+              </tr>
+              <tr>
+                <td><span class="pill cancelled">Rejected</span></td>
+                <td><code style="font-size:11px;">status = "Rejected"</code>, <code style="font-size:11px;">prev_status = "Routed to Sales"</code></td>
+                <td>Lazy-loaded on first click</td>
+              </tr>
             </tbody>
           </table>
+          <div class="info-box warning" style="margin-top:8px;margin-bottom:0;">
+            <span class="info-icon">⚠️</span>
+            <div style="font-size:12.5px;"><strong>Important:</strong> The Sales page only fetches leads with <code>status = "Routed to Sales"</code>. Once a sales rep creates a quote and the lead's status advances to <code>"Quoted"</code>, that lead is <em>no longer visible</em> in the Sales Pipeline page — it appears only in the SDR's "Directed to Sales" tab. The sales rep continues their work through the Quotes/Orders system (Tickets).</div>
+          </div>
         </div>
         <div class="card">
           <div class="card-title">📜 Activity History</div>
           <p style="font-size:13px;color:var(--muted);">Every lead has a full activity timeline: who created it, when it was routed, every status change, every note, every quote sent. Sales reps can see the full SDR history before working a lead.</p>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🖱️ Claim Behaviour</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">When a sales rep clicks <strong>Claim</strong> on an unclaimed lead:</p>
+        <div class="timeline">
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:#3b82f6;"></div>
+            <div class="timeline-item-content">
+              <div class="timeline-item-title">Assignment written to DB immediately</div>
+              <div class="timeline-item-desc"><code style="font-size:11px;">sales_owner_id</code> is set — persists even if the rep closes the modal or refreshes. The lead stays assigned to that rep.</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:var(--gold-dark);"></div>
+            <div class="timeline-item-content">
+              <div class="timeline-item-title">Lead modal opens automatically</div>
+              <div class="timeline-item-desc">The lead detail modal opens immediately after claiming so the rep can start working without a second click.</div>
+            </div>
+          </div>
+          <div class="timeline-item">
+            <div class="timeline-dot" style="background:var(--navy);"></div>
+            <div class="timeline-item-content">
+              <div class="timeline-item-title">SDR retains attribution</div>
+              <div class="timeline-item-desc">The original SDR's <code style="font-size:11px;">sdr_id</code> is never overwritten when a sales rep claims or opens a lead — the SDR keeps credit and visibility.</div>
+            </div>
+          </div>
         </div>
       </div>
     </section>
@@ -1271,6 +1401,28 @@
         <span class="info-icon">✅</span>
         <div>Payment reminders are <strong>always available</strong> regardless of lock state. A locked order can still have its payment link sent via Email, SMS, or WhatsApp directly from the order page — this is a separate action from editing.</div>
       </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🔗 Lead Lock vs SDR Attribution (Soft-Lock Model)</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Two separate fields track lead ownership — they serve different purposes and must not be confused:</p>
+        <table class="data-table">
+          <thead><tr><th>Field</th><th>Set when</th><th>Released when</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code style="font-size:11px;">locked_by_id</code></td>
+              <td>Any user opens a lead (<code style="font-size:11px;">POST /lock</code>)</td>
+              <td>SDR routes or rejects (<code style="font-size:11px;">POST /unlock</code>). <strong>Closing the drawer alone does NOT release it.</strong> Admin can force-release.</td>
+              <td>Prevents simultaneous editing — shows "Being worked by [Name]" banner. Drives Owner column and SDR "My Leads" toggle.</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">sdr_id</code></td>
+              <td>SDR only — set via <code style="font-size:11px;">POST /lock</code> when <code style="font-size:11px;">roleName === "sdr"</code></td>
+              <td>Only by admin via <code style="font-size:11px;">POST /reassign</code> (unassign action)</td>
+              <td>Permanent SDR attribution — drives scoped tabs (Hold, Directed to Sales, Won, Rejected). <strong>Never overwritten by sales users opening a lead.</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <!-- ═══════════════════════════════════════════════ -->
@@ -1280,18 +1432,37 @@
       <div class="section-header">
         <div class="section-icon">🛡️</div>
         <div>
-          <div class="section-title">Admin Override for Terminal Leads</div>
-          <div class="section-desc">Admins can reopen and edit any lead, even after it reaches a terminal state</div>
+          <div class="section-title">Admin Lead Management &amp; Override</div>
+          <div class="section-desc">Admins can edit any lead, assign SDRs, and override terminal states</div>
         </div>
       </div>
 
-      <div class="info-box warning">
-        <span class="info-icon">🛡️</span>
-        <div>A <strong>terminal lead</strong> is one that has been Rejected, Won, or Dropped. Normally these are fully read-only for everyone. Admins are the exception — they see an amber "Admin Override" banner and can edit any field, re-route the lead, or change its status.</div>
+      <div class="two-col">
+        <div class="card">
+          <div class="card-title">✏️ Admin Lead Editing</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">From the <strong>Leads → All Leads</strong> table, admins see an <strong>Edit</strong> button on every row. Clicking it opens the lead detail drawer in editable mode — no lock required. The footer shows <strong>Close</strong> and <strong>Save Changes</strong> instead of SDR workflow buttons.</p>
+          <div class="info-box navy" style="margin-top:8px;margin-bottom:0;">
+            <span class="info-icon">ℹ️</span>
+            <div style="font-size:12.5px;">Admin edits bypass the lock guard on the API — the lead doesn't need to be unclaimed for admin to edit it.</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">👤 Admin SDR Assignment</div>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Every lead row in the All Leads table shows an <strong>Assign</strong> or <strong>Reassign</strong> button for admins. The label and modal options are driven by the lead's <code style="font-size:11px;">locked_by_id</code> field:</p>
+          <table class="data-table">
+            <thead><tr><th>Condition</th><th>Button</th><th>Modal</th></tr></thead>
+            <tbody>
+              <tr><td><code style="font-size:11px;">locked_by_id IS NULL</code></td><td>Assign</td><td>SDR dropdown only — no Unassign option; Confirm disabled until SDR picked</td></tr>
+              <tr><td><code style="font-size:11px;">locked_by_id IS SET</code></td><td>Reassign</td><td>SDR dropdown + "— Unassign" option at top</td></tr>
+            </tbody>
+          </table>
+          <p style="font-size:12px;color:var(--muted);margin-top:8px;">Calls <code style="font-size:11px;">POST /api/leads/[id]/reassign</code> which updates <code style="font-size:11px;">locked_by_id</code>, <code style="font-size:11px;">sdr_id</code>, and <code style="font-size:11px;">locked_at</code>. "Unassign" sets both to null.</p>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">📋 Terminal State Behaviour by Role</div>
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🛡️ Terminal State Override</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">A <strong>terminal lead</strong> is one that has been Rejected, Won, or Dropped. Normally these are fully read-only for everyone. Admins are the exception — they see an amber "Admin Override" banner and can edit any field, re-route the lead, or change its status.</p>
         <table class="data-table">
           <thead>
             <tr><th>Terminal State</th><th>SDR / Sales</th><th>Admin</th></tr>
@@ -1706,6 +1877,902 @@
       </div>
     </section>
 
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- SECTION: TEST COVERAGE GUIDE -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <section class="section" id="test-coverage">
+      <div class="section-header">
+        <div class="section-icon">🧪</div>
+        <div>
+          <div class="section-title">Test Coverage Guide</div>
+          <div class="section-desc">Unit and E2E test cases derived directly from the implemented code logic</div>
+        </div>
+      </div>
+
+      <div class="info-box success">
+        <span class="info-icon">✅</span>
+        <div>This document is now code-accurate enough to drive tests. The cases below map 1-to-1 to actual API routes and component logic — not to aspirational behaviour. Each case references the exact file and function responsible.</div>
+      </div>
+
+      <!-- API UNIT TESTS -->
+      <div class="card">
+        <div class="card-title">⚙️ Unit / Integration Tests — API Routes</div>
+        <table class="data-table">
+          <thead><tr><th>Test case</th><th>Route</th><th>Expected result</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>SDR claims unclaimed lead</td>
+              <td><code style="font-size:11px;">POST /api/leads/[id]/lock</code> (roleName = sdr)</td>
+              <td><code style="font-size:11px;">locked_by_id = userId</code> AND <code style="font-size:11px;">sdr_id = userId</code>; returns <code style="font-size:11px;">{ locked: true }</code></td>
+            </tr>
+            <tr>
+              <td>Sales user opens lead — sdr_id must NOT change</td>
+              <td><code style="font-size:11px;">POST /api/leads/[id]/lock</code> (roleName = sales)</td>
+              <td><code style="font-size:11px;">locked_by_id = salesUserId</code>; <code style="font-size:11px;">sdr_id</code> unchanged (original SDR's id)</td>
+            </tr>
+            <tr>
+              <td>Lead already locked by another user → 409</td>
+              <td><code style="font-size:11px;">POST /api/leads/[id]/lock</code> (different userId, roleName != admin)</td>
+              <td>HTTP 409 with <code style="font-size:11px;">{ locked_by: { full_name } }</code></td>
+            </tr>
+            <tr>
+              <td>Admin can lock any lead (no 409)</td>
+              <td><code style="font-size:11px;">POST /api/leads/[id]/lock</code> (roleName = admin)</td>
+              <td>HTTP 200; overwrites existing lock</td>
+            </tr>
+            <tr>
+              <td>SDR workspace — All Leads tab hides locked-by-other leads</td>
+              <td><code style="font-size:11px;">GET /api/leads/workspace</code> (roleName = sdr, no status/statuses)</td>
+              <td>Returns only leads where <code style="font-size:11px;">locked_by_id IS NULL OR locked_by_id = sdrId</code></td>
+            </tr>
+            <tr>
+              <td>Routed tab multi-status fetch</td>
+              <td><code style="font-size:11px;">GET /api/leads/workspace?statuses=Routed+to+Sales,Quoted,Validated&scope=mine</code></td>
+              <td>Returns leads matching those statuses for the SDR, excludes <code style="font-size:11px;">sales_status = Won</code></td>
+            </tr>
+            <tr>
+              <td>Won leads excluded from routed tab</td>
+              <td>Same as above, for a lead with <code style="font-size:11px;">sales_status = Won</code></td>
+              <td>Lead is NOT in the response</td>
+            </tr>
+            <tr>
+              <td>Won tab returns correct leads</td>
+              <td><code style="font-size:11px;">GET /api/leads/workspace?won=true</code> (roleName = sdr)</td>
+              <td>Returns leads where <code style="font-size:11px;">sales_status = Won AND sdr_id = userId</code></td>
+            </tr>
+            <tr>
+              <td>Admin Won tab returns all won leads</td>
+              <td><code style="font-size:11px;">GET /api/leads/workspace?won=true</code> (roleName = admin)</td>
+              <td>Returns all leads where <code style="font-size:11px;">sales_status = Won</code> (no sdr_id filter)</td>
+            </tr>
+            <tr>
+              <td>Sales Pipeline fetch scope</td>
+              <td><code style="font-size:11px;">GET /api/leads/workspace?status=Routed+to+Sales</code> (roleName = sales)</td>
+              <td>Returns leads where <code style="font-size:11px;">sales_owner_id IS NULL OR sales_owner_id = salesUserId</code></td>
+            </tr>
+            <tr>
+              <td>Workspace counts — routed excludes Won</td>
+              <td><code style="font-size:11px;">GET /api/leads/workspace/counts</code></td>
+              <td><code style="font-size:11px;">counts.routed</code> does NOT count leads where <code style="font-size:11px;">sales_status = Won</code></td>
+            </tr>
+            <tr>
+              <td>Sales counts — pipeline count</td>
+              <td><code style="font-size:11px;">GET /api/leads/sales-counts</code></td>
+              <td><code style="font-size:11px;">counts.pipeline</code> = leads with <code style="font-size:11px;">status = Routed to Sales</code> AND <code style="font-size:11px;">sales_status IN (null, "Ongoing", "Quote Sent")</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- COMPONENT UNIT TESTS -->
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">⚛️ Unit Tests — Component Logic</div>
+        <table class="data-table">
+          <thead><tr><th>Test case</th><th>Component / function</th><th>Expected result</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Admin sees "Edit" + "Assign/Reassign" buttons on All Leads rows</td>
+              <td><code style="font-size:11px;">leads-page.tsx</code> action column (isAdmin = true)</td>
+              <td>Renders "Edit" button and "Assign" (locked_by_id null) or "Reassign" (locked_by_id set)</td>
+            </tr>
+            <tr>
+              <td>SDR sees "Claim" on unclaimed leads, "View" on own leads</td>
+              <td><code style="font-size:11px;">leads-page.tsx</code> (isAdmin = false)</td>
+              <td>"Claim" button when <code style="font-size:11px;">locked_by_id !== userId</code>; "View" when <code style="font-size:11px;">locked_by_id === userId</code></td>
+            </tr>
+            <tr>
+              <td>Clicking a routed tab row opens read-only drawer for SDR</td>
+              <td><code style="font-size:11px;">leads-page.tsx handleViewLead</code> (isAdmin = false)</td>
+              <td><code style="font-size:11px;">drawerReadOnly = true</code></td>
+            </tr>
+            <tr>
+              <td>Clicking a routed tab row opens editable drawer for admin</td>
+              <td><code style="font-size:11px;">leads-page.tsx handleViewLead</code> (isAdmin = true)</td>
+              <td><code style="font-size:11px;">drawerReadOnly = false</code></td>
+            </tr>
+            <tr>
+              <td>Admin drawer footer shows only Close + Save Changes</td>
+              <td><code style="font-size:11px;">verify-drawer.tsx</code> (isAdmin = true, readOnly = false)</td>
+              <td>No Route / Hold / Reject buttons; only "Close" and "Save Changes"</td>
+            </tr>
+            <tr>
+              <td>SDR sub-filter "Awaiting Claim" matches no sales_owner_id</td>
+              <td><code style="font-size:11px;">leads-page.tsx routedSubCounts.awaiting</code></td>
+              <td>Count = leads where <code style="font-size:11px;">!sales_owner_id</code></td>
+            </tr>
+            <tr>
+              <td>SDR sub-filter "In Progress" matches owned + null/Ongoing status</td>
+              <td><code style="font-size:11px;">leads-page.tsx routedSubCounts.in_progress</code></td>
+              <td>Count = leads where <code style="font-size:11px;">!!sales_owner_id AND (sales_status === "Ongoing" OR !sales_status)</code></td>
+            </tr>
+            <tr>
+              <td>Tab switching resets routedFilter to "all"</td>
+              <td><code style="font-size:11px;">leads-page.tsx</code> tab click handler</td>
+              <td>When any tab other than "routed" is clicked, <code style="font-size:11px;">routedFilter</code> resets to <code style="font-size:11px;">"all"</code></td>
+            </tr>
+            <tr>
+              <td>Sales claim opens modal immediately after API success</td>
+              <td><code style="font-size:11px;">sales-page.tsx handleClaim</code></td>
+              <td>After <code style="font-size:11px;">POST /api/leads/[id]/claim</code> returns 200, <code style="font-size:11px;">handleOpenLead(data.lead)</code> is called → drawer opens</td>
+            </tr>
+            <tr>
+              <td>Reassign Confirm button disabled with no SDR selected (fresh assign)</td>
+              <td><code style="font-size:11px;">leads-page.tsx</code> reassign modal</td>
+              <td>When <code style="font-size:11px;">locked_by_id IS NULL</code>, initial <code style="font-size:11px;">reassignUserId = ""</code>; Confirm is <code style="font-size:11px;">disabled={!reassignUserId}</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- VISIBILITY MATRIX -->
+      <div class="card" style="margin-top:4px;border-left:4px solid var(--navy);">
+        <div class="card-title" style="font-size:15px;">👁️ Lead Visibility Matrix — Source of Truth for All Assertions</div>
+        <p style="font-size:12.5px;color:var(--muted);margin-bottom:10px;">For every lead state, this table defines exactly where each role sees it and whether they can edit it. Every E2E assertion should match a cell in this matrix.</p>
+        <div style="overflow-x:auto;">
+        <table class="data-table" style="min-width:1200px;">
+          <thead>
+            <tr>
+              <th>Lead state (DB values)</th>
+              <th>SDR who worked it</th>
+              <th>Any other SDR</th>
+              <th>Sales — unclaimed</th>
+              <th>Sales — owns it</th>
+              <th>Sales — different rep</th>
+              <th>Admin</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:var(--color-surface)">
+              <td><code style="font-size:11px;">status=Pending, locked_by_id=null</code></td>
+              <td>✅ All Leads — "Claim" button</td>
+              <td>✅ All Leads — "Claim" button</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>✅ All Leads — "Edit" + "Assign"</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">status=Pending, locked_by_id=SDR-A</code></td>
+              <td>✅ All Leads — "View" button (soft lock)</td>
+              <td>❌ hidden (lock filter)</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>✅ All Leads — "Edit" + "Reassign"</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><code style="font-size:11px;">status=Validated, locked_by_id=null</code></td>
+              <td>✅ All Leads — "Claim"</td>
+              <td>✅ All Leads — "Claim"</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>✅ All Leads — "Edit" + "Assign"</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">status=On Hold, sdr_id=SDR-A</code></td>
+              <td>✅ Hold tab — "Resume" + "View"</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown</td>
+              <td>✅ Hold tab (all SDRs)</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><code style="font-size:11px;">status=Routed to Sales, sales_owner_id=null, sdr_id=SDR-A</code></td>
+              <td>✅ Directed to Sales — "Awaiting Claim" — read-only</td>
+              <td>❌ not shown (sdr_id filter)</td>
+              <td>✅ Sales Pipeline — "Claim" button</td>
+              <td>✅ Sales Pipeline</td>
+              <td>✅ Sales Pipeline (unclaimed)</td>
+              <td>✅ Both pages</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">status=Routed to Sales, sales_owner_id=Sales-B, sales_status=Ongoing, sdr_id=SDR-A</code></td>
+              <td>✅ Directed to Sales — "In Progress" — read-only</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown (owned by Sales-B)</td>
+              <td>❌ (if they are not Sales-B)</td>
+              <td>✅ Sales Pipeline (Sales-B only)</td>
+              <td>✅ Both pages</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><code style="font-size:11px;">status=Routed to Sales, sales_status=Quote Sent, sdr_id=SDR-A</code></td>
+              <td>✅ Directed to Sales — "Quote Sent" — read-only</td>
+              <td>❌ not shown</td>
+              <td>❌ not shown (owned)</td>
+              <td>✅ Sales Pipeline — Pipeline tab (status still Routed to Sales)</td>
+              <td>❌</td>
+              <td>✅ Both pages</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">status=Quoted, sales_status=Quote Sent, sdr_id=SDR-A</code></td>
+              <td>✅ Directed to Sales — "Quote Sent" — read-only</td>
+              <td>❌ not shown</td>
+              <td>❌ <strong>NOT in Sales page</strong> (status ≠ Routed to Sales)</td>
+              <td>❌ <strong>NOT in Sales page</strong></td>
+              <td>❌</td>
+              <td>✅ Directed to Sales (admin sees all)</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><code style="font-size:11px;">status=Routed to Sales, sales_status=On Hold, sdr_id=SDR-A</code></td>
+              <td>✅ Directed to Sales — "On Hold" — read-only</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>✅ Sales On Hold tab</td>
+              <td>❌</td>
+              <td>✅ Both</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">status=Routed to Sales, sales_status=Dropped, sdr_id=SDR-A</code></td>
+              <td>✅ Directed to Sales — "Dropped" — read-only</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>❌ (not in pipeline/hold tabs)</td>
+              <td>❌</td>
+              <td>✅</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><code style="font-size:11px;">status=Rejected (SDR-rejected), sdr_id=SDR-A</code></td>
+              <td>✅ Rejected tab — read-only</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>✅ Rejected tab (all SDRs)</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">status=Rejected, prev_status=Routed to Sales, sales_owner_id=Sales-B</code></td>
+              <td>✅ Directed to Sales → <em>check sub-filter</em></td>
+              <td>❌</td>
+              <td>❌ (owned by Sales-B)</td>
+              <td>✅ Sales Rejected tab (Sales-B only)</td>
+              <td>❌</td>
+              <td>✅</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><code style="font-size:11px;">sales_status=Won, sdr_id=SDR-A</code></td>
+              <td>✅ Won tab — read-only with ORD ref + amount</td>
+              <td>❌ not shown (different sdr_id)</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>❌</td>
+              <td>✅ Won tab — sees ALL won leads</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <!-- E2E TEST CASES — ROLE PERSPECTIVE -->
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🔵 E2E — SDR Perspective: What SDR-A Must See</div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Setup (seed data)</th><th>Action</th><th>Assert (exact UI location + read/edit state)</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>S1</td>
+              <td>Lead: <code style="font-size:11px;">Pending, locked_by_id=null</code></td>
+              <td>SDR-A opens /leads → All Leads tab</td>
+              <td>Row visible; "Claim" button shown; Owner = "Unclaimed" badge</td>
+            </tr>
+            <tr>
+              <td>S2</td>
+              <td>Lead: <code style="font-size:11px;">Pending, locked_by_id=SDR-B</code></td>
+              <td>SDR-A opens /leads → All Leads tab</td>
+              <td>Row is <strong>NOT visible</strong> to SDR-A (lock filter hides it)</td>
+            </tr>
+            <tr>
+              <td>S3</td>
+              <td>Lead: <code style="font-size:11px;">Pending, locked_by_id=SDR-A</code></td>
+              <td>SDR-A opens /leads → All Leads tab, clicks "My Leads" toggle</td>
+              <td>Row visible with "View" button; "My Leads" filter includes it; drawer opens editable</td>
+            </tr>
+            <tr>
+              <td>S4</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sales_owner_id=null, sdr_id=SDR-A</code></td>
+              <td>SDR-A → Directed to Sales → "Awaiting Claim" sub-filter</td>
+              <td>Row visible; "Awaiting Claim" pill amber; clicking row opens <strong>read-only</strong> drawer; no Save/Route/Hold/Reject buttons</td>
+            </tr>
+            <tr>
+              <td>S5</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sales_owner_id=Sales-B, sales_status=Ongoing, sdr_id=SDR-A</code></td>
+              <td>SDR-A → Directed to Sales → "In Progress" sub-filter</td>
+              <td>Row visible; Sales Rep column = "Sales-B"; drawer is <strong>read-only</strong>; no action buttons</td>
+            </tr>
+            <tr>
+              <td>S6</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sales_status=Quote Sent, sdr_id=SDR-A</code></td>
+              <td>SDR-A → Directed to Sales → "Quote Sent" sub-filter</td>
+              <td>Row visible; Sales Status pill = "Quote Sent"; drawer <strong>read-only</strong></td>
+            </tr>
+            <tr>
+              <td>S7</td>
+              <td>Lead: <code style="font-size:11px;">sales_status=Won, sdr_id=SDR-A</code></td>
+              <td>SDR-A → Won tab</td>
+              <td>Row visible with ORD reference, amount, closer name; NOT in Directed to Sales</td>
+            </tr>
+            <tr>
+              <td>S8</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sdr_id=SDR-B</code> (different SDR)</td>
+              <td>SDR-A → Directed to Sales tab</td>
+              <td>Row is <strong>NOT visible</strong> to SDR-A (sdr_id filter)</td>
+            </tr>
+            <tr>
+              <td>S9</td>
+              <td>SDR-A routes a lead → Sales claims it → closes session → SDR-A re-opens browser</td>
+              <td>SDR-A → Directed to Sales → "In Progress"</td>
+              <td>Lead still visible (sdr_id persisted); <strong>sdr_id was not overwritten</strong> by sales claiming</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🟠 E2E — Sales Perspective: What Sales-B Must See</div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Setup (seed data)</th><th>Action</th><th>Assert</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>P1</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sales_owner_id=null</code></td>
+              <td>Sales-B → /sales → Pipeline tab</td>
+              <td>Row visible; "Claim" button shown</td>
+            </tr>
+            <tr>
+              <td>P2</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sales_owner_id=Sales-C</code> (different rep)</td>
+              <td>Sales-B → /sales → Pipeline tab</td>
+              <td>Row is <strong>NOT visible</strong> to Sales-B (owned by another rep)</td>
+            </tr>
+            <tr>
+              <td>P3</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sales_owner_id=Sales-B, sales_status=Ongoing</code></td>
+              <td>Sales-B → Pipeline tab → clicks row</td>
+              <td>Row visible; modal opens editable; Sales-B can Hold, Reject, or Create Quote</td>
+            </tr>
+            <tr>
+              <td>P4</td>
+              <td>Lead: <code style="font-size:11px;">Quoted, sales_owner_id=Sales-B</code> (status advanced to Quoted)</td>
+              <td>Sales-B → /sales → Pipeline tab</td>
+              <td>Row is <strong>NOT visible</strong> in Sales Pipeline (status ≠ "Routed to Sales"); lead is now in Tickets</td>
+            </tr>
+            <tr>
+              <td>P5</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sales_status=On Hold, sales_owner_id=Sales-B</code></td>
+              <td>Sales-B → On Hold tab</td>
+              <td>Row visible; "Resume" button shown; holds from other reps <strong>not visible</strong></td>
+            </tr>
+            <tr>
+              <td>P6</td>
+              <td>Lead: <code style="font-size:11px;">Rejected, prev_status=Routed to Sales, sales_owner_id=Sales-B</code></td>
+              <td>Sales-B → Rejected tab</td>
+              <td>Row visible; Sales-C's rejected leads <strong>not visible</strong></td>
+            </tr>
+            <tr>
+              <td>P7</td>
+              <td>Sales-B claims lead → claim API response</td>
+              <td>Sales-B clicks "Claim"</td>
+              <td>Lead modal opens immediately (no second click); <code style="font-size:11px;">sales_owner_id</code> set in DB; refresh → lead still assigned</td>
+            </tr>
+            <tr>
+              <td>P8</td>
+              <td>Lead: <code style="font-size:11px;">Routed to Sales, sales_owner_id=Sales-B, sales_status=Dropped</code></td>
+              <td>Sales-B → Pipeline tab and On Hold tab</td>
+              <td>Row is <strong>NOT visible</strong> in either tab (Dropped not in pipeline or hold filter)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🔴 E2E — Admin Perspective: Full Override + Visibility</div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Setup</th><th>Action</th><th>Assert</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>A1</td>
+              <td>Lead: <code style="font-size:11px;">Pending, locked_by_id=SDR-A</code></td>
+              <td>Admin → All Leads tab</td>
+              <td>Row visible; "Edit" + "Reassign" buttons; drawer opens <strong>editable</strong> without calling /lock; SDR lock not required</td>
+            </tr>
+            <tr>
+              <td>A2</td>
+              <td>Lead: <code style="font-size:11px;">Pending, locked_by_id=null</code></td>
+              <td>Admin → "Assign" → selects SDR-A → Confirm</td>
+              <td><code style="font-size:11px;">locked_by_id = SDR-A.id</code>; Owner column now shows "SDR-A"; button changes to "Reassign"</td>
+            </tr>
+            <tr>
+              <td>A3</td>
+              <td>Lead: <code style="font-size:11px;">Pending, locked_by_id=SDR-A</code></td>
+              <td>Admin → "Reassign" → selects SDR-B → Confirm</td>
+              <td><code style="font-size:11px;">locked_by_id = SDR-B.id</code>; Owner column updates; SDR-A no longer sees it in "My Leads"</td>
+            </tr>
+            <tr>
+              <td>A4</td>
+              <td>Lead: <code style="font-size:11px;">Pending, locked_by_id=SDR-A</code></td>
+              <td>Admin → "Reassign" → selects "— Unassign" → Confirm</td>
+              <td><code style="font-size:11px;">locked_by_id = null</code>; Owner = "Unclaimed"; button changes back to "Assign"</td>
+            </tr>
+            <tr>
+              <td>A5</td>
+              <td>Lead: <code style="font-size:11px;">Rejected</code> (terminal)</td>
+              <td>Admin opens lead from Rejected tab</td>
+              <td>Amber "Admin Override" banner; drawer fully editable; no red lock banner</td>
+            </tr>
+            <tr>
+              <td>A6</td>
+              <td>Any lead with <code style="font-size:11px;">sales_status=Won</code></td>
+              <td>Admin → Won tab</td>
+              <td>ALL won leads visible (not scoped to any sdr_id)</td>
+            </tr>
+            <tr>
+              <td>A7</td>
+              <td>Lead locked by SDR-A; Admin tries to open it</td>
+              <td>Admin calls <code style="font-size:11px;">POST /api/leads/[id]/lock</code></td>
+              <td>HTTP 200 (not 409); admin bypasses the locked-by-other check</td>
+            </tr>
+            <tr>
+              <td>A8</td>
+              <td>Admin saves changes to a lead that has no <code style="font-size:11px;">locked_by_id</code></td>
+              <td>Admin → Edit → Save Changes</td>
+              <td>Save succeeds; <code style="font-size:11px;">PATCH /api/leads/[id]</code> returns 200; no lock error</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🔁 E2E — Cross-Role Lifecycle Scenarios</div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Scenario</th><th>Sequence</th><th>Final assertions for each role</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>L1</td>
+              <td><strong>Full lead-to-won journey</strong></td>
+              <td>SDR-A creates lead → Claims → Routes to Sales → Sales-B claims → Creates quote → Customer confirms</td>
+              <td>
+                <strong>SDR-A:</strong> Lead in Won tab with ORD ref, NOT in Directed to Sales<br>
+                <strong>Sales-B:</strong> Lead NOT in Pipeline (status = Quoted/Won)<br>
+                <strong>Admin:</strong> Lead in Won tab; all leads visible
+              </td>
+            </tr>
+            <tr>
+              <td>L2</td>
+              <td><strong>Concurrent SDR attempt</strong></td>
+              <td>SDR-A claims lead → SDR-B tries to claim same lead</td>
+              <td>
+                <strong>SDR-A:</strong> Editable drawer open<br>
+                <strong>SDR-B:</strong> Read-only drawer with "Being worked by SDR-A" banner<br>
+                <strong>DB:</strong> <code style="font-size:11px;">locked_by_id = SDR-A</code> unchanged; <code style="font-size:11px;">sdr_id</code> = SDR-A
+              </td>
+            </tr>
+            <tr>
+              <td>L3</td>
+              <td><strong>sdr_id protection under sales claim</strong></td>
+              <td>SDR-A routes lead → Sales-B claims → Check DB</td>
+              <td>
+                <strong>DB:</strong> <code style="font-size:11px;">sdr_id = SDR-A</code> (unchanged); <code style="font-size:11px;">sales_owner_id = Sales-B</code>; <code style="font-size:11px;">locked_by_id = Sales-B</code><br>
+                <strong>SDR-A:</strong> Lead still in Directed to Sales "In Progress" sub-filter<br>
+                <strong>Sales-B:</strong> Lead in Pipeline
+              </td>
+            </tr>
+            <tr>
+              <td>L4</td>
+              <td><strong>Session refresh resilience</strong></td>
+              <td>Sales-B claims lead → closes tab → re-opens /sales</td>
+              <td>
+                <strong>Sales-B:</strong> Lead still in Pipeline with their name; assignment persisted; re-opening opens modal again (no second claim needed)
+              </td>
+            </tr>
+            <tr>
+              <td>L5</td>
+              <td><strong>Won lead excluded from both active tabs</strong></td>
+              <td>Lead reaches <code style="font-size:11px;">sales_status=Won</code></td>
+              <td>
+                <strong>SDR-A Directed to Sales:</strong> Lead NOT present (Won excluded by API)<br>
+                <strong>Sales Pipeline:</strong> Lead NOT present<br>
+                <strong>SDR-A Won tab:</strong> Lead IS present with order details
+              </td>
+            </tr>
+            <tr>
+              <td>L6</td>
+              <td><strong>Admin reassign does not break SDR Won attribution</strong></td>
+              <td>SDR-A routes lead → Admin reassigns locked_by_id to SDR-B → Sales claims → Order won</td>
+              <td>
+                <strong>sdr_id in DB:</strong> should be SDR-A (set at original claim, not overwritten by reassign unless reassign also sets sdr_id)<br>
+                <strong>SDR-A Won tab:</strong> Lead appears (if sdr_id = SDR-A)<br>
+                Verify what <code style="font-size:11px;">POST /api/leads/[id]/reassign</code> does to <code style="font-size:11px;">sdr_id</code> — critical edge case
+              </td>
+            </tr>
+            <tr>
+              <td>L7</td>
+              <td><strong>Counts badge accuracy</strong></td>
+              <td>SDR routes lead → check counts → Sales claims → check counts → Won → check counts</td>
+              <td>
+                <code style="font-size:11px;">counts.routed</code> increments on route; stays same when sales claims (still Routed to Sales); <code style="font-size:11px;">counts.routed</code> decrements when Won; <code style="font-size:11px;">counts.won</code> increments
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="info-box navy" style="margin-top:12px;">
+        <span class="info-icon">💡</span>
+        <div>
+          <strong>Recommended stack:</strong> Playwright for E2E (S1–L7) against a seeded Supabase test project. Vitest + React Testing Library for component unit tests. API route tests with Vitest + <code style="background:rgba(255,255,255,0.12);padding:1px 5px;border-radius:3px;">msw</code> or a local Supabase instance.<br><br>
+          <strong>Seed data needed:</strong> 4 users (SDR-A, SDR-B, Sales-B, Sales-C, Admin), one lead per row of the visibility matrix above. Run <code style="background:rgba(255,255,255,0.12);padding:1px 5px;border-radius:3px;">beforeEach</code> DB reset so tests are independent.
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════ QUOTE VISIBILITY ═══════════════════ -->
+      <div class="divider" style="margin-top:24px;"></div>
+
+      <div class="section-header" style="margin-top:4px;">
+        <div class="section-icon">📝</div>
+        <div>
+          <div class="section-title" style="font-size:16px;">Quote / Ticket Visibility &amp; Edit Rights</div>
+          <div class="section-desc">Code-accurate rules for who can see, edit, and send each quote or order</div>
+        </div>
+      </div>
+
+      <!-- SCOPE RULES -->
+      <div class="card" style="border-left:4px solid var(--navy);">
+        <div class="card-title" style="font-size:15px;">🔑 API Scope Rules (source of all test assertions)</div>
+        <table class="data-table">
+          <thead><tr><th>Endpoint</th><th>SDR (self)</th><th>SDR (other)</th><th>Sales (self)</th><th>Sales (other)</th><th>Admin</th></tr></thead>
+          <tbody>
+            <tr>
+              <td><code style="font-size:11px;">GET /api/tickets</code> (list)</td>
+              <td>✅ own only (<code style="font-size:11px;">created_by_id = me</code>)</td>
+              <td>❌ not returned</td>
+              <td>✅ own + all <code style="font-size:11px;">routed</code> tickets</td>
+              <td>❌ hidden (not own, not routed)</td>
+              <td>✅ all tickets</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">GET /api/tickets/[id]</code></td>
+              <td>✅ 200 (creator)</td>
+              <td>❌ 403 Forbidden</td>
+              <td>✅ 200 if own OR <code style="font-size:11px;">ticket_status=routed</code></td>
+              <td>❌ 403 (unless ticket is <code style="font-size:11px;">routed</code>)</td>
+              <td>✅ 200 always</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">PATCH /api/tickets/[id]</code> (edit)</td>
+              <td>✅ if own AND status ≠ order/cancelled</td>
+              <td>❌ 403</td>
+              <td>✅ if own AND status ≠ order/cancelled</td>
+              <td>❌ 403</td>
+              <td>✅ always; on order: all fields; non-admin: only <code style="font-size:11px;">payment_status</code> once order</td>
+            </tr>
+            <tr>
+              <td>UI Edit button visible</td>
+              <td>✅ when <code style="font-size:11px;">!isLocked AND !client_confirmed</code></td>
+              <td>N/A (can't view)</td>
+              <td>✅ same rule</td>
+              <td>N/A</td>
+              <td>✅ always (override banner on locked records)</td>
+            </tr>
+            <tr>
+              <td><code style="font-size:11px;">PATCH {claim_ownership:true}</code></td>
+              <td>❌ 403 (SDR cannot claim)</td>
+              <td>❌</td>
+              <td>✅ if <code style="font-size:11px;">ticket_status=routed</code>; becomes <strong>new owner</strong></td>
+              <td>✅ same (any sales can claim routed)</td>
+              <td>✅</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="info-box warning" style="margin-top:10px;margin-bottom:0;">
+          <span class="info-icon">⚠️</span>
+          <div style="font-size:12.5px;"><strong>Critical:</strong> When a sales rep claims a <code>routed</code> ticket, <code>created_by_id</code> is <strong>permanently changed</strong> to the sales rep's ID. The original SDR loses all access to that ticket — even read access — because they are no longer the creator and the status is no longer <code>routed</code>.</div>
+        </div>
+      </div>
+
+      <!-- QUOTE VISIBILITY MATRIX -->
+      <div class="card" style="margin-top:4px;border-left:4px solid var(--navy);">
+        <div class="card-title" style="font-size:15px;">👁️ Quote Visibility Matrix — Every Status × Every Role</div>
+        <div style="overflow-x:auto;">
+        <table class="data-table" style="min-width:1200px;">
+          <thead>
+            <tr>
+              <th>Ticket state</th>
+              <th>SDR who created it</th>
+              <th>Any other SDR</th>
+              <th>Sales — any rep (if routed)</th>
+              <th>Sales — creator/owner only</th>
+              <th>Sales — different rep</th>
+              <th>Admin</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background:var(--color-surface)">
+              <td><span class="pill draft">draft</span> (SDR's own quote, below HVT)</td>
+              <td>✅ View + Edit + Send</td>
+              <td>❌ 403</td>
+              <td>❌ 403</td>
+              <td>—</td>
+              <td>—</td>
+              <td>✅ View + Edit</td>
+            </tr>
+            <tr>
+              <td><span class="pill sent">sent</span> (SDR sent to customer)</td>
+              <td>✅ View + Edit (resend / update)</td>
+              <td>❌ 403</td>
+              <td>❌ 403</td>
+              <td>—</td>
+              <td>—</td>
+              <td>✅ View + Edit</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><span class="pill warning">routed</span> (HVT auto-route: SDR created, total > threshold)</td>
+              <td>✅ View (still creator) — Edit button hidden (would re-trigger HV modal and route again)</td>
+              <td>❌ 403</td>
+              <td>✅ View + <strong>Claim</strong> button for ALL sales</td>
+              <td>—</td>
+              <td>—</td>
+              <td>✅ View + Edit + Claim</td>
+            </tr>
+            <tr>
+              <td><span class="pill info">draft</span> (after sales claims routed ticket — <code style="font-size:11px;">created_by_id → SalesRep</code>)</td>
+              <td>❌ <strong>403 — SDR permanently loses access</strong></td>
+              <td>❌ 403</td>
+              <td>❌ 403 (no longer routed)</td>
+              <td>✅ View + Edit + Send</td>
+              <td>❌ 403</td>
+              <td>✅ View + Edit</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><span class="pill draft">draft</span> (Sales created directly on routed lead)</td>
+              <td>❌ 403 — SDR cannot see Sales quotes</td>
+              <td>❌ 403</td>
+              <td>—</td>
+              <td>✅ View + Edit + Send</td>
+              <td>❌ 403</td>
+              <td>✅ View + Edit</td>
+            </tr>
+            <tr>
+              <td><span class="pill sent">sent</span> (Sales sent to customer)</td>
+              <td>❌ 403</td>
+              <td>❌ 403</td>
+              <td>—</td>
+              <td>✅ View + Edit (resend)</td>
+              <td>❌ 403</td>
+              <td>✅ View + Edit</td>
+            </tr>
+            <tr style="background:var(--color-surface)">
+              <td><span class="pill order">order</span> — customer confirmed or manual convert</td>
+              <td>✅ View 🔒 read-only — "Record locked" banner</td>
+              <td>❌ 403</td>
+              <td>—</td>
+              <td>✅ View 🔒 read-only; can send payment reminder</td>
+              <td>❌ 403</td>
+              <td>✅ View + Edit (admin override)</td>
+            </tr>
+            <tr>
+              <td><span class="pill cancelled">cancelled</span></td>
+              <td>✅ View 🔒 read-only</td>
+              <td>❌ 403</td>
+              <td>—</td>
+              <td>✅ View 🔒 read-only</td>
+              <td>❌ 403</td>
+              <td>✅ View + Edit (admin override)</td>
+            </tr>
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      <!-- LEAD STATUS SYNC RULES -->
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🔗 Lead Status Sync When a Quote/Ticket Is Created</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">When <code style="font-size:11px;">POST /api/tickets</code> creates a ticket with a <code style="font-size:11px;">linked_lead_id</code>, the linked lead's status is automatically updated:</p>
+        <table class="data-table">
+          <thead><tr><th>Ticket created with…</th><th>Lead status set to</th><th>sales_status set to</th><th>Effect on Sales Pipeline page</th><th>Effect on SDR Directed to Sales</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>SKU line items present (<code style="font-size:11px;">quote_skus.length &gt; 0</code>)</td>
+              <td><code style="font-size:11px;">"Quoted"</code></td>
+              <td><code style="font-size:11px;">"Quote Sent"</code></td>
+              <td>❌ Lead <strong>exits</strong> Sales Pipeline (only shows <code>Routed to Sales</code> status)</td>
+              <td>✅ Lead stays — shown in <strong>"Quote Sent"</strong> sub-filter</td>
+            </tr>
+            <tr>
+              <td>No SKUs (quote shell / stub)</td>
+              <td><code style="font-size:11px;">"Validated"</code></td>
+              <td>unchanged (stays <code style="font-size:11px;">"Ongoing"</code> or null)</td>
+              <td>✅ Lead stays in Sales Pipeline (<code>Routed to Sales</code>→<code>Validated</code> but scope filter brings it back)</td>
+              <td>✅ Lead stays — shown in <strong>"In Progress"</strong> sub-filter</td>
+            </tr>
+            <tr>
+              <td>Manual convert to order (<code style="font-size:11px;">ticket_status="order"</code> via PATCH)</td>
+              <td>unchanged</td>
+              <td><code style="font-size:11px;">"Won"</code></td>
+              <td>❌ Lead exits (Won excluded)</td>
+              <td>❌ Lead exits (Won excluded) → appears in SDR <strong>Won tab</strong></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- QUOTE E2E TESTS -->
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🧪 E2E — SDR Quote Scenarios: When SDR Can Edit vs View-Only</div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Setup</th><th>Action</th><th>Assert</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Q1</td>
+              <td>SDR-A creates draft quote on their own lead (total &lt; HVT)</td>
+              <td>SDR-A opens /quotes → clicks into quote</td>
+              <td>Edit button visible; SDR-A can edit title, line items, pricing; Save succeeds (200)</td>
+            </tr>
+            <tr>
+              <td>Q2</td>
+              <td>SDR-A's draft quote (total &lt; HVT)</td>
+              <td>SDR-A clicks "Send" → sets channel + destination</td>
+              <td>Status → <code style="font-size:11px;">sent</code>; quote delivery fires; lead status unchanged (no SKU change)</td>
+            </tr>
+            <tr>
+              <td>Q3</td>
+              <td>SDR-A's draft quote (total &gt; HVT threshold)</td>
+              <td>SDR-A clicks Save on quote</td>
+              <td>HV countdown modal fires (30s); after countdown ticket_status → <code style="font-size:11px;">routed</code>; SDR redirected to /quotes; lead status unchanged at this point</td>
+            </tr>
+            <tr>
+              <td>Q4</td>
+              <td>SDR-A's quote with <code style="font-size:11px;">ticket_status=routed</code></td>
+              <td>SDR-A visits <code style="font-size:11px;">/quotes/[id]</code></td>
+              <td>SDR-A can VIEW the quote (still creator); Edit button is hidden (re-saving would re-trigger HV modal); Read-only effectively</td>
+            </tr>
+            <tr>
+              <td>Q5</td>
+              <td>SDR-A's routed quote, then Sales-B claims it</td>
+              <td>SDR-A tries to visit <code style="font-size:11px;">/quotes/[id]</code> again</td>
+              <td><strong>403 Forbidden</strong> — SDR-A is no longer creator; ticket is no longer "routed"; SDR-A cannot see it in /quotes list either</td>
+            </tr>
+            <tr>
+              <td>Q6</td>
+              <td>Sales-B creates a new quote on a routed lead (not HVT path)</td>
+              <td>SDR-A visits /quotes</td>
+              <td>Quote does NOT appear in SDR-A's list; accessing the URL directly returns 403</td>
+            </tr>
+            <tr>
+              <td>Q7</td>
+              <td>SDR-A's sent quote, customer confirms via public link</td>
+              <td>SDR-A opens quote</td>
+              <td>Status = <code style="font-size:11px;">order</code>; Edit button hidden; amber "Record locked" banner shown; payment reminder button still available</td>
+            </tr>
+            <tr>
+              <td>Q8</td>
+              <td>SDR-B's quote (any status)</td>
+              <td>SDR-A tries to access <code style="font-size:11px;">/quotes/[id]</code></td>
+              <td>403 Forbidden — SDR cannot see another SDR's quotes under any circumstances</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🧪 E2E — Sales Quote Scenarios: Ownership &amp; HVT Claim Flow</div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Setup</th><th>Action</th><th>Assert</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Q9</td>
+              <td>Sales-B creates draft quote on claimed lead</td>
+              <td>Sales-C visits the quote URL</td>
+              <td>403 — different sales rep cannot see each other's draft/sent quotes</td>
+            </tr>
+            <tr>
+              <td>Q10</td>
+              <td>SDR-A's HVT-routed quote (<code style="font-size:11px;">ticket_status=routed</code>)</td>
+              <td>Sales-B visits /quotes</td>
+              <td>Quote appears in Sales-B's list with "Routed by SDR-A" label; "Claim" button visible</td>
+            </tr>
+            <tr>
+              <td>Q11</td>
+              <td>Same routed quote</td>
+              <td>Sales-C also visits /quotes</td>
+              <td>Quote also appears in Sales-C's list — ALL sales reps see unclaimed routed quotes</td>
+            </tr>
+            <tr>
+              <td>Q12</td>
+              <td>Sales-B claims the routed quote</td>
+              <td>Check DB + Sales-C's /quotes list</td>
+              <td><code style="font-size:11px;">created_by_id → Sales-B</code>; <code style="font-size:11px;">ticket_status → draft</code>; quote disappears from Sales-C's list; Sales-B can now edit</td>
+            </tr>
+            <tr>
+              <td>Q13</td>
+              <td>Sales-B creates quote with SKUs linked to lead (lead is "Routed to Sales")</td>
+              <td>Check lead status after ticket creation</td>
+              <td>Lead <code style="font-size:11px;">status → "Quoted"</code>; <code style="font-size:11px;">sales_status → "Quote Sent"</code>; lead exits Sales Pipeline page; SDR sees lead in "Quote Sent" sub-filter</td>
+            </tr>
+            <tr>
+              <td>Q14</td>
+              <td>Sales-B creates quote shell (no SKUs) linked to lead</td>
+              <td>Check lead status</td>
+              <td>Lead <code style="font-size:11px;">status → "Validated"</code>; <code style="font-size:11px;">sales_status</code> unchanged; lead stays in Sales Pipeline; SDR sees lead in "In Progress" sub-filter</td>
+            </tr>
+            <tr>
+              <td>Q15</td>
+              <td>Sales-B manually converts quote to order (clicks "Convert to Order")</td>
+              <td>Check lead status + SDR's Won tab</td>
+              <td>Lead <code style="font-size:11px;">sales_status → "Won"</code>; lead exits Directed to Sales; appears in SDR-A's Won tab with ORD reference; ticket locked for Sales-B (read-only except payment_status)</td>
+            </tr>
+            <tr>
+              <td>Q16</td>
+              <td>Customer clicks "Confirm &amp; Accept" on public quote link</td>
+              <td>Check ticket + lead status</td>
+              <td><code style="font-size:11px;">client_confirmed = true</code>; <code style="font-size:11px;">ticket_status → "order"</code>; ORD-YYYY-NNN assigned; <code style="font-size:11px;">sales_status → "Won"</code>; SDR sees lead in Won tab</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card" style="margin-top:4px;">
+        <div class="card-title">🧪 E2E — Admin Quote Scenarios</div>
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Setup</th><th>Action</th><th>Assert</th></tr></thead>
+          <tbody>
+            <tr>
+              <td>Q17</td>
+              <td>Any quote (draft, sent, or order) by any user</td>
+              <td>Admin visits /quotes</td>
+              <td>ALL quotes visible in list regardless of creator</td>
+            </tr>
+            <tr>
+              <td>Q18</td>
+              <td>Confirmed order (<code style="font-size:11px;">ticket_status=order</code>)</td>
+              <td>Admin opens the order</td>
+              <td>No "Record locked" banner; Edit button visible; admin can change pricing, line items, or cancel</td>
+            </tr>
+            <tr>
+              <td>Q19</td>
+              <td>Same confirmed order</td>
+              <td>Non-admin (SDR or Sales) opens it</td>
+              <td>"Record locked" amber banner shown; Edit button hidden; payment reminder available</td>
+            </tr>
+            <tr>
+              <td>Q20</td>
+              <td>Confirmed order, non-admin sends <code style="font-size:11px;">PATCH {ticket_status:"order", title:"…"}</code></td>
+              <td>API call (non-admin, not payment_status key)</td>
+              <td>403 with <code style="font-size:11px;">code: "LOCKED"</code> — only payment_status update allowed for non-admin on orders</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="info-box navy" style="margin-top:12px;">
+        <span class="info-icon">💡</span>
+        <div>
+          <strong>Recommended stack:</strong> Playwright for E2E (S–Q scenarios) against a seeded Supabase test project. Vitest + React Testing Library for component unit tests. API route tests with Vitest + <code style="background:rgba(255,255,255,0.12);padding:1px 5px;border-radius:3px;">msw</code> or a local Supabase instance.<br><br>
+          <strong>Key seed data:</strong> 5 users (SDR-A, SDR-B, Sales-B, Sales-C, Admin). One quote per row of the visibility matrix. For lead-sync tests (Q13, Q14, Q15): start with a fresh <code style="background:rgba(255,255,255,0.12);padding:1px 5px;border-radius:3px;">Routed to Sales</code> lead scoped to SDR-A and verify lead DB state after each ticket creation.
+        </div>
+      </div>
+    </section>
+
     <!-- Summary Flow -->
     <section class="section">
       <div class="section-header">
@@ -1718,28 +2785,53 @@
 
       <div class="flow" style="overflow-x:auto;">
         <div class="flow-title">Complete Lead → Order → Payment Flow</div>
-        <div style="min-width:680px;">
-          <div style="display:flex;align-items:center;gap:0;margin-bottom:12px;flex-wrap:nowrap;">
+        <div style="min-width:900px;">
+
+          <!-- Shared start -->
+          <div style="display:flex;align-items:center;gap:0;margin-bottom:4px;flex-wrap:nowrap;">
             <div class="flow-step"><div class="flow-node action" style="font-size:11px;min-width:90px;">Contact<br>arrives</div></div>
             <div class="flow-arrow">→</div>
             <div class="flow-step"><div class="flow-node pending" style="min-width:90px;">Lead<br>created</div></div>
             <div class="flow-arrow">→</div>
-            <div class="flow-step"><div class="flow-node validated" style="min-width:90px;">SDR<br>validates</div></div>
-            <div class="flow-arrow">→</div>
-            <div class="flow-step"><div class="flow-node order" style="min-width:90px;background:#eff6ff;border-color:#93c5fd;color:#1d4ed8;">Sales<br>works it</div></div>
-            <div class="flow-arrow">→</div>
-            <div class="flow-step"><div class="flow-node sent" style="min-width:90px;">Quote<br>created</div></div>
-            <div class="flow-arrow">→</div>
-            <div class="flow-step"><div class="flow-node action" style="min-width:90px;font-size:11px;">Quote sent<br>to customer</div></div>
+            <div class="flow-step"><div class="flow-node validated" style="min-width:90px;">SDR<br>works lead</div></div>
+            <div class="flow-arrow" style="color:#94a3b8;font-size:18px;">⤵</div>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+
+              <!-- Path A: SDR handles directly (under HVT) -->
+              <div style="display:flex;align-items:center;gap:0;background:#f0fdf4;border:1px dashed #86efac;border-radius:8px;padding:6px 10px;">
+                <span style="font-size:10px;font-weight:600;color:#15803d;margin-right:8px;white-space:nowrap;">PATH A — SDR direct<br><span style="font-weight:400;">(total &lt; HVT threshold)</span></span>
+                <div class="flow-step"><div class="flow-node sent" style="min-width:90px;font-size:11px;">SDR creates<br>quote / order</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node action" style="min-width:90px;font-size:11px;">Quote sent<br>to customer</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node order" style="min-width:90px;">Customer<br>confirms ✅</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node production" style="min-width:100px;font-size:11px;">Order<br>ORD-YYYY-NNN</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node completed" style="min-width:90px;">Paid ✓<br>Complete</div></div>
+              </div>
+
+              <!-- Path B: HVT auto-route OR manual route to Sales -->
+              <div style="display:flex;align-items:center;gap:0;background:#eff6ff;border:1px dashed #93c5fd;border-radius:8px;padding:6px 10px;">
+                <span style="font-size:10px;font-weight:600;color:#1d4ed8;margin-right:8px;white-space:nowrap;">PATH B — Routed to Sales<br><span style="font-weight:400;">(total ≥ HVT, or SDR routes manually)</span></span>
+                <div class="flow-step"><div class="flow-node order" style="min-width:90px;background:#eff6ff;border-color:#93c5fd;color:#1d4ed8;font-size:11px;">Sales claims<br>&amp; works it</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node sent" style="min-width:90px;font-size:11px;">Sales creates<br>quote</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node action" style="min-width:90px;font-size:11px;">Quote sent<br>to customer</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node order" style="min-width:90px;">Customer<br>confirms ✅</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node production" style="min-width:100px;font-size:11px;">Order<br>ORD-YYYY-NNN</div></div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step"><div class="flow-node completed" style="min-width:90px;">Paid ✓<br>Complete</div></div>
+              </div>
+
+            </div>
           </div>
-          <div style="padding-left:380px;display:flex;align-items:center;gap:0;flex-wrap:nowrap;">
-            <div class="flow-step"><div class="flow-node order" style="min-width:90px;">Customer<br>confirms ✅</div></div>
-            <div class="flow-arrow">→</div>
-            <div class="flow-step"><div class="flow-node production" style="min-width:90px;">Order<br>ORD-YYYY-NNN</div></div>
-            <div class="flow-arrow">→</div>
-            <div class="flow-step"><div class="flow-node action" style="min-width:90px;font-size:11px;">Payment<br>reminder sent</div></div>
-            <div class="flow-arrow">→</div>
-            <div class="flow-step"><div class="flow-node completed" style="min-width:90px;">Paid ✓<br>Complete</div></div>
+
+          <div style="margin-top:10px;font-size:11.5px;color:var(--muted);padding-left:4px;">
+            <strong style="color:var(--navy);">HVT (High-Value Threshold)</strong> is set in Admin → Company Info. If an SDR saves a draft quote whose total exceeds this value, a non-dismissible 30-second countdown modal fires and the ticket is auto-saved as <code style="font-size:10px;">ticket_status=routed</code> — routing it to the Sales queue. The SDR cannot bypass this.
           </div>
         </div>
       </div>
@@ -1750,7 +2842,7 @@
 
 <footer class="footer">
   <strong>BazaarPrinting CRM</strong> — Built with Next.js 16, Supabase, Tailwind CSS, Twilio, and Instantly AI.<br>
-  <span style="font-size:11px;margin-top:4px;display:block;">Last updated: May 17, 2026 — includes session tracking, admin overrides, order lifecycle, and dashboard revenue fixes. See the <a href="#whats-left" style="color:var(--gold);">What's Left?</a> section for open items.</span>
+  <span style="font-size:11px;margin-top:4px;display:block;">Last updated: May 17, 2026 — includes admin lead editing &amp; SDR assignment, SDR full sales pipeline visibility (read-only), sales claim-then-open modal, sdr_id attribution fix, session tracking, admin overrides, order lifecycle, and dashboard revenue fixes. See the <a href="#whats-left" style="color:var(--gold);">What's Left?</a> section for open items.</span>
 </footer>
 
 <script>

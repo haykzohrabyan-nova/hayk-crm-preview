@@ -31,7 +31,7 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 
 ### Behaviors
 
-- **Claim** → `POST /api/leads/[id]/claim` → sets `sales_owner_id = currentUser`, `sales_status = 'Ongoing'`; logs `lead_sales_claimed`; row updates in place
+- **Claim** → `POST /api/leads/[id]/claim` → sets `sales_owner_id = currentUser`, `sales_status = 'Ongoing'`; logs `lead_sales_claimed`; the modal opens immediately so the Sales rep can begin working the lead right away. The lead remains assigned even after the modal is closed or the page is refreshed.
 - **Open** (owned lead) → `POST /api/leads/[id]/lock` → opens Sales Drawer in edit mode; 409 → read-only with banner
 - **View** (Admin) → opens Sales Drawer in read-only mode with **no lock acquired** — active Sales rep is undisturbed
 - **Search:** client-side filter on name, email, phone, company
@@ -82,9 +82,9 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 
 ---
 
-## Sales Drawer
+## Sales Modal
 
-A right-side drawer for a Sales rep to work a routed lead.
+A **centered modal** (not a side drawer) for a Sales rep to work a routed lead. The modal is `max-width: 780px`, `80vh` height, `12px` border-radius, with a backdrop overlay. Clicking outside the backdrop does **not** close the modal.
 
 ### Drawer Tabs
 
@@ -118,8 +118,8 @@ Read-only view of contact fields (set by SDR). Editable Sales fields:
 | **Create Quote / Order** | Edit mode | Saves lead silently → navigates to `/quotes/new?lead_id=<id>`; `sales_status` is updated automatically by the ticket creation API |
 | **On Hold** | Edit mode, status not Rejected | Opens hold sub-form; sets `sales_status = 'On Hold'` |
 | **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `status = 'Rejected'`, clears `sales_status = null` + auto-saves `prev_status = 'Routed to Sales'` — **TERMINAL** |
-| **Save** | Edit mode | `PATCH /api/leads/[id]` with changed fields |
-| **Close** | Always | Dismisses drawer + releases lock |
+| **Close** | Always (in same row as other action buttons, just before Save) | Dismisses modal + releases lock |
+| **Save** | Edit mode (far-right of footer) | `PATCH /api/leads/[id]` with changed fields |
 
 **Clicking outside the modal does not close it.** The backdrop is non-interactive. Use Save, On Hold, Reject, or Close to exit.
 
@@ -163,9 +163,10 @@ Same pattern as SDR pipeline:
 | Feature | Notes |
 |---------|-------|
 | Pipeline / On Hold / Rejected tabs | All three tabs with counts visible before clicking; Rejected shows only sales-pipeline rejections () |
-| Claim unclaimed lead | `POST /api/leads/[id]/claim` → row updates in place; logs `lead_sales_claimed` activity |
-| Open owned lead (with locking) | Lock acquired on open, released on close |
+| Claim unclaimed lead | `POST /api/leads/[id]/claim` → **modal opens immediately** so Sales rep can start working; row persists assigned even after modal close or page refresh; logs `lead_sales_claimed` activity |
+| Open owned lead (with locking) | Lock acquired on open, released on close (temporary lock — different from SDR soft lock) |
 | Admin View (no lock) | Admin opens any lead read-only without acquiring a lock — Sales rep's edit session undisturbed |
+| Sales Drawer → Sales Modal | Component converted from a right-side slide-in drawer to a centered modal (`780px` max-width, `80vh` height). Close button placed inline with other action buttons just before Save. |
 | Sales Status (Ongoing / Quote Sent) | Editable in drawer |
 | Quote Total | Editable in drawer |
 | On Hold action | Hold sub-form with reason, notes, hold-until date |

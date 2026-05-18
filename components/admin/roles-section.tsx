@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Trash2, Lock, X, Shield } from "lucide-react";
+import { Trash2, Lock, X, Shield } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -132,7 +132,6 @@ export function RolesSection() {
   const [pages, setPages] = useState<Page[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showNewForm, setShowNewForm] = useState(false);
   const [togglingPageId, setTogglingPageId] = useState<string | null>(null);
   const [deletingRoleId, setDeletingRoleId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -156,6 +155,7 @@ export function RolesSection() {
 
   const selectedRole = roles.find((r) => r.id === selectedRoleId) ?? null;
   const isAdmin = selectedRole?.name === "admin";
+  const isSystemRole = selectedRole?.is_system ?? false;
 
   // ── Toggle permission ─────────────────────────────────────────────────────
 
@@ -210,15 +210,6 @@ export function RolesSection() {
     showToast(`Role "${role.display_name}" deleted.`);
   }
 
-  // ── Handle new role created ───────────────────────────────────────────────
-
-  function handleRoleCreated(role: Role) {
-    setRoles((prev) => [...prev, role]);
-    setSelectedRoleId(role.id);
-    setShowNewForm(false);
-    showToast(`Role "${role.display_name}" created.`);
-  }
-
   if (loading) {
     return (
       <div className="flex gap-6 animate-pulse">
@@ -239,18 +230,7 @@ export function RolesSection() {
       <div className="w-56 shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>Roles</p>
-          <button
-            onClick={() => setShowNewForm(true)}
-            className="flex items-center gap-1 rounded-[6px] px-2 py-1 text-[11px] font-medium transition-all hover:opacity-80"
-            style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-          >
-            <Plus className="h-3 w-3" /> New
-          </button>
         </div>
-
-        {showNewForm && (
-          <NewRoleForm onCreated={handleRoleCreated} onCancel={() => setShowNewForm(false)} />
-        )}
 
         {roles.map((role) => (
           <div
@@ -306,12 +286,14 @@ export function RolesSection() {
               )}
             </div>
 
-            {isAdmin ? (
+            {isSystemRole ? (
               <div
                 className="rounded-[10px] border p-4 text-sm"
                 style={{ background: "color-mix(in srgb, var(--color-accent) 8%, var(--color-surface))", borderColor: "color-mix(in srgb, var(--color-accent) 25%, var(--color-border))", color: "var(--color-text-muted)" }}
               >
-                Admin has unrestricted access to all pages. Permissions cannot be modified.
+                {isAdmin
+                  ? "Admin has unrestricted access to all pages. Permissions cannot be modified."
+                  : `${selectedRole?.display_name} is a system role. Page permissions are fixed and cannot be changed.`}
               </div>
             ) : (
               <div

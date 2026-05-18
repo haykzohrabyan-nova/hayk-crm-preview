@@ -57,12 +57,13 @@ POST /api/leads/[id]/lock  (also sets sdr_id = userId)
                                                       → Banner: "Jane is working this lead"
                                                       → On close/refresh: lead disappears from queue
 
-Admin clicks View on a lead
+Admin clicks Edit on a lead
       │
       ▼
-No lock call — drawer opens directly in READ-ONLY mode
+No lock call — drawer opens directly in EDIT mode
       │
       └── No lock acquired, active SDR is undisturbed
+          Admin can save changes via "Save Changes" button
 
 SDR routes to Sales OR rejects (terminal actions)
       │
@@ -101,13 +102,13 @@ POST /api/leads/[id]/reassign  { user_id: newSdrId | null }
 - Action buttons: hidden entirely (not just disabled — no false affordance)
 - History tab: still accessible and fully interactive
 
-### Admin View Mode
+### Admin Edit Mode
 
-Admin opens leads via a **View** action that does **not** call the lock endpoint. The drawer opens directly in read-only mode. The active SDR's lock is completely undisturbed — they keep edit access.
+Admin opens leads via an **Edit** action that does **not** call the lock endpoint. The drawer opens directly in **edit mode**. The active SDR's lock is completely undisturbed — they keep edit access.
 
-Admin can inspect all fields and the lead history without interfering with the SDR's work.
+Admin can inspect and modify all fields and save changes via the "Save Changes" button in the drawer footer. The SDR workflow buttons (Route to Sales, Hold, Reject) are replaced with just "Close" and "Save Changes" when the viewer is admin.
 
-> **Future — Admin Edit Override:** If admin needs to edit a locked lead, a dedicated "Edit" action would call `POST /api/leads/[id]/lock` (which always grants admin the lock), take over the lock, and show a banner: `[ShieldIcon] This lead is locked by Jane Smith — you are overriding as Admin`. The original holder's next save attempt would receive a `409`. This is deferred to a future build.
+No lock banner is shown to the SDR while admin is editing — admin edits are silent from the SDR's perspective. If the SDR saves their own changes at the same time, the last write wins (standard Postgres row update).
 
 ---
 
