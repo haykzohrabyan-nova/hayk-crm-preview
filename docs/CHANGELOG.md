@@ -3,6 +3,68 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-19] — Session 2: UI polish, dashboard improvements, bug fixes
+
+### Fixed
+- `app/api/leads/workspace/route.ts`: Won tab was always empty — broken PostgREST join (`created_by:user_profiles!job_tickets_created_by_id_fkey`) used a FK that points to `auth.users`, not `user_profiles`. Replaced with a separate `user_profiles` lookup after fetch; "Closed By" column now resolves correctly
+- `app/globals.css`: `--color-bg` was set to `#ffffff0c` (4% opacity transparent) instead of `#ffffff` — fixed so light mode background is truly white
+- `components/leads-page.tsx` + `components/verify-drawer.tsx`: `Select` `onValueChange` typed `string | null` caused TS build error — resolved with `?? ""`
+
+### Changed
+
+#### Design tokens (`app/globals.css`)
+- `--color-bg` (light): `#f8fafc` → `#ffffff` (pure white page background)
+- `--color-surface` (light): `#FFFFFF` → `#FAFAFA` (subtle card lift)
+- `--color-text-muted` (light): `#888888` → `#666666` (better contrast)
+- `--color-warning` (light): `#D97706` → `#B45309` (deeper amber, more readable)
+
+#### Order detail page (`components/quote-detail.tsx`)
+- Combined three separate bottom cards (Cancel Ticket bar, Order Progress, Deposit) into one unified card with divider-separated rows for `ticket_status === "order"`
+- Deposit and Payment status selectors replaced with connected segmented controls (`rounded-md` bordered group) — clearly interactive vs badge-style pills
+- Deposit row shows amount as prominent value (`$116.85 due now`) beside the control
+- "Cancel Ticket" upgraded to a proper bordered danger button (`danger-bg / danger-border / danger`)
+- "Mark In Production" uses navy verify-button style as the primary progression action
+- Pricing Summary background changed from `--color-badge-bg` to `--color-bg`
+
+#### Admin dashboard (`components/admin-dashboard.tsx`)
+- Team section now fetches `/api/admin/team` + `/api/admin/sessions` (7-day) in parallel, merged by user ID — single source of truth for team status
+- Team cards show: real-time online dot (`currently_active`), role pill, Sessions / Active time / Last seen stats row, idle sign-out warning badge, active deals (sales only)
+- Removed standalone "Active Users" and "Idle Sign-outs" KPI cards — info now lives in the enriched Team cards; KPI grid is a clean 2×3
+- Total Leads KPI card: added "In Pipeline" (amber), "Quoted" (blue), "Ordered" (navy) sub-stats alongside Open/Claimed — all period-filtered so the breakdown adds up to the total
+- `AdminKpis` type extended with `pipeline_leads`, `quoted_leads`, `ordered_leads`
+
+#### Dashboard KPIs API (`app/api/dashboard/kpis/route.ts`)
+- Added three new period-filtered lead counts: `pipeline_leads` (`Routed to Sales` + `Ongoing`), `quoted_leads` (`Quote Sent`), `ordered_leads` (`Won`)
+- Removed session stats fetch (no longer needed — moved to Team section)
+
+---
+
+## [2026-05-19] — Dashboard Team section merged with User Activity data
+
+### Changed
+- `components/admin-dashboard.tsx` → `TeamSection`: now fetches both `/api/admin/team` and `/api/admin/sessions` (7-day range) in parallel and merges by user ID
+- Team cards upgraded: avatar + real `currently_active` online dot + role pill + Sessions / Active time / Last seen stats row + idle auto-signout warning badge + active deals (sales only)
+- "Active now" badge shown next to the Team heading when any member has a live session
+
+---
+
+## [2026-05-19] — Order page: segmented controls for Deposit/Payment, improved Cancel button
+
+### Changed
+- `components/quote-detail.tsx`: Replaced round-pill badge-style Deposit and Payment status buttons with connected segmented controls (`rounded-md`, bordered group) — clearly interactive, not ambiguous as status indicators
+- Deposit row now shows the deposit amount as a prominent value (`$116.85 due now`) next to the control
+- "Cancel Ticket" upgraded from bare text link to a proper bordered danger button (`danger-bg / danger-border`)
+- "Mark In Production" uses the primary navy/verify button style for higher visual weight
+
+---
+
+## [2026-05-19] — Combine order-status cards into one
+
+### Changed
+- `components/quote-detail.tsx`: For `ticket_status === "order"` (pre-confirmation), the three separate bottom cards (Cancel Ticket bar, Order Progress, Deposit) are now merged into a single card with divider-separated rows. Draft/sent states are unaffected. The offline Payment status row is also folded in if applicable.
+
+---
+
 ## [2026-05-19] — New Quote & Quote Detail UI overhaul + prepayment visibility
 
 ### Changed

@@ -130,6 +130,9 @@ export async function GET(request: NextRequest) {
     routedLeads,
     wonLeads,
     pipelineLeads,
+    pipelineLeads2,
+    quotedLeads,
+    orderedLeads,
     sdrLeadsRaw,
     rejectedLeadsRaw,
     sourceLeadsRaw,
@@ -171,6 +174,25 @@ export async function GET(request: NextRequest) {
       .from("job_tickets")
       .select("quote_final_total")
       .in("ticket_status", ["draft", "sent"]),
+    // Leads created in period currently active in sales pipeline (Ongoing)
+    admin
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "Routed to Sales")
+      .eq("sales_status", "Ongoing")
+      .gte("created_at", periodStart),
+    // Leads created in period that progressed to a quote (Quote Sent)
+    admin
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("sales_status", "Quote Sent")
+      .gte("created_at", periodStart),
+    // Leads created in period that were Won (converted to order)
+    admin
+      .from("leads")
+      .select("id", { count: "exact", head: true })
+      .eq("sales_status", "Won")
+      .gte("created_at", periodStart),
     // SDR performance: all workspace leads with an sdr_id in the period
     admin
       .from("leads")
@@ -195,6 +217,9 @@ export async function GET(request: NextRequest) {
 
   const wonTickets = wonLeads.data ?? [];
   const pipeline = pipelineLeads.data ?? [];
+  const pipeline_leads_count = pipelineLeads2.count ?? 0;
+  const quoted_leads_count = quotedLeads.count ?? 0;
+  const ordered_leads_count = orderedLeads.count ?? 0;
   const sdrLeads = sdrLeadsRaw.data ?? [];
   const rejectedLeads = rejectedLeadsRaw.data ?? [];
   const sourceLeads = sourceLeadsRaw.data ?? [];
@@ -262,6 +287,9 @@ export async function GET(request: NextRequest) {
     total_leads:       totalLeads.count ?? 0,
     open_leads:        openLeads.count ?? 0,
     claimed_leads:     claimedLeads.count ?? 0,
+    pipeline_leads:    pipeline_leads_count,
+    quoted_leads:      quoted_leads_count,
+    ordered_leads:     ordered_leads_count,
     inbox_leads:       inboxLeads.count ?? 0,
     routed_leads:      routedLeads.count ?? 0,
     won_leads:         wonTickets.length,

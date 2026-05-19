@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     let wonQuery = admin
       .from("leads")
       .select(
-        "*, customer:customers(*), sales_owner:user_profiles!leads_sales_owner_id_fkey(id,full_name), tickets:job_tickets(id,reference_code,quote_final_total,ticket_status,created_by_id,created_by:user_profiles!job_tickets_created_by_id_fkey(id,full_name))"
+        "*, customer:customers(*), sales_owner:user_profiles!leads_sales_owner_id_fkey(id,full_name), tickets:job_tickets(id,reference_code,quote_final_total,ticket_status,created_by_id)"
       )
       .eq("is_inbox", false)
       .eq("sales_status", "Won")
@@ -41,6 +41,39 @@ export async function GET(request: NextRequest) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
     let leads = data ?? [];
+
+    // Resolve created_by names via user_profiles (separate lookup since
+    // job_tickets.created_by_id → auth.users, not user_profiles directly)
+    const creatorIds = [
+      ...new Set(
+        leads.flatMap((l) =>
+          ((l as Record<string, unknown>).tickets as { created_by_id: string | null }[] ?? [])
+            .map((t) => t.created_by_id)
+            .filter(Boolean)
+        )
+      ),
+    ] as string[];
+
+    const creatorMap: Record<string, string> = {};
+    if (creatorIds.length > 0) {
+      const { data: profiles } = await admin
+        .from("user_profiles")
+        .select("id, full_name")
+        .in("id", creatorIds);
+      for (const p of profiles ?? []) {
+        if (p.id) creatorMap[p.id] = p.full_name ?? "Unknown";
+      }
+    }
+
+    // Attach creator name to each ticket
+    leads = leads.map((lead) => ({
+      ...lead,
+      tickets: ((lead as Record<string, unknown>).tickets as { created_by_id: string | null }[] ?? []).map((t) => ({
+        ...t,
+        created_by: t.created_by_id ? { id: t.created_by_id, full_name: creatorMap[t.created_by_id] ?? null } : null,
+      })),
+    }));
+
     if (search) {
       leads = leads.filter((lead) => {
         const c = lead.customer;

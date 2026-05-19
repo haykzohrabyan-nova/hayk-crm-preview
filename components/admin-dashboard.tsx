@@ -7,7 +7,8 @@ import {
   Clock,
   CheckCircle,
   DollarSign,
-  Activity,
+  AlertTriangle,
+  Circle,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -34,6 +35,9 @@ interface AdminKpis {
   total_leads: number;
   open_leads: number;
   claimed_leads: number;
+  pipeline_leads: number;
+  quoted_leads: number;
+  ordered_leads: number;
   inbox_leads: number;
   routed_leads: number;
   won_leads: number;
@@ -44,11 +48,6 @@ interface AdminKpis {
   source_breakdown: BreakdownItem[];
 }
 
-interface SessionStats {
-  active_now: number;
-  auto_signouts_7d: number;
-}
-
 interface TeamMember {
   id: string;
   full_name: string | null;
@@ -56,6 +55,15 @@ interface TeamMember {
   role_display_name: string;
   claimed_leads: number;
   last_sign_in_at: string | null;
+}
+
+interface SessionSummary {
+  user_id: string;
+  total_sessions: number;
+  total_minutes: number;
+  last_signed_in_at: string | null;
+  currently_active: boolean;
+  auto_signouts: number;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -76,6 +84,31 @@ function isOnline(lastSignIn: string | null): boolean {
   if (!lastSignIn) return false;
   return Date.now() - new Date(lastSignIn).getTime() < 8 * 60 * 60 * 1000;
 }
+
+function formatDuration(minutes: number): string {
+  if (minutes < 1) return "< 1m";
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "Just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
+
+const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
+  admin: { bg: "var(--color-badge-bg)",   color: "var(--color-badge-text)" },
+  sdr:   { bg: "var(--color-info-bg)",    color: "var(--color-info-text)" },
+  sales: { bg: "var(--color-success-bg)", color: "var(--color-success)" },
+};
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 
@@ -187,67 +220,144 @@ function KpiCardSkeleton() {
 
 function TeamSection() {
   const [members, setMembers] = useState<TeamMember[] | null>(null);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
 
   useEffect(() => {
-    fetch("/api/admin/team")
-      .then((r) => r.json())
-      .then((d) => setMembers(d.members ?? []))
+    // Fetch team roster and 7-day session summaries in parallel
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    Promise.all([
+      fetch("/api/admin/team").then((r) => r.json()),
+      fetch(`/api/admin/sessions?from=${sevenDaysAgo}&limit=500`).then((r) => r.json()),
+    ])
+      .then(([teamData, sessionData]) => {
+        setMembers(teamData.members ?? []);
+        setSessions(sessionData.summary ?? []);
+      })
       .catch(() => {});
   }, []);
 
   if (!members || members.length === 0) return null;
 
+  // Build a lookup map: user_id → session summary
+  const sessionMap = new Map<string, SessionSummary>(
+    sessions.map((s) => [s.user_id, s])
+  );
+  const activeNow = sessions.filter((s) => s.currently_active).length;
+
   return (
     <section>
-      <h2
-        className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em]"
-        style={{ color: "var(--color-text-muted)" }}
-      >
-        Team
-      </h2>
+      <div className="mb-3 flex items-center gap-2.5">
+        <h2
+          className="text-[13px] font-semibold uppercase tracking-[0.06em]"
+          style={{ color: "var(--color-text-muted)" }}
+        >
+          Team
+        </h2>
+        {activeNow > 0 && (
+          <span
+            className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
+            style={{ background: "var(--color-success-bg)", color: "var(--color-success)" }}
+          >
+            <Circle className="h-1.5 w-1.5 fill-current" />
+            {activeNow} active now
+          </span>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {members.map((m) => {
           const initial = m.full_name?.trim()[0]?.toUpperCase() ?? "?";
-          const online = isOnline(m.last_sign_in_at);
-          const isSales = m.role_name === "sales";
+          const sess = sessionMap.get(m.id);
+          const active = sess?.currently_active ?? false;
+          const roleStyle = ROLE_STYLES[m.role_name] ?? { bg: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" };
 
           return (
             <div
               key={m.id}
-              className="flex items-center gap-3 rounded-[10px] border p-4"
+              className="rounded-[10px] border p-4 space-y-3"
               style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
             >
-              <div className="relative shrink-0">
-                <div
-                  className="flex h-10 w-10 items-center justify-center rounded-full text-[15px] font-semibold"
-                  style={{
-                    background: "var(--color-btn-verify-bg)",
-                    color: "var(--color-btn-verify-text)",
-                  }}
-                >
-                  {initial}
+              {/* Header: avatar + name + role + online */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="relative shrink-0">
+                    <div
+                      className="flex h-9 w-9 items-center justify-center rounded-full text-[14px] font-semibold"
+                      style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                    >
+                      {initial}
+                    </div>
+                    <span
+                      className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full"
+                      style={{
+                        background: active ? "var(--color-success)" : "var(--color-border)",
+                        outline: "2px solid var(--color-surface)",
+                      }}
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-[13px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
+                      {m.full_name ?? "—"}
+                    </p>
+                    <span
+                      className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                      style={{ background: roleStyle.bg, color: roleStyle.color }}
+                    >
+                      {m.role_display_name}
+                    </span>
+                  </div>
                 </div>
-                <span
-                  className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full"
-                  style={{
-                    background: online ? "var(--color-success)" : "var(--color-border)",
-                    outline: "2px solid var(--color-surface)",
-                  }}
-                />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-[13px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-                  {m.full_name ?? "—"}
-                </p>
-                <p className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-                  {m.role_display_name}
-                </p>
-                {isSales && (
-                  <p className="mt-0.5 text-[11px] font-medium" style={{ color: "var(--color-accent)" }}>
-                    {m.claimed_leads} active deal{m.claimed_leads !== 1 ? "s" : ""}
-                  </p>
+
+                {/* Auto sign-out warning */}
+                {sess && sess.auto_signouts > 0 && (
+                  <div
+                    className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0"
+                    style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
+                  >
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                    {sess.auto_signouts} idle
+                  </div>
                 )}
               </div>
+
+              {/* Stats row */}
+              <div className="grid grid-cols-3 gap-2 pt-1" style={{ borderTop: "1px solid var(--color-border)" }}>
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
+                    Sessions
+                  </p>
+                  <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
+                    {sess?.total_sessions ?? 0}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
+                    Active time
+                  </p>
+                  <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
+                    {sess ? formatDuration(sess.total_minutes) : "—"}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
+                    Last seen
+                  </p>
+                  <p className="text-[12px] font-medium" style={{ color: active ? "var(--color-success)" : "var(--color-text-muted)" }}>
+                    {active
+                      ? "Active now"
+                      : sess?.last_signed_in_at
+                        ? relativeTime(sess.last_signed_in_at)
+                        : "—"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Active deals — sales only */}
+              {m.role_name === "sales" && m.claimed_leads > 0 && (
+                <p className="text-[11px] font-medium" style={{ color: "var(--color-accent-dark)" }}>
+                  {m.claimed_leads} active deal{m.claimed_leads !== 1 ? "s" : ""}
+                </p>
+              )}
             </div>
           );
         })}
@@ -262,8 +372,6 @@ export function AdminDashboard() {
   const [period, setPeriod] = useState<Period>("month");
   const [data, setData] = useState<AdminKpis | null>(null);
   const [loading, setLoading] = useState(true);
-  const [sessionStats, setSessionStats] = useState<SessionStats | null>(null);
-
   const fetchKpis = useCallback(async () => {
     setLoading(true);
     const [res] = await Promise.all([
@@ -277,20 +385,6 @@ export function AdminDashboard() {
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
 
-  // Fetch session stats once on mount (not period-scoped)
-  useEffect(() => {
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    fetch(`/api/admin/sessions?from=${sevenDaysAgo}&limit=500`)
-      .then((r) => r.json())
-      .then((d) => {
-        const summary: { currently_active: boolean; auto_signouts: number }[] = d.summary ?? [];
-        setSessionStats({
-          active_now: summary.filter((u) => u.currently_active).length,
-          auto_signouts_7d: summary.reduce((s, u) => s + u.auto_signouts, 0),
-        });
-      })
-      .catch(() => {});
-  }, []);
 
   // Silent re-fetch when any lead changes (Realtime → sidebar → bazaar:leads-changed).
   // Does NOT set loading=true so the cards don't flash skeleton.
@@ -354,8 +448,11 @@ export function AdminDashboard() {
               subtext={periodLabel.toLowerCase()}
               icon={<Users className="h-4 w-4" />}
               subStats={[
-                { label: "Open", value: data.open_leads, color: "var(--color-success)" },
-                { label: "Claimed", value: data.claimed_leads, color: "var(--color-accent-dark)" },
+                { label: "Open",       value: data.open_leads,      color: "var(--color-success)" },
+                { label: "Claimed",    value: data.claimed_leads,    color: "var(--color-accent-dark)" },
+                ...(data.pipeline_leads > 0 ? [{ label: "In Pipeline", value: data.pipeline_leads, color: "var(--color-warning)" }] : []),
+                ...(data.quoted_leads   > 0 ? [{ label: "Quoted",      value: data.quoted_leads,   color: "var(--color-info-text)" }] : []),
+                ...(data.ordered_leads  > 0 ? [{ label: "Ordered",     value: data.ordered_leads,  color: "var(--color-btn-verify-bg)" }] : []),
               ]}
             />
             <KpiCard
@@ -381,18 +478,6 @@ export function AdminDashboard() {
               value={formatCurrency(data.pipeline_value)}
               subtext="current total"
               icon={<DollarSign className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Active Users"
-              value={sessionStats?.active_now ?? "—"}
-              subtext="signed in right now"
-              icon={<Activity className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Idle Sign-outs"
-              value={sessionStats?.auto_signouts_7d ?? "—"}
-              subtext="last 7 days"
-              icon={<Clock className="h-4 w-4" />}
             />
           </>
         ) : null}

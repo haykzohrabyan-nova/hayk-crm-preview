@@ -1029,8 +1029,9 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
             {tab === "history" && <HistorySection ticketId={ticketId} />}
           </div>
 
-          {/* Bottom action bar — view mode. Hidden once customer has confirmed (record is committed). */}
-          {!editing && !isLocked && !ticket.client_confirmed && (
+          {/* Bottom action bar — view mode. Hidden once customer has confirmed (record is committed).
+              Only shown for draft/sent states; order state uses the combined order-status card below. */}
+          {!editing && !isLocked && !ticket.client_confirmed && ticket.ticket_status !== "order" && (
             <div
               className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-2 md:gap-3"
               style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
@@ -1095,28 +1096,140 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
             />
           )}
 
-          {/* Order lifecycle buttons — admin only.
-              Advances order → in_production → completed.
-              API already handles arbitrary ticket_status PATCHes from admin. */}
-          {!editing && userRole === "admin" && (
-            ticket.ticket_status === "order" ? (
-              <div
-                className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-3"
-                style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-              >
-                <span className="text-[12px] font-medium uppercase tracking-wider mr-auto" style={{ color: "var(--color-text-muted)" }}>
-                  Order Progress
-                </span>
-                <button
-                  disabled={saving}
-                  onClick={() => handleSave(undefined, { ticket_status: "in_production" })}
-                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                  style={{ background: "var(--color-info-bg)", color: "var(--color-info-text)", border: "1px solid var(--color-info-border)" }}
-                >
-                  Mark In Production
-                </button>
+          {/* Combined order-status card — shown only when ticket_status === "order" and not locked/confirmed.
+              Merges Order Progress (admin), Deposit status, and Cancel Ticket into one surface. */}
+          {!editing && !isLocked && !ticket.client_confirmed && ticket.ticket_status === "order" && (
+            <div
+              className="mt-4 rounded-xl overflow-hidden"
+              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
+            >
+              {/* Row 1: Order Progress (admin) + Cancel Ticket */}
+              <div className="px-4 py-3 md:px-5 flex flex-wrap items-center gap-3">
+                {userRole === "admin" && (
+                  <>
+                    <span className="text-[11px] font-medium uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+                      Order Progress
+                    </span>
+                    <button
+                      disabled={saving}
+                      onClick={() => handleSave(undefined, { ticket_status: "in_production" })}
+                      className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                      style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                    >
+                      Mark In Production
+                    </button>
+                  </>
+                )}
+                <div className="ml-auto">
+                  <button
+                    disabled={saving}
+                    onClick={() => handleSave("cancelled")}
+                    className="px-3 py-1.5 text-xs font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50"
+                    style={{ color: "var(--color-danger)", border: "1px solid var(--color-danger-border)", background: "var(--color-danger-bg)" }}
+                  >
+                    Cancel Ticket
+                  </button>
+                </div>
               </div>
-            ) : ticket.ticket_status === "in_production" ? (
+
+              {/* Row 2: Deposit status — segmented control, only when partial prepayment is configured */}
+              {(ticket.prepayment_type === "percent" || ticket.prepayment_type === "fixed") && (() => {
+                const depositVal = parseFloat(ticket.prepayment_value ?? "0") || 0;
+                const depositTotal = ticket.quote_final_total ?? 0;
+                const depositAmount = ticket.prepayment_type === "percent"
+                  ? Math.round(depositTotal * (depositVal / 100) * 100) / 100
+                  : Math.min(depositVal, depositTotal);
+                const depositStatus = ticket.prepayment_status ?? "pending";
+                return (
+                  <div
+                    className="px-5 py-3 flex items-center gap-4 flex-wrap"
+                    style={{ borderTop: "1px solid var(--color-border)" }}
+                  >
+                    <span className="text-[11px] font-medium uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>
+                      Deposit
+                    </span>
+                    {/* Segmented control */}
+                    <div className="flex rounded-md overflow-hidden shrink-0" style={{ border: "1px solid var(--color-border)" }}>
+                      {(["pending", "paid"] as const).map((status, i) => {
+                        const cfg = {
+                          pending: { label: "Pending", activeStyle: { background: "var(--color-warning-bg)", color: "var(--color-warning)" } },
+                          paid:    { label: "Paid",    activeStyle: { background: "var(--color-success-bg)", color: "var(--color-success)" } },
+                        }[status];
+                        const isActive = depositStatus === status;
+                        return (
+                          <button
+                            key={status}
+                            disabled={saving}
+                            onClick={() => handleSave(undefined, { prepayment_status: status })}
+                            className="px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50 whitespace-nowrap"
+                            style={{
+                              ...(isActive ? cfg.activeStyle : { background: "var(--color-bg)", color: "var(--color-text-muted)" }),
+                              ...(i > 0 ? { borderLeft: "1px solid var(--color-border)" } : {}),
+                            }}
+                          >
+                            {cfg.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+                      {formatCurrency(depositAmount)}
+                    </span>
+                    <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>due now</span>
+                    <span className="ml-auto text-xs" style={{ color: "var(--color-text-muted)" }}>
+                      Will be auto-updated by Stripe
+                    </span>
+                  </div>
+                );
+              })()}
+
+              {/* Row 3: Offline payment status — segmented control, only when payment method is offline */}
+              {(ticket.quote_payment_types as string[] | null)?.includes("offline") && (
+                <div
+                  className="px-5 py-3 flex items-center gap-4 flex-wrap"
+                  style={{ borderTop: "1px solid var(--color-border)" }}
+                >
+                  <span className="text-[11px] font-medium uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>
+                    Payment
+                  </span>
+                  {/* Segmented control */}
+                  <div className="flex rounded-md overflow-hidden shrink-0" style={{ border: "1px solid var(--color-border)" }}>
+                    {(["unpaid", "partial", "paid"] as const).map((status, i) => {
+                      const cfg = {
+                        unpaid:  { label: "Unpaid",  activeStyle: { background: "var(--color-danger-bg)",  color: "var(--color-danger)"  } },
+                        partial: { label: "Partial", activeStyle: { background: "var(--color-warning-bg)", color: "var(--color-warning)" } },
+                        paid:    { label: "Paid",    activeStyle: { background: "var(--color-success-bg)", color: "var(--color-success)" } },
+                      }[status];
+                      const isActive = (ticket.payment_status ?? "unpaid") === status;
+                      return (
+                        <button
+                          key={status}
+                          disabled={saving}
+                          onClick={() => handleSave(undefined, { payment_status: status })}
+                          className="px-3 py-1.5 text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50 whitespace-nowrap"
+                          style={{
+                            ...(isActive ? cfg.activeStyle : { background: "var(--color-bg)", color: "var(--color-text-muted)" }),
+                            ...(i > 0 ? { borderLeft: "1px solid var(--color-border)" } : {}),
+                          }}
+                        >
+                          {cfg.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="ml-auto text-xs" style={{ color: "var(--color-text-muted)" }}>
+                    Mark when offline payment is received
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Order lifecycle buttons — admin only (in_production / completed states only).
+              The "order" state is handled by the combined card above. */}
+          {!editing && userRole === "admin" && (
+            ticket.ticket_status === "order" ? null
+            : ticket.ticket_status === "in_production" ? (
               <div
                 className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-3"
                 style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
@@ -1151,94 +1264,6 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
                 </span>
               </div>
             ) : null
-          )}
-
-          {/* Payment status bar — only for offline payments (cash/check/transfer).
-              Card and Zelle will be controlled automatically via Stripe in the future. */}
-          {!editing && ticket.ticket_status === "order" && (ticket.quote_payment_types as string[] | null)?.includes("offline") && (
-            <div
-              className="mt-4 rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap"
-              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-            >
-              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
-                Payment
-              </span>
-              {(["unpaid", "partial", "paid"] as const).map((status) => {
-                const styles = {
-                  unpaid:  { active: { background: "var(--color-danger-bg)",  color: "var(--color-danger)"  }, label: "Unpaid"  },
-                  partial: { active: { background: "var(--color-warning-bg)", color: "var(--color-warning)" }, label: "Partial" },
-                  paid:    { active: { background: "var(--color-success-bg)", color: "var(--color-success)" }, label: "Paid"    },
-                };
-                const s = styles[status];
-                const isActive = (ticket.payment_status ?? "unpaid") === status;
-                return (
-                  <button
-                    key={status}
-                    disabled={saving}
-                    onClick={() => handleSave(undefined, { payment_status: status })}
-                    className="px-3 py-1 text-xs font-medium rounded-full border transition-opacity hover:opacity-80 disabled:opacity-50"
-                    style={
-                      isActive
-                        ? { ...s.active, borderColor: "transparent" }
-                        : { background: "var(--color-bg)", color: "var(--color-text-muted)", borderColor: "var(--color-border)" }
-                    }
-                  >
-                    {s.label}
-                  </button>
-                );
-              })}
-              <span className="ml-auto text-xs" style={{ color: "var(--color-text-muted)" }}>
-                Mark when offline payment is received
-              </span>
-            </div>
-          )}
-
-          {/* Deposit status bar — visible when order has a partial prepayment set */}
-          {!editing && ticket.ticket_status === "order" && (ticket.prepayment_type === "percent" || ticket.prepayment_type === "fixed") && (
-            <div
-              className="mt-2 rounded-xl px-5 py-3 flex items-center gap-3 flex-wrap"
-              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-            >
-              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
-                Deposit
-              </span>
-              {(["pending", "paid"] as const).map((status) => {
-                const styles = {
-                  pending: { active: { background: "var(--color-warning-bg)", color: "var(--color-warning)" }, label: "Pending" },
-                  paid:    { active: { background: "var(--color-success-bg)", color: "var(--color-success)" }, label: "Paid"    },
-                };
-                const s = styles[status];
-                const isActive = (ticket.prepayment_status ?? "pending") === status;
-                return (
-                  <button
-                    key={status}
-                    disabled={saving}
-                    onClick={() => handleSave(undefined, { prepayment_status: status })}
-                    className="px-3 py-1 text-xs font-medium rounded-full border transition-opacity hover:opacity-80 disabled:opacity-50"
-                    style={
-                      isActive
-                        ? { ...s.active, borderColor: "transparent" }
-                        : { background: "var(--color-bg)", color: "var(--color-text-muted)", borderColor: "var(--color-border)" }
-                    }
-                  >
-                    {s.label}
-                  </button>
-                );
-              })}
-              <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-                {(() => {
-                  const val = parseFloat(ticket.prepayment_value ?? "0") || 0;
-                  const total = ticket.quote_final_total ?? 0;
-                  const amount = ticket.prepayment_type === "percent"
-                    ? Math.round(total * (val / 100) * 100) / 100
-                    : Math.min(val, total);
-                  return `— deposit amount: ${formatCurrency(amount)}`;
-                })()}
-              </span>
-              <span className="ml-auto text-xs" style={{ color: "var(--color-text-muted)" }}>
-                Will be auto-updated by Stripe
-              </span>
-            </div>
           )}
 
           {/* Bottom action bar — edit mode */}
@@ -1922,7 +1947,7 @@ function QuoteSection(p: QuoteSectionProps) {
   return (
     <div className="space-y-6">
       {/* Pricing summary */}
-      <div className="rounded-lg p-4 space-y-2" style={{ background: "var(--color-badge-bg)", border: "1px solid var(--color-border)" }}>
+      <div className="rounded-lg p-4 space-y-2" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
         <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--color-text-muted)" }}>Pricing Summary</h4>
         {[
           ["Subtotal", activePricing.subtotal],
