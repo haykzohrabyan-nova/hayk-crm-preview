@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import NextTopLoader from "nextjs-toploader";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalEventHandlers } from "@/components/global-event-handlers";
@@ -29,6 +30,7 @@ export default function RootLayout({
             <GlobalEventHandlers />
             <NextTopLoader color="var(--color-accent)" showSpinner={false} />
             {children}
+            <SpeedInsights />
           </TooltipProvider>
         </ThemeProvider>
       </body>
