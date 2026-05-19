@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Building2, X } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
-import { digitsOnly } from "@/lib/utils/phone";
+import { digitsOnly, validatePhone } from "@/lib/utils/phone";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -97,6 +97,8 @@ function FieldInput({
   placeholder,
   type = "text",
   inputMode,
+  min,
+  max,
   error,
 }: {
   value: string;
@@ -105,6 +107,8 @@ function FieldInput({
   placeholder?: string;
   type?: string;
   inputMode?: React.InputHTMLAttributes<HTMLInputElement>["inputMode"];
+  min?: number;
+  max?: number;
   error?: string;
 }) {
   return (
@@ -112,6 +116,8 @@ function FieldInput({
       <input
         type={type}
         inputMode={inputMode}
+        min={min}
+        max={max}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onBlur={(e) => {
@@ -211,8 +217,17 @@ export function CompanySection() {
   }
 
   async function handleSave() {
-    validateEmail(); validateWebsite(); validateZip();
-    if (hasErrors) return;
+    const newErrors: Partial<Record<keyof CompanySettings, string>> = {};
+    const emailVal = form.email ?? "";
+    if (emailVal && !isValidEmail(emailVal)) newErrors.email = "Enter a valid email address";
+    const phoneVal = form.phone ?? "";
+    const phoneErr = phoneVal ? validatePhone(phoneVal) : null;
+    if (phoneErr) newErrors.phone = phoneErr;
+    const websiteVal = form.website ?? "";
+    if (websiteVal && !isValidUrl(websiteVal)) newErrors.website = "Must start with http:// or https://";
+    const zipVal = form.zip ?? "";
+    if (zipVal && !isValidZip(zipVal)) newErrors.zip = "Enter a valid ZIP (e.g. 90001 or 90001-1234)";
+    if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
     setSaving(true);
     const res = await fetch("/api/admin/company", {
       method: "PATCH",
@@ -324,8 +339,9 @@ export function CompanySection() {
             <FieldLabel>Phone</FieldLabel>
             <PhoneInput
               value={digitsOnly(s.phone ?? "")}
-              onChange={(digits) => set("phone", digits || null)}
+              onChange={(digits) => { set("phone", digits || null); setError("phone", undefined); }}
               showAction
+              error={errors.phone}
             />
           </div>
           <div>
@@ -404,6 +420,8 @@ export function CompanySection() {
             <FieldLabel>Default Tax Rate (%)</FieldLabel>
             <FieldInput
               type="number"
+              min={0}
+              max={100}
               value={String(s.default_tax_rate ?? "")}
               onChange={(v) => set("default_tax_rate", parseFloat(v) || 0)}
               placeholder="8.25"
@@ -431,6 +449,8 @@ export function CompanySection() {
           <FieldLabel>Rush Surcharge (%)</FieldLabel>
           <FieldInput
             type="number"
+            min={0}
+            max={100}
             value={s.rush_surcharge_percent != null ? String(s.rush_surcharge_percent) : ""}
             onChange={(v) => set("rush_surcharge_percent", v ? parseFloat(v) : null)}
             placeholder="Leave blank if rush is badge-only (no price impact)"

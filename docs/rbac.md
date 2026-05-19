@@ -29,8 +29,8 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 ### Admin
 - Default pages: all pages including `/admin/*`
 - All SDR and Sales capabilities
-- Manage users (create with temp password, assign roles, deactivate)
-- Create and configure custom roles
+- Manage users: create with temp password (optionally sends branded welcome email via Instantly), assign roles, deactivate, reset passwords (automatically sends branded password-reset email via Instantly)
+- Create and configure custom roles (system role permissions are read-only)
 - System settings, audit log
 
 ### Custom Roles (Admin-created)
@@ -38,6 +38,8 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - Admin then checks which pages from the `pages` table this role can access
 - Users can be assigned to custom roles exactly like system roles
 - Custom roles cannot access `/admin/*` pages unless explicitly granted
+
+> **Note — System role permissions are locked in the UI.** The Admin panel displays the three system roles (Admin, SDR, Sales) in the Roles tab but their page-permission checkboxes are read-only. The "New Role" button is currently hidden (owner decision). Permissions for system roles are fixed and can only be changed via a database migration.
 
 ---
 

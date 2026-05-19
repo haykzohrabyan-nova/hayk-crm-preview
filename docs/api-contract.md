@@ -1008,7 +1008,7 @@ List all user profiles with auth metadata.
 
 ### `POST /api/admin/users/create`
 
-Creates a new user with a temp password. **No email is sent** unless `send_invite_email: true` is passed.
+Creates a new user with a temp password and optionally sends a branded welcome email.
 
 **Body:**
 ```json
@@ -1017,14 +1017,14 @@ Creates a new user with a temp password. **No email is sent** unless `send_invit
   "full_name": "string",
   "role_id": "uuid",
   "temp_password": "string",
-  "send_invite_email": false
+  "send_welcome_email": true
 }
 ```
 
 **Business rules:**
 1. Calls `supabase.auth.admin.createUser({ email, password: temp_password, email_confirm: true })`
 2. Creates `user_profiles` with `role_id`, `must_change_password: true`, `is_active: true`
-3. If `send_invite_email: true` — also calls `supabase.auth.admin.inviteUserByEmail(email)` (sends Supabase magic link email)
+3. If `send_welcome_email: true` — fires a branded HTML welcome email via **Instantly AI** (fire-and-forget) containing the user's email, temp password, and a login CTA. Requires `INSTANTLY_API_KEY` and `INSTANTLY_SENDING_ACCOUNT` env vars. Silently skips if Instantly is not configured.
 
 **Response `201`:**
 ```json
@@ -1037,7 +1037,7 @@ Creates a new user with a temp password. **No email is sent** unless `send_invit
 
 ### `PATCH /api/admin/users/[id]`
 
-Update a user's role, active status, or reset their temp password.
+Update a user's role, active status, full name, or reset their temp password.
 
 **Body:**
 ```json
@@ -1045,13 +1045,12 @@ Update a user's role, active status, or reset their temp password.
   "role_id": "uuid | null",
   "is_active": "boolean | null",
   "full_name": "string | null",
-  "new_temp_password": "string | null",
-  "must_change_password": "boolean | null"
+  "new_temp_password": "string | null"
 }
 ```
 
 **Business rules:**
-- If `new_temp_password` is provided: calls `supabase.auth.admin.updateUserById` to set the new password, sets `must_change_password = true` on `user_profiles`
+- If `new_temp_password` is provided: calls `supabase.auth.admin.updateUserById` to set the new password, sets `must_change_password = true` on `user_profiles`, then **automatically sends a branded password-reset email** to the user via Instantly AI (fire-and-forget). Email includes their new temp password and a login CTA. Silently skips if Instantly is not configured.
 - Cannot change own role or deactivate own account
 - Cannot deactivate the last active Admin (guard: count of active Admins > 1)
 

@@ -19,6 +19,8 @@ import {
 import { computePricing, formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
+import { validatePhone } from "@/lib/utils/phone";
+import { validateEmail } from "@/lib/utils/email";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 import { createClient } from "@/lib/supabase/client";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -339,6 +341,15 @@ export default function NewQuoteForm() {
       }
       if (!contactEmail.trim() && !contactPhone.trim()) {
         errors.customerContact = "Please provide an email or phone number.";
+      } else {
+        if (contactPhone.trim()) {
+          const pErr = validatePhone(contactPhone);
+          if (pErr) errors.customerContact = `Phone: ${pErr}`;
+        }
+        if (contactEmail.trim() && !errors.customerContact) {
+          const eErr = validateEmail(contactEmail);
+          if (eErr) errors.customerContact = `Email: ${eErr}`;
+        }
       }
     }
 
@@ -360,6 +371,12 @@ export default function NewQuoteForm() {
     if (tab === "quote") {
       if (!quoteDestination.trim()) {
         errors.quoteDestination = `Please enter the ${quoteChannel === "Email" ? "email address" : quoteChannel === "In-person" ? "location" : "phone number"} to send the quote to.`;
+      } else if (quoteChannel === "Email") {
+        const eErr = validateEmail(quoteDestination);
+        if (eErr) errors.quoteDestination = `Email: ${eErr}`;
+      } else if (quoteChannel === "SMS" || quoteChannel === "WhatsApp") {
+        const pErr = validatePhone(quoteDestination);
+        if (pErr) errors.quoteDestination = `Phone: ${pErr}`;
       }
     }
 
@@ -414,10 +431,19 @@ export default function NewQuoteForm() {
       return;
     }
 
-    if (status === "sent" && !quoteDestination.trim()) {
-      setFieldErrors({ quoteDestination: `Please enter the ${quoteChannel === "Email" ? "email address" : quoteChannel === "In-person" ? "location" : "phone number"} to send the quote to.` });
-      setTab("quote");
-      return;
+    if (status === "sent") {
+      if (!quoteDestination.trim()) {
+        setFieldErrors({ quoteDestination: `Please enter the ${quoteChannel === "Email" ? "email address" : quoteChannel === "In-person" ? "location" : "phone number"} to send the quote to.` });
+        setTab("quote");
+        return;
+      }
+      if (quoteChannel === "Email") {
+        const eErr = validateEmail(quoteDestination);
+        if (eErr) { setFieldErrors({ quoteDestination: `Email: ${eErr}` }); setTab("quote"); return; }
+      } else if (quoteChannel === "SMS" || quoteChannel === "WhatsApp") {
+        const pErr = validatePhone(quoteDestination);
+        if (pErr) { setFieldErrors({ quoteDestination: `Phone: ${pErr}` }); setTab("quote"); return; }
+      }
     }
 
     setSaving(true);
@@ -1810,6 +1836,7 @@ function QuoteTab(p: QuoteTabProps) {
             <input
               type="number"
               min={0}
+              max={100}
               step={0.1}
               value={taxRateRaw}
               disabled={p.taxExempt}
@@ -1886,6 +1913,7 @@ function QuoteTab(p: QuoteTabProps) {
                   <input
                     type="number"
                     min={0}
+                    max={p.discountType === "percent" ? 100 : undefined}
                     step={p.discountType === "percent" ? 1 : 0.01}
                     value={p.discountValue}
                     onChange={(e) => p.setDiscountValue(e.target.value)}
@@ -2043,6 +2071,7 @@ function QuoteTab(p: QuoteTabProps) {
                   <input
                     type="number"
                     min={0}
+                    max={p.prepayType === "percent" ? 100 : undefined}
                     step={p.prepayType === "percent" ? 1 : 0.01}
                     value={p.prepayValue}
                     onChange={(e) => p.setPrepayValue(e.target.value)}

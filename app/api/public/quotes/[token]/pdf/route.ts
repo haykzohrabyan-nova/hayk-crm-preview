@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
@@ -11,31 +9,17 @@ import { InvoicePDF } from "@/lib/pdf/invoice-pdf";
 
 export const dynamic = "force-dynamic";
 
+// GET /api/public/quotes/[token]/pdf
+// No auth required — customer-facing PDF download from the public quote page.
+
 export async function GET(
   _req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ token: string }> }
 ) {
-  const { id } = await params;
+  const { token } = await params;
 
-  // ── Auth check ────────────────────────────────────────────────────────────
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll() {},
-      },
-    }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return new NextResponse("Unauthorized", { status: 401 });
-  }
-
-  // ── Fetch data ────────────────────────────────────────────────────────────
   const admin = createAdminClient();
+
   const [{ data: ticket }, { data: rawCompany }] = await Promise.all([
     admin
       .from("job_tickets")
@@ -46,10 +30,10 @@ export async function GET(
          quote_skus, quote_subtotal, quote_shipping,
          discount_type, discount_value, discount_reason,
          quote_pre_tax_total, quote_tax_rate_percent, quote_tax_amount, quote_final_total,
-         tax_exempt, quote_payment_types, quote_channel, created_by_id,
+         tax_exempt, quote_payment_types, quote_channel, order_source, created_by_id,
          customer:customers(first_name, last_name, company, email, phone)`
       )
-      .eq("id", id)
+      .eq("public_token", token)
       .single(),
     admin.from("company_settings").select("*").eq("id", 1).single(),
   ]);
@@ -60,7 +44,6 @@ export async function GET(
 
   const company = rawCompany as CompanySettings | null;
 
-  // Fetch creator name separately (created_by_id → user_profiles)
   let repName = "—";
   if (ticket.created_by_id) {
     const { data: profile } = await admin
@@ -71,7 +54,6 @@ export async function GET(
     repName = profile?.full_name ?? "—";
   }
 
-  // ── Derived values ─────────────────────────────────────────────────────────
   const isOrder =
     ticket.ticket_status === "order" ||
     ticket.ticket_status === "in_production" ||
@@ -93,6 +75,7 @@ export async function GET(
     ? (ticket.quote_skus as QuoteSku[])
     : [];
 
+  // Use stored pre-computed discount amount (same as what's shown on the public page)
   const discountAmt =
     ticket.quote_subtotal != null &&
     ticket.quote_pre_tax_total != null &&
@@ -117,7 +100,6 @@ export async function GET(
     .map((k) => paymentLabels[k] ?? k)
     .join(", ");
 
-  // ── Render PDF ────────────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const docElement = createElement(InvoicePDF, {
     isOrder,
@@ -132,7 +114,7 @@ export async function GET(
         }
       : { name: "BAZAARPRINTING", logoUrl: null, address: "", phone: null, email: null, website: null },
     ticket: {
-      referenceCode: (ticket.reference_code as string | null) ?? id.slice(0, 8).toUpperCase(),
+      referenceCode: (ticket.reference_code as string | null) ?? ticket.id.slice(0, 8).toUpperCase(),
       title: ticket.title as string | null,
       createdAt: ticket.created_at as string,
       dueDate: ticket.due_date as string | null,
@@ -159,7 +141,7 @@ export async function GET(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfBuffer = await renderToBuffer(docElement as any);
 
-  const refCode = (ticket.reference_code as string | null) ?? id.slice(0, 8).toUpperCase();
+  const refCode = (ticket.reference_code as string | null) ?? token.slice(0, 8).toUpperCase();
   const filename = `${isOrder ? "Invoice" : "Quote"}-${refCode}.pdf`;
 
   return new NextResponse(new Uint8Array(pdfBuffer), {

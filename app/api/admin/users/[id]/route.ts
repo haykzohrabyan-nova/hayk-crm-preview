@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { sendWelcomeEmail } from "@/lib/integrations/send-welcome-email";
 
 export async function PATCH(
   request: NextRequest,
@@ -86,6 +87,28 @@ export async function PATCH(
 
   // Get email from auth
   const { data: authUser } = await admin.auth.admin.getUserById(id);
+  const userEmail = authUser?.user?.email ?? "";
 
-  return NextResponse.json({ user: { ...profile, email: authUser?.user?.email ?? "" } });
+  // If a new temp password was set, email the user their new credentials
+  if (new_temp_password && userEmail) {
+    const { data: companyRow } = await admin
+      .from("company_settings")
+      .select("company_name,logo_url,address_line1,address_line2,city,state,zip,phone,email,website")
+      .eq("id", 1)
+      .single();
+
+    sendWelcomeEmail({
+      fullName: profile.full_name ?? userEmail,
+      email: userEmail,
+      tempPassword: new_temp_password,
+      company: companyRow ?? {},
+      isReset: true,
+    }).then((result) => {
+      if (!result.ok) {
+        console.error("[send-reset-email] delivery failed:", result.error);
+      }
+    });
+  }
+
+  return NextResponse.json({ user: { ...profile, email: userEmail } });
 }

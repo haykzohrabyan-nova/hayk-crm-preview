@@ -7,7 +7,8 @@ import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { StatusPill } from "@/components/ui/status-pill";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
-import { formatPhone } from "@/lib/utils/phone";
+import { formatPhone, validatePhone } from "@/lib/utils/phone";
+import { validateEmail } from "@/lib/utils/email";
 import {
   Select,
   SelectContent,
@@ -166,8 +167,16 @@ function EditCustomerModal({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
 
   async function handleSave() {
+    const pErr = form.phone.trim() ? validatePhone(form.phone) : null;
+    const eErr = form.email.trim() ? validateEmail(form.email) : null;
+    setPhoneError(pErr);
+    setEmailError(eErr);
+    if (pErr || eErr) return;
+
     setSaving(true);
     setError("");
     const res = await fetch(`/api/customers/${customer.id}`, {
@@ -214,11 +223,11 @@ function EditCustomerModal({
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>Phone</label>
-            <PhoneInput value={form.phone} onChange={(v) => setForm((f) => ({ ...f, phone: v }))} />
+            <PhoneInput value={form.phone} onChange={(v) => { setForm((f) => ({ ...f, phone: v })); setPhoneError(null); }} error={phoneError} />
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>Email</label>
-            <EmailInput value={form.email} onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))} />
+            <EmailInput value={form.email} onChange={(e) => { setForm((f) => ({ ...f, email: e.target.value })); setEmailError(null); }} error={emailError} />
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>Company</label>

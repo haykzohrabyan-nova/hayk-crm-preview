@@ -32,7 +32,7 @@ import {
   Copy,
 } from "lucide-react";
 import { computePricing, formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
-import { formatPhone } from "@/lib/utils/phone";
+import { formatPhone, digitsOnly } from "@/lib/utils/phone";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
@@ -269,7 +269,7 @@ function PaymentLinkBar({
     if (ch === "email") {
       setDestination(contactEmail ?? originalDestination ?? "");
     } else {
-      setDestination(contactPhone ?? originalDestination ?? "");
+      setDestination(digitsOnly(contactPhone ?? originalDestination ?? ""));
     }
     setSendError(null);
   }
@@ -367,18 +367,19 @@ function PaymentLinkBar({
         </div>
 
         {/* Destination input */}
-        <input
-          type={selectedChannel === "email" ? "email" : "tel"}
-          value={destination}
-          onChange={(e) => setDestination(e.target.value)}
-          placeholder={destinationPlaceholder}
-          className="flex-1 min-w-[180px] px-3 py-1.5 text-sm rounded-md border outline-none"
-          style={{
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            color: "var(--color-text-primary)",
-          }}
-        />
+        {selectedChannel === "email" ? (
+          <EmailInput
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            placeholder="customer@email.com"
+          />
+        ) : (
+          <PhoneInput
+            value={destination}
+            onChange={(digits) => setDestination(digits)}
+            placeholder="(555) 000-0000"
+          />
+        )}
 
         {/* Send button */}
         <button
@@ -1867,7 +1868,7 @@ function QuoteSection(p: QuoteSectionProps) {
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Tax Rate (%)</label>
-                <input type="number" min={0} step={0.1} placeholder="0" disabled={p.taxExempt}
+                <input type="number" min={0} max={100} step={0.1} placeholder="0" disabled={p.taxExempt}
                   value={taxRateRaw}
                   onChange={(e) => { setTaxRateRaw(e.target.value); p.setTaxRate(parseFloat(e.target.value) || 0); }}
                   onBlur={() => { const n = parseFloat(taxRateRaw); setTaxRateRaw(isNaN(n) ? "" : String(n)); }}
@@ -1930,7 +1931,7 @@ function QuoteSection(p: QuoteSectionProps) {
                       <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
                         {p.discountType === "percent" ? "Discount %" : "Discount ($)"}
                       </label>
-                      <input type="number" min={0} step={p.discountType === "percent" ? 1 : 0.01} value={p.discountValue} onChange={(e) => p.setDiscountValue(e.target.value)} placeholder={p.discountType === "percent" ? "0" : "0.00"} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                      <input type="number" min={0} max={p.discountType === "percent" ? 100 : undefined} step={p.discountType === "percent" ? 1 : 0.01} value={p.discountValue} onChange={(e) => p.setDiscountValue(e.target.value)} placeholder={p.discountType === "percent" ? "0" : "0.00"} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
                     </>
                   ) : <div />}
                 </div>
@@ -2053,6 +2054,7 @@ function QuoteSection(p: QuoteSectionProps) {
                       <input
                         type="number"
                         min={0}
+                        max={p.prepayType === "percent" ? 100 : undefined}
                         step={p.prepayType === "percent" ? 1 : 0.01}
                         value={p.prepayValue}
                         onChange={(e) => p.setPrepayValue(e.target.value)}

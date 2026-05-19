@@ -3,6 +3,41 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-18] — Automatic password reset email
+
+### Changed
+- `lib/integrations/welcome-email-template.ts` — added `isReset` flag; when true, sends a "Your password has been reset" subject and body instead of the new-user welcome variant
+- `lib/integrations/send-welcome-email.ts` — accepts and passes through `isReset` param; updated doc comment to cover both use cases
+- `app/api/admin/users/[id]/route.ts` — after a successful admin password reset, automatically fires a branded password-reset email to the user (via Instantly AI, fire-and-forget). Email includes their new temp password, a login CTA, and a note to change it immediately
+
+## [2026-05-18] — Input validation before DB save + number field bounds
+
+### Changed
+- `components/verify-drawer.tsx` — phone + email validated (format check) before saving; errors shown inline on the inputs
+- `components/customer-profile.tsx` — phone + email validated before PATCH; errors shown inline
+- `components/leads-page.tsx` — optional email validated (format) in manual lead submit flow; inline error shown
+- `components/new-quote-form.tsx` — customer phone/email format validated on tab advance; quote destination validated for email/phone format on send; discount %, tax rate %, and prepayment % capped at 100 via `max={100}`
+- `components/quote-detail.tsx` — discount %, tax rate %, and prepayment % fields capped at 100
+- `components/admin/users-section.tsx` — email format validated before user create POST
+- `components/admin/company-section.tsx` — phone validated on save; fixed stale `hasErrors` bug by computing all field errors synchronously in `handleSave`; tax rate and rush surcharge % capped at 100; `FieldInput` component extended with optional `min`/`max` props
+
+## [2026-05-18] — Save PDF on public quote page + email/page data consistency
+
+### Added
+- `app/api/public/quotes/[token]/pdf/route.ts` — public PDF download endpoint (no auth required); uses the same `InvoicePDF` renderer as the internal quote page, looked up by `public_token`
+- `app/(public)/q/[token]/page.tsx` — "Save PDF" button with printer icon in the reference card row, linking to the new public PDF endpoint
+
+### Fixed
+- `lib/integrations/send-quote.ts` — email now uses the pre-computed stored pricing values (`quote_subtotal`, `quote_pre_tax_total`, `quote_tax_amount`, `quote_final_total`) instead of recomputing via `computePricing`. This ensures the email and public page always show identical numbers. Discount amount derived as `subtotal + shipping − pre_tax_total` (same formula as the public page).
+
+## [2026-05-18] — Branded welcome email for new users
+
+### Added
+- `lib/integrations/welcome-email-template.ts` — branded HTML email matching the quote email design (navy header, gold CTA, company footer) showing the user's email + temp password
+- `lib/integrations/send-welcome-email.ts` — sends the welcome email via Instantly AI (same transport as quotes)
+- `components/admin/users-section.tsx` — "Send welcome email" checkbox on the Add User form (checked by default); passes `send_welcome_email` flag to the API
+- `app/api/admin/users/create/route.ts` — when `send_welcome_email` is true, fetches company settings and fires the welcome email fire-and-forget via Instantly
+
 ## [2026-05-17] — Lock system roles in Admin → Roles panel
 
 ### Changed

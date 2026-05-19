@@ -9,7 +9,6 @@
 import twilio from "twilio";
 import { buildQuoteEmail } from "./quote-email-template";
 import { buildPaymentReminderEmail } from "./payment-reminder-template";
-import { computePricing } from "@/lib/utils/ticket-math";
 import type { QuoteSku } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -22,11 +21,14 @@ interface TicketForSend {
   quote_channel: string | null;
   quote_destination: string | null;
   quote_skus: QuoteSku[];
+  quote_subtotal: number | null;
   quote_shipping: number | null;
+  quote_pre_tax_total: number | null;
+  quote_tax_rate_percent: number | null;
+  quote_tax_amount: number | null;
+  quote_final_total: number | null;
   discount_type: string | null;
   discount_value: string | null;
-  quote_tax_rate_percent: number | null;
-  quote_final_total: number | null;
   quote_payment_types: string[];
   tax_exempt: boolean;
   order_source: string | null;
@@ -130,14 +132,14 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
     return { ok: false, channel: "email", error: "No destination email address." };
   }
 
-  const pricing = computePricing({
-    skus: ticket.quote_skus,
-    quote_shipping: ticket.quote_shipping,
-    discount_type: ticket.discount_type as "percent" | "fixed" | null,
-    discount_value: ticket.discount_value,
-    quote_tax_rate_percent: ticket.quote_tax_rate_percent,
-    tax_exempt: ticket.tax_exempt,
-  });
+  // Use the pre-computed stored values so email and public page always show the same numbers.
+  // Discount amount = subtotal + shipping - pre_tax_total (same derivation used on the public page).
+  const subtotal = ticket.quote_subtotal ?? 0;
+  const shipping = ticket.quote_shipping ?? 0;
+  const preTaxTotal = ticket.quote_pre_tax_total ?? subtotal + shipping;
+  const discountAmount = Math.max(subtotal + shipping - preTaxTotal, 0);
+  const taxAmount = ticket.quote_tax_amount ?? 0;
+  const finalTotal = ticket.quote_final_total ?? preTaxTotal + taxAmount;
 
   const isOrder = ticket.order_source === "direct";
   const { subject, html } = buildQuoteEmail({
@@ -145,12 +147,12 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
     title: ticket.title ?? "Your Quote",
     referenceCode: ticket.reference_code ?? ticket.id.slice(0, 8).toUpperCase(),
     skus: ticket.quote_skus,
-    subtotal: pricing.subtotal,
-    shipping: pricing.shipping,
-    discountAmount: pricing.discount_amount,
-    preTaxTotal: pricing.pre_tax_total,
-    taxAmount: pricing.tax_amount,
-    finalTotal: pricing.final_total,
+    subtotal,
+    shipping,
+    discountAmount,
+    preTaxTotal,
+    taxAmount,
+    finalTotal,
     taxRate: ticket.quote_tax_rate_percent ?? 0,
     paymentTypes: ticket.quote_payment_types ?? [],
     confirmUrl: publicUrl(ticket.public_token),

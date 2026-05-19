@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, use } from "react";
-import { CheckCircle2, AlertCircle, Package, Loader2, Clock, ShieldCheck } from "lucide-react";
+import { CheckCircle2, AlertCircle, Package, Loader2, Clock, ShieldCheck, Printer } from "lucide-react";
 import type { QuoteSku } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -245,6 +245,9 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
           .hide-mobile { display: none !important; }
           .stack-mobile { flex-direction: column !important; }
         }
+        @media (min-width: 641px) {
+          .hide-desktop { display: none !important; }
+        }
       `}</style>
 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "32px 16px 64px" }}>
@@ -266,9 +269,24 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
 
           {/* Greeting */}
           <div style={{ marginBottom: 24 }}>
-            <h1 style={{ margin: "0 0 6px", fontSize: 22, fontWeight: 600, color: TEXT }}>
-              {isOrder ? "Your Order Details" : "Your Quote is Ready"}
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 6 }}>
+              <h1 style={{ margin: 0, fontSize: 22, fontWeight: 600, color: TEXT }}>
+                {isOrder ? "Your Order Details" : "Your Quote is Ready"}
+              </h1>
+              <a
+                href={`/api/public/quotes/${token}/pdf`}
+                download
+                style={{
+                  display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0,
+                  padding: "6px 14px", borderRadius: 6, border: `1px solid ${BORDER}`,
+                  background: SURFACE, color: MUTED, fontSize: 13, fontWeight: 500,
+                  textDecoration: "none", whiteSpace: "nowrap",
+                }}
+              >
+                <Printer size={13} />
+                Save PDF
+              </a>
+            </div>
             <p style={{ margin: 0, fontSize: 15, color: MUTED, lineHeight: 1.6 }}>
               Hi <strong style={{ color: TEXT }}>{customerName(ticket!)}</strong>
               {isOrder
@@ -299,13 +317,13 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
                 {isOrder ? "Order" : "Quote"} Reference
               </div>
               <div style={{ fontSize: 16, fontWeight: 600, color: TEXT }}>
-                {ticket?.reference_code ?? ticket?.title ?? "—"}
+                {ticket?.reference_code ?? ticket?.id?.slice(0, 8).toUpperCase() ?? "—"}
               </div>
-              {ticket?.reference_code && ticket?.title && (
+              {ticket?.title && (
                 <div style={{ fontSize: 13, color: MUTED, marginTop: 2 }}>{ticket.title}</div>
               )}
             </div>
-            <div style={{ background: NAVY, color: GOLD, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", padding: "6px 14px", borderRadius: 20, whiteSpace: "nowrap" }}>
+            <div style={{ background: NAVY, color: GOLD, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", padding: "6px 14px", borderRadius: 10, whiteSpace: "nowrap" }}>
               {isCancelled ? "Cancelled" : isOrder ? "Order" : "Awaiting Approval"}
             </div>
           </div>

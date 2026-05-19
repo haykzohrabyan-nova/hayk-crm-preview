@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { sendWelcomeEmail } from "@/lib/integrations/send-welcome-email";
 
 export async function POST(request: NextRequest) {
   const { errorResponse } = await requireAdmin();
   if (errorResponse) return errorResponse;
 
   const body = await request.json().catch(() => ({}));
-  const { email, full_name, role_id, temp_password, send_invite_email } = body as {
+  const { email, full_name, role_id, temp_password, send_welcome_email } = body as {
     email?: string;
     full_name?: string;
     role_id?: string;
     temp_password?: string;
-    send_invite_email?: boolean;
+    send_welcome_email?: boolean;
   };
 
   if (!email || !role_id || !temp_password) {
@@ -68,9 +69,24 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Optionally send invite email
-  if (send_invite_email) {
-    await admin.auth.admin.inviteUserByEmail(email);
+  // Optionally send branded welcome email via Instantly
+  if (send_welcome_email) {
+    const { data: companyRow } = await admin
+      .from("company_settings")
+      .select("company_name, logo_url, address_line1, address_line2, city, state, zip, phone, email, website")
+      .eq("id", 1)
+      .single();
+
+    sendWelcomeEmail({
+      fullName: full_name ?? email,
+      email,
+      tempPassword: temp_password,
+      company: companyRow ?? {},
+    }).then((result) => {
+      if (!result.ok) {
+        console.error("[send-welcome-email] delivery failed:", result.error);
+      }
+    });
   }
 
   return NextResponse.json(

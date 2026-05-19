@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { CreditCard, Smartphone, Clock, MessageSquare, Mail, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { EmailInput } from "@/components/ui/email-input";
 
 // ─── Coming-soon cards ────────────────────────────────────────────────────────
 
@@ -111,25 +113,10 @@ function TwilioCard() {
           >
             Test phone number
           </label>
-          <input
-            type="tel"
+          <PhoneInput
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+1 (555) 000-0000"
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all"
-            style={{
-              background: "var(--color-bg)",
-              borderColor: "var(--color-border)",
-              color: "var(--color-text-primary)",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-accent)";
-              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-border)";
-              e.currentTarget.style.boxShadow = "none";
-            }}
+            onChange={(digits) => setPhone(digits)}
+            placeholder="(555) 000-0000"
           />
         </div>
 
@@ -256,25 +243,10 @@ function InstantlyCard() {
           >
             Test email address
           </label>
-          <input
-            type="email"
+          <EmailInput
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="you@example.com"
-            className="w-full rounded-md border px-3 py-2 text-sm outline-none transition-all"
-            style={{
-              background: "var(--color-bg)",
-              borderColor: "var(--color-border)",
-              color: "var(--color-text-primary)",
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-accent)";
-              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = "var(--color-border)";
-              e.currentTarget.style.boxShadow = "none";
-            }}
           />
         </div>
 

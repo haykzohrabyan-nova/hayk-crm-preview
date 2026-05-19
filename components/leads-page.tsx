@@ -25,6 +25,7 @@ import { VerifyDrawer } from "@/components/verify-drawer";
 import { Lead, Customer, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
+import { validateEmail } from "@/lib/utils/email";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { createClient } from "@/lib/supabase/client";
 
@@ -164,6 +165,7 @@ const EMPTY_FORM: AddForm = {
 function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadModalProps) {
   const [form, setForm] = useState<AddForm>(EMPTY_FORM);
   const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -253,6 +255,10 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
     const phoneErr = validatePhone(form.phone);
     if (phoneErr) { setPhoneError(phoneErr); return; }
     setPhoneError(null);
+
+    const eErr = form.email.trim() ? validateEmail(form.email) : null;
+    if (eErr) { setEmailError(eErr); return; }
+    setEmailError(null);
 
     if (!form.first_name.trim()) { setError("First name is required."); return; }
     if (!form.source) { setError("Source is required."); return; }
@@ -361,7 +367,8 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
               <label className={labelCls} style={labelStyle}>Email</label>
               <EmailInput
                 value={form.email}
-                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                onChange={(e) => { setForm((f) => ({ ...f, email: e.target.value })); setEmailError(null); }}
+                error={emailError}
                 showAction
               />
             </div>

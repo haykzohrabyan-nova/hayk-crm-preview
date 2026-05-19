@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { validateEmail } from "@/lib/utils/email";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -132,12 +133,14 @@ function CreateUserDialog({
     role_id: "",
     temp_password: "",
   });
+  const [sendWelcomeEmail, setSendWelcomeEmail] = useState(true);
   const [showPw, setShowPw] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function reset() {
     setForm({ full_name: "", email: "", role_id: "", temp_password: "" });
+    setSendWelcomeEmail(true);
     setError(null);
     setShowPw(false);
   }
@@ -150,12 +153,14 @@ function CreateUserDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const emailErr = validateEmail(form.email);
+    if (emailErr) { setError(`Email: ${emailErr}`); return; }
     if (!form.role_id) { setError("Please select a role."); return; }
     setSaving(true);
     const res = await fetch("/api/admin/users/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+      body: JSON.stringify({ ...form, send_welcome_email: sendWelcomeEmail }),
     });
     const data = await res.json();
     setSaving(false);
@@ -245,6 +250,23 @@ function CreateUserDialog({
               Share this password directly with the user. They will be required to change it on first login.
             </p>
           </div>
+
+          {/* Send welcome email */}
+          <label className="flex items-start gap-3 cursor-pointer rounded-[8px] border p-3" style={{ borderColor: "var(--color-border)", background: sendWelcomeEmail ? "color-mix(in srgb, var(--color-accent) 6%, var(--color-surface))" : "var(--color-surface)" }}>
+            <input
+              type="checkbox"
+              checked={sendWelcomeEmail}
+              onChange={(e) => setSendWelcomeEmail(e.target.checked)}
+              className="mt-0.5 rounded accent-[var(--color-accent)]"
+              style={{ width: 15, height: 15, flexShrink: 0 }}
+            />
+            <div>
+              <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>Send welcome email</span>
+              <span className="block text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                Sends a branded email with their login credentials via Instantly. Requires Instantly to be configured in Integrations.
+              </span>
+            </div>
+          </label>
 
           {error && <p className="text-sm text-destructive">{error}</p>}
 

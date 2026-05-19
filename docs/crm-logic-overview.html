@@ -1680,11 +1680,11 @@
       <div class="feature-grid">
         <div class="feature-item">
           <div class="feature-item-title">👤 Users</div>
-          <p>Create users with a temporary password (no email needed). Assign roles. Deactivate accounts. Reset passwords. Require password change on next login.</p>
+          <p>Create users with a temporary password. Assign roles. Deactivate accounts. Reset passwords. Require password change on next login. Optionally send a <strong>branded welcome email</strong> (via Instantly AI) containing their login credentials and a CTA link — enabled by default when Instantly is configured.</p>
         </div>
         <div class="feature-item">
           <div class="feature-item-title">🔑 Roles &amp; Permissions</div>
-          <p>Create custom roles. Toggle page-level access for every role using a permissions matrix. All changes take effect immediately — no code changes required.</p>
+          <p>Three built-in <strong>system roles</strong> (Admin, SDR, Sales Rep) — their page permissions are fixed and cannot be modified. Custom roles can be created and assigned granular page access via a permissions matrix. All changes take effect immediately.</p>
         </div>
         <div class="feature-item">
           <div class="feature-item-title">📋 Dropdown Options</div>
@@ -1707,6 +1707,25 @@
       <div class="info-box navy" style="margin-top:12px;">
         <span class="info-icon">🔐</span>
         <div>All users must log in with email + password, then complete a <strong>TOTP 2-Factor Authentication</strong> step (authenticator app). New users must change their temporary password on first login before accessing any page.</div>
+      </div>
+
+      <!-- Form Validation -->
+      <div class="card" style="margin-top:16px;border-left:4px solid var(--success);">
+        <div class="card-title" style="font-size:14px;color:var(--success);">✅ Form Input Validation — All Forms</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">All user-facing forms validate input <strong>before</strong> any data reaches the database. The pattern is <em>validate on save, clear error on change</em> — no premature errors while the user is still typing.</p>
+        <table class="data-table">
+          <thead><tr><th>Form</th><th>What is validated on save</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Verify Drawer</strong> (SDR lead screen)</td><td>Phone: required, 10-digit US format. Email: valid format if filled.</td></tr>
+            <tr><td><strong>Customer Profile</strong> (edit panel)</td><td>Phone: valid format if filled. Email: valid format if filled.</td></tr>
+            <tr><td><strong>Manual Lead Entry</strong></td><td>Phone: required, 10-digit format. Email: valid format if filled.</td></tr>
+            <tr><td><strong>New Quote Form — Customer tab</strong></td><td>At least one of phone/email required. Phone: 10-digit format. Email: valid format.</td></tr>
+            <tr><td><strong>New Quote Form — Quote tab (Send)</strong></td><td>Destination validated for format: email format if channel = Email; 10-digit phone if channel = SMS/WhatsApp.</td></tr>
+            <tr><td><strong>Create User (Admin)</strong></td><td>Email: valid format checked before POST.</td></tr>
+            <tr><td><strong>Company Settings</strong></td><td>Phone: 10-digit format. Email: valid format. Website: must start with http:// or https://. ZIP: valid US format. All validated synchronously on save.</td></tr>
+          </tbody>
+        </table>
+        <p style="font-size:12px;color:var(--muted);margin-top:10px;"><strong>Number field bounds:</strong> Discount %, Tax Rate %, and Prepayment % fields across the Quote form and Quote Detail are capped at <code style="font-size:11px;">max=100</code>. Company settings: Default Tax Rate and Rush Surcharge % also capped at 100.</p>
       </div>
     </section>
 
@@ -2425,6 +2444,37 @@
         </div>
       </div>
 
+      <!-- ═══════════════════════════════ FORM VALIDATION ═══════════════════ -->
+      <div class="divider" style="margin-top:24px;"></div>
+
+      <div class="section-header" style="margin-top:4px;">
+        <div class="section-icon">✅</div>
+        <div>
+          <div class="section-title" style="font-size:16px;">Form Validation Test Cases</div>
+          <div class="section-desc">Component-level tests for client-side validation before DB save</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="card-title">📋 Component Unit Tests — Save-time Validation</div>
+        <table class="data-table">
+          <thead><tr><th>Test case</th><th>Component</th><th>Expected result</th></tr></thead>
+          <tbody>
+            <tr><td>Empty phone → Save</td><td><code style="font-size:11px;">verify-drawer.tsx</code></td><td>Save blocked; inline phone error shown; no API call made</td></tr>
+            <tr><td>Invalid phone (e.g. "123") → Save</td><td><code style="font-size:11px;">verify-drawer.tsx</code></td><td>Save blocked; "Phone number must be 10 digits" error shown on PhoneInput</td></tr>
+            <tr><td>Invalid email (e.g. "not-an-email") → Save</td><td><code style="font-size:11px;">verify-drawer.tsx</code></td><td>Save blocked; email error shown on EmailInput</td></tr>
+            <tr><td>Valid phone + valid email → Save</td><td><code style="font-size:11px;">verify-drawer.tsx</code></td><td>PATCH /api/leads/[id] is called; drawer closes</td></tr>
+            <tr><td>User corrects phone after error</td><td>Any form with PhoneInput</td><td>Error clears immediately on first keystroke (onChange clears the error state)</td></tr>
+            <tr><td>No phone or email entered → Submit</td><td><code style="font-size:11px;">new-quote-form.tsx</code> (Customer tab)</td><td>Field error "Please provide an email or phone number." shown; tab advance blocked</td></tr>
+            <tr><td>Invalid email as quote destination (Email channel) → Send</td><td><code style="font-size:11px;">new-quote-form.tsx</code></td><td>Field error on destination input; quote not sent; user stays on Quote tab</td></tr>
+            <tr><td>Invalid phone as quote destination (SMS channel) → Send</td><td><code style="font-size:11px;">new-quote-form.tsx</code></td><td>Field error on destination input; quote not sent</td></tr>
+            <tr><td>Invalid email in Create User form → Submit</td><td><code style="font-size:11px;">users-section.tsx</code></td><td>Error shown; <code style="font-size:11px;">POST /api/admin/users/create</code> not called</td></tr>
+            <tr><td>Discount % set to 150 via keyboard</td><td><code style="font-size:11px;">new-quote-form.tsx</code>, <code style="font-size:11px;">quote-detail.tsx</code></td><td>Browser clamps to 100 (HTML <code style="font-size:11px;">max=100</code>); displayed value ≤ 100</td></tr>
+            <tr><td>Tax rate set to 999%</td><td>Both forms</td><td>Browser clamps to 100; no negative or >100 value stored</td></tr>
+          </tbody>
+        </table>
+      </div>
+
       <!-- ═══════════════════════════════ QUOTE VISIBILITY ═══════════════════ -->
       <div class="divider" style="margin-top:24px;"></div>
 
@@ -2842,7 +2892,7 @@
 
 <footer class="footer">
   <strong>BazaarPrinting CRM</strong> — Built with Next.js 16, Supabase, Tailwind CSS, Twilio, and Instantly AI.<br>
-  <span style="font-size:11px;margin-top:4px;display:block;">Last updated: May 17, 2026 — includes admin lead editing &amp; SDR assignment, SDR full sales pipeline visibility (read-only), sales claim-then-open modal, sdr_id attribution fix, session tracking, admin overrides, order lifecycle, and dashboard revenue fixes. See the <a href="#whats-left" style="color:var(--gold);">What's Left?</a> section for open items.</span>
+  <span style="font-size:11px;margin-top:4px;display:block;">Last updated: May 18, 2026 — includes form input validation (phone/email/number bounds across all forms), branded welcome email for new users, public quote PDF download, public quote/email data consistency, system role locking (SDR/Sales/Admin permissions are fixed), and all previous features. See the <a href="#whats-left" style="color:var(--gold);">What's Left?</a> section for open items.</span>
 </footer>
 
 <script>
