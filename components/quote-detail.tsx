@@ -107,6 +107,7 @@ interface Ticket {
   follow_up_frequency: string | null;
   client_confirmed: boolean;
   public_token: string | null;
+  routed_by_id: string | null;
   lead: Lead | null;
   created_by: { id: string; full_name: string | null } | null;
   customer: {
@@ -421,11 +422,13 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
 
   // ── Current user role + company config (for HV threshold enforcement) ───────
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [hvThreshold, setHvThreshold] = useState<number | null>(null);
   useEffect(() => {
     const supabase = createClient();
     supabase.auth.getUser().then(async ({ data }) => {
       const uid = data.user?.id ?? null;
+      setUserId(uid);
       if (uid) {
         const { data: profile } = await supabase
           .from("user_profiles")
@@ -789,6 +792,10 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
   const isCustomerApproved = ticket.ticket_status === "order" || ticket.ticket_status === "in_production" || ticket.ticket_status === "completed";
   const isLocked = ticket.ticket_status === "cancelled" || (isCustomerApproved && userRole !== "admin");
 
+  // SDR read-only: this SDR created the quote but it was routed to Sales.
+  // They can view it but cannot edit it regardless of ticket status.
+  const isRoutedReadOnly = userRole === "sdr" && ticket.routed_by_id != null && ticket.routed_by_id === userId;
+
   return (
     <>
     <div className="min-h-screen" style={{ background: "var(--color-bg)" }}>
@@ -887,7 +894,7 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
           <span className="hidden sm:inline">Save PDF</span>
         </a>
 
-        {!editing && !isLocked && !ticket.client_confirmed && (
+        {!editing && !isLocked && !ticket.client_confirmed && !isRoutedReadOnly && (
           <button
             onClick={() => setEditing(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80 shrink-0"
@@ -906,6 +913,20 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
           style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", border: "1px solid var(--color-danger-border)" }}
         >
           <AlertCircle size={15} /> {error}
+        </div>
+      )}
+
+      {/* Read-only notice for SDR viewing a quote they routed to Sales */}
+      {isRoutedReadOnly && (
+        <div
+          className="mx-4 mt-3 md:mx-6 md:mt-4 flex items-start gap-2 rounded-lg px-4 py-3 text-sm"
+          style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
+        >
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: "var(--color-warning)" }} />
+          <span>
+            This quote exceeded the high-value threshold and was routed to Sales for handling.
+            You are viewing it in <strong>read-only mode</strong> — a Sales rep will complete and send it.
+          </span>
         </div>
       )}
 
@@ -1031,7 +1052,7 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
 
           {/* Bottom action bar — view mode. Hidden once customer has confirmed (record is committed).
               Only shown for draft/sent states; order state uses the combined order-status card below. */}
-          {!editing && !isLocked && !ticket.client_confirmed && ticket.ticket_status !== "order" && (
+          {!editing && !isLocked && !ticket.client_confirmed && ticket.ticket_status !== "order" && !isRoutedReadOnly && (
             <div
               className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-2 md:gap-3"
               style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
@@ -1331,25 +1352,47 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
           <div style={{ fontSize: 28, fontWeight: 700, color: "var(--color-warning)", marginBottom: 24 }}>
             {hvCountdown}s
           </div>
-          <button
-            onClick={() => {
-              if (hvTimerRef.current) { clearInterval(hvTimerRef.current); hvTimerRef.current = null; }
-              setHvModal(false);
-              handleSaveRef.current?.("routed");
-            }}
-            style={{
-              background: "var(--color-btn-primary-bg)",
-              color: "var(--color-btn-primary-text)",
-              border: "none",
-              borderRadius: 6,
-              padding: "8px 32px",
-              fontSize: 14,
-              fontWeight: 500,
-              cursor: "pointer",
-            }}
-          >
-            OK
-          </button>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button
+              onClick={() => {
+                if (hvTimerRef.current) { clearInterval(hvTimerRef.current); hvTimerRef.current = null; }
+                setHvModal(false);
+              }}
+              style={{
+                flex: 1,
+                background: "transparent",
+                color: "var(--color-text-muted)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 6,
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Cancel — Edit Amount
+            </button>
+            <button
+              onClick={() => {
+                if (hvTimerRef.current) { clearInterval(hvTimerRef.current); hvTimerRef.current = null; }
+                setHvModal(false);
+                handleSaveRef.current?.("routed");
+              }}
+              style={{
+                flex: 1,
+                background: "var(--color-btn-primary-bg)",
+                color: "var(--color-btn-primary-text)",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              OK — Route to Sales
+            </button>
+          </div>
         </div>
       </div>
     )}
@@ -1476,6 +1519,7 @@ function InfoSection(p: InfoSectionProps) {
               value={p.dueDate}
               onChange={p.setDueDate}
               placeholder="Select due date"
+              disablePast
               className="flex-1"
             />
             {[
@@ -1662,6 +1706,10 @@ function EditableSkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, ca
   const computedTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
   const fieldStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" };
   const [lineTotalRaw, setLineTotalRaw] = useState(sku.line_total != null ? String(sku.line_total) : "");
+  const [widthRaw, setWidthRaw]         = useState(sku.width      != null ? String(sku.width)      : "");
+  const [heightRaw, setHeightRaw]       = useState(sku.height     != null ? String(sku.height)     : "");
+  const [quantityRaw, setQuantityRaw]   = useState(sku.quantity   != null ? String(sku.quantity)   : "");
+  const [unitPriceRaw, setUnitPriceRaw] = useState(sku.unit_price != null ? String(sku.unit_price) : "");
 
   function SkuSelect({ value, onChange, disabled = false, children }: {
     value: string; onChange: (v: string) => void; disabled?: boolean; children: React.ReactNode;
@@ -1708,11 +1756,19 @@ function EditableSkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, ca
         {/* Row 2: Width | Height */}
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Width (in)</label>
-          <input type="number" min={0} value={sku.width ?? ""} onChange={(e) => onUpdate(idx, "width", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+          <input type="text" inputMode="decimal" value={widthRaw}
+            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && widthRaw === "0") { e.preventDefault(); if (e.key !== "0") { setWidthRaw(e.key); onUpdate(idx, "width", parseFloat(e.key)); } } }}
+            onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setWidthRaw(v); onUpdate(idx, "width", v && v !== "." ? parseFloat(v) : undefined); }}
+            onBlur={() => { const n = parseFloat(widthRaw); setWidthRaw(isNaN(n) ? "" : String(n)); }}
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
         </div>
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Height (in)</label>
-          <input type="number" min={0} value={sku.height ?? ""} onChange={(e) => onUpdate(idx, "height", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+          <input type="text" inputMode="decimal" value={heightRaw}
+            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && heightRaw === "0") { e.preventDefault(); if (e.key !== "0") { setHeightRaw(e.key); onUpdate(idx, "height", parseFloat(e.key)); } } }}
+            onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setHeightRaw(v); onUpdate(idx, "height", v && v !== "." ? parseFloat(v) : undefined); }}
+            onBlur={() => { const n = parseFloat(heightRaw); setHeightRaw(isNaN(n) ? "" : String(n)); }}
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
         </div>
 
         {/* Row 3: Color Mode | Sides */}
@@ -1734,11 +1790,18 @@ function EditableSkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, ca
         {/* Row 4: Quantity | Unit Price */}
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Quantity</label>
-          <input type="number" min={1} value={sku.quantity ?? ""} onChange={(e) => onUpdate(idx, "quantity", e.target.value ? parseInt(e.target.value) : undefined)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+          <input type="text" inputMode="numeric" value={quantityRaw}
+            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && quantityRaw === "0") { e.preventDefault(); if (e.key !== "0") { setQuantityRaw(e.key); onUpdate(idx, "quantity", parseInt(e.key)); } } }}
+            onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, "").replace(/^0+([1-9])/, "$1"); setQuantityRaw(v); onUpdate(idx, "quantity", v ? parseInt(v) : undefined); }}
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
         </div>
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Unit Price ($)</label>
-          <input type="number" min={0} step={0.01} value={sku.unit_price ?? ""} onChange={(e) => onUpdate(idx, "unit_price", e.target.value ? parseFloat(e.target.value) : undefined)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+          <input type="text" inputMode="decimal" value={unitPriceRaw}
+            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && unitPriceRaw === "0") { e.preventDefault(); if (e.key !== "0") { setUnitPriceRaw(e.key); onUpdate(idx, "unit_price", parseFloat(e.key)); } } }}
+            onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setUnitPriceRaw(v); onUpdate(idx, "unit_price", v && v !== "." ? parseFloat(v) : undefined); }}
+            onBlur={() => { const n = parseFloat(unitPriceRaw); setUnitPriceRaw(isNaN(n) ? "" : String(n)); }}
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
         </div>
 
         {/* Row 5: Lamination | Roll Direction */}
@@ -1828,10 +1891,12 @@ function EditableSkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, ca
           placeholder={computedTotal > 0 ? formatCurrency(computedTotal).replace("$", "") : "0.00"}
           value={lineTotalRaw}
           onChange={(e) => {
-            setLineTotalRaw(e.target.value);
-            const n = parseFloat(e.target.value);
+            const v = e.target.value.replace(/^0+([1-9])/, "$1");
+            setLineTotalRaw(v);
+            const n = parseFloat(v);
             onUpdate(idx, "line_total", isNaN(n) ? undefined : n);
           }}
+          onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && e.currentTarget.value === "0") { e.preventDefault(); if (e.key !== "0") { const nv = e.key; setLineTotalRaw(nv); onUpdate(idx, "line_total", parseFloat(nv)); } } }}
           onBlur={() => {
             const n = parseFloat(lineTotalRaw);
             setLineTotalRaw(isNaN(n) ? "" : String(n));
@@ -1997,7 +2062,8 @@ function QuoteSection(p: QuoteSectionProps) {
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Shipping ($)</label>
                 <input type="number" min={0} step={0.01} placeholder="0.00"
                   value={shippingRaw}
-                  onChange={(e) => { setShippingRaw(e.target.value); p.setShipping(parseFloat(e.target.value) || 0); }}
+                  onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && e.currentTarget.value === "0") { e.preventDefault(); if (e.key !== "0") { setShippingRaw(e.key); p.setShipping(parseFloat(e.key)); } } }}
+                  onChange={(e) => { const v = e.target.value.replace(/^0+([1-9])/, "$1"); setShippingRaw(v); p.setShipping(parseFloat(v) || 0); }}
                   onBlur={() => { const n = parseFloat(shippingRaw); setShippingRaw(isNaN(n) ? "" : String(n)); }}
                   className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
               </div>
@@ -2005,7 +2071,8 @@ function QuoteSection(p: QuoteSectionProps) {
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Tax Rate (%)</label>
                 <input type="number" min={0} max={100} step={0.1} placeholder="0" disabled={p.taxExempt}
                   value={taxRateRaw}
-                  onChange={(e) => { setTaxRateRaw(e.target.value); p.setTaxRate(parseFloat(e.target.value) || 0); }}
+                  onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && e.currentTarget.value === "0") { e.preventDefault(); if (e.key !== "0") { setTaxRateRaw(e.key); p.setTaxRate(parseFloat(e.key)); } } }}
+                  onChange={(e) => { const v = e.target.value.replace(/^0+([1-9])/, "$1"); setTaxRateRaw(v); p.setTaxRate(parseFloat(v) || 0); }}
                   onBlur={() => { const n = parseFloat(taxRateRaw); setTaxRateRaw(isNaN(n) ? "" : String(n)); }}
                   className="w-full px-3 py-2 rounded-md text-sm border outline-none disabled:opacity-40" style={fieldStyle} />
               </div>
@@ -2295,11 +2362,16 @@ function QuoteSection(p: QuoteSectionProps) {
                 <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>First Reminder</label>
-                    <DatePicker value={p.reminderDate} onChange={p.setReminderDate} placeholder="Pick a date" />
+                    <DatePicker value={p.reminderDate} onChange={p.setReminderDate} placeholder="Pick a date" disablePast />
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Cycles</label>
-                    <input type="number" min={1} max={10} value={p.followUpCycles} onChange={(e) => p.setFollowUpCycles(parseInt(e.target.value) || 3)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                    <div className="relative">
+                      <select value={p.followUpCycles} onChange={(e) => p.setFollowUpCycles(parseInt(e.target.value))} className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm border outline-none" style={fieldStyle}>
+                        {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                      </select>
+                      <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Frequency</label>

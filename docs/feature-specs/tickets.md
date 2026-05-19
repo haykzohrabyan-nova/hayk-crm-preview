@@ -59,17 +59,19 @@ A new quote can be started from three places. The entry point controls the UI sh
 | Draft | `ticket_status = 'draft'` | All roles |
 | Sent | `ticket_status = 'sent'` | All roles |
 | Won | `ticket_status = 'approved'` | All roles |
-| **Routed to Sales** | `ticket_status = 'routed'` | Sales + Admin only |
+| **Routed to Sales** | `ticket_status = 'routed'` | **Sales + Admin** (Claim button) · **SDR** (View button, read-only) |
 
 **Table columns (standard tabs):** Contact, Title, Channel, Total, Status pill, Follow-up (red if overdue), Created
 
-**Routed to Sales tab columns:** Contact, Title, Total (warning color), Routed By (SDR name), Date, Claim button
+**Routed to Sales tab columns:** Contact, Title, Total (warning color), Routed By (SDR name), Date, Action button
 
-**Behaviors:**
-- Search: contact name, company, title, reference code
-- Row click → `/quotes/[id]`
-- Realtime: Supabase `postgres_changes` channel on `job_tickets` + `bazaar:tickets-changed` window event → silent refresh on any change from any session
-- Claim action: `PATCH /api/tickets/[id]` with `{ claim_ownership: true }` → sets `ticket_status = 'draft'`, `created_by_id = claimant`, redirects to quote detail
+**Action button in Routed tab:**
+- **Sales / Admin** — "Claim" button → `PATCH /api/tickets/[id]` with `{ claim_ownership: true }` → sets `ticket_status = 'draft'`, `created_by_id = claimant`, redirects to quote detail
+- **SDR** — "View" button → navigates to `/quotes/[id]` in read-only mode with a yellow banner
+
+**Routed tab banner:**
+- **Sales / Admin:** "These quotes were created by SDR users but exceed the high-value threshold. Claim one to take ownership and complete it."
+- **SDR:** "These quotes exceeded the high-value threshold and were handed off to Sales. You can view them in read-only mode."
 
 ### Sidebar badge (`/quotes`)
 
@@ -132,7 +134,7 @@ Field order: **Phone** | **Email** → **First Name** | **Last Name** → **Comp
 
 - Title \* (required)
 - Priority (Low / Normal / High — from `ticket_priority` lookup; **Urgent** is system-set and filtered from user-facing dropdown)
-- Due Date (custom `DatePicker` component — click anywhere on the input to open)
+- Due Date (custom `DatePicker` component — past dates disabled; click anywhere on the input to open)
 - Rush toggle — manual only. No automatic connection to the due date (auto-toggle was removed).
 - Special Requirements
 - Internal Notes
@@ -175,7 +177,7 @@ Each SKU row:
   - When Partial is selected: % / $ type toggle + amount input + live "Due now / Balance" calculation
   - Saves `prepayment_type = "full"` for Full, or `"percent"/"fixed"` for Partial
 - **Send Quote to Customer** (if Quote First): Send Via `*` + destination field `*` (both required — inline error shown if blank on save or Next). Destination auto-fills from locked customer when channel switches.
-- **Follow-up Schedule**: First Reminder (custom `DatePicker`), Cycles (default 3), Frequency
+- **Follow-up Schedule**: First Reminder (custom `DatePicker`, past dates disabled), Cycles (select: 1–5, default 3), Frequency
 
 ### Validation before advancing
 
@@ -190,10 +192,14 @@ Each SKU row:
 
 When an SDR advances from Line Items → Quote tab **and** `pricing.final_total > company_settings.high_value_threshold`:
 
-1. A **non-dismissible blocking modal** appears
-2. Displays the total, the threshold, and a 30-second countdown
-3. On "OK" click or countdown reaching 0: quote is saved with `ticket_status = 'routed'` and SDR is redirected to `/quotes`
-4. The routed quote appears in the "Routed to Sales" tab for all Sales/Admin users
+1. A **blocking modal** appears showing the total, the threshold, and a 30-second countdown
+2. Two buttons are shown:
+   - **Cancel — Edit Amount** → stops the countdown, closes the modal, SDR returns to Line Items to adjust the quote
+   - **OK — Route to Sales** → immediately saves the quote as `ticket_status = 'routed'` and redirects to `/quotes`
+3. If neither button is clicked, the countdown reaches 0 and the quote is auto-routed (same as clicking OK)
+4. The routed quote appears in the "Routed to Sales" tab for Sales/Admin (Claim button) and the SDR (View/read-only)
+
+> **SDR visibility after routing:** The ticket stores `routed_by_id = userId` at creation time. Even after Sales claims the ticket (which changes `created_by_id` to the Sales rep), the SDR can still see and view the ticket via the Routed to Sales tab on `/quotes`.
 
 ### Footer actions
 
@@ -320,8 +326,18 @@ Visible when `ticket_status = 'order'` **and** `prepayment_type` is `"percent"` 
 
 When an SDR clicks "Save Changes" on a `draft` quote and `pricing.final_total > company_settings.high_value_threshold`:
 
-1. Same non-dismissible blocking modal (30-second countdown)
-2. On "OK" or timeout: ticket PATCH'd to `routed`, SDR redirected to `/quotes`
+1. Same modal with Cancel / OK buttons and 30-second countdown
+2. On Cancel: modal closes, SDR can adjust the total
+3. On OK or timeout: ticket PATCH'd to `routed`, SDR redirected to `/quotes`
+
+### SDR Read-Only View (routed quotes)
+
+When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
+- A yellow banner is shown: "This quote exceeded the high-value threshold and was routed to Sales for handling. You are viewing it in **read-only mode**."
+- The **Edit button is hidden**
+- The **bottom action bar** (Send Quote / Cancel / etc.) is hidden
+- All form fields are displayed but not editable
+- The History tab is fully accessible
 
 ### Realtime
 
@@ -335,8 +351,8 @@ When an SDR clicks "Save Changes" on a `draft` quote and `pricing.final_total > 
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `GET /api/tickets` | GET | List tickets. SDRs see own. Sales/Admin see own + all `routed`. `kind`, `search`, `short_id` params. |
-| `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates ORD-YYYY-NNN for orders. Logs activity. Updates linked lead status. Accepts `ticket_status = 'routed'` for HVT saves. |
+| `GET /api/tickets` | GET | List tickets. SDRs see own + any they routed (`routed_by_id = userId`). Sales/Admin see own + all `routed`. `kind`, `search` params. |
+| `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates ORD-YYYY-NNN for orders. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket. Sales/Admin can GET `routed` tickets they don't own. |
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode update: (1) `claim_ownership: true` — Sales claim a routed ticket; (2) `send_payment_reminder: true` — send payment reminder email/SMS/WhatsApp; (3) normal update. On `ticket_status = 'sent'`: triggers `sendQuoteToCustomer()`; logs `ticket_sent`. On `ticket_status = 'order'` (manual): generates ORD-YYYY-NNN, logs `ticket_converted`, updates linked lead `sales_status = 'Won'`. |
 | `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, routed, cancelled, total }`. |
@@ -378,14 +394,17 @@ Default: `$5,000`.
 
 | User Role | Behaviour |
 |-----------|-----------|
-| SDR creating/editing a quote | Blocked when total > threshold. Modal shown. Quote saved as `routed`. |
+| SDR creating/editing a quote | Blocked when total > threshold. Modal shown with Cancel (edit amount) and OK (route). Quote saved as `routed` on OK or countdown expiry. |
 | Sales / Admin | No block. Full save regardless of total. |
 
-When a `routed` quote is claimed by Sales:
+When a `routed` quote is **claimed** by Sales:
 - `ticket_status` → `draft`
 - `created_by_id` → claiming Sales user's ID
+- `routed_by_id` → **unchanged** (preserves original SDR's identity)
 - All other Sales users see it disappear from "Routed to Sales" tab instantly (via Realtime)
 - Claimer finds it in their own "Draft" tab and can continue working it
+
+**SDR visibility after claiming:** Because `routed_by_id` is never changed, the original SDR can always see the ticket in their "Routed to Sales" tab and open it in read-only mode to track what happened to their quote.
 
 ---
 

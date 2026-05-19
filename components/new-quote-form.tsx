@@ -397,6 +397,8 @@ export default function NewQuoteForm() {
         companyCfg.high_value_threshold != null &&
         pricing.final_total > companyCfg.high_value_threshold
       ) {
+        // Set the ref NOW so the timer and OK button can call the latest handleSave
+        handleSaveRef.current = handleSave;
         setHvCountdown(30);
         setHvModal(true);
         // Start countdown
@@ -902,6 +904,10 @@ export default function NewQuoteForm() {
             setHvModal(false);
             handleSaveRef.current?.("routed");
           }}
+          onCancel={() => {
+            if (hvTimerRef.current) { clearInterval(hvTimerRef.current); hvTimerRef.current = null; }
+            setHvModal(false);
+          }}
         />
       )}
     </div>
@@ -915,9 +921,10 @@ interface HighValueModalProps {
   total: number;
   countdown: number;
   onOk: () => void;
+  onCancel: () => void;
 }
 
-function HighValueModal({ threshold, total, countdown, onOk }: HighValueModalProps) {
+function HighValueModal({ threshold, total, countdown, onOk, onCancel }: HighValueModalProps) {
   const circumference = 2 * Math.PI * 20; // r=20
   const progress = (countdown / 30) * circumference;
 
@@ -976,13 +983,26 @@ function HighValueModal({ threshold, total, countdown, onOk }: HighValueModalPro
           </p>
         </div>
 
-        <button
-          onClick={onOk}
-          className="w-full py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
-          style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-        >
-          OK — Route to Sales
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={onCancel}
+            className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
+            style={{
+              background: "transparent",
+              color: "var(--color-text-muted)",
+              border: "1px solid var(--color-border)",
+            }}
+          >
+            Cancel — Edit Amount
+          </button>
+          <button
+            onClick={onOk}
+            className="flex-1 py-2.5 rounded-lg text-sm font-medium transition-opacity hover:opacity-80"
+            style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+          >
+            OK — Route to Sales
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1380,6 +1400,7 @@ function InfoTab(p: InfoTabProps) {
               value={p.dueDate}
               onChange={p.setDueDate}
               placeholder="Select due date"
+              disablePast
               className="flex-1"
             />
             {[
@@ -1559,6 +1580,10 @@ function SkuRow({
   const computedTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
   const lineTotal = sku.line_total ?? computedTotal;
   const [lineTotalRaw, setLineTotalRaw] = useState(sku.line_total != null ? String(sku.line_total) : "");
+  const [widthRaw, setWidthRaw]         = useState(sku.width      != null ? String(sku.width)      : "");
+  const [heightRaw, setHeightRaw]       = useState(sku.height     != null ? String(sku.height)     : "");
+  const [quantityRaw, setQuantityRaw]   = useState(sku.quantity   != null ? String(sku.quantity)   : "");
+  const [unitPriceRaw, setUnitPriceRaw] = useState(sku.unit_price != null ? String(sku.unit_price) : "");
 
   const skuFieldStyle = {
     background: "var(--color-surface)",
@@ -1636,9 +1661,11 @@ function SkuRow({
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Width (in) *</label>
           <input
-            type="number" min={0} placeholder="e.g. 4"
-            value={sku.width ?? ""}
-            onChange={(e) => onUpdate(idx, "width", e.target.value ? parseFloat(e.target.value) : undefined)}
+            type="text" inputMode="decimal" placeholder="e.g. 4"
+            value={widthRaw}
+            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && widthRaw === "0") { e.preventDefault(); if (e.key !== "0") { setWidthRaw(e.key); onUpdate(idx, "width", parseFloat(e.key)); } } }}
+            onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setWidthRaw(v); onUpdate(idx, "width", v && v !== "." ? parseFloat(v) : undefined); }}
+            onBlur={() => { const n = parseFloat(widthRaw); setWidthRaw(isNaN(n) ? "" : String(n)); }}
             className="w-full px-3 py-2 rounded-md text-sm border outline-none"
             style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
           />
@@ -1646,9 +1673,11 @@ function SkuRow({
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Height (in) *</label>
           <input
-            type="number" min={0} placeholder="e.g. 3"
-            value={sku.height ?? ""}
-            onChange={(e) => onUpdate(idx, "height", e.target.value ? parseFloat(e.target.value) : undefined)}
+            type="text" inputMode="decimal" placeholder="e.g. 3"
+            value={heightRaw}
+            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && heightRaw === "0") { e.preventDefault(); if (e.key !== "0") { setHeightRaw(e.key); onUpdate(idx, "height", parseFloat(e.key)); } } }}
+            onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setHeightRaw(v); onUpdate(idx, "height", v && v !== "." ? parseFloat(v) : undefined); }}
+            onBlur={() => { const n = parseFloat(heightRaw); setHeightRaw(isNaN(n) ? "" : String(n)); }}
             className="w-full px-3 py-2 rounded-md text-sm border outline-none"
             style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
           />
@@ -1674,9 +1703,10 @@ function SkuRow({
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Quantity *</label>
           <input
-            type="number" min={1} placeholder="e.g. 1000"
-            value={sku.quantity ?? ""}
-            onChange={(e) => onUpdate(idx, "quantity", e.target.value ? parseInt(e.target.value) : undefined)}
+            type="text" inputMode="numeric" placeholder="e.g. 1000"
+            value={quantityRaw}
+            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && quantityRaw === "0") { e.preventDefault(); if (e.key !== "0") { setQuantityRaw(e.key); onUpdate(idx, "quantity", parseInt(e.key)); } } }}
+            onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, "").replace(/^0+([1-9])/, "$1"); setQuantityRaw(v); onUpdate(idx, "quantity", v ? parseInt(v) : undefined); }}
             className="w-full px-3 py-2 rounded-md text-sm border outline-none"
             style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
           />
@@ -1684,9 +1714,11 @@ function SkuRow({
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Unit Price ($) *</label>
           <input
-            type="number" min={0} step={0.01} placeholder="0.00"
-            value={sku.unit_price ?? ""}
-            onChange={(e) => onUpdate(idx, "unit_price", e.target.value ? parseFloat(e.target.value) : undefined)}
+            type="text" inputMode="decimal" placeholder="0.00"
+            value={unitPriceRaw}
+            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && unitPriceRaw === "0") { e.preventDefault(); if (e.key !== "0") { setUnitPriceRaw(e.key); onUpdate(idx, "unit_price", parseFloat(e.key)); } } }}
+            onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setUnitPriceRaw(v); onUpdate(idx, "unit_price", v && v !== "." ? parseFloat(v) : undefined); }}
+            onBlur={() => { const n = parseFloat(unitPriceRaw); setUnitPriceRaw(isNaN(n) ? "" : String(n)); }}
             className="w-full px-3 py-2 rounded-md text-sm border outline-none"
             style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
           />
@@ -1778,9 +1810,11 @@ function SkuRow({
           step={0.01}
           placeholder={computedTotal > 0 ? formatCurrency(computedTotal).replace("$", "") : "0.00"}
           value={lineTotalRaw}
+          onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && e.currentTarget.value === "0") { e.preventDefault(); if (e.key !== "0") { const nv = e.key; setLineTotalRaw(nv); onUpdate(idx, "line_total", parseFloat(nv)); } } }}
           onChange={(e) => {
-            setLineTotalRaw(e.target.value);
-            const n = parseFloat(e.target.value);
+            const v = e.target.value.replace(/^0+([1-9])/, "$1");
+            setLineTotalRaw(v);
+            const n = parseFloat(v);
             onUpdate(idx, "line_total", isNaN(n) ? undefined : n);
           }}
           onBlur={() => {
@@ -1909,9 +1943,11 @@ function QuoteTab(p: QuoteTabProps) {
               min={0}
               step={0.01}
               value={shippingRaw}
+              onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && e.currentTarget.value === "0") { e.preventDefault(); if (e.key !== "0") { setShippingRaw(e.key); p.setShipping(parseFloat(e.key)); } } }}
               onChange={(e) => {
-                setShippingRaw(e.target.value);
-                p.setShipping(parseFloat(e.target.value) || 0);
+                const v = e.target.value.replace(/^0+([1-9])/, "$1");
+                setShippingRaw(v);
+                p.setShipping(parseFloat(v) || 0);
               }}
               onBlur={() => {
                 const n = parseFloat(shippingRaw);
@@ -1931,9 +1967,11 @@ function QuoteTab(p: QuoteTabProps) {
               step={0.1}
               value={taxRateRaw}
               disabled={p.taxExempt}
+              onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && e.currentTarget.value === "0") { e.preventDefault(); if (e.key !== "0") { setTaxRateRaw(e.key); p.setTaxRate(parseFloat(e.key)); } } }}
               onChange={(e) => {
-                setTaxRateRaw(e.target.value);
-                p.setTaxRate(parseFloat(e.target.value) || 0);
+                const v = e.target.value.replace(/^0+([1-9])/, "$1");
+                setTaxRateRaw(v);
+                p.setTaxRate(parseFloat(v) || 0);
               }}
               onBlur={() => {
                 const n = parseFloat(taxRateRaw);
@@ -2289,11 +2327,16 @@ function QuoteTab(p: QuoteTabProps) {
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>First Reminder</label>
-                <DatePicker value={p.reminderDate} onChange={p.setReminderDate} placeholder="Pick a date" />
+                <DatePicker value={p.reminderDate} onChange={p.setReminderDate} placeholder="Pick a date" disablePast />
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Cycles</label>
-                <input type="number" min={1} max={10} value={p.followUpCycles} onChange={(e) => p.setFollowUpCycles(parseInt(e.target.value) || 3)} className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                <div className="relative">
+                  <select value={p.followUpCycles} onChange={(e) => p.setFollowUpCycles(parseInt(e.target.value))} className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm border outline-none" style={fieldStyle}>
+                    {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <ChevronDown size={14} className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Frequency</label>

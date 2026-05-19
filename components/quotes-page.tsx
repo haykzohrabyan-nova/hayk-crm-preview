@@ -19,6 +19,7 @@ interface QuoteTicket {
   created_at: string;
   updated_at: string;
   created_by_name?: string; // injected by API for routed tickets
+  routed_by_id: string | null;
   customer: {
     id: string;
     first_name: string | null;
@@ -112,7 +113,7 @@ export default function QuotesPage() {
     });
   }, []);
 
-  const canSeeRouted = userRole === "sales" || userRole === "admin";
+  const canSeeRouted = userRole === "sales" || userRole === "admin" || userRole === "sdr";
   const TABS = canSeeRouted ? [...BASE_TABS, ROUTED_TAB] : BASE_TABS;
 
   // ─── Fetch counts ────────────────────────────────────────────────────────
@@ -255,7 +256,9 @@ export default function QuotesPage() {
         >
           <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: "var(--color-warning)" }} />
           <p style={{ color: "var(--color-warning-text-deep)" }}>
-            These quotes were created by SDR users but exceed the high-value threshold. Claim one to take ownership and complete it.
+            {userRole === "sdr"
+              ? "These quotes exceeded the high-value threshold and were handed off to Sales. You can view them in read-only mode."
+              : "These quotes were created by SDR users but exceed the high-value threshold. Claim one to take ownership and complete it."}
           </p>
         </div>
       )}
@@ -384,15 +387,26 @@ export default function QuotesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      disabled={claimingId === q.id}
-                      onClick={() => handleClaim(q.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
-                      style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-                    >
-                      <UserCheck size={12} />
-                      {claimingId === q.id ? "Claiming…" : "Claim"}
-                    </button>
+                    {userRole === "sdr" ? (
+                      <button
+                        onClick={() => router.push(`/quotes/${q.id}`)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
+                        style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
+                      >
+                        <ExternalLink size={12} />
+                        View
+                      </button>
+                    ) : (
+                      <button
+                        disabled={claimingId === q.id}
+                        onClick={() => handleClaim(q.id)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+                        style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                      >
+                        <UserCheck size={12} />
+                        {claimingId === q.id ? "Claiming…" : "Claim"}
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

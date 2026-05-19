@@ -3,6 +3,82 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-19] — Fix Sales dashboard KPI accuracy
+
+### Fixed
+- `app/api/dashboard/kpis/route.ts` (Sales branch):
+  - **Active Deals** was undercounting — removed the incorrect `status === "Routed to Sales"` guard that excluded leads that had progressed to `"Quoted"` status after a quote was sent. Now counts any lead with `sales_status` of `"Ongoing"` or `"Quote Sent"` regardless of lead status.
+  - **Won** count was not period-filtered — was reading all-time `leads.sales_status === "Won"` while `won_value` was period-filtered. Both now derive from the same `job_tickets` query (orders in the selected period), so count and value are always in sync.
+
+---
+
+## [2026-05-19] — Prevent past date selection in quote date pickers
+
+### Changed
+- `components/ui/date-picker.tsx`: Added `disablePast` prop — when true, all dates before today are greyed out and unselectable in the calendar
+- `components/new-quote-form.tsx`: Due Date and First Reminder pickers now use `disablePast`
+- `components/quote-detail.tsx`: Due Date and First Reminder pickers now use `disablePast`
+
+---
+
+## [2026-05-19] — Cycles follow-up field changed to select
+
+### Changed
+- `components/new-quote-form.tsx`: Follow-up Schedule "Cycles" field changed from a free-entry number input to a `<select>` with fixed options 1–5
+- `components/quote-detail.tsx`: Same change on the quote detail edit form
+
+---
+
+## [2026-05-19] — Prevent leading zeros in numeric inputs
+
+### Fixed
+- `components/new-quote-form.tsx`: Width, Height, Unit Price, and Line Total switched to `type="text" inputMode="decimal"` with local raw string state so decimal values like `0.9` work correctly; Quantity switched to `type="text" inputMode="numeric"`; Shipping and Tax Rate use `onKeyDown` + `onChange` stripping to block leading zeros
+- `components/quote-detail.tsx`: Same fixes for all equivalent numeric inputs in the SKU editor and Adjustments panel
+- `components/leads-page.tsx`: Quantity field in Add/Edit Lead form no longer allows leading zeros
+
+## [2026-05-19] — SDR read-only view for routed quotes
+
+### Added
+- `supabase/migrations/060_add_routed_by_id_to_tickets.sql` — adds `routed_by_id uuid` column to `job_tickets` to preserve the original SDR's identity after Sales claims the ticket (claiming changes `created_by_id`)
+- `components/quotes-page.tsx`: SDRs now see a **Routed to Sales** tab showing quotes they created that exceeded the threshold; tab shows a "View" button (not Claim) per row
+- `components/quote-detail.tsx`: when SDR views one of their routed quotes, a warning banner explains it's read-only and the Edit button + action bar are hidden
+
+### Changed
+- `app/api/tickets/route.ts` (`POST`): sets `routed_by_id = userId` when `ticket_status = "routed"`
+- `app/api/tickets/route.ts` (`GET`): SDR query now includes `routed_by_id = userId` so routed (and claimed) tickets remain visible to the original SDR
+- `components/quotes-page.tsx`: routed tab banner text is role-aware (SDR vs Sales/Admin)
+
+---
+
+## [2026-05-19] — Fix HVT modal OK button and add Cancel
+
+### Fixed
+- `components/new-quote-form.tsx`: OK button in the High-Value Threshold modal did nothing — `handleSaveRef.current` was `null` because the modal fires from `validateAndAdvance` (before `handleSave` is ever called). Fixed by setting `handleSaveRef.current = handleSave` before showing the modal.
+
+### Changed
+- `components/new-quote-form.tsx`: Added **Cancel — Edit Amount** button to `HighValueModal` so the SDR can dismiss the modal and adjust the quote total instead of being forced to route to Sales.
+- `components/quote-detail.tsx`: Added **Cancel — Edit Amount** button to the inline HVT modal on the quote detail page for the same reason.
+
+---
+
+## [2026-05-19] — Fix all SDR dashboard KPI numbers
+
+### Fixed
+- `app/api/dashboard/kpis/route.ts` — complete rewrite of the SDR KPI queries:
+  - **Handled / Routed / Rejected / Quote Value / Share %**: switched from `leads.updated_at >= periodStart` to querying the `activities` table (`created_at`). The old approach counted any lead touched by sales or admin in the period, even if the SDR processed it months ago. Activities are timestamped when the SDR actually performed the action.
+  - **On Hold**: was derived from a full-table `sdr_id = userId` scan filtered in JS; now a direct count query with `is_inbox = false, sdr_id = userId, status = 'On Hold'` — no inbox leads bleed in.
+  - **Share %**: denominator was all workspace leads updated in period (including unowned rows); now it's distinct leads touched by ANY SDR via the same activity types, giving an apples-to-apples comparison.
+  - **Inbox**: (from prior fix) changed from `is_inbox = true` to unclaimed workspace leads matching the sidebar badge logic.
+
+---
+
+## [2026-05-19] — Fix SDR dashboard inbox count
+
+### Fixed
+- `app/api/dashboard/kpis/route.ts`: SDR "Inbox" card was always showing 0 — it was querying `is_inbox = true` (AI inbox), but "leads waiting to be claimed" are workspace leads (`is_inbox = false`, status Pending/Validated, no lock). Changed query to match the sidebar `/leads` badge logic: `is_inbox = false AND status IN ('Pending','Validated') AND locked_by_id IS NULL`
+
+---
+
 ## [2026-05-19] — Session 2: UI polish, dashboard improvements, bug fixes
 
 ### Fixed

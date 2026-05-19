@@ -11,6 +11,7 @@ interface DatePickerProps {
   onChange: (v: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  disablePast?: boolean;  // when true, dates before today are not selectable
   className?: string;
   style?: React.CSSProperties;
 }
@@ -20,6 +21,7 @@ export function DatePicker({
   onChange,
   placeholder = "Pick a date",
   disabled,
+  disablePast = false,
   className = "",
   style,
 }: DatePickerProps) {
@@ -28,6 +30,9 @@ export function DatePicker({
 
   const parsed = value ? parse(value, "yyyy-MM-dd", new Date()) : undefined;
   const selected = parsed && isValid(parsed) ? parsed : undefined;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -181,6 +186,7 @@ export function DatePicker({
             onSelect={handleSelect}
             defaultMonth={selected ?? new Date()}
             navLayout="around"
+            disabled={disablePast ? { before: today } : undefined}
           />
         </div>
       )}

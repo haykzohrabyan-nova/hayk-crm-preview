@@ -31,44 +31,89 @@ export async function GET(request: NextRequest) {
 
   // ── SDR ──────────────────────────────────────────────────────────────────
   if (roleName === "sdr") {
-    const [inbox, myLeads, periodLeads, allPeriodCount] = await Promise.all([
-      admin
-        .from("leads")
-        .select("id", { count: "exact", head: true })
-        .eq("is_inbox", true),
-      admin
-        .from("leads")
-        .select("id, status")
-        .eq("sdr_id", userId),
-      admin
-        .from("leads")
-        .select("id, status, quote_total")
-        .eq("sdr_id", userId)
-        .gte("updated_at", periodStart),
-      // Total workspace leads in period across all SDRs — used for share %
+    // Activity types that represent meaningful SDR work on a lead.
+    // Using activities (not lead.updated_at) so counts are tied to when the SDR
+    // actually performed the action — not when sales/admin later touched the row.
+    const SDR_ACTION_TYPES = [
+      "lead_claimed",
+      "lead_routed_to_sales",
+      "lead_rejected",
+      "lead_held",
+    ];
+
+    const [inbox, onHold, myActivities, allSdrActivities] = await Promise.all([
+      // Unclaimed workspace leads waiting to be picked up (matches sidebar /leads badge)
       admin
         .from("leads")
         .select("id", { count: "exact", head: true })
         .eq("is_inbox", false)
-        .gte("updated_at", periodStart),
+        .in("status", ["Pending", "Validated"])
+        .is("locked_by_id", null),
+
+      // On Hold snapshot: workspace leads currently parked by this SDR
+      admin
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("is_inbox", false)
+        .eq("sdr_id", userId)
+        .eq("status", "On Hold"),
+
+      // This SDR's actions in the period (for Handled / Routed / Rejected / Quote Value)
+      admin
+        .from("activities")
+        .select("lead_id, type")
+        .eq("by_user_id", userId)
+        .in("type", SDR_ACTION_TYPES)
+        .gte("created_at", periodStart)
+        .not("lead_id", "is", null),
+
+      // All SDR actions in the period across every SDR (denominator for Share %)
+      admin
+        .from("activities")
+        .select("lead_id")
+        .in("type", SDR_ACTION_TYPES)
+        .gte("created_at", periodStart)
+        .not("lead_id", "is", null),
     ]);
 
-    const all = myLeads.data ?? [];
-    const period_ = periodLeads.data ?? [];
-    const totalInPeriod = allPeriodCount.count ?? 0;
+    const myActs = myActivities.data ?? [];
+    const allActs = allSdrActivities.data ?? [];
 
-    const quote_value = period_.reduce((s, l) => s + (l.quote_total ?? 0), 0);
-    const share_pct = totalInPeriod > 0
-      ? Math.round((period_.length / totalInPeriod) * 100)
-      : 0;
+    // Deduplicate by lead_id so each lead counts once per metric
+    const handledLeadIds = [...new Set(myActs.map((a) => a.lead_id as string))];
+    const routedCount = new Set(
+      myActs.filter((a) => a.type === "lead_routed_to_sales").map((a) => a.lead_id as string)
+    ).size;
+    const rejectedCount = new Set(
+      myActs.filter((a) => a.type === "lead_rejected").map((a) => a.lead_id as string)
+    ).size;
+    const allHandledCount = new Set(allActs.map((a) => a.lead_id as string)).size;
+
+    // Quote value: sum quote_total for leads this SDR handled in the period
+    let quote_value = 0;
+    if (handledLeadIds.length > 0) {
+      const { data: handledLeads } = await admin
+        .from("leads")
+        .select("quote_total")
+        .in("id", handledLeadIds);
+      quote_value = (handledLeads ?? []).reduce(
+        (s, l) => s + ((l.quote_total as number) ?? 0),
+        0
+      );
+    }
+
+    const share_pct =
+      allHandledCount > 0
+        ? Math.round((handledLeadIds.length / allHandledCount) * 100)
+        : 0;
 
     return NextResponse.json({
       role: "sdr",
       inbox_count: inbox.count ?? 0,
-      handled: period_.length,
-      routed: period_.filter((l) => l.status === "Routed to Sales").length,
-      on_hold: all.filter((l) => l.status === "On Hold").length,
-      rejected: period_.filter((l) => l.status === "Rejected").length,
+      handled: handledLeadIds.length,
+      routed: routedCount,
+      on_hold: onHold.count ?? 0,
+      rejected: rejectedCount,
       quote_value,
       share_pct,
     });
@@ -86,14 +131,14 @@ export async function GET(request: NextRequest) {
         .from("leads")
         .select("id, status, sales_status")
         .eq("sales_owner_id", userId),
-      // Won value: sum final totals from actual orders created by this rep in period
+      // Won value + count: tickets this rep owns that became orders in the period
       admin
         .from("job_tickets")
-        .select("quote_final_total")
+        .select("quote_final_total", { count: "exact" })
         .eq("created_by_id", userId)
         .in("ticket_status", ["order", "in_production", "completed"])
         .gte("created_at", periodStart),
-      // Pipeline value: active deal tickets created by this rep
+      // Pipeline value: active quote/draft tickets owned by this rep (all-time snapshot)
       admin
         .from("job_tickets")
         .select("quote_final_total")
@@ -102,11 +147,13 @@ export async function GET(request: NextRequest) {
     ]);
 
     const all = myLeads.data ?? [];
+
+    // Active deals: leads where sales work is in progress — includes both
+    // "Routed to Sales" (not yet quoted) and "Quoted" (quote sent) states.
     const activeDeals = all.filter(
-      (l) =>
-        l.status === "Routed to Sales" &&
-        (l.sales_status === "Ongoing" || l.sales_status === "Quote Sent")
+      (l) => l.sales_status === "Ongoing" || l.sales_status === "Quote Sent"
     );
+
     const wonValue = (wonTickets.data ?? []).reduce((s, t) => s + (t.quote_final_total ?? 0), 0);
     const pipelineValue = (pipelineTickets.data ?? []).reduce((s, t) => s + (t.quote_final_total ?? 0), 0);
 
@@ -115,7 +162,7 @@ export async function GET(request: NextRequest) {
       new_in_pipeline: unclaimed.count ?? 0,
       active_deals: activeDeals.length,
       on_hold: all.filter((l) => l.sales_status === "On Hold").length,
-      won: all.filter((l) => l.sales_status === "Won").length,
+      won: wonTickets.count ?? 0,          // period-filtered via job_tickets
       won_value: wonValue,
       pipeline_value: pipelineValue,
     });

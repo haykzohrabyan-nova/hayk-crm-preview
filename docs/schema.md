@@ -14,6 +14,7 @@ erDiagram
     auth_users ||--o{ leads : "assigned_sdr_id"
     auth_users ||--o{ leads : "held_by_id"
     auth_users ||--o{ job_tickets : "created_by_id"
+    auth_users ||--o{ job_tickets : "routed_by_id"
     auth_users ||--o{ activities : "by_user_id"
     auth_users ||--o{ notifications : "user_id"
 
@@ -406,6 +407,7 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `quote_approval_last_requested_at` | `timestamptz` | Last time approval was requested |
 | `public_token` | `uuid` NOT NULL DEFAULT `gen_random_uuid()` UNIQUE | Unguessable token for public `/q/[token]` page — no auth needed |
 | `payment_status` | `text` NOT NULL DEFAULT `'unpaid'` | `'unpaid'` \| `'partial'` \| `'paid'` — overall order payment state |
+| `routed_by_id` | `uuid` FK → `auth.users` | Set when `ticket_status = 'routed'`; preserves the original SDR's identity after Sales claims the ticket (claiming changes `created_by_id`). Used to grant the SDR read-only visibility on `/quotes` |
 | `notes` | `text` | Internal notes |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
@@ -1084,4 +1086,8 @@ When creating Supabase migrations under `supabase/migrations/`:
 055_reset_tickets_for_testing.sql    ← DEV ONLY: deletes all job_tickets + ticket activities, resets order_sequence_counters, resets Won/Quoted leads back to Ongoing/Validated
 056_add_idle_timeout_to_company_settings.sql ← adds session_idle_timeout_minutes INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to company_settings
 057_create_user_sessions.sql         ← user_sessions table: one row per login session; tracks signed_in_at, signed_out_at, sign_out_reason ('manual'|'auto'|'deactivated'|'unknown'); RLS: users read/write own rows, admin reads all via service role
+058_add_reports_page.sql             ← seeds /reports page entry
+059_add_has_design_to_leads.sql      ← adds has_design jsonb column to leads for per-product design flags
+060_add_routed_by_id_to_tickets.sql  ← adds routed_by_id uuid FK → auth.users to job_tickets; set at ticket creation when ticket_status = 'routed'; never changed on claim so SDR retains read-only visibility
+061_backfill_routed_by_id.sql        ← one-time backfill: finds existing routed/claimed tickets via activities log (order_ticket_created) and sets routed_by_id to the original SDR creator
 ```

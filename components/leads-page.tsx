@@ -567,7 +567,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
                           value={row.quantity}
                           onChange={(e) =>
                             updateProductRow(idx, {
-                              quantity: e.target.value.replace(/[^0-9]/g, ""),
+                              quantity: e.target.value.replace(/[^0-9]/g, "").replace(/^0+([1-9])/, "$1"),
                             })
                           }
                           placeholder="0"

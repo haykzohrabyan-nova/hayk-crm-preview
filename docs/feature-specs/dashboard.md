@@ -27,30 +27,27 @@ The period defaults to "This Month" and is controlled by a compact segmented con
 
 ## SDR Dashboard — `components/sdr-dashboard.tsx`
 
-KPIs are **scoped to the current SDR** (`sdr_id = userId`). The inbox count is global (how many leads are available in the queue).
+KPIs are **scoped to the current SDR**. The inbox count is global (how many unclaimed workspace leads are available).
 
 ### KPI Cards (2-column on mobile, 3-column on desktop)
 
-| Card | Value | Subtext | Accent |
-|------|-------|---------|--------|
-| Inbox | `is_inbox = true` leads (global count) | "leads waiting to be claimed" | ✓ (highlighted) |
-| Handled | leads touched by this SDR in period | period label | |
-| Routed to Sales | leads routed by this SDR in period | period label | |
-| On Hold | leads on hold owned by this SDR (all time) | "currently paused" | |
-| Rejected | leads rejected by this SDR in period | period label | |
-| Quote Value | `sum(quote_total)` for this SDR's leads in period | period label | |
-| My Share | this SDR's handled leads ÷ all SDR leads in period × 100 | "of all SDR work this period" | |
+| Card | Value | Query basis | Subtext | Accent |
+|------|-------|-------------|---------|--------|
+| Inbox | Unclaimed workspace leads | `leads WHERE is_inbox=false AND status IN ('Pending','Validated') AND locked_by_id IS NULL` — matches sidebar badge exactly | "leads waiting to be claimed" | ✓ (highlighted) |
+| Handled | Distinct leads acted on by this SDR in period | `activities WHERE by_user_id=me AND type IN (claimed/routed/rejected/held) AND created_at >= periodStart` — deduplicated by lead_id | period label | |
+| Routed to Sales | Distinct leads routed by this SDR in period | Same activities, filtered to `type = 'lead_routed_to_sales'` | period label | |
+| On Hold | Direct count of paused leads | `leads WHERE is_inbox=false AND sdr_id=me AND status='On Hold'` | "currently paused" | |
+| Rejected | Distinct leads rejected in period | Activities filtered to `type = 'lead_rejected'` | period label | |
+| Quote Value | `sum(quote_total)` for all leads acted on in period | Lead rows fetched by the handled lead IDs | period label | |
+| My Share | `my handled leads ÷ all SDR handled leads × 100` | Denominator uses same activity types across all users | "of all SDR work this period" | |
 
-### Quick Actions
-
-- **Work Leads** → `/leads` (primary, accent-tinted)
-- **View CRM** → `/crm`
+> **Why activities instead of `leads.updated_at`?** Using `updated_at` on the leads table causes drift — if Sales or Admin updates a lead the SDR processed last month, it would appear in the current month's counts. Activity records have their own `created_at` tied to when the SDR actually performed the action, so period counts are always accurate.
 
 ### Period Selector
 
 This Week / This Month / This Quarter — updates all KPI cards on change.
 
-### Future Enhancements (when orders/quotes are live)
+### Future Enhancements
 - Conversion rate card (leads routed ÷ leads handled)
 - Recent activity strip (last 5 events by this SDR)
 
@@ -62,14 +59,18 @@ KPIs are **scoped to the current Sales rep** (`sales_owner_id = userId`). New in
 
 ### KPI Cards (2-column on mobile, 3-column on desktop)
 
-| Card | Value | Subtext | Accent |
-|------|-------|---------|--------|
-| Won Value | sum of `quote_total` for Won leads in period | period label | ✓ (highlighted) |
-| New in Pipeline | unclaimed Routed to Sales leads (global) | "waiting to be claimed" | |
-| Active Deals | leads with `sales_status = Ongoing or Quote Sent` | "ongoing" | |
-| Won | count of Won leads in period | period label | |
-| On Hold | leads with `sales_status = On Hold` | "paused deals" | |
-| Pipeline Value | sum of `quote_total` for active deals | "current total" | |
+| Card | Value | Query basis | Subtext | Accent |
+|------|-------|-------------|---------|--------|
+| Won Value | sum of `quote_final_total` from Won tickets in period | `job_tickets WHERE created_by_id=me AND ticket_status IN (order/in_production/completed) AND created_at >= periodStart` | period label | ✓ (highlighted) |
+| New in Pipeline | unclaimed Routed to Sales leads (global) | `leads WHERE status='Routed to Sales' AND sales_owner_id IS NULL` | "waiting to be claimed" | |
+| Active Deals | leads where sales work is in progress | `leads WHERE sales_owner_id=me AND sales_status IN ('Ongoing','Quote Sent')` — includes both pre-quote and post-quote leads | "ongoing" | |
+| Won | count of won tickets in period | Same `job_tickets` query as Won Value — `count` field — period-consistent with the revenue figure | period label | |
+| On Hold | leads with `sales_status = On Hold` | `leads WHERE sales_owner_id=me` filtered in JS | "paused deals" | |
+| Pipeline Value | sum of active quote values | `job_tickets WHERE created_by_id=me AND ticket_status IN (draft/sent)` | "current total" | |
+
+> **Active Deals note:** The lead's `status` field is intentionally NOT used as a filter. When Sales creates a quote for a lead the lead's status changes from `"Routed to Sales"` to `"Quoted"`, so filtering on `status` would cause quoted leads to disappear from Active Deals. `sales_status` alone correctly represents whether the deal is still in progress.
+
+> **Won count + Won Value are always in sync:** Both derive from the same `job_tickets` query with the same period filter, so switching from "This Month" to "This Quarter" updates both numbers together.
 
 ### Quick Actions
 

@@ -48,13 +48,14 @@ export async function GET(request: NextRequest) {
   // Scoping:
   // - admin: sees all tickets
   // - sales: sees own tickets + all 'routed' tickets (SDR high-value hand-offs)
-  // - everyone else (SDR, etc.): sees only their own tickets
+  // - everyone else (SDR, etc.): sees own tickets + any they routed to Sales
+  //   (routed_by_id = userId covers tickets after Sales claims them, changing created_by_id)
   if (roleName === "admin") {
     // no filter
   } else if (roleName === "sales" && userId) {
     query = query.or(`created_by_id.eq.${userId},ticket_status.eq.routed`);
   } else if (userId) {
-    query = query.eq("created_by_id", userId);
+    query = query.or(`created_by_id.eq.${userId},routed_by_id.eq.${userId}`);
   }
 
   if (kind) query = query.eq("ticket_kind", kind);
@@ -225,6 +226,9 @@ export async function POST(request: NextRequest) {
     reference_code,
     customer_id: resolvedCustomerId,
     linked_lead_id: linked_lead_id ?? null,
+    // When an SDR's quote is auto-routed to Sales, preserve their identity so
+    // they can still view the ticket in read-only mode after Sales claims it.
+    routed_by_id: ticket_status === "routed" ? userId : null,
     created_by_id: userId,
     contact_name: contact_name ?? null,
     contact_email: contact_email ?? null,
