@@ -545,7 +545,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
                         {/* Product select */}
                         <Select
                           value={row.product}
-                          onValueChange={(v) => updateProductRow(idx, { product: v })}
+                          onValueChange={(v) => updateProductRow(idx, { product: v ?? "" })}
                         >
                           <SelectTrigger className="h-9 text-sm w-full">
                             <SelectValue placeholder="Select product…">

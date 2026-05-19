@@ -834,7 +834,7 @@ export function VerifyDrawer({
                           {/* Product select */}
                           <Select
                             value={row.product}
-                            onValueChange={(v) => updateProductRow(idx, { product: v })}
+                            onValueChange={(v) => updateProductRow(idx, { product: v ?? "" })}
                             disabled={isReadOnly}
                           >
                             <SelectTrigger className="h-9 text-sm w-full">
