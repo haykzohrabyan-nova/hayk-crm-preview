@@ -40,7 +40,7 @@ export async function GET(
 
 // Fields whose changes are worth recording in the activity timeline
 const TRACKED_FIELDS = [
-  "urgency", "interests", "quantities", "sdr_comment",
+  "urgency", "interests", "quantities", "has_design", "sdr_comment",
   "is_returning_customer", "brand", "source", "authority",
   "sales_notes",
 ];
@@ -77,7 +77,7 @@ export async function PATCH(
   // support dynamic template literals.
   const { data: current, error: fetchErr } = await admin
     .from("leads")
-    .select("status, sales_status, locked_by_id, customer_id, urgency, interests, quantities, sdr_comment, is_returning_customer, brand, source, authority")
+    .select("status, sales_status, locked_by_id, customer_id, urgency, interests, quantities, has_design, sdr_comment, is_returning_customer, brand, source, authority")
     .eq("id", id)
     .single();
 

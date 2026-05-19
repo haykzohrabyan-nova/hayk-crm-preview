@@ -9,6 +9,7 @@ import {
   User,
   ChevronRight,
   ShieldCheck,
+  Plus,
 } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
@@ -28,6 +29,12 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
+interface ProductInterestRow {
+  product: string;
+  quantity: string;
+  has_design: boolean;
+}
+
 interface DrawerForm {
   phone: string;
   email: string;
@@ -42,7 +49,6 @@ interface DrawerForm {
   is_returning_customer: boolean;
   initial_interest: string;
   sdr_comment: string;
-  interests: Record<string, boolean>;
   rejection_reason: string;
   rejection_notes: string;
 }
@@ -95,10 +101,22 @@ function formFromLead(lead: Lead): DrawerForm {
     is_returning_customer: lead.is_returning_customer,
     initial_interest: lead.initial_interest ?? "",
     sdr_comment: lead.sdr_comment ?? "",
-    interests: lead.interests ?? {},
     rejection_reason: "",
     rejection_notes: "",
   };
+}
+
+function rowsFromLead(lead: Lead): ProductInterestRow[] {
+  const interests = lead.interests ?? {};
+  const quantities = lead.quantities ?? {};
+  const has_design = lead.has_design ?? {};
+  return Object.entries(interests)
+    .filter(([, selected]) => selected)
+    .map(([product]) => ({
+      product,
+      quantity: String(quantities[product] ?? ""),
+      has_design: has_design[product] ?? false,
+    }));
 }
 
 // ─── Activity timeline helpers ────────────────────────────────────────────────
@@ -176,6 +194,7 @@ export function VerifyDrawer({
   const router = useRouter();
   const [lead, setLead] = useState<Lead>(initialLead);
   const [form, setForm] = useState<DrawerForm>(() => formFromLead(initialLead));
+  const [productRows, setProductRows] = useState<ProductInterestRow[]>(() => rowsFromLead(initialLead));
   const [activeTab, setActiveTab] = useState<"info" | "history">("info");
   const [footerMode, setFooterMode] = useState<"actions" | "hold" | "reject">("actions");
   const [activities, setActivities] = useState<Activity[]>([]);
@@ -220,6 +239,18 @@ export function VerifyDrawer({
     onClose();
   }
 
+  function addProductRow() {
+    setProductRows((rows) => [...rows, { product: "", quantity: "", has_design: false }]);
+  }
+
+  function updateProductRow(idx: number, patch: Partial<ProductInterestRow>) {
+    setProductRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  }
+
+  function removeProductRow(idx: number) {
+    setProductRows((rows) => rows.filter((_, i) => i !== idx));
+  }
+
   // ── Save helpers ──────────────────────────────────────────────────────────
 
   function fireCountsRefresh() {
@@ -258,6 +289,10 @@ export function VerifyDrawer({
   }
 
   function buildLeadPayload() {
+    const validRows = productRows.filter((r) => r.product.trim() !== "");
+    const interests = Object.fromEntries(validRows.map((r) => [r.product, true]));
+    const quantities = Object.fromEntries(validRows.map((r) => [r.product, r.quantity]));
+    const has_design = Object.fromEntries(validRows.map((r) => [r.product, r.has_design]));
     return {
       source: form.source || null,
       authority: form.authority || null,
@@ -265,7 +300,9 @@ export function VerifyDrawer({
       is_returning_customer: form.is_returning_customer,
       sdr_comment: form.sdr_comment || null,
       initial_interest: form.initial_interest.trim() || null,
-      interests: form.interests,
+      interests,
+      quantities,
+      has_design,
     };
   }
 
@@ -768,51 +805,147 @@ export function VerifyDrawer({
               </section>
 
               {/* Product Interests */}
-              <section>
-                <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
+              <section className="space-y-2">
+                <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>
                   Product Interests
                 </h3>
 
-                {productTypes.length === 0 ? (
-                  <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>No products configured yet.</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {productTypes.map((pt) => {
-                      const isSelected = !!form.interests[pt.name];
+                {productRows.length > 0 && (
+                  <div className="space-y-2">
+                    {/* Column headers */}
+                    <div className="grid grid-cols-[1fr_90px_auto_28px] gap-2 items-center px-0.5">
+                      <span className={labelCls} style={labelStyle}>Product</span>
+                      <span className={labelCls} style={labelStyle}>Quantity</span>
+                      <span className={labelCls} style={labelStyle}>Has Design</span>
+                      <span />
+                    </div>
+
+                    {productRows.map((row, idx) => {
+                      const selectedProducts = productRows
+                        .filter((_, i) => i !== idx)
+                        .map((r) => r.product)
+                        .filter(Boolean);
+                      const availableTypes = productTypes.filter(
+                        (pt) => !selectedProducts.includes(pt.name)
+                      );
+
                       return (
-                        <button
-                          key={pt.id}
-                          type="button"
-                          disabled={isReadOnly}
-                          onClick={() => {
-                            if (isReadOnly) return;
-                            setForm((f) => ({
-                              ...f,
-                              interests: { ...f.interests, [pt.name]: !isSelected },
-                            }));
-                          }}
-                          className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-colors"
-                          style={
-                            isSelected
-                              ? {
-                                  background: "var(--color-badge-bg)",
-                                  borderColor: "var(--color-tab-underline)",
-                                  color: "var(--color-tab-active)",
-                                }
-                              : {
-                                  background: "var(--color-surface)",
-                                  borderColor: "var(--color-border)",
-                                  color: isReadOnly ? "var(--color-text-muted)" : "var(--color-text-muted)",
-                                  cursor: isReadOnly ? "default" : "pointer",
-                                  opacity: isReadOnly && !isSelected ? 0.5 : 1,
-                                }
-                          }
-                        >
-                          {pt.name}
-                        </button>
+                        <div key={idx} className="grid grid-cols-[1fr_90px_auto_28px] gap-2 items-center">
+                          {/* Product select */}
+                          <Select
+                            value={row.product}
+                            onValueChange={(v) => updateProductRow(idx, { product: v })}
+                            disabled={isReadOnly}
+                          >
+                            <SelectTrigger className="h-9 text-sm w-full">
+                              <SelectValue placeholder="Select product…">
+                                {row.product || "Select product…"}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableTypes.map((pt) => (
+                                <SelectItem key={pt.id} value={pt.name}>{pt.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {/* Quantity */}
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            value={row.quantity}
+                            onChange={(e) =>
+                              updateProductRow(idx, {
+                                quantity: e.target.value.replace(/[^0-9]/g, ""),
+                              })
+                            }
+                            disabled={isReadOnly}
+                            placeholder="0"
+                            className={inputCls}
+                            style={inputStyle}
+                            onFocus={(e) => {
+                              if (isReadOnly) return;
+                              e.currentTarget.style.borderColor = "var(--color-accent)";
+                              e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
+                            }}
+                            onBlur={(e) => {
+                              e.currentTarget.style.borderColor = "var(--color-border)";
+                              e.currentTarget.style.boxShadow = "none";
+                            }}
+                          />
+
+                          {/* Has Design toggle */}
+                          <button
+                            type="button"
+                            onClick={() => !isReadOnly && updateProductRow(idx, { has_design: !row.has_design })}
+                            disabled={isReadOnly}
+                            className="flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1.5 text-[12px] font-medium transition-colors whitespace-nowrap disabled:cursor-default"
+                            style={
+                              row.has_design
+                                ? {
+                                    background: "var(--color-badge-bg)",
+                                    borderColor: "var(--color-tab-underline)",
+                                    color: "var(--color-tab-active)",
+                                  }
+                                : {
+                                    background: "var(--color-surface)",
+                                    borderColor: "var(--color-border)",
+                                    color: "var(--color-text-muted)",
+                                  }
+                            }
+                          >
+                            <span
+                              className="inline-block h-2 w-2 rounded-full"
+                              style={{
+                                background: row.has_design
+                                  ? "var(--color-tab-active)"
+                                  : "var(--color-text-muted)",
+                              }}
+                            />
+                            {row.has_design ? "Yes" : "No"}
+                          </button>
+
+                          {/* Remove row */}
+                          {!isReadOnly && (
+                            <button
+                              type="button"
+                              onClick={() => removeProductRow(idx)}
+                              className="flex h-7 w-7 items-center justify-center rounded-[6px] transition-colors"
+                              style={{ color: "var(--color-text-muted)" }}
+                              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-danger)"; }}
+                              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-muted)"; }}
+                              aria-label="Remove product interest"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                          {isReadOnly && <span />}
+                        </div>
                       );
                     })}
                   </div>
+                )}
+
+                {productRows.length === 0 && isReadOnly && (
+                  <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>No product interests recorded.</p>
+                )}
+
+                {/* Add row button — hidden in readOnly */}
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={addProductRow}
+                    disabled={productTypes.length > 0 && productRows.filter((r) => r.product).length >= productTypes.length}
+                    className="flex items-center gap-1.5 rounded-[6px] border border-dashed px-3 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                    style={{
+                      borderColor: "var(--color-border)",
+                      color: "var(--color-text-muted)",
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Product Interest
+                  </button>
                 )}
               </section>
 

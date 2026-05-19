@@ -43,6 +43,8 @@ interface QuoteEmailData {
   finalTotal: number;
   taxRate: number;
   paymentTypes: string[];
+  prepaymentType?: string | null;
+  prepaymentValue?: string | null;
   confirmUrl: string;
   company: CompanySettings;
   isOrder?: boolean;
@@ -87,7 +89,20 @@ const HR = `<tr><td bgcolor="#e5e7eb" style="background-color:#e5e7eb; padding:0
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export function buildQuoteEmail(data: QuoteEmailData): { subject: string; html: string } {
-  const { customerName, title, referenceCode, skus, subtotal, shipping, discountAmount, taxAmount, finalTotal, taxRate, paymentTypes, confirmUrl, company, isOrder = false } = data;
+  const { customerName, title, referenceCode, skus, subtotal, shipping, discountAmount, taxAmount, finalTotal, taxRate, paymentTypes, prepaymentType, prepaymentValue, confirmUrl, company, isOrder = false } = data;
+
+  // Compute partial prepayment breakdown if applicable
+  const prepay = (() => {
+    if (!prepaymentType || prepaymentType === "full") return null;
+    const val = parseFloat(prepaymentValue ?? "0") || 0;
+    if (val === 0 || finalTotal === 0) return null;
+    const dueNow = prepaymentType === "percent"
+      ? Math.round(finalTotal * (val / 100) * 100) / 100
+      : Math.round(Math.min(val, finalTotal) * 100) / 100;
+    const balance = Math.max(Math.round((finalTotal - dueNow) * 100) / 100, 0);
+    const label = prepaymentType === "percent" ? `${val}% deposit` : `${fmt(val)} deposit`;
+    return { dueNow, balance, label };
+  })();
 
   const companyName = company.company_name ?? "BazaarPrinting";
   const subject = isOrder ? `Your Order from ${companyName} — Payment Details` : `Your Quote from ${companyName} is Ready`;
@@ -146,7 +161,8 @@ ${HR}
 <tr><td style="padding:12px 28px 6px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#6b7280;">Line Items</td></tr>
 <tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; border:1px solid #e5e7eb;"><tr bgcolor="#1b2b4b" style="background-color:#1b2b4b;"><th align="left" style="padding:9px 14px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#a0aec0;">Product</th><th align="center" style="padding:9px 14px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#a0aec0; white-space:nowrap;">Qty</th><th align="right" style="padding:9px 14px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#a0aec0; white-space:nowrap;">Unit Price</th><th align="right" style="padding:9px 14px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#a0aec0; white-space:nowrap;">Total</th></tr>${skuRows}</table></td></tr>
 <tr><td style="padding:14px 28px 6px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#6b7280;">Pricing Summary</td></tr>
-<tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${pricingRows}<tr><td colspan="2" bgcolor="#e5e7eb" style="background-color:#e5e7eb; height:1px; padding:0; padding-top:8px; font-size:1px; line-height:1px; mso-line-height-rule:exactly;">&nbsp;</td></tr><tr><td style="padding:8px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; font-weight:bold; color:#111827;">Total Due</td><td style="padding:8px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:20px; line-height:1.4; font-weight:bold; color:#c9a84c; text-align:right;">${fmt(finalTotal)}</td></tr></table></td></tr>
+<tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${pricingRows}<tr><td colspan="2" bgcolor="#e5e7eb" style="background-color:#e5e7eb; height:1px; padding:0; padding-top:8px; font-size:1px; line-height:1px; mso-line-height-rule:exactly;">&nbsp;</td></tr><tr><td style="padding:8px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; font-weight:bold; color:#111827;">Order Total</td><td style="padding:8px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:20px; line-height:1.4; font-weight:bold; color:#c9a84c; text-align:right;">${fmt(finalTotal)}</td></tr></table></td></tr>
+${prepay ? `${HR}<tr><td style="padding:12px 28px 6px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#1b2b4b;">Payment Schedule &mdash; ${esc(prepay.label)}</td></tr><tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#fffbeb" style="background-color:#fffbeb; border-left:3px solid #f59e0b; padding:10px 14px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#92400e; font-weight:bold;">Deposit Due Now</td><td bgcolor="#fffbeb" style="background-color:#fffbeb; border-left:3px solid #f59e0b; padding:10px 14px; font-family:Arial,Helvetica,sans-serif; font-size:18px; line-height:1.4; color:#92400e; font-weight:bold; text-align:right; white-space:nowrap;">${fmt(prepay.dueNow)}</td></tr><tr><td style="padding:8px 14px 2px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#6b7280;">Balance Remaining</td><td style="padding:8px 14px 2px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#374151; text-align:right; white-space:nowrap; font-weight:bold;">${fmt(prepay.balance)}</td></tr><tr><td colspan="2" style="padding:2px 14px 8px; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.4; color:#9ca3af; font-style:italic;">Balance due upon completion / delivery</td></tr></table></td></tr>` : ""}
 ${paymentList ? `<tr><td style="padding:14px 28px 4px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#6b7280;">Accepted Payment Methods</td></tr><tr><td style="padding:0 28px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#374151;">${paymentList}</td></tr>` : ""}
 ${HR}
 <tr><td align="center" style="padding:20px 28px 8px;"><a href="${esc(confirmUrl)}" target="_blank" style="display:inline-block; background-color:#e8c97a; color:#1b2b4b; font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:bold; text-decoration:none; padding:13px 32px; border-radius:6px; letter-spacing:0.3px;">${ctaLabel}</a></td></tr>

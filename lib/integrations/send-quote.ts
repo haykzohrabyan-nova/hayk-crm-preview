@@ -30,6 +30,8 @@ interface TicketForSend {
   discount_type: string | null;
   discount_value: string | null;
   quote_payment_types: string[];
+  prepayment_type: string | null;
+  prepayment_value: string | null;
   tax_exempt: boolean;
   order_source: string | null;
   contact_name: string | null;
@@ -155,6 +157,8 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
     finalTotal,
     taxRate: ticket.quote_tax_rate_percent ?? 0,
     paymentTypes: ticket.quote_payment_types ?? [],
+    prepaymentType: ticket.prepayment_type,
+    prepaymentValue: ticket.prepayment_value,
     confirmUrl: publicUrl(ticket.public_token),
     company,
     isOrder,

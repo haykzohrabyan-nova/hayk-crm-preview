@@ -471,6 +471,9 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
   const [quoteChannel, setQuoteChannel] = useState("Email");
   const [quoteDestination, setQuoteDestination] = useState("");
   const [quoteDestinationError, setQuoteDestinationError] = useState<string | undefined>();
+  const [salesPermitError, setSalesPermitError] = useState<string | undefined>();
+  const [titleError, setTitleError] = useState<string | undefined>();
+  const [dueDateError, setDueDateError] = useState<string | undefined>();
   const [reminderDate, setReminderDate] = useState("");
   const [followUpCycles, setFollowUpCycles] = useState(3);
   const [followUpFreq, setFollowUpFreq] = useState("Every 2 days");
@@ -615,6 +618,25 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
       return;
     }
 
+    // ── Required field validation ────────────────────────────────────────────
+    let hasValidationError = false;
+    if (!title.trim()) {
+      setTitleError("A title is required.");
+      hasValidationError = true;
+    } else {
+      setTitleError(undefined);
+    }
+    if (!dueDate) {
+      setDueDateError("A due date is required.");
+      hasValidationError = true;
+    } else {
+      setDueDateError(undefined);
+    }
+    if (hasValidationError) {
+      setSaving(false);
+      return;
+    }
+
     // ── High-value threshold check for SDR users ─────────────────────────────
     // Only fires when editing a draft (not when moving to sent/order/etc.)
     if (
@@ -652,6 +674,13 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
     ) {
       const label = quoteChannel === "Email" ? "email address" : quoteChannel === "In-person" ? "location" : "phone number";
       setQuoteDestinationError(`Please enter the ${label} to send the quote to.`);
+      setSaving(false);
+      return;
+    }
+
+    // Require sales permit when tax exempt
+    if (taxExempt && !salesPermit.trim()) {
+      setSalesPermitError("Sales Permit # is required when Tax Exempt is selected.");
       setSaving(false);
       return;
     }
@@ -718,7 +747,20 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
   }
 
   function togglePayment(opt: string) {
-    setPaymentTypes([opt]);
+    setPaymentTypes((prev) => {
+      // Offline is mutually exclusive with everything else
+      if (opt === "Offline") {
+        return prev.includes("Offline") ? prev : ["Offline"];
+      }
+      // Selecting any non-Offline option clears Offline
+      const withoutOffline = prev.filter((p) => p !== "Offline");
+      if (withoutOffline.includes(opt)) {
+        // Deselect — keep at least one selected
+        const next = withoutOffline.filter((p) => p !== opt);
+        return next.length > 0 ? next : prev;
+      }
+      return [...withoutOffline, opt];
+    });
   }
 
   function cancelEdit() {
@@ -918,14 +960,16 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
                 {/* ── Info ── */}
                 <InfoSection
                   editing={editing}
-                  title={title} setTitle={setTitle}
+                  title={title} setTitle={(v) => { setTitle(v); setTitleError(undefined); }}
                   priority={priority} setPriority={setPriority}
-                  dueDate={dueDate} setDueDate={setDueDate}
+                  dueDate={dueDate} setDueDate={(v) => { setDueDate(v); setDueDateError(undefined); }}
                   rush={rush} setRush={setRush}
                   specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
                   notes={notes} setNotes={setNotes}
                   ticket={ticket}
                   priorityOpts={quoteLookups.ticket_priority}
+                  titleError={titleError}
+                  dueDateError={dueDateError}
                 />
 
                 {/* ── Divider: Line Items ── */}
@@ -962,7 +1006,8 @@ export default function QuoteDetail({ ticketId }: { ticketId: string }) {
                     discountReason={discountReason} setDiscountReason={setDiscountReason}
                     taxRate={taxRate} setTaxRate={setTaxRate}
                     taxExempt={taxExempt} setTaxExempt={setTaxExempt}
-                    salesPermit={salesPermit} setSalesPermit={setSalesPermit}
+                    salesPermit={salesPermit} setSalesPermit={(v) => { setSalesPermit(v); setSalesPermitError(undefined); }}
+                    salesPermitError={salesPermitError}
                     paymentTypes={paymentTypes} togglePayment={togglePayment}
                     prepayMode={prepayMode} setPrepayMode={setPrepayMode}
                     prepayType={prepayType} setPrepayType={setPrepayType}
@@ -1298,6 +1343,8 @@ interface InfoSectionProps {
   specialRequirements: string; setSpecialRequirements: (v: string) => void;
   notes: string; setNotes: (v: string) => void;
   priorityOpts: LookupOption[];
+  titleError?: string;
+  dueDateError?: string;
 }
 
 function priorityStyle(opt: string, active: boolean): React.CSSProperties {
@@ -1344,106 +1391,131 @@ function InfoSection(p: InfoSectionProps) {
     );
   }
 
+  const PRIORITY_OPTS = (p.priorityOpts.length ? p.priorityOpts.map((o) => o.label) : ["Low", "Normal", "High"]).filter((o) => o.toLowerCase() !== "urgent");
+
   return (
     <div className="space-y-5">
-      {/* Title */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-          Title <span style={{ color: "var(--color-danger)" }}>*</span>
-        </label>
-        <input
-          value={p.title}
-          onChange={(e) => p.setTitle(e.target.value)}
-          className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-          style={fieldStyle}
-        />
-      </div>
-
-      {/* Priority pill group */}
-      <div>
-        <label className="block text-xs font-medium mb-2" style={{ color: "var(--color-text-muted)" }}>Priority</label>
-        <div className="flex gap-2 flex-wrap">
-          {(p.priorityOpts.length ? p.priorityOpts.map((o) => o.label) : ["Low", "Normal", "High"]).filter((o) => o.toLowerCase() !== "urgent").map((opt) => {
-            const active = p.priority === opt;
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => p.setPriority(opt)}
-                className="px-4 py-1.5 rounded-full text-sm font-medium border transition-all"
-                style={priorityStyle(opt, active)}
-              >
-                {opt}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Due Date with quick-pick buttons */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Due Date</label>
-        <div className="flex gap-2 items-center">
-          <DatePicker
-            value={p.dueDate}
-            onChange={p.setDueDate}
-            placeholder="Select due date"
-            className="flex-1"
+      {/* Title + Priority — 50/50 row */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Title <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
+          <input
+            value={p.title}
+            onChange={(e) => p.setTitle(e.target.value)}
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+            style={{ ...fieldStyle, ...(p.titleError ? { border: "1px solid var(--color-danger)" } : {}) }}
           />
-          {[
-            { label: "Today",    days: 0 },
-            { label: "Tomorrow", days: 1 },
-            { label: "+3d",      days: 3 },
-            { label: "+1w",      days: 7 },
-          ].map(({ label, days }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => p.setDueDate(quickDate(days))}
-              className="px-3 py-2 rounded-md text-xs font-medium border whitespace-nowrap transition-opacity hover:opacity-70"
-              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)" }}
-            >
-              {label}
-            </button>
-          ))}
+          {p.titleError && (
+            <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.titleError}</p>
+          )}
         </div>
-      </div>
 
-      {/* Rush Order toggle card */}
-      <div
-        className="flex items-center justify-between rounded-xl px-4 py-3 cursor-pointer select-none"
-        style={{
-          background: p.rush ? "var(--color-warning-bg)" : "var(--color-surface)",
-          border: `1px solid ${p.rush ? "var(--color-warning-border)" : "var(--color-border)"}`,
-          transition: "background 0.15s, border-color 0.15s",
-        }}
-        onClick={() => p.setRush(!p.rush)}
-      >
-        <div className="flex items-center gap-3">
+        {/* Priority — segmented control */}
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Priority <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
           <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: p.rush ? "var(--color-warning)" : "var(--color-bg)", border: "1px solid var(--color-border)" }}
+            className="grid rounded-md overflow-hidden border"
+            style={{ gridTemplateColumns: `repeat(${PRIORITY_OPTS.length}, 1fr)`, borderColor: "var(--color-border)" }}
           >
-            <Zap size={16} style={{ color: p.rush ? "#fff" : "var(--color-text-muted)" }} />
-          </div>
-          <div>
-            <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>Rush Order</p>
-            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>Prioritize this order for faster processing</p>
+            {PRIORITY_OPTS.map((opt, i) => {
+              const active = p.priority === opt;
+              const { borderColor: _bc, ...colorStyle } = priorityStyle(opt, active);
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => p.setPriority(opt)}
+                  className={`py-2 text-sm font-medium transition-all${i < PRIORITY_OPTS.length - 1 ? " border-r" : ""}`}
+                  style={{ ...colorStyle, borderColor: "var(--color-border)" }}
+                >
+                  {opt}
+                </button>
+              );
+            })}
           </div>
         </div>
-        {/* Toggle switch */}
-        <div
-          className="relative w-11 h-6 rounded-full transition-colors shrink-0"
-          style={{ background: p.rush ? "var(--color-warning)" : "var(--color-border)" }}
-        >
+      </div>
+
+      {/* Due Date + Rush Order — 50/50 row */}
+      <div className="grid grid-cols-2 gap-4 items-start">
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Due Date <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
+          <div className="flex gap-2 items-center">
+            <DatePicker
+              value={p.dueDate}
+              onChange={p.setDueDate}
+              placeholder="Select due date"
+              className="flex-1"
+            />
+            {[
+              { label: "Today",    days: 0 },
+              { label: "Tomorrow", days: 1 },
+              { label: "+3d",      days: 3 },
+            ].map(({ label, days }) => {
+              const isActive = p.dueDate === quickDate(days);
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => p.setDueDate(quickDate(days))}
+                  className="px-3 py-2 rounded-md text-xs font-medium border whitespace-nowrap transition-all hover:opacity-80"
+                  style={isActive ? {
+                    background: "var(--color-btn-verify-bg)",
+                    border: "1px solid var(--color-btn-verify-bg)",
+                    color: "var(--color-btn-verify-text)",
+                  } : {
+                    background: "var(--color-surface)",
+                    border: "1px solid var(--color-border)",
+                    color: "var(--color-text-muted)",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {p.dueDateError && (
+            <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.dueDateError}</p>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Rush Order</label>
           <div
-            className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+            className="flex items-center justify-between rounded-md px-4 py-2 cursor-pointer select-none h-[38px]"
             style={{
-              background: "#fff",
-              left: p.rush ? "calc(100% - 22px)" : "2px",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+              background: p.rush ? "var(--color-warning-bg)" : "var(--color-surface)",
+              border: `1px solid ${p.rush ? "var(--color-warning-border)" : "var(--color-border)"}`,
+              transition: "background 0.15s, border-color 0.15s",
             }}
-          />
+            onClick={() => p.setRush(!p.rush)}
+          >
+            <div className="flex items-center gap-2">
+              <Zap size={14} style={{ color: p.rush ? "var(--color-warning)" : "var(--color-text-muted)" }} />
+              <span className="text-sm font-medium" style={{ color: p.rush ? "var(--color-warning)" : "var(--color-text-muted)" }}>
+                {p.rush ? "Rush On" : "Rush Off"}
+              </span>
+            </div>
+            <div
+              className="relative w-11 h-6 rounded-full transition-colors shrink-0"
+              style={{ background: p.rush ? "var(--color-warning)" : "var(--color-border)" }}
+            >
+              <div
+                className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+                style={{
+                  background: "#fff",
+                  left: p.rush ? "calc(100% - 22px)" : "2px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1775,6 +1847,7 @@ interface QuoteSectionProps {
   taxRate: number; setTaxRate: (v: number) => void;
   taxExempt: boolean; setTaxExempt: (v: boolean) => void;
   salesPermit: string; setSalesPermit: (v: string) => void;
+  salesPermitError?: string;
   paymentTypes: string[]; togglePayment: (opt: string) => void;
   prepayMode: "full" | "partial"; setPrepayMode: (v: "full" | "partial") => void;
   prepayType: "percent" | "fixed"; setPrepayType: (v: "percent" | "fixed") => void;
@@ -1816,14 +1889,35 @@ function QuoteSection(p: QuoteSectionProps) {
   const paymentLabels = p.paymentOpts.length ? p.paymentOpts.map((o) => o.label) : PAYMENT_OPTIONS;
   const freqLabels    = p.followUpFreqOpts.length ? p.followUpFreqOpts.map((o) => o.label) : FOLLOW_UP_FREQ;
 
-  const activePricing = p.editing ? p.pricing : {
-    subtotal: p.ticket.quote_subtotal ?? 0,
-    shipping: p.ticket.quote_shipping ?? 0,
-    discount_amount: 0,
-    pre_tax_total: p.ticket.quote_pre_tax_total ?? 0,
-    tax_amount: p.ticket.quote_tax_amount ?? 0,
-    final_total: p.ticket.quote_final_total ?? 0,
-  };
+  const activePricing = p.editing ? p.pricing : (() => {
+    const subtotal    = p.ticket.quote_subtotal    ?? 0;
+    const shipping    = p.ticket.quote_shipping    ?? 0;
+    const pre_tax     = p.ticket.quote_pre_tax_total ?? 0;
+    const tax_amount  = p.ticket.quote_tax_amount  ?? 0;
+    const final_total = p.ticket.quote_final_total ?? 0;
+    // Derive discount from the stored totals so it always reflects what was saved
+    const discount_amount = Math.max(Math.round((subtotal + shipping - pre_tax) * 100) / 100, 0);
+    return { subtotal, shipping, discount_amount, pre_tax_total: pre_tax, tax_amount, final_total };
+  })();
+
+  // Compute partial prepayment breakdown (editing uses live state, view uses saved ticket)
+  const prepayBreakdown = (() => {
+    const isPartial = p.editing
+      ? p.prepayMode === "partial"
+      : (p.ticket.prepayment_type === "percent" || p.ticket.prepayment_type === "fixed");
+    if (!isPartial) return null;
+
+    const pType  = p.editing ? p.prepayType  : (p.ticket.prepayment_type as "percent" | "fixed");
+    const pValue = p.editing ? p.prepayValue : (p.ticket.prepayment_value ?? "0");
+    const total  = activePricing.final_total;
+
+    const dueNow = pType === "percent"
+      ? Math.round(total * (parseFloat(pValue) / 100 || 0) * 100) / 100
+      : Math.round(Math.min(parseFloat(pValue) || 0, total) * 100) / 100;
+    const balance = Math.max(Math.round((total - dueNow) * 100) / 100, 0);
+    const label   = pType === "percent" ? `${pValue}% deposit` : `${formatCurrency(parseFloat(pValue) || 0)} deposit`;
+    return { dueNow, balance, label };
+  })();
 
   return (
     <div className="space-y-6">
@@ -1848,6 +1942,22 @@ function QuoteSection(p: QuoteSectionProps) {
           <span style={{ color: "var(--color-text-primary)" }}>Total</span>
           <span style={{ color: "var(--color-accent)" }}>{formatCurrency(activePricing.final_total)}</span>
         </div>
+        {/* Partial prepayment breakdown */}
+        {prepayBreakdown && (
+          <div className="mt-3 pt-3 border-t space-y-1.5" style={{ borderColor: "var(--color-border)" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+              Partial Payment — {prepayBreakdown.label}
+            </p>
+            <div className="flex justify-between text-sm">
+              <span style={{ color: "var(--color-text-muted)" }}>Due Now</span>
+              <span className="font-semibold" style={{ color: "var(--color-success)" }}>{formatCurrency(prepayBreakdown.dueNow)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span style={{ color: "var(--color-text-muted)" }}>Balance Due Later</span>
+              <span className="font-semibold" style={{ color: "var(--color-warning)" }}>{formatCurrency(prepayBreakdown.balance)}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {p.editing ? (
@@ -1938,8 +2048,13 @@ function QuoteSection(p: QuoteSectionProps) {
                 <div>
                   {p.taxExempt ? (
                     <>
-                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Sales Permit #</label>
-                      <input value={p.salesPermit} onChange={(e) => p.setSalesPermit(e.target.value)} placeholder="Permit number…" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
+                      <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                        Sales Permit # <span style={{ color: "var(--color-danger)" }}>*</span>
+                      </label>
+                      <input value={p.salesPermit} onChange={(e) => p.setSalesPermit(e.target.value)} placeholder="Permit number…" className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={{ ...fieldStyle, ...(p.salesPermitError ? { border: "1px solid var(--color-danger)" } : {}) }} />
+                      {p.salesPermitError && (
+                        <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.salesPermitError}</p>
+                      )}
                     </>
                   ) : <div />}
                 </div>
@@ -1982,22 +2097,27 @@ function QuoteSection(p: QuoteSectionProps) {
             <>
               {/* Payment Methods first */}
               <div className="rounded-lg p-4 space-y-3" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
-                <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Payment Methods</h4>
-                <div
-                  className="grid rounded-md overflow-hidden border"
-                  style={{ gridTemplateColumns: `repeat(${paymentLabels.length}, 1fr)`, borderColor: "var(--color-border)" }}
-                >
-                  {paymentLabels.map((opt, i) => {
+                <div className="flex items-baseline justify-between">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Payment Methods</h4>
+                  <span className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>Select all that apply · Offline is exclusive</span>
+                </div>
+                <div className="flex gap-2">
+                  {paymentLabels.map((opt) => {
                     const active = p.paymentTypes.includes(opt);
+                    const isOffline = opt === "Offline";
                     return (
                       <button
                         key={opt}
                         type="button"
                         onClick={() => p.togglePayment(opt)}
-                        className={`py-2 text-sm font-medium transition-all${i < paymentLabels.length - 1 ? " border-r" : ""}`}
-                        style={{
-                          background: active ? "var(--color-accent)" : "var(--color-surface)",
-                          color: active ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
+                        className="flex-1 py-2 text-sm font-medium rounded-md border transition-all"
+                        style={active ? {
+                          background: isOffline ? "var(--color-neutral-bg)" : "var(--color-accent)",
+                          color: isOffline ? "var(--color-neutral-text)" : "var(--color-btn-primary-text)",
+                          borderColor: isOffline ? "var(--color-neutral-border)" : "var(--color-accent)",
+                        } : {
+                          background: "var(--color-surface)",
+                          color: "var(--color-text-muted)",
                           borderColor: "var(--color-border)",
                         }}
                       >
@@ -2168,24 +2288,29 @@ function QuoteSection(p: QuoteSectionProps) {
               {/* Payment methods — only shown after customer approves */}
               {p.ticket.ticket_status === "approved" && (
                 <div className="rounded-lg p-4 space-y-3" style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" }}>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-success)" }}>
-                    Quote Approved — Select Payment Method
-                  </h4>
-                  <div
-                    className="grid rounded-md overflow-hidden border"
-                    style={{ gridTemplateColumns: `repeat(${paymentLabels.length}, 1fr)`, borderColor: "var(--color-border)" }}
-                  >
-                    {paymentLabels.map((opt, i) => {
+                  <div className="flex items-baseline justify-between">
+                    <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-success)" }}>
+                      Quote Approved — Select Payment Method
+                    </h4>
+                    <span className="text-[10px]" style={{ color: "var(--color-success)" }}>Select all that apply · Offline is exclusive</span>
+                  </div>
+                  <div className="flex gap-2">
+                    {paymentLabels.map((opt) => {
                       const active = p.paymentTypes.includes(opt);
+                      const isOffline = opt === "Offline";
                       return (
                         <button
                           key={opt}
                           type="button"
                           onClick={() => p.togglePayment(opt)}
-                          className={`py-2 text-sm font-medium transition-all${i < paymentLabels.length - 1 ? " border-r" : ""}`}
-                          style={{
-                            background: active ? "var(--color-accent)" : "var(--color-surface)",
-                            color: active ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
+                          className="flex-1 py-2 text-sm font-medium rounded-md border transition-all"
+                          style={active ? {
+                            background: isOffline ? "var(--color-neutral-bg)" : "var(--color-accent)",
+                            color: isOffline ? "var(--color-neutral-text)" : "var(--color-btn-primary-text)",
+                            borderColor: isOffline ? "var(--color-neutral-border)" : "var(--color-accent)",
+                          } : {
+                            background: "var(--color-surface)",
+                            color: "var(--color-text-muted)",
                             borderColor: "var(--color-border)",
                           }}
                         >
@@ -2204,11 +2329,21 @@ function QuoteSection(p: QuoteSectionProps) {
           {[
             ["Order Flow", p.ticket.order_source === "direct" ? "Direct order" : "Quote first"],
             ["Shipping", p.ticket.quote_shipping != null ? formatCurrency(p.ticket.quote_shipping) : null],
-            ["Discount", p.ticket.discount_type ? `${p.ticket.discount_value}${p.ticket.discount_type === "percent" ? "%" : " fixed"}` : null],
+            ["Discount", p.ticket.discount_type
+              ? p.ticket.discount_type === "percent"
+                ? `${p.ticket.discount_value}%`
+                : `$${p.ticket.discount_value}`
+              : null],
             ["Tax Rate", p.ticket.tax_exempt ? "Exempt" : p.ticket.quote_tax_rate_percent != null ? `${p.ticket.quote_tax_rate_percent}%` : null],
             ...(p.orderSource === "direct" || p.ticket.ticket_status === "approved"
               ? [["Payment Methods", p.ticket.quote_payment_types?.join(", ")]] as [string, string | null | undefined][]
               : []),
+            ["Prepayment", (() => {
+              if (p.ticket.prepayment_type === "percent") return `Partial — ${p.ticket.prepayment_value}%`;
+              if (p.ticket.prepayment_type === "fixed")   return `Partial — $${p.ticket.prepayment_value}`;
+              if (p.ticket.prepayment_type === "full")    return "Full Payment";
+              return null;
+            })()],
             [p.orderSource === "direct" ? "Send Payment Link Via" : "Send Quote Via", p.ticket.quote_channel],
             ["Destination", p.ticket.quote_destination],
             ...(p.orderSource !== "direct"

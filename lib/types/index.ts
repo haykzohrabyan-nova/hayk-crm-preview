@@ -147,6 +147,7 @@ export interface Lead {
   locked_at: string | null
   interests: Record<string, boolean>
   quantities: Record<string, string>
+  has_design: Record<string, boolean>
   quote_total: number | null
   quote_channel: QuoteChannel | null
   quote_destination: string | null

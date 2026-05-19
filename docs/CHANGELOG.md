@@ -3,6 +3,51 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-19] — New Quote & Quote Detail UI overhaul + prepayment visibility
+
+### Changed
+
+#### New Quote form (`components/new-quote-form.tsx`)
+- **Info tab layout** — Title and Priority now share a 50/50 row; Due Date and Rush Order share a second 50/50 row (previously all stacked full-width)
+- **Priority control** — changed from rounded pill buttons to a segmented control (same pattern as Discount type), keeping per-priority colors (Low=neutral, Normal=navy, High=purple, Urgent=red)
+- **Due Date quick picks** — removed "+1w" button; Today / Tomorrow / +3d remaining; active button highlights navy when its date matches the selected value (calendar or click)
+- **Rush Order** — redesigned from a large card to a compact inline toggle row matching input height
+- **Required fields** — Title and Due Date now block tab advance if empty (red inline errors); Priority asterisk added for clarity
+- **Tab navigation guard** — clicking a future tab triggers current-tab validation instead of jumping freely; past tabs click-back freely and show a green step badge; future tabs dimmed at 50% opacity with `cursor: not-allowed`
+- **Sales Permit required** — when Tax Exempt is toggled on, Sales Permit # becomes required (red asterisk + inline error) before save or advance
+
+#### Quote Detail (`components/quote-detail.tsx`)
+- **Edit mode layout** — Info section redesigned to match the new-quote-form: Title/Priority 50/50 row, Due Date/Rush 50/50 row, same segmented Priority control, same quick picks, compact Rush toggle
+- **Title and Due Date required in edit** — save blocked with inline errors if either is blank
+- **Discount display fix** — read-only Pricing Summary was hardcoding `discount_amount: 0`; now derived as `subtotal + shipping − pre_tax_total` so the Discount row shows the correct amount
+- **Discount field format** — read-only fields now show `10%` (percent) or `$700` (fixed) instead of bare number or "X fixed"
+- **Prepayment in Pricing Summary** — when partial prepayment is saved, the Pricing Summary card shows a "Partial Payment" section below the Total with Due Now (green) and Balance Due Later (amber)
+- **Prepayment in read-only fields** — new "Prepayment" field shows `Partial — 25%`, `Partial — $500`, or `Full Payment`
+- **Payment methods multi-select** — Card Payment + Zelle can be selected together simultaneously; Offline is mutually exclusive (selecting it clears others, and vice versa); buttons are now independent toggles with a gap rather than a connected segmented bar; hint text "Select all that apply · Offline is exclusive" added
+
+#### Quote email (`lib/integrations/quote-email-template.ts`, `lib/integrations/send-quote.ts`)
+- **Payment Schedule section** — when partial prepayment is set, a "Payment Schedule — X% deposit" section appears in the email after the pricing total, with amber "Deposit Due Now" and "Balance Remaining" rows
+- `TicketForSend` now carries `prepayment_type` and `prepayment_value`; both passed to `buildQuoteEmail`
+
+#### Public quote page (`app/(public)/q/[token]/page.tsx`)
+- **Direct Order CTA** — changed from active "Confirm & Accept Order" to a disabled "Continue to Payment" button with an amber notice: "Online payment is coming soon — a representative will contact you with payment instructions"
+- **Quote First CTA** — unchanged: "Confirm & Accept Quote" (active)
+- **Direct Order greeting** — updated copy to mention that a rep will be in touch with payment instructions
+
+---
+
+## [2026-05-18] — Product Interests row-based UI (Add Lead + Verify Drawer)
+
+### Added
+- `supabase/migrations/059_add_has_design_to_leads.sql` — new `has_design jsonb NOT NULL DEFAULT '{}'` column on `leads` to store per-product design flag
+
+### Changed
+- `components/leads-page.tsx` — replaced flat toggle-chip Product Interests section with a dynamic row-based UI; each row has a product single-select (excluding already-chosen products), a quantity number input, and a Has Design yes/no toggle; rows can be added with "+ Add Product Interest" and removed individually
+- `components/verify-drawer.tsx` — same row-based Product Interests UI applied to the edit drawer; seeded from existing `lead.interests`, `lead.quantities`, and `lead.has_design`; read-only mode shows rows without edit controls
+- `app/api/leads/manual/route.ts` — accepts and inserts `has_design` payload
+- `app/api/leads/[id]/route.ts` — added `has_design` to `TRACKED_FIELDS` and the current-lead select query used for change detection
+- `lib/types/index.ts` — added `has_design: Record<string, boolean>` to the `Lead` interface
+
 ## [2026-05-18] — Automatic password reset email
 
 ### Changed

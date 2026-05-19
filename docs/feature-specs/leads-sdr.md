@@ -181,7 +181,7 @@ A right-side drawer (slide-in panel) that opens when the SDR clicks **Verify** o
 
 | Tab | Content |
 |-----|---------|
-| Lead Info | Contact fields, source, brand, interests |
+| Lead Info | Contact fields, source, brand, product interests (rows: product + quantity + has design) |
 | Quote | Quote total, channel, destination |
 | History | Vertical timeline from `GET /api/leads/[id]/activities` — lazy-loaded on first open ✅ |
 
@@ -215,8 +215,18 @@ A full-width textarea below the Contact Information grid:
 
 ### Lead Info Tab — Product Interests section
 
-- Checkbox grid with `PRODUCT_INTERESTS` (Labels, Boxes, Flyers, Stickers, etc.)
-- For each checked interest: a quantity text input appears inline
+Dynamic row-based interface. Each row has:
+
+| Column | Input | Notes |
+|--------|-------|-------|
+| Product | Single-select dropdown | Options from active `product_types`; already-chosen products excluded from other rows |
+| Quantity | Number input | Digits only, no negatives |
+| Has Design | Yes / No toggle pill | Whether the customer already has artwork/design |
+| Remove | × button | Removes the row; hidden in read-only mode |
+
+- **"+ Add Product Interest"** button appends a new empty row (disabled when all products are already selected)
+- In **read-only mode** (locked by another user), rows display without edit controls
+- On save, rows are transformed into three JSONB fields: `interests`, `quantities`, `has_design`
 
 **Duplicate banner:** While the SDR types phone or email, `GET /api/customers/lookup` is called with 600ms debounce. If a match is found:
 - Banner appears: "Existing contact found: [Name] — [Company]"
@@ -327,6 +337,7 @@ Two-column grid (matches POC screenshot):
 | **Urgency** | — |
 
 Below the grid (full width):
+- **Product Interests** — row-based UI (see Verify Drawer section above for row structure). Each row: product select + quantity input + Has Design toggle + remove button. "+ Add Product Interest" appends a new row.
 - **Returning Customer (Existing Client)** — checkbox with blue-tinted background row when checked
 - **Verify Lead Comment** — textarea: "Add verification notes before opening Order / Quote..."
 
@@ -335,8 +346,6 @@ Footer:
 - **Cancel**
 
 Required fields (*): Phone, First Name, Source, Industry.
-
-**Note:** Product Interests section is NOT in the add modal — it appears in the Verify Drawer after the lead is created. Keeps the add form fast.
 
 ---
 
@@ -404,7 +413,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Race condition safety net | If SDR clicks Verify on a stale lead, 409 → read-only drawer with locker banner |
 | Manual Add Lead modal | Phone lookup + deduplication banner + customer auto-fill |
 | Verify Drawer (soft lock, lock banner) | Lock acquired on Verify; ownership persists across close/save/validate/hold until Route or Reject |
-| Product Interests — select + quantity rows | Replaced checkbox grid with select picker + quantity inputs |
+| Product Interests — select + quantity + has-design rows | Row-based UI in both Add Lead modal and Verify Drawer; each row has product select, quantity input, and Has Design toggle; present in both Add Lead modal and Verify Drawer |
 | Hold action (with reason, notes, hold-until date) | Full hold sub-form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
 | Reject (terminal) | Reason + notes; read-only after; ownership released |

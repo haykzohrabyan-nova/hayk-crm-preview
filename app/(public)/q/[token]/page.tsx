@@ -290,7 +290,7 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
             <p style={{ margin: 0, fontSize: 15, color: MUTED, lineHeight: 1.6 }}>
               Hi <strong style={{ color: TEXT }}>{customerName(ticket!)}</strong>
               {isOrder
-                ? ", please review your order details below."
+                ? ", here are your order details. A representative will be in touch with payment instructions."
                 : ", please review your quote and confirm when ready to proceed."}
             </p>
           </div>
@@ -471,48 +471,84 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
           {/* CTA — only for "sent" tickets */}
           {isSent && !isCancelled && (
             <div style={{ marginTop: 8 }}>
-              {confirmError && (
-                <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-                  <AlertCircle size={15} style={{ color: "#DC2626", flexShrink: 0 }} />
-                  <span style={{ fontSize: 14, color: "#DC2626" }}>{confirmError}</span>
+              {isOrder ? (
+                /* ── Direct Order: payment not yet connected ── */
+                <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
+                  <button
+                    disabled
+                    style={{
+                      width: "100%",
+                      padding: "16px 24px",
+                      background: "#F3F4F6",
+                      color: "#9CA3AF",
+                      border: "none",
+                      borderRadius: 0,
+                      fontSize: 16,
+                      fontWeight: 600,
+                      cursor: "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <ShieldCheck size={18} />
+                    Continue to Payment
+                  </button>
+                  <div style={{ background: "#FFFBEB", borderTop: `1px solid #FDE68A`, padding: "12px 20px", display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <Clock size={15} style={{ color: "#D97706", flexShrink: 0, marginTop: 1 }} />
+                    <p style={{ margin: 0, fontSize: 13, color: "#92400E", lineHeight: 1.5 }}>
+                      Online payment is coming soon. A representative from <strong>{companyName}</strong> will contact you directly with payment instructions.
+                    </p>
+                  </div>
                 </div>
+              ) : (
+                /* ── Quote First: confirm & accept ── */
+                <>
+                  {confirmError && (
+                    <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+                      <AlertCircle size={15} style={{ color: "#DC2626", flexShrink: 0 }} />
+                      <span style={{ fontSize: 14, color: "#DC2626" }}>{confirmError}</span>
+                    </div>
+                  )}
+                  <button
+                    onClick={handleConfirm}
+                    disabled={confirming}
+                    style={{
+                      width: "100%",
+                      padding: "16px 24px",
+                      background: confirming ? "#C9A84C" : GOLD,
+                      color: NAVY,
+                      border: "none",
+                      borderRadius: 10,
+                      fontSize: 16,
+                      fontWeight: 600,
+                      cursor: confirming ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 10,
+                      transition: "opacity 0.15s",
+                    }}
+                  >
+                    {confirming ? (
+                      <>
+                        <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+                        Confirming…
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 size={18} />
+                        Confirm &amp; Accept Quote
+                      </>
+                    )}
+                  </button>
+                  <p style={{ margin: "12px 0 0", fontSize: 12, color: MUTED, textAlign: "center", lineHeight: 1.5 }}>
+                    By confirming, you agree to proceed with this quote from {companyName}.
+                    A representative will follow up with next steps.
+                  </p>
+                </>
               )}
-              <button
-                onClick={handleConfirm}
-                disabled={confirming}
-                style={{
-                  width: "100%",
-                  padding: "16px 24px",
-                  background: confirming ? "#C9A84C" : GOLD,
-                  color: NAVY,
-                  border: "none",
-                  borderRadius: 10,
-                  fontSize: 16,
-                  fontWeight: 600,
-                  cursor: confirming ? "not-allowed" : "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 10,
-                  transition: "opacity 0.15s",
-                }}
-              >
-                {confirming ? (
-                  <>
-                    <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
-                    Confirming…
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 size={18} />
-                    {isOrder ? "Confirm & Accept Order" : "Confirm & Accept Quote"}
-                  </>
-                )}
-              </button>
-              <p style={{ margin: "12px 0 0", fontSize: 12, color: MUTED, textAlign: "center", lineHeight: 1.5 }}>
-                By confirming, you agree to proceed with this {isOrder ? "order" : "quote"} from {companyName}.
-                A representative will follow up with next steps.
-              </p>
             </div>
           )}
 

@@ -357,6 +357,9 @@ export default function NewQuoteForm() {
       if (!title.trim()) {
         errors.title = "A title is required.";
       }
+      if (!dueDate) {
+        errors.dueDate = "A due date is required.";
+      }
     }
 
     if (tab === "lines") {
@@ -377,6 +380,9 @@ export default function NewQuoteForm() {
       } else if (quoteChannel === "SMS" || quoteChannel === "WhatsApp") {
         const pErr = validatePhone(quoteDestination);
         if (pErr) errors.quoteDestination = `Phone: ${pErr}`;
+      }
+      if (taxExempt && !salesPermit.trim()) {
+        errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
       }
     }
 
@@ -444,6 +450,12 @@ export default function NewQuoteForm() {
         const pErr = validatePhone(quoteDestination);
         if (pErr) { setFieldErrors({ quoteDestination: `Phone: ${pErr}` }); setTab("quote"); return; }
       }
+    }
+
+    if (taxExempt && !salesPermit.trim()) {
+      setFieldErrors({ salesPermit: "Sales Permit # is required when Tax Exempt is selected." });
+      setTab("quote");
+      return;
     }
 
     setSaving(true);
@@ -518,7 +530,20 @@ export default function NewQuoteForm() {
   // ─── Payment toggle ───────────────────────────────────────────────────────
 
   function togglePayment(opt: string) {
-    setPaymentTypes([opt]);
+    setPaymentTypes((prev) => {
+      // Offline is mutually exclusive with everything else
+      if (opt === "Offline") {
+        return prev.includes("Offline") ? prev : ["Offline"];
+      }
+      // Selecting any non-Offline option clears Offline
+      const withoutOffline = prev.filter((p) => p !== "Offline");
+      if (withoutOffline.includes(opt)) {
+        // Deselect — keep at least one selected
+        const next = withoutOffline.filter((p) => p !== opt);
+        return next.length > 0 ? next : prev;
+      }
+      return [...withoutOffline, opt];
+    });
   }
 
   // ─── Render ───────────────────────────────────────────────────────────────
@@ -626,41 +651,79 @@ export default function NewQuoteForm() {
           )}
 
           {/* Tabs */}
-          <div
-            className="flex border-b mb-6"
-            style={{ borderColor: "var(--color-border)" }}
-          >
-            {TABS.filter((t) => !(skipCustomerTab && t.id === "customer")).map((t, i) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className="px-4 py-2.5 text-sm font-medium transition-colors relative"
-                style={{
-                  color: tab === t.id ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
-                  fontWeight: tab === t.id ? 500 : 400,
-                }}
+          {(() => {
+            const visibleTabs = TABS.filter((t) => !(skipCustomerTab && t.id === "customer"));
+            const currentIdx = visibleTabs.findIndex((t) => t.id === tab);
+            return (
+              <div
+                className="flex border-b mb-6"
+                style={{ borderColor: "var(--color-border)" }}
               >
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold"
-                    style={{
-                      background: tab === t.id ? "var(--color-accent)" : "var(--color-neutral-bg)",
-                      color: tab === t.id ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
-                    }}
-                  >
-                    {i + 1}
-                  </span>
-                  {t.label}
-                </span>
-                {tab === t.id && (
-                  <span
-                    className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t"
-                    style={{ background: "var(--color-tab-underline)" }}
-                  />
-                )}
-              </button>
-            ))}
-          </div>
+                {visibleTabs.map((t, i) => {
+                  const isCurrent = i === currentIdx;
+                  const isPast = i < currentIdx;
+                  const isFuture = i > currentIdx;
+
+                  function handleTabClick() {
+                    if (isCurrent) return;
+                    if (isPast) {
+                      // Going back — allow freely, clear errors
+                      setFieldErrors({});
+                      setTab(t.id);
+                    } else {
+                      // Going forward — must pass current tab validation first (sequential only)
+                      validateAndAdvance(visibleTabs[currentIdx + 1].id);
+                    }
+                  }
+
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={handleTabClick}
+                      className="px-4 py-2.5 text-sm font-medium transition-colors relative"
+                      style={{
+                        color: isCurrent
+                          ? "var(--color-tab-active)"
+                          : isFuture
+                          ? "var(--color-text-muted)"
+                          : "var(--color-tab-inactive)",
+                        fontWeight: isCurrent ? 500 : 400,
+                        opacity: isFuture ? 0.5 : 1,
+                        cursor: isFuture ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-semibold"
+                          style={{
+                            background: isCurrent
+                              ? "var(--color-accent)"
+                              : isPast
+                              ? "var(--color-success-bg)"
+                              : "var(--color-neutral-bg)",
+                            color: isCurrent
+                              ? "var(--color-btn-primary-text)"
+                              : isPast
+                              ? "var(--color-success)"
+                              : "var(--color-text-muted)",
+                          }}
+                        >
+                          {i + 1}
+                        </span>
+                        {t.label}
+                      </span>
+                      {isCurrent && (
+                        <span
+                          className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t"
+                          style={{ background: "var(--color-tab-underline)" }}
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
 
           {/* Tab content */}
           <div
@@ -694,12 +757,13 @@ export default function NewQuoteForm() {
               <InfoTab
                 title={title} setTitle={(v) => { setTitle(v); setFieldErrors((e) => ({ ...e, title: "" })); }}
                 priority={priority} setPriority={setPriority}
-                dueDate={dueDate} setDueDate={setDueDate}
+                dueDate={dueDate} setDueDate={(v) => { setDueDate(v); setFieldErrors((e) => ({ ...e, dueDate: "" })); }}
                 rush={rush} setRush={setRush}
                 specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
                 notes={notes} setNotes={setNotes}
                 priorityOpts={quoteLookups.ticket_priority}
                 titleError={fieldErrors.title}
+                dueDateError={fieldErrors.dueDate}
               />
             )}
 
@@ -725,7 +789,8 @@ export default function NewQuoteForm() {
                 discountReason={discountReason} setDiscountReason={setDiscountReason}
                 taxRate={taxRate} setTaxRate={setTaxRate}
                 taxExempt={taxExempt} setTaxExempt={setTaxExempt}
-                salesPermit={salesPermit} setSalesPermit={setSalesPermit}
+                salesPermit={salesPermit} setSalesPermit={(v) => { setSalesPermit(v); setFieldErrors((e) => ({ ...e, salesPermit: "" })); }}
+                salesPermitError={fieldErrors.salesPermit}
                 paymentTypes={paymentTypes} togglePayment={togglePayment}
                 prepayMode={prepayMode} setPrepayMode={setPrepayMode}
                 prepayType={prepayType} setPrepayType={setPrepayType}
@@ -1247,6 +1312,7 @@ interface InfoTabProps {
   notes: string; setNotes: (v: string) => void;
   priorityOpts: LookupOption[];
   titleError?: string;
+  dueDateError?: string;
 }
 
 function InfoTab(p: InfoTabProps) {
@@ -1255,107 +1321,131 @@ function InfoTab(p: InfoTabProps) {
 
   return (
     <div className="space-y-5">
-      {/* Title */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-          Title <span style={{ color: "var(--color-danger)" }}>*</span>
-        </label>
-        <input
-          value={p.title}
-          onChange={(e) => p.setTitle(e.target.value)}
-          placeholder="e.g. 500 Diecut Stickers — ACME Corp"
-          className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-          style={{ ...fieldStyle, ...(p.titleError ? { border: "1px solid var(--color-danger)" } : {}) }}
-        />
-        {p.titleError && (
-          <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.titleError}</p>
-        )}
-      </div>
-
-      {/* Priority pill group */}
-      <div>
-        <label className="block text-xs font-medium mb-2" style={{ color: "var(--color-text-muted)" }}>Priority</label>
-        <div className="flex gap-2 flex-wrap">
-          {PRIORITY_OPTS.map((opt) => {
-            const active = p.priority === opt;
-            return (
-              <button
-                key={opt}
-                type="button"
-                onClick={() => p.setPriority(opt)}
-                className="px-4 py-1.5 rounded-full text-sm font-medium border transition-all"
-                style={priorityStyle(opt, active)}
-              >
-                {opt}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Due Date with quick-pick buttons */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Due Date</label>
-        <div className="flex gap-2 items-center">
-          <DatePicker
-            value={p.dueDate}
-            onChange={p.setDueDate}
-            placeholder="Select due date"
-            className="flex-1"
+      {/* Title + Priority — 50/50 row */}
+      <div className="grid grid-cols-2 gap-4">
+        {/* Title */}
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Title <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
+          <input
+            value={p.title}
+            onChange={(e) => p.setTitle(e.target.value)}
+            placeholder="e.g. 500 Diecut Stickers — ACME Corp"
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+            style={{ ...fieldStyle, ...(p.titleError ? { border: "1px solid var(--color-danger)" } : {}) }}
           />
-          {[
-            { label: "Today",    days: 0 },
-            { label: "Tomorrow", days: 1 },
-            { label: "+3d",      days: 3 },
-            { label: "+1w",      days: 7 },
-          ].map(({ label, days }) => (
-            <button
-              key={label}
-              type="button"
-              onClick={() => p.setDueDate(quickDate(days))}
-              className="px-3 py-2 rounded-md text-xs font-medium border whitespace-nowrap transition-opacity hover:opacity-70"
-              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)" }}
-            >
-              {label}
-            </button>
-          ))}
+          {p.titleError && (
+            <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.titleError}</p>
+          )}
         </div>
-      </div>
 
-      {/* Rush Order toggle card */}
-      <div
-        className="flex items-center justify-between rounded-xl px-4 py-3 cursor-pointer select-none"
-        style={{
-          background: p.rush ? "var(--color-warning-bg)" : "var(--color-surface)",
-          border: `1px solid ${p.rush ? "var(--color-warning-border)" : "var(--color-border)"}`,
-          transition: "background 0.15s, border-color 0.15s",
-        }}
-        onClick={() => p.setRush(!p.rush)}
-      >
-        <div className="flex items-center gap-3">
+        {/* Priority — segmented control */}
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Priority <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
           <div
-            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-            style={{ background: p.rush ? "var(--color-warning)" : "var(--color-bg)", border: "1px solid var(--color-border)" }}
+            className="grid rounded-md overflow-hidden border"
+            style={{ gridTemplateColumns: `repeat(${PRIORITY_OPTS.length}, 1fr)`, borderColor: "var(--color-border)" }}
           >
-            <Zap size={16} style={{ color: p.rush ? "#fff" : "var(--color-text-muted)" }} />
-          </div>
-          <div>
-            <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>Rush Order</p>
-            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>Prioritize this order for faster processing</p>
+            {PRIORITY_OPTS.map((opt, i) => {
+              const active = p.priority === opt;
+              const { borderColor: _bc, ...colorStyle } = priorityStyle(opt, active);
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => p.setPriority(opt)}
+                  className={`py-2 text-sm font-medium transition-all${i < PRIORITY_OPTS.length - 1 ? " border-r" : ""}`}
+                  style={{ ...colorStyle, borderColor: "var(--color-border)" }}
+                >
+                  {opt}
+                </button>
+              );
+            })}
           </div>
         </div>
-        <div
-          className="relative w-11 h-6 rounded-full transition-colors shrink-0"
-          style={{ background: p.rush ? "var(--color-warning)" : "var(--color-border)" }}
-        >
+      </div>
+
+      {/* Due Date + Rush Order — 50/50 row */}
+      <div className="grid grid-cols-2 gap-4 items-start">
+        {/* Due Date with quick-pick buttons */}
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Due Date <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
+          <div className="flex gap-2 items-center">
+            <DatePicker
+              value={p.dueDate}
+              onChange={p.setDueDate}
+              placeholder="Select due date"
+              className="flex-1"
+            />
+            {[
+              { label: "Today",    days: 0 },
+              { label: "Tomorrow", days: 1 },
+              { label: "+3d",      days: 3 },
+            ].map(({ label, days }) => {
+              const isActive = p.dueDate === quickDate(days);
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => p.setDueDate(quickDate(days))}
+                  className="px-3 py-2 rounded-md text-xs font-medium border whitespace-nowrap transition-all hover:opacity-80"
+                  style={isActive ? {
+                    background: "var(--color-btn-verify-bg)",
+                    border: "1px solid var(--color-btn-verify-bg)",
+                    color: "var(--color-btn-verify-text)",
+                  } : {
+                    background: "var(--color-surface)",
+                    border: "1px solid var(--color-border)",
+                    color: "var(--color-text-muted)",
+                  }}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {p.dueDateError && (
+            <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.dueDateError}</p>
+          )}
+        </div>
+
+        {/* Rush Order toggle card */}
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Rush Order</label>
           <div
-            className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+            className="flex items-center justify-between rounded-md px-4 py-2 cursor-pointer select-none h-[38px]"
             style={{
-              background: "#fff",
-              left: p.rush ? "calc(100% - 22px)" : "2px",
-              boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+              background: p.rush ? "var(--color-warning-bg)" : "var(--color-surface)",
+              border: `1px solid ${p.rush ? "var(--color-warning-border)" : "var(--color-border)"}`,
+              transition: "background 0.15s, border-color 0.15s",
             }}
-          />
+            onClick={() => p.setRush(!p.rush)}
+          >
+            <div className="flex items-center gap-2">
+              <Zap size={14} style={{ color: p.rush ? "var(--color-warning)" : "var(--color-text-muted)" }} />
+              <span className="text-sm font-medium" style={{ color: p.rush ? "var(--color-warning)" : "var(--color-text-muted)" }}>
+                {p.rush ? "Rush On" : "Rush Off"}
+              </span>
+            </div>
+            <div
+              className="relative w-11 h-6 rounded-full transition-colors shrink-0"
+              style={{ background: p.rush ? "var(--color-warning)" : "var(--color-border)" }}
+            >
+              <div
+                className="absolute top-0.5 w-5 h-5 rounded-full transition-all"
+                style={{
+                  background: "#fff",
+                  left: p.rush ? "calc(100% - 22px)" : "2px",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.2)",
+                }}
+              />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1731,6 +1821,7 @@ interface QuoteTabProps {
   taxRate: number; setTaxRate: (v: number) => void;
   taxExempt: boolean; setTaxExempt: (v: boolean) => void;
   salesPermit: string; setSalesPermit: (v: string) => void;
+  salesPermitError?: string;
   paymentTypes: string[]; togglePayment: (opt: string) => void;
   prepayMode: "full" | "partial"; setPrepayMode: (v: "full" | "partial") => void;
   prepayType: "percent" | "fixed"; setPrepayType: (v: "percent" | "fixed") => void;
@@ -1927,14 +2018,19 @@ function QuoteTab(p: QuoteTabProps) {
             <div>
               {p.taxExempt ? (
                 <>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Sales Permit #</label>
+                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                    Sales Permit # <span style={{ color: "var(--color-danger)" }}>*</span>
+                  </label>
                   <input
                     value={p.salesPermit}
                     onChange={(e) => p.setSalesPermit(e.target.value)}
                     placeholder="Permit number…"
                     className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-                    style={fieldStyle}
+                    style={{ ...fieldStyle, ...(p.salesPermitError ? { border: "1px solid var(--color-danger)" } : {}) }}
                   />
+                  {p.salesPermitError && (
+                    <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.salesPermitError}</p>
+                  )}
                 </>
               ) : <div />}
             </div>
@@ -1994,25 +2090,30 @@ function QuoteTab(p: QuoteTabProps) {
             className="rounded-lg p-4 space-y-3"
             style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}
           >
-            <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Payment Methods</h4>
+            <div className="flex items-baseline justify-between">
+              <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Payment Methods</h4>
+              <span className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>Select all that apply · Offline is exclusive</span>
+            </div>
             {(() => {
               const opts = p.paymentOpts.length ? p.paymentOpts.map((o) => o.label) : ["Card Payment", "Zelle", "Offline"];
               return (
-                <div
-                  className="grid rounded-md overflow-hidden border"
-                  style={{ gridTemplateColumns: `repeat(${opts.length}, 1fr)`, borderColor: "var(--color-border)" }}
-                >
-                  {opts.map((opt, i) => {
+                <div className="flex gap-2">
+                  {opts.map((opt) => {
                     const active = p.paymentTypes.includes(opt);
+                    const isOffline = opt === "Offline";
                     return (
                       <button
                         key={opt}
                         type="button"
                         onClick={() => p.togglePayment(opt)}
-                        className={`py-2 text-sm font-medium transition-all${i < opts.length - 1 ? " border-r" : ""}`}
-                        style={{
-                          background: active ? "var(--color-accent)" : "var(--color-surface)",
-                          color: active ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
+                        className="flex-1 py-2 text-sm font-medium rounded-md border transition-all"
+                        style={active ? {
+                          background: isOffline ? "var(--color-neutral-bg)" : "var(--color-accent)",
+                          color: isOffline ? "var(--color-neutral-text)" : "var(--color-btn-primary-text)",
+                          borderColor: isOffline ? "var(--color-neutral-border)" : "var(--color-accent)",
+                        } : {
+                          background: "var(--color-surface)",
+                          color: "var(--color-text-muted)",
                           borderColor: "var(--color-border)",
                         }}
                       >
@@ -2092,7 +2193,11 @@ function QuoteTab(p: QuoteTabProps) {
                     : Math.round(Math.min(parseFloat(p.prepayValue) || 0, p.pricing.final_total) * 100) / 100;
                   const balance = Math.max(Math.round((p.pricing.final_total - dueNow) * 100) / 100, 0);
                   return (
-                    <div className="flex gap-6 text-xs" style={{ color: "var(--color-text-muted)" }}>
+                    <div
+                      className="flex gap-6 text-xs px-3 py-2 rounded-md"
+                      style={{ background: "var(--color-badge-bg)", color: "var(--color-text-muted)" }}
+                    >
+                      <span>Total: <strong style={{ color: "var(--color-accent)" }}>{formatCurrency(p.pricing.final_total)}</strong></span>
                       <span>Due now: <strong style={{ color: "var(--color-text-primary)" }}>{formatCurrency(dueNow)}</strong></span>
                       <span>Balance: <strong style={{ color: "var(--color-text-primary)" }}>{formatCurrency(balance)}</strong></span>
                     </div>

@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     initial_interest,
     interests,
     quantities,
+    has_design,
     customer_id,
     create_customer,
   } = body;
@@ -97,6 +98,7 @@ export async function POST(request: NextRequest) {
       initial_interest: initial_interest ?? null,
       interests: interests ?? {},
       quantities: quantities ?? {},
+      has_design: has_design ?? {},
     })
     .select("*, customer:customers(*)")
     .single();

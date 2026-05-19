@@ -84,10 +84,16 @@ Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id 
   "sdr_comment": "string | null",
   "interests": "object",
   "quantities": "object",
+  "has_design": "object",
   "customer_id": "uuid | null",
   "create_customer": "boolean"
 }
 ```
+
+**Field shapes:**
+- `interests` — `Record<string, boolean>` keyed by product type name, e.g. `{ "Labels": true, "Boxes": true }`
+- `quantities` — `Record<string, string>` keyed by product type name, e.g. `{ "Labels": "500", "Boxes": "200" }`
+- `has_design` — `Record<string, boolean>` keyed by product type name, e.g. `{ "Labels": true, "Boxes": false }`
 
 **Business rules:**
 - Phone normalized to digits-only before save

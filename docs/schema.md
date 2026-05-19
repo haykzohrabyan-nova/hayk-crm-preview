@@ -251,8 +251,9 @@ Core lead record. A lead starts in the inbox (`is_inbox = true`) and moves to th
 | `sdr_id` | `uuid` FK → `auth.users` | SDR who verified/created the lead |
 | `assigned_sdr_id` | `uuid` FK → `auth.users` | Inbox assignment (future feature; nullable) |
 | `sales_owner_id` | `uuid` FK → `auth.users` | Sales rep who claimed the lead |
-| `interests` | `jsonb` DEFAULT `'{}'` | Map of product interest flags (`{ "Labels": true, "Boxes": false }`) |
-| `quantities` | `jsonb` DEFAULT `'{}'` | Map of product quantity strings |
+| `interests` | `jsonb` DEFAULT `'{}'` | Map of product interest flags (`{ "Labels": true, "Boxes": true }`) |
+| `quantities` | `jsonb` DEFAULT `'{}'` | Map of product quantity strings (`{ "Labels": "500", "Boxes": "200" }`) |
+| `has_design` | `jsonb` DEFAULT `'{}'` | Map of per-product design flags (`{ "Labels": true, "Boxes": false }`) |
 | `quote_total` | `numeric` | Last quoted amount |
 | `quote_channel` | `text` | `'SMS'` \| `'WhatsApp'` \| `'Email'` \| `'In-person'` |
 | `quote_destination` | `text` | **Digits only** for SMS/WhatsApp; email address for Email channel |
@@ -291,6 +292,7 @@ create table public.leads (
   held_by_id        uuid        references auth.users(id),
   interests         jsonb       not null default '{}',
   quantities        jsonb       not null default '{}',
+  has_design        jsonb       not null default '{}',
   quote_total       numeric,
   quote_channel     text,
   quote_destination text,

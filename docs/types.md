@@ -164,6 +164,7 @@ export interface Lead {
   held_by_id: string | null
   interests: Record<string, boolean>
   quantities: Record<string, string>
+  has_design: Record<string, boolean>
   quote_total: number | null
   quote_channel: QuoteChannel | null
   quote_destination: string | null  // digits-only for SMS/WhatsApp; email for Email
@@ -533,6 +534,7 @@ export interface VerifyLeadForm {
   is_returning_customer: boolean
   interests: Record<ProductInterest, boolean>
   quantities: Record<ProductInterest, string>
+  has_design: Record<ProductInterest, boolean>
   sdr_comment: string         // "Verify Lead Comment"
   // Status transitions (used in Verify Drawer, not manual add)
   status: LeadStatus

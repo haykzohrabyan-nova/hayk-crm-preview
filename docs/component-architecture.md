@@ -254,8 +254,14 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │    1+ matches: picker modal → select or create new
         │    Selected: fields lock (read-only except Phone); lock state persists across tab navigation
         │
-        ├── Info Tab:
-        │    Rush toggle — manual only (auto-toggle removed)
+        ├── Info Tab — 50/50 grid layout:
+        │    Row 1: Title (required *) | Priority segmented control (required *)
+        │      Priority options: Low / Normal / High — each button uses per-priority colors
+        │      (same segmented style as Discount type control, no pill buttons)
+        │    Row 2: Due Date (required *) | Rush Order compact toggle
+        │      Due Date quick picks: Today / Tomorrow / +3d (no +1w)
+        │      Active quick pick highlights navy when date matches calendar selection
+        │      Rush toggle: compact inline row (label above, "Rush On/Off" + switch)
         │
         ├── Line Items Tab:
         │    Line Total override per SKU row (overrides qty × unit price)
@@ -265,17 +271,29 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │
         ├── Quote Tab:
         │    Shipping/Tax Rate: local string state (no snap-back to 0 on clear)
-        │    Payment Methods: segmented button group
+        │    Payment Methods: independent toggle buttons (flex gap, not connected bar)
+        │      Card Payment + Zelle: multi-select allowed simultaneously
+        │      Offline: mutually exclusive — clears others when selected
+        │      Hint: "Select all that apply · Offline is exclusive"
+        │    Tax Exempt: when enabled, Sales Permit # becomes required (*)
         │    Prepayment/Deposit: Full Payment | Partial Payment toggle
-        │      → Partial: % / $ type + amount + Due now / Balance summary
+        │      → Partial: % / $ type + amount + Total / Due Now / Balance summary pill
         │    StyledSelect on Send Via and Follow-Up Frequency
         │    First Reminder: custom DatePicker (not native input)
         │    Quote destination auto-fills from locked customer when channel changes
         │
+        ├── Tab navigation guard:
+        │    Future tabs: dimmed (opacity 0.5), cursor not-allowed
+        │      Clicking triggers current-tab validation — blocks advance if errors
+        │      Sequential only — cannot skip tabs
+        │    Past tabs: green step badge, freely clickable (go back, clear errors)
+        │    Current tab: gold underline, normal opacity
+        │
         ├── Validation per tab before advancing:
-        │    Customer: first_name required
-        │    Info: title required
-        │    Line Items: ≥1 fully-filled item
+        │    Customer: name + email or phone required
+        │    Info: title + due date required (priority always has a value)
+        │    Line Items: ≥1 fully-filled item (product + qty + unit price)
+        │    Quote: destination required; Sales Permit # required if Tax Exempt
         │
         ├── High-Value Threshold modal (SDR only):
         │    Fires when advancing to Quote tab with total > HVT
@@ -311,6 +329,26 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    Converted to Order (blue) — if manually converted (order but not client_confirmed)
         │    Payment status badge (Unpaid/Partial/Paid) — orders only
         │
+        ├── Edit mode Info section (matches new-quote-form layout):
+        │    Row 1: Title (required *) | Priority segmented control (required *)
+        │    Row 2: Due Date (required *) | Rush Order compact toggle
+        │    Same quick picks (Today / Tomorrow / +3d), same active highlight behavior
+        │    Title and Due Date validated on save — blocks with inline errors
+        │
+        ├── Pricing Summary (read-only view):
+        │    Discount row: derived as subtotal + shipping − pre_tax_total (not hardcoded 0)
+        │    Discount field: shows `10%` or `$700` format
+        │    Partial prepayment section below Total: Due Now (green) + Balance Due Later (amber)
+        │
+        ├── Payment Methods (edit):
+        │    Independent toggle buttons (not connected segmented bar)
+        │    Card Payment + Zelle: multi-select
+        │    Offline: mutually exclusive
+        │    Read-only field: shows all selected methods joined by ", "
+        │
+        ├── Prepayment (read-only):
+        │    "Prepayment" field: `Partial — 25%` / `Partial — $500` / `Full Payment` / hidden
+        │
         ├── Status actions (read-only mode):
         │    Send Quote (draft) / Resend Quote (sent) / Convert to Order / Cancel Ticket (admin only on locked)
         │    Payment status bar (orders, offline payment only): Unpaid | Partial | Paid pill — saves immediately
@@ -326,6 +364,45 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         ├── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
         └── Also rendered at /orders/[id] (same component, same props)
 ```
+
+---
+
+### `/q/[token]` — Public Quote / Order page
+
+```
+app/(public)/q/[token]/page.tsx  [Client Component "use client"]
+      │
+      ├── Data: GET /api/public/quotes/[token] (no auth)
+      │
+      ├── Sections (always visible):
+      │    Header (navy/gold branding) → Reference card → Line items table → Pricing Summary
+      │    Partial prepayment: Payment Schedule card (amber "Deposit Due Now" + balance row)
+      │    Accepted Payment Methods (green badge)
+      │    Special Requirements (amber banner, if set)
+      │
+      ├── CTA — Quote First (order_source = 'quoted'):
+      │    "Confirm & Accept Quote" button (gold, active)
+      │    POST /api/public/quotes/[token]/confirm → ticket_status: order, reference_code returned
+      │    Replaced by AlreadyConfirmed screen after success
+      │
+      ├── CTA — Direct Order (order_source = 'direct'):
+      │    "Continue to Payment" button (disabled, greyed out)
+      │    Amber notice: "Online payment coming soon — rep will contact with instructions"
+      │    Payment processing not yet connected
+      │
+      ├── Sub-components: LoadingSkeleton | NotFound | AlreadyConfirmed
+      └── Save PDF: links to GET /api/public/quotes/[token]/pdf (no auth)
+```
+
+---
+
+### Quote Email (`lib/integrations/quote-email-template.ts`)
+
+- **`QuoteEmailData`** — accepts `prepaymentType` and `prepaymentValue` (optional)
+- When partial prepayment is set, a **Payment Schedule** section is injected between the pricing total and the payment methods:
+  - Amber-highlighted row: "Deposit Due Now" + amount
+  - Plain row: "Balance Remaining" + amount + italic note
+- Subject / CTA label differ by `isOrder`: "Your Quote is Ready" vs "Your Order — Payment Details"
 
 ---
 
