@@ -108,7 +108,7 @@ Two-column layout:
 ### Role List (Left Panel)
 
 Shows all roles from the `roles` table:
-- System roles (SDR, Sales, Admin) — marked with a lock icon, cannot be deleted or renamed
+- System roles (SDR, Sales, Admin, **Accountant**) — marked with a lock icon, cannot be deleted or renamed
 - Custom roles — created by Admin, can be deleted if no users are assigned to them
 
 **+ New Role** button at the top of the list.
@@ -158,7 +158,7 @@ Pages                           [Role: Manager]
 
 ## `/admin/settings/dropdowns` — Dropdown Options ✅ Built
 
-Admin-managed lists for all `<select>` fields in lead forms and the OrderDrawer. Reads from / writes to the `lookup_values` table. Changes reflect immediately — no code deploy needed.
+Admin-managed lists for all `<select>` fields in lead forms and quote/order forms. Reads from / writes to the `lookup_values` table. Changes reflect immediately — no code deploy needed.
 
 ### Layout
 
@@ -219,7 +219,7 @@ Left sidebar with categories grouped into **Lead Forms** and **Order / Quote**. 
 
 ## `/admin/settings/products` — Products ✅ Built
 
-Admin-managed product catalog for the OrderDrawer. Backed by `product_types`, `materials`, `material_groups`, `product_material_links` tables (migration 041).
+Admin-managed product catalog for quote line items. Backed by `product_types`, `materials`, `material_groups`, `product_material_links` tables (migration 041).
 
 ### Layout
 
@@ -233,13 +233,13 @@ Two-panel: product list on the left, materials for the selected product on the r
 - `GET/POST /api/admin/product-types` · `PATCH/DELETE /api/admin/product-types/[id]`
 - `GET/POST /api/admin/materials` · `PATCH/DELETE /api/admin/materials/[id]`
 - `POST/DELETE /api/admin/product-types/[id]/materials/[matId]`
-- `GET /api/lookups/products` — anon-safe read used by OrderDrawer
+- `GET /api/lookups/products` — anon-safe read used by quote forms and public page
 
 ---
 
 ## `/admin/settings/company` — Company Info ✅ Built
 
-Single-row `company_settings` table. Used for invoice/PDF headers and OrderDrawer defaults.
+Single-row `company_settings` table. Used for invoice/PDF headers and quote form defaults.
 
 **Branding:** Company Name, Logo URL
 
@@ -251,7 +251,7 @@ Single-row `company_settings` table. Used for invoice/PDF headers and OrderDrawe
 
 | Field | Notes |
 |---|---|
-| Default Tax Rate (%) | Pre-filled in OrderDrawer; rep can override per quote |
+| Default Tax Rate (%) | Pre-filled in new quote / quote detail; rep can override per quote |
 | High-Value Threshold ($) | SDR hard-blocked from sending quote if total exceeds this — must route to Sales |
 | Rush Surcharge (%) | Applied when `rush` toggle is on in a ticket |
 

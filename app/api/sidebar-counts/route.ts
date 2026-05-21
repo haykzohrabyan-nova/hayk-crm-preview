@@ -11,10 +11,12 @@ export async function GET() {
 
   const isSdr = roleName === "sdr" || roleName === "admin";
 
-  // Base ticket query scoped by role
+  // Base ticket query scoped by role.
+  // Accountant doesn't own tickets, so skip the created_by_id filter for them.
   const ticketQuery = () => {
     const q = admin.from("job_tickets").select("ticket_kind, ticket_status, created_by_id");
-    return roleName !== "admin" && userId ? q.eq("created_by_id", userId) : q;
+    const skipScope = roleName === "admin" || roleName === "accountant";
+    return !skipScope && userId ? q.eq("created_by_id", userId) : q;
   };
 
   await Promise.all([
@@ -77,12 +79,42 @@ export async function GET() {
       counts["/quotes"] = quoteCount;
     })(),
 
-    // /orders badge — any ticket with status "order" (regardless of kind)
+    // /orders badge — active orders not awaiting payment evidence review (/payments)
     ticketQuery()
       .eq("ticket_status", "order")
+      .or("payment_evidence_url.is.null,payment_paid_at.not.is.null")
       .then(({ data }) => {
         counts["/orders"] = (data ?? []).length;
       }),
+
+    // /payments badge — orders with evidence submitted but not yet confirmed
+    (roleName === "accountant" || roleName === "admin")
+      ? admin
+          .from("job_tickets")
+          .select("id", { count: "exact", head: true })
+          .not("payment_evidence_url", "is", null)
+          .is("payment_paid_at", null)
+          .in("ticket_status", ["order", "in_production"])
+          .then(({ count }) => { counts["/payments"] = count ?? 0; })
+      : Promise.resolve(),
+
+    // /production badge — orders currently in production
+    (roleName === "accountant" || roleName === "admin")
+      ? admin
+          .from("job_tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("ticket_status", "in_production")
+          .then(({ count }) => { counts["/production"] = count ?? 0; })
+      : Promise.resolve(),
+
+    // /completed badge — completed orders (global count for admin/accountant)
+    (roleName === "accountant" || roleName === "admin")
+      ? admin
+          .from("job_tickets")
+          .select("id", { count: "exact", head: true })
+          .eq("ticket_status", "completed")
+          .then(({ count }) => { counts["/completed"] = count ?? 0; })
+      : Promise.resolve(),
   ]);
 
   return NextResponse.json({ counts });

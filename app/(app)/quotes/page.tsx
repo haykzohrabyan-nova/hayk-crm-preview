@@ -1,4 +1,4 @@
-import QuotesPage from "@/components/quotes-page";
+import QuotesPage from "@/components/quotes/quotes-page";
 
 export const metadata = { title: "Quoted Requests — BazaarPrinting CRM" };
 

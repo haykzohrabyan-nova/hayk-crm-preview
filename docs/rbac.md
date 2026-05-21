@@ -27,11 +27,20 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - **Claim** routed quotes (transfers ownership and sets status back to `draft`)
 
 ### Admin
-- Default pages: all pages including `/admin/*`
+- Default pages: all pages including `/admin/*`, `/payments`, `/production`, `/completed`
 - All SDR and Sales capabilities
-- Manage users: create with temp password (optionally sends branded welcome email via Instantly), assign roles, deactivate, reset passwords (automatically sends branded password-reset email via Instantly)
-- Create and configure custom roles (system role permissions are read-only)
-- System settings, audit log
+- Manage users, roles, system settings
+- **Mark Completed** on any in-production order (paid or unpaid)
+- **Resend invoice link** on production/completed detail
+
+### Accountant
+- Default pages: `/dashboard`, `/payments`, `/production`, `/completed`, `/settings`
+- Default home after login: `/payments`
+- Review customer-submitted payment evidence on `/payments`
+- **Confirm payment** via `record_payment` PATCH action
+- View production and completed orders (read-only except mark complete)
+- **Mark Completed** on in-production orders **only when paid in full** (`isTicketPaidInFull()`)
+- Cannot edit quote line items or change ticket status otherwise
 
 ### Custom Roles (Admin-created)
 - Admin gives the role a name and display label
@@ -45,21 +54,29 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 
 ## Route Access Matrix
 
-| Route | SDR | Sales | Admin | Notes |
-|-------|:---:|:-----:|:-----:|-------|
-| `/dashboard` | ✓ | ✓ | ✓ | Role-scoped KPIs |
-| `/leads` | ✓ | ✗ | ✓ | Inbox + SDR pipeline |
-| `/sales` | ✗ | ✓ | ✓ | Sales pipeline |
-| `/crm` | ✓ | ✓ | ✓ | |
-| `/quotes` | ✓ | ✓ | ✓ | Quoted Requests list |
-| `/quotes/new` | ✓ | ✓ | ✓ | Create new quote/order |
-| `/quotes/[id]` | ✓ | ✓ | ✓ | View/edit ticket detail |
-| `/orders` | ✓ | ✓ | ✓ | Orders list |
-| `/settings` | ✓ | ✓ | ✓ | Personal profile only |
-| `/admin` | ✗ | ✗ | ✓ | |
-| `/admin/users` | ✗ | ✗ | ✓ | |
-| `/admin/settings` | ✗ | ✗ | ✓ | |
-| `/admin/audit` | ✗ | ✗ | ✓ | |
+| Route | SDR | Sales | Admin | Accountant | Notes |
+|-------|:---:|:-----:|:-----:|:----------:|-------|
+| `/dashboard` | ✓ | ✓ | ✓ | ✓ | Role-scoped KPIs |
+| `/leads` | ✓ | ✗ | ✓ | ✗ | Inbox + SDR pipeline |
+| `/sales` | ✗ | ✓ | ✓ | ✗ | Sales pipeline |
+| `/crm` | ✓ | ✓ | ✓ | ✗ | |
+| `/quotes` | ✓ | ✓ | ✓ | ✗ | Quoted Requests list |
+| `/quotes/new` | ✓ | ✓ | ✓ | ✗ | Create new quote/order |
+| `/quotes/[id]` | ✓ | ✓ | ✓ | ✗ | View/edit ticket detail |
+| `/orders` | ✓ | ✓ | ✓ | ✗ | Pending-payment orders (excludes evidence-pending, in-production, completed) |
+| `/orders/[id]` | ✓ | ✓ | ✓ | ✗ | |
+| `/payments` | ✗ | ✗ | ✓ | ✓ | Payment review queue |
+| `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment review detail |
+| `/production` | ✗ | ✗ | ✓ | ✓ | In Production list |
+| `/production/[id]` | ✗ | ✗ | ✓ | ✓ | Mark complete if paid (accountant) |
+| `/completed` | ✗ | ✗ | ✓ | ✓ | Completed orders |
+| `/completed/[id]` | ✗ | ✗ | ✓ | ✓ | Resend invoice link |
+| `/q/[token]` | ✓ | ✓ | ✓ | ✓ | Public — staff preview while logged in |
+| `/settings` | ✓ | ✓ | ✓ | ✓ | Personal profile only |
+| `/admin` | ✗ | ✗ | ✓ | ✗ | |
+| `/admin/users` | ✗ | ✗ | ✓ | ✗ | |
+| `/admin/settings` | ✗ | ✗ | ✓ | ✗ | |
+| `/admin/audit` | ✗ | ✗ | ✓ | ✗ | |
 
 Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of all leads in those sections.
 
@@ -86,8 +103,16 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | `POST /api/customers/[id]/merge` | ✓ | ✗ | ✓ |
 | `GET /api/tickets` | ✓ (own) | ✓ (own + all routed) | ✓ (all) |
 | `POST /api/tickets` | ✓ | ✓ | ✓ |
-| `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) |
-| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ |
+| `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | Accountant: evidence review OR in_production/completed |
+| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ | Accountant: payment fields + mark `completed` when paid in full |
+| `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | Accountant + Admin |
+| `PATCH … { resend_invoice: true }` | ✗ | ✗ | ✓ | ✓ | Admin + Accountant (production/completed detail) |
+| `PATCH … { release_production: true }` | ✗ | ✗ | ✓ | Admin |
+| `GET /api/payments/pending` | ✗ | ✗ | ✓ | Accountant + Admin |
+| `GET /api/payments/counts` | ✗ | ✗ | ✓ | Accountant + Admin |
+| `GET /api/production/orders` | ✗ | ✗ | ✓ | Accountant + Admin |
+| `GET /api/completed/orders` | ✗ | ✗ | ✓ | Accountant + Admin |
+| `GET /api/tickets/[id]/evidence` | ✗ | ✗ | ✓ | Accountant + Admin — signed URL for proof file |
 | `GET /api/tickets/counts` | ✓ | ✓ | ✓ |
 | `GET /api/lookups` | ✓ | ✓ | ✓ |
 | `GET /api/lookups/products` | ✓ | ✓ | ✓ |

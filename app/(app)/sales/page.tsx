@@ -1,4 +1,4 @@
-import { SalesPage } from "@/components/sales-page";
+import { SalesPage } from "@/components/sales/sales-page";
 
 export default function SalesPipelinePageRoute() {
   return <SalesPage />;

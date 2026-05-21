@@ -85,7 +85,7 @@ export async function proxy(request: NextRequest) {
     const next = aal?.nextLevel;
 
     // No MFA enrolled → force setup
-    if (current === "aal1" && next === "aal1" && !pathname.startsWith("/setup-2fa")) {
+    if (current === "aal1" && next === "aal1" && !pathname.startsWith("/setup-2fa") && !isPublic) {
       const url = request.nextUrl.clone();
       url.pathname = "/setup-2fa";
       url.search = "";
@@ -95,7 +95,7 @@ export async function proxy(request: NextRequest) {
     }
 
     // MFA enrolled but not verified this session → verify
-    if (current === "aal1" && next === "aal2" && !pathname.startsWith("/verify-2fa")) {
+    if (current === "aal1" && next === "aal2" && !pathname.startsWith("/verify-2fa") && !isPublic) {
       const url = request.nextUrl.clone();
       url.pathname = "/verify-2fa";
       url.search = "";
@@ -111,8 +111,8 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL(dest, request.nextUrl.origin));
     }
 
-    // Only run DB checks for app pages (not static, not auth flow)
-    if (current === "aal2" && !isStatic && !isAuthFlow) {
+    // Only run DB checks for app pages (not static, not auth flow, not public customer links)
+    if (current === "aal2" && !isStatic && !isAuthFlow && !isPublic) {
       const { data: profile } = await supabase
         .from("user_profiles")
         .select("is_active, must_change_password, role_id, roles(name)")
@@ -129,7 +129,7 @@ export async function proxy(request: NextRequest) {
       }
 
       // Must change password → force to /change-password
-      if (profile?.must_change_password && !pathname.startsWith("/change-password")) {
+      if (profile?.must_change_password && !pathname.startsWith("/change-password") && !isPublic) {
         const url = request.nextUrl.clone();
         url.pathname = "/change-password";
         url.search = "";

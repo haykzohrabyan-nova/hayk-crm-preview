@@ -38,6 +38,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
        quote_final_total,
        tax_exempt,
        quote_payment_types,
+       quote_channel,
        prepayment_type,
        prepayment_value,
        order_source,
@@ -52,7 +53,23 @@ export async function GET(_request: NextRequest, { params }: Params) {
        contact_email,
        contact_company,
        created_at,
-       customer:customers(id, first_name, last_name, company, email, phone)`
+       customer:customers(id, first_name, last_name, company, email, phone),
+       ticket_payment_strategy,
+       ticket_deposit_type,
+       ticket_deposit_value,
+       ticket_dep_handling,
+       ticket_partial_channels,
+       ticket_full_channels,
+       ticket_require_client_confirm,
+       ticket_net_terms_label,
+       payment_evidence_url,
+       payment_evidence_submitted_at,
+       payment_evidence_amount,
+       payment_amount_received,
+       payment_paid_at,
+       deposit_amount,
+       deposit_paid_at,
+       balance_paid_at`
     )
     .eq("public_token", token)
     .single();
@@ -64,7 +81,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   // Fetch company settings for display (name, logo, address)
   const { data: company } = await admin
     .from("company_settings")
-    .select("company_name, logo_url, address_line1, address_line2, city, state, zip, phone, email, website")
+    .select("company_name, logo_url, address_line1, address_line2, city, state, zip, phone, email, website, bank_name, bank_account_name, bank_account_number, bank_routing_number, zelle_phone, zelle_email")
     .eq("id", 1)
     .single();
 

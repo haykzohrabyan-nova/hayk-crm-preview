@@ -1,5 +1,7 @@
 # Order Ticket Module — Documentation Index
 
+> **Note:** This folder is **historical research and phase planning** from the shadow-project port (Phases 0–7, completed 2026-05-12). For the **current shipped behaviour** (payments queue, production/completed lifecycle, public portal, accountant role), use `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, and `docs/navigation.md`. References to **OrderDrawer** below describe the original POC — the live app uses dedicated pages (`/quotes/new`, `/quotes/[id]`, etc.) instead.
+
 This folder contains all research, analysis, and planning documents for the **Tickets phase** of BazarCRM (Quotes & Orders). All owner questions resolved on 2026-05-11. Phases 0–7 complete as of 2026-05-12.
 
 ---
@@ -57,7 +59,7 @@ This folder contains all research, analysis, and planning documents for the **Ti
 - **`/quotes/new`** — new quote creation page with lead info card + 3-tab form (Info → Line Items → Quote); Save Draft + Save & Send actions
 - **`/quotes/[id]`** — permanent quote/order detail page; 2-tab view (Info | History); read-only by default, edit toggled; record-locked for non-admins once customer approves; "Convert to Order" + Payment Link Bar for confirmed orders
 - **`/quotes`** — Quoted Requests list with tabs (All / Draft / Sent / Approved), search, count badges, realtime refresh
-- **`/orders`** — Orders list with tabs (All / Active / Won / Cancelled), Rush indicator, due-date warnings, realtime refresh
+- **`/orders`** — Orders list with tabs (All / Pending Payment / Cancelled), Rush indicator, due-date warnings, realtime refresh *(superseded: in-production and completed orders now on `/production` and `/completed`)*
 - **"Create Quote / Order" button** — wired in both `verify-drawer.tsx` and `sales-drawer.tsx`: saves lead silently → navigates to `/quotes/new?lead_id=xxx`
 - **Full lifetime history** — History tab on quote detail shows complete journey from lead creation through quote to order; each entry labelled Lead / Ticket with icons
 - **Sidebar badges** — `/quotes` and `/orders` nav items now show live count badges via `sidebar-counts` API

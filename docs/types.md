@@ -315,6 +315,27 @@ export interface JobTicket {
   quote_approval_last_requested_at: string | null
   public_token: string              // UUID — used for public /q/[token] page (no auth)
   payment_status: 'unpaid' | 'partial' | 'paid'  // overall order payment state
+  // Per-ticket payment config (migration 066)
+  ticket_payment_strategy?: 'partial' | 'full' | 'net' | null
+  ticket_deposit_type?: 'percent' | 'fixed' | null
+  ticket_deposit_value?: number | null
+  ticket_dep_handling?: 'cash' | 'gateway' | null
+  ticket_partial_channels?: string[] | null
+  ticket_full_channels?: string[] | null
+  ticket_require_client_confirm?: boolean | null
+  ticket_net_terms_label?: string | null
+  // Payment recording
+  payment_amount_received?: number | null
+  payment_paid_at?: string | null
+  payment_method_used?: string | null
+  deposit_amount?: number | null
+  deposit_paid_at?: string | null
+  balance_paid_at?: string | null
+  production_released_at?: string | null
+  // Payment evidence (migration 068, 071)
+  payment_evidence_url?: string | null
+  payment_evidence_submitted_at?: string | null
+  payment_evidence_amount?: number | null
   created_at: string
   updated_at: string
   // Joined (optional)
@@ -387,6 +408,12 @@ export type ActivityType =
   | 'ticket_client_confirmed'       // customer confirmed via /q/[token] public page
   | 'ticket_converted'              // rep clicked "Convert to Order". payload: { from, to: 'order', reference_code }
   | 'ticket_payment_reminder_sent'  // payment reminder sent. payload: { channel, destination }
+  | 'ticket_payment_evidence_submitted' // customer uploaded proof on public page. payload: { method, amount, … }
+  | 'ticket_payment_recorded'       // staff/accountant recorded payment. payload: { payment_mode, payment_method, payment_amount }
+  | 'ticket_payment_confirmed_sent' // confirmation email/SMS after accountant confirms evidence
+  | 'ticket_invoice_resent'         // customer portal link resent. payload: { channel, destination }
+  | 'ticket_order_ready_sent'       // pickup notification sent on mark completed
+  | 'ticket_order_ready_failed'     // pickup notification failed. payload: { error }
 
 export type ActivityChannel = 'SMS' | 'WhatsApp' | 'Email' | 'Call' | 'In-person'
 

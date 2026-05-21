@@ -8,13 +8,14 @@ Route: `/dashboard` (all roles)
 
 The Dashboard is the first page users land on after login. It shows role-scoped KPI cards, a quick-action area, and (for Admin) a live team overview.
 
-**Architecture:** One route, three completely separate components. `dashboard-page.tsx` is a thin role-router that detects the logged-in user's role via Supabase and renders the appropriate component. No role-based conditionals inside the individual dashboards — each is self-contained and can be redesigned independently.
+**Architecture:** One route, four role-specific components. `dashboard-page.tsx` is a thin role-router that detects the logged-in user's role via Supabase and renders the appropriate component. No role-based conditionals inside the individual dashboards — each is self-contained and can be redesigned independently.
 
 ```
-components/dashboard-page.tsx   ← role router (detects role, renders one of:)
-  components/sdr-dashboard.tsx  ← SDR-specific dashboard
-  components/sales-dashboard.tsx ← Sales-specific dashboard
-  components/admin-dashboard.tsx ← Admin-specific dashboard
+components/admin/dashboard-page.tsx        ← role router (detects role, renders one of:)
+  components/sales/sdr-dashboard.tsx       ← SDR-specific dashboard
+  components/sales/sales-dashboard.tsx       ← Sales-specific dashboard
+  components/admin/admin-dashboard.tsx       ← Admin-specific dashboard
+  components/admin/accountant-dashboard.tsx ← Accountant-specific dashboard (payments/production KPIs)
 ```
 
 **Data:** `GET /api/dashboard/kpis?period=month`
@@ -25,7 +26,7 @@ The period defaults to "This Month" and is controlled by a compact segmented con
 
 ---
 
-## SDR Dashboard — `components/sdr-dashboard.tsx`
+## SDR Dashboard — `components/sales/sdr-dashboard.tsx`
 
 KPIs are **scoped to the current SDR**. The inbox count is global (how many unclaimed workspace leads are available).
 
@@ -53,7 +54,7 @@ This Week / This Month / This Quarter — updates all KPI cards on change.
 
 ---
 
-## Sales Dashboard — `components/sales-dashboard.tsx`
+## Sales Dashboard — `components/sales/sales-dashboard.tsx`
 
 KPIs are **scoped to the current Sales rep** (`sales_owner_id = userId`). New in Pipeline is global (unclaimed routed leads).
 
@@ -87,7 +88,7 @@ This Week / This Month / This Quarter.
 
 ---
 
-## Admin Dashboard — `components/admin-dashboard.tsx`
+## Admin Dashboard — `components/admin/admin-dashboard.tsx`
 
 KPIs are **global** — all SDRs and Sales reps combined.
 

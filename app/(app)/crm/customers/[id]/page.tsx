@@ -1,4 +1,4 @@
-import { CustomerProfile } from "@/components/customer-profile";
+import { CustomerProfile } from "@/components/crm/customer-profile";
 
 export default async function CustomerProfilePage({
   params,

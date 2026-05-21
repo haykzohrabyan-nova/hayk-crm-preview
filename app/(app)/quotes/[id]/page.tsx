@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import QuoteDetail from "@/components/quote-detail";
+import QuoteDetail from "@/components/quotes/quote-detail";
 
 export const metadata = { title: "Quote — BazaarPrinting CRM" };
 
@@ -9,7 +9,7 @@ export default async function QuoteDetailPage({ params }: Props) {
   const { id } = await params;
   return (
     <Suspense>
-      <QuoteDetail ticketId={id} />
+      <QuoteDetail ticketId={id} context="quote" />
     </Suspense>
   );
 }

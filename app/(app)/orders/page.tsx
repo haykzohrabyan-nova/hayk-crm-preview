@@ -1,4 +1,4 @@
-import OrdersPage from "@/components/orders-page";
+import OrdersPage from "@/components/orders/orders-page";
 
 export const metadata = { title: "Orders — BazaarPrinting CRM" };
 

@@ -8,6 +8,7 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
+import type { InvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 
 // ── Colors ──────────────────────────────────────────────────────────────────
 const NAVY = "#1B2B4B";
@@ -157,6 +158,40 @@ const s = StyleSheet.create({
   totalLabel: { fontSize: 13, fontFamily: "Helvetica-Bold", color: NAVY },
   totalValue: { fontSize: 16, fontFamily: "Helvetica-Bold", color: NAVY },
 
+  paymentDivider: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: BORDER,
+    borderTopStyle: "solid",
+  },
+  paymentHighlight: { fontFamily: "Helvetica-Bold", color: "#92400E" },
+  paymentHighlightValue: { fontFamily: "Helvetica-Bold", color: "#92400E" },
+  paymentPaid: { color: "#16A34A" },
+  paymentReview: { fontFamily: "Helvetica-Bold", color: "#92400E" },
+  paymentReviewValue: { fontFamily: "Helvetica-Bold", color: "#92400E" },
+  paymentReviewBanner: {
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+    borderStyle: "solid",
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 16,
+  },
+  paymentReviewBannerTitle: {
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    color: "#92400E",
+    marginBottom: 4,
+  },
+  paymentReviewBannerText: {
+    fontSize: 9,
+    color: "#92400E",
+    lineHeight: 1.5,
+  },
+  paymentNote: { fontSize: 8, color: MUTED, fontStyle: "italic", marginTop: 2 },
+
   // Details section
   detailsWrap: {
     flexDirection: "row",
@@ -221,6 +256,7 @@ export interface InvoicePDFProps {
   skus: QuoteSku[];
   discountAmt: number | null;
   paymentMethods: string;
+  paymentSummary?: InvoicePaymentSummary | null;
 }
 
 function fmtDate(iso: string) {
@@ -241,6 +277,7 @@ export function InvoicePDF({
   skus,
   discountAmt,
   paymentMethods,
+  paymentSummary,
 }: InvoicePDFProps) {
   const docType = isOrder ? "INVOICE" : "QUOTE";
 
@@ -302,6 +339,15 @@ export function InvoicePDF({
             </View>
           </View>
         </View>
+
+        {paymentSummary?.evidencePending ? (
+          <View style={s.paymentReviewBanner}>
+            <Text style={s.paymentReviewBannerTitle}>PAYMENT UNDER REVIEW — NOT PAID</Text>
+            <Text style={s.paymentReviewBannerText}>
+              Payment proof has been submitted and is awaiting verification. This invoice is not proof of payment until confirmed by {company.name}.
+            </Text>
+          </View>
+        ) : null}
 
         {/* ── Bill To / Prepared By ── */}
         <View style={s.parties}>
@@ -434,6 +480,94 @@ export function InvoicePDF({
                 {ticket.quoteFinalTotal != null ? formatCurrency(ticket.quoteFinalTotal) : "—"}
               </Text>
             </View>
+
+            {paymentSummary?.showSchedule ? (
+              <View style={s.paymentDivider}>
+                {!paymentSummary.depositPaid ? (
+                  <>
+                    <View style={s.priceRow}>
+                      <Text style={[s.priceLabel, s.paymentHighlight]}>Deposit Due Now</Text>
+                      <Text style={[s.priceValue, s.paymentHighlightValue]}>
+                        {formatCurrency(paymentSummary.depositDue)}
+                      </Text>
+                    </View>
+                    <Text style={s.paymentNote}>Required to begin your order</Text>
+                    <View style={[s.priceRow, { marginTop: 6 }]}>
+                      <Text style={s.priceLabel}>Balance Remaining</Text>
+                      <Text style={s.priceValue}>
+                        {formatCurrency(Math.max(0, (ticket.quoteFinalTotal ?? 0) - paymentSummary.depositDue))}
+                      </Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={s.priceRow}>
+                      <Text style={[s.priceLabel, s.paymentPaid]}>Deposit Paid</Text>
+                      <Text style={[s.priceValue, s.paymentPaid]}>
+                        {formatCurrency(paymentSummary.depositPaidAmount)}
+                      </Text>
+                    </View>
+                    <View style={[s.priceRow, { marginTop: 4 }]}>
+                      <Text style={[s.priceLabel, s.paymentHighlight]}>Balance Due</Text>
+                      <Text style={[s.priceValue, s.paymentHighlightValue]}>
+                        {formatCurrency(paymentSummary.balanceDue)}
+                      </Text>
+                    </View>
+                  </>
+                )}
+                <Text style={[s.paymentNote, { marginTop: 4 }]}>
+                  Balance due upon completion / delivery
+                </Text>
+              </View>
+            ) : null}
+
+            {paymentSummary && paymentSummary.strategy === "full" && !paymentSummary.fullyPaid && !paymentSummary.evidencePending && paymentSummary.amountPaid > 0 ? (
+              <View style={s.paymentDivider}>
+                <View style={s.priceRow}>
+                  <Text style={[s.priceLabel, s.paymentPaid]}>Paid</Text>
+                  <Text style={[s.priceValue, s.paymentPaid]}>{formatCurrency(paymentSummary.amountPaid)}</Text>
+                </View>
+                <View style={s.priceRow}>
+                  <Text style={[s.priceLabel, s.paymentHighlight]}>Balance Due</Text>
+                  <Text style={[s.priceValue, s.paymentHighlightValue]}>{formatCurrency(paymentSummary.balanceDue)}</Text>
+                </View>
+              </View>
+            ) : null}
+
+            {paymentSummary?.evidencePending ? (
+              <View style={s.paymentDivider}>
+                <View style={s.priceRow}>
+                  <Text style={[s.priceLabel, s.paymentReview]}>Amount Submitted</Text>
+                  <Text style={[s.priceValue, s.paymentReviewValue]}>
+                    {formatCurrency(paymentSummary.submittedAmount ?? 0)}
+                  </Text>
+                </View>
+                <View style={[s.priceRow, { marginTop: 4 }]}>
+                  <Text style={[s.priceLabel, s.paymentReview]}>Payment Status</Text>
+                  <Text style={[s.priceValue, s.paymentReviewValue]}>Under Review</Text>
+                </View>
+                <View style={[s.priceRow, { marginTop: 4 }]}>
+                  <Text style={[s.priceLabel, s.paymentHighlight]}>
+                    {paymentSummary.strategy === "partial" && !paymentSummary.depositPaid ? "Deposit Due" : "Amount Due"}
+                  </Text>
+                  <Text style={[s.priceValue, s.paymentHighlightValue]}>
+                    {formatCurrency(paymentSummary.balanceDue || ticket.quoteFinalTotal || 0)}
+                  </Text>
+                </View>
+                <Text style={[s.paymentNote, { marginTop: 4, color: "#92400E" }]}>
+                  Not paid until verified by {company.name}
+                </Text>
+              </View>
+            ) : null}
+
+            {paymentSummary?.fullyPaid && !paymentSummary.evidencePending ? (
+              <View style={s.paymentDivider}>
+                <View style={s.priceRow}>
+                  <Text style={[s.priceLabel, s.paymentPaid]}>Paid in Full</Text>
+                  <Text style={[s.priceValue, s.paymentPaid]}>{formatCurrency(paymentSummary.amountPaid)}</Text>
+                </View>
+              </View>
+            ) : null}
           </View>
         </View>
 

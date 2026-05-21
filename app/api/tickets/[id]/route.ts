@@ -1,9 +1,135 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
-import { sendQuoteToCustomer, sendPaymentReminder } from "@/lib/integrations/send-quote";
+import { sendQuoteToCustomer, sendPaymentReminder, sendPaymentConfirmed, sendInvoiceLinkToCustomer, sendOrderReadyToCustomer, resolveTicketOutreach } from "@/lib/integrations/send-quote";
+import { computeCheckout } from "@/lib/utils/compute-checkout";
+import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
+import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
+import type { PaymentConfig } from "@/lib/types";
 
 type Params = { params: Promise<{ id: string }> };
+
+// ─── Cash auto-payment helper (shared with POST /api/tickets) ─────────────────
+// When a ticket is saved with Cash/Offline deposit or full cash-in-person,
+// auto-record the payment and optionally release to production.
+async function maybeAutoRecordCashPayment(
+  admin: ReturnType<typeof createAdminClient>,
+  ticket: {
+    id: string;
+    ticket_payment_strategy: string | null;
+    ticket_dep_handling: string | null;
+    ticket_receipt_id: string | null;
+    ticket_full_channels: string[] | null;
+    ticket_partial_channels: string[] | null;
+    ticket_deposit_type: string | null;
+    ticket_deposit_value: number | null;
+    ticket_require_client_confirm: boolean | null;
+    quote_final_total: number | null;
+    deposit_paid_at: string | null;
+    payment_paid_at: string | null;
+    linked_lead_id: string | null;
+    customer_id: string | null;
+  },
+  now: string,
+): Promise<{ autoReleased: boolean } | null> {
+  const strategy     = ticket.ticket_payment_strategy;
+  const depHandling  = ticket.ticket_dep_handling;
+  const receiptId    = String(ticket.ticket_receipt_id ?? "").trim();
+  const fullChannels = ticket.ticket_full_channels ?? [];
+
+  const isPartialCash = strategy === "partial" && depHandling === "cash";
+  const isCashFull    = strategy === "full" && fullChannels.length === 1 && fullChannels[0] === "cash";
+
+  if (!receiptId) return null;
+  if (!isPartialCash && !isCashFull) return null;
+  if (isPartialCash && ticket.deposit_paid_at) return null;
+  if (isCashFull && ticket.payment_paid_at) return null;
+
+  const total = Number(ticket.quote_final_total ?? 0);
+  if (total <= 0) return null;
+
+  let depositAmt = total;
+  if (isPartialCash) {
+    const depType  = ticket.ticket_deposit_type ?? "percent";
+    const depValue = Number(ticket.ticket_deposit_value ?? 0);
+    depositAmt = depType === "percent"
+      ? Math.round(total * (depValue / 100) * 100) / 100
+      : Math.min(depValue, total);
+  }
+
+  const payPatch: Record<string, unknown> = {
+    updated_at:              now,
+    deposit_amount:          depositAmt,
+    deposit_paid_at:         now,
+    deposit_receipt_id:      receiptId,
+    deposit_method:          "cash",
+    payment_amount_received: depositAmt,
+  };
+
+  if (isPartialCash) {
+    payPatch.payment_status    = "partial";
+    payPatch.prepayment_status = "paid";
+  }
+
+  if (isCashFull) {
+    payPatch.payment_paid_at     = now;
+    payPatch.payment_status      = "paid";
+    payPatch.payment_method_used = "cash";
+    payPatch.balance_paid_at     = now;
+  }
+
+  const cfg = {
+    paymentStrategy:      (strategy as "full" | "partial" | "net"),
+    depositType:          (ticket.ticket_deposit_type as "percent" | "fixed") ?? "percent",
+    depositValue:         Number(ticket.ticket_deposit_value ?? 0),
+    depHandling:          (ticket.ticket_dep_handling as "cash" | "gateway") ?? "gateway",
+    paymentChannels:      fullChannels.length ? fullChannels : (ticket.ticket_partial_channels ?? []),
+    requireClientConfirm: ticket.ticket_require_client_confirm ?? true,
+  } as PaymentConfig;
+
+  const simulated = {
+    quote_final_total:       total,
+    client_confirmed:        true,
+    payment_amount_received: depositAmt,
+    payment_paid_at:         isCashFull ? now : null,
+    deposit_amount:          depositAmt,
+    deposit_paid_at:         now,
+    balance_paid_at:         null,
+    production_released_at:  null,
+    ticket_payment_strategy: (strategy as "full" | "partial" | "net" | null),
+    ticket_deposit_type:     (ticket.ticket_deposit_type as "percent" | "fixed" | null),
+    ticket_deposit_value:    ticket.ticket_deposit_value ?? null,
+  };
+
+  const checkout = computeCheckout(cfg, simulated);
+  let autoReleased = false;
+
+  if (checkout.canReleaseProduction) {
+    const year = new Date().getFullYear();
+    const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
+    if (!seqErr && seq) {
+      payPatch.reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
+    }
+    payPatch.production_released_at = now;
+    payPatch.ticket_status          = "in_production";
+    payPatch.ticket_kind            = "order";
+    autoReleased = true;
+  }
+
+  await admin.from("job_tickets").update(payPatch).eq("id", ticket.id);
+
+  await admin.from("activities").insert({
+    type:        "ticket_payment_evidence_submitted",
+    lead_id:     ticket.linked_lead_id ?? null,
+    customer_id: ticket.customer_id ?? null,
+    ticket_id:   ticket.id,
+    by_user_id:  null,
+    payload: { method: "cash", amount: depositAmt, has_file: false, receipt_id: receiptId, auto_released: autoReleased },
+    created_at: now,
+  }); // fire-and-forget activity log
+
+  return { autoReleased };
+}
 
 // ─── GET /api/tickets/[id] ────────────────────────────────────────────────────
 
@@ -34,11 +160,26 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   // Scope check: reps can only view their own tickets.
   // Exception: sales/admin can view 'routed' tickets (SDR hand-offs awaiting claim).
+  // Exception: accountant can view any order with payment evidence for review.
   const isRoutedForSales =
     ticket.ticket_status === "routed" &&
     (roleName === "sales" || roleName === "admin");
 
-  if (roleName !== "admin" && ticket.created_by_id !== userId && !isRoutedForSales) {
+  const isAccountantEvidenceReview =
+    roleName === "accountant" &&
+    (ticket as Record<string, unknown>).payment_evidence_url != null;
+
+  const isAccountantProductionView =
+    roleName === "accountant" &&
+    (ticket.ticket_status === "in_production" || ticket.ticket_status === "completed");
+
+  if (
+    roleName !== "admin" &&
+    ticket.created_by_id !== userId &&
+    !isRoutedForSales &&
+    !isAccountantEvidenceReview &&
+    !isAccountantProductionView
+  ) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
@@ -73,7 +214,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email")
+    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value")
     .eq("id", id)
     .single();
 
@@ -133,6 +274,53 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ ok: true });
   }
 
+  // ── Resend invoice: customer portal link (works paid / unpaid / in production) ─
+  if (body.resend_invoice === true) {
+    const now = new Date().toISOString();
+
+    const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
+      admin
+        .from("job_tickets")
+        .select("*, customer:customers(first_name, last_name, email, phone)")
+        .eq("id", id)
+        .single(),
+      admin.from("company_settings").select("*").eq("id", 1).single(),
+    ]);
+
+    if (!fullTicket?.public_token) {
+      return NextResponse.json({ error: "This ticket has no public link.", code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+
+    const refCode = fullTicket.reference_code ?? `ORD-${fullTicket.id.slice(0, 8).toUpperCase()}`;
+    const result = await sendInvoiceLinkToCustomer(
+      { ...fullTicket, reference_code: refCode } as typeof fullTicket & { reference_code: string },
+      companyRow ?? {},
+      {
+        channel: body.invoice_channel as string | undefined,
+        destination: body.invoice_destination as string | undefined,
+      },
+    );
+
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error ?? "Failed to send invoice link.", code: "SEND_FAILED" },
+        { status: 502 },
+      );
+    }
+
+    await admin.from("activities").insert({
+      type: "ticket_invoice_resent",
+      lead_id: existing.linked_lead_id ?? null,
+      customer_id: existing.customer_id ?? null,
+      ticket_id: id,
+      by_user_id: userId,
+      payload: { channel: result.channel, destination: body.invoice_destination ?? fullTicket.quote_destination ?? null },
+      created_at: now,
+    });
+
+    return NextResponse.json({ ok: true, channel: result.channel });
+  }
+
   // ── Claim action: sales/admin can claim a routed ticket ────────────────────
   // Body: { ticket_status: "draft", claim_ownership: true }
   if (body.claim_ownership === true) {
@@ -168,20 +356,274 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ ticket: claimed });
   }
 
-  // Normal update — enforce ownership (non-admins can only update their own tickets)
-  if (roleName !== "admin" && existing.created_by_id !== userId) {
+  // Normal update — enforce ownership (non-admins can only update their own tickets).
+  // Accountants are allowed to record payment on any ticket (they have no created tickets).
+  if (roleName !== "admin" && roleName !== "accountant" && existing.created_by_id !== userId) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  // Once a ticket is in 'order' status, non-admins may only update payment_status
+  // Once a ticket is in 'order' status, non-admins may only update payment
+  // fields and the production release flag — everything else is locked.
+  const PAYMENT_ALLOWED_IN_ORDER = new Set([
+    "payment_status",
+    "payment_amount_received",
+    "payment_paid_at",
+    "payment_method_used",
+    "deposit_amount",
+    "deposit_paid_at",
+    "deposit_receipt_id",
+    "deposit_method",
+    "balance_paid_at",
+    "production_released_at",
+    "payment_evidence_url",
+    "payment_evidence_submitted_at",
+  ]);
   if (existing.ticket_status === "order" && roleName !== "admin") {
-    const keys = Object.keys(body).filter((k) => k !== "payment_status");
-    if (keys.length > 0) {
+    const locked = Object.keys(body).filter((k) => !PAYMENT_ALLOWED_IN_ORDER.has(k));
+    if (locked.length > 0) {
       return NextResponse.json(
         { error: "Ticket is locked in order status. Contact an admin.", code: "LOCKED" },
         { status: 403 }
       );
     }
+  }
+
+  // Accountants may mark in-production orders complete only when paid in full.
+  if (roleName === "accountant" && "ticket_status" in body && body.ticket_status !== existing.ticket_status) {
+    if (body.ticket_status === "completed") {
+      if (existing.ticket_status !== "in_production") {
+        return NextResponse.json(
+          { error: "Only in-production orders can be marked completed.", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+      if (!isTicketPaidInFull(existing)) {
+        return NextResponse.json(
+          { error: "Order must be paid in full before marking completed.", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+    } else {
+      return NextResponse.json(
+        { error: "Accountants cannot change ticket status.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+  }
+
+  // ── record_payment action ────────────────────────────────────────────────
+  // Body: { record_payment: true, payment_mode: "deposit"|"balance"|"full",
+  //         payment_method: string, payment_amount: number, receipt_id?: string }
+  if (body.record_payment === true) {
+    const mode   = body.payment_mode   as "deposit" | "balance" | "full" | undefined;
+    const method = body.payment_method as string | undefined;
+    const amount = Number(body.payment_amount);
+
+    if (!mode || !method || !Number.isFinite(amount) || amount <= 0) {
+      return NextResponse.json(
+        { error: "record_payment requires payment_mode, payment_method, and a positive payment_amount.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const now = new Date().toISOString();
+    const receiptId = String(body.receipt_id ?? "").trim() || null;
+
+    // Fetch current ticket amounts + payment config for auto-production gate
+    const { data: cur } = await admin
+      .from("job_tickets")
+      .select(`quote_final_total, payment_amount_received, deposit_amount, deposit_paid_at,
+               balance_paid_at, payment_paid_at, client_confirmed, production_released_at,
+               payment_evidence_url, payment_evidence_submitted_at,
+               public_token, reference_code, quote_channel, quote_destination, title,
+               ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
+               ticket_dep_handling, ticket_full_channels, ticket_partial_channels,
+               ticket_require_client_confirm,
+               customer:customers(first_name, last_name, email, phone)`)
+      .eq("id", id)
+      .single();
+
+    const quoteTotal    = Number(cur?.quote_final_total ?? 0);
+    const alreadyPaid   = Number(cur?.payment_amount_received ?? 0);
+    const newTotal      = Math.min(alreadyPaid + amount, quoteTotal);
+    const fullyPaid     = newTotal >= quoteTotal - 0.01;
+
+    const payPatch: Record<string, unknown> = {
+      updated_at: now,
+      payment_amount_received: newTotal,
+      payment_evidence_amount: null,
+    };
+
+    if (mode === "deposit" && !cur?.deposit_paid_at) {
+      payPatch.deposit_amount    = amount;
+      payPatch.deposit_paid_at   = now;
+      payPatch.deposit_receipt_id = receiptId;
+      payPatch.deposit_method    = method;
+    } else if (mode === "balance" || mode === "full") {
+      payPatch.balance_paid_at   = now;
+      payPatch.payment_method_used = method;
+    }
+
+    if (fullyPaid && !cur?.payment_paid_at) {
+      payPatch.payment_paid_at = now;
+      payPatch.payment_status  = "paid";
+    } else if (mode === "deposit") {
+      payPatch.payment_status = "partial";
+    }
+
+    // ── Auto-production gate (mirrors shadow app maybeAutoStartProduction) ────
+    // Build a minimal PaymentConfig from per-ticket columns, then run
+    // computeCheckout on the simulated post-patch state.
+    if (!payPatch.production_released_at && !cur?.production_released_at) {
+      const cfg = {
+        paymentStrategy:      (cur?.ticket_payment_strategy as "full" | "partial" | "net") ?? "full",
+        depositType:          (cur?.ticket_deposit_type as "percent" | "fixed") ?? "percent",
+        depositValue:         cur?.ticket_deposit_value ?? 0,
+        depHandling:          (cur?.ticket_dep_handling as "cash" | "gateway") ?? "gateway",
+        paymentChannels:      cur?.ticket_full_channels ?? cur?.ticket_partial_channels ?? [],
+        requireClientConfirm: cur?.ticket_require_client_confirm ?? true,
+      } as PaymentConfig;
+      const simulatedTicket = {
+        quote_final_total:       Number(cur?.quote_final_total ?? 0),
+        client_confirmed:        !!(cur?.client_confirmed),
+        payment_amount_received: newTotal,
+        payment_paid_at:         fullyPaid ? now : (cur?.payment_paid_at ?? null),
+        deposit_amount:          mode === "deposit" ? amount : (cur?.deposit_amount ?? null),
+        deposit_paid_at:         mode === "deposit" ? now : (cur?.deposit_paid_at ?? null),
+        balance_paid_at:         (mode === "balance" || mode === "full") ? now : (cur?.balance_paid_at ?? null),
+        production_released_at:  null,
+        ticket_payment_strategy: cur?.ticket_payment_strategy ?? null,
+        ticket_deposit_type:     cur?.ticket_deposit_type ?? null,
+        ticket_deposit_value:    cur?.ticket_deposit_value ?? null,
+      };
+      const checkout = computeCheckout(cfg, simulatedTicket);
+      if (checkout.canReleaseProduction) {
+        payPatch.production_released_at = now;
+        payPatch.ticket_status          = "in_production";
+      }
+    }
+
+    const { data: payUpdated, error: payErr } = await admin
+      .from("job_tickets")
+      .update(payPatch)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (payErr) {
+      return NextResponse.json({ error: payErr.message, code: "DB_ERROR" }, { status: 500 });
+    }
+
+    const hadPendingEvidence = !!cur?.payment_evidence_submitted_at && !!cur?.payment_evidence_url;
+
+    if (payPatch.production_released_at) {
+      await admin.from("activities").insert({
+        type:        "ticket_production_released",
+        lead_id:     existing.linked_lead_id ?? null,
+        customer_id: existing.customer_id ?? null,
+        ticket_id:   id,
+        by_user_id:  userId,
+        payload:     { released_at: now, auto: true, via: "accountant_confirm" },
+        created_at:  now,
+      });
+      await admin.from("activities").insert({
+        type:        "order_ticket_status_changed",
+        lead_id:     existing.linked_lead_id ?? null,
+        customer_id: existing.customer_id ?? null,
+        ticket_id:   id,
+        by_user_id:  userId,
+        payload:     { from: "order", to: "in_production", via: "accountant_confirm", auto: true },
+        created_at:  now,
+      });
+    }
+
+    await admin.from("activities").insert({
+      type: "ticket_payment_recorded",
+      lead_id: existing.linked_lead_id ?? null,
+      customer_id: existing.customer_id ?? null,
+      ticket_id: id,
+      by_user_id: userId,
+      payload: {
+        mode,
+        method,
+        amount,
+        receipt_id: receiptId,
+        new_total: newTotal,
+        fully_paid: fullyPaid,
+        via: hadPendingEvidence ? "accountant_evidence_confirm" : "staff_record",
+      },
+      created_at: now,
+    });
+
+    // Notify customer when accountant confirms a submitted payment proof
+    if (hadPendingEvidence && cur?.reference_code && cur?.public_token) {
+      const { data: companyRow } = await admin.from("company_settings").select("*").eq("id", 1).single();
+      if (companyRow) {
+        sendPaymentConfirmed(
+          {
+            reference_code: cur.reference_code,
+            public_token: cur.public_token,
+            quote_channel: cur.quote_channel,
+            quote_destination: cur.quote_destination,
+            customer: Array.isArray(cur.customer) ? cur.customer[0] : cur.customer,
+          },
+          companyRow,
+          {
+            amountConfirmed: amount,
+            inProduction: !!(payPatch.production_released_at ?? payUpdated?.ticket_status === "in_production"),
+            fullyPaid,
+          },
+        ).then((result) => {
+          if (!result.ok) {
+            console.error("[payment-confirmed] delivery failed:", result.error, { ticketId: id });
+          }
+        });
+
+        await admin.from("activities").insert({
+          type: "ticket_payment_confirmed_sent",
+          lead_id: existing.linked_lead_id ?? null,
+          customer_id: existing.customer_id ?? null,
+          ticket_id: id,
+          by_user_id: userId,
+          payload: {
+            amount,
+            in_production: !!(payPatch.production_released_at ?? payUpdated?.ticket_status === "in_production"),
+            fully_paid: fullyPaid,
+          },
+          created_at: now,
+        });
+      }
+    }
+
+    return NextResponse.json({ ticket: payUpdated });
+  }
+
+  // ── release_production action ─────────────────────────────────────────────
+  // Body: { release_production: true }
+  if (body.release_production === true) {
+    const now = new Date().toISOString();
+    const { data: released, error: relErr } = await admin
+      .from("job_tickets")
+      .update({ production_released_at: now, updated_at: now })
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (relErr) {
+      return NextResponse.json({ error: relErr.message, code: "DB_ERROR" }, { status: 500 });
+    }
+
+    await admin.from("activities").insert({
+      type: "ticket_production_released",
+      lead_id: existing.linked_lead_id ?? null,
+      customer_id: existing.customer_id ?? null,
+      ticket_id: id,
+      by_user_id: userId,
+      payload: { released_at: now },
+      created_at: now,
+    });
+
+    return NextResponse.json({ ticket: released });
   }
 
   const ALLOWED_FIELDS = [
@@ -227,6 +669,35 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "follow_up_completed",
     "quote_approval_last_requested_at",
     "payment_status",
+    // Per-ticket payment configuration (migration 066)
+    "ticket_payment_strategy",
+    "ticket_deposit_type",
+    "ticket_deposit_value",
+    "ticket_dep_handling",
+    "ticket_receipt_id",
+    "ticket_partial_channels",
+    "ticket_full_channels",
+    "ticket_require_client_confirm",
+    "ticket_net_terms_label",
+    "ticket_quote_channel",
+    "ticket_dest_phone",
+    "ticket_dest_email",
+    "ticket_follow_up_enabled",
+    "ticket_follow_up_count",
+    "ticket_follow_up_freq",
+    // Payment recording (migration 066)
+    "payment_amount_received",
+    "payment_paid_at",
+    "payment_method_used",
+    "deposit_amount",
+    "deposit_paid_at",
+    "deposit_receipt_id",
+    "deposit_method",
+    "balance_paid_at",
+    "production_released_at",
+    // Payment evidence (migration 068)
+    "payment_evidence_url",
+    "payment_evidence_submitted_at",
   ];
 
   const now = new Date().toISOString();
@@ -262,6 +733,30 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
   }
+
+  // Auto-record cash payment if applicable (partial cash deposit or full cash in person).
+  // Uses the merged final state of the ticket so edits that add a receipt ID trigger correctly.
+  if (updated) {
+    await maybeAutoRecordCashPayment(admin, updated, now);
+
+    const { data: releaseRow } = await admin
+      .from("job_tickets")
+      .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
+      .eq("id", id)
+      .single();
+    if (releaseRow) {
+      await maybeAutoReleaseProduction(admin, releaseRow as unknown as import("@/lib/utils/maybe-auto-release-production").AutoReleaseTicket, now, {
+        byUserId: userId,
+        via: body.ticket_status === "sent" ? "quote_sent" : "ticket_update",
+      });
+    }
+  }
+
+  const { data: responseTicket } = await admin
+    .from("job_tickets")
+    .select()
+    .eq("id", id)
+    .single();
 
   // Log activity for every meaningful action
   if ("ticket_status" in body) {
@@ -341,5 +836,60 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
   }
 
-  return NextResponse.json({ ticket: updated });
+  // Notify customer when order is marked completed (ready for pickup).
+  let notification: { ok: boolean; channel?: string; error?: string } | undefined;
+  const markedCompleted =
+    body.ticket_status === "completed" &&
+    existing.ticket_status === "in_production" &&
+    (responseTicket ?? updated)?.ticket_status === "completed";
+
+  if (markedCompleted) {
+    try {
+      const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
+        admin
+          .from("job_tickets")
+          .select("*, customer:customers(first_name, last_name, email, phone)")
+          .eq("id", id)
+          .single(),
+        admin.from("company_settings").select("*").eq("id", 1).single(),
+      ]);
+
+      if (fullTicket?.public_token && fullTicket.reference_code && companyRow) {
+        const refCode = fullTicket.reference_code ?? `ORD-${fullTicket.id.slice(0, 8).toUpperCase()}`;
+        const { channel, destination } = resolveTicketOutreach(
+          fullTicket as Parameters<typeof resolveTicketOutreach>[0],
+        );
+        const result = await sendOrderReadyToCustomer(
+          { ...fullTicket, reference_code: refCode } as typeof fullTicket & { reference_code: string },
+          companyRow,
+        );
+        notification = { ok: result.ok, channel: result.channel, error: result.error };
+
+        await admin.from("activities").insert({
+          type: result.ok ? "ticket_order_ready_sent" : "ticket_order_ready_failed",
+          lead_id: existing.linked_lead_id ?? null,
+          customer_id: existing.customer_id ?? null,
+          ticket_id: id,
+          by_user_id: userId,
+          payload: {
+            channel: result.channel,
+            destination,
+            error: result.error ?? null,
+          },
+          created_at: now,
+        });
+      }
+    } catch (err) {
+      console.error("[send-order-ready] unexpected error:", err);
+      notification = {
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      };
+    }
+  }
+
+  return NextResponse.json({
+    ticket: responseTicket ?? updated,
+    ...(notification ? { notification } : {}),
+  });
 }

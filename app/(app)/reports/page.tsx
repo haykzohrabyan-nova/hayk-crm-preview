@@ -1,4 +1,4 @@
-import { ReportsPage } from "@/components/reports-page";
+import { ReportsPage } from "@/components/reports/reports-page";
 
 export const metadata = { title: "Reports — BazaarPrinting CRM" };
 

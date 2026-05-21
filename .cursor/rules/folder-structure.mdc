@@ -1,0 +1,60 @@
+---
+description: Folder layout, component placement, and DRY rules — no duplicated pages or helpers
+alwaysApply: true
+---
+
+# Folder Structure & DRY
+
+## Directory layout (do not add parallel roots)
+
+```
+app/(app)/{feature}/page.tsx     ← thin Server Component (metadata + render client page)
+app/(app)/{feature}/[id]/page.tsx ← thin wrapper only when route differs by context
+app/api/{feature}/.../route.ts   ← Route Handlers only
+components/{feature}/              ← feature UI (leads, sales, quotes, orders, crm, admin, layout, auth, public)
+components/ui/                   ← shadcn + shared primitives (StatusPill, PhoneInput, …)
+components/quotes/shared/        ← quote form building blocks (info-form, line-items-form, types)
+components/quotes/quote-detail/  ← detail sub-sections (overview, history, skeleton)
+lib/utils/                       ← pure helpers (format, ticket-math, compute-checkout, …)
+lib/integrations/                ← email/SMS templates + send-* functions
+lib/pdf/                         ← @react-pdf server components only
+```
+
+**Never** add page components back under `components/` root (e.g. `components/leads-page.tsx`). **Never** create a second detail component for the same ticket — use `QuoteDetail` with a `context` prop.
+
+## Page → component pattern
+
+```tsx
+// app/(app)/orders/page.tsx — Server Component
+import OrdersPage from "@/components/orders/orders-page";
+export default function Page() { return <OrdersPage />; }
+```
+
+List pages live in `components/{feature}/{feature}-page.tsx`. Detail routes that share the same record use one client component:
+
+| Route | Component | `context` |
+|-------|-----------|-----------|
+| `/quotes/[id]` | `QuoteDetail` | `"quote"` |
+| `/orders/[id]` | `QuoteDetail` | `"order"` |
+| `/payments/[id]` | `QuoteDetail` | `"payment"` |
+| `/production/[id]` | `QuoteDetail` | `"production"` |
+| `/completed/[id]` | `QuoteDetail` | `"completed"` |
+
+New lifecycle stages → add a `context` + overview sub-component under `components/quotes/quote-detail/` or `components/orders/`, not a new `*-detail.tsx` page clone.
+
+## DRY rules
+
+1. **Helpers** — import from `lib/utils/*` (`format.ts`, `ticket-math.ts`, `invoice-payment-summary.ts`). Do not copy `relativeTime`, `fmtDate`, `parseLocalDate`, or currency formatters into components.
+2. **Types** — shared shapes in `lib/types/index.ts` or `components/quotes/shared/types.ts`. Do not redefine `Ticket`-like interfaces in list pages when the API type exists.
+3. **API logic** — one Route Handler per endpoint. Business rules (auto-release, evidence queue, paid-in-full) live in `lib/utils/` and are called from handlers — not duplicated in client components.
+4. **UI blocks** — if the same card/section appears on 2+ detail contexts, extract to `ticket-overview-sections.tsx`, `*-detail-overview.tsx`, or `components/ui/`.
+5. **Tab counts** — dedicated `GET /api/{feature}/counts` per tabbed page (see `tab-counts` rule). Do not derive tab badges only from loaded list data.
+
+## Before adding a new file
+
+- Can this extend an existing component via props (`context`, `variant`)?
+- Can this be a function in `lib/utils/` instead of a new component?
+- Is the route a thin wrapper around an existing page component?
+- Does the feature folder already exist (`components/orders/` for order-adjacent UI)?
+
+If yes → extend; do not fork.

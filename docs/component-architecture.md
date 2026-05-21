@@ -17,8 +17,9 @@ Next.js App Router distinguishes between **Server Components** (run on server, n
 
 ```
 app/(app)/leads/page.tsx          ← Server Component (thin — just exports the client page)
-  └── components/leads-page.tsx   ← Client Component ("use client" — tabs, search, state)
-        └── VerifyDrawer           ← Client Component (form state, locking)
+  └── components/leads/leads-page.tsx      ← Client Component ("use client" — tabs, search, state)
+        └── components/leads/verify-drawer.tsx  ← Client Component (form state, locking)
+              └── components/leads/hold-sub-form.tsx
 ```
 
 All data fetching happens client-side via `fetch('/api/...')` after the page mounts. There is no server-side initial data pass on these pages.
@@ -27,16 +28,40 @@ All data fetching happens client-side via `fetch('/api/...')` after the page mou
 
 ## Dashboard Architecture
 
-Three completely separate dashboard components — no role conditionals inside them:
+Three completely separate dashboard components plus an accountant variant — no role conditionals inside the role-specific dashboards:
 
 ```
-components/dashboard-page.tsx    ← role router (thin — detects role, renders correct dashboard)
-  components/sdr-dashboard.tsx   ← SDR: personal KPIs + quick actions
-  components/sales-dashboard.tsx ← Sales: personal KPIs + quick actions
-  components/admin-dashboard.tsx ← Admin: global KPIs + team grid + quick actions
+components/admin/dashboard-page.tsx        ← role router (SDR / Sales / Admin / Accountant)
+  components/sales/sdr-dashboard.tsx
+  components/sales/sales-dashboard.tsx
+  components/admin/admin-dashboard.tsx
+  components/admin/accountant-dashboard.tsx
 ```
 
 Each dashboard is self-contained (its own KPI card components, period selector, helpers) and can be redesigned without touching the others.
+
+---
+
+## Folder layout & DRY (canonical)
+
+See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
+
+| Layer | Location | Rule |
+|-------|----------|------|
+| Routes | `app/(app)/{feature}/` | Thin Server Components only |
+| List pages | `components/{feature}/{feature}-page.tsx` | One client page per route |
+| Ticket detail | `components/quotes/quote-detail.tsx` | Single component; `context` prop for quote/order/payment/production/completed |
+| Detail sections | `components/quotes/quote-detail/*`, `components/orders/*-detail-overview.tsx` | Extract shared blocks here |
+| Shared form blocks | `components/quotes/shared/` | Used by new-quote-form + quote-detail edit mode |
+| Pure helpers | `lib/utils/format.ts`, `ticket-math.ts`, etc. | **Never copy** `relativeTime` / date formatters into components |
+| Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider |
+| Public customer UI | `components/public/` | `/q/[token]` only |
+
+**Anti-patterns to avoid:**
+- ❌ New `components/foo-page.tsx` at repo root (use `components/foo/foo-page.tsx`)
+- ❌ Separate detail page component per lifecycle stage (use `QuoteDetail` + `context`)
+- ❌ Duplicating format/date helpers in list pages
+- ❌ Business logic in client components that belongs in `lib/utils/` + Route Handlers
 
 ---
 
@@ -45,16 +70,16 @@ Each dashboard is self-contained (its own KPI card components, period selector, 
 ```
 /leads (SDR + Admin)                        /sales (Sales + Admin)
 ──────────────────────────────────────      ──────────────────────────────────────
-app/(app)/leads/page.tsx                    app/(app)/sales/page.tsx
-  └── components/leads-page.tsx               └── components/sales-page.tsx
-        │                                            │
-        ├── Tabs: All Leads | On Hold |              ├── Tabs: Pipeline | On Hold |
-        │         Directed to Sales | Rejected       │         Rejected
-        │                                            │
-        ├── Inline table (per tab)                   ├── Inline table (per tab)
-        │     Columns vary per tab                   │     Columns vary per tab
-        │                                            │
-        └── VerifyDrawer (SDR / Admin)               └── SalesDrawer (Sales / Admin)
+app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
+  └── components/leads/leads-page.tsx               └── components/sales/sales-page.tsx
+        │                                                  │
+        ├── Tabs: All Leads | On Hold |                    ├── Tabs: Pipeline | On Hold |
+        │         Directed to Sales | Rejected | Won       │         Rejected
+        │                                                  │
+        ├── Inline table (per tab)                         ├── Inline table (per tab)
+        │     Columns vary per tab                         │     Columns vary per tab
+        │                                                  │
+        └── components/leads/verify-drawer.tsx             └── components/sales/sales-drawer.tsx
 ```
 
 ---
@@ -63,15 +88,23 @@ app/(app)/leads/page.tsx                    app/(app)/sales/page.tsx
 
 | Component | File | Role |
 |-----------|------|------|
-| `VerifyDrawer` | `components/verify-drawer.tsx` | SDR (edit), Admin (full edit with amber override banner on rejected leads) |
-| `SalesDrawer` | `components/sales-drawer.tsx` | Sales (edit), Admin (full edit with amber override banner on Won/Dropped/Rejected leads) |
-| `SdrDashboard` | `components/sdr-dashboard.tsx` | SDR only |
-| `SalesDashboard` | `components/sales-dashboard.tsx` | Sales only |
-| `AdminDashboard` | `components/admin-dashboard.tsx` | Admin only |
-| `QuotesPage` | `components/quotes-page.tsx` | All roles |
-| `OrdersPage` | `components/orders-page.tsx` | All roles |
-| `NewQuoteForm` | `components/new-quote-form.tsx` | Sales + SDR (create), Admin |
-| `QuoteDetail` | `components/quote-detail.tsx` | All roles (reps locked from editing orders) |
+| `VerifyDrawer` | `components/leads/verify-drawer.tsx` | SDR (edit), Admin (full edit with amber override banner on rejected leads) |
+| `HoldSubForm` | `components/leads/hold-sub-form.tsx` | Used inside VerifyDrawer |
+| `SalesDrawer` | `components/sales/sales-drawer.tsx` | Sales (edit), Admin (full edit with amber override banner on Won/Dropped/Rejected leads) |
+| `SdrDashboard` | `components/sales/sdr-dashboard.tsx` | SDR only |
+| `SalesDashboard` | `components/sales/sales-dashboard.tsx` | Sales only |
+| `AdminDashboard` | `components/admin/admin-dashboard.tsx` | Admin only |
+| `DashboardPage` | `components/admin/dashboard-page.tsx` | Role router — all roles |
+| `QuotesPage` | `components/quotes/quotes-page.tsx` | All roles |
+| `OrdersPage` | `components/orders/orders-page.tsx` | All roles |
+| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin |
+| `ProductionPage` | `components/orders/production-page.tsx` | Accountant + Admin |
+| `CompletedPage` | `components/orders/completed-page.tsx` | Accountant + Admin |
+| `AccountantDashboard` | `components/admin/accountant-dashboard.tsx` | Accountant only |
+| `NewQuoteForm` | `components/quotes/new-quote-form.tsx` | Sales + SDR (create), Admin |
+| `QuoteDetail` | `components/quotes/quote-detail.tsx` | All roles; `context` prop selects overview card (quote/order/payment/production/completed) |
+| `QuotePaymentConfig` | `components/quotes/quote-payment-config.tsx` | All roles (payment strategy + deposit + channels) |
+| `OtpInput` | `components/auth/otp-input.tsx` | Auth pages (setup-2fa, verify-2fa) |
 
 ---
 
@@ -117,13 +150,13 @@ PDF rendering uses `@react-pdf/renderer` (server-side only — never imported in
 
 ```
 app/(app)/dashboard/page.tsx  [Server Component — thin wrapper]
-  └── components/dashboard-page.tsx  [Client Component]
+  └── components/admin/dashboard-page.tsx  [Client Component]
         ├── Detects role via Supabase (createBrowserClient)
         ├── Shows skeleton while role loads
         └── Renders one of:
-              sdr-dashboard.tsx    (role === "sdr")
-              sales-dashboard.tsx  (role === "sales")
-              admin-dashboard.tsx  (role === "admin")
+              components/sales/sdr-dashboard.tsx   (role === "sdr")
+              components/sales/sales-dashboard.tsx (role === "sales")
+              components/admin/admin-dashboard.tsx (role === "admin")
 ```
 
 ---
@@ -132,15 +165,16 @@ app/(app)/dashboard/page.tsx  [Server Component — thin wrapper]
 
 ```
 app/(app)/leads/page.tsx  [Server Component — thin wrapper]
-  └── components/leads-page.tsx  [Client Component "use client"]
-        ├── Tabs: All Leads | On Hold | Directed to Sales | Rejected
+  └── components/leads/leads-page.tsx  [Client Component "use client"]
+        ├── Tabs: All Leads | On Hold | Directed to Sales | Rejected | Won
         ├── Tab state: local useState (not synced to URL)
         ├── Per-tab API: GET /api/leads/workspace?status=...&scope=...
         ├── Search: client-side filter on fetched data
         ├── Sort: client-side sort by Created or Urgency (column headers on desktop,
         │         cycling pill button on mobile)
         ├── Owner filter (SDR only): All Leads / My Leads toggle
-        └── VerifyDrawer (opens on Claim / View click)
+        └── components/leads/verify-drawer.tsx (opens on Claim / View click)
+              └── components/leads/hold-sub-form.tsx (hold reason sub-form)
 ```
 
 **Tab → API mapping:**
@@ -167,11 +201,11 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
 
 ```
 app/(app)/sales/page.tsx  [Server Component — thin wrapper]
-  └── components/sales-page.tsx  [Client Component "use client"]
+  └── components/sales/sales-page.tsx  [Client Component "use client"]
         ├── Tabs: Pipeline | On Hold | Rejected
         ├── Tab state: local useState
         ├── Per-tab API: GET /api/leads/workspace?status=...
-        └── SalesDrawer (opens on Claim / Open / View click)
+        └── components/sales/sales-drawer.tsx (opens on Claim / Open / View click)
 ```
 
 **Tab → API mapping:**
@@ -196,7 +230,7 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 
 ```
 app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
-  └── components/quotes-page.tsx  [Client Component "use client"]
+  └── components/quotes/quotes-page.tsx  [Client Component "use client"]
         ├── Tabs: All | Draft | Sent | Won | Routed to Sales* (count badge on all)
         │         * "Routed to Sales" only visible to Sales + Admin roles
         ├── Counts: GET /api/tickets/counts
@@ -216,8 +250,8 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
 
 ```
 app/(app)/orders/page.tsx  [Server Component — thin wrapper]
-  └── components/orders-page.tsx  [Client Component "use client"]
-        ├── Tabs: All | Active | Cancelled (count badge on all)
+  └── components/orders/orders-page.tsx  [Client Component "use client"]
+        ├── Tabs: All | Pending Payment | Cancelled (count badge on all; default tab = Pending Payment)
         ├── Only shows ticket_status = 'order' tickets (draft/sent/approved/routed excluded)
         ├── Counts: GET /api/tickets/counts (filters by ticket_status = 'order')
         ├── Data: GET /api/tickets?kind=quote (filtered to 'order' status client-side)
@@ -227,7 +261,10 @@ app/(app)/orders/page.tsx  [Server Component — thin wrapper]
         └── Row click → /orders/[id]
 
 app/(app)/orders/[id]/page.tsx  [Server Component — thin wrapper]
-  └── components/quote-detail.tsx  [Client Component — same component as /quotes/[id]]
+  └── components/quotes/quote-detail.tsx  [Client Component — same component as /quotes/[id]]
+        ├── components/quotes/quote-detail/customer-info-card.tsx  ← left sidebar
+        ├── components/quotes/quote-detail/history-section.tsx     ← History tab
+        └── components/quotes/quote-detail/ticket-skeleton.tsx     ← loading state
         └── Deposit status bar shown when order has partial prepayment set
 ```
 
@@ -237,7 +274,12 @@ app/(app)/orders/[id]/page.tsx  [Server Component — thin wrapper]
 
 ```
 app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
-  └── components/new-quote-form.tsx  [Client Component "use client"]
+  └── components/quotes/new-quote-form.tsx  [Client Component "use client"]
+        │   Uses shared sub-components:
+        │     components/quotes/shared/info-form.tsx
+        │     components/quotes/shared/line-items-form.tsx
+        │     components/quotes/shared/sku-row.tsx
+        │     components/quotes/shared/quote-form.tsx → components/quotes/quote-payment-config.tsx
         │
         ├── Entry modes (detected from URL params):
         │    ?lead_id=uuid     → LeadCard left sidebar, skip Customer tab, start on Info
@@ -311,16 +353,36 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
 
 ```
 app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
-  └── components/quote-detail.tsx  [Client Component "use client"]
+  └── components/quotes/quote-detail.tsx  [Client Component "use client"]
+        │   Uses shared sub-components:
+        │     components/quotes/shared/info-form.tsx
+        │     components/quotes/shared/line-items-form.tsx
+        │     components/quotes/shared/sku-row.tsx
+        │     components/quotes/shared/quote-form.tsx → components/quotes/quote-payment-config.tsx
+        │     components/quotes/quote-detail/customer-info-card.tsx
+        │     components/quotes/quote-detail/history-section.tsx
+        │     components/quotes/quote-detail/ticket-skeleton.tsx
+        │     components/quotes/quote-detail/ticket-detail-overview.tsx
+        │     components/quotes/quote-detail/ticket-overview-sections.tsx
+        │     components/quotes/quote-detail/quote-stage-overview.tsx
+        │     components/orders/payment-detail-overview.tsx
+        │     components/orders/production-detail-overview.tsx
+        │
+        ├── Context prop routes overview card:
+        │    context="quote" | "order" | "payment" | "production" | "completed"
+        │    Payment context → PaymentDetailOverview (evidence review + Confirm)
+        │    Production context → ProductionDetailOverview (Resend invoice + Mark Completed)
+        │    Quote/order sent stage → QuoteStageOverview (Customer link + Copy)
         │
         ├── Left sidebar:
         │    LinkedLeadCard   — if ticket has linked_lead_id
         │    CustomerInfoCard — if ticket has customer but no lead
         │    (nothing)        — if neither
         │
-        ├── 2-tab view: Info (all content) | History
-        │    Info tab scrolls through: Info → Line Items → Quote & Pricing (divided by labelled separators)
-        ├── View mode default; Edit button toggles edit mode
+        ├── 2-tab view: Overview | History  (draft edit mode may show full form instead)
+        │    Overview tab: context-specific snapshot + read-only line items / pricing / payment config
+        │    History tab: full activity trail (ticket + linked lead when include_linked_lead=true)
+        ├── View mode default; Edit button toggles edit mode (quote stage only when unlocked)
         │    Edit lock: customer-approved tickets (status: order/in_production/completed) are read-only
         │    for non-admins. "Record Locked" banner shown. Admin can still edit/cancel.
         │
@@ -349,49 +411,51 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         ├── Prepayment (read-only):
         │    "Prepayment" field: `Partial — 25%` / `Partial — $500` / `Full Payment` / hidden
         │
-        ├── Status actions (read-only mode):
+        ├── Status actions (read-only mode, quote context):
         │    Send Quote (draft) / Resend Quote (sent) / Convert to Order / Cancel Ticket (admin only on locked)
-        │    Payment status bar (orders, offline payment only): Unpaid | Partial | Paid pill — saves immediately
-        │    Payment Link Bar (confirmed unpaid orders): copyable public URL + channel/destination selector + Send button
-        ├── Order lifecycle bar (admin only):
-        │    ticket_status = 'order'        → "Mark In Production" button (blue)
-        │    ticket_status = 'in_production' → "In Production" indicator + "Mark Completed" button (green)
-        │    ticket_status = 'completed'    → green "Order completed" badge
-        │    Uses handleSave(undefined, { ticket_status }) — no API changes needed
-        ├── Deposit status bar (partial prepayment orders only):
-        │    Shows deposit amount + Pending | Paid toggle + "Will be auto-updated by Stripe"
+        ├── Production actions (production/completed context):
+        │    Resend invoice link — PATCH { resend_invoice: true }
+        │    Mark Completed — admin always; accountant when paid in full
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true
         ├── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
-        └── Also rendered at /orders/[id] (same component, same props)
+        └── Rendered at:
+             /quotes/[id]  (context="quote")
+             /orders/[id]  (context="order")
+             /payments/[id] (context="payment")
+             /production/[id] (context="production")
+             /completed/[id] (context="completed")
 ```
 
 ---
 
-### `/q/[token]` — Public Quote / Order page
+### `/q/[token]` — Public Quote / Order / Payment portal
 
 ```
 app/(public)/q/[token]/page.tsx  [Client Component "use client"]
       │
-      ├── Data: GET /api/public/quotes/[token] (no auth)
+      ├── Data: GET /api/public/quotes/[token] (no auth; staff logged in can also view)
+      │
+      ├── Portal phases (derived from ticket status + payment state):
+      │    confirm → pay → evidence_pending → in_production → order_ready
       │
       ├── Sections (always visible):
-      │    Header (navy/gold branding) → Reference card → Line items table → Pricing Summary
-      │    Partial prepayment: Payment Schedule card (amber "Deposit Due Now" + balance row)
-      │    Accepted Payment Methods (green badge)
-      │    Special Requirements (amber banner, if set)
+      │    Header (navy/gold branding) → Reference card → Line items → Pricing Summary
+      │    Payment Schedule (partial prepayment) → Accepted Payment Methods → Special Requirements
+      │    Clickable addresses → Google Maps (components/public/address-map-link.tsx)
       │
       ├── CTA — Quote First (order_source = 'quoted'):
-      │    "Confirm & Accept Quote" button (gold, active)
-      │    POST /api/public/quotes/[token]/confirm → ticket_status: order, reference_code returned
-      │    Replaced by AlreadyConfirmed screen after success
+      │    "Confirm & Accept Quote" → POST /api/public/quotes/[token]/confirm
       │
-      ├── CTA — Direct Order (order_source = 'direct'):
-      │    "Continue to Payment" button (disabled, greyed out)
-      │    Amber notice: "Online payment coming soon — rep will contact with instructions"
-      │    Payment processing not yet connected
+      ├── Payment stepper (after confirm or direct order):
+      │    Channel panels: Wire / ACH / Zelle / Check / Card / Cash
+      │    POST /api/public/quotes/[token]/submit-payment (multipart evidence upload)
+      │    evidence_pending → amber "under review" (not marked paid until accountant confirms)
       │
-      ├── Sub-components: LoadingSkeleton | NotFound | AlreadyConfirmed
-      └── Save PDF: links to GET /api/public/quotes/[token]/pdf (no auth)
+      ├── Completed state:
+      │    Green "Ready for pickup" banner with shop address + phone
+      │
+      ├── Sub-components: LoadingSkeleton | NotFound | PublicQuoteDocument
+      └── Save PDF: GET /api/public/quotes/[token]/pdf (no auth; hides paid rows while evidence pending)
 ```
 
 ---
@@ -410,7 +474,7 @@ app/(public)/q/[token]/page.tsx  [Client Component "use client"]
 
 ```
 app/(app)/reports/page.tsx  [Server Component — thin wrapper]
-  └── components/reports-page.tsx  [Client Component]
+  └── components/reports/reports-page.tsx  [Client Component "use client"]
         ├── Navy "Coming After Payment Processing" banner
         ├── 7 planned report cards in 2-column grid
         │     Each card: title, description, dependency pill
@@ -427,9 +491,12 @@ app/(app)/reports/page.tsx  [Server Component — thin wrapper]
 
 ```
 app/(app)/crm/page.tsx  [Server Component — thin wrapper]
-  └── components/crm-page.tsx  [Client Component]
+  └── components/crm/crm-page.tsx  [Client Component "use client"]
         ├── Search, sort, filter
-        └── Customer profile expand → CustomerProfile component
+        └── Customer profile expand → components/crm/customer-profile.tsx
+
+app/(app)/crm/customers/[id]/page.tsx  [Server Component — thin wrapper]
+  └── components/crm/customer-profile.tsx  [Client Component]
 ```
 
 ---
@@ -480,13 +547,13 @@ Ownership is only released by a terminal action:
 
 ## Realtime Listeners
 
-Components that listen to `bazaar:leads-changed` (dispatched by `sidebar.tsx` on any leads table change):
+Components that listen to `bazaar:leads-changed` (dispatched by `components/layout/sidebar.tsx` on any leads table change):
 
 | Component | Behavior |
 |-----------|---------|
-| `leads-page.tsx` | Silent re-fetch of current tab's leads; skips if drawer is open |
-| `sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open |
-| `admin-dashboard.tsx` | Silent re-fetch of all KPIs (no skeleton flash) |
+| `components/leads/leads-page.tsx` | Silent re-fetch of current tab's leads; skips if drawer is open |
+| `components/sales/sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open |
+| `components/admin/admin-dashboard.tsx` | Silent re-fetch of all KPIs (no skeleton flash) |
 
 See `docs/realtime-live-updates.md` for full architecture and implementation guide.
 
@@ -520,11 +587,13 @@ Admin accessing `/leads` or `/sales` sees the same pages but:
 
 ## Idle Timer
 
-`components/idle-timer.tsx` — mounted once in `app/(app)/layout.tsx`, runs on every app page for all roles.
+`components/layout/idle-timer.tsx` — mounted once in `app/(app)/layout.tsx`, runs on every app page for all roles.
 
 ```
 app/(app)/layout.tsx
-  └── <IdleTimer />   ← single instance, client component
+  ├── components/layout/sidebar.tsx        ← collapsible nav + realtime subscriptions
+  ├── components/layout/mobile-nav.tsx     ← mobile bottom drawer
+  └── components/layout/idle-timer.tsx     ← single instance, client component
 ```
 
 On mount:

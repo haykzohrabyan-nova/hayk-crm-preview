@@ -96,12 +96,11 @@ A **centered modal** (not a side drawer) for a Sales rep to work a routed lead. 
 
 ### Lead Info Tab
 
-Read-only view of contact fields (set by SDR). Editable Sales fields:
+Read-only view of contact fields (set by SDR). **Sales status** appears as a pill in the modal header (not repeated in the body).
 
-- Sales Status (dropdown: Ongoing / Quote Sent / Won / Dropped)
-- Notes (free-text notes from Sales perspective)
-- Quote Total (Sales can override SDR's quoted amount)
-- Payment Type
+**Sales Notes** section — only editable field. Empty quote-related fields are hidden until a quote exists on the lead (`quote_total > 0`).
+
+Removed from drawer body: Assigned To, Sales Status, and empty Quote Total rows (pipeline table and header already cover status/ownership).
 
 ### Order / Quote Tab
 
@@ -184,7 +183,7 @@ Same pattern as SDR pipeline:
 - Current dropdown: `Ongoing`, `Quote Sent`
 - Spec dropdown: `Ongoing`, `Quote Sent`, `Won`, `Dropped`
 - `Won` is set automatically when an approved order ticket is created. `Dropped` is set when the lead is lost without a formal rejection.
-- **When building:** Add `Won` and `Dropped` to `SALES_STATUS_OPTIONS` in `components/sales-drawer.tsx`; move lead out of Pipeline tab when either is selected.
+- **When building:** Add `Won` and `Dropped` to `SALES_STATUS_OPTIONS` in `components/sales/sales-drawer.tsx`; move lead out of Pipeline tab when either is selected.
 
 **2. Order / Quote tab** ✅ Built (2026-05-12)
 - "Create Quote / Order" button now saves the lead silently and navigates to `/quotes/new?lead_id=<id>`.

@@ -9,6 +9,9 @@
 import twilio from "twilio";
 import { buildQuoteEmail } from "./quote-email-template";
 import { buildPaymentReminderEmail } from "./payment-reminder-template";
+import { buildPaymentConfirmedEmail } from "./payment-confirmed-template";
+import { buildInvoiceLinkEmail } from "./invoice-link-template";
+import { buildOrderReadyEmail, formatPickupAddress } from "./order-ready-template";
 import type { QuoteSku } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -20,6 +23,11 @@ interface TicketForSend {
   public_token: string;
   quote_channel: string | null;
   quote_destination: string | null;
+  ticket_quote_channel?: string | null;
+  ticket_dest_email?: string | null;
+  ticket_dest_phone?: string | null;
+  ticket_status?: string | null;
+  payment_status?: string | null;
   quote_skus: QuoteSku[];
   quote_subtotal: number | null;
   quote_shipping: number | null;
@@ -64,7 +72,10 @@ export interface SendResult {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function customerDisplayName(ticket: TicketForSend): string {
+function customerDisplayName(ticket: {
+  customer?: TicketForSend["customer"];
+  contact_name?: string | null;
+}): string {
   if (ticket.customer?.first_name || ticket.customer?.last_name) {
     return [ticket.customer.first_name, ticket.customer.last_name].filter(Boolean).join(" ");
   }
@@ -74,6 +85,84 @@ function customerDisplayName(ticket: TicketForSend): string {
 function publicUrl(token: string): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   return `${base}/q/${token}`;
+}
+
+/** Resolve delivery channel + destination from per-ticket and legacy quote fields. */
+export function resolveTicketOutreach(
+  ticket: TicketForSend,
+  override?: { channel?: string; destination?: string },
+): { channel: string; destination: string | null } {
+  if (override?.destination) {
+    const ch = (override.channel ?? ticket.ticket_quote_channel ?? ticket.quote_channel ?? "email").toLowerCase();
+    return { channel: ch === "whatsapp" ? "whatsapp" : ch === "sms" || ch === "both" ? "sms" : "email", destination: override.destination };
+  }
+
+  const perTicket = (ticket.ticket_quote_channel ?? "").toLowerCase();
+  const legacy = (ticket.quote_channel ?? "").toLowerCase();
+
+  if (perTicket === "email") {
+    return {
+      channel: "email",
+      destination: ticket.ticket_dest_email ?? ticket.quote_destination ?? ticket.customer?.email ?? null,
+    };
+  }
+  if (perTicket === "sms" || perTicket === "both") {
+    const phone = ticket.ticket_dest_phone ?? ticket.quote_destination ?? ticket.customer?.phone ?? null;
+    const email = ticket.ticket_dest_email ?? ticket.customer?.email ?? null;
+    if (perTicket === "both" && email) return { channel: "email", destination: email };
+    return { channel: "sms", destination: phone };
+  }
+
+  if (legacy === "email") {
+    return { channel: "email", destination: ticket.quote_destination ?? ticket.customer?.email ?? null };
+  }
+  if (legacy === "whatsapp") {
+    return { channel: "whatsapp", destination: ticket.quote_destination ?? ticket.customer?.phone ?? null };
+  }
+  if (legacy === "sms") {
+    return { channel: "sms", destination: ticket.quote_destination ?? ticket.customer?.phone ?? null };
+  }
+
+  return {
+    channel: "email",
+    destination: ticket.quote_destination ?? ticket.ticket_dest_email ?? ticket.customer?.email ?? null,
+  };
+}
+
+function invoiceStatusLine(ticket: TicketForSend): string {
+  const ref = ticket.reference_code ?? "your order";
+  const status = ticket.ticket_status ?? "";
+  const paid = ticket.payment_status === "paid";
+
+  if (status === "completed") {
+    return `Here is your link to view order ${ref} and download your invoice. Thank you for your business!`;
+  }
+  if (status === "in_production") {
+    return paid
+      ? `Your order ${ref} is in production. Use the link below to view status and your invoice anytime.`
+      : `Your order ${ref} is in production. View your invoice, order details, and pay online if you wish using the link below.`;
+  }
+  if (paid) {
+    return `Here is your link to view order ${ref} and access your invoice online.`;
+  }
+  return `Here is your link to view order ${ref}, see your invoice, and complete payment if needed.`;
+}
+
+function buildInvoiceSmsBody(ticket: TicketForSend, company: CompanyForSend): string {
+  const name = customerDisplayName(ticket).split(" ")[0];
+  const companyName = company.company_name ?? "BazaarPrinting";
+  const ref = ticket.reference_code ?? ticket.id.slice(0, 8).toUpperCase();
+  const link = publicUrl(ticket.public_token);
+  const paid = ticket.payment_status === "paid";
+  const inProd = ticket.ticket_status === "in_production";
+
+  if (inProd && paid) {
+    return `Hi ${name}, your order ${ref} from ${companyName} is in production. View your invoice & status: ${link}`;
+  }
+  if (inProd) {
+    return `Hi ${name}, your order ${ref} from ${companyName} is in production. View invoice & pay online: ${link}`;
+  }
+  return `Hi ${name}, here is your order link for ${ref} from ${companyName}. View invoice & details: ${link}`;
 }
 
 function buildSmsBody(ticket: TicketForSend, company: CompanyForSend): string {
@@ -297,6 +386,205 @@ export async function sendPaymentReminder(
       ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ticket.quote_final_total)
       : "";
     const body = `Hi ${firstName}, your order ${ticket.reference_code} from ${companyName} is confirmed. Please pay ${total} here: ${paymentUrl}`;
+    const normalised = toE164(destination);
+    const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
+
+    try {
+      const client = twilio(accountSid, authToken);
+      await client.messages.create({ from, to: toFormatted, body });
+      return { ok: true, channel };
+    } catch (err) {
+      return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  return { ok: true, channel: channel || "in-person" };
+}
+
+// ─── Resend invoice / customer portal link ───────────────────────────────────
+
+/**
+ * Sends the customer their permanent order portal link (/q/{token}).
+ * Used when a customer lost the link — works for paid, unpaid, and in-production orders.
+ */
+export async function sendInvoiceLinkToCustomer(
+  ticket: TicketForSend & { reference_code: string },
+  company: CompanyForSend,
+  override?: { channel?: string; destination?: string },
+): Promise<SendResult> {
+  const { channel, destination } = resolveTicketOutreach(ticket, override);
+  const orderUrl = publicUrl(ticket.public_token);
+  const customerName = customerDisplayName(ticket);
+
+  if (!destination) {
+    return { ok: false, channel, error: "No customer email or phone on file." };
+  }
+
+  if (channel === "email") {
+    const { subject, html } = buildInvoiceLinkEmail({
+      customerName,
+      referenceCode: ticket.reference_code,
+      finalTotal: ticket.quote_final_total ?? 0,
+      orderUrl,
+      statusLine: invoiceStatusLine(ticket),
+      company,
+    });
+    return instantlySend(destination, subject, html);
+  }
+
+  if (channel === "sms" || channel === "whatsapp") {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const whatsappFrom = process.env.TWILIO_WHATSAPP_FROM;
+    if (!accountSid || !authToken) return { ok: false, channel, error: "Twilio credentials not configured." };
+
+    const from = channel === "whatsapp" ? whatsappFrom : phoneNumber;
+    if (!from) {
+      return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
+    }
+
+    const body = buildInvoiceSmsBody(ticket, company);
+    const normalised = toE164(destination);
+    const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
+
+    try {
+      const client = twilio(accountSid, authToken);
+      await client.messages.create({ from, to: toFormatted, body });
+      return { ok: true, channel };
+    } catch (err) {
+      return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  return { ok: false, channel: channel || "unknown", error: "Unsupported delivery channel." };
+}
+
+// ─── Order ready for pickup (marked completed) ───────────────────────────────
+
+/**
+ * Notifies the customer their order is complete and ready for pickup.
+ * Uses the ticket's configured outreach channel (email / SMS / WhatsApp).
+ */
+export async function sendOrderReadyToCustomer(
+  ticket: TicketForSend & { reference_code: string },
+  company: CompanyForSend,
+): Promise<SendResult> {
+  const { channel, destination } = resolveTicketOutreach(ticket);
+  const orderUrl = publicUrl(ticket.public_token);
+  const customerName = customerDisplayName(ticket);
+  const companyName = company.company_name ?? "BazaarPrinting";
+  const pickupAddress = formatPickupAddress(company);
+
+  if (!destination) {
+    return { ok: false, channel, error: "No customer email or phone on file." };
+  }
+
+  if (channel === "email") {
+    const { subject, html } = buildOrderReadyEmail({
+      customerName,
+      referenceCode: ticket.reference_code,
+      orderUrl,
+      company,
+    });
+    return instantlySend(destination, subject, html);
+  }
+
+  if (channel === "sms" || channel === "whatsapp") {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const whatsappFrom = process.env.TWILIO_WHATSAPP_FROM;
+    if (!accountSid || !authToken) return { ok: false, channel, error: "Twilio credentials not configured." };
+
+    const from = channel === "whatsapp" ? whatsappFrom : phoneNumber;
+    if (!from) {
+      return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
+    }
+
+    const firstName = customerName.split(" ")[0];
+    const addressPart = pickupAddress ? ` Pick up at: ${pickupAddress}.` : "";
+    const phonePart = company.phone ? ` Questions? Call ${company.phone}.` : "";
+    const body = `Hi ${firstName}, your order ${ticket.reference_code} from ${companyName} is ready for pickup!${addressPart}${phonePart} Details: ${orderUrl}`;
+
+    const normalised = toE164(destination);
+    const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
+
+    try {
+      const client = twilio(accountSid, authToken);
+      await client.messages.create({ from, to: toFormatted, body });
+      return { ok: true, channel };
+    } catch (err) {
+      return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  return { ok: false, channel: channel || "unknown", error: "Unsupported delivery channel." };
+}
+
+/** Subset of ticket fields used by payment-confirmed notifications. */
+export type PaymentConfirmedTicket = {
+  reference_code: string;
+  public_token: string;
+  quote_channel: string | null;
+  quote_destination: string | null;
+  contact_name?: string | null;
+  customer?: TicketForSend["customer"];
+};
+
+// ─── Payment confirmed (after accountant review) ─────────────────────────────
+
+/**
+ * Notifies the customer that their submitted payment was verified.
+ * Sent when an accountant confirms payment that included customer-uploaded evidence.
+ */
+export async function sendPaymentConfirmed(
+  ticket: PaymentConfirmedTicket,
+  company: CompanyForSend,
+  opts: {
+    amountConfirmed: number;
+    inProduction: boolean;
+    fullyPaid: boolean;
+  },
+): Promise<SendResult> {
+  const channel = (ticket.quote_channel ?? "").toLowerCase();
+  const destination = ticket.quote_destination ?? null;
+  const orderUrl = publicUrl(ticket.public_token);
+  const customerName = customerDisplayName(ticket);
+  const companyName = company.company_name ?? "BazaarPrinting";
+
+  if (channel === "email") {
+    if (!destination) return { ok: false, channel: "email", error: "No destination email address." };
+
+    const { subject, html } = buildPaymentConfirmedEmail({
+      customerName,
+      referenceCode: ticket.reference_code,
+      amountConfirmed: opts.amountConfirmed,
+      inProduction: opts.inProduction,
+      fullyPaid: opts.fullyPaid,
+      orderUrl,
+      company,
+    });
+
+    return instantlySend(destination, subject, html);
+  }
+
+  if (channel === "sms" || channel === "whatsapp") {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const whatsappFrom = process.env.TWILIO_WHATSAPP_FROM;
+    if (!accountSid || !authToken) return { ok: false, channel, error: "Twilio credentials not configured." };
+    if (!destination) return { ok: false, channel, error: "No destination phone number." };
+
+    const from = channel === "whatsapp" ? whatsappFrom : phoneNumber;
+    if (!from) return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
+
+    const firstName = customerName.split(" ")[0];
+    const total = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(opts.amountConfirmed);
+    const body = opts.inProduction
+      ? `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed — your order is now in production. Track it here: ${orderUrl}`
+      : `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed. View your order: ${orderUrl}`;
     const normalised = toE164(destination);
     const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
 

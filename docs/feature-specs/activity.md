@@ -74,6 +74,15 @@ Each activity entry is rendered as a timeline row with:
 | `order_ticket_updated` | `Edit3` | Order Updated |
 | `order_ticket_status_changed` | `ArrowRight` | Status Changed |
 | `ticket_client_confirmed` | `ThumbsUp` | Client Confirmed |
+| `ticket_sent` | `Send` | Quote Sent |
+| `ticket_converted` | `ArrowRight` | Converted to Order |
+| `ticket_payment_reminder_sent` | `Bell` | Payment Reminder Sent |
+| `ticket_payment_evidence_submitted` | `CreditCard` | Customer Submitted Payment Proof |
+| `ticket_payment_recorded` | `DollarSign` | Payment Recorded |
+| `ticket_payment_confirmed_sent` | `Send` | Payment Confirmation Sent |
+| `ticket_invoice_resent` | `Mail` | Invoice Link Resent |
+| `ticket_order_ready_sent` | `Send` | Pickup Notification Sent |
+| `ticket_order_ready_failed` | `AlertCircle` | Pickup Notification Failed |
 
 ### Payload Details (collapsible)
 
@@ -86,6 +95,11 @@ Each activity entry is rendered as a timeline row with:
 | `lead_reassigned` | "From [name] → [name]" or "Unassigned from [name]" |
 | `contact_edited` | List of changed fields |
 | `order_ticket_updated` | List of changed field names (`payload.fields`) |
+| `ticket_payment_evidence_submitted` | Method, amount claimed, channel (`payload.method`, `payload.amount`) |
+| `ticket_payment_recorded` | Mode, method, amount (`payload.payment_mode`, `payload.payment_method`, `payload.payment_amount`) |
+| `ticket_payment_confirmed_sent` | Channel + destination |
+| `ticket_invoice_resent` | Channel + destination |
+| `ticket_order_ready_sent` / `ticket_order_ready_failed` | Channel; failure includes error message |
 | `outreach_sent` | Channel + recipient (masked phone/email) |
 
 ---
@@ -130,5 +144,7 @@ The following Route Handlers automatically insert activity rows when they run:
 | `PATCH /api/customers/[id]/merge` | `lead_merged` (on all affected leads) |
 | `PATCH /api/customers/[id]` | `contact_edited` |
 | `POST /api/tickets` | `order_ticket_created` |
-| `PATCH /api/tickets/[id]` | `quote_approval_requested` / `quote_follow_up_completed` / `quote_follow_up_reset` / `ticket_client_confirmed` / `order_ticket_updated` / `order_ticket_status_changed` (when `claim_ownership: true` — logs `{ from: "routed", to: "draft", action: "claimed" }`) |
+| `PATCH /api/tickets/[id]` | `quote_approval_requested` / `quote_follow_up_completed` / `quote_follow_up_reset` / `ticket_client_confirmed` / `ticket_sent` / `ticket_converted` / `ticket_payment_reminder_sent` / `ticket_payment_recorded` / `ticket_payment_confirmed_sent` / `ticket_invoice_resent` / `ticket_order_ready_sent` / `ticket_order_ready_failed` / `order_ticket_updated` / `order_ticket_status_changed` (claim, production release, mark completed) |
+| `POST /api/public/quotes/[token]/confirm` | `ticket_client_confirmed` / `order_ticket_status_changed` (customer, `by_user_id = null`) |
+| `POST /api/public/quotes/[token]/submit-payment` | `ticket_payment_evidence_submitted` / status transitions / production release |
 | `POST /api/outreach/send` | `outreach_sent` |

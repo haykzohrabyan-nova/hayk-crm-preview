@@ -78,5 +78,7 @@ window.dispatchEvent(new Event("bazaar:refresh-counts"));
 The sidebar, tab counts, and all pages listen to this event and update immediately.
 
 ## Existing implementations to follow
-- `components/leads-page.tsx` + `app/api/leads/workspace/counts/route.ts`
-- `components/sales-page.tsx` + `app/api/leads/sales-counts/route.ts`
+- `components/leads/leads-page.tsx` + `app/api/leads/workspace/counts/route.ts`
+- `components/sales/sales-page.tsx` + `app/api/leads/sales-counts/route.ts`
+- `components/orders/production-page.tsx` + `app/api/production/counts/route.ts`
+- `components/orders/payments-page.tsx` + `app/api/payments/counts/route.ts`

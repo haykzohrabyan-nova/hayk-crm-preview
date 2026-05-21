@@ -216,6 +216,28 @@ export type DiscountType  = 'percent' | 'fixed'
 export type PrepayType    = 'percent' | 'fixed'
 export type FollowUpFreq  = 'Daily' | 'Every 2 days' | 'Weekly'
 
+// ── Payment config (stored in company_settings, migration 062) ────────────────
+export type PaymentStrategy = 'full' | 'partial' | 'net'
+export type DepositType     = 'percent' | 'fixed'
+export type DepHandling     = 'cash' | 'gateway'
+
+export interface PaymentConfig {
+  paymentStrategy:      PaymentStrategy
+  depositType:          DepositType
+  depositValue:         number
+  paymentChannels:      string[]
+  requireClientConfirm: boolean
+  cardOnFileFormUrl:    string
+  depHandling:          DepHandling
+  // Remittance info (migration 065)
+  bankName:           string
+  bankAccountName:    string
+  bankAccountNumber:  string
+  bankRoutingNumber:  string
+  zellePhone:         string
+  zelleEmail:         string
+}
+
 // ── QuoteSku — one line item inside quote_skus JSONB ─────────────────────────
 // Canonical definition also lives in lib/utils/ticket-math.ts (pricing helpers
 // import from there). Both must stay in sync.
@@ -319,6 +341,34 @@ export interface JobTicket {
   notes: string | null
   created_at: string
   updated_at: string
+
+  // Per-ticket payment configuration (migration 066)
+  ticket_payment_strategy:      'partial' | 'full' | 'net' | null
+  ticket_deposit_type:          'percent' | 'fixed' | null
+  ticket_deposit_value:         number | null
+  ticket_dep_handling:          'cash' | 'gateway' | null
+  ticket_receipt_id:            string | null
+  ticket_partial_channels:      string[] | null
+  ticket_full_channels:         string[] | null
+  ticket_require_client_confirm: boolean | null
+  ticket_net_terms_label:       string | null
+  ticket_quote_channel:         'sms' | 'email' | 'both' | null
+  ticket_dest_phone:            string | null
+  ticket_dest_email:            string | null
+  ticket_follow_up_enabled:     boolean | null
+  ticket_follow_up_count:       number | null
+  ticket_follow_up_freq:        'daily' | 'every-3-days' | 'weekly' | null
+
+  // Payment recording (migration 066)
+  payment_amount_received:  number | null
+  payment_paid_at:          string | null
+  payment_method_used:      string | null
+  deposit_amount:           number | null
+  deposit_paid_at:          string | null
+  deposit_receipt_id:       string | null
+  deposit_method:           string | null
+  balance_paid_at:          string | null
+  production_released_at:   string | null
 
   // Legacy columns (nullable — backwards compat only)
   subtotal: number | null

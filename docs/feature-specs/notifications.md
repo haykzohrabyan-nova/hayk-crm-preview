@@ -86,6 +86,12 @@ Shows all system activity from the `activities` table, newest first.
 | `ticket_client_confirmed` | Customer confirmed quote via public page |
 | `ticket_converted` | Rep converted quote to order. Payload: `{ from, to: 'order', reference_code }` |
 | `ticket_payment_reminder_sent` | Payment reminder sent. Payload: `{ channel, destination }` |
+| `ticket_payment_evidence_submitted` | Customer submitted payment proof. Payload: `{ method, amount, … }` |
+| `ticket_payment_recorded` | Staff/accountant recorded payment. Payload: `{ payment_mode, payment_method, payment_amount }` |
+| `ticket_payment_confirmed_sent` | Payment confirmation email/SMS sent after accountant confirm |
+| `ticket_invoice_resent` | Customer portal link resent. Payload: `{ channel, destination }` |
+| `ticket_order_ready_sent` | Pickup-ready notification sent when order marked completed |
+| `ticket_order_ready_failed` | Pickup notification send failed |
 
 ---
 

@@ -156,11 +156,14 @@ export function RolesSection() {
   const selectedRole = roles.find((r) => r.id === selectedRoleId) ?? null;
   const isAdmin = selectedRole?.name === "admin";
   const isSystemRole = selectedRole?.is_system ?? false;
+  // Only Admin is truly permission-locked. Other system roles (SDR, Sales, Accountant, etc.)
+  // can have their page permissions edited by an Admin — they just cannot be deleted.
+  const isPermissionLocked = isAdmin;
 
   // ── Toggle permission ─────────────────────────────────────────────────────
 
   async function handleToggle(pageId: string, currentlyGranted: boolean) {
-    if (!selectedRole || isAdmin) return;
+    if (!selectedRole || isPermissionLocked) return;
     setTogglingPageId(pageId);
 
     if (currentlyGranted) {
@@ -286,14 +289,12 @@ export function RolesSection() {
               )}
             </div>
 
-            {isSystemRole ? (
+            {isPermissionLocked ? (
               <div
                 className="rounded-[10px] border p-4 text-sm"
                 style={{ background: "color-mix(in srgb, var(--color-accent) 8%, var(--color-surface))", borderColor: "color-mix(in srgb, var(--color-accent) 25%, var(--color-border))", color: "var(--color-text-muted)" }}
               >
-                {isAdmin
-                  ? "Admin has unrestricted access to all pages. Permissions cannot be modified."
-                  : `${selectedRole?.display_name} is a system role. Page permissions are fixed and cannot be changed.`}
+                Admin has unrestricted access to all pages. Permissions cannot be modified.
               </div>
             ) : (
               <div

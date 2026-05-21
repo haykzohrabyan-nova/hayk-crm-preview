@@ -9,7 +9,7 @@ Payment-related work (Stripe card, Zelle matching) is tracked separately in `doc
 ## [DONE] Admin Override for Terminal Leads (TODO-001)
 
 **Status:** ✅ Built 2026-05-17
-**Files changed:** `components/sales-drawer.tsx`, `components/verify-drawer.tsx`, `components/sales-page.tsx`, `components/leads-page.tsx`
+**Files changed:** `components/sales/sales-drawer.tsx`, `components/leads/verify-drawer.tsx`, `components/sales/sales-page.tsx`, `components/leads/leads-page.tsx`
 
 Admin users see an amber "Admin override" banner and a fully editable drawer on terminal leads. Won leads show a caution note about the linked order. Non-admins keep the existing red lock banner.
 
@@ -18,7 +18,7 @@ Admin users see an amber "Admin override" banner and a fully editable drawer on 
 ## [TODO-001 — archived spec] Admin Override for Terminal Leads
 
 **Priority:** Medium
-**Files to touch:** `components/sales-drawer.tsx`, `components/verify-drawer.tsx`
+**Files to touch:** `components/sales/sales-drawer.tsx`, `components/leads/verify-drawer.tsx`
 
 ### The Problem
 
@@ -116,17 +116,22 @@ Apply to all three dashboard variants (SDR quote value, Sales won value, Admin t
 
 ## [DONE] Order Lifecycle Buttons (TODO-005)
 
-**Status:** ✅ Built 2026-05-17
-**Files changed:** `components/quote-detail.tsx`
+**Status:** ✅ Built 2026-05-21 (expanded from initial 2026-05-17 admin-only buttons)
+**Files changed:** `components/orders/production-page.tsx`, `components/orders/production-detail-overview.tsx`, `components/quotes/quote-detail.tsx`, `app/api/tickets/[id]/route.ts`
 
-"Mark In Production" and "Mark Completed" buttons added for admins on the order detail page. Uses existing `handleSave(undefined, extraFields)` path — no API change needed.
+Full lifecycle now implemented:
+- `/production` + `/production/[id]` — in-production queue and detail
+- `/completed` + `/completed/[id]` — completed orders
+- **Mark Completed** on production detail — admin always; accountant when paid in full
+- Pickup notification email/SMS on mark complete
+- Auto-release to `in_production` via net terms / payment gates (`maybe-auto-release-production.ts`)
 
 ---
 
 ## [TODO-005 — archived spec] Order Lifecycle — In Production & Completed Status Transitions
 
 **Priority:** Medium
-**Files to touch:** `components/quote-detail.tsx`, `app/api/tickets/[id]/route.ts`
+**Files to touch:** `components/quotes/quote-detail.tsx`, `app/api/tickets/[id]/route.ts`
 
 ### The Problem
 
@@ -153,7 +158,9 @@ Add two action buttons to the order detail page (`quote-detail.tsx`), visible to
 
 The API (`PATCH /api/tickets/[id]`) already accepts arbitrary `ticket_status` values from admin users — no API change needed, only the UI.
 
-Also update the Orders page (`components/orders-page.tsx`) to surface an "In Production" count in the tab badges.
+Also update the Orders page (`components/orders/orders-page.tsx`) to surface an "In Production" count in the tab badges.
+
+> **Superseded (2026-05-21):** In-production and completed orders moved to dedicated `/production` and `/completed` pages. Orders page tabs are All / Pending Payment / Cancelled only.
 
 ---
 
@@ -195,7 +202,7 @@ This is low priority until the business is actively using follow-up reminders at
 **Status:** ✅ Built 2026-05-17
 See CHANGELOG for full details. Key deliverables:
 - `supabase/migrations/056` + `057` — DB columns and table
-- `components/idle-timer.tsx` — warning modal + auto sign-out
+- `components/layout/idle-timer.tsx` — warning modal + auto sign-out
 - `app/api/auth/session/route.ts` — session start/end logging
 - `app/api/admin/sessions/route.ts` — admin KPI API
 - `components/admin/user-activity-section.tsx` — admin view
@@ -209,7 +216,7 @@ See CHANGELOG for full details. Key deliverables:
 ## [DONE] Reports Page Placeholder
 
 **Status:** ✅ Built 2026-05-17
-**Files:** `supabase/migrations/058_add_reports_page.sql`, `app/(app)/reports/page.tsx`, `components/reports-page.tsx`
+**Files:** `supabase/migrations/058_add_reports_page.sql`, `app/(app)/reports/page.tsx`, `components/reports/reports-page.tsx`
 
 `/reports` added to navigation (sort_order 9). Placeholder page shows all 7 planned report types with dependency notes. Full charts will be built after Stripe is connected. Win Rate & Close Time report flagged as buildable without payment data.
 

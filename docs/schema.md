@@ -356,9 +356,9 @@ create table public.leads (
 
 ### `job_tickets`
 
-Unified model for both quotes and orders. `ticket_kind` distinguishes them. Extended in migration 042 with all fields required by the Quotes & Orders module.
+Unified model for both quotes and orders. `ticket_kind` distinguishes them. Extended in migrations 042 and 066 with all fields required by the Quotes & Orders module and per-ticket payment configuration.
 
-> **Legacy columns** (`subtotal`, `discount_percent`, `discount_amount`, `total`, `payment_type`, `prepay_amount`, `product_lines`, `follow_up_at`) are preserved as nullable for backwards compatibility. New code uses the `quote_*` columns instead.
+> **Legacy columns** (`subtotal`, `discount_percent`, `discount_amount`, `total`, `payment_type`, `prepay_amount`, `product_lines`, `follow_up_at`) are preserved as nullable for backwards compatibility. New code uses the `quote_*` and `ticket_*` columns instead.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -387,12 +387,12 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `quote_final_total` | `numeric` | pre_tax_total + tax_amount |
 | `tax_exempt` | `boolean` NOT NULL DEFAULT `false` | |
 | `sales_permit_number` | `text` | Required when tax_exempt = true |
-| `quote_payment_types` | `text[]` NOT NULL DEFAULT `'{}'` | `'card_default'` \| `'zelle'` \| `'offline'` |
+| `quote_payment_types` | `text[]` NOT NULL DEFAULT `'{}'` | `'card_default'` \| `'zelle'` \| `'offline'` *(legacy — use `ticket_*` columns for new payment config)* |
 | `prepayment_type` | `text` | `'full'` \| `'percent'` \| `'fixed'` |
-| `prepayment_value` | `text` | Stored as text; parsed at runtime. `'100'` when type is `'full'` |
-| `prepayment_status` | `text` NOT NULL DEFAULT `'pending'` | `'pending'` \| `'paid'` — deposit collected flag; Stripe webhook updates this |
+| `prepayment_value` | `text` | Stored as text; parsed at runtime |
+| `prepayment_status` | `text` NOT NULL DEFAULT `'pending'` | `'pending'` \| `'paid'` |
 | `quote_reminder_date` | `date` | First follow-up date |
-| `follow_up_cycles` | `int` | Number of follow-up attempts (default 3) |
+| `follow_up_cycles` | `int` | Number of follow-up attempts |
 | `follow_up_frequency` | `text` | `'Daily'` \| `'Every 2 days'` \| `'Weekly'` |
 | `order_source` | `text` | `'quoted'` \| `'direct'` |
 | `due_date` | `date` | Production due date |
@@ -405,20 +405,69 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `follow_up_completed` | `boolean` DEFAULT `false` | |
 | `client_confirmed` | `boolean` DEFAULT `false` | Client has approved quote → transitions to order |
 | `quote_approval_last_requested_at` | `timestamptz` | Last time approval was requested |
-| `public_token` | `uuid` NOT NULL DEFAULT `gen_random_uuid()` UNIQUE | Unguessable token for public `/q/[token]` page — no auth needed |
+| `public_token` | `uuid` NOT NULL DEFAULT `gen_random_uuid()` UNIQUE | Unguessable token for public `/q/[token]` page |
 | `payment_status` | `text` NOT NULL DEFAULT `'unpaid'` | `'unpaid'` \| `'partial'` \| `'paid'` — overall order payment state |
-| `routed_by_id` | `uuid` FK → `auth.users` | Set when `ticket_status = 'routed'`; preserves the original SDR's identity after Sales claims the ticket (claiming changes `created_by_id`). Used to grant the SDR read-only visibility on `/quotes` |
+| `routed_by_id` | `uuid` FK → `auth.users` | Preserves original SDR identity after Sales claims the ticket |
 | `notes` | `text` | Internal notes |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
-| *(legacy)* `subtotal` | `numeric` | Old pre-discount total — keep for backwards compat |
-| *(legacy)* `discount_percent` | `numeric` | Old discount field |
-| *(legacy)* `discount_amount` | `numeric` | Old discount field |
-| *(legacy)* `total` | `numeric` | Old final total |
-| *(legacy)* `payment_type` | `text` | Old single payment type |
-| *(legacy)* `prepay_amount` | `numeric` | Old prepay amount |
-| *(legacy)* `product_lines` | `jsonb` | Old line items array |
-| *(legacy)* `follow_up_at` | `timestamptz` | Old follow-up timestamp |
+
+**Per-ticket payment configuration** *(added migration 066 — set from `QuotePaymentConfig` panel)*
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `ticket_payment_strategy` | `text` | `'partial'` \| `'full'` \| `'net'` |
+| `ticket_deposit_type` | `text` | `'percent'` \| `'fixed'` |
+| `ticket_deposit_value` | `numeric` | Deposit % (0–100) or fixed $ amount |
+| `ticket_dep_handling` | `text` | `'cash'` (offline) \| `'gateway'` (online) |
+| `ticket_receipt_id` | `text` | Receipt / reference ID for cash deposit or full cash payment |
+| `ticket_partial_channels` | `text[]` | Accepted channels for balance payment when strategy is `partial` |
+| `ticket_full_channels` | `text[]` | Accepted channels for full payment |
+| `ticket_require_client_confirm` | `boolean` | If true, customer must confirm quote before production gate opens |
+| `ticket_net_terms_label` | `text` | `'net-10'` \| `'net-15'` \| `'net-20'` \| `'net-30'` \| `'net-45'` \| `'net-60'` |
+| `ticket_quote_channel` | `text` | `'sms'` \| `'email'` \| `'both'` |
+| `ticket_dest_phone` | `text` | Phone number the quote was sent to |
+| `ticket_dest_email` | `text` | Email address the quote was sent to |
+| `ticket_follow_up_enabled` | `boolean` | Whether automated follow-up reminders are enabled |
+| `ticket_follow_up_count` | `integer` | Number of follow-up reminders to send |
+| `ticket_follow_up_freq` | `text` | `'daily'` \| `'every-3-days'` \| `'weekly'` |
+
+**Payment recording** *(added migration 066 — recorded via the checkout stepper in quote-detail)*
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `payment_amount_received` | `numeric` | Total amount collected (deposit + balance, or full payment) |
+| `payment_paid_at` | `timestamptz` | When the ticket was fully paid |
+| `payment_method_used` | `text` | `'cash'` \| `'wire'` \| `'ach'` \| `'zelle'` \| `'check'` \| `'card'` |
+| `deposit_amount` | `numeric` | Deposit actually collected (partial strategy) |
+| `deposit_paid_at` | `timestamptz` | When the deposit was recorded |
+| `deposit_receipt_id` | `text` | Receipt / reference ID for the deposit |
+| `deposit_method` | `text` | Same values as `payment_method_used` |
+| `balance_paid_at` | `timestamptz` | When the remaining balance was collected |
+| `production_released_at` | `timestamptz` | When the order was released to production |
+
+**Payment evidence** *(added migration 068, amount column migration 071)*
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `payment_evidence_url` | `text` | Storage path in `payment-evidence` bucket |
+| `payment_evidence_submitted_at` | `timestamptz` | When customer uploaded proof |
+| `payment_evidence_amount` | `numeric` | Amount customer claimed while awaiting accountant review |
+
+When evidence is pending (`payment_evidence_url` set, not yet confirmed via `record_payment`), the ticket appears on `/payments` only — excluded from `/orders` list counts.
+
+**Legacy columns** *(preserved as nullable for backwards compatibility — do not use in new code)*
+
+| Column | Type |
+|--------|------|
+| `subtotal` | `numeric` |
+| `discount_percent` | `numeric` |
+| `discount_amount` | `numeric` |
+| `total` | `numeric` |
+| `payment_type` | `text` |
+| `prepay_amount` | `numeric` |
+| `product_lines` | `jsonb` |
+| `follow_up_at` | `timestamptz` |
 
 #### QuoteSku (JSONB shape)
 
@@ -647,14 +696,14 @@ All options are **admin-managed** via Admin → Dropdown Options → Order / Quo
 
 #### RLS
 
-- **Read**: all authenticated users (needed to populate dropdowns in lead forms and OrderDrawer)
+- **Read**: all authenticated users (needed to populate dropdowns in lead forms and quote/order forms)
 - **Insert / Update / Delete**: Admin only (managed via Admin → Dropdown Options tab)
 
 ---
 
 ### `company_settings`
 
-Single-row configuration table (always `id = 1`). Seeded in migration 045. Used by OrderDrawer for defaults and by future PDF export for branding.
+Single-row configuration table (always `id = 1`). Seeded in migration 045. Extended in migration 065 with payment remittance fields. Used by quote/order forms for defaults and shown to customers on the public quote page.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -673,15 +722,23 @@ Single-row configuration table (always `id = 1`). Seeded in migration 045. Used 
 | `high_value_threshold` | `numeric` NOT NULL DEFAULT `5000` | SDR hard-block amount in $ |
 | `rush_surcharge_percent` | `numeric` | `null` = rush is badge-only, no price impact |
 | `session_idle_timeout_minutes` | `integer` NOT NULL DEFAULT `20` | Idle sign-out timer; CHECK 5–480; configurable in Admin → Company Info |
+| `bank_name` | `text` | Bank name shown on Wire/ACH payment instructions (e.g. Chase Bank) |
+| `bank_account_name` | `text` | Account holder name for Wire/ACH (e.g. Bazaar Printing Inc) |
+| `bank_account_number` | `text` | Bank account number for Wire/ACH |
+| `bank_routing_number` | `text` | Routing number for Wire/ACH |
+| `zelle_phone` | `text` | Zelle phone number — shown to customers if filled |
+| `zelle_email` | `text` | Zelle email address — shown to customers if filled |
 | `updated_at` | `timestamptz` NOT NULL DEFAULT `now()` | |
 
-**RLS:** All authenticated users can SELECT (OrderDrawer reads tax rate + threshold). Only Admin can UPDATE. No INSERT / DELETE — single seeded row.
+**RLS:** All authenticated users can SELECT (forms read tax rate, threshold, and payment remittance). Only Admin can UPDATE. No INSERT / DELETE — single seeded row.
+
+**Payment remittance fields** (`bank_*` and `zelle_*`) are configured in **Admin → Settings → Payment** and returned by the public quotes API to display Wire/ACH/Zelle instructions on the customer-facing `/q/[token]` page.
 
 ---
 
 ### `product_types`, `material_groups`, `materials`, `product_material_links`
 
-Admin-managed product catalog for the OrderDrawer. Created and seeded in migration 041. Managed from **Admin → Products tab**.
+Admin-managed product catalog for quote line items. Created and seeded in migration 041. Managed from **Admin → Products tab**.
 
 - `product_types` — text slug PK (e.g. `labels-roll`), 15 types seeded
 - `material_groups` — uuid PK, internal grouping only (hidden from admin UI), 9 groups seeded
@@ -690,7 +747,7 @@ Admin-managed product catalog for the OrderDrawer. Created and seeded in migrati
 
 Text slug PKs are stable identifiers stored inside `job_tickets.quote_skus` JSONB without FK overhead. Full schema in `supabase/migrations/041_create_products_catalog.sql`.
 
-**RLS:** SELECT open to all (including anon — needed by OrderDrawer lookup). INSERT / UPDATE / DELETE: admin only (migration 043 `admin_all_*` policies).
+**RLS:** SELECT open to all (including anon — needed by public quote page and quote forms). INSERT / UPDATE / DELETE: admin only (migration 043 `admin_all_*` policies).
 
 ---
 
@@ -924,7 +981,7 @@ create policy "admin_all_notifications" on public.notifications
 ### `product_types` / `materials` / `material_groups` / `product_material_links` policies
 
 ```sql
--- SELECT: open to everyone (anon + authenticated) — OrderDrawer loads products without auth
+-- SELECT: open to everyone (anon + authenticated) — quote forms and public page load products without auth
 create policy "product_types_select_all"          on public.product_types          for select using (true);
 create policy "material_groups_select_all"        on public.material_groups        for select using (true);
 create policy "materials_select_all"              on public.materials              for select using (true);
@@ -942,7 +999,7 @@ create policy "admin_all_product_material_links" on public.product_material_link
 ```sql
 alter table public.company_settings enable row level security;
 
--- All authenticated users can read (OrderDrawer needs tax rate + threshold at runtime)
+-- All authenticated users can read (quote forms need tax rate + threshold at runtime)
 create policy "authenticated_read_company_settings" on public.company_settings
   for select using (auth.uid() is not null);
 
@@ -1036,7 +1093,7 @@ Tables opted into the `supabase_realtime` publication. Any INSERT/UPDATE/DELETE 
 
 All three use `REPLICA IDENTITY FULL` so UPDATE/DELETE events include the full old row in the payload.
 
-The sidebar (`components/sidebar.tsx`) holds all three Supabase channel subscriptions and dispatches the corresponding `window` events. Page components listen to those events for silent re-fetches.
+The sidebar (`components/layout/sidebar.tsx`) holds all three Supabase channel subscriptions and dispatches the corresponding `window` events. Page components listen to those events for silent re-fetches.
 
 ---
 
@@ -1090,4 +1147,11 @@ When creating Supabase migrations under `supabase/migrations/`:
 059_add_has_design_to_leads.sql      ← adds has_design jsonb column to leads for per-product design flags
 060_add_routed_by_id_to_tickets.sql  ← adds routed_by_id uuid FK → auth.users to job_tickets; set at ticket creation when ticket_status = 'routed'; never changed on claim so SDR retains read-only visibility
 061_backfill_routed_by_id.sql        ← one-time backfill: finds existing routed/claimed tickets via activities log (order_ticket_created) and sets routed_by_id to the original SDR creator
+065_payment_remittance.sql           ← company wire/ACH/Zelle remittance fields on company_settings
+066_per_ticket_payment_config.sql    ← per-ticket payment strategy, channels, deposit, recording columns on job_tickets
+068_accountant_role_and_payment_evidence.sql ← accountant system role + payment_evidence_url/submitted_at on job_tickets
+069_production_and_completed_pages.sql ← /production and /completed page seeds + role permissions
+070_payment_status_columns.sql       ← idempotent add of payment_status/prepayment_status if missing
+071_payment_evidence_amount.sql      ← payment_evidence_amount column; backfill incorrectly auto-paid evidence tickets
+072_net_terms_auto_production.sql    ← net terms auto-release to in_production support
 ```

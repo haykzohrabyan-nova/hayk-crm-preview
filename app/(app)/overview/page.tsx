@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DashboardPage } from "@/components/dashboard-page";
+import { DashboardPage } from "@/components/admin/dashboard-page";
 
 export const metadata: Metadata = {
   title: "Overview — BazaarPrinting CRM",

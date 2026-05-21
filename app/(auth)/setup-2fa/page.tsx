@@ -6,7 +6,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { ShieldCheck, KeyRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
-import { OtpInput } from "@/components/otp-input";
+import { OtpInput } from "@/components/auth/otp-input";
 
 function Setup2FAForm() {
   const searchParams = useSearchParams();

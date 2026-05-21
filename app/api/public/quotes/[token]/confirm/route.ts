@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket } from "@/lib/utils/maybe-auto-release-production";
 
 // POST /api/public/quotes/[token]/confirm
 // No auth required — customer clicks "Confirm & Accept" on the public quote page.
@@ -7,7 +8,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 //   1. Sets client_confirmed = true
 //   2. Sets ticket_status = "order" (auto-converts; Stripe payment will plug in here later)
 //   3. Generates ORD-YYYY-NNN reference code via increment_order_sequence RPC
-//   4. Logs an activity entry
+//   4. Net terms / gate-satisfied tickets auto-release to in_production
+//   5. Logs activity entries
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -20,10 +22,9 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient();
 
-  // Find the ticket by public token
   const { data: ticket, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, ticket_status, client_confirmed, linked_lead_id, customer_id, reference_code, title")
+    .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
     .eq("public_token", token)
     .single();
 
@@ -31,17 +32,18 @@ export async function POST(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Quote not found." }, { status: 404 });
   }
 
-  // Already confirmed
-  if (ticket.client_confirmed) {
+  const row = ticket as unknown as AutoReleaseTicket;
+
+  if (row.client_confirmed) {
     return NextResponse.json({
       ok: true,
       already_confirmed: true,
-      reference_code: ticket.reference_code,
+      reference_code: row.reference_code,
+      in_production: row.ticket_status === "in_production",
     });
   }
 
-  // Only "sent" tickets can be confirmed
-  if (ticket.ticket_status !== "sent") {
+  if (row.ticket_status !== "sent") {
     return NextResponse.json(
       { error: "This quote is no longer available for confirmation.", code: "INVALID_STATUS" },
       { status: 409 }
@@ -50,19 +52,16 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
   const now = new Date().toISOString();
 
-  // Generate order reference code ORD-YYYY-NNN
-  const year = new Date().getFullYear();
-  let reference_code: string | null = ticket.reference_code;
+  let reference_code: string | null = row.reference_code;
 
   if (!reference_code) {
+    const year = new Date().getFullYear();
     const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
     if (!seqErr && seq) {
       reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
     }
   }
 
-  // Update ticket: confirmed → order
-  // Also update ticket_kind to "order" so the Quotes page (?kind=quote) excludes it.
   const { error: updateErr } = await admin
     .from("job_tickets")
     .update({
@@ -72,34 +71,50 @@ export async function POST(_request: NextRequest, { params }: Params) {
       reference_code,
       updated_at: now,
     })
-    .eq("id", ticket.id);
+    .eq("id", row.id);
 
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  // Log activity — dedicated type so History tab shows this as a customer action
-  await admin.from("activities").insert({
-    type: "ticket_client_confirmed",
-    lead_id: ticket.linked_lead_id ?? null,
-    customer_id: ticket.customer_id ?? null,
-    ticket_id: ticket.id,
-    by_user_id: null, // customer action — no CRM user
-    payload: { via: "public_link", reference_code },
-    created_at: now,
-  });
+  await admin.from("activities").insert([
+    {
+      type: "ticket_client_confirmed",
+      lead_id: row.linked_lead_id ?? null,
+      customer_id: row.customer_id ?? null,
+      ticket_id: row.id,
+      by_user_id: null,
+      payload: { via: "public_link", reference_code },
+      created_at: now,
+    },
+    {
+      type: "order_ticket_status_changed",
+      lead_id: row.linked_lead_id ?? null,
+      customer_id: row.customer_id ?? null,
+      ticket_id: row.id,
+      by_user_id: null,
+      payload: { from: "sent", to: "order", via: "public_confirm", reference_code },
+      created_at: now,
+    },
+  ]);
 
-  // Mark the linked lead as Won so the SDR and Sales get credit.
-  // This covers all three cases:
-  //   Case 1: SDR routed → Sales closed (sdr_id ≠ created_by_id)
-  //   Case 2: SDR built quote directly below threshold (sdr_id = created_by_id)
-  //   Case 3: Direct order with no lead (linked_lead_id is null — skip)
-  if (ticket.linked_lead_id) {
+  if (row.linked_lead_id) {
     await admin
       .from("leads")
       .update({ sales_status: "Won", updated_at: now })
-      .eq("id", ticket.linked_lead_id);
+      .eq("id", row.linked_lead_id);
   }
 
-  return NextResponse.json({ ok: true, reference_code });
+  const releaseResult = await maybeAutoReleaseProduction(
+    admin,
+    { ...row, client_confirmed: true, ticket_status: "order", reference_code },
+    now,
+    { via: "public_confirm" },
+  );
+
+  return NextResponse.json({
+    ok: true,
+    reference_code: releaseResult.reference_code ?? reference_code,
+    in_production: releaseResult.released,
+  });
 }

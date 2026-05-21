@@ -2,7 +2,7 @@
 
 > **Status: ✅ BUILT — 2026-05-17**
 > See `docs/CHANGELOG.md` for the full change list.
-> Key files: `components/idle-timer.tsx`, `app/api/auth/session/route.ts`, `app/api/admin/sessions/route.ts`, `components/admin/user-activity-section.tsx`, `app/(public)/policy/page.tsx`
+> Key files: `components/layout/idle-timer.tsx`, `app/api/auth/session/route.ts`, `app/api/admin/sessions/route.ts`, `components/admin/user-activity-section.tsx`, `app/(public)/policy/page.tsx`
 
 ## Overview
 
@@ -66,7 +66,7 @@ flowchart TD
 
 ### Implementation
 
-New `components/idle-timer.tsx` client component:
+New `components/layout/idle-timer.tsx` client component:
 
 ```typescript
 // Listens to: mousemove, mousedown, keydown, touchstart, scroll
@@ -123,9 +123,9 @@ window.location.assign(next);
 
 Triggered in three places before calling `supabase.auth.signOut()`:
 
-1. `components/sidebar.tsx` — handleSignOut (reason: `manual`)
-2. `components/mobile-nav.tsx` — handleSignOut (reason: `manual`)
-3. `components/idle-timer.tsx` — auto sign-out (reason: `auto`)
+1. `components/layout/sidebar.tsx` — handleSignOut (reason: `manual`)
+2. `components/layout/mobile-nav.tsx` — handleSignOut (reason: `manual`)
+3. `components/layout/idle-timer.tsx` — auto sign-out (reason: `auto`)
 
 ```typescript
 // Before every sign-out call:
@@ -203,7 +203,7 @@ Or integrated into the existing `/admin/settings/audit` tab (already planned but
 
 | File | Change |
 |---|---|
-| `components/idle-timer.tsx` | New component — idle detection, warning modal, auto sign-out |
+| `components/layout/idle-timer.tsx` | New component — idle detection, warning modal, auto sign-out |
 | `app/(app)/layout.tsx` | Mount `<IdleTimer />` inside the app shell |
 
 ### Phase 4 — Sign-Out Wiring
@@ -211,8 +211,8 @@ Or integrated into the existing `/admin/settings/audit` tab (already planned but
 | File | Change |
 |---|---|
 | `app/(auth)/verify-2fa/page.tsx` | Call `POST /api/auth/session` (start) after refreshSession |
-| `components/sidebar.tsx` | Call `POST /api/auth/session` (end, manual) before signOut |
-| `components/mobile-nav.tsx` | Same as sidebar |
+| `components/layout/sidebar.tsx` | Call `POST /api/auth/session` (end, manual) before signOut |
+| `components/layout/mobile-nav.tsx` | Same as sidebar |
 | `proxy.ts` | Optional: when deactivated user is force-signed-out, log reason as `deactivated` |
 
 ### Phase 5 — Admin View

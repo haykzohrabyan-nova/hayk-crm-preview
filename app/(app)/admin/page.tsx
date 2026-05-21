@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard } from "lucide-react";
 
 const CARDS = [
   {
@@ -42,6 +42,13 @@ const CARDS = [
     description: "Twilio SMS and Instantly AI email are live. Stripe and Zelle payment integrations — coming soon.",
     href: "/admin/settings/integrations",
     icon: Plug,
+    built: true,
+  },
+  {
+    title: "Payment",
+    description: "Bank details for Wire and ACH payments, and Zelle contact info. Shown to customers on their quote page.",
+    href: "/admin/settings/payment",
+    icon: CreditCard,
     built: true,
   },
 ] as const;

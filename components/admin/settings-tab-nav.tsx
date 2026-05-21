@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -12,6 +12,7 @@ const TABS = [
   { label: "Company Info",        href: "/admin/settings/company",   icon: Building2 },
   { label: "Products",            href: "/admin/settings/products",      icon: Package   },
   { label: "Integrations",        href: "/admin/settings/integrations",  icon: Plug      },
+  { label: "Payment",             href: "/admin/settings/payment",       icon: CreditCard },
 ] as const;
 
 function cnTab(active: boolean) {

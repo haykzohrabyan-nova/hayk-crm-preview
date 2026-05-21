@@ -1,6 +1,6 @@
-import { Sidebar } from "@/components/sidebar";
-import { MobileNav } from "@/components/mobile-nav";
-import { IdleTimer } from "@/components/idle-timer";
+import { Sidebar } from "@/components/layout/sidebar";
+import { MobileNav } from "@/components/layout/mobile-nav";
+import { IdleTimer } from "@/components/layout/idle-timer";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (

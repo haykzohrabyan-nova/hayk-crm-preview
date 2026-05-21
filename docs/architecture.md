@@ -59,9 +59,10 @@ Copy `.env.local.example` → `.env.local` and fill in values from **Supabase �
 
 ### Key rules
 - `proxy.ts` enforces AAL2 on all app routes. Never add `middleware.ts` alongside it — Next.js 16 will fail the build.
+- **Public paths** (`/q/*`, `/policy/*`, `/api/public/*`): no auth required; logged-in staff visiting `/q/{token}` skip RBAC and MFA redirects so they can preview the customer portal.
 - After `mfa.verify()`, always call `refreshSession()` then use `window.location.assign()` (not `router.push`) so the new cookies are sent before `proxy.ts` runs on the next request.
 - All redirects go through `lib/auth/safe-return-path.ts` to prevent open redirect attacks.
-- Default post-login destination is `/dashboard` via `lib/auth/resolve-default-home.ts` — extend this when RBAC is added.
+- Default post-login destination via `lib/auth/resolve-default-home.ts`: SDR → `/leads`, Sales → `/sales`, Accountant → `/payments`, Admin → `/dashboard`
 
 ### Supabase settings required
 | Setting | Value |
@@ -98,8 +99,15 @@ BazarCRM/
 │   │   ├── crm/customers/[id]/page.tsx   ✓ Full customer profile page
 │   │   ├── quotes/page.tsx               ✓ Quoted Requests list (4 tabs)
 │   │   ├── quotes/new/page.tsx           ✓ New Quote / Order form
-│   │   ├── quotes/[id]/page.tsx          ✓ Quote / Order detail + edit
-│   │   ├── orders/page.tsx               ✓ Orders list (4 tabs)
+│   │   ├── quotes/[id]/page.tsx          ✓ Quote detail (Overview + History)
+│   │   ├── orders/page.tsx               ✓ Active orders list
+│   │   ├── orders/[id]/page.tsx          ✓ Order detail
+│   │   ├── payments/page.tsx             ✓ Accountant payment evidence queue
+│   │   ├── payments/[id]/page.tsx        ✓ Payment review detail
+│   │   ├── production/page.tsx           ✓ In-production queue
+│   │   ├── production/[id]/page.tsx      ✓ Production detail + Mark Completed
+│   │   ├── completed/page.tsx            ✓ Completed orders list
+│   │   ├── completed/[id]/page.tsx       ✓ Completed order detail
 │   │   ├── notifications/page.tsx        ✓ Notification list
 │   │   ├── settings/page.tsx             ✓ Personal profile settings
 │   │   └── admin/
@@ -161,43 +169,70 @@ BazarCRM/
 │   ├── globals.css                       ✓ Tailwind v4 + BazaarPrinting CSS tokens
 │   ├── layout.tsx                        ✓ Root layout — Inter font, ThemeProvider
 │   └── page.tsx                          ✓ Redirects → /dashboard
-├── components/
-│   ├── dashboard-page.tsx                ✓ Role router (detects role → renders dashboard)
-│   ├── sdr-dashboard.tsx                 ✓ SDR-specific dashboard (self-contained)
-│   ├── sales-dashboard.tsx               ✓ Sales-specific dashboard (self-contained)
-│   ├── admin-dashboard.tsx               ✓ Admin-specific dashboard (self-contained)
-│   ├── leads-page.tsx                    ✓ SDR/Admin lead pipeline
-│   ├── sales-page.tsx                    ✓ Sales pipeline
-│   ├── verify-drawer.tsx                 ✓ SDR lead work drawer (edit + read-only modes)
-│   ├── sales-drawer.tsx                  ✓ Sales lead work drawer
-│   ├── crm-page.tsx                      ✓ Customer registry
-│   ├── customer-profile.tsx              ✓ Full customer profile with history
-│   ├── quotes-page.tsx                   ✓ Quoted Requests list
-│   ├── orders-page.tsx                   ✓ Orders list
-│   ├── new-quote-form.tsx                ✓ 3-tab New Quote/Order form
-│   ├── quote-detail.tsx                  ✓ 4-tab Quote/Order detail + edit
-│   ├── sidebar.tsx                       ✓ Collapsible left sidebar (role-aware nav)
-│   ├── mobile-nav.tsx                    ✓ Mobile bottom nav
-│   ├── theme-provider.tsx                ✓ Light/dark theme
-│   ├── otp-input.tsx                     ✓ 6-box OTP input
-│   ├── ui/
-│   │   ├── status-pill.tsx               ✓ Lead/sales status pill
-│   │   ├── urgency-pill.tsx              ✓ High/Medium/Low/Not Defined pill
-│   │   ├── phone-input.tsx               ✓ Validated phone field with call-action icon
-│   │   ├── email-input.tsx               ✓ Validated email field with mailto-action icon
-│   │   ├── back-button.tsx               ✓ Reusable back navigation button
-│   │   ├── spec-preview.tsx              ✓ Coming-soon placeholder page
-│   │   └── [shadcn primitives]           ✓ button, input, select, dialog, tooltip, etc.
-│   └── admin/
-│       ├── admin-sub-nav.tsx             ✓ Overview / Settings strip
-│       ├── settings-tab-nav.tsx          ✓ Settings tab pills (users/roles/dropdowns/
-│       │                                   products/company/notifications/integrations)
-│       ├── users-section.tsx             ✓ User management table + Add/Edit User modals
-│       ├── dropdowns-section.tsx         ✓ Lookup value manager (all categories)
-│       ├── products-section.tsx          ✓ Product types + materials + link manager
-│       ├── company-section.tsx           ✓ Company info with validation (EmailInput,
-│       │                                   PhoneInput, ZIP/website validation)
-│       └── integrations-section.tsx      ✓ Stripe + Zelle placeholder cards
+├── components/                           ✓ Feature-based folders — no loose files at root
+│   ├── admin/
+│   │   ├── admin-sub-nav.tsx             ✓ Overview / Settings strip
+│   │   ├── admin-dashboard.tsx           ✓ Admin-specific dashboard (self-contained)
+│   │   ├── dashboard-page.tsx            ✓ Role router (detects role → renders dashboard)
+│   │   ├── settings-tab-nav.tsx          ✓ Settings tab pills (users/roles/dropdowns/…)
+│   │   ├── users-section.tsx             ✓ User management table + Add/Edit User modals
+│   │   ├── roles-section.tsx             ✓ Role list + permission matrix
+│   │   ├── dropdowns-section.tsx         ✓ Lookup value manager (all categories)
+│   │   ├── products-section.tsx          ✓ Product types + materials + link manager
+│   │   ├── company-section.tsx           ✓ Company info with validation
+│   │   ├── payment-section.tsx           ✓ Payment remittance info (Wire/ACH/Zelle)
+│   │   ├── integrations-section.tsx      ✓ Twilio + Instantly AI live; Stripe placeholder
+│   │   ├── activity-log-section.tsx      ✓ Paginated system activity feed
+│   │   └── user-activity-section.tsx     ✓ Per-user session KPI cards + history table
+│   ├── auth/
+│   │   └── otp-input.tsx                 ✓ 6-box OTP input (used in setup-2fa + verify-2fa)
+│   ├── crm/
+│   │   ├── crm-page.tsx                  ✓ Customer registry with search/sort/filter
+│   │   └── customer-profile.tsx          ✓ Full customer profile with history
+│   ├── layout/
+│   │   ├── sidebar.tsx                   ✓ Collapsible left sidebar (role-aware nav)
+│   │   ├── mobile-nav.tsx                ✓ Mobile bottom nav drawer
+│   │   ├── theme-provider.tsx            ✓ Light/dark theme + useTheme hook
+│   │   ├── idle-timer.tsx                ✓ Idle detection → warning modal → auto sign-out
+│   │   └── global-event-handlers.tsx     ✓ App-wide window event wiring
+│   ├── leads/
+│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Hold/Routed/Rejected/Won)
+│   │   ├── verify-drawer.tsx             ✓ SDR lead work drawer (edit + read-only modes)
+│   │   └── hold-sub-form.tsx             ✓ Hold reason sub-form (used inside VerifyDrawer)
+│   ├── orders/
+│   │   └── orders-page.tsx               ✓ Orders list (All / Pending Payment / Cancelled tabs)
+│   ├── quotes/
+│   │   ├── new-quote-form.tsx            ✓ 3-tab New Quote/Order form
+│   │   ├── quote-detail.tsx              ✓ Quote/Order detail + edit (used at /quotes/[id] + /orders/[id])
+│   │   ├── quote-payment-config.tsx      ✓ Payment config panel (strategy, deposit, channels)
+│   │   ├── quotes-page.tsx               ✓ Quoted Requests list (All/Draft/Sent/Won/Routed tabs)
+│   │   ├── quote-detail/                 ← sub-components split from quote-detail
+│   │   │   ├── customer-info-card.tsx    ✓ Left sidebar customer card
+│   │   │   ├── history-section.tsx       ✓ Activity timeline tab
+│   │   │   └── ticket-skeleton.tsx       ✓ Loading skeleton
+│   │   └── shared/                       ← shared between new-quote-form + quote-detail
+│   │       ├── types.ts                  ✓ ProductType, LookupOption, SkuLookups
+│   │       ├── utils.ts                  ✓ emptySkuRow, renderLookupOptions, priorityStyle, quickDate
+│   │       ├── info-form.tsx             ✓ Title / Priority / Due Date / Rush section
+│   │       ├── sku-row.tsx               ✓ Single SKU line item row
+│   │       ├── line-items-form.tsx       ✓ SKU list + Add/Remove controls
+│   │       └── quote-form.tsx            ✓ Pricing summary + adjustments + payment config
+│   ├── reports/
+│   │   └── reports-page.tsx              ✓ Coming-soon report cards (7 planned)
+│   ├── sales/
+│   │   ├── sales-page.tsx                ✓ Sales pipeline (Pipeline/Hold/Rejected tabs)
+│   │   ├── sales-drawer.tsx              ✓ Sales lead work drawer
+│   │   ├── sales-dashboard.tsx           ✓ Sales-specific dashboard (self-contained)
+│   │   └── sdr-dashboard.tsx             ✓ SDR-specific dashboard (self-contained)
+│   ├── print/                            ✓ Print-specific layout components
+│   └── ui/
+│       ├── status-pill.tsx               ✓ Lead/sales status pill
+│       ├── urgency-pill.tsx              ✓ High/Medium/Low/Not Defined pill
+│       ├── phone-input.tsx               ✓ Validated phone field with call-action icon
+│       ├── email-input.tsx               ✓ Validated email field with mailto-action icon
+│       ├── back-button.tsx               ✓ Reusable back navigation button
+│       ├── spec-preview.tsx              ✓ Coming-soon placeholder page
+│       └── [shadcn primitives]           ✓ button, input, select, dialog, tooltip, etc.
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts                     ✓ createBrowserClient (PUBLISHABLE_KEY)
@@ -210,9 +245,11 @@ BazarCRM/
 │   │                                       JobTicket, QuoteSku, LookupValue, etc.)
 │   └── utils/
 │       ├── phone.ts                      ✓ Phone formatting + validation
-│       └── ticket-math.ts               ✓ QuoteSku interface + pricing computation helpers
+│       ├── ticket-math.ts               ✓ QuoteSku interface + pricing computation helpers
+│       ├── compute-checkout.ts          ✓ Checkout state machine — computes deposit due, balance, payment status from TicketPaymentDraft
+│       └── email.ts                     ✓ Email utility helpers
 ├── supabase/
-│   └── migrations/                       ✓ 048 migrations (001–048)
+│   └── migrations/                       ✓ 66 migrations (001–066, with test-only gaps at 062–064)
 ├── docs/                                 ✓ All feature specs + architecture docs
 ├── proxy.ts                              ✓ AAL2 + RBAC session enforcement
 ├── components.json                       ✓ shadcn config — style: base-nova

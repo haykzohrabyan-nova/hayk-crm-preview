@@ -8,6 +8,8 @@ import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
 import { InvoicePDF } from "@/lib/pdf/invoice-pdf";
+import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
+import { getChannelLabel } from "@/lib/utils/compute-checkout";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +49,10 @@ export async function GET(
          discount_type, discount_value, discount_reason,
          quote_pre_tax_total, quote_tax_rate_percent, quote_tax_amount, quote_final_total,
          tax_exempt, quote_payment_types, quote_channel, created_by_id,
+         ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
+         ticket_partial_channels, ticket_full_channels,
+         payment_amount_received, deposit_amount, deposit_paid_at, payment_paid_at,
+         payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount,
          customer:customers(first_name, last_name, company, email, phone)`
       )
       .eq("id", id)
@@ -110,12 +116,33 @@ export async function GET(
 
   const paymentLabels: Record<string, string> = {
     card_default: "Card Payment",
+    card: "Credit / Debit Card",
+    wire: "Wire Transfer",
+    ach: "ACH / Bank Transfer",
     zelle: "Zelle",
+    check: "Check",
+    cash: "Cash (In Person)",
     offline: "Offline / In-person",
   };
-  const paymentMethods = ((ticket.quote_payment_types as string[]) ?? [])
-    .map((k) => paymentLabels[k] ?? k)
-    .join(", ");
+  const strategy = (ticket.ticket_payment_strategy as string | null) ?? "full";
+  const channelKeys = strategy === "partial"
+    ? ((ticket.ticket_partial_channels as string[]) ?? [])
+    : ((ticket.ticket_full_channels as string[]) ?? (ticket.quote_payment_types as string[]) ?? []);
+  const paymentMethods = channelKeys.map((k) => paymentLabels[k] ?? getChannelLabel(k)).join(", ");
+
+  const paymentSummary = computeInvoicePaymentSummary({
+    quote_final_total: ticket.quote_final_total as number | null,
+    ticket_payment_strategy: ticket.ticket_payment_strategy as "full" | "partial" | "net" | null,
+    ticket_deposit_type: ticket.ticket_deposit_type as "percent" | "fixed" | null,
+    ticket_deposit_value: ticket.ticket_deposit_value as number | null,
+    payment_amount_received: ticket.payment_amount_received as number | null,
+    deposit_amount: ticket.deposit_amount as number | null,
+    deposit_paid_at: ticket.deposit_paid_at as string | null,
+    payment_paid_at: ticket.payment_paid_at as string | null,
+    payment_evidence_url: ticket.payment_evidence_url as string | null,
+    payment_evidence_submitted_at: ticket.payment_evidence_submitted_at as string | null,
+    payment_evidence_amount: ticket.payment_evidence_amount as number | null,
+  });
 
   // ── Render PDF ────────────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -154,6 +181,7 @@ export async function GET(
     skus,
     discountAmt: discountAmt ?? null,
     paymentMethods,
+    paymentSummary,
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

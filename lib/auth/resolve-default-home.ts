@@ -10,7 +10,8 @@ export async function resolveDefaultHomePath(supabase: SupabaseClient): Promise<
   const roleData = data?.roles as unknown as { name: string } | null;
   const roleName = roleData?.name;
 
-  if (roleName === "sdr") return "/leads";
-  if (roleName === "sales") return "/sales";
+  if (roleName === "sdr")        return "/leads";
+  if (roleName === "sales")      return "/sales";
+  if (roleName === "accountant") return "/payments";
   return "/dashboard";
 }

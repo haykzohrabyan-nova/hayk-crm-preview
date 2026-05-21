@@ -57,7 +57,7 @@ Role-aware counts returned on every badge refresh:
 
 ## Realtime Subscription
 
-**File: `components/sidebar.tsx`**
+**File: `components/layout/sidebar.tsx`**
 
 The sidebar owns a single Supabase Realtime channel for the `leads` table. On any INSERT, UPDATE, or DELETE:
 
@@ -78,7 +78,7 @@ const channel = supabase
 
 ## Page Table Refresh
 
-### Sales Pipeline (`components/sales-page.tsx`)
+### Sales Pipeline (`components/sales/sales-page.tsx`)
 
 Drawer-aware — if a lead drawer is open, refresh is deferred until the drawer closes:
 
@@ -111,7 +111,7 @@ if (pendingLeadsRefresh.current) {
 }
 ```
 
-### Leads Workspace (`components/leads-page.tsx`)
+### Leads Workspace (`components/leads/leads-page.tsx`)
 
 Same pattern — skips refresh if drawer is open, otherwise silently re-fetches current tab:
 

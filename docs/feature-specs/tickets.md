@@ -1,15 +1,8 @@
 # Feature Spec — Tickets (Quotes & Orders)
 
-Routes: `/quotes` · `/orders` · `/quotes/new` · `/quotes/[id]`
+> **Status: Built** — full quote → order → payment → production → completed lifecycle as of 2026-05-21.
 
-> **Status: Built** — all phases complete as of 2026-05-15.  
-> Original design used an OrderDrawer modal. **Revised design uses dedicated full pages** (better UX, deep-linkable, side-by-side lead info).
-
----
-
-## Overview
-
-The Tickets module manages all job tickets: quotes sent to clients and production orders. Both use the same `job_tickets` table, distinguished by `ticket_kind` (`'quote'` | `'order'`) and `ticket_status`.
+**Routes:** `/quotes` · `/orders` · `/payments` · `/production` · `/completed` · `/quotes/new` · `/quotes/[id]` · `/orders/[id]` · `/payments/[id]` · `/production/[id]` · `/completed/[id]`
 
 ### Ticket Status Flow
 
@@ -28,8 +21,21 @@ The Tickets module manages all job tickets: quotes sent to clients and productio
 - `sent` — quote delivered to client; awaiting approval
 - `approved` — **retired** — kept in `TicketStatus` type for backwards compatibility only; new code never sets this
 - `routed` — SDR's quote exceeded High-Value Threshold; routed to Sales for claiming
-- `order` — confirmed production order. Set by: (a) customer confirms via public `/q/[token]` page, or (b) rep clicks "Convert to Order" button. Auto-generates `ORD-YYYY-NNN` reference code. Auto-sets `client_confirmed = true` for path (a).
+- `order` — confirmed production order. Set by customer confirm, rep convert, or payment auto-release.
+- `in_production` — released to shop floor (`production_released_at` set). Net terms may enter here unpaid.
+- `completed` — finished; customer notified (email/SMS pickup message); public page shows **Ready for pickup**
 - `cancelled` — terminal; no payment recorded
+
+### Where tickets appear by status
+
+| Status | Primary page |
+|--------|----------------|
+| `draft`, `sent`, `approved`, `routed` | `/quotes` |
+| `order` (no pending evidence) | `/orders` |
+| `order` + payment evidence pending | `/payments` only |
+| `in_production` | `/production` |
+| `completed` | `/completed` |
+| `cancelled` | `/orders` (Cancelled tab) |
 
 > **Record Locking:** Once a ticket becomes an `order` via **customer confirmation** (`client_confirmed = true`), the record is locked for SDR/Sales users. Only Admins can edit or cancel. Locking applies to the order detail header buttons, action bar, and editing mode.
 
@@ -49,13 +55,13 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 ## `/quotes` — Quoted Requests page
 
-**Component:** `components/quotes-page.tsx`
+**Component:** `components/quotes/quotes-page.tsx`
 
 ### Tabs (count badge on all tabs)
 
 | Tab | Filter | Visible to |
 |-----|--------|-----------|
-| All | All non-order, non-routed tickets | All roles |
+| All | `draft` + `sent` + `approved` (badge excludes in-production/completed/order) | All roles |
 | Draft | `ticket_status = 'draft'` | All roles |
 | Sent | `ticket_status = 'sent'` | All roles |
 | Won | `ticket_status = 'approved'` | All roles |
@@ -82,31 +88,77 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 ## `/orders` — Orders page
 
-**Component:** `components/orders-page.tsx`
+**Component:** `components/orders/orders-page.tsx`
 
 ### Tabs (count badge on all tabs)
 
 | Tab | Filter |
 |-----|--------|
-| All | `ticket_status IN ('order', 'cancelled')` |
-| Active | `ticket_status = 'order'` |
+| All | `order` + `cancelled` (excludes evidence-pending) |
+| Pending Payment | `ticket_status = 'order'` (excludes evidence-pending) — **default tab** |
 | Cancelled | `ticket_status = 'cancelled'` |
 
-> **Note:** `draft`, `sent`, `approved`, and `routed` tickets do NOT appear on the Orders page. They belong to the Quotes page only. The Orders page shows only tickets that have been fully confirmed as orders (status `order`) or cancelled.
+> Tickets with customer-submitted payment proof awaiting review appear on **`/payments`** only, not here.
 
-**Table columns:** Order # (ORD-YYYY-NNN), Contact, Title (⚡ Rush), Total, Priority (colour-coded), Due Date (orange = due soon, red = overdue), Status pill, Created
+**Row click** → `/orders/[id]` (`QuoteDetail` with `context="order"`)
 
-**Behaviors:**
-- Search: contact name, company, title, reference
-- Row click → `/quotes/[id]`
-- No "New Order" button — orders are always created from the Quotes flow
-- Realtime: listens to `bazaar:tickets-changed`
+---
+
+## `/payments` — Payment review (Accountant + Admin)
+
+**Component:** `components/orders/payments-page.tsx`
+
+Queue of orders where customer uploaded payment evidence and accountant has not yet confirmed.
+
+**Row click** → `/payments/[id]` (`QuoteDetail` with `context="payment"`)
+
+**Actions:** Confirm payment (`PATCH { record_payment: true }`), view evidence file
+
+---
+
+## `/production` — In Production (Accountant + Admin)
+
+**Component:** `components/orders/production-page.tsx`
+
+**Tabs:** All in Production | Balance Due
+
+**Row click** → `/production/[id]` (`QuoteDetail` with `context="production"`)
+
+**Actions (overview card):**
+- **Resend invoice link** — emails/SMS `/q/{token}` to customer
+- **Mark Completed** — admin always; accountant when paid in full → sends pickup notification
+
+---
+
+## `/completed` — Completed orders (Accountant + Admin)
+
+**Component:** `components/orders/completed-page.tsx`
+
+**Row click** → `/completed/[id]` (`QuoteDetail` with `context="completed"`)
+
+**Actions:** Resend invoice link (customer portal access)
+
+---
+
+## Unified ticket detail (Overview + History)
+
+All post-draft detail routes share:
+
+| Component | Purpose |
+|-----------|---------|
+| `ticket-detail-overview.tsx` | Routes to payment / production / quote-stage snapshot |
+| `ticket-overview-sections.tsx` | Line items, pricing, payment config (read-only) |
+| `history-section.tsx` | Full activity trail |
+
+**Quote-stage overview** (`quote-stage-overview.tsx`) on sent quotes includes:
+- **Customer link** — opens `/q/{token}` in new tab (works while staff logged in)
+- **Copy** — copies full public URL with **Copied!** feedback
 
 ---
 
 ## `/quotes/new` — New Quote
 
-**Component:** `components/new-quote-form.tsx`
+**Component:** `components/quotes/new-quote-form.tsx`
 
 ### Layout
 
@@ -215,7 +267,7 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 
 ## `/quotes/[id]` — Quote / Order Detail
 
-**Component:** `components/quote-detail.tsx`
+**Component:** `components/quotes/quote-detail.tsx`
 
 ### Header (sticky)
 
@@ -354,11 +406,19 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `GET /api/tickets` | GET | List tickets. SDRs see own + any they routed (`routed_by_id = userId`). Sales/Admin see own + all `routed`. `kind`, `search` params. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates ORD-YYYY-NNN for orders. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket. Sales/Admin can GET `routed` tickets they don't own. |
-| `PATCH /api/tickets/[id]` | PATCH | Multi-mode update: (1) `claim_ownership: true` — Sales claim a routed ticket; (2) `send_payment_reminder: true` — send payment reminder email/SMS/WhatsApp; (3) normal update. On `ticket_status = 'sent'`: triggers `sendQuoteToCustomer()`; logs `ticket_sent`. On `ticket_status = 'order'` (manual): generates ORD-YYYY-NNN, logs `ticket_converted`, updates linked lead `sales_status = 'Won'`. |
-| `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, routed, cancelled, total }`. |
+| `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |
+| `GET /api/tickets/[id]/evidence` | GET | Signed URL for payment evidence file (Accountant + Admin) |
+| `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, in_production, completed, routed, cancelled, total }`. Orders count excludes evidence-pending. |
+| `GET /api/payments/pending` | GET | Evidence-pending queue (Accountant + Admin) |
+| `GET /api/payments/counts` | GET | Payments page badge counts |
+| `GET /api/production/orders` | GET | In-production list |
+| `GET /api/production/counts` | GET | Production tab badge counts |
+| `GET /api/completed/orders` | GET | Completed orders list |
+| `GET /api/completed/counts` | GET | Completed page badge counts |
 | `GET /api/activities` | GET | `?ticket_id=xxx&include_linked_lead=true` → full lifetime (lead + ticket activities merged) |
 | `GET /api/public/quotes/[token]` | GET (no auth) | Public ticket data for `/q/[token]` customer page |
-| `POST /api/public/quotes/[token]/confirm` | POST (no auth) | Customer confirms quote → sets `client_confirmed = true`, `ticket_status = 'order'`, generates ORD ref; updates linked lead `sales_status = 'Won'` |
+| `POST /api/public/quotes/[token]/confirm` | POST (no auth) | Customer confirms quote → order; may auto-release production |
+| `POST /api/public/quotes/[token]/submit-payment` | POST (no auth) | Customer payment proof upload (multipart) |
 
 ---
 
@@ -373,17 +433,26 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `ticket_client_confirmed` | Customer confirms via public page |
 | `ticket_converted` | Rep clicks "Convert to Order". Payload: `{ from, to: 'order', reference_code }` |
 | `ticket_payment_reminder_sent` | Payment reminder sent. Payload: `{ channel, destination }` |
+| `ticket_payment_evidence_submitted` | Customer uploaded proof on public page. Payload: `{ method, amount }` |
+| `ticket_payment_recorded` | Accountant/staff recorded payment via `record_payment` |
+| `ticket_payment_confirmed_sent` | Payment confirmation email/SMS after accountant confirms evidence |
+| `ticket_invoice_resent` | Customer portal link resent from production/completed detail |
+| `ticket_order_ready_sent` | Pickup notification sent when order marked completed |
+| `ticket_order_ready_failed` | Pickup notification failed to send |
 
 ---
 
 ## Sidebar Badges
 
-| Badge | SDR | Sales / Admin |
-|-------|-----|---------------|
-| `/quotes` | `draft` + `sent` (own) | same + all `routed` |
-| `/orders` | `order` status (own) | `order` status (all) |
+| Badge | SDR | Sales | Accountant | Admin |
+|-------|-----|-------|------------|-------|
+| `/quotes` | draft + sent (own) | + all `routed` | — | all |
+| `/orders` | active orders (own) | all active | — | all |
+| `/payments` | — | — | pending evidence count | pending evidence count |
+| `/production` | — | — | in-production count | in-production count |
+| `/completed` | — | — | completed count | completed count |
 
-Both updated in `app/api/sidebar-counts/route.ts` and refresh via `bazaar:refresh-counts`.
+Counts from dedicated endpoints (`/api/payments/counts`, `/api/production/counts`, `/api/completed/counts`, `/api/sidebar-counts`). Refresh via `bazaar:refresh-counts`.
 
 ---
 

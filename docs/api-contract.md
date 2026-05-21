@@ -433,22 +433,9 @@ Create a new ticket.
 
 ### `PATCH /api/tickets/[id]`
 
-Partial ticket update. Two distinct operation modes:
+Partial ticket update. Six distinct operation modes:
 
-**Mode 1 — Claim (Sales/Admin only):**
-```json
-{
-  "ticket_status": "draft",
-  "claim_ownership": true
-}
-```
-- Ticket must currently have `ticket_status = 'routed'`
-- Caller must be `sales` or `admin`
-- Sets `ticket_status = 'draft'` and `created_by_id = callerUserId`
-- Logs `order_ticket_status_changed` activity with `payload: { from: "routed", to: "draft", action: "claimed" }`
-- Bypasses the normal ownership check (`created_by_id = userId`)
-
-**Mode 2 — Payment Reminder:**
+**Mode 1 — Payment Reminder:**
 ```json
 {
   "send_payment_reminder": true,
@@ -464,7 +451,50 @@ Partial ticket update. Two distinct operation modes:
 - Logs `ticket_payment_reminder_sent` activity with `{ channel, destination }` in payload
 - Returns `200` immediately; `ok: true` in body
 
-**Mode 3 — Normal update:**
+**Mode 2 — Resend invoice link:**
+```json
+{
+  "resend_invoice": true,
+  "invoice_channel": "email | sms | whatsapp",
+  "invoice_destination": "string"
+}
+```
+- Sends customer the permanent `/q/{public_token}` portal link via `sendInvoiceLinkToCustomer()`
+- Works for paid, unpaid, in-production, and completed orders
+- Optional `invoice_channel` / `invoice_destination` override quote defaults
+- Logs `ticket_invoice_resent` with `{ channel, destination }`
+- Returns `{ ok: true, channel }` or `502` on send failure
+
+**Mode 3 — Record payment (Accountant + Admin):**
+```json
+{
+  "record_payment": true,
+  "payment_mode": "deposit | balance | full",
+  "payment_method": "cash | wire | ach | zelle | check | card",
+  "payment_amount": 1234.56,
+  "receipt_id": "string | null"
+}
+```
+- Records deposit / balance / full payment; updates running `payment_amount_received`
+- Sets `payment_status` to `partial` or `paid`; clears `payment_evidence_*` fields when confirming submitted proof
+- Runs `computeCheckout` after recording — may auto-release to `in_production` when gates pass
+- When confirming customer-submitted evidence: sends **payment confirmed** email/SMS; logs `ticket_payment_confirmed_sent`
+- Logs `ticket_payment_recorded` activity
+
+**Mode 4 — Claim (Sales/Admin only):**
+```json
+{
+  "ticket_status": "draft",
+  "claim_ownership": true
+}
+```
+- Ticket must currently have `ticket_status = 'routed'`
+- Caller must be `sales` or `admin`
+- Sets `ticket_status = 'draft'` and `created_by_id = callerUserId`
+- Logs `order_ticket_status_changed` activity with `payload: { from: "routed", to: "draft", action: "claimed" }`
+- Bypasses the normal ownership check (`created_by_id = userId`)
+
+**Mode 5 — Normal update:**
 
 Body: Any subset of ticket fields plus optional:
 ```json
@@ -475,7 +505,9 @@ Body: Any subset of ticket fields plus optional:
 
 `activity_by_role` is stripped from the stored record but used to attribute the activity log entry.
 
-**Business rules (Mode 3):**
+**Business rules (Mode 5):**
+- If `ticket_status` transitions to `"completed"` from `"in_production"`: sends pickup-ready notification via `sendOrderReadyToCustomer()`; logs `ticket_order_ready_sent` or `ticket_order_ready_failed`
+- **Accountant** may set `ticket_status = "completed"` only on in-production orders that are **paid in full** (`isTicketPaidInFull()`)
 - If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
 - If `ticket_status` transitions to `"order"` (manual "Convert to Order"):
   - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
@@ -488,6 +520,11 @@ Body: Any subset of ticket fields plus optional:
 - If `client_confirmed` transitions to `true` → logs `ticket_client_confirmed`; creates `follow_up_due` notification
 - Otherwise → logs `order_ticket_updated` with `payload.fields`
 - `payment_status` and `prepayment_status` can be updated on `order` status tickets even by non-admins (special relaxed guard)
+- **Accountants** may update payment fields on any ticket; non-admins on locked `order` tickets may only update payment-related fields
+
+**Mode 6 — Field guard notes:**
+- Once `ticket_status = 'order'`, non-admins (except accountant payment updates) cannot edit non-payment fields
+- Customer-confirmed orders are locked for SDR/Sales in the UI; admin may still edit/cancel
 
 **Response `200`:**
 ```json
@@ -527,6 +564,21 @@ Returns a complete, fully-styled HTML document of the invoice. Used for browser 
 
 ---
 
+### `GET /api/tickets/[id]/evidence`
+
+Returns a short-lived signed URL for the customer-uploaded payment evidence file.
+
+**Auth:** Requires authenticated session with access to the ticket.
+
+**Response `200`:**
+```json
+{ "url": "https://..." }
+```
+
+**Response `404`:** No evidence on file.
+
+---
+
 ### `GET /api/tickets/counts`
 
 Returns lightweight tab badge counts. Scoped per role.
@@ -549,12 +601,119 @@ Returns lightweight tab badge counts. Scoped per role.
 - **SDR:** `routed` = count of their own routed tickets (subtracted from `all` on the Quotes page)
 - **Sales/Admin:** `routed` = count of ALL routed tickets from any SDR
 - `cancelled` = count of cancelled tickets (used by Orders page "Cancelled" tab badge)
+- Orders tab counts exclude tickets with pending payment evidence (`payment_evidence_url` set, `payment_paid_at` null)
+
+---
+
+## Payments (Accountant + Admin)
+
+### `GET /api/payments/pending`
+
+Returns orders with customer-submitted payment evidence awaiting accountant confirmation.
+
+**Auth:** Accountant or Admin only.
+
+**Filter:** `payment_evidence_url IS NOT NULL`, `payment_paid_at IS NULL`, `ticket_status IN ('order', 'in_production')`
+
+**Response `200`:**
+```json
+{
+  "orders": [
+    {
+      "id": "uuid",
+      "reference_code": "ORD-2026-042",
+      "title": "string",
+      "quote_final_total": 1234.56,
+      "payment_evidence_url": "path/in/storage",
+      "payment_evidence_submitted_at": "ISO",
+      "payment_evidence_amount": 500.00,
+      "customer": { "first_name": "string", "last_name": "string", "company": "string" }
+    }
+  ]
+}
+```
+
+---
+
+### `GET /api/payments/counts`
+
+Returns tab badge counts for the Payments page.
+
+**Auth:** Accountant or Admin only.
+
+**Response `200`:**
+```json
+{
+  "counts": {
+    "pending": 0
+  }
+}
+```
+
+---
+
+## Production
+
+### `GET /api/production/orders`
+
+Returns all tickets with `ticket_status = 'in_production'`.
+
+**Auth:** Any authenticated role (page access is RBAC-gated in UI).
+
+**Response `200`:**
+```json
+{ "orders": [Ticket] }
+```
+
+---
+
+### `GET /api/production/counts`
+
+Returns tab badge counts for the Production page.
+
+**Response `200`:**
+```json
+{
+  "counts": {
+    "all": 0,
+    "balance_due": 0
+  }
+}
+```
+
+---
+
+## Completed
+
+### `GET /api/completed/orders`
+
+Returns all tickets with `ticket_status = 'completed'`.
+
+**Response `200`:**
+```json
+{ "orders": [Ticket] }
+```
+
+---
+
+### `GET /api/completed/counts`
+
+Returns tab badge counts for the Completed page.
+
+**Response `200`:**
+```json
+{
+  "counts": {
+    "all": 0
+  }
+}
+```
 
 ---
 
 ## Public Quote Routes (no auth required)
 
-These routes are accessible without a session. `proxy.ts` allows `/q/` and `/api/public/` paths without authentication.
+These routes are accessible without a session. `proxy.ts` allows `/q/` and `/api/public/` paths without authentication. Logged-in staff visiting `/q/{token}` also bypass RBAC/MFA redirects so they can preview the customer portal.
 
 ### `GET /api/public/quotes/[token]`
 
@@ -562,48 +721,25 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
 
 **Auth:** None — public route.
 
-**Response `200`:**
+**Response `200`:** Returns safe public ticket fields including payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_amount`), and `production_released_at`. Draft tickets return `404`.
+
 ```json
 {
   "ticket": {
-    "id": "uuid",
     "ticket_kind": "quote | order",
-    "ticket_status": "sent | approved | order | cancelled",
-    "title": "string | null",
+    "ticket_status": "sent | order | in_production | completed | cancelled",
     "reference_code": "string | null",
-    "quote_skus": "QuoteSku[]",
-    "quote_subtotal": "number | null",
-    "quote_shipping": "number | null",
-    "discount_type": "string | null",
-    "discount_value": "string | null",
-    "quote_pre_tax_total": "number | null",
-    "quote_tax_rate_percent": "number | null",
-    "quote_tax_amount": "number | null",
     "quote_final_total": "number | null",
-    "tax_exempt": "boolean",
-    "quote_payment_types": "string[]",
-    "prepayment_type": "full | percent | fixed | null",
-    "prepayment_value": "string | null",
-    "order_source": "string | null",
-    "special_requirements": "string | null",
-    "rush": "boolean",
     "client_confirmed": "boolean",
-    "contact_name": "string | null",
-    "contact_email": "string | null",
-    "contact_company": "string | null",
-    "customer": { "first_name": "string | null", "last_name": "string | null", "company": "string | null", "email": "string | null" }
+    "payment_amount_received": "number | null",
+    "payment_evidence_url": "string | null",
+    "payment_evidence_submitted_at": "ISO | null",
+    "payment_evidence_amount": "number | null",
+    "production_released_at": "ISO | null",
+    "ticket_payment_strategy": "full | partial | net",
+    "ticket_require_client_confirm": "boolean"
   },
-  "company": {
-    "company_name": "string | null",
-    "logo_url": "string | null",
-    "address_line1": "string | null",
-    "city": "string | null",
-    "state": "string | null",
-    "zip": "string | null",
-    "phone": "string | null",
-    "email": "string | null",
-    "website": "string | null"
-  }
+  "company": { "company_name": "string", "phone": "string", "address_line1": "string" }
 }
 ```
 
@@ -623,6 +759,7 @@ Customer confirms a quote, converting it to an order.
 - Ticket must have `ticket_status = "sent"`; returns `400` if already confirmed or not in sent state
 - Sets `client_confirmed = true`, `ticket_status = "order"`, `ticket_kind = "order"`
 - Generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
+- May auto-release to `in_production` when net terms / payment gates pass (`maybeAutoReleaseProduction`)
 - Logs `order_ticket_status_changed` and `ticket_client_confirmed` activities with `by_user_id = null` (customer action)
 - If ticket has `linked_lead_id`: updates `leads.sales_status = 'Won'` on the linked lead (SDR/Sales Won tracking)
 
@@ -632,6 +769,42 @@ Customer confirms a quote, converting it to an order.
 ```
 
 **Response `400`:** Already confirmed or wrong status.
+
+---
+
+### `POST /api/public/quotes/[token]/submit-payment`
+
+Customer submits payment proof or records an in-person payment from the public portal.
+
+**Auth:** None — public route.
+
+**Content-Type:** `multipart/form-data`
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `method` | Yes | `wire` \| `ach` \| `zelle` \| `check` \| `card` \| `cash` |
+| `amount` | Yes | Payment amount (numeric string) |
+| `file` | Conditional | Evidence file — required for wire/ACH/zelle/check/card |
+| `receiptId` | No | Receipt reference for cash-in-person |
+
+**Business rules:**
+- Allowed when `ticket_status IN ('sent', 'order', 'in_production')`
+- Wire/ACH/Zelle/check/card: stores file in `payment-evidence` bucket; sets evidence fields + `payment_evidence_amount`; **does not** update `payment_amount_received` or mark paid — queues for accountant on `/payments`
+- Cash: records payment immediately; may auto-release to `in_production` when gates pass
+- `sent` → `order` conversion on first payment (generates ORD reference)
+- Follow-up balance payments allowed when already partially paid or `in_production`
+- Logs `ticket_payment_evidence_submitted` and status-change activities in History
+
+**Response `200`:**
+```json
+{
+  "ok": true,
+  "autoReleased": false,
+  "reference_code": "ORD-2026-042"
+}
+```
+
+**Response `409`:** Evidence already submitted (first payment only).
 
 ---
 
@@ -728,7 +901,7 @@ Notifications in BazaarCRM are delivered via **Supabase Realtime**, not HTTP pol
 
 ### How it works
 
-- `components/sidebar.tsx` maintains three persistent Supabase Realtime subscriptions:
+- `components/layout/sidebar.tsx` maintains three persistent Supabase Realtime subscriptions:
   - **`leads-realtime`** — watches any INSERT/UPDATE/DELETE on `public.leads` → refreshes sidebar badge counts + dispatches `bazaar:leads-changed` browser event
   - **`activities-realtime`** — watches any INSERT on `public.activities` → dispatches `bazaar:activities-changed` browser event
   - **`tickets-realtime`** — watches any INSERT/UPDATE/DELETE on `public.job_tickets` → refreshes sidebar badge counts + dispatches `bazaar:tickets-changed` browser event
@@ -1220,7 +1393,7 @@ Products and materials with `is_active = false` are excluded. Managed via **Admi
 
 ### `GET /api/admin/company`
 
-Returns the single `company_settings` row. Accessible to all authenticated users (OrderDrawer needs tax rate + threshold at runtime).
+Returns the single `company_settings` row. Accessible to all authenticated users (quote forms and public page need tax rate + threshold at runtime).
 
 **Response `200`:**
 ```json

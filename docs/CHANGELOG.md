@@ -3,6 +3,448 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-21] — Fix PaymentConfig type errors in API routes
+
+### Fixed
+- `app/api/public/quotes/[token]/submit-payment/route.ts`, `app/api/tickets/route.ts`, `app/api/tickets/[id]/route.ts` — minimal checkout configs use `as PaymentConfig` (matches `maybe-auto-release-production.ts`) so production build type-check passes
+- `lib/integrations/send-quote.ts` — `sendPaymentConfirmed` accepts `PaymentConfirmedTicket`; `customerDisplayName` uses a minimal ticket shape
+- `components/quotes/quote-detail.tsx` — add missing `payment_evidence_amount` on local `Ticket` type
+- `components/quotes/quote-detail/order-payment-summary.tsx`, `quote-stage-overview.tsx`, `ticket-overview-sections.tsx` — TypeScript fixes for payment overview props and imports
+
+## [2026-05-21] — Sales drawer: remove duplicate Notes label
+
+### Fixed
+- `components/sales/sales-drawer.tsx` — removed redundant "Notes" field label under the "Sales Notes" section heading (matches SDR verify drawer pattern)
+
+## [2026-05-21] — Sales drawer: notes-only until quote exists
+
+### Changed
+- `components/sales/sales-drawer.tsx` — Sales modal body is **Sales Notes** only before a quote exists; removed Assigned To / Sales Status rows (status pill stays in header); Quote Total appears only when `quote_total > 0`
+
+## [2026-05-21] — Sales drawer: read-only status and quote total
+
+### Changed
+- `components/sales/sales-drawer.tsx` — Sales Status and Quote Total are read-only (updated automatically when quotes/orders are created); only **Sales Notes** remains editable
+
+## [2026-05-21] — Sales drawer shows lookup labels for routed leads
+
+### Fixed
+- `components/sales/sales-drawer.tsx` — Industry and Source read-only fields now show human-readable labels (e.g. "Cannabis/CBD", "Walk-in") instead of stored values (`cannabis_cbd`, `walk_in`)
+- `lib/utils/lookups.ts` — shared `lookupLabel()` helper for lookup value → label resolution
+
+## [2026-05-21] — Folder structure rule + shared format helpers
+
+### Added
+- `.cursor/rules/folder-structure.mdc` — always-on rule: feature folders, `QuoteDetail` context pattern, DRY checklist before new files
+- `lib/utils/format.ts` — canonical `relativeTime`, `formatDate`, `formatDateTime`, `displayContactName`, due-date helpers
+
+### Changed
+- `components/orders/*` — list + detail overview pages import from `lib/utils/format.ts` instead of local copies
+- `.cursor/rules/tab-counts.mdc` — fixed example paths to `components/leads/leads-page.tsx` etc.
+- `docs/component-architecture.md` — folder layout + anti-duplication section
+
+## [2026-05-21] — Documentation audit: sync docs with shipped code
+
+### Changed
+- Fixed `/orders` tab names across docs: **All | Pending Payment | Cancelled** (default tab = Pending Payment) — was incorrectly documented as "Active"
+- Updated `tickets.md` API route table, `dashboard.md` (Accountant dashboard), `rbac.md` (resend_invoice), `schema.md` (migration 070, OrderDrawer → quote forms), `admin.md` (Accountant system role), `TODO.md` (order lifecycle done state), `order-ticket/README.md` (historical archive notice)
+- Added `/tickets` redirect stub and `/overview` alias notes to `navigation.md`
+
+## [2026-05-21] — Documentation sync for order lifecycle session
+
+### Changed
+- Updated `docs/feature-specs/tickets.md`, `invoice-payment.md`, `api-contract.md`, `component-architecture.md`, `activity.md`, `notifications.md`, `schema.md`, `types.md`, `email-template-guide.md`, `architecture.md`, and `realtime-live-updates.md` to reflect payments queue, production/completed pages, payment evidence workflow, net terms auto-release, unified ticket detail overview, public portal phases, and new customer notification templates
+
+## [2026-05-21] — Fix customer link preview while logged in
+
+### Fixed
+- **Customer link** on quote detail redirected logged-in staff to `/sales` — `/q/{token}` is now treated as public in `proxy.ts` (RBAC no longer blocks staff preview)
+- **Copy** on customer link showed no feedback — button now shows **Copied!** / **Copy failed** with clipboard fallback
+
+## [2026-05-21] — Completed order detail route
+
+### Added
+- `/completed/[id]` — dedicated completed-order detail page (same overview layout as production); Completed list rows link here instead of `/orders/[id]`
+
+### Changed
+- Public order page — pickup address and company address open **Google Maps** on click (same text styling); phone, email, and website in header/footer are clickable (`tel:` / `mailto:` / link) without visual changes
+
+## [2026-05-21] — Public page shows ready for pickup when completed
+
+### Fixed
+- Public order page (`/q/{token}`) still showed **In production** after staff marked order **Completed** — now shows **Ready for pickup** banner with shop address and phone; invoice badge updates to **Ready for Pickup**
+- Accountant **Mark Completed** rejected paid-in-full orders — PATCH handler was not loading payment fields on the ticket, so the paid check always failed (admin was unaffected)
+
+## [2026-05-21] — Pickup notification when order marked completed
+
+### Added
+- **Order ready notification** — when staff marks an in-production order **Completed**, customer receives email/SMS (same channel as the quote) that the order is ready for pickup at the print shop
+- `lib/integrations/order-ready-template.ts` + `sendOrderReadyToCustomer()` — includes company pickup address and phone
+- History logs `ticket_order_ready_sent` / `ticket_order_ready_failed`
+
+## [2026-05-21] — Accountant can mark paid production orders complete
+
+### Changed
+- **Mark Completed** on `/production/[id]` — visible to accountants when order is in production and **paid in full** (admin unchanged)
+- `PATCH /api/tickets/[id]` — validates accountant may only set `ticket_status: completed` on paid-in-full in-production orders
+
+## [2026-05-21] — Resend invoice link from production detail
+
+### Added
+- **Resend invoice link** on `/production/[id]` — emails/SMS the customer their permanent `/q/{token}` portal link (works when paid in full, unpaid, or net terms)
+- `lib/integrations/invoice-link-template.ts` + `sendInvoiceLinkToCustomer()` — neutral order/invoice email (not a payment demand)
+- `PATCH /api/tickets/[id]` with `{ resend_invoice: true }` — logs `ticket_invoice_resent` in History
+
+## [2026-05-21] — Unified ticket detail overview layout
+
+### Added
+- `components/quotes/quote-detail/ticket-detail-overview.tsx` — routes to the correct snapshot card by stage
+- `components/quotes/quote-detail/ticket-overview-sections.tsx` — shared read-only sections (line items, pricing, payment)
+- `components/quotes/quote-detail/quote-stage-overview.tsx` — snapshot card for sent / order / quote stages
+
+### Changed
+- `/quotes/[id]`, `/orders/[id]`, `/payments/[id]`, and `/production/[id]` now share the same **Overview + History** layout and section structure when not editing a draft
+
+## [2026-05-21] — Quotes tab All badge count fix
+
+### Fixed
+- Quotes page **All** tab badge now counts only draft + sent + approved — no longer includes tickets already in production (or completed/orders)
+
+## [2026-05-21] — Net terms auto-release to production
+
+### Added
+- `lib/utils/maybe-auto-release-production.ts` — shared production gate (net terms, cash, etc.)
+- `supabase/migrations/072_net_terms_auto_production.sql` — backfill net-terms tickets stuck in sent/order
+
+### Fixed
+- Net terms with **no client confirmation** now auto-release to **In Production** on send/create (unpaid, payment due per net label)
+- Public **Confirm & Accept** on net-terms quotes releases to production after confirmation
+- Public page: net terms with confirmation required shows the confirm step first; payment step shows **Net terms — payment due within X days** (not "Fully paid"); optional **Pay early** on no-confirm net orders
+- Quotes list excludes `in_production` and `completed` tickets
+
+### Changed
+- `app/api/tickets/route.ts`, `app/api/tickets/[id]/route.ts`, `app/api/public/quotes/[token]/confirm/route.ts` — call auto-release after create/update/confirm
+
+## [2026-05-21] — Payment review detail page
+
+### Added
+- `app/(app)/payments/[id]/page.tsx` — dedicated payment review detail (stays under Payments nav)
+- `components/orders/payment-detail-overview.tsx` — review snapshot with evidence link and Confirm payment action
+
+### Changed
+- `components/orders/payments-page.tsx` — row click opens `/payments/[id]`; removed confusing **Order** button that sent users to `/orders`
+- `components/quotes/quote-detail.tsx` — `context="payment"` streamlined overview for accountant review
+
+## [2026-05-21] — Orders vs Payments queue separation
+
+### Fixed
+- Orders with customer-submitted payment proof no longer appear on `/orders` — they show only on `/payments` until the accountant confirms
+- Order detail shows **Payment under review** badge instead of **Unpaid** while evidence is pending
+- `/orders` sidebar badge and tab counts exclude evidence-pending tickets (same filter as the list)
+
+## [2026-05-21] — Public page payment validation UX + confirmation email
+
+### Added
+- `lib/integrations/payment-confirmed-template.ts` — email template when accountant confirms customer payment proof
+- `sendPaymentConfirmed()` in `lib/integrations/send-quote.ts` — email/SMS to customer after payment validation; includes link to track order status
+- Public page polls every 30s while payment is under review so the link updates to **In production** after accountant confirms
+
+### Changed
+- `app/(public)/q/[token]/submit-payment/route.ts` — logs full customer journey in History: quote confirmed, status changes, payment proof, production release
+- `app/(public)/q/[token]/confirm/route.ts` — logs `order_ticket_status_changed` when customer confirms quote
+- `app/api/tickets/[id]/route.ts` — accountant payment confirm logs production release + status change with clear payloads
+- `components/quotes/quote-detail/history-section.tsx` — human-readable labels for payment/production events; shows **Customer** instead of **System** for public-page actions
+
+### Changed
+- `app/(public)/q/[token]/page.tsx` — payment step shows amber **under review** state (not green "Fully paid"); production step shows "Awaiting payment confirmation" until validated
+- `components/public/public-quote-document.tsx` — invoice status pill **Payment Under Review** while evidence is pending
+- `components/orders/payments-page.tsx` — redesigned `/payments` table: separate columns, pending badge, larger action buttons, relative submit time
+- `components/orders/production-detail-overview.tsx` — production order snapshot (totals, payment, due date, Mark Completed)
+- `components/quotes/quote-detail.tsx` — `/production/[id]` uses streamlined **Overview** layout (no duplicate payment/delivery sections, no locked banner)
+- `components/quotes/quote-detail/order-payment-summary.tsx` — `compact` mode for production detail; evidence link via signed API route
+- `app/api/tickets/[id]/route.ts` — sends confirmation email/SMS on `record_payment` when confirming submitted evidence; logs `ticket_payment_confirmed_sent` activity
+
+### Fixed
+- Public payment summary no longer shows paid amounts until accountant confirms; shows **Amount submitted** + **Awaiting validation** instead
+- PDF download (`/api/public/quotes/[token]/pdf`) and on-page invoice totals show **Payment Under Review — NOT PAID** banner while evidence is pending; no **Paid in Full** row until accountant confirms
+
+## [2026-05-21] — Payment evidence queue + accountant confirm
+
+### Fixed
+- `app/api/public/quotes/[token]/submit-payment/route.ts` — wire / ACH / Zelle / check / card submissions no longer auto-mark tickets paid; evidence is queued for accountant review instead
+- `app/(public)/q/[token]/page.tsx` — after evidence submit, portal shows **Payment under review** until accountant confirms (not the pay-again flow)
+- Migration `071_payment_evidence_amount.sql` — stores customer-claimed amount; backfills tickets incorrectly marked paid on evidence submit
+
+### Changed
+- `app/api/payments/pending/route.ts`, `app/api/payments/counts/route.ts`, `app/api/sidebar-counts/route.ts` — pending evidence includes orders in production awaiting balance confirmation
+- `components/orders/payments-page.tsx` — **Confirm** button records payment via `record_payment` and shows claimed amount
+- `app/api/tickets/[id]/route.ts` — clears `payment_evidence_amount` after accountant confirms
+
+### Fixed
+- `app/(public)/q/[token]/page.tsx` — customer payment CTA wording by strategy: **Pay in full** (full payment), **Pay deposit now** (partial), **Pay remaining balance** (balance due); modal title matches button
+
+## [2026-05-21] — Public page status pills deduplication
+
+### Fixed
+- `components/public/public-quote-document.tsx` — status row shows at most three pills (**Order**, **Rush**, one workflow status); removed duplicate Rush by title and redundant **Balance Due** pill alongside **Active · Balance Due**
+
+## [2026-05-21] — Public page + PDF invoice layout with deposit breakdown
+
+### Added
+- `components/public/public-quote-document.tsx` — PDF/shadow-style document view (company header, INVOICE/QUOTE, Bill To, line items with Specification column, right-aligned totals)
+- `lib/utils/invoice-payment-summary.ts` — shared deposit/balance calculation for web page and PDF
+
+### Changed
+- `app/(public)/q/[token]/page.tsx` — redesigned to match PDF invoice layout; status pills (ORDER, RUSH, ACTIVE · BALANCE DUE); portal below document
+- `lib/pdf/invoice-pdf.tsx` — after Total, shows **Deposit Due Now** / **Deposit Paid** + **Balance Due** when partial payment applies; **Paid in Full** when complete
+- `app/api/public/quotes/[token]/pdf/route.ts` + `app/api/tickets/[id]/pdf/route.ts` — pass payment fields and per-ticket channel labels to PDF
+
+## [2026-05-21] — One-link public portal (phase-driven UI)
+
+### Changed
+- `app/(public)/q/[token]/page.tsx` — merged checkout + balance payment into single **`QuotePortalSection`**: one permanent link (`/q/{public_token}`) adapts its banner, checklist, CTA, and greeting based on `computePortalState()` phase (`needs_confirm` → `needs_payment` → `balance_due` → `fully_paid`, etc.)
+- Resending a balance reminder uses the same URL — customer sees "Pay your remaining balance" instead of the pre-production deposit flow
+- Status badge, greeting subtitle, and checklist title all derive from the same portal phase
+
+## [2026-05-21] — Public page voluntary balance payment (in production)
+
+### Added
+- `BalancePaymentSection` on `/q/[token]` — **Pay your remaining balance** card with **Do the payment** button for orders already in production (or whenever deposit is paid but balance remains)
+- Shared `PublicPayModal` — reused for deposit, balance, and checkout flows
+
+### Fixed
+- Checkout section hid **Do the payment** once deposit was recorded (`paymentStepDone`) even when balance remained — now shows **Pay remaining balance** when deposit is paid but order isn't fully paid
+- `POST /api/public/quotes/[token]/submit-payment` — accepts `in_production` tickets for balance payments; allows follow-up submissions when a prior payment was already recorded
+
+## [2026-05-21] — Public page payment schedule when deposit is paid
+
+### Fixed
+- `app/(public)/q/[token]/page.tsx` — **Payment Schedule** block after pricing: when deposit is already paid, shows amber **Balance Remaining** ($825.19) with "Balance due upon completion / delivery" instead of **Deposit Due Now**; deposit-received confirmation shown above
+- Checkout payment summary and pay modal now use `deposit_paid_at` / `depositPaid` (not just `amountPaid > 0`) so cash-recorded deposits display correctly
+
+### Added
+- `PaymentScheduleBlock` on public quote page — visible for partial strategy including in-production orders (checkout checklist remains hidden once in production)
+
+## [2026-05-21] — Payment summary clarity + follow-up start date persistence
+
+### Fixed
+- `components/quotes/quote-detail/order-payment-summary.tsx` — when deposit is paid on a partial strategy, hide **Deposit due** and **Total received** (redundant with **Deposit paid**); show **Balance due** only for the remaining amount
+- `components/quotes/quote-payment-config.tsx` — follow-up reminder start date now persists as `quote_reminder_date` (was local UI state only)
+
+### Changed
+- `components/quotes/quote-detail.tsx` — loads/saves `quote_reminder_date` in payment draft
+- `components/quotes/new-quote-form.tsx` — includes `quote_reminder_date` in POST body
+
+## [2026-05-21] — Production/order detail: full payment & follow-up summary
+
+### Added
+- `components/quotes/quote-detail/order-payment-summary.tsx` — read-only card showing all stored payment, delivery, follow-up, and production fields (deposit paid, balance due, receipt ID, channels, reminder schedule, production released date, evidence link)
+
+### Changed
+- `components/quotes/quote-detail.tsx` — shows **Payment & Production** section on `/production/[id]`, `/orders/[id]`, and any order/in-production/completed ticket in view mode
+
+## [2026-05-21] — Production detail route + accountant read access
+
+### Added
+- `app/(app)/production/[id]/page.tsx` — detail view for in-production orders under `/production/{id}` (reuses `QuoteDetail` with `context="production"`)
+
+### Changed
+- `components/orders/production-page.tsx` — row click and View button now navigate to `/production/{id}` instead of `/orders/{id}`; sidebar stays on In Production
+- `components/quotes/quote-detail.tsx` — `context="production"` Back button returns to `/production`; public `/q/[token]` unchanged
+- `app/api/tickets/[id]/route.ts` — accountant can `GET` tickets with `ticket_status` `in_production` or `completed` (read-only production/completed workflow; evidence-review rule unchanged)
+
+## [2026-05-21] — Fix missing payment_status column + partial deposit backfill
+
+### Fixed
+- `supabase/migrations/070_payment_status_columns.sql` — adds `payment_status` and `prepayment_status` to `job_tickets` if missing (migrations 053/054 were never applied to some environments); backfills existing tickets with deposit recorded to `partial` / `paid`
+- `app/api/tickets/route.ts` + `app/api/tickets/[id]/route.ts` — `maybeAutoRecordCashPayment` now sets `payment_status = "partial"` and `prepayment_status = "paid"` when a partial cash deposit is auto-recorded
+
+## [2026-05-21] — Fix Save & Send button + API 500 errors
+
+### Fixed
+- `components/quotes/new-quote-form.tsx`
+  - **Save & Send button was silently doing nothing**: validation was checking an old `quoteDestination` state variable that was never synced from the `QuotePaymentConfig` section. The user typed their email in the "Send quote via" section (which updates `paymentDraft.ticket_dest_email`) but the gate checked an unreachable legacy field. Fixed by replacing the old validation with one that reads from `paymentDraft` and shows the error via the visible `setError()` toast. Also removed a TypeScript compile error that blocked form rendering (`"whatsapp"` compared against type `"sms" | "email" | "both"`)
+  - **Stale `quote_payment_types` / `follow_up_cycles` / `follow_up_frequency` in POST body**: these old state vars (`paymentTypes`, `followUpCycles`, `followUpFreq`) were hardcoded at their initial values and never updated. They are now fully replaced by `paymentDraft` fields (`ticket_partial_channels`, `ticket_full_channels`, `ticket_follow_up_count`, `ticket_follow_up_freq`). Removed all dead state declarations and the now-redundant `togglePayment` function
+  - Removed all debug `console.log` and fetch instrumentation added during investigation
+- `app/api/tickets/route.ts` + `app/api/tickets/[id]/route.ts`
+  - **500 Internal Server Error on POST**: `maybeAutoRecordCashPayment` called `.catch()` on the Supabase activities insert. Supabase JS v2 returns a `PromiseLike` (not a native `Promise`) — it has `.then()` but not `.catch()`. Changed to a simple fire-and-forget call (no `.catch()` chained)
+  - Removed `try/catch` wrapper and debug fetch instrumentation added during investigation
+
+## [2026-05-21] — Public quote page: payment modal + submission fix
+
+### Changed
+- `app/(public)/q/[token]/page.tsx`
+  - **Payment modal**: replaced inline expanding payment panel with a proper overlay modal. Clicking "Do the payment" (checklist step 2 or full-width CTA) now opens a fixed-position modal matching the shadow app's `#payModal`
+  - Modal contains: amount-due box, payment method `<select>` dropdown, numbered-step instruction panels (WireAch/Zelle/Check/Cash), amount input, upload hint, error message, Cancel + Submit Payment buttons. Backdrop click dismisses the modal. Changing method clears the evidence file
+  - **Fixed submission bug**: `handleSubmitPayment` was posting to the wrong endpoint (`/pay`) with wrong field names (`channel`, `evidence`, `receipt_id`). Corrected to `/submit-payment` with fields `method`, `file`, `receiptId` and response field `autoReleased`
+  - **PDF label**: "Save PDF" becomes "Download Invoice" when the ticket is an order or in production
+
+## [2026-05-21] — Internal orders page: remove "To Start Production" checklist
+
+### Changed
+- `components/quotes/quote-detail.tsx` — replaced the two-column "To Start Production" checklist + payment summary widget with a compact standalone **Payment** card:
+  - Removed: numbered step checklist (Quote Confirmed / Payment Collected / Production Released) — this now lives only on the customer-facing `/q/[token]` page
+  - Kept: payment summary rows (Quote total, Deposit due, Amount paid, Remaining), payment evidence link, "Record Payment" CTA (role-restricted), block reason warning, and "Cancel Ticket" button
+
+## [2026-05-21] — Public quote page: shadow-app two-column checklist layout
+
+### Changed
+- `app/(public)/q/[token]/page.tsx` — replaced sequential confirm/pay step flow with a two-column "To Start Production Checklist + Payment Summary" layout matching the shadow application:
+  - Left column: numbered checklist (1. Quote price confirmed → inline "Confirm & Accept Quote" button when pending; 2. Payment → "Do the payment" toggle button; 3. Ready for production)
+  - Right column: Payment Summary (Strategy, Quote total, Paid, Remaining in amber when unpaid, Due now, Channels, Price confirmation)
+  - Full-width dark navy "Do the payment" button below the two-column panel
+  - Expanding payment panel (channel picker + WireAch/Zelle/Check/Cash numbered-step instructions) toggled by the CTA
+  - New `StepBadge` component (numbered circle, green checkmark when done)
+  - Net terms: shows simple info card (unchanged from before)
+
+## [2026-05-21] — Public quote page: numbered-step payment panels, remove card
+
+### Changed
+- `app/(public)/q/[token]/page.tsx` — full rewrite of customer-facing payment panels:
+  - **Wire / ACH**: two-step flow — bank account details (with copy buttons) → upload screenshot
+  - **Zelle**: two-step flow — Zelle contact + unique quote ref for memo → upload screenshot
+  - **Check**: two-step flow — payable-to / mail instructions → upload check / deposit photo
+  - **Cash**: single step — order reference display + receipt ID input (no upload needed)
+  - New `PayStep` numbered-step wrapper component (circle badge, title, description, optional content)
+  - New `PanelProps` shared interface for wire/ach/zelle/check panels
+  - `CardContactPanel` fallback shown when card channel selected — explains in-person payment with company phone/email
+- **Card removed from `EVIDENCE_CHANNELS`** and submission blocked for card channel (PCI compliance — no card data collected or stored)
+
+## [2026-05-21] — Production & Completed pages, permission unlock
+
+### Added
+- `supabase/migrations/069_production_and_completed_pages.sql` — seeds `/production` (In Production) and `/completed` (Completed) pages; grants both to `accountant` and `admin` roles
+- `app/(app)/production/page.tsx` + `components/orders/production-page.tsx` — new In Production page with "All in Production" / "Balance Due" tabs, payment indicator pills (Paid in Full / Balance Due $X / Net Terms), and real-time updates via `bazaar:tickets-changed`
+- `app/api/production/orders/route.ts` — returns all `in_production` tickets for the page
+- `app/api/production/counts/route.ts` — returns `{ all, balance_due }` tab badge counts
+- `app/(app)/completed/page.tsx` + `components/orders/completed-page.tsx` — new Completed Orders page with search and payment status indicators
+- `app/api/completed/orders/route.ts` — returns all `completed` tickets
+- `app/api/completed/counts/route.ts` — returns single count for sidebar badge
+
+### Changed
+- `components/admin/roles-section.tsx` — permission editing unlocked for all non-Admin system roles (SDR, Sales, Accountant). Only the Admin role remains permission-locked (full unrestricted access). System roles can still not be deleted; only their page permissions are now editable by an Admin in the UI without requiring a DB migration.
+- `components/orders/orders-page.tsx` — tabs narrowed to **All** (order + cancelled) / **Pending Payment** / **Cancelled**; default tab is now "Pending Payment"; page subtitle updated; `in_production` and `completed` tickets removed from this page
+- `app/api/tickets/counts/route.ts` — added `in_production` and `completed` counts to the response; accountant role now bypasses `created_by_id` scope (same as admin)
+- `app/api/sidebar-counts/route.ts` — added `/payments`, `/production`, `/completed` sidebar badge counts for `accountant` and `admin` roles; accountant now correctly skips the `created_by_id` ticket scope filter
+
+## [2026-05-21] — Customer payment flow, Accountant role, auto-production gate
+
+### Added
+- `supabase/migrations/068_accountant_role_and_payment_evidence.sql` — adds `payment_evidence_url` + `payment_evidence_submitted_at` to `job_tickets`; seeds `accountant` system role + `/payments` page + role permissions
+- `app/api/public/quotes/[token]/submit-payment/route.ts` — public multipart upload endpoint: stores file in Supabase Storage `payment-evidence` bucket, records payment, auto-releases production when gates are met (mirrors shadow app `maybeAutoStartProduction`)
+- `app/api/tickets/[id]/evidence/route.ts` — generates 60-second signed URL for payment evidence file; restricted to accountant and admin
+- `app/api/payments/counts/route.ts` — KPI counts for Accountant dashboard (pending evidence, in production, completed this month)
+- `app/api/payments/pending/route.ts` — orders with evidence submitted but payment not yet confirmed
+- `app/(app)/payments/page.tsx` — Accountant work queue page (route `/payments`)
+- `components/orders/payments-page.tsx` — table of orders awaiting payment evidence review
+- `components/admin/accountant-dashboard.tsx` — Accountant-specific dashboard with KPI cards and quick-action banner
+
+### Changed
+- `app/(public)/q/[token]/page.tsx` — full 3-step checkout: (1) confirm quote price, (2) select payment channel + follow per-channel instructions (Wire/ACH bank details, Zelle contact, Check, Card, Cash) + upload evidence, (3) submitted confirmation state; net-terms banner; channel pill selector; copy buttons for all banking details; file drag-and-drop upload widget
+- `app/api/public/quotes/[token]/route.ts` — extended select to return all `ticket_*` payment config columns + `payment_evidence_url` / `payment_evidence_submitted_at`
+- `app/api/tickets/[id]/route.ts` — added auto-production-release logic in `record_payment` action (runs `computeCheckout` after every payment recording; if `canReleaseProduction = true`, immediately sets `ticket_status = in_production` and `production_released_at`); accountant can now read/write payment fields on any order; evidence columns added to allowed fields
+- `components/quotes/quote-detail.tsx` — evidence row with "View file ↗" link in payment summary panel; Record Payment button restricted to accountant/admin when evidence is present (other roles see "Awaiting accountant review")
+- `components/admin/dashboard-page.tsx` — added `accountant` role branch routing to `AccountantDashboard`
+- `components/layout/sidebar.tsx` — added `roleLabel` for `accountant`
+- `lib/auth/resolve-default-home.ts` — accountant defaults to `/payments`
+
+## [2026-05-21] — Update schema.md + architecture.md for migrations 065–066 and new utils
+
+### Changed
+- `docs/schema.md` — added all columns from migration 065 (`company_settings` payment remittance: `bank_name`, `bank_account_name`, `bank_account_number`, `bank_routing_number`, `zelle_phone`, `zelle_email`) and migration 066 (`job_tickets` per-ticket payment config + payment recording: 17 new `ticket_*` / `payment_*` / `deposit_*` columns); clarified legacy column section
+- `docs/architecture.md` — corrected migration count to 66 (001–066); added `lib/utils/compute-checkout.ts` and `lib/utils/email.ts` to file tree
+- `docs/feature-specs/invoice-payment.md` — added Phase B++ row marking `QuotePaymentConfig`, checkout stepper, payment recording, and Admin Payment tab as built
+
+## [2026-05-21] — Update all documentation to reflect new component folder structure
+
+### Changed
+- `docs/architecture.md` — rewrote entire `components/` file tree section to show all feature sub-folders (`admin/`, `auth/`, `crm/`, `layout/`, `leads/`, `orders/`, `quotes/`, `reports/`, `sales/`, `ui/`, `print/`) with all moved files
+- `docs/component-architecture.md` — updated all component file paths in dashboard architecture, SDR vs Sales architecture, role-specific components table, page-by-page breakdown (leads, sales, quotes, orders, crm, reports), realtime listeners table, and idle timer section; added shared sub-component trees for `new-quote-form` and `quote-detail`
+- `docs/feature-specs/dashboard.md`, `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, `docs/feature-specs/leads-sales.md` — all component path references updated to new feature-folder paths
+- `docs/navigation.md` — updated mobile-nav reference
+- `docs/api-contract.md`, `docs/schema.md`, `docs/realtime-live-updates.md`, `docs/FuturePlan/`, `docs/Notification/`, `docs/order-ticket/`, `docs/session-summary.md`, `docs/TODO.md` — all component path references updated via bulk replacement
+
+## [2026-05-21] — Reorganize remaining root components into feature folders
+
+### Changed
+- `components/auth/otp-input.tsx` — moved from root; `app/(auth)/setup-2fa` and `verify-2fa` imports updated
+- `components/leads/verify-drawer.tsx` — moved from root; `leads-page.tsx` import updated
+- `components/leads/hold-sub-form.tsx` — moved from root; `verify-drawer.tsx` import updated
+- `components/admin/admin-dashboard.tsx` — moved from root; `dashboard-page.tsx` import updated
+- `components/admin/dashboard-page.tsx` — moved from root; `app/(app)/dashboard` and `overview` imports updated
+- Root-level `.tsx` files are now all thin barrel re-exports pointing to feature folders
+
+## [2026-05-20] — Component refactoring: shared forms, feature folders, quote-detail split
+
+### Added
+- `components/quotes/shared/types.ts` — shared `ProductType`, `LookupOption`, `SkuLookups` types
+- `components/quotes/shared/utils.ts` — shared `emptySkuRow`, `renderLookupOptions`, `priorityStyle`, `quickDate` utilities
+- `components/quotes/shared/info-form.tsx` — unified `InfoForm` component (replaces `InfoTab` + `InfoSection`), supports `editing` prop for read-only view
+- `components/quotes/shared/sku-row.tsx` — unified `SkuRow` component (replaces `SkuRow` in new-quote + `EditableSkuRow` in quote-detail)
+- `components/quotes/shared/line-items-form.tsx` — unified `LineItemsForm` component (replaces `LineItemsTab` + `LinesSection`)
+- `components/quotes/shared/quote-form.tsx` — unified `QuoteForm` component (replaces `QuoteTab` + `QuoteSection`) using `QuotePaymentConfig`
+- `components/quotes/quote-detail/history-section.tsx` — extracted `HistorySection` with activity timeline
+- `components/quotes/quote-detail/ticket-skeleton.tsx` — extracted `TicketSkeleton` loading state
+- `components/quotes/quote-detail/customer-info-card.tsx` — extracted `CustomerInfoCard` sidebar card
+- Feature folders: `components/leads/`, `components/sales/`, `components/crm/`, `components/orders/`, `components/reports/`, `components/layout/`, `components/quotes/`
+
+### Changed
+- `components/quotes/new-quote-form.tsx` — slimmed from 2088→1251 lines; removed all local component/utility duplicates; uses shared `InfoForm`, `LineItemsForm`, `QuoteForm`
+- `components/quotes/quote-detail.tsx` — slimmed from 2935→1368 lines; removed `InfoSection`, `LinesSection`, `EditableSkuRow`, `QuoteSection`, `HistorySection`, `TicketSkeleton`, `CustomerInfoCard`; migrated `QuoteSection` to use `QuotePaymentConfig` (new payment config system)
+- All page-level components moved from root `components/` to feature sub-folders; root-level files replaced with barrel re-exports for backward compatibility
+- `app/(app)/layout.tsx` — updated imports to `components/layout/sidebar`, `mobile-nav`, `idle-timer`
+- `app/layout.tsx` — updated imports to `components/layout/theme-provider`, `global-event-handlers`
+- `app/(app)/quotes/new/page.tsx`, `quotes/[id]/page.tsx`, `orders/[id]/page.tsx`, `quotes/page.tsx` — updated to `components/quotes/`
+- `app/(app)/leads/page.tsx`, `sales/page.tsx`, `orders/page.tsx`, `crm/page.tsx`, `reports/page.tsx`, `crm/customers/[id]/page.tsx` — updated to feature sub-folders
+
+## [2026-05-21] — Checkout stepper + record payment modal in quote-detail (Step 5)
+
+### Added
+- `components/quotes/quote-detail.tsx` — 3-step "To Start Production" checkout stepper (Confirm Price → Deposit/Payment → Release to Production) driven by `computeCheckout`
+- Payment summary sidebar panel showing quote total, deposit due, balance, amount paid, remaining, and status label
+- "Record Payment" modal: method selector (Cash/Wire/ACH/Zelle/Check/Card), amount input, receipt ID — calls `record_payment` PATCH action
+- "Release to Production" step action button — calls `release_production` PATCH action
+- `PAY_CHANNELS_FOR_MODAL` constant for consistent channel options in the modal
+- New `ticket_*` payment config and `payment_*` recording fields added to the local `Ticket` interface
+- `computeCheckout` + `PaymentConfig` imported and wired to the ticket's live DB columns
+
+### Changed
+- Replaced old ad-hoc deposit-status segmented control, offline-payment segmented control, and `PaymentLinkBar` with the unified checkout stepper for `order` / `in_production` / `completed` statuses
+
+## [2026-05-21] — Ticket API payment actions + allowed fields (Step 4)
+
+### Changed
+- `app/api/tickets/[id]/route.ts` — added all 15 `ticket_*` payment config columns and 9 `payment_*` recording columns to `ALLOWED_FIELDS` so PATCH can persist them
+- Order-status lock widened: non-admins can now update payment recording fields and `production_released_at` without needing admin access
+- Added `record_payment` PATCH action: records deposit / balance / full payment, maintains running `payment_amount_received` total, sets `payment_status` to `partial` or `paid`, logs `ticket_payment_recorded` activity
+- Added `release_production` PATCH action: stamps `production_released_at`, logs `ticket_production_released` activity
+
+## [2026-05-20] — Per-ticket payment config panel (Step 3)
+
+### Added
+- `supabase/migrations/066_per_ticket_payment_config.sql` — 25 new columns on `job_tickets` for per-ticket payment strategy, deposit config, channels, quote delivery, follow-up schedule, and payment recording
+- `components/quotes/quote-payment-config.tsx` — new `QuotePaymentConfig` React component (mirrors `payment.html`): payment strategy cards (Partial / Full / Net), deposit %, deposit handling, channel checkboxes, net terms picker, client-confirmation toggle, quote delivery (SMS / Email / Both), follow-up schedule
+- `TicketPaymentDraft` TypeScript interface and `PAYMENT_CONFIG_DEFAULTS` exported from the new component
+- Per-ticket payment config fields added to `JobTicket` type in `lib/types/index.ts`
+
+### Changed
+- `components/quotes/new-quote-form.tsx` — replaced the old "Order Flow" section (Quote First / Direct Order toggle, Payment Methods, Prepayment, Follow-up) with `<QuotePaymentConfig>`; submit payload now includes all `ticket_*` payment config fields alongside the legacy columns
+
+## [2026-05-20] — Payment settings tab + remittance config
+
+### Added
+- `supabase/migrations/065_payment_remittance.sql` — adds `bank_name`, `bank_account_name`, `bank_account_number`, `bank_routing_number`, `zelle_phone`, `zelle_email` columns to `company_settings`
+- **Payment** tab in Admin → Settings (`/admin/settings/payment`) with `CreditCard` icon
+- **Bank / Wire & ACH Details** section in `PaymentSection` — 4 editable fields (bank name, account name, account number, routing number)
+- **Zelle Contact** section in `PaymentSection` — phone and email fields (fill one or both)
+
+### Changed
+- `components/admin/settings-tab-nav.tsx` — added Payment tab entry
+- `app/(app)/admin/settings/[tab]/page.tsx` — wired `PaymentSection` to the new `payment` tab
+- `app/api/public/quotes/[token]/route.ts` — company SELECT now returns the 6 remittance fields so the public quote page can display payment instructions
+
+---
+
 ## [2026-05-19] — Fix Sales dashboard KPI accuracy
 
 ### Fixed
@@ -16,48 +458,48 @@ Format: `## [version or date] — description`, newest first.
 
 ### Changed
 - `components/ui/date-picker.tsx`: Added `disablePast` prop — when true, all dates before today are greyed out and unselectable in the calendar
-- `components/new-quote-form.tsx`: Due Date and First Reminder pickers now use `disablePast`
-- `components/quote-detail.tsx`: Due Date and First Reminder pickers now use `disablePast`
+- `components/quotes/new-quote-form.tsx`: Due Date and First Reminder pickers now use `disablePast`
+- `components/quotes/quote-detail.tsx`: Due Date and First Reminder pickers now use `disablePast`
 
 ---
 
 ## [2026-05-19] — Cycles follow-up field changed to select
 
 ### Changed
-- `components/new-quote-form.tsx`: Follow-up Schedule "Cycles" field changed from a free-entry number input to a `<select>` with fixed options 1–5
-- `components/quote-detail.tsx`: Same change on the quote detail edit form
+- `components/quotes/new-quote-form.tsx`: Follow-up Schedule "Cycles" field changed from a free-entry number input to a `<select>` with fixed options 1–5
+- `components/quotes/quote-detail.tsx`: Same change on the quote detail edit form
 
 ---
 
 ## [2026-05-19] — Prevent leading zeros in numeric inputs
 
 ### Fixed
-- `components/new-quote-form.tsx`: Width, Height, Unit Price, and Line Total switched to `type="text" inputMode="decimal"` with local raw string state so decimal values like `0.9` work correctly; Quantity switched to `type="text" inputMode="numeric"`; Shipping and Tax Rate use `onKeyDown` + `onChange` stripping to block leading zeros
-- `components/quote-detail.tsx`: Same fixes for all equivalent numeric inputs in the SKU editor and Adjustments panel
-- `components/leads-page.tsx`: Quantity field in Add/Edit Lead form no longer allows leading zeros
+- `components/quotes/new-quote-form.tsx`: Width, Height, Unit Price, and Line Total switched to `type="text" inputMode="decimal"` with local raw string state so decimal values like `0.9` work correctly; Quantity switched to `type="text" inputMode="numeric"`; Shipping and Tax Rate use `onKeyDown` + `onChange` stripping to block leading zeros
+- `components/quotes/quote-detail.tsx`: Same fixes for all equivalent numeric inputs in the SKU editor and Adjustments panel
+- `components/leads/leads-page.tsx`: Quantity field in Add/Edit Lead form no longer allows leading zeros
 
 ## [2026-05-19] — SDR read-only view for routed quotes
 
 ### Added
 - `supabase/migrations/060_add_routed_by_id_to_tickets.sql` — adds `routed_by_id uuid` column to `job_tickets` to preserve the original SDR's identity after Sales claims the ticket (claiming changes `created_by_id`)
-- `components/quotes-page.tsx`: SDRs now see a **Routed to Sales** tab showing quotes they created that exceeded the threshold; tab shows a "View" button (not Claim) per row
-- `components/quote-detail.tsx`: when SDR views one of their routed quotes, a warning banner explains it's read-only and the Edit button + action bar are hidden
+- `components/quotes/quotes-page.tsx`: SDRs now see a **Routed to Sales** tab showing quotes they created that exceeded the threshold; tab shows a "View" button (not Claim) per row
+- `components/quotes/quote-detail.tsx`: when SDR views one of their routed quotes, a warning banner explains it's read-only and the Edit button + action bar are hidden
 
 ### Changed
 - `app/api/tickets/route.ts` (`POST`): sets `routed_by_id = userId` when `ticket_status = "routed"`
 - `app/api/tickets/route.ts` (`GET`): SDR query now includes `routed_by_id = userId` so routed (and claimed) tickets remain visible to the original SDR
-- `components/quotes-page.tsx`: routed tab banner text is role-aware (SDR vs Sales/Admin)
+- `components/quotes/quotes-page.tsx`: routed tab banner text is role-aware (SDR vs Sales/Admin)
 
 ---
 
 ## [2026-05-19] — Fix HVT modal OK button and add Cancel
 
 ### Fixed
-- `components/new-quote-form.tsx`: OK button in the High-Value Threshold modal did nothing — `handleSaveRef.current` was `null` because the modal fires from `validateAndAdvance` (before `handleSave` is ever called). Fixed by setting `handleSaveRef.current = handleSave` before showing the modal.
+- `components/quotes/new-quote-form.tsx`: OK button in the High-Value Threshold modal did nothing — `handleSaveRef.current` was `null` because the modal fires from `validateAndAdvance` (before `handleSave` is ever called). Fixed by setting `handleSaveRef.current = handleSave` before showing the modal.
 
 ### Changed
-- `components/new-quote-form.tsx`: Added **Cancel — Edit Amount** button to `HighValueModal` so the SDR can dismiss the modal and adjust the quote total instead of being forced to route to Sales.
-- `components/quote-detail.tsx`: Added **Cancel — Edit Amount** button to the inline HVT modal on the quote detail page for the same reason.
+- `components/quotes/new-quote-form.tsx`: Added **Cancel — Edit Amount** button to `HighValueModal` so the SDR can dismiss the modal and adjust the quote total instead of being forced to route to Sales.
+- `components/quotes/quote-detail.tsx`: Added **Cancel — Edit Amount** button to the inline HVT modal on the quote detail page for the same reason.
 
 ---
 
@@ -84,7 +526,7 @@ Format: `## [version or date] — description`, newest first.
 ### Fixed
 - `app/api/leads/workspace/route.ts`: Won tab was always empty — broken PostgREST join (`created_by:user_profiles!job_tickets_created_by_id_fkey`) used a FK that points to `auth.users`, not `user_profiles`. Replaced with a separate `user_profiles` lookup after fetch; "Closed By" column now resolves correctly
 - `app/globals.css`: `--color-bg` was set to `#ffffff0c` (4% opacity transparent) instead of `#ffffff` — fixed so light mode background is truly white
-- `components/leads-page.tsx` + `components/verify-drawer.tsx`: `Select` `onValueChange` typed `string | null` caused TS build error — resolved with `?? ""`
+- `components/leads/leads-page.tsx` + `components/leads/verify-drawer.tsx`: `Select` `onValueChange` typed `string | null` caused TS build error — resolved with `?? ""`
 
 ### Changed
 
@@ -94,7 +536,7 @@ Format: `## [version or date] — description`, newest first.
 - `--color-text-muted` (light): `#888888` → `#666666` (better contrast)
 - `--color-warning` (light): `#D97706` → `#B45309` (deeper amber, more readable)
 
-#### Order detail page (`components/quote-detail.tsx`)
+#### Order detail page (`components/quotes/quote-detail.tsx`)
 - Combined three separate bottom cards (Cancel Ticket bar, Order Progress, Deposit) into one unified card with divider-separated rows for `ticket_status === "order"`
 - Deposit and Payment status selectors replaced with connected segmented controls (`rounded-md` bordered group) — clearly interactive vs badge-style pills
 - Deposit row shows amount as prominent value (`$116.85 due now`) beside the control
@@ -102,7 +544,7 @@ Format: `## [version or date] — description`, newest first.
 - "Mark In Production" uses navy verify-button style as the primary progression action
 - Pricing Summary background changed from `--color-badge-bg` to `--color-bg`
 
-#### Admin dashboard (`components/admin-dashboard.tsx`)
+#### Admin dashboard (`components/admin/admin-dashboard.tsx`)
 - Team section now fetches `/api/admin/team` + `/api/admin/sessions` (7-day) in parallel, merged by user ID — single source of truth for team status
 - Team cards show: real-time online dot (`currently_active`), role pill, Sessions / Active time / Last seen stats row, idle sign-out warning badge, active deals (sales only)
 - Removed standalone "Active Users" and "Idle Sign-outs" KPI cards — info now lives in the enriched Team cards; KPI grid is a clean 2×3
@@ -118,7 +560,7 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-19] — Dashboard Team section merged with User Activity data
 
 ### Changed
-- `components/admin-dashboard.tsx` → `TeamSection`: now fetches both `/api/admin/team` and `/api/admin/sessions` (7-day range) in parallel and merges by user ID
+- `components/admin/admin-dashboard.tsx` → `TeamSection`: now fetches both `/api/admin/team` and `/api/admin/sessions` (7-day range) in parallel and merges by user ID
 - Team cards upgraded: avatar + real `currently_active` online dot + role pill + Sessions / Active time / Last seen stats row + idle auto-signout warning badge + active deals (sales only)
 - "Active now" badge shown next to the Team heading when any member has a live session
 
@@ -127,7 +569,7 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-19] — Order page: segmented controls for Deposit/Payment, improved Cancel button
 
 ### Changed
-- `components/quote-detail.tsx`: Replaced round-pill badge-style Deposit and Payment status buttons with connected segmented controls (`rounded-md`, bordered group) — clearly interactive, not ambiguous as status indicators
+- `components/quotes/quote-detail.tsx`: Replaced round-pill badge-style Deposit and Payment status buttons with connected segmented controls (`rounded-md`, bordered group) — clearly interactive, not ambiguous as status indicators
 - Deposit row now shows the deposit amount as a prominent value (`$116.85 due now`) next to the control
 - "Cancel Ticket" upgraded from bare text link to a proper bordered danger button (`danger-bg / danger-border`)
 - "Mark In Production" uses the primary navy/verify button style for higher visual weight
@@ -137,7 +579,7 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-19] — Combine order-status cards into one
 
 ### Changed
-- `components/quote-detail.tsx`: For `ticket_status === "order"` (pre-confirmation), the three separate bottom cards (Cancel Ticket bar, Order Progress, Deposit) are now merged into a single card with divider-separated rows. Draft/sent states are unaffected. The offline Payment status row is also folded in if applicable.
+- `components/quotes/quote-detail.tsx`: For `ticket_status === "order"` (pre-confirmation), the three separate bottom cards (Cancel Ticket bar, Order Progress, Deposit) are now merged into a single card with divider-separated rows. Draft/sent states are unaffected. The offline Payment status row is also folded in if applicable.
 
 ---
 
@@ -145,7 +587,7 @@ Format: `## [version or date] — description`, newest first.
 
 ### Changed
 
-#### New Quote form (`components/new-quote-form.tsx`)
+#### New Quote form (`components/quotes/new-quote-form.tsx`)
 - **Info tab layout** — Title and Priority now share a 50/50 row; Due Date and Rush Order share a second 50/50 row (previously all stacked full-width)
 - **Priority control** — changed from rounded pill buttons to a segmented control (same pattern as Discount type), keeping per-priority colors (Low=neutral, Normal=navy, High=purple, Urgent=red)
 - **Due Date quick picks** — removed "+1w" button; Today / Tomorrow / +3d remaining; active button highlights navy when its date matches the selected value (calendar or click)
@@ -154,7 +596,7 @@ Format: `## [version or date] — description`, newest first.
 - **Tab navigation guard** — clicking a future tab triggers current-tab validation instead of jumping freely; past tabs click-back freely and show a green step badge; future tabs dimmed at 50% opacity with `cursor: not-allowed`
 - **Sales Permit required** — when Tax Exempt is toggled on, Sales Permit # becomes required (red asterisk + inline error) before save or advance
 
-#### Quote Detail (`components/quote-detail.tsx`)
+#### Quote Detail (`components/quotes/quote-detail.tsx`)
 - **Edit mode layout** — Info section redesigned to match the new-quote-form: Title/Priority 50/50 row, Due Date/Rush 50/50 row, same segmented Priority control, same quick picks, compact Rush toggle
 - **Title and Due Date required in edit** — save blocked with inline errors if either is blank
 - **Discount display fix** — read-only Pricing Summary was hardcoding `discount_amount: 0`; now derived as `subtotal + shipping − pre_tax_total` so the Discount row shows the correct amount
@@ -180,8 +622,8 @@ Format: `## [version or date] — description`, newest first.
 - `supabase/migrations/059_add_has_design_to_leads.sql` — new `has_design jsonb NOT NULL DEFAULT '{}'` column on `leads` to store per-product design flag
 
 ### Changed
-- `components/leads-page.tsx` — replaced flat toggle-chip Product Interests section with a dynamic row-based UI; each row has a product single-select (excluding already-chosen products), a quantity number input, and a Has Design yes/no toggle; rows can be added with "+ Add Product Interest" and removed individually
-- `components/verify-drawer.tsx` — same row-based Product Interests UI applied to the edit drawer; seeded from existing `lead.interests`, `lead.quantities`, and `lead.has_design`; read-only mode shows rows without edit controls
+- `components/leads/leads-page.tsx` — replaced flat toggle-chip Product Interests section with a dynamic row-based UI; each row has a product single-select (excluding already-chosen products), a quantity number input, and a Has Design yes/no toggle; rows can be added with "+ Add Product Interest" and removed individually
+- `components/leads/verify-drawer.tsx` — same row-based Product Interests UI applied to the edit drawer; seeded from existing `lead.interests`, `lead.quantities`, and `lead.has_design`; read-only mode shows rows without edit controls
 - `app/api/leads/manual/route.ts` — accepts and inserts `has_design` payload
 - `app/api/leads/[id]/route.ts` — added `has_design` to `TRACKED_FIELDS` and the current-lead select query used for change detection
 - `lib/types/index.ts` — added `has_design: Record<string, boolean>` to the `Lead` interface
@@ -196,11 +638,11 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-18] — Input validation before DB save + number field bounds
 
 ### Changed
-- `components/verify-drawer.tsx` — phone + email validated (format check) before saving; errors shown inline on the inputs
-- `components/customer-profile.tsx` — phone + email validated before PATCH; errors shown inline
-- `components/leads-page.tsx` — optional email validated (format) in manual lead submit flow; inline error shown
-- `components/new-quote-form.tsx` — customer phone/email format validated on tab advance; quote destination validated for email/phone format on send; discount %, tax rate %, and prepayment % capped at 100 via `max={100}`
-- `components/quote-detail.tsx` — discount %, tax rate %, and prepayment % fields capped at 100
+- `components/leads/verify-drawer.tsx` — phone + email validated (format check) before saving; errors shown inline on the inputs
+- `components/crm/customer-profile.tsx` — phone + email validated before PATCH; errors shown inline
+- `components/leads/leads-page.tsx` — optional email validated (format) in manual lead submit flow; inline error shown
+- `components/quotes/new-quote-form.tsx` — customer phone/email format validated on tab advance; quote destination validated for email/phone format on send; discount %, tax rate %, and prepayment % capped at 100 via `max={100}`
+- `components/quotes/quote-detail.tsx` — discount %, tax rate %, and prepayment % fields capped at 100
 - `components/admin/users-section.tsx` — email format validated before user create POST
 - `components/admin/company-section.tsx` — phone validated on save; fixed stale `hasErrors` bug by computing all field errors synchronously in `handleSave`; tax rate and rush surcharge % capped at 100; `FieldInput` component extended with optional `min`/`max` props
 
@@ -312,7 +754,7 @@ Format: `## [version or date] — description`, newest first.
 ### Changed
 - `app/api/leads/workspace/route.ts` — added `?statuses=` param (comma-separated) so the routed tab can query multiple statuses (`Routed to Sales,Quoted`) server-side
 - `app/api/leads/workspace/counts/route.ts` — routed badge count now includes `Quoted` leads (not just `Routed to Sales`), so the tab badge stays accurate after a quote is created
-- `components/leads-page.tsx`:
+- `components/leads/leads-page.tsx`:
   - "Directed to Sales" tab now fetches `Routed to Sales` + `Quoted` leads (SDR keeps visibility after sales creates a quote)
   - Added **sub-filter pills** inside the tab: All · Awaiting Claim · In Progress · Quote Sent — each with a live count badge
   - Added **Lead Status** column to the table so SDR can see whether a lead is still "Routed to Sales" or has advanced to "Quoted"
@@ -322,7 +764,7 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-17] — Convert SalesDrawer from slide-in panel to centered modal
 
 ### Changed
-- `components/sales-drawer.tsx` — replaced fixed right-side slide-in panel (`max-w-[600px]`, full height, `borderLeft`) with a centered modal overlay (`max-w-[780px]`, `80vh`, `border-radius: 12px`, all-border) matching the `VerifyDrawer` pattern; interior content unchanged
+- `components/sales/sales-drawer.tsx` — replaced fixed right-side slide-in panel (`max-w-[600px]`, full height, `borderLeft`) with a centered modal overlay (`max-w-[780px]`, `80vh`, `border-radius: 12px`, all-border) matching the `VerifyDrawer` pattern; interior content unchanged
 
 ## [2026-05-17] — Admin lead editing and SDR assignment
 
@@ -331,8 +773,8 @@ Format: `## [version or date] — description`, newest first.
 - "Unassign" option in the modal is only shown when the lead already has an SDR; Confirm is disabled until an SDR is selected for fresh assignments
 
 ### Changed
-- `components/leads-page.tsx` — admin action column: "View" renamed to "Edit"; Assign/Reassign button always visible regardless of `locked_by_id`; Reassign/Assign modal title and SDR picker updated dynamically
-- `components/verify-drawer.tsx` — when opened by an admin (`isAdmin=true`), the drawer is now editable (not read-only) and the footer shows "Close" + "Save Changes" instead of SDR workflow buttons (Route to Sales, Hold, Reject)
+- `components/leads/leads-page.tsx` — admin action column: "View" renamed to "Edit"; Assign/Reassign button always visible regardless of `locked_by_id`; Reassign/Assign modal title and SDR picker updated dynamically
+- `components/leads/verify-drawer.tsx` — when opened by an admin (`isAdmin=true`), the drawer is now editable (not read-only) and the footer shows "Close" + "Save Changes" instead of SDR workflow buttons (Route to Sales, Hold, Reject)
 
 ## [2026-05-17] — Documentation audit + clean build confirmed
 
@@ -348,7 +790,7 @@ Format: `## [version or date] — description`, newest first.
 ### Added
 - `supabase/migrations/058_add_reports_page.sql` — adds `/reports` to the `pages` table (section: main, sort_order: 9)
 - `app/(app)/reports/page.tsx` — thin server wrapper
-- `components/reports-page.tsx` — placeholder page explaining all 7 planned report types, each with a dependency note (most require Stripe), plus a "Go to Dashboard" CTA for what's available now. One report (Win Rate & Close Time) is flagged as buildable without payment data.
+- `components/reports/reports-page.tsx` — placeholder page explaining all 7 planned report types, each with a dependency note (most require Stripe), plus a "Go to Dashboard" CTA for what's available now. One report (Win Rate & Close Time) is flagged as buildable without payment data.
 
 ### Changed
 - Admin must grant `/reports` access to roles via Admin → Roles & Permissions after running the migration
@@ -359,14 +801,14 @@ Format: `## [version or date] — description`, newest first.
 - `app/api/dashboard/kpis/route.ts` — **TODO-004**: Revenue and won-value KPIs now sum `job_tickets.quote_final_total` (actual final prices) instead of `leads.quote_total` (stale snapshot). Pipeline value also reads from `job_tickets`. Applies to both Sales and Admin dashboard variants.
 
 ### Added
-- `components/quote-detail.tsx` — **TODO-005**: "Mark In Production" / "Mark Completed" lifecycle buttons visible to admin on orders. Advances `ticket_status`: `order → in_production → completed`. Completed orders show a green "Order completed" badge. Uses existing `handleSave(undefined, extraFields)` path.
-- `components/admin-dashboard.tsx` — **Dashboard session KPIs**: two new KPI cards — "Active Users" (users with an open session right now) and "Idle Sign-outs" (auto sign-outs in the last 7 days). Data sourced from `/api/admin/sessions`.
+- `components/quotes/quote-detail.tsx` — **TODO-005**: "Mark In Production" / "Mark Completed" lifecycle buttons visible to admin on orders. Advances `ticket_status`: `order → in_production → completed`. Completed orders show a green "Order completed" badge. Uses existing `handleSave(undefined, extraFields)` path.
+- `components/admin/admin-dashboard.tsx` — **Dashboard session KPIs**: two new KPI cards — "Active Users" (users with an open session right now) and "Idle Sign-outs" (auto sign-outs in the last 7 days). Data sourced from `/api/admin/sessions`.
 
 ### Changed
-- `components/sales-drawer.tsx` — **TODO-001**: Added `isAdmin` prop. When admin views a terminal lead (Won / Dropped / Rejected) an amber "Admin override" banner replaces the red lock banner, and the drawer is fully editable. Won leads show a caution note to handle the linked ticket separately.
-- `components/verify-drawer.tsx` — **TODO-001**: Same admin override pattern for rejected leads. Non-admin users still see the red lock banner and a read-only drawer.
-- `components/sales-page.tsx` — passes `isAdmin={isAdmin}` to `<SalesDrawer />`
-- `components/leads-page.tsx` — passes `isAdmin={isAdmin}` to `<VerifyDrawer />`
+- `components/sales/sales-drawer.tsx` — **TODO-001**: Added `isAdmin` prop. When admin views a terminal lead (Won / Dropped / Rejected) an amber "Admin override" banner replaces the red lock banner, and the drawer is fully editable. Won leads show a caution note to handle the linked ticket separately.
+- `components/leads/verify-drawer.tsx` — **TODO-001**: Same admin override pattern for rejected leads. Non-admin users still see the red lock banner and a read-only drawer.
+- `components/sales/sales-page.tsx` — passes `isAdmin={isAdmin}` to `<SalesDrawer />`
+- `components/leads/leads-page.tsx` — passes `isAdmin={isAdmin}` to `<VerifyDrawer />`
 
 ## [2026-05-17] — User session tracking + idle sign-out
 
@@ -375,15 +817,15 @@ Format: `## [version or date] — description`, newest first.
 - `supabase/migrations/057_create_user_sessions.sql` — `user_sessions` table with indexes and RLS; one row per login session, tracks sign-in/out times and sign-out reason
 - `app/api/auth/session/route.ts` — `POST /api/auth/session` — logs session start (after MFA) and end (manual/auto/deactivated); closes stale open sessions on new login
 - `app/api/admin/sessions/route.ts` — `GET /api/admin/sessions` — returns per-user KPI summary + paginated session history; filterable by user and date range; admin only
-- `components/idle-timer.tsx` — client component mounted in app layout; reads timeout from company settings; tracks mouse/keyboard/touch activity; shows blocking warning modal 2 min before sign-out; auto sign-outs with session logging
+- `components/layout/idle-timer.tsx` — client component mounted in app layout; reads timeout from company settings; tracks mouse/keyboard/touch activity; shows blocking warning modal 2 min before sign-out; auto sign-outs with session logging
 - `app/(public)/policy/page.tsx` — plain-English security & privacy policy page at `/policy`; no auth required; explains session logging and admin visibility
 - `components/admin/user-activity-section.tsx` — admin view with per-user KPI cards (sessions, active time, auto sign-out count, currently active indicator) + filterable session history table (today / 7d / 30d + user filter)
 
 ### Changed
 - `app/(app)/layout.tsx` — mounts `<IdleTimer />` so it runs on every app page
 - `app/(auth)/verify-2fa/page.tsx` — calls `POST /api/auth/session { action: "start" }` after successful MFA verify (fire-and-forget)
-- `components/sidebar.tsx` — calls `POST /api/auth/session { action: "end", reason: "manual" }` before sign-out
-- `components/mobile-nav.tsx` — same session-end call as sidebar
+- `components/layout/sidebar.tsx` — calls `POST /api/auth/session { action: "end", reason: "manual" }` before sign-out
+- `components/layout/mobile-nav.tsx` — same session-end call as sidebar
 - `components/admin/company-section.tsx` — added "Session & Security" section with idle timeout input and link to `/policy`
 - `app/api/admin/company/route.ts` — added `session_idle_timeout_minutes` to `ALLOWED_FIELDS`
 - `lib/types/index.ts` — added `session_idle_timeout_minutes` to `CompanySettings`; added `UserSession`, `UserSessionSummary`, `SignOutReason` types
@@ -415,7 +857,7 @@ Format: `## [version or date] — description`, newest first.
 - `app/api/tickets/[id]/route.ts`: Improved payment reminder logging — logs success (channel + destination) and warns when reminder is skipped due to missing data.
 
 ### Changed
-- `components/quote-detail.tsx` — mobile-responsive overhaul:
+- `components/quotes/quote-detail.tsx` — mobile-responsive overhaul:
   - Header: `flex-wrap`, `px-4 md:px-6`, title shrinks gracefully, badges abbreviated on small screens, PDF/Edit buttons are icon-only on mobile
   - Error and lock banners: `mx-4 md:mx-6` responsive margin
   - Two-column layout: `flex-col lg:flex-row` so customer info card stacks above content on mobile
@@ -429,23 +871,23 @@ Format: `## [version or date] — description`, newest first.
 ### Added
 - `lib/integrations/payment-reminder-template.ts`: Dedicated email template for payment reminders — "Pay Now" focused, shows order reference + amount due + payment methods + big "Pay Now" CTA. No line items (customer already confirmed, they just need to pay).
 - `lib/integrations/send-quote.ts`: `sendPaymentReminder()` — sends payment reminder via Email (Instantly), SMS (Twilio), or WhatsApp (Twilio). Accepts channel + destination overrides independent of the original quote channel.
-- `components/quote-detail.tsx`: `PaymentLinkBar` now has a 3-way channel selector (Email / SMS / WhatsApp), a destination input pre-filled with the original channel destination, and a "Send Payment Link" button. Rep can switch channels before sending (e.g. originally emailed, now want to WhatsApp).
+- `components/quotes/quote-detail.tsx`: `PaymentLinkBar` now has a 3-way channel selector (Email / SMS / WhatsApp), a destination input pre-filled with the original channel destination, and a "Send Payment Link" button. Rep can switch channels before sending (e.g. originally emailed, now want to WhatsApp).
 - `app/api/tickets/[id]/route.ts`: `send_payment_reminder` now accepts `reminder_channel` and `reminder_destination` overrides, passed to `sendPaymentReminder()`.
 
 ## [2026-05-16] — Payment link bar on confirmed orders
 
 ### Added
-- `components/quote-detail.tsx`: **Payment link bar** shown on all confirmed (customer-approved) orders where payment is not yet complete. Visible to all roles regardless of record lock. Contains:
+- `components/quotes/quote-detail.tsx`: **Payment link bar** shown on all confirmed (customer-approved) orders where payment is not yet complete. Visible to all roles regardless of record lock. Contains:
   - Copyable public URL (`/q/[token]`) to paste into any channel
   - "Resend via Email/SMS" button that re-sends the original quote email (the same link the customer already has) and logs a `ticket_payment_reminder_sent` activity
   - Payment method label (Offline / Zelle / Card)
 - `app/api/tickets/[id]/route.ts`: `send_payment_reminder: true` body flag triggers re-delivery and activity log without touching the ticket fields.
-- `components/quote-detail.tsx`: History tab shows `ticket_payment_reminder_sent` events ("Payment reminder sent").
+- `components/quotes/quote-detail.tsx`: History tab shows `ticket_payment_reminder_sent` events ("Payment reminder sent").
 
 ## [2026-05-16] — SDR/Sales Won tracking + Won tab
 
 ### Added
-- `components/leads-page.tsx`: New **Won** tab shows all leads where `sales_status = "Won"` — the leads that became real orders. Shows customer name, company, order reference code, final amount, who closed it, and when.
+- `components/leads/leads-page.tsx`: New **Won** tab shows all leads where `sales_status = "Won"` — the leads that became real orders. Shows customer name, company, order reference code, final amount, who closed it, and when.
 - `app/api/leads/workspace/counts/route.ts`: `won` count added to the counts response, scoped to the SDR's own leads (admins see all).
 - `app/api/leads/workspace/route.ts`: `?won=true` query param returns won leads with linked ticket data (reference code, amount, closer name).
 
@@ -456,36 +898,36 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-16] — HubSpot-style "Convert to Order" flow
 
 ### Changed
-- `components/quote-detail.tsx`: "Mark Won" button renamed to **"Convert to Order"** and now targets `ticket_status = "order"` (not the orphan `approved` status).
+- `components/quotes/quote-detail.tsx`: "Mark Won" button renamed to **"Convert to Order"** and now targets `ticket_status = "order"` (not the orphan `approved` status).
 - `app/api/tickets/[id]/route.ts`: When a ticket is manually converted to `order` status, the API now auto-generates an `ORD-YYYY-NNN` reference code (same as customer confirmation path) and flips `ticket_kind` to `"order"`.
 - `app/api/tickets/[id]/route.ts`: Manual conversion logs a dedicated `ticket_converted` activity (distinct from `ticket_client_confirmed`), so History always shows who converted it.
-- `components/quote-detail.tsx`: Header badge is now three-way — **"Confirmed by Customer"** (green, customer clicked link), **"Converted to Order"** (blue, sales rep converted manually), or the regular status pill for quotes still in progress.
-- `components/quote-detail.tsx`: History tab handles `ticket_converted` activity type with label "Converted to order" and the generated reference code.
+- `components/quotes/quote-detail.tsx`: Header badge is now three-way — **"Confirmed by Customer"** (green, customer clicked link), **"Converted to Order"** (blue, sales rep converted manually), or the regular status pill for quotes still in progress.
+- `components/quotes/quote-detail.tsx`: History tab handles `ticket_converted` activity type with label "Converted to order" and the generated reference code.
 
 ## [2026-05-16] — Confirmed by Customer badge + edit lock
 
 ### Changed
-- `components/quote-detail.tsx`: Header status badge replaced with a green "✓ Confirmed by Customer" badge when `client_confirmed = true`, instead of the generic "order" pill.
-- `components/quote-detail.tsx`: Edit button is now hidden for **all users** (including admin) once the customer has confirmed. Admin can still cancel via the bottom action bar.
+- `components/quotes/quote-detail.tsx`: Header status badge replaced with a green "✓ Confirmed by Customer" badge when `client_confirmed = true`, instead of the generic "order" pill.
+- `components/quotes/quote-detail.tsx`: Edit button is now hidden for **all users** (including admin) once the customer has confirmed. Admin can still cancel via the bottom action bar.
 
 ## [2026-05-16] — Record locking after customer approval
 
 ### Changed
-- `components/quote-detail.tsx`: Once a quote is customer-approved and becomes an order (`ticket_status` is `order`, `in_production`, or `completed`), the record is now locked for all non-admin users. SDR and Sales roles cannot edit or cancel the ticket.
-- `components/quote-detail.tsx`: Admins retain full control — they can still edit and cancel orders.
-- `components/quote-detail.tsx`: A warning banner ("This record is locked…") is shown to non-admin users when viewing a locked order, explaining that only an admin can make changes.
+- `components/quotes/quote-detail.tsx`: Once a quote is customer-approved and becomes an order (`ticket_status` is `order`, `in_production`, or `completed`), the record is now locked for all non-admin users. SDR and Sales roles cannot edit or cancel the ticket.
+- `components/quotes/quote-detail.tsx`: Admins retain full control — they can still edit and cancel orders.
+- `components/quotes/quote-detail.tsx`: A warning banner ("This record is locked…") is shown to non-admin users when viewing a locked order, explaining that only an admin can make changes.
 
 ## [2026-05-16] — Log quote resend in history
 
 ### Fixed
 - `app/api/tickets/[id]/route.ts`: Resending a quote (clicking "Resend Quote" when status is already `sent`) now always logs a `ticket_sent` activity, not just on the first send. The payload includes `resend: true` to distinguish it.
-- `components/quote-detail.tsx`: History shows "Quote resent to customer" (vs "Quote sent to customer") when `payload.resend` is `true`
+- `components/quotes/quote-detail.tsx`: History shows "Quote resent to customer" (vs "Quote sent to customer") when `payload.resend` is `true`
 
 ## [2026-05-16] — Short reference ID visible on quote detail and searchable
 
 ### Changed
-- `components/quote-detail.tsx`: Title row now shows `/ #XXXXXXXX` (first 8 chars of ticket UUID, uppercased) next to the quote/order title so customers and staff can reference the same ID seen on the PDF
-- `components/quotes-page.tsx`: Search now also matches the short 8-char ID so you can search `1649D8D7` and find the quote
+- `components/quotes/quote-detail.tsx`: Title row now shows `/ #XXXXXXXX` (first 8 chars of ticket UUID, uppercased) next to the quote/order title so customers and staff can reference the same ID seen on the PDF
+- `components/quotes/quotes-page.tsx`: Search now also matches the short 8-char ID so you can search `1649D8D7` and find the quote
 - `lib/integrations/send-quote.ts`: Email now shows the short ID as the quote reference when no `reference_code` exists (quotes), matching the PDF filename
 - `app/api/dev/quote-email-preview/route.ts`: Preview now passes a realistic short ID for testing
 
@@ -494,17 +936,17 @@ Format: `## [version or date] — description`, newest first.
 ### Changed
 - `app/api/tickets/[id]/route.ts`: When `ticket_status` changes to `"sent"`, now logs a dedicated `ticket_sent` activity with `channel`, `destination`, and `recipient` in the payload instead of the generic `order_ticket_status_changed`
 - `app/api/public/quotes/[token]/confirm/route.ts`: Customer confirmation now logs `ticket_client_confirmed` instead of `order_ticket_status_changed`, with `via: "public_link"` and the generated `reference_code`
-- `components/quote-detail.tsx` History tab: updated `ACTIVITY_META` labels ("Quote sent to customer", "Customer confirmed quote") and `activityDetail` to show channel + recipient for sent events and order reference for confirmation
+- `components/quotes/quote-detail.tsx` History tab: updated `ACTIVITY_META` labels ("Quote sent to customer", "Customer confirmed quote") and `activityDetail` to show channel + recipient for sent events and order reference for confirmation
 
 ## [2026-05-16] — Allow editing orders with no payment made
 
 ### Changed
-- `components/quote-detail.tsx`: Edit button now shows on orders when `payment_status` is `"unpaid"` (or unset); locks once payment is `"partial"` or `"paid"`
+- `components/quotes/quote-detail.tsx`: Edit button now shows on orders when `payment_status` is `"unpaid"` (or unset); locks once payment is `"partial"` or `"paid"`
 
 ## [2026-05-15] — Merge Info / Line Items / Quote tabs into single Info tab
 
 ### Changed
-- `components/quote-detail.tsx`: collapsed the three edit tabs (Info, Line Items, Quote) into a single **Info** tab; History remains its own tab
+- `components/quotes/quote-detail.tsx`: collapsed the three edit tabs (Info, Line Items, Quote) into a single **Info** tab; History remains its own tab
 - Combined tab renders all three sections stacked with labelled dividers (Info → Line Items → Quote & Pricing)
 - Edit mode bottom bar simplified to just Cancel + Save (Back/Next tab navigation removed)
 - Removed unused `ChevronRight` import
@@ -530,12 +972,12 @@ Format: `## [version or date] — description`, newest first.
 - `app/(app)/orders/[id]/page.tsx` — order detail route (reuses `QuoteDetail` component), so `/orders/:id` is a valid page with the correct active nav highlight.
 
 ### Fixed
-- `components/orders-page.tsx` — row click and "View" button now navigate to `/orders/${id}` instead of `/quotes/${id}`, so the sidebar highlights Orders (not Quotes) when viewing an order.
+- `components/orders/orders-page.tsx` — row click and "View" button now navigate to `/orders/${id}` instead of `/quotes/${id}`, so the sidebar highlights Orders (not Quotes) when viewing an order.
 
 ## [2026-05-15] — New Quote: phone-first customer lookup on Step 1
 
 ### Changed
-- `components/new-quote-form.tsx` — Customer tab redesigned:
+- `components/quotes/new-quote-form.tsx` — Customer tab redesigned:
   - Field order is now **Phone | Email → First Name | Last Name → Company**
   - Phone is always editable and acts as the search key: after 600ms of no typing (with ≥7 digits), calls `GET /api/customers/lookup?phone=…`
   - If an existing customer is found: all other fields auto-fill and lock (read-only, visually dimmed). A green "✓ Existing customer: Name" banner appears with a **Clear** button to reset.
@@ -545,8 +987,8 @@ Format: `## [version or date] — description`, newest first.
 
 ### Added
 - `supabase/migrations/053_add_payment_status_to_tickets.sql` — adds `payment_status` column (`unpaid` default, `partial`, `paid`) to `job_tickets`. Run in Supabase dashboard SQL editor.
-- `components/orders-page.tsx` — new **Payment** column with color-coded pill: red Unpaid, amber Partial, green Paid.
-- `components/quote-detail.tsx` — payment status bar on order detail page; SDR/admin can click Unpaid / Partial / Paid to update instantly without re-opening edit mode.
+- `components/orders/orders-page.tsx` — new **Payment** column with color-coded pill: red Unpaid, amber Partial, green Paid.
+- `components/quotes/quote-detail.tsx` — payment status bar on order detail page; SDR/admin can click Unpaid / Partial / Paid to update instantly without re-opening edit mode.
 
 ### Changed
 - `lib/types/index.ts` — added `payment_status` to `JobTicket` type.
@@ -561,14 +1003,14 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-14] — Resend Quote button + fix disappearing Send button
 
 ### Changed
-- `components/quote-detail.tsx` — when a quote is already in `sent` status, a **Resend Quote** button is shown instead of hiding the action entirely. Clicking it re-sends the quote to the customer via the same channel.
+- `components/quotes/quote-detail.tsx` — when a quote is already in `sent` status, a **Resend Quote** button is shown instead of hiding the action entirely. Clicking it re-sends the quote to the customer via the same channel.
 - `app/api/tickets/[id]/route.ts` — removed the `existing.ticket_status !== "sent"` guard so `sendQuoteToCustomer` is triggered on every PATCH that sets status to `"sent"`, enabling resends.
 
 ## [2026-05-14] — Fix: Approved Quotes No Longer Appear in Quoted Requests
 
 ### Fixed
 - `app/api/public/quotes/[token]/confirm/route.ts` — now also sets `ticket_kind = "order"` (alongside `ticket_status = "order"`) when a customer confirms. This removes the ticket from the `?kind=quote` API filter used by the Quotes page.
-- `components/quotes-page.tsx` — added defensive filter to exclude any ticket with `ticket_status === "order"` from all tabs, covering tickets confirmed before this fix.
+- `components/quotes/quotes-page.tsx` — added defensive filter to exclude any ticket with `ticket_status === "order"` from all tabs, covering tickets confirmed before this fix.
 
 ## [2026-05-14] — Quote Send & Customer Approval Flow
 
@@ -634,9 +1076,9 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-14] — Quote send validation, mail icon, and Send Quote section required fields
 
 ### Changed
-- `components/quote-detail.tsx` — "Send Quote" button now shows a `Mail` icon (lucide-react) to the left of the label, making it immediately clear the quote is sent via email.
-- `components/quote-detail.tsx` — "Send Via" and the contact destination field (email / phone / location) in the **Send Quote to Customer** and **Send Payment Link** sections now show a required `*` asterisk. Saving a draft quote or clicking **Send Quote** blocks and shows an inline error if the destination field is blank; error clears as soon as the user types. Added `quoteDestinationError` state; validation added inside `handleSave` before `setSaving(true)`.
-- `components/new-quote-form.tsx` — Same required-field enforcement for the **Send Quote to Customer** / **Send Payment Link** sections in the Quote tab. `quoteDestinationError` prop added to `QuoteTabProps`; validation added in `validateAndAdvance` (when leaving the Quote tab) and in `handleSave` (when status is `"sent"`). Error clears on input via wrapped setter `clearQuoteDestinationError`. Both `EmailInput` and `PhoneInput` receive the `error` prop; plain text input gets a red border + `<p role="alert">` message.
+- `components/quotes/quote-detail.tsx` — "Send Quote" button now shows a `Mail` icon (lucide-react) to the left of the label, making it immediately clear the quote is sent via email.
+- `components/quotes/quote-detail.tsx` — "Send Via" and the contact destination field (email / phone / location) in the **Send Quote to Customer** and **Send Payment Link** sections now show a required `*` asterisk. Saving a draft quote or clicking **Send Quote** blocks and shows an inline error if the destination field is blank; error clears as soon as the user types. Added `quoteDestinationError` state; validation added inside `handleSave` before `setSaving(true)`.
+- `components/quotes/new-quote-form.tsx` — Same required-field enforcement for the **Send Quote to Customer** / **Send Payment Link** sections in the Quote tab. `quoteDestinationError` prop added to `QuoteTabProps`; validation added in `validateAndAdvance` (when leaving the Quote tab) and in `handleSave` (when status is `"sent"`). Error clears on input via wrapped setter `clearQuoteDestinationError`. Both `EmailInput` and `PhoneInput` receive the `error` prop; plain text input gets a red border + `<p role="alert">` message.
 
 ## [2026-05-14] — PDF download for quotes and orders
 
@@ -646,7 +1088,7 @@ Format: `## [version or date] — description`, newest first.
 - `app/api/tickets/[id]/print/route.ts` — (kept) HTML fallback; returns a fully styled standalone HTML invoice with `@media print` rules and auto-print script when loaded in an iframe.
 
 ### Changed
-- `components/quote-detail.tsx` — replaced the iframe-based print hack with a plain `<a href="/api/tickets/[id]/pdf" download>` link. No JavaScript needed.
+- `components/quotes/quote-detail.tsx` — replaced the iframe-based print hack with a plain `<a href="/api/tickets/[id]/pdf" download>` link. No JavaScript needed.
 - `package.json` — added `@react-pdf/renderer`
 
 ### Fixed
@@ -672,7 +1114,7 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-13] — HV threshold check extended to quote-detail editing
 
 ### Changed
-- `components/quote-detail.tsx` — SDR users editing an existing `draft` quote now trigger the same High-Value Threshold blocking modal as the new-quote flow. If the final total exceeds the threshold, a non-dismissible modal with a 30-second countdown appears; on "OK" or timeout the quote is saved as `routed` and the SDR is redirected to `/quotes`. Applies regardless of whether the draft was created from a lead, the CRM, or the Quotes page.
+- `components/quotes/quote-detail.tsx` — SDR users editing an existing `draft` quote now trigger the same High-Value Threshold blocking modal as the new-quote flow. If the final total exceeds the threshold, a non-dismissible modal with a 30-second countdown appears; on "OK" or timeout the quote is saved as `routed` and the SDR is redirected to `/quotes`. Applies regardless of whether the draft was created from a lead, the CRM, or the Quotes page.
 
 ## [2026-05-13] — Backfill routed status for pre-migration SDR quotes
 
@@ -683,26 +1125,26 @@ Format: `## [version or date] — description`, newest first.
 
 ### Added
 - `lib/types/index.ts` — added `'routed'` to `TicketStatus` union
-- `components/quotes-page.tsx` — "Routed to Sales" tab (visible only to `sales` and `admin` roles); dedicated table layout showing SDR name, total, and a "Claim" button; routed tickets hidden from all other tabs; amber badge on the tab
+- `components/quotes/quotes-page.tsx` — "Routed to Sales" tab (visible only to `sales` and `admin` roles); dedicated table layout showing SDR name, total, and a "Claim" button; routed tickets hidden from all other tabs; amber badge on the tab
 - `app/api/tickets/[id]/route.ts` — `claim_ownership: true` in PATCH body triggers a claim flow: validates ticket is `routed`, updates `ticket_status → draft` and `created_by_id → claimant`, logs activity. GET now also allows `sales`/`admin` to view `routed` tickets they don't own.
 - `app/api/tickets/counts/route.ts` — added `routed` count for `sales`/`admin` roles
 - `app/api/sidebar-counts/route.ts` — `/quotes` badge for `sales`/`admin` now includes unclaimed routed ticket count
 
 ### Changed
-- `components/new-quote-form.tsx` — high-value HV redirect saves ticket as `'routed'` instead of `'draft'`; `handleSave` signature updated to accept `"routed"`
+- `components/quotes/new-quote-form.tsx` — high-value HV redirect saves ticket as `'routed'` instead of `'draft'`; `handleSave` signature updated to accept `"routed"`
 - `app/api/tickets/route.ts` — GET: `sales` users now receive their own tickets **or** tickets with `ticket_status = 'routed'`; routed tickets are enriched with `created_by_name` (SDR display name from `user_profiles`)
 
 
 
 ### Added
-- `components/new-quote-form.tsx` — when an SDR user clicks "Next" from Line Items and the quote total exceeds the company's High-Value Threshold, a blocking modal appears with a 30-second animated countdown ring. On "OK" or countdown expiry the draft is auto-saved and the user is redirected to `/quotes` so a Sales rep can claim it. The user cannot dismiss the modal in any other way.
+- `components/quotes/new-quote-form.tsx` — when an SDR user clicks "Next" from Line Items and the quote total exceeds the company's High-Value Threshold, a blocking modal appears with a 30-second animated countdown ring. On "OK" or countdown expiry the draft is auto-saved and the user is redirected to `/quotes` so a Sales rep can claim it. The user cannot dismiss the modal in any other way.
 - Fetches current user's role on mount via Supabase `user_profiles` so the check only applies to `sdr` users.
 
 
 
 ### Changed
-- `components/crm-page.tsx` — added "Add Quote" (`FilePlus`) button next to "View" in both table row and card view; clicking it navigates to `/quotes/new` with customer fields pre-filled as query params
-- `components/new-quote-form.tsx` — reads `first_name`, `last_name`, `email`, `phone`, `company` from URL search params to pre-fill the Customer tab; automatically skips to the Info tab when arriving with customer data already filled
+- `components/crm/crm-page.tsx` — added "Add Quote" (`FilePlus`) button next to "View" in both table row and card view; clicking it navigates to `/quotes/new` with customer fields pre-filled as query params
+- `components/quotes/new-quote-form.tsx` — reads `first_name`, `last_name`, `email`, `phone`, `company` from URL search params to pre-fill the Customer tab; automatically skips to the Info tab when arriving with customer data already filled
 
 ## [2026-05-13] — Fix sidebar counts; move "Won" to Quotes page
 
@@ -710,14 +1152,14 @@ Format: `## [version or date] — description`, newest first.
 - `app/api/sidebar-counts/route.ts` — sidebar badge for "Quoted Requests" was always 0 because `ticketQuery()` returns data rows (not a count), so switched to `(data ?? []).length`. Also added `approved` to the `/quotes` badge statuses.
 
 ### Changed
-- `components/quotes-page.tsx` — renamed "Approved" tab to **"Won"** (customer accepted quote).
-- `components/orders-page.tsx` — removed "Won" / `approved` tab and status from Orders; `approved` tickets now live exclusively on the Quotes page. Orders page now only shows `order` and `cancelled`.
+- `components/quotes/quotes-page.tsx` — renamed "Approved" tab to **"Won"** (customer accepted quote).
+- `components/orders/orders-page.tsx` — removed "Won" / `approved` tab and status from Orders; `approved` tickets now live exclusively on the Quotes page. Orders page now only shows `order` and `cancelled`.
 - `app/api/sidebar-counts/route.ts` — `/quotes` badge includes `draft + sent + approved`; `/orders` badge counts only `ticket_status = "order"`.
 
 ## [2026-05-13] — Use admin-panel lookups for priority, channel, payment, follow-up freq
 
 ### Changed
-- `components/quote-detail.tsx` — fetches `ticket_priority`, `quote_channel`, `ticket_payment`, `follow_up_freq` from `/api/lookups`; hardcoded arrays (`PRIORITY_OPTIONS`, `CHANNEL_OPTIONS`, `PAYMENT_OPTIONS`, `FOLLOW_UP_FREQ`) kept only as fallbacks. `InfoSection` and `QuoteSection` now receive these as props.
+- `components/quotes/quote-detail.tsx` — fetches `ticket_priority`, `quote_channel`, `ticket_payment`, `follow_up_freq` from `/api/lookups`; hardcoded arrays (`PRIORITY_OPTIONS`, `CHANNEL_OPTIONS`, `PAYMENT_OPTIONS`, `FOLLOW_UP_FREQ`) kept only as fallbacks. `InfoSection` and `QuoteSection` now receive these as props.
 
 ### Added
 - `supabase/migrations/050_add_urgent_priority.sql` — seeds `('ticket_priority', 'urgent', 'Urgent', 3)` so "Urgent" appears in priority dropdowns from the admin panel
@@ -725,7 +1167,7 @@ Format: `## [version or date] — description`, newest first.
 
 
 ### Changed
-- `components/quote-detail.tsx` — Quote tab now renders two distinct flows:
+- `components/quotes/quote-detail.tsx` — Quote tab now renders two distinct flows:
   - **Quote first**: shows pricing inputs → "Send Quote to Customer" (channel + destination) → Follow-up Schedule. Payment Methods section only appears once the ticket status is `approved`
   - **Direct order**: shows pricing inputs → Payment Methods first → "Send Payment Link" (channel + destination). No follow-up schedule
 - Read-only view labels update to match the active flow ("Send Payment Link Via" vs "Send Quote Via"; Payment Methods hidden for quote-first until approved)
@@ -801,8 +1243,8 @@ Format: `## [version or date] — description`, newest first.
 - `components/ui/email-input.tsx` — added optional `onBlur` prop so callers can attach blur-time validation
 - `components/admin/company-section.tsx` — replaced custom `FieldInput type="email"` with reusable `EmailInput` (was already using `PhoneInput` for phone)
 - `components/admin/users-section.tsx` — replaced shadcn `Input type="email"` on invite form with reusable `EmailInput`
-- `components/new-quote-form.tsx` — quote delivery destination now renders `EmailInput` when channel is Email, `PhoneInput` when SMS/WhatsApp, plain text input otherwise
-- `components/quote-detail.tsx` — same conditional-component pattern for quote destination as above; label also updated to reflect In-person / SMS / WhatsApp channels
+- `components/quotes/new-quote-form.tsx` — quote delivery destination now renders `EmailInput` when channel is Email, `PhoneInput` when SMS/WhatsApp, plain text input otherwise
+- `components/quotes/quote-detail.tsx` — same conditional-component pattern for quote destination as above; label also updated to reflect In-person / SMS / WhatsApp channels
 
 ## [2026-05-13] — Add Integrations section to Admin panel
 
@@ -817,21 +1259,21 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-12] — Guard inactive/deleted lookup values in all selects
 
 ### Changed
-- `components/new-quote-form.tsx` + `components/quote-detail.tsx` — replaced `withSavedValue` helper with `renderLookupOptions`. If a saved value is no longer in the active list (deactivated or hard-deleted), it is re-injected as `"<label> (inactive)"` with the HTML `value` attribute set to the **original label string** so the stored data is never silently wiped on save. Applied to all SKU and Quote tab selects.
+- `components/quotes/new-quote-form.tsx` + `components/quotes/quote-detail.tsx` — replaced `withSavedValue` helper with `renderLookupOptions`. If a saved value is no longer in the active list (deactivated or hard-deleted), it is re-injected as `"<label> (inactive)"` with the HTML `value` attribute set to the **original label string** so the stored data is never silently wiped on save. Applied to all SKU and Quote tab selects.
 
 ---
 
 ## [2026-05-12] — Quote tab dropdowns (Priority, Channel, Payment, Follow-up) now dynamic
 
 ### Changed
-- `components/new-quote-form.tsx` — removed hardcoded `PRIORITY_OPTIONS`, `CHANNEL_OPTIONS`, `PAYMENT_OPTIONS`, `FOLLOW_UP_FREQ` constants and dead `PREPAY_OPTIONS`. All four are now loaded via `/api/lookups?categories=ticket_priority,quote_channel,ticket_payment,follow_up_freq` in the same single request that already fetches SKU lookups. Added `QuoteLookups` type. `InfoTab` and `QuoteTab` accept the lookup arrays as props.
+- `components/quotes/new-quote-form.tsx` — removed hardcoded `PRIORITY_OPTIONS`, `CHANNEL_OPTIONS`, `PAYMENT_OPTIONS`, `FOLLOW_UP_FREQ` constants and dead `PREPAY_OPTIONS`. All four are now loaded via `/api/lookups?categories=ticket_priority,quote_channel,ticket_payment,follow_up_freq` in the same single request that already fetches SKU lookups. Added `QuoteLookups` type. `InfoTab` and `QuoteTab` accept the lookup arrays as props.
 
 ---
 
 ## [2026-05-12] — SKU dropdowns now fully admin-managed (no more hardcoded options)
 
 ### Changed
-- `components/new-quote-form.tsx` + `components/quote-detail.tsx` — Lamination, Color Mode, Sides, Roll Direction, and Add-on Finishings are now loaded at runtime from `/api/lookups?categories=lamination,color_mode,sides,roll_direction,finishing`. Hardcoded option arrays removed. Fallback to built-in values if API data is not yet loaded.
+- `components/quotes/new-quote-form.tsx` + `components/quotes/quote-detail.tsx` — Lamination, Color Mode, Sides, Roll Direction, and Add-on Finishings are now loaded at runtime from `/api/lookups?categories=lamination,color_mode,sides,roll_direction,finishing`. Hardcoded option arrays removed. Fallback to built-in values if API data is not yet loaded.
 - Admin → Dropdown Options now shows all 5 SKU categories under **Order / Quote** section (Color Mode, Sides, Roll Direction were registered via migration 048; Add-on Finishings / Lamination were already present)
 
 ---
@@ -839,8 +1281,8 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-12] — Match shadow project SKU field order; add Line Item Comment
 
 ### Changed
-- `components/new-quote-form.tsx` — `SkuRow` fields reordered to match shadow project: Product Type / Material → Width / Height → Color Mode / Sides → Quantity / Unit Price → **Lamination / Roll Direction** (side-by-side, always visible). Roll Direction is no longer conditional. Added line-price banner and Line Item Comment textarea. Add-on Finishings section split into UV Coating / Foil / Perforation checkboxes + Design on file / Die Cut row.
-- `components/quote-detail.tsx` — `EditableSkuRow` updated with same field order and new fields. Read-only card now shows comment.
+- `components/quotes/new-quote-form.tsx` — `SkuRow` fields reordered to match shadow project: Product Type / Material → Width / Height → Color Mode / Sides → Quantity / Unit Price → **Lamination / Roll Direction** (side-by-side, always visible). Roll Direction is no longer conditional. Added line-price banner and Line Item Comment textarea. Add-on Finishings section split into UV Coating / Foil / Perforation checkboxes + Design on file / Die Cut row.
+- `components/quotes/quote-detail.tsx` — `EditableSkuRow` updated with same field order and new fields. Read-only card now shows comment.
 - `lib/utils/ticket-math.ts` — `QuoteSku` extended with `comment?: string`
 
 ---
@@ -853,14 +1295,14 @@ Format: `## [version or date] — description`, newest first.
 
 ### Changed
 - `lib/utils/ticket-math.ts` — `QuoteSku` interface extended with `color_mode`, `sides`, `roll_direction` optional fields
-- `components/new-quote-form.tsx` — SKU row now renders Color Mode + Sides in a 2-column grid row, and Roll Direction (conditionally, for roll-based product types)
+- `components/quotes/new-quote-form.tsx` — SKU row now renders Color Mode + Sides in a 2-column grid row, and Roll Direction (conditionally, for roll-based product types)
 
 ---
 
 ## [2026-05-12] — Close shadow project gaps in new-quote-form
 
 ### Changed
-- `components/new-quote-form.tsx`
+- `components/quotes/new-quote-form.tsx`
   - SKU description is now auto-derived on every field change: `productType – material – lamination` (shadow project rule; needed for PDF)
   - Quote destination input now uses `type="tel"` for SMS and WhatsApp channels (was `type="text"`)
   - Prepayment section now shows **Due now / Balance** split below the input, using the shadow project's prepayment formula
@@ -868,19 +1310,19 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-12] — Clickable phone and email across all lead/customer cards
 
 ### Changed
-- `components/new-quote-form.tsx` — phone → `tel:` link, email → `mailto:` link in LeadInfoCard; both styled in accent color with hover opacity
-- `components/quote-detail.tsx` — same in LinkedLeadCard
-- `components/customer-profile.tsx` — phone and email in the contact fields grid are now `tel:` / `mailto:` links
+- `components/quotes/new-quote-form.tsx` — phone → `tel:` link, email → `mailto:` link in LeadInfoCard; both styled in accent color with hover opacity
+- `components/quotes/quote-detail.tsx` — same in LinkedLeadCard
+- `components/crm/customer-profile.tsx` — phone and email in the contact fields grid are now `tel:` / `mailto:` links
 
 ## [2026-05-12] — Quote detail page Linked Lead card shows full context
 
 ### Changed
-- `components/quote-detail.tsx` — `LinkedLeadCard` updated to match `new-quote-form.tsx`: now shows industry, returning customer badge, source, urgency, "What they need", product interests + quantities, and SDR notes. Updated `Lead` interface to include `source`, `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`.
+- `components/quotes/quote-detail.tsx` — `LinkedLeadCard` updated to match `new-quote-form.tsx`: now shows industry, returning customer badge, source, urgency, "What they need", product interests + quantities, and SDR notes. Updated `Lead` interface to include `source`, `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`.
 
 ## [2026-05-12] — New quote lead info card shows full lead context
 
 ### Changed
-- `components/new-quote-form.tsx` — `LeadInfoCard` now shows all useful lead data: name + company + industry, returning customer badge, phone, email, lead source, urgency, "What they need" (initial interest), product interests + quantities (bullet list), SDR notes. Updated `LeadInfo` interface to include `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`, `customer.website`.
+- `components/quotes/new-quote-form.tsx` — `LeadInfoCard` now shows all useful lead data: name + company + industry, returning customer badge, phone, email, lead source, urgency, "What they need" (initial interest), product interests + quantities (bullet list), SDR notes. Updated `LeadInfo` interface to include `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`, `customer.website`.
 
 ## [2026-05-12] — Fix: GET /api/leads/[id] was missing
 
@@ -890,7 +1332,7 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-12] — CRM customer profile shows Quotes & Orders
 
 ### Changed
-- `components/customer-profile.tsx` — replaced "Order History" placeholder with a live list of quotes and orders for the customer; fetches `GET /api/tickets?customer_id=<id>` in parallel with the customer data; each row shows kind icon, title, Rush badge, reference code, relative date, total, and status pill; clicking a row navigates to `/quotes/[id]`
+- `components/crm/customer-profile.tsx` — replaced "Order History" placeholder with a live list of quotes and orders for the customer; fetches `GET /api/tickets?customer_id=<id>` in parallel with the customer data; each row shows kind icon, title, Rush badge, reference code, relative date, total, and status pill; clicking a row navigates to `/quotes/[id]`
 - `app/api/tickets/route.ts` — added `customer_id` query param filter so the CRM can fetch tickets scoped to a specific customer
 
 ## [2026-05-12] — Fix: tickets API DB_ERROR on user_profiles join
@@ -902,7 +1344,7 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-12] — Fix: Save Draft redirects to Quoted Requests list
 
 ### Changed
-- `components/new-quote-form.tsx` — after saving: **Save Draft** → `/quotes` (list), **Save & Send Quote** → `/quotes/[id]` (detail page for immediate follow-up)
+- `components/quotes/new-quote-form.tsx` — after saving: **Save Draft** → `/quotes` (list), **Save & Send Quote** → `/quotes/[id]` (detail page for immediate follow-up)
 
 ## [2026-05-12] — Fix: proxy.ts blocked /quotes/new and /quotes/[id]
 
@@ -933,8 +1375,8 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-12] — Phase 7: Quotes + Orders list pages live
 
 ### Added
-- `components/quotes-page.tsx` — Quoted Requests list; tabs: All / Draft / Sent / Approved with count badges on all tabs; search by contact, company, title or reference; columns: Contact, Title, Channel, Total, Status, Follow-up (red if overdue), Created; clicking any row or View button navigates to `/quotes/[id]`; listens to `bazaar:tickets-changed` for realtime silent refresh
-- `components/orders-page.tsx` — Orders list; tabs: All / Active / Won / Cancelled with count badges; search; columns: Order #, Contact, Title (with Rush lightning bolt), Total, Priority (colour-coded), Due Date (orange = due soon, red = overdue), Status, Created; navigates to `/quotes/[id]` (same ticket record); realtime via `bazaar:tickets-changed`
+- `components/quotes/quotes-page.tsx` — Quoted Requests list; tabs: All / Draft / Sent / Approved with count badges on all tabs; search by contact, company, title or reference; columns: Contact, Title, Channel, Total, Status, Follow-up (red if overdue), Created; clicking any row or View button navigates to `/quotes/[id]`; listens to `bazaar:tickets-changed` for realtime silent refresh
+- `components/orders/orders-page.tsx` — Orders list; tabs: All / Active / Won / Cancelled with count badges; search; columns: Order #, Contact, Title (with Rush lightning bolt), Total, Priority (colour-coded), Due Date (orange = due soon, red = overdue), Status, Created; navigates to `/quotes/[id]` (same ticket record); realtime via `bazaar:tickets-changed`
 
 ### Changed
 - `app/(app)/quotes/page.tsx` — replaced spec preview placeholder with `<QuotesPage />`
@@ -949,12 +1391,12 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-12] — Quote/Order realtime refresh + full lifetime history
 
 ### Changed
-- `components/quote-detail.tsx`
+- `components/quotes/quote-detail.tsx`
   - Listens to `bazaar:tickets-changed` and `bazaar:leads-changed` events (broadcast by sidebar realtime subscriptions) — silently re-fetches the ticket + linked lead whenever either changes; edit-state is not clobbered if the user is actively editing
   - History tab now fetches the **complete lifetime** of the record (all lead activities from `leads` + all ticket activities from `job_tickets`) via `GET /api/activities?ticket_id=xxx&include_linked_lead=true`
   - History redesigned: vertical timeline, date separators, per-event icons, human-readable labels, **Lead / Ticket source badge** on each row so you can see exactly when the lead became a quote and then an order
   - History section listens to `bazaar:activities-changed` to auto-append new entries without a full page reload
-- `components/new-quote-form.tsx` — lead info card now silently refreshes when `bazaar:leads-changed` fires (another user may update the lead while the form is open)
+- `components/quotes/new-quote-form.tsx` — lead info card now silently refreshes when `bazaar:leads-changed` fires (another user may update the lead while the form is open)
 - `app/api/activities/route.ts` — added `include_linked_lead=true` query param: when set, the API fetches activities for both the ticket AND its linked lead, merges them, and returns them chronologically oldest→newest; each row gets a `_source` field (`"lead"` or `"ticket"`)
 
 ## [2026-05-12] — Phase 4–6: Tickets API, Quote/Order dedicated pages
@@ -967,56 +1409,56 @@ Format: `## [version or date] — description`, newest first.
 - `app/api/activities/route.ts` — `GET /api/activities?lead_id=xxx` or `?ticket_id=xxx` (shared activities endpoint for both lead and ticket history timelines)
 - `lib/utils/ticket-math.ts` — pure pricing helpers: `computePricing()`, `skuLineTotal()`, `formatCurrency()`
 - `app/(app)/quotes/new/page.tsx` — server shell for new-quote page (reads `lead_id` from searchParams)
-- `components/new-quote-form.tsx` — full 3-tab (Info → Line Items → Quote) create form; shows lead info card on the left; pre-fills contact email from lead; Save Draft + Save & Send Quote footer actions
+- `components/quotes/new-quote-form.tsx` — full 3-tab (Info → Line Items → Quote) create form; shows lead info card on the left; pre-fills contact email from lead; Save Draft + Save & Send Quote footer actions
 - `app/(app)/quotes/[id]/page.tsx` — server shell for quote detail/edit page
-- `components/quote-detail.tsx` — 4-tab (Info | Line Items | Quote | History) view/edit component; read-only by default, edit mode toggled by Edit button; status-aware action bar (Send Quote / Mark Won / Cancel Ticket); linked lead card in sidebar; skeleton loader
+- `components/quotes/quote-detail.tsx` — 4-tab (Info | Line Items | Quote | History) view/edit component; read-only by default, edit mode toggled by Edit button; status-aware action bar (Send Quote / Mark Won / Cancel Ticket); linked lead card in sidebar; skeleton loader
 
 ### Changed
-- `components/verify-drawer.tsx` — "Create Quote / Order" button is now live: saves the lead silently then navigates to `/quotes/new?lead_id=<id>`; added `useRouter` + `handleCreateQuote`
-- `components/sales-drawer.tsx` — same: "Create Quote / Order" now saves sales fields silently then navigates to `/quotes/new?lead_id=<id>`
+- `components/leads/verify-drawer.tsx` — "Create Quote / Order" button is now live: saves the lead silently then navigates to `/quotes/new?lead_id=<id>`; added `useRouter` + `handleCreateQuote`
+- `components/sales/sales-drawer.tsx` — same: "Create Quote / Order" now saves sales fields silently then navigates to `/quotes/new?lead_id=<id>`
 - `docs/order-ticket/integration-plan.md` — Phase 6 updated to document the design change from modal (OrderDrawer) to dedicated pages (`/quotes/new` + `/quotes/[id]`)
 
 ## [2026-05-12] — Fix: rejection from Sales clears sales_status
 
 ### Fixed
-- `components/sales-drawer.tsx` — `handleRejectConfirm` now also patches `sales_status: null` alongside `status: "Rejected"`. Previously `sales_status` was left as "Ongoing" even after rejection, causing it to display incorrectly anywhere the sales status was shown.
+- `components/sales/sales-drawer.tsx` — `handleRejectConfirm` now also patches `sales_status: null` alongside `status: "Rejected"`. Previously `sales_status` was left as "Ongoing" even after rejection, causing it to display incorrectly anywhere the sales status was shown.
 
 ---
 
 ## [2026-05-12] — Disable backdrop click-to-close on lead drawers
 
 ### Changed
-- `components/verify-drawer.tsx` — backdrop `onClick` removed; clicking outside the modal no longer closes it. Users must use Save, Route to Sales, On Hold, Reject, or the ✕ header button.
-- `components/sales-drawer.tsx` — same change; backdrop is now a visual overlay only.
+- `components/leads/verify-drawer.tsx` — backdrop `onClick` removed; clicking outside the modal no longer closes it. Users must use Save, Route to Sales, On Hold, Reject, or the ✕ header button.
+- `components/sales/sales-drawer.tsx` — same change; backdrop is now a visual overlay only.
 
 ---
 
 ## [2026-05-12] — Restore Save button in Verify Drawer
 
 ### Fixed
-- `components/verify-drawer.tsx` — re-added the **Save** button to the footer action bar. The `handleSave` function was already implemented but had no button wired to it. Save appears as the first action (navy/verify style), followed by Route to Sales, On Hold / Resume, and Reject. Save goes through `promptThenRun` so the "update customer profile?" prompt still fires when contact fields change.
+- `components/leads/verify-drawer.tsx` — re-added the **Save** button to the footer action bar. The `handleSave` function was already implemented but had no button wired to it. Save appears as the first action (navy/verify style), followed by Route to Sales, On Hold / Resume, and Reject. Save goes through `promptThenRun` so the "update customer profile?" prompt still fires when contact fields change.
 
 ---
 
 ## [2026-05-12] — Lead forms use DB-driven dropdown options
 
 ### Changed
-- `components/leads-page.tsx`:
+- `components/leads/leads-page.tsx`:
   - Expanded `/api/lookups` fetch to include `urgency`, `route_reason`, `sales_drop_reason` in addition to existing `source`, `industry`, `hold_reason`, `reject_reason`
   - Replaced hardcoded `URGENCY_OPTIONS` with `lookups.urgency` from DB (prepends a static "Not Defined" entry)
-- `components/verify-drawer.tsx`:
+- `components/leads/verify-drawer.tsx`:
   - Removed hardcoded `URGENCY_OPTIONS` and `REJECT_REASONS` constants
   - Urgency select now uses `lookups.urgency` passed from `leads-page`
   - Rejection reason select now uses `lookups.reject_reason` passed from `leads-page`
   - `HoldSubForm` now receives `reasons={lookups.hold_reason}` instead of using a hardcoded constant
-- `components/hold-sub-form.tsx`:
+- `components/leads/hold-sub-form.tsx`:
   - Removed `HOLD_REASONS` import from `lib/constants/hold-reasons`
   - Added required `reasons: LookupValue[]` prop — caller provides DB-driven hold reasons
-- `components/sales-drawer.tsx`:
+- `components/sales/sales-drawer.tsx`:
   - Removed hardcoded `SALES_HOLD_REASONS` and `REJECT_REASONS` constants
   - Added `lookups: LookupMap` prop
   - Hold radio grid now uses `lookups.hold_reason`; reject dropdown uses `lookups.reject_reason`
-- `components/sales-page.tsx`:
+- `components/sales/sales-page.tsx`:
   - Added `lookups` state and on-mount fetch from `/api/lookups` for all 7 lead categories
   - Passes `lookups` to `SalesDrawer`
 
@@ -1143,7 +1585,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-12] — Fix Quoted Requests nav icon
 
 ### Fixed
-- `components/sidebar.tsx` — added `MessageSquareQuote` to `ICON_MAP` so the Quoted Requests nav link renders with the correct icon (was falling back to the Dashboard icon)
+- `components/layout/sidebar.tsx` — added `MessageSquareQuote` to `ICON_MAP` so the Quoted Requests nav link renders with the correct icon (was falling back to the Dashboard icon)
 
 ## [2026-05-11] — Tickets module owner review — all decisions recorded
 
@@ -1163,7 +1605,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-11] — CRM page listens for real-time lead changes
 
 ### Changed
-- `components/crm-page.tsx` — added `bazaar:leads-changed` event listener so the customer list silently re-fetches whenever any lead is updated (e.g. an SDR routes a lead, making that customer visible in the CRM for the first time)
+- `components/crm/crm-page.tsx` — added `bazaar:leads-changed` event listener so the customer list silently re-fetches whenever any lead is updated (e.g. an SDR routes a lead, making that customer visible in the CRM for the first time)
 
 ## [2026-05-11] — Filter CRM page to routed leads only
 
@@ -1173,16 +1615,16 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-11] — Remove Quote/Order placeholder tabs from lead drawers
 
 ### Changed
-- `components/verify-drawer.tsx` — removed placeholder "Quote" tab; SDR drawer now has only "Lead Info" and "History" tabs. Added disabled "Create Quote / Order" footer button (enabled in Tickets phase).
-- `components/sales-drawer.tsx` — removed placeholder "Order / Quote" tab; Sales drawer now has only "Lead Info" and "History" tabs. Added disabled "Create Quote / Order" footer button (enabled in Tickets phase).
+- `components/leads/verify-drawer.tsx` — removed placeholder "Quote" tab; SDR drawer now has only "Lead Info" and "History" tabs. Added disabled "Create Quote / Order" footer button (enabled in Tickets phase).
+- `components/sales/sales-drawer.tsx` — removed placeholder "Order / Quote" tab; Sales drawer now has only "Lead Info" and "History" tabs. Added disabled "Create Quote / Order" footer button (enabled in Tickets phase).
 
 ## [2026-05-10] — Add call/email action buttons to phone & email inputs
 
 ### Changed
 - `components/ui/phone-input.tsx` — added optional `showAction` prop; when enabled and a full 10-digit number is present, renders a fused Phone icon link (`tel:+1…`) at the right edge of the input
 - `components/ui/email-input.tsx` — added optional `showAction` prop; when enabled and a value is present, renders a fused Mail icon link (`mailto:…`) at the right edge of the input
-- `components/leads-page.tsx` — enabled `showAction` on both Phone and Email inputs in the Add Lead modal
-- `components/verify-drawer.tsx` — enabled `showAction` on both Phone and Email inputs in the View/Claim modal
+- `components/leads/leads-page.tsx` — enabled `showAction` on both Phone and Email inputs in the Add Lead modal
+- `components/leads/verify-drawer.tsx` — enabled `showAction` on both Phone and Email inputs in the View/Claim modal
 
 ## [2026-05-10] — Fix activity history always empty (FK mismatch)
 
@@ -1201,7 +1643,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-10] — Remove Validate button from SDR workflow
 
 ### Removed
-- `components/verify-drawer.tsx` — Validate button and `doValidate`/`handleValidate` functions removed entirely. SDRs now go directly from any status to Route to Sales, On Hold, or Reject.
+- `components/leads/verify-drawer.tsx` — Validate button and `doValidate`/`handleValidate` functions removed entirely. SDRs now go directly from any status to Route to Sales, On Hold, or Reject.
 
 ### Changed
 - `docs/feature-specs/leads-sdr.md` — Footer Actions table updated; Validate row marked as removed.
@@ -1211,26 +1653,26 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-10] — Remove validation gate before Route to Sales
 
 ### Changed
-- `components/verify-drawer.tsx` — "Route to Sales" button is now always enabled; SDR can route directly from `Pending` without validating first. Removed the disabled state and tooltip that enforced validation.
+- `components/leads/verify-drawer.tsx` — "Route to Sales" button is now always enabled; SDR can route directly from `Pending` without validating first. Removed the disabled state and tooltip that enforced validation.
 - `docs/feature-specs/leads-sdr.md` — updated Footer Actions table, build status table, and validation-gate paragraph to reflect the new behaviour.
 
 ## [2026-05-10] — Remove Save button and X close from claimed-lead modal
 
 ### Changed
-- `components/verify-drawer.tsx` — removed the **Save** button; form edits are now persisted as part of each action (Validate, Route to Sales, On Hold, Reject, Resume). Hold and Resume now call `patchLead(buildLeadPayload())` before their own API request so no field edits are lost.
-- `components/verify-drawer.tsx` — **X close button** is now hidden when the SDR has the lead claimed (edit mode). It remains visible in read-only mode (locked by another SDR, or rejected lead). The SDR must take a real action to exit.
+- `components/leads/verify-drawer.tsx` — removed the **Save** button; form edits are now persisted as part of each action (Validate, Route to Sales, On Hold, Reject, Resume). Hold and Resume now call `patchLead(buildLeadPayload())` before their own API request so no field edits are lost.
+- `components/leads/verify-drawer.tsx` — **X close button** is now hidden when the SDR has the lead claimed (edit mode). It remains visible in read-only mode (locked by another SDR, or rejected lead). The SDR must take a real action to exit.
 - `docs/feature-specs/leads-sdr.md` — Footer Actions table updated to reflect removed Save/Close buttons and new auto-save-on-action behaviour.
 
 ## [2026-05-10] — Convert Verify Drawer to centered modal
 
 ### Changed
-- `components/verify-drawer.tsx` — replaced the right-side slide-in panel with a centered modal window (`max-w-[780px]`, `max-h-90vh`, `border-radius: 12px`); all content, tabs, actions, and lock logic unchanged
+- `components/leads/verify-drawer.tsx` — replaced the right-side slide-in panel with a centered modal window (`max-w-[780px]`, `max-h-90vh`, `border-radius: 12px`); all content, tabs, actions, and lock logic unchanged
 
 ## [2026-05-10] — Add Initial Interest field to leads
 
 ### Added
 - `supabase/migrations/039_add_initial_interest_to_leads.sql` — adds `initial_interest text` column to the `leads` table (nullable, no constraints)
-- `initial_interest` field in Add Lead modal (`components/leads-page.tsx`) — optional free-text input below Urgency, full-width, not required
+- `initial_interest` field in Add Lead modal (`components/leads/leads-page.tsx`) — optional free-text input below Urgency, full-width, not required
 - `initial_interest` column in the All Leads table — shows value truncated with tooltip, or "—" when empty; also shown in mobile cards
 - `initial_interest: string | null` added to `Lead` interface in `lib/types/index.ts`
 
@@ -1241,7 +1683,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-10] — Require validation before routing lead to Sales
 
 ### Changed
-- `components/verify-drawer.tsx` — "Route to Sales" button is now disabled when `status = 'Pending'`; hovering shows the tooltip "Lead must be validated before sending to Sales"
+- `components/leads/verify-drawer.tsx` — "Route to Sales" button is now disabled when `status = 'Pending'`; hovering shows the tooltip "Lead must be validated before sending to Sales"
 - `docs/feature-specs/leads-sdr.md` — updated Footer Actions table and Build Status table to reflect the validation gate; corrected stale routing path descriptions
 
 ## [2026-05-10] — Update docs to reflect all Realtime and dashboard changes
@@ -1255,7 +1697,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 
 ### Changed
 - `app/api/dashboard/kpis/route.ts` — admin KPI response now includes `open_leads` (unclaimed `Pending/Validated` workspace leads, current snapshot) and `claimed_leads` (same status but owned by an SDR).
-- `components/admin-dashboard.tsx` — `KpiCard` accepts a new optional `subStats` prop that renders colored pill badges below the subtext. The **Total Leads** card uses it to show `Open: X` (green) and `Claimed: X` (gold) inline inside the card. Dashboard now also listens to `bazaar:leads-changed` and silently re-fetches KPIs when any lead changes (no skeleton flash).
+- `components/admin/admin-dashboard.tsx` — `KpiCard` accepts a new optional `subStats` prop that renders colored pill badges below the subtext. The **Total Leads** card uses it to show `Open: X` (green) and `Claimed: X` (gold) inline inside the card. Dashboard now also listens to `bazaar:leads-changed` and silently re-fetches KPIs when any lead changes (no skeleton flash).
 
 ### Fixed
 - `app/api/sidebar-counts/route.ts` — `/leads` badge was counting all `Pending/Validated` leads including ones already claimed. Both SDR and admin now count only `locked_by_id IS NULL` leads. The badge represents "new leads waiting to be picked up", not leads already being worked. Simplified the SDR/admin split into a single shared query.
@@ -1264,7 +1706,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 
 ### Fixed
 - `supabase/migrations/038_fix_leads_rls_for_realtime.sql` — replaced `current_user_role()` (a `SECURITY DEFINER` function) in all three `leads` SELECT RLS policies with inline `EXISTS` subqueries. `SECURITY DEFINER` functions run as their owner (`postgres`) in the Supabase Realtime evaluation context, causing `auth.uid()` to return `NULL`, which made every subscriber's RLS check fail and every event to be silently dropped even when the WebSocket was `SUBSCRIBED`.
-- `components/sidebar.tsx` — moved Realtime channel setup inside `getSession().then()` so the JWT is guaranteed to be present before the WebSocket handshake. Previously, `.subscribe()` was called synchronously while `setAuth` was still pending an async `getSession()` resolve, meaning channels opened without a JWT and Realtime silently rejected all events. Also removed the manual `setAuth` + `onAuthStateChange` handler — `createBrowserClient` handles token refresh automatically.
+- `components/layout/sidebar.tsx` — moved Realtime channel setup inside `getSession().then()` so the JWT is guaranteed to be present before the WebSocket handshake. Previously, `.subscribe()` was called synchronously while `setAuth` was still pending an async `getSession()` resolve, meaning channels opened without a JWT and Realtime silently rejected all events. Also removed the manual `setAuth` + `onAuthStateChange` handler — `createBrowserClient` handles token refresh automatically.
 
 ### Changed
 - `docs/realtime-live-updates.md` — fully rewritten with both bug post-mortems, inline subquery RLS templates for all roles, JWT timing rules, complete debugging checklist, and a step-by-step checklist for adding Realtime to future entities (orders, etc.).
@@ -1275,21 +1717,21 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `app/api/leads/[id]/reassign` — extended to accept `role: "sales"` param; updates `sales_owner_id` instead of `locked_by_id`/`sdr_id`; logs `lead_reassigned` activity with `role: "sales"` in payload
 
 ### Changed
-- `components/sales-page.tsx` — admin action column in the Pipeline tab now shows **View + Reassign** buttons (desktop table and mobile cards); added reassign modal with Sales rep dropdown (fetched from `/api/admin/users?role=sales`); added `handleSalesReassign` function that calls the reassign endpoint with `role: "sales"`
+- `components/sales/sales-page.tsx` — admin action column in the Pipeline tab now shows **View + Reassign** buttons (desktop table and mobile cards); added reassign modal with Sales rep dropdown (fetched from `/api/admin/users?role=sales`); added `handleSalesReassign` function that calls the reassign endpoint with `role: "sales"`
 
 ## [2026-05-10] — Remove Quick Actions from all dashboards
 
 ### Changed
-- `components/sdr-dashboard.tsx` — removed Quick Actions section and `QuickAction` component; removed unused `Link`, `LayoutDashboard`, `ArrowRight` imports
-- `components/sales-dashboard.tsx` — same removal; removed unused `Link`, `ArrowRight` imports
+- `components/sales/sdr-dashboard.tsx` — removed Quick Actions section and `QuickAction` component; removed unused `Link`, `LayoutDashboard`, `ArrowRight` imports
+- `components/sales/sales-dashboard.tsx` — same removal; removed unused `Link`, `ArrowRight` imports
 
 ## [2026-05-10] — Align table/card breakpoint with sidebar (sm→lg)
 
 ### Changed
-- `components/leads-page.tsx` — table/mobile-card toggle changed from `sm` (640px) to `lg` (1024px)
-- `components/sales-page.tsx` — same breakpoint fix (all three pipeline tabs)
-- `components/crm-page.tsx` — same breakpoint fix
-- `components/customer-profile.tsx` — same breakpoint fix
+- `components/leads/leads-page.tsx` — table/mobile-card toggle changed from `sm` (640px) to `lg` (1024px)
+- `components/sales/sales-page.tsx` — same breakpoint fix (all three pipeline tabs)
+- `components/crm/crm-page.tsx` — same breakpoint fix
+- `components/crm/customer-profile.tsx` — same breakpoint fix
 - All four files now switch to mobile card view at the same 1024px point as the sidebar/navigation
 
 ## [2026-05-10] — Documentation audit and sync to actual implementation
@@ -1310,10 +1752,10 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `docs/realtime-live-updates.md` — comprehensive pattern guide for adding Supabase Realtime to any future entity (orders, tickets, etc.), including architecture diagram, layer-by-layer code examples, and a copy-paste checklist
 
 ### Changed
-- `components/sidebar.tsx` — replaced `setInterval(60s)` polling with two Supabase Realtime subscriptions: `leads` table (badge counts + `bazaar:leads-changed`) and `activities` table (`bazaar:activities-changed`)
+- `components/layout/sidebar.tsx` — replaced `setInterval(60s)` polling with two Supabase Realtime subscriptions: `leads` table (badge counts + `bazaar:leads-changed`) and `activities` table (`bazaar:activities-changed`)
 - `app/api/sidebar-counts/route.ts` — uncommented sidebar badge count queries (SDR: pending leads count on `/leads`; Sales: unclaimed + active deals on `/sales`; Admin: same combined view)
-- `components/sales-page.tsx` — added `bazaar:leads-changed` listener with drawer-aware deferral: silent table re-fetch when drawer is closed, deferred until drawer closes when open
-- `components/leads-page.tsx` — added `bazaar:leads-changed` listener for silent background table re-fetch (skipped when drawer is open)
+- `components/sales/sales-page.tsx` — added `bazaar:leads-changed` listener with drawer-aware deferral: silent table re-fetch when drawer is closed, deferred until drawer closes when open
+- `components/leads/leads-page.tsx` — added `bazaar:leads-changed` listener for silent background table re-fetch (skipped when drawer is open)
 - `app/(app)/admin/settings/[tab]/page.tsx` — replaced "Broadcast Notifications" spec preview with the real `<ActivityLogSection />` component
 - `docs/Notification/Notification.md` — updated to reflect V1 implementation (sidebar badges + Realtime, not bell system)
 - `docs/feature-specs/notifications.md` — updated to reflect V1 scope and future V2 plan
@@ -1324,8 +1766,8 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-09] — Enhance Dashboard with live statistics
 
 ### Added
-- `components/sdr-dashboard.tsx` — two new KPI cards: **Quote Value** (sum of `quote_total` for the SDR's leads this period) and **My Share %** (this SDR's handled leads ÷ all SDR leads in period)
-- `components/admin-dashboard.tsx` — three new sections:
+- `components/sales/sdr-dashboard.tsx` — two new KPI cards: **Quote Value** (sum of `quote_total` for the SDR's leads this period) and **My Share %** (this SDR's handled leads ÷ all SDR leads in period)
+- `components/admin/admin-dashboard.tsx` — three new sections:
   - **SDR Performance Table** — one row per SDR showing Handled, Routed, Rejected, Quote Value, and Share % for the selected period. Sorted by most handled. Only visible to admins.
   - **Rejection Reasons** — horizontal bar breakdown of the top rejection reason values across all leads. Uses `var(--color-danger)` bars.
   - **Lead Sources** — horizontal bar breakdown of lead source distribution across all leads. Uses `var(--color-accent)` bars.
@@ -1337,14 +1779,14 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-09] — Rename Sales Pipeline "Rejected (SDR)" tab to "Rejected"
 
 ### Changed
-- `components/sales-page.tsx` — tab label changed from `"Rejected (SDR)"` to `"Rejected"`. The confusing "(SDR)" suffix implied SDRs rejected these leads, when the opposite is true — these are leads the Sales team rejected. Logic unchanged: admin sees all sales-rejected leads; each sales rep sees only their own.
+- `components/sales/sales-page.tsx` — tab label changed from `"Rejected (SDR)"` to `"Rejected"`. The confusing "(SDR)" suffix implied SDRs rejected these leads, when the opposite is true — these are leads the Sales team rejected. Logic unchanged: admin sees all sales-rejected leads; each sales rep sees only their own.
 
 ## [2026-05-09] — SDR History tab, Sales Notes field, and TODO doc
 
 ### Added
-- `components/verify-drawer.tsx` — **History tab** (third tab alongside Lead Info and Quote). Lazy-loads `GET /api/leads/[id]/activities` on first open. Renders the same vertical timeline as the Sales Drawer — colored dots, human-readable labels, actor name, relative timestamp, skeleton loader. Full activity history is preserved even after a lead moves to Sales, so SDRs and admins can always see the complete chain of events.
+- `components/leads/verify-drawer.tsx` — **History tab** (third tab alongside Lead Info and Quote). Lazy-loads `GET /api/leads/[id]/activities` on first open. Renders the same vertical timeline as the Sales Drawer — colored dots, human-readable labels, actor name, relative timestamp, skeleton loader. Full activity history is preserved even after a lead moves to Sales, so SDRs and admins can always see the complete chain of events.
 - `supabase/migrations/034_add_sales_notes_to_leads.sql` — adds `sales_notes text` column to the `leads` table.
-- `components/sales-drawer.tsx` — **Sales Notes** textarea in the Sales Fields section. Sales reps can now write their own internal notes (separate from the SDR's Verify Lead Comment). Notes are saved via `PATCH /api/leads/[id]` and automatically logged to the activity timeline as `lead_edited` (field: `sales_notes`).
+- `components/sales/sales-drawer.tsx` — **Sales Notes** textarea in the Sales Fields section. Sales reps can now write their own internal notes (separate from the SDR's Verify Lead Comment). Notes are saved via `PATCH /api/leads/[id]` and automatically logged to the activity timeline as `lead_edited` (field: `sales_notes`).
 - `docs/TODO.md` — new deferred-items file. First entry: **TODO-001 Admin Override for Terminal Leads**, with full problem description, fix sketch, and a note that Won/Dropped must be handled separately after the Tickets phase.
 
 ### Changed
@@ -1355,7 +1797,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 
 ### Added
 - `app/api/leads/[id]/activities/route.ts` — `GET` endpoint that returns the full activity timeline for a lead (newest first), joining `user_profiles` so every entry includes the actor's name.
-- `components/sales-drawer.tsx` — new **History** tab (third tab alongside Lead Info and Order / Quote) that renders a vertical timeline of all activity events for the open lead. Loads lazily on first open. Shows: event label, optional notes (rejection/hold), actor name, and relative timestamp. Skeleton loader while fetching; empty-state when no events exist.
+- `components/sales/sales-drawer.tsx` — new **History** tab (third tab alongside Lead Info and Order / Quote) that renders a vertical timeline of all activity events for the open lead. Loads lazily on first open. Shows: event label, optional notes (rejection/hold), actor name, and relative timestamp. Skeleton loader while fetching; empty-state when no events exist.
 
 ### Changed
 - `app/api/leads/[id]/route.ts` — `lead_rejected` activity payload now includes `from: prevStatus` so the timeline can display "Rejected from Sales pipeline" vs "Rejected from SDR pipeline".
@@ -1368,36 +1810,36 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `app/api/leads/[id]/route.ts` — PATCH route now automatically saves `prev_status = current.status` whenever a lead is moved to `status = "Rejected"`, mirroring the same pattern already used by the hold route. This allows downstream queries to distinguish "SDR rejected" (`prev_status ≠ "Routed to Sales"`) from "rejected from sales" (`prev_status = "Routed to Sales"`).
 - `app/api/leads/workspace/route.ts` — added support for `?prev_status=` query param so callers can filter leads by their previous status.
 - `app/api/leads/sales-counts/route.ts` — `rejected` badge count now filters by `prev_status = "Routed to Sales"` so the badge reflects only sales-pipeline rejections, not all system rejections.
-- `components/sales-page.tsx` — `fetchRejectedLeads` now requests `/api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales` so the Rejected tab lists only leads that were in the sales pipeline before being rejected.
+- `components/sales/sales-page.tsx` — `fetchRejectedLeads` now requests `/api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales` so the Rejected tab lists only leads that were in the sales pipeline before being rejected.
 
 ## [2026-05-09] — Split dashboard into per-role components
 
 ### Added
-- `components/sdr-dashboard.tsx` — standalone SDR dashboard (KPIs + quick actions)
-- `components/sales-dashboard.tsx` — standalone Sales dashboard (KPIs + quick actions)
-- `components/admin-dashboard.tsx` — standalone Admin dashboard (KPIs + team grid + quick actions)
+- `components/sales/sdr-dashboard.tsx` — standalone SDR dashboard (KPIs + quick actions)
+- `components/sales/sales-dashboard.tsx` — standalone Sales dashboard (KPIs + quick actions)
+- `components/admin/admin-dashboard.tsx` — standalone Admin dashboard (KPIs + team grid + quick actions)
 
 ### Changed
-- `components/dashboard-page.tsx` — now a thin role-router; detects role via Supabase then renders the appropriate dashboard component; shows skeleton while role loads
+- `components/admin/dashboard-page.tsx` — now a thin role-router; detects role via Supabase then renders the appropriate dashboard component; shows skeleton while role loads
 
 ## [2026-05-09] — Sortable columns + close drawer on save
 
 ### Changed
-- `components/leads-page.tsx` — **Urgency** and **Created** column headers on the All Leads desktop table are now clickable sort toggles; active column shows `↑`/`↓` arrow, inactive columns show a faint `⇅` hint
-- `components/leads-page.tsx` — Mobile All Leads view gains a **cycling sort pill** (tap to cycle: Newest first → Oldest first → Urgency: High first); no extra dropdowns or selects
-- `components/verify-drawer.tsx` — Drawer now closes automatically after **Save** (same behaviour as Validate, Route, Reject, and Hold)
-- `components/leads-page.tsx` — SDR action button on All Leads renamed **Claim** for unclaimed leads and **View** for already-claimed leads; visually distinct styles (filled vs outlined) reinforce the difference
+- `components/leads/leads-page.tsx` — **Urgency** and **Created** column headers on the All Leads desktop table are now clickable sort toggles; active column shows `↑`/`↓` arrow, inactive columns show a faint `⇅` hint
+- `components/leads/leads-page.tsx` — Mobile All Leads view gains a **cycling sort pill** (tap to cycle: Newest first → Oldest first → Urgency: High first); no extra dropdowns or selects
+- `components/leads/verify-drawer.tsx` — Drawer now closes automatically after **Save** (same behaviour as Validate, Route, Reject, and Hold)
+- `components/leads/leads-page.tsx` — SDR action button on All Leads renamed **Claim** for unclaimed leads and **View** for already-claimed leads; visually distinct styles (filled vs outlined) reinforce the difference
 
 ## [2026-05-09] — Owner column + My Leads filter on All Leads tab
 
 ### Changed
-- `components/leads-page.tsx` — All Leads table now shows an **Owner** column (visible to all roles) that displays the assigned SDR's name, "You" for the current user's own leads, or an "Unclaimed" badge for unowned leads; replaces the previous admin-only "Working" column
-- `components/leads-page.tsx` — Added **My Leads / All Leads** segmented toggle on the All Leads tab; visible to SDR users only; filters client-side to show only the SDR's own claimed leads when "My Leads" is selected
+- `components/leads/leads-page.tsx` — All Leads table now shows an **Owner** column (visible to all roles) that displays the assigned SDR's name, "You" for the current user's own leads, or an "Unclaimed" badge for unowned leads; replaces the previous admin-only "Working" column
+- `components/leads/leads-page.tsx` — Added **My Leads / All Leads** segmented toggle on the All Leads tab; visible to SDR users only; filters client-side to show only the SDR's own claimed leads when "My Leads" is selected
 
 ## [2026-05-09] — Directed to Sales tab: info-only redesign + admin scope fix
 
 ### Changed
-- `components/leads-page.tsx` — Directed to Sales tab is now a status-tracking view with no action buttons or drawer; added **Phone** and **Sales Rep** columns; "Unclaimed" pill shown when `sales_status` is null
+- `components/leads/leads-page.tsx` — Directed to Sales tab is now a status-tracking view with no action buttons or drawer; added **Phone** and **Sales Rep** columns; "Unclaimed" pill shown when `sales_status` is null
 - `app/api/leads/workspace/route.ts` — admin users now skip the `scope=mine` (`sdr_id`) filter so they see all leads on On Hold / Directed to Sales / Rejected tabs (previously admin saw an empty list on these tabs); also restored the `locked_by` join that was temporarily removed pending migration 032
 - `app/api/leads/workspace/counts/route.ts` — admin users now get full counts on scoped tabs (Hold / Routed / Rejected) instead of zero
 - `app/api/leads/[id]/reassign/route.ts` — update select now includes `locked_by` join so the Working column in the All Leads table shows the correct new SDR name immediately after reassignment (no page refresh needed)
@@ -1426,7 +1868,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `app/api/leads/[id]/reassign/route.ts` — admin-only POST endpoint; sets `locked_by_id`, `locked_at`, and `sdr_id` to the chosen SDR (or clears all three to null on unassign); logs a `lead_reassigned` activity with from/to names
 
 ### Changed
-- `components/leads-page.tsx` — admin view of All Leads table now shows a **Reassign** button alongside View when a lead has an owner (`locked_by_id` is set); clicking opens a modal with a dropdown of active SDRs plus an "Unassign" option; on confirm the row updates in place and counts refresh. Added `sdrList`, `reassignLead`, `reassignUserId`, `reassigning` state and a `handleReassign` function.
+- `components/leads/leads-page.tsx` — admin view of All Leads table now shows a **Reassign** button alongside View when a lead has an owner (`locked_by_id` is set); clicking opens a modal with a dropdown of active SDRs plus an "Unassign" option; on confirm the row updates in place and counts refresh. Added `sdrList`, `reassignLead`, `reassignUserId`, `reassigning` state and a `handleReassign` function.
 
 ---
 
@@ -1447,7 +1889,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ### Changed
 - `app/api/leads/[id]/lock/route.ts` — also sets `sdr_id = userId` on lock acquisition so Hold/Routed/Rejected tab filters (`scope=mine`) work correctly from the moment the SDR claims a lead
 - `app/api/leads/[id]/hold/route.ts` — SDR holds no longer clear `locked_by_id`; ownership persists through hold/resume cycles. Sales holds still release the lock (sales ownership is tracked via `sales_owner_id`).
-- `components/verify-drawer.tsx` — removed `unlockRef`, the cleanup `useEffect`, and the unlock call from `handleClose`; closing the drawer no longer releases the lead. `doValidate` no longer calls unlock and no longer removes the lead from the list — the row updates in place with Validated status. `doRoute` and `doReject` still call unlock (ownership truly ends). `doHold` no longer sets `unlockRef`.
+- `components/leads/verify-drawer.tsx` — removed `unlockRef`, the cleanup `useEffect`, and the unlock call from `handleClose`; closing the drawer no longer releases the lead. `doValidate` no longer calls unlock and no longer removes the lead from the list — the row updates in place with Validated status. `doRoute` and `doReject` still call unlock (ownership truly ends). `doHold` no longer sets `unlockRef`.
 
 ### Docs
 - `docs/feature-specs/lead-locking.md` — rewrote Client Implementation section; added "When Ownership IS / is NOT Released" tables; updated schema fields to note `sdr_id`; updated activity logging note
@@ -1465,12 +1907,12 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ### Changed
 - `app/api/leads/workspace/route.ts` — SDRs now only receive unlocked leads + leads they themselves have open (`locked_by_id IS NULL OR locked_by_id = userId`), applied to the all-leads tab only; also added `locked_by` profile join so the locker's name is available in the row
 - `app/api/leads/workspace/counts/route.ts` — added `roleName` from `requireSession`; applies the same SDR lock filter to the all-leads count so the tab badge matches what the SDR actually sees
-- `components/leads-page.tsx` — added `userId` state (alongside `isAdmin`); added a "Working" column to the All Leads desktop table (admin only) showing which SDR has each lead open; same field shown on mobile cards for admin
+- `components/leads/leads-page.tsx` — added `userId` state (alongside `isAdmin`); added a "Working" column to the All Leads desktop table (admin only) showing which SDR has each lead open; same field shown on mobile cards for admin
 
 ## [2026-05-09] — Admin view-only access in leads pipeline
 
 ### Changed
-- `components/leads-page.tsx` — admin users now see a **View** button (no lock acquired) instead of Verify on all tabs; SDRs still see Verify / Work as before. Added `handleViewLead` function (opens drawer read-only without calling the lock endpoint) and role detection via `user_profiles`.
+- `components/leads/leads-page.tsx` — admin users now see a **View** button (no lock acquired) instead of Verify on all tabs; SDRs still see Verify / Work as before. Added `handleViewLead` function (opens drawer read-only without calling the lock endpoint) and role detection via `user_profiles`.
 
 ## [2026-05-09] — Auto-submit on 6th digit in setup-2fa
 
@@ -1519,7 +1961,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-09] — Fix: ringColor build error in dashboard TeamSection
 
 ### Fixed
-- `components/dashboard-page.tsx` — replaced invalid inline `ringColor: "var(--color-surface)"` style property (not a standard CSS property) with `outline: "2px solid var(--color-surface)"` to achieve the same visual ring effect without causing TypeScript build failure
+- `components/admin/dashboard-page.tsx` — replaced invalid inline `ringColor: "var(--color-surface)"` style property (not a standard CSS property) with `outline: "2px solid var(--color-surface)"` to achieve the same visual ring effect without causing TypeScript build failure
 
 ---
 
@@ -1527,7 +1969,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 
 ### Added
 - `app/api/admin/team/route.ts` — admin-only endpoint returning all active users with role, claimed active deal count (sales), and `last_sign_in_at` from Supabase auth
-- `components/dashboard-page.tsx` — `TeamSection` component rendered below admin KPI cards showing avatar initial, name, role, active deals (sales only), and online indicator (green = signed in within 8 h)
+- `components/admin/dashboard-page.tsx` — `TeamSection` component rendered below admin KPI cards showing avatar initial, name, role, active deals (sales only), and online indicator (green = signed in within 8 h)
 
 ## [2026-05-09] — Dedicated admin Overview page and routing
 
@@ -1541,17 +1983,17 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 
 ### Added
 - `app/(app)/profile/page.tsx` — placeholder profile page ("coming soon")
-- `components/sidebar.tsx` — user profile card at the top of the nav (avatar initial, full name, role label, chevron); collapsed state shows avatar only; links to `/profile`
-- `components/mobile-nav.tsx` — same user profile card inside the slide-in drawer
+- `components/layout/sidebar.tsx` — user profile card at the top of the nav (avatar initial, full name, role label, chevron); collapsed state shows avatar only; links to `/profile`
+- `components/layout/mobile-nav.tsx` — same user profile card inside the slide-in drawer
 
 ### Changed
-- `components/dashboard-page.tsx` — removed user card (moved to nav)
+- `components/admin/dashboard-page.tsx` — removed user card (moved to nav)
 
 ## [2026-05-09] — Dashboard user greeting card + profile page
 
 ### Added
 - `app/(app)/profile/page.tsx` — placeholder profile page ("coming soon") linked from the greeting card
-- `components/dashboard-page.tsx` — user greeting card at the top of the dashboard showing avatar initial, full name, and role; clicking navigates to `/profile`
+- `components/admin/dashboard-page.tsx` — user greeting card at the top of the dashboard showing avatar initial, full name, and role; clicking navigates to `/profile`
 
 ## [2026-05-09] — Fix sidebar Sales Pipeline badge count
 
@@ -1561,7 +2003,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-09] — Sales pipeline: admin View button + role-based filtering + owner name
 
 ### Changed
-- `components/sales-page.tsx` — admin users now see a read-only "View" button on all pipeline leads instead of "Claim"/"Open"; fetches role on mount via `user_profiles.roles(name)`
+- `components/sales/sales-page.tsx` — admin users now see a read-only "View" button on all pipeline leads instead of "Claim"/"Open"; fetches role on mount via `user_profiles.roles(name)`
 
 ## [2026-05-09] — Sales pipeline: role-based filtering + owner name display
 
@@ -1572,8 +2014,8 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `app/api/leads/workspace/route.ts` — joins `sales_owner:user_profiles(id,full_name)` via PostgREST; sales role now filtered to unclaimed + owned leads only; admins still see all
 - `app/api/leads/sales-counts/route.ts` — same role-based filter applied to tab badge counts
 - `lib/types/index.ts` — added `sales_owner?: { id, full_name } | null` to `Lead` interface
-- `components/sales-page.tsx` — Owner column now shows the actual sales rep name instead of "Claimed"; passes `currentUserId` to drawer
-- `components/sales-drawer.tsx` — Sales Fields section now includes a read-only "Assigned To" field showing owner name, "You", or "Unclaimed"
+- `components/sales/sales-page.tsx` — Owner column now shows the actual sales rep name instead of "Claimed"; passes `currentUserId` to drawer
+- `components/sales/sales-drawer.tsx` — Sales Fields section now includes a read-only "Assigned To" field showing owner name, "You", or "Unclaimed"
 
 ## [2026-05-09] — Auto-login after first-time password setup
 
@@ -1628,12 +2070,12 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `.cursor/rules/tab-counts.mdc` — rule enforcing upfront count fetching and always-visible badges on all tab UIs
 
 ### Changed
-- `components/sales-page.tsx` — count badges now show on **all** tabs before the user clicks; counts fetched from API on mount and refreshed on `bazaar:refresh-counts` event; Refresh button also triggers count refresh
+- `components/sales/sales-page.tsx` — count badges now show on **all** tabs before the user clicks; counts fetched from API on mount and refreshed on `bazaar:refresh-counts` event; Refresh button also triggers count refresh
 
 ## [2026-05-07] — Fix mobile navigation menu
 
 ### Fixed
-- `components/mobile-nav.tsx` — rewrote mobile drawer to load role-based pages from Supabase (same as sidebar), replacing the hardcoded `[Dashboard, Settings]` stub that showed wrong items for SDR/Sales/Admin roles
+- `components/layout/mobile-nav.tsx` — rewrote mobile drawer to load role-based pages from Supabase (same as sidebar), replacing the hardcoded `[Dashboard, Settings]` stub that showed wrong items for SDR/Sales/Admin roles
 - Mobile nav now shows sidebar badge counts (Leads, Sales) and refreshes them via the `bazaar:refresh-counts` event, matching desktop sidebar behavior
 - Active-route detection matches sidebar logic (exact match for `/dashboard`, prefix match for all others)
 
@@ -1646,11 +2088,11 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 
 ### Changed
 - `components/ui/status-pill.tsx` — all status styles now reference CSS vars (no hardcoded hex)
-- `components/crm-page.tsx`, `components/customer-profile.tsx` — customer status and heat tag style objects converted to CSS vars
-- `components/verify-drawer.tsx`, `components/sales-drawer.tsx` — banners, borders, buttons all tokenized
-- `components/leads-page.tsx`, `components/sales-page.tsx` — urgency pills replaced with `<UrgencyPill>`, all hex replaced with vars
+- `components/crm/crm-page.tsx`, `components/crm/customer-profile.tsx` — customer status and heat tag style objects converted to CSS vars
+- `components/leads/verify-drawer.tsx`, `components/sales/sales-drawer.tsx` — banners, borders, buttons all tokenized
+- `components/leads/leads-page.tsx`, `components/sales/sales-page.tsx` — urgency pills replaced with `<UrgencyPill>`, all hex replaced with vars
 - `components/admin/roles-section.tsx` — danger colors tokenized
-- `components/sidebar.tsx` — badge colors tokenized
+- `components/layout/sidebar.tsx` — badge colors tokenized
 - `components/ui/phone-input.tsx`, `components/ui/email-input.tsx` — error state colors tokenized
 
 ---
@@ -1696,8 +2138,8 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `GET /api/admin/pages` — list all navigable pages for permission matrix
 - `POST /api/admin/roles/[id]/permissions` — grant a page to a role (upsert)
 - `DELETE /api/admin/roles/[id]/permissions/[pageId]` — revoke a page from a role
-- `components/crm-page.tsx` — CRM list: customer table with search, status filter (All / New / Known), heat tag filter, desktop table + mobile cards, click-to-navigate
-- `components/customer-profile.tsx` — customer profile page: header with status/heat badges, contact fields grid, Edit Customer modal (PhoneInput, EmailInput, heat tag select), Lead History table, Order History placeholder
+- `components/crm/crm-page.tsx` — CRM list: customer table with search, status filter (All / New / Known), heat tag filter, desktop table + mobile cards, click-to-navigate
+- `components/crm/customer-profile.tsx` — customer profile page: header with status/heat badges, contact fields grid, Edit Customer modal (PhoneInput, EmailInput, heat tag select), Lead History table, Order History placeholder
 - `app/(app)/crm/page.tsx` — updated from placeholder to render `<CRMPage />`
 - `app/(app)/crm/customers/[id]/page.tsx` — customer profile route
 - `components/admin/roles-section.tsx` — two-panel roles editor: left panel lists roles with New Role form and delete; right panel is permission matrix with instant toggle (POST/DELETE); Admin role shown as locked/read-only
@@ -1712,7 +2154,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 
 ### Added
 - `app/api/dashboard/kpis/route.ts` — `GET /api/dashboard/kpis?period=week|month|quarter`; role-scoped: SDR gets inbox/handled/routed/on-hold/rejected counts, Sales gets pipeline/won/hold/value counts, Admin gets total/inbox/routed/won/revenue counts; all queries run in parallel
-- `components/dashboard-page.tsx` — client component: period selector (This Week / This Month / This Quarter), 6 role-scoped KPI cards with icons and accent highlight on primary card, Quick Actions grid (role-specific links), 300ms minimum skeleton display
+- `components/admin/dashboard-page.tsx` — client component: period selector (This Week / This Month / This Quarter), 6 role-scoped KPI cards with icons and accent highlight on primary card, Quick Actions grid (role-specific links), 300ms minimum skeleton display
 - `app/(app)/dashboard/page.tsx` — updated from null stub to render `<DashboardPage />`
 
 ---
@@ -1720,8 +2162,8 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-07] — Phase 5: Sales Pipeline page
 
 ### Added
-- `components/sales-drawer.tsx` — right-side drawer for Sales reps: read-only contact info, editable Sales fields (sales_status, quote_total), lock on open / unlock on close, Sales-specific hold sub-form (4 reasons), reject sub-form (sets `status = 'Rejected'`), Order/Quote tab placeholder
-- `components/sales-page.tsx` — full Sales Pipeline client component: 3 tabs (Pipeline, On Hold, Rejected), Claim/Open actions, Resume from hold, desktop table + mobile card layout, lazy-fetch for Rejected tab, userId lookup for ownership display
+- `components/sales/sales-drawer.tsx` — right-side drawer for Sales reps: read-only contact info, editable Sales fields (sales_status, quote_total), lock on open / unlock on close, Sales-specific hold sub-form (4 reasons), reject sub-form (sets `status = 'Rejected'`), Order/Quote tab placeholder
+- `components/sales/sales-page.tsx` — full Sales Pipeline client component: 3 tabs (Pipeline, On Hold, Rejected), Claim/Open actions, Resume from hold, desktop table + mobile card layout, lazy-fetch for Rejected tab, userId lookup for ownership display
 - `app/(app)/sales/page.tsx` — updated from placeholder to render `<SalesPage />`
 - `app/api/leads/[id]/claim/route.ts` — `POST /api/leads/[id]/claim` → sets `sales_owner_id` to session user, `sales_status = 'Ongoing'`; 409 if already claimed
 
@@ -1733,9 +2175,9 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `components/ui/phone-input.tsx` — custom phone input with `(xxx) xxx-xxxx` auto-format; stores digits-only
 - `components/ui/email-input.tsx` — email input with blur-time format validation
 - `components/ui/status-pill.tsx` — reusable `StatusPill` component for all lead/sales statuses
-- `components/hold-sub-form.tsx` — hold reason sub-form with 2-column radio grid + notes + date picker
-- `components/verify-drawer.tsx` — full Verify Drawer (lock-on-open, release-on-close, validate / hold / route / reject actions)
-- `components/leads-page.tsx` — SDR Leads page with tab filters, desktop table, mobile cards, Add Lead modal
+- `components/leads/hold-sub-form.tsx` — hold reason sub-form with 2-column radio grid + notes + date picker
+- `components/leads/verify-drawer.tsx` — full Verify Drawer (lock-on-open, release-on-close, validate / hold / route / reject actions)
+- `components/leads/leads-page.tsx` — SDR Leads page with tab filters, desktop table, mobile cards, Add Lead modal
 - `lib/utils/phone.ts` — `digitsOnly`, `formatPhone`, `validatePhone` utilities
 - `lib/auth/require-session.ts` — reusable server-side session + role resolver for Route Handlers
 - `app/(app)/leads/page.tsx` — server component rendering `<LeadsPage />`
@@ -1791,9 +2233,9 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `components/ui/phone-input.tsx` — validated phone input with auto-formatting `(xxx) xxx-xxxx`
 - `components/ui/email-input.tsx` — email input with blur validation
 - `components/ui/status-pill.tsx` — colour-coded status badge for `LeadStatus` / `SalesStatus`
-- `components/hold-sub-form.tsx` — inline hold reason / notes / date sub-form used in Verify Drawer
-- `components/verify-drawer.tsx` — right-side slide-in drawer for working a lead: lock on open, Validate / Route to Sales / Hold / Reject / Save actions, "Update customer?" prompt, read-only banner when locked by another user
-- `components/leads-page.tsx` — full SDR Leads client component: four tabs (All Leads, On Hold, Directed to Sales, Rejected), Add Lead modal with 600ms debounce customer dedup (single match banner, multi-match picker), desktop table + mobile card layout, Verify Drawer integration, optimistic removal on action
+- `components/leads/hold-sub-form.tsx` — inline hold reason / notes / date sub-form used in Verify Drawer
+- `components/leads/verify-drawer.tsx` — right-side slide-in drawer for working a lead: lock on open, Validate / Route to Sales / Hold / Reject / Save actions, "Update customer?" prompt, read-only banner when locked by another user
+- `components/leads/leads-page.tsx` — full SDR Leads client component: four tabs (All Leads, On Hold, Directed to Sales, Rejected), Add Lead modal with 600ms debounce customer dedup (single match banner, multi-match picker), desktop table + mobile card layout, Verify Drawer integration, optimistic removal on action
 - `app/(app)/leads/page.tsx` — updated from stub to render `<LeadsPage />`
 - `app/api/lookups/route.ts` — `GET /api/lookups?categories=…` returns active dropdown options
 - `app/api/customers/lookup/route.ts` — `GET /api/customers/lookup` phone/email dedup
@@ -1929,7 +2371,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ### Changed
 - `proxy.ts` — extended with: `is_active` check (deactivated → sign out → `/login?error=deactivated`), `must_change_password` redirect to `/change-password`, DB-driven role permission gate (fetches `role_permissions` + `pages` per request; Admin bypasses check; wrong-role redirects to home)
 - `lib/auth/resolve-default-home.ts` — now role-aware: SDR → `/leads`, Sales → `/sales`, Admin/other → `/dashboard`
-- `components/sidebar.tsx` — fully rewritten as DB-driven role-aware nav; fetches allowed pages from `role_permissions` join at runtime; supports all 10 Lucide icons mapped by name; shows "Admin" section label; collapses correctly
+- `components/layout/sidebar.tsx` — fully rewritten as DB-driven role-aware nav; fetches allowed pages from `role_permissions` join at runtime; supports all 10 Lucide icons mapped by name; shows "Admin" section label; collapses correctly
 
 ---
 
@@ -2085,7 +2527,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-06] — Auth pages redesigned
 
 ### Added
-- `components/otp-input.tsx` — reusable 6-box OTP input with auto-advance on input, backspace navigation, and full paste support
+- `components/auth/otp-input.tsx` — reusable 6-box OTP input with auto-advance on input, backspace navigation, and full paste support
 
 ### Changed
 - `app/(auth)/login/page.tsx` — full redesign: navy lock icon header, italic subtitle, uppercase labels, show/hide password toggle, step dots, security badge. Removed "Forgot password?" and "Remember device" (not needed for internal tool)
@@ -2108,7 +2550,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ## [2026-05-06] — Navigation & mobile nav
 
 ### Added
-- `components/mobile-nav.tsx` — mobile top bar (56px, navy) with hamburger button; full-height slide-in drawer with nav items, dark mode toggle, sign out; closes on route change; locks body scroll while open
+- `components/layout/mobile-nav.tsx` — mobile top bar (56px, navy) with hamburger button; full-height slide-in drawer with nav items, dark mode toggle, sign out; closes on route change; locks body scroll while open
 
 ### Changed
 - `app/(app)/layout.tsx` — sidebar hidden below `lg` breakpoint; mobile nav shown on mobile only; page padding `px-4` mobile / `px-6` desktop
@@ -2119,9 +2561,9 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 
 ### Changed
 - Navigation switched from horizontal tab bar to **collapsible left sidebar** matching Pulse V2 pattern
-- `components/sidebar.tsx` — navy background (`var(--color-topbar)`), expanded 224px / collapsed 56px, active item uses gold/orange accent, collapse state persisted in `localStorage` key `bazaar-sidebar-collapsed`, dark mode toggle + sign out + collapse button at bottom
+- `components/layout/sidebar.tsx` — navy background (`var(--color-topbar)`), expanded 224px / collapsed 56px, active item uses gold/orange accent, collapse state persisted in `localStorage` key `bazaar-sidebar-collapsed`, dark mode toggle + sign out + collapse button at bottom
 - `app/(app)/layout.tsx` — uses sidebar instead of topbar + tab nav
-- Removed old `components/sidebar.tsx` and `components/mobile-nav.tsx` (horizontal tab versions)
+- Removed old `components/layout/sidebar.tsx` and `components/layout/mobile-nav.tsx` (horizontal tab versions)
 - Updated `.cursor/rules/ui-design-system.mdc` to reflect sidebar layout
 
 ---
@@ -2135,7 +2577,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ### Changed
 - `app/globals.css` — replaced generic Tailwind variables with full BazaarPrinting token set (19 CSS variables, light + dark), skeleton shimmer animation
 - `app/layout.tsx` — font swapped Roboto → **Inter**; `NextTopLoader` uses `var(--color-accent)`
-- `components/theme-provider.tsx` — localStorage key changed from `bazar-crm-theme` to `bazaar-theme`
+- `components/layout/theme-provider.tsx` — localStorage key changed from `bazar-crm-theme` to `bazaar-theme`
 - `.cursor/rules/ui-design-system.mdc` — updated to reflect new nav layout
 
 ---
@@ -2189,5 +2631,5 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 - `app/globals.css`, `app/layout.tsx`, `app/page.tsx` (redirects → `/dashboard`)
 - `app/(auth)/layout.tsx`, `login/page.tsx`, `setup-2fa/page.tsx`, `verify-2fa/page.tsx`
 - `app/(app)/layout.tsx`, `dashboard/page.tsx`, `settings/page.tsx`
-- `components/theme-provider.tsx` — light/dark toggle, localStorage
+- `components/layout/theme-provider.tsx` — light/dark toggle, localStorage
 - `docs/` folder for project documentation

@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/auth/require-session";
 // ─── GET /api/tickets/counts ──────────────────────────────────────────────────
 // Returns counts for all quote/order tab badges in one lightweight request.
 //
-// Response: { counts: { drafts, sent, approved, orders, routed, total } }
+// Response: { counts: { drafts, sent, approved, orders, in_production, completed, routed, total } }
 
 export async function GET() {
   const { userId, roleName, errorResponse } = await requireSession();
@@ -16,9 +16,9 @@ export async function GET() {
   // Fetch minimal status data for tickets this user can see (own tickets)
   let query = admin
     .from("job_tickets")
-    .select("ticket_kind, ticket_status");
+    .select("ticket_kind, ticket_status, payment_evidence_url, payment_paid_at");
 
-  if (roleName !== "admin" && userId) {
+  if (roleName !== "admin" && roleName !== "accountant" && userId) {
     query = query.eq("created_by_id", userId);
   }
 
@@ -30,18 +30,24 @@ export async function GET() {
   const rows = data ?? [];
 
   const counts: Record<string, number> = {
-    drafts:    rows.filter((r) => r.ticket_status === "draft").length,
-    sent:      rows.filter((r) => r.ticket_status === "sent").length,
-    approved:  rows.filter((r) => r.ticket_status === "approved").length,
-    orders:    rows.filter((r) => r.ticket_status === "order").length,
-    cancelled: rows.filter((r) => r.ticket_status === "cancelled").length,
-    total:     rows.length,
+    drafts:        rows.filter((r) => r.ticket_status === "draft").length,
+    sent:          rows.filter((r) => r.ticket_status === "sent").length,
+    approved:      rows.filter((r) => r.ticket_status === "approved").length,
+    orders:        rows.filter(
+      (r) =>
+        r.ticket_status === "order" &&
+        !(r.payment_evidence_url && !r.payment_paid_at),
+    ).length,
+    in_production: rows.filter((r) => r.ticket_status === "in_production").length,
+    completed:     rows.filter((r) => r.ticket_status === "completed").length,
+    cancelled:     rows.filter((r) => r.ticket_status === "cancelled").length,
+    total:         rows.length,
     // Count routed tickets from this user's own rows (SDR) — overridden below for sales/admin
-    routed:    rows.filter((r) => r.ticket_status === "routed").length,
+    routed:        rows.filter((r) => r.ticket_status === "routed").length,
   };
 
-  // For sales/admin: replace with global routed count (all SDRs)
-  if (roleName === "sales" || roleName === "admin") {
+  // For sales/admin/accountant: replace with global routed count (all SDRs)
+  if (roleName === "sales" || roleName === "admin" || roleName === "accountant") {
     const { count } = await admin
       .from("job_tickets")
       .select("*", { count: "exact", head: true })

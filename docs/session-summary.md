@@ -1,6 +1,44 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 17, 2026
-**Status:** MVP complete + CRM + Roles Editor + Tickets (Quotes & Orders) fully built + Admin panel fully built + High-Value Threshold SDR routing system built + Quote creation flow redesigned + Realtime live updates on Quotes page + PDF export for quotes and orders + Twilio SMS integration live + Instantly AI email integration live + Activity Log at /notifications + Quote Send & Customer Approval Flow live (public /q/[token] page, email/SMS/WhatsApp delivery, customer confirm → order conversion) + Prepayment / Deposit system built (Full / Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready) + Quote/Order detail UX simplified (2-tab layout, order edit unlock) + Record Locking for customer-approved tickets + "Convert to Order" manual conversion flow + SDR/Sales "Won" tracking + Payment Link Bar for sending reminders + Mobile-responsive order/quote detail page + User Session Tracking + Idle Auto Sign-Out system built + Dashboard revenue fixed to use actual ticket totals + Admin override for terminal leads + Order lifecycle buttons (In Production / Completed) + Dashboard session KPI cards. All documentation audited and corrected.
+**Last updated:** May 21, 2026
+**Status:** MVP complete + full order lifecycle (Payments → Production → Completed) + Accountant role + public customer portal with payment evidence review + unified ticket detail overview across all stages. See **May 21, 2026 session** below for latest shipped work. Documentation synced 2026-05-21.
+
+---
+
+## May 21, 2026 — Order lifecycle, payments queue, public portal polish
+
+### Payment evidence & accountant workflow
+- Customer wire/ACH/Zelle/check/card proof **no longer auto-marks paid** — queues on `/payments` for accountant review
+- `payment_evidence_amount` column (migration 071) — correct amount shown while pending
+- Orders with pending evidence **excluded from `/orders`** — appear on `/payments` only until confirmed
+- `/payments/[id]` — dedicated payment review detail; list rows open here (not `/orders/[id]`)
+- `record_payment` action clears evidence and sends **payment confirmed** email when applicable
+- Accountant role: default home `/payments`, can confirm payment, view production/completed, **Mark Completed** when paid in full
+
+### Production & completed pages
+- `/production` + `/production/[id]` — in-production queue and detail (`context="production"`)
+- `/completed` + `/completed/[id]` — finished orders and detail (`context="completed"`)
+- `/orders` narrowed to active orders + cancelled (no in-production, no evidence-pending)
+- Admin **Mark Completed** on production; accountant when **paid in full** (`isTicketPaidInFull()`)
+- **Resend invoice link** on production/completed detail — emails/SMS permanent `/q/{token}` link
+- **Pickup notification** on mark complete — `sendOrderReadyToCustomer()` + History `ticket_order_ready_sent`
+
+### Public page (`/q/[token]`)
+- Unified portal phases: confirm → pay → evidence review → in production → **ready for pickup** (`order_ready`)
+- Evidence pending shows amber **under review** (not paid); PDF hides paid rows until accountant confirms
+- Completed orders: green pickup banner, **Ready for Pickup** badge, clickable address → Google Maps
+- Net terms auto-release to production (migration 072, `maybe-auto-release-production.ts`)
+- Staff logged in can preview `/q/{token}` — proxy skips RBAC on public paths
+
+### CRM detail UX
+- Unified **Overview + History** on `/quotes/[id]`, `/orders/[id]`, `/payments/[id]`, `/production/[id]`, `/completed/[id]`
+- Quote stage overview: **Customer link** + **Copy** (with Copied! feedback)
+- Quotes **All** tab badge = draft + sent + approved only (excludes in-production)
+
+### Key new files
+- `lib/utils/maybe-auto-release-production.ts`, `lib/utils/invoice-payment-summary.ts`, `lib/utils/copy-to-clipboard.ts`
+- `lib/integrations/invoice-link-template.ts`, `order-ready-template.ts`, `payment-confirmed-template.ts`
+- `components/quotes/quote-detail/ticket-detail-overview.tsx`, `ticket-overview-sections.tsx`, `quote-stage-overview.tsx`
+- `components/orders/payment-detail-overview.tsx`, `production-detail-overview.tsx`
 
 ---
 
@@ -74,7 +112,7 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - **Dashboard — Admin:** three new sections: SDR Performance Table (period-scoped, per-SDR stats), Rejection Reasons breakdown (all-time, red bars), Lead Sources breakdown (all-time, gold bars). No chart library — pure CSS bars matching the design system.
 
 ### Mobile Nav — Fixed
-- Rewrote `components/mobile-nav.tsx` from a hardcoded static list to role-based DB-driven pages (same logic as sidebar)
+- Rewrote `components/layout/mobile-nav.tsx` from a hardcoded static list to role-based DB-driven pages (same logic as sidebar)
 - Fixed admin-sub page filtering (was showing `/admin/users`, `/admin/roles` etc. in mobile menu)
 - Added badge counts and `bazaar:refresh-counts` listener
 
@@ -85,10 +123,10 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - `/quotes/new` — `new-quote-form.tsx` — new quote form with up to 4 tabs: Customer (optional, shown for new customers), Line Items, Quote, Settings; the Customer tab is hidden when a lead or CRM customer is pre-selected via URL params
 - `/quotes/[id]` — `quote-detail.tsx` — full detail view + edit mode, 2-tab layout (Info + History); Info tab contains all sections stacked
 - `/quotes` — `quotes-page.tsx` — 4-tab Quoted Requests list with counts, search, sort
-- `/orders` — `orders-page.tsx` — 3-tab Orders list (All | Active | Cancelled) with counts, search, sort; only `ticket_status IN ('order','cancelled')` tickets shown
+- `/orders` — `orders-page.tsx` — 3-tab Orders list (All | Pending Payment | Cancelled) with counts; default tab Pending Payment; excludes evidence-pending, in-production, and completed tickets
 - All dropdowns dynamically loaded from `lookup_values` via `/api/lookups`; `renderLookupOptions` helper prevents data loss for deactivated values
 - Sidebar badges for `/quotes` and `/orders`
-- `GET /api/lookups/products` — public product-type + material lookup for OrderDrawer
+- `GET /api/lookups/products` — public product-type + material lookup for quote forms
 
 ### Record Locking, "Convert to Order", Won Tracking & Payment Link Bar (2026-05-16)
 
@@ -98,7 +136,7 @@ Full business-rule enforcement and payment workflow built:
 - **"Convert to Order" (was "Mark Won")**: The "Mark Won" button was replaced with **"Convert to Order"**. Clicking it sets `ticket_status = "order"`, auto-generates `ORD-YYYY-NNN` reference code, sets `ticket_kind = "order"`, and logs `ticket_converted` activity. Mirrors the customer confirmation flow exactly.
 - **`approved` status phased out**: The intermediate `approved` state is no longer used. Tickets go directly `sent → order` (either by customer or by rep clicking "Convert to Order"). The `approved` status is kept in the `TicketStatus` type for backwards compatibility only.
 - **SDR/Sales Won tracking**: When a ticket becomes an order (either path), the linked lead's `sales_status` is automatically updated to `"Won"`. Handled in both `PATCH /api/tickets/[id]` (manual conversion) and `POST /api/public/quotes/[token]/confirm` (customer confirmation).
-- **SDR workspace "Won" tab**: New "Won" tab added to `/leads` (SDR workspace) at `components/leads-page.tsx`. Shows all leads where `sales_status = "Won"` for the current SDR (admin sees all). Displays order reference code, total, and closer name. API: `GET /api/leads/workspace?won=true`. Count: `GET /api/leads/workspace/counts` now includes `won`.
+- **SDR workspace "Won" tab**: New "Won" tab added to `/leads` (SDR workspace) at `components/leads/leads-page.tsx`. Shows all leads where `sales_status = "Won"` for the current SDR (admin sees all). Displays order reference code, total, and closer name. API: `GET /api/leads/workspace?won=true`. Count: `GET /api/leads/workspace/counts` now includes `won`.
 - **Payment Link Bar**: New `PaymentLinkBar` component visible on confirmed, unpaid orders. Shows: copyable public URL `/q/[token]` + channel selector (Email/SMS/WhatsApp) + pre-filled destination (switches to email or phone on channel change, user can override) + "Send Payment Link" button. Triggers `PATCH /api/tickets/[id]` with `{ send_payment_reminder: true, reminder_channel, reminder_destination }`.
 - **Payment reminder email template**: New `lib/integrations/payment-reminder-template.ts` — dedicated "Pay Now" focused email. Shows order reference, amount due, payment methods, large "Pay Now" CTA. No line items.
 - **Payment reminder SMS**: `sendPaymentReminder()` in `lib/integrations/send-quote.ts` handles Email/SMS/WhatsApp. SMS uses `toE164()` phone normalizer to ensure E.164 format (`+13233413620`) required by Twilio.
@@ -190,7 +228,7 @@ Full business rule implementation for routing high-value quotes from SDRs to Sal
 - **`lib/pdf/invoice-pdf.tsx`** — `@react-pdf/renderer` React component that produces a professional, fully styled PDF invoice. Sections: company header (logo or name, address, phone, email, website), Bill To block, Prepared By block, line items table (product, spec, qty, unit price, line total), pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment methods, delivery channel, special requirements, gold-accent footer. Works for both QUOTE and INVOICE document types.
 - **`app/api/tickets/[id]/pdf/route.ts`** — authenticated GET endpoint. Fetches ticket + company settings, renders the PDF server-side with `renderToBuffer`, returns `application/pdf` with `Content-Disposition: attachment; filename="Quote-REF.pdf"` (or `Invoice-REF.pdf` for orders). Browser downloads the file immediately — no new tab, no print dialog.
 - **`app/api/tickets/[id]/print/route.ts`** — HTML print endpoint (existing). Returns a fully styled HTML invoice document. Useful for browser-based print / Save as PDF via the system print dialog.
-- **`components/quote-detail.tsx`** — "Save PDF" button replaced with a plain `<a href="/api/tickets/[id]/pdf" download>` link. One click → file download.
+- **`components/quotes/quote-detail.tsx`** — "Save PDF" button replaced with a plain `<a href="/api/tickets/[id]/pdf" download>` link. One click → file download.
 - **Root cause fix in both PDF and print routes:** `job_tickets.created_by_id` is the FK column (not `created_by`). The broken Supabase join `created_by:user_profiles(full_name)` was silently failing and making the whole query return null (404). Fixed by fetching the creator name in a separate query using `created_by_id`, identical to the pattern in `/api/tickets/[id]/route.ts`.
 - Added `@react-pdf/renderer` to `package.json`.
 
@@ -267,7 +305,7 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/quotes` | main | ✅ Built — Quoted Requests list (All / Draft / Sent / Won / Routed to Sales tabs) |
 | `/quotes/new` | main | ✅ Built — New Quote/Order form (Customer + 3 tabs; Customer tab conditional) |
 | `/quotes/[id]` | main | ✅ Built — Quote/Order detail; record locked after customer approval (non-admins); "Convert to Order" button; Payment Link Bar; payment status badge; mobile-responsive |
-| `/orders` | main | ✅ Built — Orders list (3 tabs: All / Active / Cancelled); Payment status column |
+| `/orders` | main | ✅ Built — Orders list (3 tabs: All / Pending Payment / Cancelled); Payment status column |
 | `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; locked for non-admins after confirmation; Payment Link Bar; payment status badge; deposit status bar; mobile-responsive |
 | `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
@@ -372,7 +410,7 @@ SALES PIPELINE (Routed to Sales)
 
 ### User Session Tracking + Idle Sign-Out (2026-05-17)
 
-- **Idle auto sign-out** — `components/idle-timer.tsx` mounted in app layout; tracks mouse/keyboard/touch; shows blocking warning modal 2 min before timeout; auto signs out with session logging
+- **Idle auto sign-out** — `components/layout/idle-timer.tsx` mounted in app layout; tracks mouse/keyboard/touch; shows blocking warning modal 2 min before timeout; auto signs out with session logging
 - **Configurable timeout** — `session_idle_timeout_minutes` on `company_settings` (migration 056); Admin sets it in Company Info → Session & Security; min 5 min, max 480 min, default 20
 - **Session logging** — `user_sessions` table (migration 057); one row per login session with `signed_in_at`, `signed_out_at`, `sign_out_reason` (`manual`/`auto`/`deactivated`/`unknown`)
 - **Session start** logged after MFA verify in `verify-2fa/page.tsx`; stale open sessions auto-closed on new login
@@ -385,7 +423,7 @@ SALES PIPELINE (Routed to Sales)
 
 - **Dashboard revenue** — `GET /api/dashboard/kpis` now sums `job_tickets.quote_final_total` for all revenue/won-value/pipeline-value KPIs. Previously used `leads.quote_total` (stale snapshot never updated after quote edits). Applies to both Sales and Admin dashboard variants.
 - **Admin override for terminal leads** — `SalesDrawer` and `VerifyDrawer` accept an `isAdmin` prop. When admin opens a Won/Dropped/Rejected lead: amber "Admin override" banner shown, drawer fully editable. Won leads show a caution note to handle the linked order manually in Tickets. Non-admins still see the red lock banner.
-- **Order lifecycle buttons** — Admin-only action bar on order detail (`quote-detail.tsx`): "Mark In Production" (order → in_production), "Mark Completed" (in_production → completed), and a green "Order completed" badge on completed orders. Uses existing `handleSave(undefined, extraFields)` path — no API changes required.
+- **Order lifecycle** — Dedicated `/production`, `/production/[id]`, `/completed`, `/completed/[id]` pages. Mark Completed on production detail (admin always; accountant when paid in full). Pickup notification on complete. Auto-release via `maybe-auto-release-production.ts`. *(Initial 2026-05-17 admin buttons on order detail superseded by this.)*
 - **Dashboard session KPI cards** — Two new cards on admin dashboard: "Active Users" (users with an open session right now) and "Idle Sign-outs" (auto sign-outs in the last 7 days). Data sourced from `GET /api/admin/sessions`.
 
 ### 7. Count Badges Pattern

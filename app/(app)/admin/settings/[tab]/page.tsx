@@ -5,6 +5,7 @@ import { ProductsSection } from "@/components/admin/products-section";
 import { DropdownsSection } from "@/components/admin/dropdowns-section";
 import { CompanySection } from "@/components/admin/company-section";
 import { IntegrationsSection } from "@/components/admin/integrations-section";
+import { PaymentSection } from "@/components/admin/payment-section";
 // ─── Supported tabs ───────────────────────────────────────────────────────────
 
 const SUPPORTED_TABS = [
@@ -14,6 +15,7 @@ const SUPPORTED_TABS = [
   "company",
   "products",
   "integrations",
+  "payment",
 ] as const;
 type AdminTab = (typeof SUPPORTED_TABS)[number];
 
@@ -50,6 +52,9 @@ export default async function AdminSettingsTabPage({
 
     case "integrations":
       return <IntegrationsSection />;
+
+    case "payment":
+      return <PaymentSection />;
   }
 }
 
@@ -57,3 +62,4 @@ export default async function AdminSettingsTabPage({
 export function generateStaticParams() {
   return SUPPORTED_TABS.map((tab) => ({ tab }));
 }
+

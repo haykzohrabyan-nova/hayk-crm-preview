@@ -362,6 +362,12 @@ Use a nested `<table>` + `<td>`, NOT `display:inline-block` on a `<span>`:
 | File | Purpose | Preview route |
 |---|---|---|
 | `lib/integrations/quote-email-template.ts` | Customer quote / order confirmation | `GET /api/dev/quote-email-preview` |
+| `lib/integrations/payment-reminder-template.ts` | Payment reminder for confirmed unpaid orders | — |
+| `lib/integrations/payment-confirmed-template.ts` | Payment confirmed after accountant reviews evidence | — |
+| `lib/integrations/invoice-link-template.ts` | Resend customer portal link (`/q/{token}`) | — |
+| `lib/integrations/order-ready-template.ts` | Order ready for pickup (mark completed) | — |
+
+All outbound customer messages are routed through `lib/integrations/send-quote.ts` (`sendQuoteToCustomer`, `sendPaymentReminder`, `sendInvoiceLinkToCustomer`, `sendOrderReadyToCustomer`, payment confirmed helper).
 
 ---
 

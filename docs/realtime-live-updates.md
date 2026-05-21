@@ -446,7 +446,7 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 |--------|-------------|-------------|---------------|----------------|
 | `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx` |
 | `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` | `bazaar:activities-changed` | `activity-log-section.tsx` |
-| `job_tickets` | `047_enable_job_tickets_realtime.sql` | `tickets-realtime` (sidebar) + `quotes-page-tickets` (quotes-page direct) | `bazaar:tickets-changed` | `quotes-page.tsx` (also has own direct channel), `orders-page.tsx`, `quote-detail.tsx` |
+| `job_tickets` | `047_enable_job_tickets_realtime.sql` | `tickets-realtime` (sidebar) + `quotes-page-tickets` (quotes-page direct) | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx`, `orders-page.tsx`, `payments-page.tsx`, `production-page.tsx`, `completed-page.tsx`, `quote-detail.tsx` |
 
 ---
 
@@ -501,6 +501,6 @@ The sidebar's `useEffect` called `.subscribe()` synchronously while
 and the explicit `supabase.realtime.setAuth()` call that followed was too late —
 the handshake had already happened without auth.
 
-**Fix:** `components/sidebar.tsx` — moved all `.channel().subscribe()` calls inside
+**Fix:** `components/layout/sidebar.tsx` — moved all `.channel().subscribe()` calls inside
 the `getSession().then()` callback. Removed the manual `setAuth` and `onAuthStateChange`
 calls since `createBrowserClient` handles JWT lifecycle automatically.

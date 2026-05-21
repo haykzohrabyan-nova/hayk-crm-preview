@@ -173,10 +173,10 @@ A **"Create Quote / Order"** button is in the footer of both drawers. As of Phas
 **⏳ PENDING — deferred until after Phase 5.** Not blocked by owner questions; can be done anytime.
 
 **Files affected:**
-- `components/sales-drawer.tsx` — change `const isReadOnly = readOnly || isTerminal` to `const isReadOnly = readOnly || (isTerminal && !isAdmin)`; show amber banner instead of red when `isAdmin && isTerminal`
-- `components/verify-drawer.tsx` — same pattern for `isRejected`
-- `components/sales-page.tsx` — already passes role info; ensure `isAdmin` prop flows to `<SalesDrawer>`
-- `components/leads-page.tsx` — ensure `isAdmin` prop flows to `<VerifyDrawer>`
+- `components/sales/sales-drawer.tsx` — change `const isReadOnly = readOnly || isTerminal` to `const isReadOnly = readOnly || (isTerminal && !isAdmin)`; show amber banner instead of red when `isAdmin && isTerminal`
+- `components/leads/verify-drawer.tsx` — same pattern for `isRejected`
+- `components/sales/sales-page.tsx` — already passes role info; ensure `isAdmin` prop flows to `<SalesDrawer>`
+- `components/leads/leads-page.tsx` — ensure `isAdmin` prop flows to `<VerifyDrawer>`
 
 API is already correct (see `app/api/leads/[id]/route.ts` line ~53 — admin check already in place).
 
@@ -227,9 +227,9 @@ Client-side filtering helpers — deferred to Phase 8.
 
 **Files:**
 - `app/(app)/quotes/new/page.tsx` — server shell, reads `lead_id` from searchParams
-- `components/new-quote-form.tsx` — full create form (client component)
+- `components/quotes/new-quote-form.tsx` — full create form (client component)
 - `app/(app)/quotes/[id]/page.tsx` — server shell, loads ticket + lead
-- `components/quote-detail.tsx` — view/edit/read-only (client component)
+- `components/quotes/quote-detail.tsx` — view/edit/read-only (client component)
 
 Two modes:
 
@@ -302,7 +302,7 @@ Dispatches `bazaar:refresh-counts` after every successful save.
 
 ## Phase 7 — Pages ✅ DONE (2026-05-12)
 
-### `components/quotes-page.tsx` ✅
+### `components/quotes/quotes-page.tsx` ✅
 Replaces the spec preview in `app/(app)/quotes/page.tsx`.
 
 - Tabs: All / Draft / Sent / Approved — count badge on every tab
@@ -311,7 +311,7 @@ Replaces the spec preview in `app/(app)/quotes/page.tsx`.
 - Skeleton loader; realtime silent refresh via `bazaar:tickets-changed`
 - Clicking row or View navigates to `/quotes/[id]`
 
-### `components/orders-page.tsx` ✅
+### `components/orders/orders-page.tsx` ✅
 Replaces the spec preview in `app/(app)/orders/page.tsx`.
 
 - Tabs: All / Active / Won / Cancelled — count badge on every tab
@@ -335,7 +335,7 @@ Both drawers now save the lead silently and navigate to `/quotes/new?lead_id=<id
 ### 8b. ~~Sidebar counts~~ ✅ DONE in Phase 7
 
 ### 8c. HistoryTimeline activity labels ✅ DONE in Phase 6
-Implemented directly in `components/quote-detail.tsx` `HistorySection`. Human-readable labels + icons for all ticket and lead activity types.
+Implemented directly in `components/quotes/quote-detail.tsx` `HistorySection`. Human-readable labels + icons for all ticket and lead activity types.
 
 ### 8d. Dashboard revenue integration ⏳
 Update `app/api/dashboard/kpis/route.ts` to include revenue from `quote_final_total` on approved/active tickets:
@@ -374,11 +374,11 @@ When `quoteFinalTotal >= company_settings.high_value_threshold` AND `user_role =
 | `app/api/tickets/counts/route.ts` | 4 | ✅ |
 | `app/api/activities/route.ts` | 4 | ✅ |
 | `app/(app)/quotes/new/page.tsx` | 6 | ✅ |
-| `components/new-quote-form.tsx` | 6 | ✅ |
+| `components/quotes/new-quote-form.tsx` | 6 | ✅ |
 | `app/(app)/quotes/[id]/page.tsx` | 6 | ✅ |
-| `components/quote-detail.tsx` | 6 | ✅ |
-| `components/quotes-page.tsx` | 7 | ✅ |
-| `components/orders-page.tsx` | 7 | ✅ |
+| `components/quotes/quote-detail.tsx` | 6 | ✅ |
+| `components/quotes/quotes-page.tsx` | 7 | ✅ |
+| `components/orders/orders-page.tsx` | 7 | ✅ |
 
 ## Files Modified
 
@@ -386,12 +386,12 @@ When `quoteFinalTotal >= company_settings.high_value_threshold` AND `user_role =
 |---|---|---|
 | `lib/types/index.ts` | 2b | ✅ Enriched JobTicket, QuoteSku, TicketForm, CompanySettings |
 | `docs/schema.md` | 2c | ✅ Updated job_tickets, added new tables and RLS |
-| `components/sales-drawer.tsx` | 3a, 6 | ✅ Tabs removed · CQ button wired (save → navigate) |
-| `components/verify-drawer.tsx` | 3a, 6 | ✅ Tabs removed · CQ button wired (save → navigate) |
+| `components/sales/sales-drawer.tsx` | 3a, 6 | ✅ Tabs removed · CQ button wired (save → navigate) |
+| `components/leads/verify-drawer.tsx` | 3a, 6 | ✅ Tabs removed · CQ button wired (save → navigate) |
 | `app/api/customers/route.ts` | 3b | ✅ Filter CRM to routed leads only |
 | `app/api/sidebar-counts/route.ts` | 7 | ✅ Added /quotes and /orders badge counts |
-| `components/sales-page.tsx` | 3 | Pass isAdmin to SalesDrawer |
-| `components/leads-page.tsx` | 3 | Pass isAdmin to VerifyDrawer |
+| `components/sales/sales-page.tsx` | 3 | Pass isAdmin to SalesDrawer |
+| `components/leads/leads-page.tsx` | 3 | Pass isAdmin to VerifyDrawer |
 | `app/api/sidebar-counts/route.ts` | 8b | Add /quotes and /orders counts |
 | `app/(app)/quotes/page.tsx` | 7 | Replace spec preview with real component |
 | `app/(app)/orders/page.tsx` | 7 | Replace spec preview with real component |
