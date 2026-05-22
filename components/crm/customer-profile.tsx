@@ -9,6 +9,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
+import { quoteDetailPath } from "@/lib/utils/reference-codes";
 import {
   Select,
   SelectContent,
@@ -735,7 +736,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
             {tickets.map((t, idx) => (
               <div
                 key={t.id}
-                onClick={() => router.push(`/quotes/${t.id}`)}
+                onClick={() => router.push(quoteDetailPath(t))}
                 className="flex items-center justify-between gap-4 px-4 py-3 cursor-pointer transition-colors hover:opacity-80"
                 style={{
                   background: "var(--color-surface)",

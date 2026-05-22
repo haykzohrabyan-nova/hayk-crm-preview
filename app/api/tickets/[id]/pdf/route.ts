@@ -10,6 +10,7 @@ import type { CompanySettings } from "@/lib/types";
 import { InvoicePDF } from "@/lib/pdf/invoice-pdf";
 import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { getChannelLabel } from "@/lib/utils/compute-checkout";
+import { resolveTicketId, ticketDisplayReference } from "@/lib/utils/reference-codes";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
+  const { id: rawId } = await params;
 
   // ── Auth check ────────────────────────────────────────────────────────────
   const cookieStore = await cookies();
@@ -38,6 +39,10 @@ export async function GET(
 
   // ── Fetch data ────────────────────────────────────────────────────────────
   const admin = createAdminClient();
+  const ticketId = await resolveTicketId(admin, rawId);
+  if (!ticketId) {
+    return new NextResponse("Not found", { status: 404 });
+  }
   const [{ data: ticket }, { data: rawCompany }] = await Promise.all([
     admin
       .from("job_tickets")
@@ -55,7 +60,7 @@ export async function GET(
          payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount,
          customer:customers(first_name, last_name, company, email, phone)`
       )
-      .eq("id", id)
+      .eq("id", ticketId)
       .single(),
     admin.from("company_settings").select("*").eq("id", 1).single(),
   ]);
@@ -159,7 +164,7 @@ export async function GET(
         }
       : { name: "BAZAARPRINTING", logoUrl: null, address: "", phone: null, email: null, website: null },
     ticket: {
-      referenceCode: (ticket.reference_code as string | null) ?? id.slice(0, 8).toUpperCase(),
+      referenceCode: ticketDisplayReference(ticket as { reference_code: string | null; id: string }),
       title: ticket.title as string | null,
       createdAt: ticket.created_at as string,
       dueDate: ticket.due_date as string | null,
@@ -187,7 +192,7 @@ export async function GET(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pdfBuffer = await renderToBuffer(docElement as any);
 
-  const refCode = (ticket.reference_code as string | null) ?? id.slice(0, 8).toUpperCase();
+  const refCode = ticketDisplayReference(ticket as { reference_code: string | null; id: string });
   const filename = `${isOrder ? "Invoice" : "Quote"}-${refCode}.pdf`;
 
   return new NextResponse(new Uint8Array(pdfBuffer), {

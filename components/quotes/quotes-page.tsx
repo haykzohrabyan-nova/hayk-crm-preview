@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { quoteDetailPath, ticketPathSegment } from "@/lib/utils/reference-codes";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -165,18 +166,19 @@ export default function QuotesPage() {
 
   // ─── Claim action ────────────────────────────────────────────────────────
 
-  async function handleClaim(quoteId: string) {
+  async function handleClaim(q: QuoteTicket) {
     if (!userId) return;
-    setClaimingId(quoteId);
+    setClaimingId(q.id);
+    const pathSeg = ticketPathSegment(q);
     try {
-      const res = await fetch(`/api/tickets/${quoteId}`, {
+      const res = await fetch(`/api/tickets/${pathSeg}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticket_status: "draft", claim_ownership: true }),
       });
       if (res.ok) {
         window.dispatchEvent(new Event("bazaar:refresh-counts"));
-        router.push(`/quotes/${quoteId}`);
+        router.push(quoteDetailPath(q));
       }
     } finally {
       setClaimingId(null);
@@ -307,7 +309,7 @@ export default function QuotesPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableSkeleton cols={isRoutedTab ? 6 : 7} />
+          <TableSkeleton cols={isRoutedTab ? 7 : 8} />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -323,7 +325,7 @@ export default function QuotesPage() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Contact", "Title", "Total", "Routed By", "Date", ""].map((h) => (
+                {["Contact", "Quote #", "Title", "Total", "Routed By", "Date", ""].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -350,6 +352,11 @@ export default function QuotesPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
+                    <span className="text-sm font-mono font-medium" style={{ color: "var(--color-text-primary)" }}>
+                      {q.reference_code ?? "—"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
                     <p className="text-sm truncate max-w-[200px]" style={{ color: "var(--color-text-primary)" }}>
                       {q.title ?? "—"}
                     </p>
@@ -372,7 +379,7 @@ export default function QuotesPage() {
                   <td className="px-4 py-3">
                     {userRole === "sdr" ? (
                       <button
-                        onClick={() => router.push(`/quotes/${q.id}`)}
+                        onClick={() => router.push(quoteDetailPath(q))}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
                         style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
                       >
@@ -382,7 +389,7 @@ export default function QuotesPage() {
                     ) : (
                       <button
                         disabled={claimingId === q.id}
-                        onClick={() => handleClaim(q.id)}
+                        onClick={() => handleClaim(q)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
                         style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                       >
@@ -400,7 +407,7 @@ export default function QuotesPage() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Contact", "Title", "Channel", "Total", "Status", "Follow-up", "Created"].map((h) => (
+                {["Contact", "Quote #", "Title", "Channel", "Total", "Status", "Follow-up", "Created"].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -425,13 +432,18 @@ export default function QuotesPage() {
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)")}
-                    onClick={() => router.push(`/quotes/${q.id}`)}
+                    onClick={() => router.push(quoteDetailPath(q))}
                   >
                     <td className="px-4 py-3">
                       <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(q)}</p>
                       {q.customer?.company && (
                         <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
                       )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-sm font-mono font-medium" style={{ color: "var(--color-text-primary)" }}>
+                        {q.reference_code ?? "—"}
+                      </span>
                     </td>
                     <td className="px-4 py-3">
                       <p className="text-sm truncate max-w-[200px]" style={{ color: "var(--color-text-primary)" }}>
@@ -476,7 +488,7 @@ export default function QuotesPage() {
                     </td>
                     <td className="px-4 py-3">
                       <button
-                        onClick={(e) => { e.stopPropagation(); router.push(`/quotes/${q.id}`); }}
+                        onClick={(e) => { e.stopPropagation(); router.push(quoteDetailPath(q)); }}
                         className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-opacity hover:opacity-70"
                         style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
                       >

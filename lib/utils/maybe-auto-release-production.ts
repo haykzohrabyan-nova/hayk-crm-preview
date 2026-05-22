@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
+import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
 import type { PaymentConfig } from "@/lib/types";
 
 export interface AutoReleaseTicket {
@@ -77,12 +78,12 @@ export async function maybeAutoReleaseProduction(
   }
 
   let referenceCode = ticket.reference_code;
-  if (!referenceCode) {
-    const year = new Date().getFullYear();
-    const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
-    if (!seqErr && seq) {
-      referenceCode = `ORD-${year}-${String(seq).padStart(3, "0")}`;
-      patch.reference_code = referenceCode;
+  if (!referenceCode || referenceCode.startsWith("QUO-")) {
+    try {
+      referenceCode = await assignOrderReferenceCode(admin, referenceCode);
+      if (referenceCode) patch.reference_code = referenceCode;
+    } catch {
+      // production release proceeds without ORD if sequence fails
     }
   }
 

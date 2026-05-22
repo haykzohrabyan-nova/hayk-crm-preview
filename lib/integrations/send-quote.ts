@@ -13,6 +13,7 @@ import { buildPaymentConfirmedEmail } from "./payment-confirmed-template";
 import { buildInvoiceLinkEmail } from "./invoice-link-template";
 import { buildOrderReadyEmail, formatPickupAddress } from "./order-ready-template";
 import type { QuoteSku } from "@/lib/types";
+import { ticketDisplayReference } from "@/lib/utils/reference-codes";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -151,7 +152,7 @@ function invoiceStatusLine(ticket: TicketForSend): string {
 function buildInvoiceSmsBody(ticket: TicketForSend, company: CompanyForSend): string {
   const name = customerDisplayName(ticket).split(" ")[0];
   const companyName = company.company_name ?? "BazaarPrinting";
-  const ref = ticket.reference_code ?? ticket.id.slice(0, 8).toUpperCase();
+  const ref = ticketDisplayReference(ticket);
   const link = publicUrl(ticket.public_token);
   const paid = ticket.payment_status === "paid";
   const inProd = ticket.ticket_status === "in_production";
@@ -236,7 +237,7 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
   const { subject, html } = buildQuoteEmail({
     customerName: customerDisplayName(ticket),
     title: ticket.title ?? "Your Quote",
-    referenceCode: ticket.reference_code ?? ticket.id.slice(0, 8).toUpperCase(),
+    referenceCode: ticketDisplayReference(ticket),
     skus: ticket.quote_skus,
     subtotal,
     shipping,

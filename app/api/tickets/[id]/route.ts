@@ -5,6 +5,10 @@ import { sendQuoteToCustomer, sendPaymentReminder, sendPaymentConfirmed, sendInv
 import { computeCheckout } from "@/lib/utils/compute-checkout";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
 import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
+import {
+  assignOrderReferenceCode,
+  resolveTicketId,
+} from "@/lib/utils/reference-codes";
 import type { PaymentConfig } from "@/lib/types";
 
 type Params = { params: Promise<{ id: string }> };
@@ -16,6 +20,7 @@ async function maybeAutoRecordCashPayment(
   admin: ReturnType<typeof createAdminClient>,
   ticket: {
     id: string;
+    reference_code?: string | null;
     ticket_payment_strategy: string | null;
     ticket_dep_handling: string | null;
     ticket_receipt_id: string | null;
@@ -105,10 +110,10 @@ async function maybeAutoRecordCashPayment(
   let autoReleased = false;
 
   if (checkout.canReleaseProduction) {
-    const year = new Date().getFullYear();
-    const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
-    if (!seqErr && seq) {
-      payPatch.reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
+    try {
+      payPatch.reference_code = await assignOrderReferenceCode(admin, ticket.reference_code ?? null);
+    } catch {
+      // proceed without ORD if sequence fails
     }
     payPatch.production_released_at = now;
     payPatch.ticket_status          = "in_production";
@@ -134,11 +139,15 @@ async function maybeAutoRecordCashPayment(
 // ─── GET /api/tickets/[id] ────────────────────────────────────────────────────
 
 export async function GET(_request: NextRequest, { params }: Params) {
-  const { id } = await params;
+  const { id: rawId } = await params;
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   const admin = createAdminClient();
+  const ticketId = await resolveTicketId(admin, rawId);
+  if (!ticketId) {
+    return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
+  }
 
   const { data: ticket, error } = await admin
     .from("job_tickets")
@@ -151,7 +160,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
          customer:customers(id, first_name, last_name, company, phone, email, industry)
        )`
     )
-    .eq("id", id)
+    .eq("id", ticketId)
     .single();
 
   if (error || !ticket) {
@@ -200,7 +209,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
 // ─── PATCH /api/tickets/[id] ──────────────────────────────────────────────────
 
 export async function PATCH(request: NextRequest, { params }: Params) {
-  const { id } = await params;
+  const { id: rawId } = await params;
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
@@ -210,12 +219,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient();
+  const ticketId = await resolveTicketId(admin, rawId);
+  if (!ticketId) {
+    return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
+  }
 
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value")
-    .eq("id", id)
+    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code")
+    .eq("id", ticketId)
     .single();
 
   if (fetchErr || !existing) {
@@ -233,7 +246,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         admin
           .from("job_tickets")
           .select("*, customer:customers(first_name, last_name, email, phone)")
-          .eq("id", id)
+          .eq("id", ticketId)
           .single(),
         admin.from("company_settings").select("*").eq("id", 1).single(),
       ]);
@@ -244,14 +257,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           { channel: reminderChannel, destination: reminderDestination ?? undefined }
         ).then((result) => {
           if (!result.ok) {
-            console.error("[payment-reminder] delivery failed:", result.error, { ticketId: id, channel: result.channel, destination: reminderDestination });
+            console.error("[payment-reminder] delivery failed:", result.error, { ticketId: ticketId, channel: result.channel, destination: reminderDestination });
           } else {
-            console.log("[payment-reminder] delivered ok:", { ticketId: id, channel: result.channel, destination: reminderDestination });
+            console.log("[payment-reminder] delivered ok:", { ticketId: ticketId, channel: result.channel, destination: reminderDestination });
           }
         });
       } else {
         console.warn("[payment-reminder] skipped — missing ticket, company, or reference_code", {
-          ticketId: id,
+          ticketId: ticketId,
           hasTicket: !!fullTicket,
           hasCompany: !!companyRow,
           referenceCode: fullTicket?.reference_code ?? null,
@@ -265,7 +278,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       type: "ticket_payment_reminder_sent",
       lead_id: existing.linked_lead_id ?? null,
       customer_id: existing.customer_id ?? null,
-      ticket_id: id,
+      ticket_id: ticketId,
       by_user_id: userId,
       payload: { channel: reminderChannel, destination: reminderDestination },
       created_at: now,
@@ -282,7 +295,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       admin
         .from("job_tickets")
         .select("*, customer:customers(first_name, last_name, email, phone)")
-        .eq("id", id)
+        .eq("id", ticketId)
         .single(),
       admin.from("company_settings").select("*").eq("id", 1).single(),
     ]);
@@ -312,7 +325,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       type: "ticket_invoice_resent",
       lead_id: existing.linked_lead_id ?? null,
       customer_id: existing.customer_id ?? null,
-      ticket_id: id,
+      ticket_id: ticketId,
       by_user_id: userId,
       payload: { channel: result.channel, destination: body.invoice_destination ?? fullTicket.quote_destination ?? null },
       created_at: now,
@@ -335,7 +348,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { data: claimed, error: claimErr } = await admin
       .from("job_tickets")
       .update({ ticket_status: "draft", created_by_id: userId, updated_at: now })
-      .eq("id", id)
+      .eq("id", ticketId)
       .select()
       .single();
 
@@ -347,7 +360,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       type: "order_ticket_status_changed",
       lead_id: existing.linked_lead_id ?? null,
       customer_id: existing.customer_id ?? null,
-      ticket_id: id,
+      ticket_id: ticketId,
       by_user_id: userId,
       payload: { from: "routed", to: "draft", action: "claimed" },
       created_at: now,
@@ -440,7 +453,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
                ticket_dep_handling, ticket_full_channels, ticket_partial_channels,
                ticket_require_client_confirm,
                customer:customers(first_name, last_name, email, phone)`)
-      .eq("id", id)
+      .eq("id", ticketId)
       .single();
 
     const quoteTotal    = Number(cur?.quote_final_total ?? 0);
@@ -506,7 +519,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { data: payUpdated, error: payErr } = await admin
       .from("job_tickets")
       .update(payPatch)
-      .eq("id", id)
+      .eq("id", ticketId)
       .select()
       .single();
 
@@ -521,7 +534,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         type:        "ticket_production_released",
         lead_id:     existing.linked_lead_id ?? null,
         customer_id: existing.customer_id ?? null,
-        ticket_id:   id,
+        ticket_id:   ticketId,
         by_user_id:  userId,
         payload:     { released_at: now, auto: true, via: "accountant_confirm" },
         created_at:  now,
@@ -530,7 +543,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         type:        "order_ticket_status_changed",
         lead_id:     existing.linked_lead_id ?? null,
         customer_id: existing.customer_id ?? null,
-        ticket_id:   id,
+        ticket_id:   ticketId,
         by_user_id:  userId,
         payload:     { from: "order", to: "in_production", via: "accountant_confirm", auto: true },
         created_at:  now,
@@ -541,7 +554,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       type: "ticket_payment_recorded",
       lead_id: existing.linked_lead_id ?? null,
       customer_id: existing.customer_id ?? null,
-      ticket_id: id,
+      ticket_id: ticketId,
       by_user_id: userId,
       payload: {
         mode,
@@ -575,7 +588,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           },
         ).then((result) => {
           if (!result.ok) {
-            console.error("[payment-confirmed] delivery failed:", result.error, { ticketId: id });
+            console.error("[payment-confirmed] delivery failed:", result.error, { ticketId: ticketId });
           }
         });
 
@@ -583,7 +596,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           type: "ticket_payment_confirmed_sent",
           lead_id: existing.linked_lead_id ?? null,
           customer_id: existing.customer_id ?? null,
-          ticket_id: id,
+          ticket_id: ticketId,
           by_user_id: userId,
           payload: {
             amount,
@@ -605,7 +618,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { data: released, error: relErr } = await admin
       .from("job_tickets")
       .update({ production_released_at: now, updated_at: now })
-      .eq("id", id)
+      .eq("id", ticketId)
       .select()
       .single();
 
@@ -617,7 +630,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       type: "ticket_production_released",
       lead_id: existing.linked_lead_id ?? null,
       customer_id: existing.customer_id ?? null,
-      ticket_id: id,
+      ticket_id: ticketId,
       by_user_id: userId,
       payload: { released_at: now },
       created_at: now,
@@ -713,12 +726,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   if (isManualConvertToOrder) {
     patch.ticket_kind = "order";
-    // Only generate a reference code if one doesn't already exist
     if (!("reference_code" in body)) {
-      const year = new Date().getFullYear();
-      const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
-      if (!seqErr && seq) {
-        patch.reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
+      try {
+        patch.reference_code = await assignOrderReferenceCode(
+          admin,
+          (existing as { reference_code?: string | null }).reference_code ?? null,
+        );
+      } catch {
+        // leave reference_code unchanged if sequence fails
       }
     }
   }
@@ -726,7 +741,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data: updated, error: updateErr } = await admin
     .from("job_tickets")
     .update(patch)
-    .eq("id", id)
+    .eq("id", ticketId)
     .select()
     .single();
 
@@ -742,7 +757,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const { data: releaseRow } = await admin
       .from("job_tickets")
       .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
-      .eq("id", id)
+      .eq("id", ticketId)
       .single();
     if (releaseRow) {
       await maybeAutoReleaseProduction(admin, releaseRow as unknown as import("@/lib/utils/maybe-auto-release-production").AutoReleaseTicket, now, {
@@ -755,7 +770,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { data: responseTicket } = await admin
     .from("job_tickets")
     .select()
-    .eq("id", id)
+    .eq("id", ticketId)
     .single();
 
   // Log activity for every meaningful action
@@ -768,7 +783,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         type: "ticket_sent",
         lead_id: existing.linked_lead_id ?? null,
         customer_id: existing.customer_id ?? null,
-        ticket_id: id,
+        ticket_id: ticketId,
         by_user_id: userId,
         payload: {
           channel: (body.quote_channel as string | undefined) ?? existing.quote_channel ?? "unknown",
@@ -784,7 +799,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         type: "ticket_converted",
         lead_id: existing.linked_lead_id ?? null,
         customer_id: existing.customer_id ?? null,
-        ticket_id: id,
+        ticket_id: ticketId,
         by_user_id: userId,
         payload: { reference_code: patch.reference_code ?? null },
         created_at: now,
@@ -803,7 +818,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         type: "order_ticket_status_changed",
         lead_id: existing.linked_lead_id ?? null,
         customer_id: existing.customer_id ?? null,
-        ticket_id: id,
+        ticket_id: ticketId,
         by_user_id: userId,
         payload: { from: existing.ticket_status, to: body.ticket_status },
         created_at: now,
@@ -819,7 +834,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         admin
           .from("job_tickets")
           .select("*, customer:customers(first_name, last_name, email, phone)")
-          .eq("id", id)
+          .eq("id", ticketId)
           .single(),
         admin.from("company_settings").select("*").eq("id", 1).single(),
       ]);
@@ -827,7 +842,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         // Non-blocking: log the result but don't surface errors to the rep
         sendQuoteToCustomer(fullTicket, companyRow).then((result) => {
           if (!result.ok) {
-            console.error("[send-quote] delivery failed:", result.error, { ticketId: id, channel: result.channel });
+            console.error("[send-quote] delivery failed:", result.error, { ticketId: ticketId, channel: result.channel });
           }
         });
       }
@@ -849,7 +864,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         admin
           .from("job_tickets")
           .select("*, customer:customers(first_name, last_name, email, phone)")
-          .eq("id", id)
+          .eq("id", ticketId)
           .single(),
         admin.from("company_settings").select("*").eq("id", 1).single(),
       ]);
@@ -869,7 +884,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           type: result.ok ? "ticket_order_ready_sent" : "ticket_order_ready_failed",
           lead_id: existing.linked_lead_id ?? null,
           customer_id: existing.customer_id ?? null,
-          ticket_id: id,
+          ticket_id: ticketId,
           by_user_id: userId,
           payload: {
             channel: result.channel,

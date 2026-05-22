@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
+import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
 import type { PaymentConfig } from "@/lib/types";
 import { randomUUID } from "crypto";
 
@@ -156,10 +157,13 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   // Convert sent → order when customer submits payment
   if (ticket.ticket_status === "sent") {
-    const year = new Date().getFullYear();
-    const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
-    if (!seqErr && seq) {
-      patch.reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
+    try {
+      patch.reference_code = await assignOrderReferenceCode(
+        admin,
+        (ticket.reference_code as string | null) ?? null,
+      );
+    } catch {
+      // proceed without ORD if sequence fails
     }
     patch.ticket_status = "order";
     patch.ticket_kind   = "order";

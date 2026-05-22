@@ -650,7 +650,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         </button>
         <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
         {ticket.reference_code ? (
-          /* Order — show reference code as primary title, title as subtitle */
+          /* Quote or order — show reference code as primary title */
           <div className="flex-1 min-w-0 flex flex-col justify-center">
             <h1 className="text-base md:text-xl font-semibold font-mono leading-tight truncate" style={{ color: "var(--color-text-primary)" }}>
               {ticket.reference_code}
@@ -662,14 +662,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             )}
           </div>
         ) : (
-          /* Quote — show title + short ID */
+          /* Legacy row without reference — title only */
           <div className="flex-1 min-w-0 flex items-baseline gap-1.5 overflow-hidden">
             <h1 className="text-base md:text-xl font-semibold truncate" style={{ color: "var(--color-text-primary)" }}>
               {ticket.title ?? "Untitled Quote"}
             </h1>
-            <span className="text-xs md:text-sm font-mono shrink-0" style={{ color: "var(--color-text-muted)" }}>
-              /{ticket.id.slice(0, 8).toUpperCase()}
-            </span>
           </div>
         )}
 

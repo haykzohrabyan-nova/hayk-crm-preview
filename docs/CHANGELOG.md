@@ -3,6 +3,21 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-22] — Quote reference codes (QUO-YYYY-NNNN)
+
+### Added
+- `supabase/migrations/074_quote_reference_codes.sql` — `quote_sequence_counters`, `increment_quote_sequence` RPC, backfill for existing quotes
+- `lib/utils/reference-codes.ts` — shared helpers for QUO/ORD formatting, ticket lookup by reference, and detail URL paths
+
+### Changed
+- `POST /api/tickets` — assigns `QUO-YYYY-NNNN` on quote creation; order conversion replaces QUO with `ORD-YYYY-NNN`
+- Ticket API routes (`GET/PATCH`, PDF, print, evidence) — accept UUID or reference code in the URL segment
+- Quotes list and CRM customer profile — navigate via `QUO-*` reference; new **Quote #** column on quotes table
+- Quote detail header — shows `QUO-*` as primary identifier instead of truncated UUID
+
+### Fixed
+- Migration `074` — RLS policy uses `current_user_role() = 'admin'` (not `is_admin()`, which does not exist in this project)
+
 ## [2026-05-22] — Revert temporary MFA bypass
 
 ### Removed

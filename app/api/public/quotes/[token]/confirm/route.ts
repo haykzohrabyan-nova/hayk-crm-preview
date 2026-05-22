@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket } from "@/lib/utils/maybe-auto-release-production";
+import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
 
 // POST /api/public/quotes/[token]/confirm
 // No auth required — customer clicks "Confirm & Accept" on the public quote page.
@@ -54,12 +55,10 @@ export async function POST(_request: NextRequest, { params }: Params) {
 
   let reference_code: string | null = row.reference_code;
 
-  if (!reference_code) {
-    const year = new Date().getFullYear();
-    const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
-    if (!seqErr && seq) {
-      reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
-    }
+  try {
+    reference_code = await assignOrderReferenceCode(admin, reference_code);
+  } catch {
+    // proceed without ORD if sequence fails
   }
 
   const { error: updateErr } = await admin

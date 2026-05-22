@@ -8,6 +8,13 @@ import type { PaymentConfig } from "@/lib/types";
 import {
   QUOTE_LIST_STATUSES,
 } from "@/lib/utils/ticket-list-select";
+import {
+  formatOrderReference,
+  formatQuoteReference,
+  nextOrderNumber,
+  nextQuoteNumber,
+  assignOrderReferenceCode,
+} from "@/lib/utils/reference-codes";
 
 const TICKET_QUOTE_LIST_SELECT =
   "id, ticket_kind, ticket_status, title, reference_code, quote_channel, quote_final_total, quote_reminder_date, created_at, updated_at, created_by_id, routed_by_id, customer:customers(id, first_name, last_name, company)";
@@ -20,13 +27,6 @@ function slugify(text: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-/** Atomically increment the year counter and return the next sequence number. */
-async function nextOrderNumber(admin: ReturnType<typeof createAdminClient>, year: number): Promise<number> {
-  const { data, error } = await admin.rpc("increment_order_sequence", { p_year: year });
-  if (error) throw new Error(error.message);
-  return data as number;
 }
 
 /**
@@ -43,6 +43,7 @@ async function maybeAutoRecordCashPayment(
   admin: ReturnType<typeof createAdminClient>,
   ticket: {
     id: string;
+    reference_code?: string | null;
     ticket_payment_strategy: string | null;
     ticket_dep_handling: string | null;
     ticket_receipt_id: string | null;
@@ -135,10 +136,10 @@ async function maybeAutoRecordCashPayment(
   let autoReleased = false;
 
   if (checkout.canReleaseProduction) {
-    const year = new Date().getFullYear();
-    const { data: seq, error: seqErr } = await admin.rpc("increment_order_sequence", { p_year: year });
-    if (!seqErr && seq) {
-      payPatch.reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
+    try {
+      payPatch.reference_code = await assignOrderReferenceCode(admin, ticket.reference_code ?? null);
+    } catch {
+      // proceed without ORD if sequence fails
     }
     payPatch.production_released_at = now;
     payPatch.ticket_status          = "in_production";
@@ -391,16 +392,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Generate reference_code for orders
+  // Human-readable reference: QUO-YYYY-NNNN for quotes, ORD-YYYY-NNN for orders
   let reference_code: string | null = null;
-  if (ticket_kind === "order") {
-    const year = new Date().getFullYear();
-    try {
+  const year = new Date().getFullYear();
+  try {
+    if (ticket_kind === "order") {
       const seq = await nextOrderNumber(admin, year);
-      reference_code = `ORD-${year}-${String(seq).padStart(3, "0")}`;
-    } catch {
-      return NextResponse.json({ error: "Failed to generate order reference.", code: "SEQUENCE_ERROR" }, { status: 500 });
+      reference_code = formatOrderReference(year, seq);
+    } else if (ticket_kind === "quote") {
+      const seq = await nextQuoteNumber(admin, year);
+      reference_code = formatQuoteReference(year, seq);
     }
+  } catch {
+    return NextResponse.json(
+      { error: "Failed to generate ticket reference.", code: "SEQUENCE_ERROR" },
+      { status: 500 },
+    );
   }
 
   const insertPayload = {

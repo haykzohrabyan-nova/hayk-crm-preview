@@ -460,9 +460,12 @@ export default function NewQuoteForm() {
         return;
       }
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
-      // Draft → back to list so user can see it in the queue
-      // Sent  → open the detail page for immediate follow-up
-      router.push("/quotes");
+      const ref = json.ticket?.reference_code as string | undefined;
+      if (status === "sent" && ref) {
+        router.push(`/quotes/${ref}`);
+      } else {
+        router.push("/quotes");
+      }
     } catch {
       setError("Network error. Please try again.");
       setSaving(false);

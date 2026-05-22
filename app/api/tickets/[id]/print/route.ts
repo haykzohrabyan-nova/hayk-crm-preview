@@ -5,6 +5,7 @@ import { cookies } from "next/headers";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
+import { resolveTicketId } from "@/lib/utils/reference-codes";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -27,7 +28,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { id } = await params;
+  const { id: rawId } = await params;
 
   // ── Auth check ────────────────────────────────────────────────────────────
   const cookieStore = await cookies();
@@ -48,6 +49,10 @@ export async function GET(
 
   // ── Fetch data ────────────────────────────────────────────────────────────
   const admin = createAdminClient();
+  const ticketId = await resolveTicketId(admin, rawId);
+  if (!ticketId) {
+    return new NextResponse("Not found", { status: 404 });
+  }
   const [{ data: ticket }, { data: rawCompany }] = await Promise.all([
     admin
       .from("job_tickets")
@@ -61,7 +66,7 @@ export async function GET(
          tax_exempt, quote_payment_types, quote_channel, quote_reminder_date, created_by_id,
          customer:customers(first_name, last_name, company, email, phone)`
       )
-      .eq("id", id)
+      .eq("id", ticketId)
       .single(),
     admin.from("company_settings").select("*").eq("id", 1).single(),
   ]);

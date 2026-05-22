@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { resolveTicketId } from "@/lib/utils/reference-codes";
 
 // GET /api/tickets/[id]/evidence
 // Generates a short-lived signed URL for the payment evidence file and redirects.
@@ -9,7 +10,7 @@ import { requireSession } from "@/lib/auth/require-session";
 type Params = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
-  const { id } = await params;
+  const { id: rawId } = await params;
 
   const { roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
@@ -19,11 +20,15 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 
   const admin = createAdminClient();
+  const ticketId = await resolveTicketId(admin, rawId);
+  if (!ticketId) {
+    return NextResponse.json({ error: "Order not found." }, { status: 404 });
+  }
 
   const { data: ticket, error } = await admin
     .from("job_tickets")
     .select("payment_evidence_url")
-    .eq("id", id)
+    .eq("id", ticketId)
     .single();
 
   if (error || !ticket) {
