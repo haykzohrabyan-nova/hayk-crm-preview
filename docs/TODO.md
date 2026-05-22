@@ -164,10 +164,24 @@ Also update the Orders page (`components/orders/orders-page.tsx`) to surface an 
 
 ---
 
+## [TODO-007] Performance Optimization — Scoped Lists & Faster Queries
+
+**Status:** Planned — deferred until after TODO-006
+**Priority:** Medium (after follow-up reminder cron)
+**Spec:** `docs/FuturePlan/Performance/performance-optimization.md`
+
+### Summary
+
+Speed up list pages and badge counts without changing the UI. Phase 1: scoped Orders API, SQL counts, realtime debounce, DB indexes. Phase 2: slim list payloads (requires full lead fetch on drawer open). Phase 3: pagination/SWR only if lists exceed ~500 rows.
+
+**Do not start until TODO-006 (customer follow-up reminder cron) is shipped.**
+
+---
+
 ## [TODO-006] Follow-Up Reminders — Sending Logic Not Built
 
 **Status:** Pending — data collected, no sending
-**Priority:** Low (deferred)
+**Priority:** Medium — **do this before TODO-007**
 **Files to touch:** New cron/scheduled route + `lib/integrations/send-quote.ts`
 
 ### The Problem
@@ -193,7 +207,7 @@ Options (pick one based on hosting):
 
 **Suggested route:** `app/api/cron/follow-ups/route.ts`
 
-This is low priority until the business is actively using follow-up reminders at scale.
+Performance optimization (TODO-007) is intentionally deferred until this cron job is built and stable.
 
 ---
 

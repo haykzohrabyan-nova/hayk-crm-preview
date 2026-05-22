@@ -35,6 +35,21 @@ function Setup2FAForm() {
     async function enroll() {
       const supabase = createClient();
 
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      const { data: profile } = user
+        ? await supabase
+            .from("user_profiles")
+            .select("full_name")
+            .eq("id", user.id)
+            .single()
+        : { data: null };
+
+      const accountName =
+        profile?.full_name?.trim() || user?.email?.split("@")[0] || "User";
+
       // Remove all existing TOTP factors before re-enrolling.
       const { data: existing } = await supabase.auth.mfa.listFactors();
       for (const f of existing?.totp ?? []) {
@@ -54,7 +69,9 @@ function Setup2FAForm() {
       // Build a minimal otpauth URI from the secret.
       // Supabase's full qr_code URI can exceed QR code data limits; the short form
       // is universally supported by all authenticator apps.
-      const shortUri = `otpauth://totp/BazaarPrinting?secret=${data.totp.secret}&issuer=BazaarPrinting`;
+      const issuer = "BazaarPrinting";
+      const label = encodeURIComponent(`${issuer}:${accountName}`);
+      const shortUri = `otpauth://totp/${label}?secret=${data.totp.secret}&issuer=${encodeURIComponent(issuer)}`;
       setFactorId(data.id);
       setQrUri(shortUri);
       setSecret(data.totp.secret);

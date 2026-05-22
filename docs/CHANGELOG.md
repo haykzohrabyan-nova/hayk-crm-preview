@@ -3,6 +3,19 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-22] — 2FA QR code shows user name in authenticator app
+
+### Changed
+- `app/(auth)/setup-2fa/page.tsx` — TOTP QR label is now `BazaarPrinting:{full name}` (falls back to email prefix) instead of duplicating the issuer name
+
+## [2026-05-21] — Document performance optimization as future work
+
+### Added
+- `docs/FuturePlan/Performance/performance-optimization.md` — scoped lists, SQL counts, realtime, and index plan (deferred until follow-up reminder cron, TODO-006)
+
+### Changed
+- `docs/TODO.md` — added TODO-007 (performance); TODO-006 marked as prerequisite
+
 ## [2026-05-21] — Fix PaymentConfig type errors in API routes
 
 ### Fixed
