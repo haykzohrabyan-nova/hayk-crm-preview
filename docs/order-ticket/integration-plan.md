@@ -305,19 +305,20 @@ Dispatches `bazaar:refresh-counts` after every successful save.
 ### `components/quotes/quotes-page.tsx` ✅
 Replaces the spec preview in `app/(app)/quotes/page.tsx`.
 
-- Tabs: All / Draft / Sent / Approved — count badge on every tab
-- Columns: Contact, Title, Channel, Quote Total, Status pill, Follow-up (red if overdue), Created, View
-- Search by contact, company, title, reference code
-- Skeleton loader; realtime silent refresh via `bazaar:tickets-changed`
+- Tabs: All / Draft / Sent / Won / Routed to Sales — count badge on every tab
+- Data: `GET /api/tickets?kind=quote` (slim list — no `quote_skus` on list load)
+- Counts: `GET /api/tickets/counts`
+- Realtime: `bazaar:tickets-changed` via sidebar (no page-level Supabase channel)
 - Clicking row or View navigates to `/quotes/[id]`
 
 ### `components/orders/orders-page.tsx` ✅
 Replaces the spec preview in `app/(app)/orders/page.tsx`.
 
-- Tabs: All / Active / Won / Cancelled — count badge on every tab
-- Columns: Order # (ORD-YYYY-NNN), Contact, Title (⚡ Rush badge), Total, Priority (colour-coded), Due Date (orange = due soon, red = overdue), Status pill, Created
-- Search, skeleton loader, realtime via `bazaar:tickets-changed`
-- Navigates to `/quotes/[id]` (same record for both quotes and orders)
+- Tabs: All / Pending Payment / Cancelled — count badge on every tab (default: Pending Payment)
+- Data: `GET /api/orders/orders` (slim scoped list — not full `/api/tickets`)
+- Counts: `GET /api/tickets/counts` (orders + cancelled buckets)
+- Realtime via `bazaar:tickets-changed`
+- Navigates to `/orders/[id]`
 
 ### Sidebar badges ✅
 `app/api/sidebar-counts/route.ts` updated — `/quotes` and `/orders` nav items now show live count badges.

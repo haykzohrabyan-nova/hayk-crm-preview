@@ -647,7 +647,7 @@ Returns a short-lived signed URL for the customer-uploaded payment evidence file
 
 ### `GET /api/tickets/counts`
 
-Returns lightweight tab badge counts. Scoped per role.
+Returns lightweight tab badge counts. Scoped per role. Uses parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts` (no row fetch into Node.js).
 
 **Response `200`:**
 ```json
@@ -769,7 +769,7 @@ Returns all tickets with `ticket_status = 'in_production'`.
 
 ### `GET /api/production/counts`
 
-Returns tab badge counts for the Production page.
+Returns tab badge counts for the Production page. SQL head counts via `lib/utils/db-counts.ts`.
 
 **Response `200`:**
 ```json

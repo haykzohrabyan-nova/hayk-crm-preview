@@ -295,7 +295,9 @@ List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table vi
 
 **Indexes:** `073_performance_indexes.sql` — partial indexes on orders, production, leads.
 
-Full spec: `docs/FuturePlan/Performance/performance-optimization.md`
+**Completed:** [performance-optimization.md](./FuturePlan/Performance/performance-optimization.md) (Phase 1–2)
+
+**Future work:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md) (combined page-data, SWR, pagination)
 
 ---
 

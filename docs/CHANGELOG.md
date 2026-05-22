@@ -3,6 +3,24 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-22] — Revert temporary MFA bypass
+
+### Removed
+- `lib/auth/mfa-disabled.ts` and `MFA_DISABLED` env bypass — 2FA enforced again via `proxy.ts`
+
+## [2026-05-22] — Finalize performance docs and TODO status
+
+### Changed
+- `docs/TODO.md` — TODO-007 marked **[DONE]** for Phase 1–2; Phase 3+ as open item with any-doer roadmap link
+- `docs/architecture.md` — links to completed spec + future any-doer roadmap
+- `docs/api-contract.md` — SQL head-count notes on `tickets/counts` and `production/counts`
+- `docs/order-ticket/integration-plan.md` — quotes/orders page fetch paths aligned with Phase 1–2
+
+## [2026-05-22] — Performance any-doer roadmap doc
+
+### Added
+- `docs/FuturePlan/Performance/performance-anydoer-roadmap.md` — page-by-page future optimizations (combined page-data APIs, coalesced refetch, session memoization, SWR, pagination, infra)
+
 ## [2026-05-22] — Sync docs with performance Phase 1–2
 
 ### Changed

@@ -197,7 +197,8 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 
 ## Related docs
 
-- `docs/TODO.md` — [TODO-007](../TODO.md) (complete); [TODO-006](../TODO.md) follow-up cron (separate feature)
+- `docs/TODO.md` — [TODO-007](../TODO.md) Phase 1–2 done; Phase 3+ in any-doer roadmap
+- [performance-anydoer-roadmap.md](./performance-anydoer-roadmap.md) — **future work**: combined page-data APIs, coalesce all pages, SWR, pagination, infra
 - `docs/architecture.md` — scoped-list API pattern + new utils
 - `docs/api-contract.md` — `GET /api/orders/orders`, updated tickets/leads/customers contracts
 - `docs/realtime-live-updates.md` — event bus + dedup conventions

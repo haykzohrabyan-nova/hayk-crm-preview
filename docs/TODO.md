@@ -164,18 +164,50 @@ Also update the Orders page (`components/orders/orders-page.tsx`) to surface an 
 
 ---
 
-## [TODO-007] Performance Optimization — Scoped Lists & Faster Queries
+## [DONE] Performance Optimization Phase 1–2 (TODO-007)
 
-**Status:** Phase 1–2 built 2026-05-22 — Phase 3 optional (pagination/SWR)
-**Priority:** Medium
-**Spec:** `docs/FuturePlan/Performance/performance-optimization.md`
+**Status:** ✅ Built 2026-05-22 — Phase 3+ tracked separately (optional)
+**Priority:** Medium (core work complete)
+**Specs:**
+- [performance-optimization.md](./FuturePlan/Performance/performance-optimization.md) — what was built
+- [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md) — future work (page-data APIs, SWR, etc.)
 
-### Done
-- Phase 1: scoped Orders API, SQL counts, quotes realtime dedup, debounced sidebar, migration `073`
-- Phase 2: slim Quotes/Leads/CRM list payloads + full lead fetch on drawer open
+### Delivered
 
-### Optional (Phase 3 — only if lists exceed ~500 rows)
-- Pagination, SWR/React Query, session memoization during burst refetches
+**Phase 1**
+- `GET /api/orders/orders` — slim orders list; `orders-page.tsx` wired
+- SQL head counts in tab/sidebar count routes via `lib/utils/db-counts.ts`
+- Removed duplicate Supabase channel on `quotes-page.tsx` (sidebar `bazaar:tickets-changed` only)
+- Debounced sidebar badge refetch (~300 ms) in `sidebar.tsx`
+- Migration `073_performance_indexes.sql` — partial indexes (orders, production, leads)
+
+**Phase 2**
+- `lib/utils/ticket-list-select.ts`, `lib/utils/lead-list-select.ts`, `fetch-lead.ts`, `lead-access.ts`
+- Slim quote list: `GET /api/tickets?kind=quote`
+- Slim leads workspace + full lead on drawer open (`GET /api/leads/[id]`)
+- Slim CRM: `GET /api/customers` + silent realtime refresh
+- `production-page.tsx` coalesced mount + realtime refetch
+
+**Docs synced:** `architecture.md`, `api-contract.md`, `schema.md`, `realtime-live-updates.md`, `component-architecture.md`, feature specs, `CHANGELOG.md`
+
+### Remaining (optional — see any-doer roadmap)
+
+Not blocking; implement when load time or list size becomes a problem:
+
+- Combined `page-data` endpoints (list + counts in one auth pass) — **highest impact**
+- Coalesced refetch on `/orders`, `/quotes`, `/completed`, `/payments`
+- Dedicated per-page count routes (e.g. `GET /api/orders/counts`)
+- Pagination, SWR/React Query, session memoization
+- Infra upgrades (Supabase Pro, Vercel Pro)
+
+---
+
+## [OPEN] Performance Phase 3+ (TODO-007 continuation)
+
+**Status:** Not started — planning only
+**Spec:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md)
+
+**Suggested first task:** `GET /api/production/page-data` → `{ orders, counts }` (~300–450 ms savings per load)
 
 ---
 
@@ -185,7 +217,7 @@ Also update the Orders page (`components/orders/orders-page.tsx`) to surface an 
 **Priority:** Medium
 **Files to touch:** New cron/scheduled route + `lib/integrations/send-quote.ts`
 
-> **Note:** Performance work ([TODO-007](#todo-007-performance-optimization--scoped-lists--faster-queries)) was completed 2026-05-22 independently. This cron is still pending.
+> **Note:** Performance Phase 1–2 ([TODO-007](#done-performance-optimization-phase-12-todo-007)) was completed 2026-05-22 independently. This cron is still pending.
 
 ### The Problem
 
