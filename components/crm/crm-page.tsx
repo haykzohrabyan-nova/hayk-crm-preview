@@ -162,12 +162,12 @@ export function CRMPage() {
   const [heatFilter, setHeatFilter] = useState<HeatFilter>("all");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
-  const fetchCustomers = useCallback(async () => {
-    setLoading(true);
+  const fetchCustomers = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     const res = await fetch("/api/customers");
     const data = await res.json();
     setCustomers(data.customers ?? []);
-    setLoading(false);
+    if (!silent) setLoading(false);
   }, []);
 
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
@@ -175,8 +175,11 @@ export function CRMPage() {
   // Re-fetch silently whenever any lead changes (e.g. SDR routes a lead →
   // that customer becomes visible in the CRM for the first time).
   useEffect(() => {
-    window.addEventListener("bazaar:leads-changed", fetchCustomers);
-    return () => window.removeEventListener("bazaar:leads-changed", fetchCustomers);
+    function onLeadsChanged() {
+      void fetchCustomers(true);
+    }
+    window.addEventListener("bazaar:leads-changed", onLeadsChanged);
+    return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
   }, [fetchCustomers]);
 
   // ── Client-side filters ───────────────────────────────────────────────────
@@ -218,7 +221,7 @@ export function CRMPage() {
         <h1 className="text-[20px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
           CRM
         </h1>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchCustomers} title="Refresh">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void fetchCustomers()} title="Refresh">
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>

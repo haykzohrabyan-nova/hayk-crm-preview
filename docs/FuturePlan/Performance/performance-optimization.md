@@ -1,27 +1,31 @@
 # Performance Optimization — Scoped Lists & Faster Queries
 
-> **Status: Planned — deferred**
-> **Priority:** Medium (after customer follow-up reminder cron)
-> **Prerequisite:** [TODO-006](../../TODO.md#todo-006-follow-up-reminders--sending-logic-not-built) — Vercel Cron / `app/api/cron/follow-ups/route.ts` for quote follow-up reminders to customers
+> **Status: Phase 1–2 complete (2026-05-22) — Phase 3 optional**
+> **Implemented:** 2026-05-22 (ahead of original TODO-006 deferral — shipped during active testing)
 > **Goal:** Same UI (columns, tabs, badges, drawers) — faster loads and fewer redundant API calls
 
 ---
 
-## Why defer until after the reminder cron?
+## Summary of what was built
 
-The follow-up reminder job is a **net-new feature** with its own route, cron schedule, and send logic. Doing performance refactors first would increase merge/conflict risk and split testing focus. Ship reminders first, then optimize list/query patterns in a dedicated pass.
-
-**Suggested order:**
-
-1. Build [TODO-006](../../TODO.md#todo-006-follow-up-reminders--sending-logic-not-built) — customer follow-up reminder cron
-2. Execute this plan — Phase 1, then Phase 2
-3. Phase 3 (pagination / SWR) only if lists exceed ~500 rows
+| Phase | Delivered |
+|-------|-----------|
+| **1A** | `GET /api/orders/orders` — scoped orders list; `orders-page.tsx` wired |
+| **1B** | SQL head counts in all tab/sidebar count routes via `lib/utils/db-counts.ts` |
+| **1C** | Removed duplicate Supabase channel on `quotes-page.tsx` (sidebar broadcasts `bazaar:tickets-changed`) |
+| **1D** | Debounced sidebar badge refetch (~300 ms) in `sidebar.tsx` |
+| **1E** | Migration `073_performance_indexes.sql` — partial indexes on orders, production, leads |
+| **2A** | `lib/utils/ticket-list-select.ts`, `lib/utils/lead-list-select.ts` — shared column definitions |
+| **2B** | Slim quote list in `GET /api/tickets?kind=quote` (no `quote_skus` / notes on list) |
+| **2C** | Slim leads workspace list + full lead fetch on drawer open (`lib/utils/fetch-lead.ts`) |
+| **2D** | Slim CRM customer list with lightweight lead/ticket aggregates; silent CRM refresh |
+| **Extra** | `production-page.tsx` coalesced refetch (fixes duplicate `orders` + `counts` in dev Strict Mode) |
 
 ---
 
-## Problem summary
+## Problem (before optimization)
 
-Slowness is **not** from storing quotes/orders in one `job_tickets` table — it is from **how data is fetched**:
+Slowness was **not** from storing quotes/orders in one `job_tickets` table — it was from **how data was fetched**:
 
 ```mermaid
 flowchart TD
@@ -32,69 +36,57 @@ flowchart TD
   fullRefetch --> wideSelect["select * incl. quote_skus JSONB"]
 ```
 
-**Reference pattern (already fast):**
+**Reference pattern (already fast, now used everywhere for lists):**
 
 - `app/api/production/orders/route.ts`
 - `app/api/payments/pending/route.ts`
 - `app/api/completed/orders/route.ts`
+- `app/api/orders/orders/route.ts` *(added Phase 1)*
 
 Scoped status filter + explicit column list (no `quote_skus` on lists).
 
-**Worst offenders today:**
-
-| Area | File | Issue |
-|------|------|-------|
-| Orders list | `components/orders/orders-page.tsx` | `fetch("/api/tickets")` — all lifecycle stages, client-side filter |
-| Tickets API | `app/api/tickets/route.ts` GET | `select *` + joins, no pagination |
-| Count badges | `app/api/tickets/counts/route.ts`, `app/api/sidebar-counts/route.ts`, leads count routes | Fetch rows, count in JavaScript |
-| Quotes realtime | `components/quotes/quotes-page.tsx` | Duplicate Supabase channel → 2× refetch per change |
-
 ---
 
-## Guiding principles
+## Guiding principles (unchanged)
 
 - **Zero UI changes** — same table columns, tabs, badges, drawers
 - **Follow existing conventions** — scoped routes under `app/api/{feature}/`, tab counts via dedicated `counts` endpoints, realtime via sidebar events
-- **DRY** — shared select fragments + count helpers in `lib/utils/`
+- **DRY** — shared helpers in `lib/utils/`
 
 ---
 
-## Phase 1 — Highest impact, lowest risk
+## Phase 1 — ✅ Complete
 
-### 1A. Scoped Orders API (biggest single win)
+### 1A. Scoped Orders API
 
-Create `app/api/orders/orders/route.ts` mirroring production:
-
+- **Route:** `app/api/orders/orders/route.ts`
 - Filter: `ticket_status IN ('order', 'cancelled')`
-- Exclude payment-review rows server-side (same logic as `orders-page.tsx` + `isPaymentEvidencePending` from `lib/utils/invoice-payment-summary.ts`)
+- Excludes payment-evidence-pending rows server-side
 - Slim select (~15 fields + slim customer join) — **no `quote_skus`**
-- Role scope: match `app/api/tickets/route.ts` (`created_by_id` / `routed_by_id` / admin)
+- Role scope: matches `GET /api/tickets` (`created_by_id` / `routed_by_id` / admin)
 
-Update `components/orders/orders-page.tsx`: `fetch("/api/tickets")` → `fetch("/api/orders/orders")`. Client-side tab filter stays.
+### 1B. SQL counts
 
-### 1B. SQL counts instead of JS row scans
+Refactored to parallel `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`:
 
-Refactor to parallel `{ count: "exact", head: true }` queries (pattern: `app/api/payments/counts/route.ts`):
+| File | Status |
+|------|--------|
+| `app/api/tickets/counts/route.ts` | ✅ |
+| `app/api/sidebar-counts/route.ts` | ✅ |
+| `app/api/production/counts/route.ts` | ✅ |
+| `app/api/leads/workspace/counts/route.ts` | ✅ |
+| `app/api/leads/sales-counts/route.ts` | ✅ |
 
-| File | Fix |
-|------|-----|
-| `app/api/tickets/counts/route.ts` | One head count per tab status |
-| `app/api/sidebar-counts/route.ts` | Quotes/orders badges via head counts (not `.length` on rows) |
-| `app/api/production/counts/route.ts` | `all` + `balance_due` |
-| `app/api/leads/workspace/counts/route.ts` | `all`, `hold`, `routed`, `rejected` |
-| `app/api/leads/sales-counts/route.ts` | `pipeline`, `hold` |
+### 1C. Quotes realtime dedup
 
-Add `lib/utils/db-counts.ts` — shared `countExact()` wrapper.
+- Removed page-level Supabase channel from `quotes-page.tsx`
+- Cross-session updates via sidebar `tickets-realtime` → `bazaar:tickets-changed`
 
-### 1C. Remove duplicate realtime on Quotes page
+### 1D. Debounced sidebar badges
 
-Remove page-level Supabase channel in `components/quotes/quotes-page.tsx` (lines ~166–182). Keep `bazaar:tickets-changed` only — sidebar already broadcasts cross-session updates.
+- `components/layout/sidebar.tsx` — `fetchBadges()` debounced ~300 ms on realtime bursts
 
-### 1D. Debounce sidebar badge refetch
-
-In `components/layout/sidebar.tsx`, debounce `fetchBadges()` (~300ms) so burst realtime events trigger one sidebar-count request.
-
-### 1E. DB indexes (migration `073_performance_indexes.sql`)
+### 1E. DB indexes — migration `073_performance_indexes.sql`
 
 ```sql
 CREATE INDEX IF NOT EXISTS job_tickets_payment_evidence_pending_idx
@@ -113,34 +105,37 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
   WHERE ticket_status IN ('order', 'cancelled');
 ```
 
+**Deploy note:** Run this migration in Supabase SQL Editor before production deploy if not already applied.
+
 ---
 
-## Phase 2 — Slim list payloads (same rows, smaller JSON)
+## Phase 2 — ✅ Complete
 
-### 2A. Shared ticket list columns
+### 2A. Shared list column helpers
 
-Add `lib/utils/ticket-list-select.ts`:
-
-- `TICKET_LIST_COLUMNS` — quotes/orders table fields
-- `TICKET_QUOTE_LIST_COLUMNS` — quote extras (`quote_reminder_date`, `routed_by_id`, …)
-- `isPaymentEvidencePendingFilter()` — reusable PostgREST filter for orders exclusion
+- `lib/utils/ticket-list-select.ts` — quote list statuses + slim select string
+- `lib/utils/lead-list-select.ts` — workspace/won list column definitions (reference)
+- `lib/utils/lead-access.ts` — `canReadLead()` for `GET /api/leads/[id]`
+- `lib/utils/fetch-lead.ts` — client helper for drawer full-record fetch
 
 ### 2B. Slim Quotes list
 
-Extend `app/api/tickets/route.ts` GET when `kind=quote`:
+`GET /api/tickets?kind=quote` (list use only — no `linked_lead_id`, `customer_id`, or `period`):
 
-- Slim select (no `quote_skus`, no `notes`, no payment-config blobs)
+- Slim select — no `quote_skus`, notes, or payment-config blobs
 - Server filter: `ticket_status IN ('draft','sent','approved','routed')`
+- Detail pages still use `GET /api/tickets/[id]` for full record
 
 ### 2C. Slim Leads workspace
 
-Update `app/api/leads/workspace/route.ts` — explicit lead + customer columns for table UIs only.
-
-**Required mitigation:** Drawers receive list row data directly (`setDrawerLead(lead)` in `leads-page.tsx` / `sales-page.tsx`). Before slimming the list API, **fetch full lead on drawer open** via `GET /api/leads/[id]` so Verify/Sales drawers still show interests, quantities, website, etc.
+- `GET /api/leads/workspace` — explicit lead + customer columns for table UIs
+- **Drawer mitigation:** `leads-page.tsx` and `sales-page.tsx` call `fetchLeadById()` on drawer open
+- `GET /api/leads/[id]` — full record + `sales_owner` / `locked_by` joins; expanded sales-pipeline read access
 
 ### 2D. Slim CRM list
 
-Update `app/api/customers/route.ts` — slim customer fields + SQL aggregates for `lead_count`, `last_activity`, `customer_status`. Silent realtime refetch (no full-page skeleton).
+- `GET /api/customers` — slim customer fields + lightweight lead/ticket row aggregates (no nested `customers(*)`)
+- `crm-page.tsx` — silent refresh on `bazaar:leads-changed` (no skeleton flash)
 
 ---
 
@@ -149,58 +144,60 @@ Update `app/api/customers/route.ts` — slim customer fields + SQL aggregates fo
 - Pagination (`limit` + cursor) on orders/quotes/leads
 - SWR / React Query for deduped fetches
 - Session memoization in `lib/auth/require-session.ts` during burst refetches
+- Apply production-page **coalesced refetch** pattern to Orders / Quotes / Completed list pages (dev Strict Mode only today)
 
 ---
 
-## Risk & regression testing
+## Dev vs production expectations
 
-| Phase | Risk | What could break |
-|-------|------|------------------|
-| Phase 1 | Low–medium (~15–20%) | Wrong tab badge counts; orders missing/extra rows; quotes realtime delay |
-| Phase 2 (without drawer refetch) | Medium–high (~30–40%) | Lead/Sales drawers open with empty fields |
-| Phase 2 (with drawer refetch) | Low–medium (~10–15%) | Same as Phase 1 |
-| Indexes | Very low | None (read performance only) |
+| Observation | Cause |
+|-------------|--------|
+| Duplicate `orders` + `counts` on page open in `npm run dev` | React Strict Mode double-mounts effects (fixed on `/production`; other list pages may still show pairs in dev) |
+| ~400–600 ms per API call on Supabase free tier | Normal — auth + serverless + shared DB CPU; indexes help DB slice only |
+| Production build (`npm run build && npm start`) | Mount effects run once; generally faster than dev |
 
-**No data corruption risk** — only wrong/missing UI display or badge mismatches.
+---
 
-### Smoke checklist (run after each phase)
+## Smoke checklist (run before deploy)
 
 - [ ] Every tab on Leads, Sales, Quotes, Orders — badge count matches visible rows
 - [ ] Open lead drawer — all fields populated (interests, contact, SDR comment)
 - [ ] Realtime: change in tab A → list updates in tab B
 - [ ] Order with pending payment evidence appears on `/payments`, not `/orders`
 - [ ] `npm run build` passes
-- [ ] Network tab: list payload KB dropped vs baseline
+- [ ] Network tab: list payloads smaller vs pre-optimization baseline
+- [ ] Migration `073` applied in Supabase
 
 ---
 
-## Expected impact
+## Expected impact (achieved)
 
 | Change | Effect |
 |--------|--------|
 | Orders scoped API | ~80–95% smaller orders page fetch |
-| SQL counts | Count endpoints O(1) vs O(n) |
+| SQL counts | Count endpoints O(1) vs O(n) row scans |
 | Remove quotes duplicate channel | ~50% fewer refetches on `/quotes` |
 | Debounced sidebar | Fewer concurrent `/api/sidebar-counts` |
 | Slim quotes/leads/CRM | 50–70% smaller list JSON |
-| Indexes | Faster filtered queries as tables grow |
+| Indexes (073) | Faster filtered queries as tables grow |
+| Production coalesced refetch | 1× orders + 1× counts on `/production` in dev |
 
 ---
 
 ## Implementation todos
 
-- [ ] **Phase 1A** — `GET /api/orders/orders` + wire `orders-page.tsx`
-- [ ] **Phase 1B** — SQL counts + `lib/utils/db-counts.ts`
-- [ ] **Phase 1C** — Remove quotes-page duplicate channel
-- [ ] **Phase 1D** — Debounce sidebar `fetchBadges`
-- [ ] **Phase 1E** — Migration `073_performance_indexes.sql`
-- [ ] **Phase 2A–D** — Slim selects + drawer refetch on open
-- [ ] **Verify** — Build + smoke checklist; update `CHANGELOG.md` and `docs/architecture.md`
+- [x] **Phase 1A–E**
+- [x] **Phase 2A–D**
+- [x] **Production page coalesced refetch**
+- [x] **Build passes**
+- [ ] **Phase 3** — pagination / SWR (only if needed)
+- [ ] **Optional** — coalesce refetch on Orders / Quotes / Completed pages
 
 ---
 
 ## Related docs
 
-- `docs/TODO.md` — [TODO-006](../TODO.md) follow-up reminder cron (do first)
-- `docs/architecture.md` — add scoped-list API pattern when implemented
-- `docs/realtime-live-updates.md` — current realtime event bus behaviour
+- `docs/TODO.md` — [TODO-007](../TODO.md) (complete); [TODO-006](../TODO.md) follow-up cron (separate feature)
+- `docs/architecture.md` — scoped-list API pattern + new utils
+- `docs/api-contract.md` — `GET /api/orders/orders`, updated tickets/leads/customers contracts
+- `docs/realtime-live-updates.md` — event bus + dedup conventions

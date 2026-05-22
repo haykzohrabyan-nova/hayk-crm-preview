@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { countExact } from "@/lib/utils/db-counts";
 
 // GET /api/production/counts
 // Returns tab badge counts for the /production page.
@@ -11,24 +12,20 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  const { data, error } = await admin
-    .from("job_tickets")
-    .select("payment_status, ticket_payment_strategy")
-    .eq("ticket_status", "in_production");
+  try {
+    const [all, balance_due] = await Promise.all([
+      countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "in_production")),
+      countExact(admin, "job_tickets", (q) =>
+        q
+          .eq("ticket_status", "in_production")
+          .neq("payment_status", "paid")
+          .neq("ticket_payment_strategy", "net"),
+      ),
+    ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ counts: { all, balance_due } });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Count query failed.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  const rows = data ?? [];
-  const total = rows.length;
-
-  // "Balance Due" = in production but not fully paid AND not net terms
-  const balanceDue = rows.filter(
-    (r) => r.payment_status !== "paid" && r.ticket_payment_strategy !== "net"
-  ).length;
-
-  return NextResponse.json({
-    counts: { all: total, balance_due: balanceDue },
-  });
 }

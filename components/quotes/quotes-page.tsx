@@ -163,24 +163,6 @@ export default function QuotesPage() {
     };
   }, [fetchQuotes, fetchCounts]);
 
-  // Realtime: Supabase channel — picks up changes from OTHER sessions
-  // (e.g. SDR routes a quote, Sales sees it appear; Sales claims it, others see it disappear)
-  useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase
-      .channel("quotes-page-tickets")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "job_tickets" },
-        () => {
-          fetchQuotes(true);
-          fetchCounts();
-        }
-      )
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchQuotes, fetchCounts]);
-
   // ─── Claim action ────────────────────────────────────────────────────────
 
   async function handleClaim(quoteId: string) {

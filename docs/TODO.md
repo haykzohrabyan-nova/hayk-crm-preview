@@ -166,23 +166,26 @@ Also update the Orders page (`components/orders/orders-page.tsx`) to surface an 
 
 ## [TODO-007] Performance Optimization — Scoped Lists & Faster Queries
 
-**Status:** Planned — deferred until after TODO-006
-**Priority:** Medium (after follow-up reminder cron)
+**Status:** Phase 1–2 built 2026-05-22 — Phase 3 optional (pagination/SWR)
+**Priority:** Medium
 **Spec:** `docs/FuturePlan/Performance/performance-optimization.md`
 
-### Summary
+### Done
+- Phase 1: scoped Orders API, SQL counts, quotes realtime dedup, debounced sidebar, migration `073`
+- Phase 2: slim Quotes/Leads/CRM list payloads + full lead fetch on drawer open
 
-Speed up list pages and badge counts without changing the UI. Phase 1: scoped Orders API, SQL counts, realtime debounce, DB indexes. Phase 2: slim list payloads (requires full lead fetch on drawer open). Phase 3: pagination/SWR only if lists exceed ~500 rows.
-
-**Do not start until TODO-006 (customer follow-up reminder cron) is shipped.**
+### Optional (Phase 3 — only if lists exceed ~500 rows)
+- Pagination, SWR/React Query, session memoization during burst refetches
 
 ---
 
 ## [TODO-006] Follow-Up Reminders — Sending Logic Not Built
 
 **Status:** Pending — data collected, no sending
-**Priority:** Medium — **do this before TODO-007**
+**Priority:** Medium
 **Files to touch:** New cron/scheduled route + `lib/integrations/send-quote.ts`
+
+> **Note:** Performance work ([TODO-007](#todo-007-performance-optimization--scoped-lists--faster-queries)) was completed 2026-05-22 independently. This cron is still pending.
 
 ### The Problem
 
@@ -206,8 +209,6 @@ Options (pick one based on hosting):
 2. **Supabase pg_cron** — a Postgres cron job calls a database function that marks tickets as needing a reminder; a webhook then triggers the Next.js send route.
 
 **Suggested route:** `app/api/cron/follow-ups/route.ts`
-
-Performance optimization (TODO-007) is intentionally deferred until this cron job is built and stable.
 
 ---
 

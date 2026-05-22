@@ -5,6 +5,12 @@ import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
 import type { PaymentConfig } from "@/lib/types";
+import {
+  QUOTE_LIST_STATUSES,
+} from "@/lib/utils/ticket-list-select";
+
+const TICKET_QUOTE_LIST_SELECT =
+  "id, ticket_kind, ticket_status, title, reference_code, quote_channel, quote_final_total, quote_reminder_date, created_at, updated_at, created_by_id, routed_by_id, customer:customers(id, first_name, last_name, company)";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -177,45 +183,64 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient();
 
-  let query = admin
-    .from("job_tickets")
-    .select(
-      `*,
-       customer:customers(id, first_name, last_name, company, phone, email),
-       lead:leads(id, status, sales_status, urgency)`
-    )
-    .order("created_at", { ascending: false });
+  const isQuoteList =
+    kind === "quote" && !linkedLeadId && !customerId && !period;
 
-  // Scoping:
-  // - admin: sees all tickets
-  // - sales: sees own tickets + all 'routed' tickets (SDR high-value hand-offs)
-  // - everyone else (SDR, etc.): sees own tickets + any they routed to Sales
-  //   (routed_by_id = userId covers tickets after Sales claims them, changing created_by_id)
-  if (roleName === "admin") {
-    // no filter
-  } else if (roleName === "sales" && userId) {
-    query = query.or(`created_by_id.eq.${userId},ticket_status.eq.routed`);
-  } else if (userId) {
-    query = query.or(`created_by_id.eq.${userId},routed_by_id.eq.${userId}`);
+  type ScopeFn = <T extends { or: (filter: string) => T }>(q: T) => T;
+  const applyScope: ScopeFn = (q) => {
+    if (roleName === "admin") return q;
+    if (roleName === "sales" && userId) {
+      return q.or(`created_by_id.eq.${userId},ticket_status.eq.routed`);
+    }
+    if (userId) {
+      return q.or(`created_by_id.eq.${userId},routed_by_id.eq.${userId}`);
+    }
+    return q;
+  };
+
+  let data: Record<string, unknown>[] | null = null;
+  let error: { message: string } | null = null;
+
+  if (isQuoteList) {
+    const result = await applyScope(
+      admin
+        .from("job_tickets")
+        .select(TICKET_QUOTE_LIST_SELECT)
+        .eq("ticket_kind", "quote")
+        .in("ticket_status", [...QUOTE_LIST_STATUSES])
+        .order("created_at", { ascending: false }),
+    );
+    data = result.data;
+    error = result.error;
+  } else {
+    let q = admin
+      .from("job_tickets")
+      .select(
+        `*,
+         customer:customers(id, first_name, last_name, company, phone, email),
+         lead:leads(id, status, sales_status, urgency)`,
+      )
+      .order("created_at", { ascending: false });
+
+    if (kind) q = q.eq("ticket_kind", kind);
+    if (linkedLeadId) q = q.eq("linked_lead_id", linkedLeadId);
+    if (customerId) q = q.eq("customer_id", customerId);
+    if (period) {
+      const days = parseInt(period.replace("d", "")) || 30;
+      const since = new Date(Date.now() - days * 86400_000).toISOString();
+      q = q.gte("created_at", since);
+    }
+
+    const result = await applyScope(q);
+    data = result.data;
+    error = result.error;
   }
-
-  if (kind) query = query.eq("ticket_kind", kind);
-  if (linkedLeadId) query = query.eq("linked_lead_id", linkedLeadId);
-  if (customerId) query = query.eq("customer_id", customerId);
-
-  if (period) {
-    const days = parseInt(period.replace("d", "")) || 30;
-    const since = new Date(Date.now() - days * 86400_000).toISOString();
-    query = query.gte("created_at", since);
-  }
-
-  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  let tickets = data ?? [];
+  let tickets = (data ?? []) as Array<Record<string, unknown> & { ticket_status?: string; created_by_id?: string | null; customer?: { first_name?: string | null; last_name?: string | null; company?: string | null } | { first_name?: string | null; last_name?: string | null; company?: string | null }[] | null }>;
 
   // Enrich routed tickets with the SDR's display name so the UI can show "Routed by <name>"
   const routedTickets = tickets.filter((t) => t.ticket_status === "routed");
@@ -227,7 +252,7 @@ export async function GET(request: NextRequest) {
       .in("id", creatorIds);
     const nameMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name ?? "SDR"]));
     tickets = tickets.map((t) =>
-      t.ticket_status === "routed"
+      t.ticket_status === "routed" && t.created_by_id
         ? { ...t, created_by_name: nameMap[t.created_by_id] ?? "SDR" }
         : t
     );
@@ -235,10 +260,12 @@ export async function GET(request: NextRequest) {
 
   if (search) {
     tickets = tickets.filter((t) => {
-      const name = `${t.customer?.first_name ?? ""} ${t.customer?.last_name ?? ""}`.toLowerCase();
-      const company = (t.customer?.company ?? "").toLowerCase();
-      const ref = (t.reference_code ?? "").toLowerCase();
-      const title = (t.title ?? "").toLowerCase();
+      const raw = t.customer;
+      const customer = Array.isArray(raw) ? raw[0] : raw;
+      const name = `${customer?.first_name ?? ""} ${customer?.last_name ?? ""}`.toLowerCase();
+      const company = (customer?.company ?? "").toLowerCase();
+      const ref = String(t.reference_code ?? "").toLowerCase();
+      const title = String(t.title ?? "").toLowerCase();
       return name.includes(search) || company.includes(search) || ref.includes(search) || title.includes(search);
     });
   }

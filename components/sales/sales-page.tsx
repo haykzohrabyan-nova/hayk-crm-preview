@@ -12,6 +12,7 @@ import { SalesDrawer } from "@/components/sales/sales-drawer";
 import { Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
+import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -292,20 +293,22 @@ export function SalesPage() {
   async function handleOpenLead(lead: Lead) {
     const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
     const data = await res.json();
+    const full = (await fetchLeadById(lead.id)) ?? lead;
+
     if (res.status === 409) {
-      setDrawerLead(lead);
+      setDrawerLead(full);
       setDrawerReadOnly(true);
       setDrawerLockedBy(data.locked_by?.full_name ?? "Another user");
     } else {
-      setDrawerLead(lead);
+      setDrawerLead(full);
       setDrawerReadOnly(false);
       setDrawerLockedBy(null);
     }
   }
 
   async function handleViewLead(lead: Lead) {
-    // View rejected leads — no locking needed
-    setDrawerLead(lead);
+    const full = (await fetchLeadById(lead.id)) ?? lead;
+    setDrawerLead(full);
     setDrawerReadOnly(true);
     setDrawerLockedBy(null);
   }

@@ -10,6 +10,8 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 
  Sales reps work these leads: claim them, update their status, create quotes and orders, and put them on hold.
 
+> **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Sales Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
+
 ---
 
 ## Tab: Pipeline

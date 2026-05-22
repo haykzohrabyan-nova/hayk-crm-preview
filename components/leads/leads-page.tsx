@@ -27,6 +27,7 @@ import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -898,22 +899,22 @@ export function LeadsPage() {
   async function handleWorkLead(lead: Lead) {
     const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
     const data = await res.json();
+    const full = (await fetchLeadById(lead.id)) ?? lead;
 
     if (res.status === 409) {
-      // Locked by another user — open read-only
-      setDrawerLead(lead);
+      setDrawerLead(full);
       setDrawerReadOnly(true);
       setDrawerLockedBy(data.locked_by?.full_name ?? "Another user");
     } else {
-      setDrawerLead(lead);
+      setDrawerLead(full);
       setDrawerReadOnly(false);
       setDrawerLockedBy(null);
     }
   }
 
-  function handleViewLead(lead: Lead) {
-    // Admin opens in edit mode; SDR and all other roles get read-only
-    setDrawerLead(lead);
+  async function handleViewLead(lead: Lead) {
+    const full = (await fetchLeadById(lead.id)) ?? lead;
+    setDrawerLead(full);
     setDrawerReadOnly(!isAdmin);
     setDrawerLockedBy(null);
   }

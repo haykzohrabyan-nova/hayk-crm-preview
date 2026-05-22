@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { countExact } from "@/lib/utils/db-counts";
 
 export async function GET() {
   const { userId, roleName, errorResponse } = await requireSession();
@@ -8,54 +9,53 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  // All Leads tab: SDRs only count leads they can actually see (unlocked + own lock).
-  // Admins see the full total.
-  // Other tabs: scoped to this SDR's own leads (sdr_id = userId)
-  let allQuery = admin
-    .from("leads")
-    .select("status, locked_by_id")
-    .eq("is_inbox", false)
-    .in("status", ["Pending", "Validated"]);
+  try {
+    const [all, hold, routed, rejected, won] = await Promise.all([
+      countExact(admin, "leads", (q) => {
+        let query = q.eq("is_inbox", false).in("status", ["Pending", "Validated"]);
+        if (roleName === "sdr" && userId) {
+          query = query.or(`locked_by_id.is.null,locked_by_id.eq.${userId}`);
+        }
+        return query;
+      }),
+      countExact(admin, "leads", (q) => {
+        let query = q.eq("is_inbox", false).eq("status", "On Hold");
+        if (roleName !== "admin" && userId) {
+          query = query.eq("sdr_id", userId);
+        }
+        return query;
+      }),
+      countExact(admin, "leads", (q) => {
+        let query = q
+          .eq("is_inbox", false)
+          .in("status", ["Routed to Sales", "Quoted", "Validated"])
+          .neq("sales_status", "Won");
+        if (roleName !== "admin" && userId) {
+          query = query.eq("sdr_id", userId);
+        }
+        return query;
+      }),
+      countExact(admin, "leads", (q) => {
+        let query = q.eq("is_inbox", false).eq("status", "Rejected");
+        if (roleName !== "admin" && userId) {
+          query = query.eq("sdr_id", userId);
+        }
+        return query;
+      }),
+      countExact(admin, "leads", (q) => {
+        let query = q.eq("is_inbox", false).eq("sales_status", "Won");
+        if (roleName !== "admin" && userId) {
+          query = query.eq("sdr_id", userId);
+        }
+        return query;
+      }),
+    ]);
 
-  if (roleName === "sdr" && userId) {
-    allQuery = allQuery.or(`locked_by_id.is.null,locked_by_id.eq.${userId}`);
+    return NextResponse.json({
+      counts: { all, hold, routed, rejected, won },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Count query failed.";
+    return NextResponse.json({ error: message, code: "DB_ERROR" }, { status: 500 });
   }
-
-  // Scoped tabs (Hold / Routed / Rejected / Won):
-  // - SDRs see only their own leads (sdr_id = userId)
-  // - Admins see all leads across every SDR
-  // "Routed" count includes "Quoted" and "Validated" so SDRs keep visibility through
-  // all sales pipeline stages (quote shell started, quote with SKUs sent, etc.).
-  let scopedQuery = admin
-    .from("leads")
-    .select("status, sales_status")
-    .eq("is_inbox", false)
-    .in("status", ["On Hold", "Routed to Sales", "Rejected", "Quoted", "Validated"]);
-
-  // Won leads: status = "Routed to Sales" AND sales_status = "Won"
-  let wonQuery = admin
-    .from("leads")
-    .select("id", { count: "exact", head: true })
-    .eq("is_inbox", false)
-    .eq("sales_status", "Won");
-
-  if (roleName !== "admin" && userId) {
-    scopedQuery = scopedQuery.eq("sdr_id", userId);
-    wonQuery = wonQuery.eq("sdr_id", userId);
-  }
-
-  const [allResult, scopedResult, wonResult] = await Promise.all([allQuery, scopedQuery, wonQuery]);
-
-  const allLeads = allResult.data ?? [];
-  const scopedLeads = scopedResult.data ?? [];
-
-  const counts = {
-    all:      allLeads.length,
-    hold:     scopedLeads.filter((l) => l.status === "On Hold").length,
-    routed:   scopedLeads.filter((l) => ["Routed to Sales", "Quoted", "Validated"].includes(l.status) && l.sales_status !== "Won").length,
-    rejected: scopedLeads.filter((l) => l.status === "Rejected").length,
-    won:      wonResult.count ?? 0,
-  };
-
-  return NextResponse.json({ counts });
 }

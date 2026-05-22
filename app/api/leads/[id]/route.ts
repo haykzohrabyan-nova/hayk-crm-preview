@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
+import { canReadLead } from "@/lib/utils/lead-access";
 
 const IMMUTABLE = ["id", "created_at"];
 
@@ -19,10 +20,12 @@ export async function GET(
 
   const { data: lead, error } = await admin
     .from("leads")
-    .select(`
-      *,
-      customer:customers(id, first_name, last_name, company, phone, email, industry, website)
-    `)
+    .select(
+      `*,
+      customer:customers(id, first_name, last_name, company, phone, email, industry, website),
+      sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name),
+      locked_by:user_profiles!leads_locked_by_id_fkey(id, full_name)`,
+    )
     .eq("id", id)
     .single();
 
@@ -30,8 +33,16 @@ export async function GET(
     return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  // Reps can only view leads they own; admins see all
-  if (roleName !== "admin" && lead.sdr_id !== userId && lead.sales_owner_id !== userId) {
+  const row = lead as unknown as {
+    status: string;
+    sales_status: string | null;
+    sdr_id: string | null;
+    sales_owner_id: string | null;
+    locked_by_id: string | null;
+    prev_status: string | null;
+  };
+
+  if (!canReadLead(row, userId, roleName)) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 

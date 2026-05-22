@@ -38,11 +38,13 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 }
 ```
 
+> **Performance (2026-05-22):** List responses use a **slim select** — table columns only. Drawers call `GET /api/leads/[id]` for the full record (interests, quantities, comments, joins).
+
 ---
 
 ### `GET /api/leads/workspace/counts`
 
-Returns tab badge counts for the SDR leads workspace. Scoped per role same as the workspace endpoint.
+Returns tab badge counts for the SDR leads workspace. Scoped per role same as the workspace endpoint. Uses SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`.
 
 **Response `200`:**
 ```json
@@ -108,6 +110,28 @@ Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id 
   "lead": Lead
 }
 ```
+
+---
+
+### `GET /api/leads/[id]`
+
+Returns a **full lead record** for drawer/detail UIs. Authorization via `canReadLead()` in `lib/utils/lead-access.ts`.
+
+**Read access:**
+- **Admin:** any lead
+- **SDR:** own leads (`sdr_id`), locked leads (`locked_by_id`), or unclaimed workspace leads (`locked_by_id IS NULL`)
+- **Sales:** routed leads, own pipeline leads (`sales_owner_id`), sales-rejected leads (`status=Rejected` + `prev_status=Routed to Sales`)
+
+**Response `200`:**
+```json
+{
+  "lead": Lead
+}
+```
+
+Includes joins: `customer`, `sales_owner` (`user_profiles`), `locked_by` (`user_profiles`).
+
+**Response `404`:** lead not found · **Response `403`:** caller cannot read this lead
 
 ---
 
@@ -237,6 +261,44 @@ Releases the lock on a lead when the user closes the drawer.
 
 ## Customers
 
+### `GET /api/customers`
+
+Returns the CRM customer registry with lightweight per-customer aggregates. Used by `components/crm/crm-page.tsx`.
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `search` | `string` | Client-side filter on name, email, phone, company (applied after fetch) |
+
+**Response `200`:**
+```json
+{
+  "customers": [
+    {
+      "id": "uuid",
+      "first_name": "string",
+      "last_name": "string | null",
+      "email": "string | null",
+      "phone": "string",
+      "company": "string | null",
+      "industry": "string | null",
+      "heat_tag": "string | null",
+      "created_at": "ISO",
+      "updated_at": "ISO",
+      "lead_count": 0,
+      "ticket_count": 0,
+      "last_activity": "ISO",
+      "qualifies": true
+    }
+  ]
+}
+```
+
+> **Performance (2026-05-22):** Slim customer fields plus separate lead/ticket aggregate queries — no nested `customers(*)` on leads. Rows with `qualifies=false` are filtered out (customer must have a qualifying lead or any ticket).
+
+---
+
 ### `GET /api/customers/lookup`
 
 Smart deduplication — used by the Manual Add Lead form and Verify Drawer. Returns **all** customer profiles matching the phone or email (there may be multiple).
@@ -344,10 +406,14 @@ Returns job tickets. Visibility is role-scoped:
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `kind` | `'quote' \| 'order'` | Filter by `ticket_kind` |
+| `kind` | `'quote' \| 'order'` | Filter by `ticket_kind`. When `kind=quote` (list use), response uses **slim select** and auto-filters to quote-stage statuses (`draft`, `sent`, `approved`, `routed`) — no `quote_skus`, notes, or payment-config blobs. |
 | `status` | `string` | Filter by `ticket_status` |
 | `lead_id` | `uuid` | Filter by `linked_lead_id` |
 | `search` | `string` | Search on contact name, company, title, reference code |
+
+**Slim quote list fields** (when `kind=quote`): `id`, `ticket_kind`, `ticket_status`, `title`, `reference_code`, `quote_channel`, `quote_final_total`, `quote_reminder_date`, `created_at`, `updated_at`, `created_by_id`, `routed_by_id`, slim `customer` join.
+
+> For orders list, use **`GET /api/orders/orders`** instead — do not use `kind=order` on this endpoint for the `/orders` page.
 
 **Response `200`:**
 ```json
@@ -652,6 +718,40 @@ Returns tab badge counts for the Payments page.
 
 ---
 
+## Orders
+
+### `GET /api/orders/orders`
+
+Scoped list for the `/orders` page — **`ticket_status IN ('order', 'cancelled')`**, slim payload (no `quote_skus`).
+
+**Excludes** tickets with pending payment evidence (those appear on `/payments` only). Filter constant: `ORDERS_VISIBLE_PAYMENT_FILTER` in `lib/utils/db-counts.ts`.
+
+**Role scope:** Same as `GET /api/tickets` via `scopeJobTicketsQuery()` — SDR own tickets, Sales own + routed-by, Admin all.
+
+**Response `200`:**
+```json
+{
+  "orders": [
+    {
+      "id": "uuid",
+      "ticket_kind": "order",
+      "ticket_status": "order | cancelled",
+      "payment_status": "unpaid | partial | paid",
+      "title": "string",
+      "reference_code": "string | null",
+      "quote_final_total": 0,
+      "priority": "string | null",
+      "due_date": "ISO date | null",
+      "rush": false,
+      "created_at": "ISO",
+      "customer": { "id": "uuid", "first_name": "string", "last_name": "string", "company": "string | null" }
+    }
+  ]
+}
+```
+
+---
+
 ## Production
 
 ### `GET /api/production/orders`
@@ -905,7 +1005,7 @@ Notifications in BazaarCRM are delivered via **Supabase Realtime**, not HTTP pol
   - **`leads-realtime`** — watches any INSERT/UPDATE/DELETE on `public.leads` → refreshes sidebar badge counts + dispatches `bazaar:leads-changed` browser event
   - **`activities-realtime`** — watches any INSERT on `public.activities` → dispatches `bazaar:activities-changed` browser event
   - **`tickets-realtime`** — watches any INSERT/UPDATE/DELETE on `public.job_tickets` → refreshes sidebar badge counts + dispatches `bazaar:tickets-changed` browser event
-- **Sidebar badge counts** are fetched via `GET /api/sidebar-counts` (triggered on mount and on any Realtime event)
+- **Sidebar badge counts** are fetched via `GET /api/sidebar-counts` (on mount and on Realtime events, **debounced ~300 ms** in `sidebar.tsx` to coalesce bursts). Count queries use SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`.
 - **Activity log** (admin `/notifications` page) is fetched via `GET /api/admin/activity-log` and auto-refreshes when `bazaar:activities-changed` fires
 
 There are **no** REST notification endpoints (`/api/notifications`, `/api/notifications/read`, etc.) — those are planned for a future V2 bell-based notification system.

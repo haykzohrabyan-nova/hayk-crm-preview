@@ -8,6 +8,8 @@ Route: `/crm` (all roles)
 
 The CRM is the master customer registry. Every contact who has ever been a lead is tracked here. The CRM shows all customers, their status (New / Known / Returning), their full lead history, order history, and activity timeline.
 
+**List API:** `GET /api/customers` — slim customer fields plus lightweight `lead_count` / `ticket_count` aggregates (2026-05-22). Silent refresh on `bazaar:leads-changed` without skeleton flash.
+
 ---
 
 ## Customer Status — Three Tiers

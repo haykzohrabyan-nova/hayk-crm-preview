@@ -111,18 +111,31 @@ export function ProductionPage() {
       .finally(() => { if (!silent) setLoading(false); });
   }, []);
 
+  // Coalesce mount + realtime refetches (React Strict Mode fires effects twice in dev).
   useEffect(() => {
-    fetchOrders();
-    fetchCounts();
-  }, [fetchOrders, fetchCounts]);
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  useEffect(() => {
-    function onChanged() { fetchOrders(true); fetchCounts(); }
+    function scheduleRefresh(silent: boolean) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        fetchOrders(silent);
+        fetchCounts();
+      }, silent ? 300 : 50);
+    }
+
+    scheduleRefresh(false);
+
+    function onChanged() {
+      scheduleRefresh(true);
+    }
+
     window.addEventListener("bazaar:tickets-changed", onChanged);
-    window.addEventListener("bazaar:refresh-counts",  onChanged);
+    window.addEventListener("bazaar:refresh-counts", onChanged);
+
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener("bazaar:tickets-changed", onChanged);
-      window.removeEventListener("bazaar:refresh-counts",  onChanged);
+      window.removeEventListener("bazaar:refresh-counts", onChanged);
     };
   }, [fetchOrders, fetchCounts]);
 

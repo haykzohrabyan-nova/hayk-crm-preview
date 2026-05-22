@@ -31,6 +31,7 @@ User B's browser (admin watching the leads page)
   └── sidebar.tsx holds the WebSocket subscription
         │
         ├── fetchBadges() → GET /api/sidebar-counts → updates sidebar badge
+        │     (debounced ~300 ms to coalesce burst events)
         └── dispatchEvent("bazaar:leads-changed")
               │
               └── leads-page.tsx (and sales-page.tsx) hear the event
@@ -444,9 +445,9 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 
 | Entity | Migration(s) | Channel name | Browser event | Page consumers |
 |--------|-------------|-------------|---------------|----------------|
-| `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx` |
+| `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx`, `crm-page.tsx` (silent refresh) |
 | `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` | `bazaar:activities-changed` | `activity-log-section.tsx` |
-| `job_tickets` | `047_enable_job_tickets_realtime.sql` | `tickets-realtime` (sidebar) + `quotes-page-tickets` (quotes-page direct) | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx`, `orders-page.tsx`, `payments-page.tsx`, `production-page.tsx`, `completed-page.tsx`, `quote-detail.tsx` |
+| `job_tickets` | `047_enable_job_tickets_realtime.sql` | `tickets-realtime` (sidebar only) | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx`, `orders-page.tsx`, `payments-page.tsx`, `production-page.tsx`, `completed-page.tsx`, `quote-detail.tsx` |
 
 ---
 
@@ -454,7 +455,9 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 
 ## Direct-Channel Pattern (page-level subscription)
 
-For pages where cross-session updates are critical (e.g. multi-user coordination), a page component can open its **own** Supabase channel directly instead of relying on sidebar → window event dispatch. This is used in `quotes-page.tsx` so that when a Sales user claims a routed quote, other Sales users see it disappear immediately without needing the sidebar to relay the event.
+> **Deprecated for tickets (2026-05-22):** `quotes-page.tsx` previously opened its own `quotes-page-tickets` channel. That duplicate subscription was removed — all ticket list pages now rely on sidebar → `bazaar:tickets-changed`. Keep this pattern only for new entities that are **not** already subscribed in the sidebar.
+
+For pages where cross-session updates are critical and the sidebar does not yet broadcast the table, a page component can open its **own** Supabase channel directly instead of relying on sidebar → window event dispatch.
 
 ```typescript
 // Inside a page component
@@ -475,7 +478,29 @@ useEffect(() => {
 }, [fetchQuotes, fetchCounts]);
 ```
 
-**When to use this pattern:** When the sidebar relay is insufficient — e.g. the page needs to react to changes made by *other users* in near-real-time and there is no intermediate event dispatcher available in the same session.
+**When to use this pattern:** When the sidebar relay is insufficient — e.g. the page needs to react to changes made by *other users* in near-real-time and there is no intermediate event dispatcher available in the same session. **Do not** use for `job_tickets` — sidebar already handles it.
+
+---
+
+## Coalesced refetch (mount + realtime)
+
+When mount fetch and a realtime handler fire close together (common in **React Strict Mode** during `npm run dev`), schedule a single refetch instead of two parallel calls:
+
+```typescript
+// Pattern used in production-page.tsx (2026-05-22)
+const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+function scheduleRefetch(delayMs: number) {
+  if (refetchTimer.current) clearTimeout(refetchTimer.current);
+  refetchTimer.current = setTimeout(() => {
+    refetchTimer.current = null;
+    void fetchOrders(true);
+    void fetchCounts();
+  }, delayMs);
+}
+```
+
+Use `scheduleRefetch(50)` on mount and `scheduleRefetch(300)` on `bazaar:tickets-changed`. Implemented on `/production`; optional for other ticket list pages.
 
 ---
 

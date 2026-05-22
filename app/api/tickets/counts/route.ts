@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import {
+  countExact,
+  ORDERS_COUNT_PAYMENT_FILTER,
+  scopedTicketCount,
+} from "@/lib/utils/db-counts";
 
 // ─── GET /api/tickets/counts ──────────────────────────────────────────────────
 // Returns counts for all quote/order tab badges in one lightweight request.
@@ -13,47 +18,53 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  // Fetch minimal status data for tickets this user can see (own tickets)
-  let query = admin
-    .from("job_tickets")
-    .select("ticket_kind, ticket_status, payment_evidence_url, payment_paid_at");
+  try {
+    const [
+      drafts,
+      sent,
+      approved,
+      orders,
+      in_production,
+      completed,
+      cancelled,
+      scopedRouted,
+      scopedTotal,
+      globalRouted,
+    ] = await Promise.all([
+      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "draft")),
+      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "sent")),
+      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "approved")),
+      scopedTicketCount(admin, roleName, userId, (q) =>
+        q.eq("ticket_status", "order").or(ORDERS_COUNT_PAYMENT_FILTER),
+      ),
+      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "in_production")),
+      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "completed")),
+      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "cancelled")),
+      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "routed")),
+      scopedTicketCount(admin, roleName, userId, (q) => q),
+      roleName === "sales" || roleName === "admin" || roleName === "accountant"
+        ? countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "routed"))
+        : Promise.resolve(0),
+    ]);
 
-  if (roleName !== "admin" && roleName !== "accountant" && userId) {
-    query = query.eq("created_by_id", userId);
+    const counts = {
+      drafts,
+      sent,
+      approved,
+      orders,
+      in_production,
+      completed,
+      cancelled,
+      total: scopedTotal,
+      routed:
+        roleName === "sales" || roleName === "admin" || roleName === "accountant"
+          ? globalRouted
+          : scopedRouted,
+    };
+
+    return NextResponse.json({ counts });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Count query failed.";
+    return NextResponse.json({ error: message, code: "DB_ERROR" }, { status: 500 });
   }
-
-  const { data, error } = await query;
-  if (error) {
-    return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
-  }
-
-  const rows = data ?? [];
-
-  const counts: Record<string, number> = {
-    drafts:        rows.filter((r) => r.ticket_status === "draft").length,
-    sent:          rows.filter((r) => r.ticket_status === "sent").length,
-    approved:      rows.filter((r) => r.ticket_status === "approved").length,
-    orders:        rows.filter(
-      (r) =>
-        r.ticket_status === "order" &&
-        !(r.payment_evidence_url && !r.payment_paid_at),
-    ).length,
-    in_production: rows.filter((r) => r.ticket_status === "in_production").length,
-    completed:     rows.filter((r) => r.ticket_status === "completed").length,
-    cancelled:     rows.filter((r) => r.ticket_status === "cancelled").length,
-    total:         rows.length,
-    // Count routed tickets from this user's own rows (SDR) — overridden below for sales/admin
-    routed:        rows.filter((r) => r.ticket_status === "routed").length,
-  };
-
-  // For sales/admin/accountant: replace with global routed count (all SDRs)
-  if (roleName === "sales" || roleName === "admin" || roleName === "accountant") {
-    const { count } = await admin
-      .from("job_tickets")
-      .select("*", { count: "exact", head: true })
-      .eq("ticket_status", "routed");
-    counts.routed = count ?? 0;
-  }
-
-  return NextResponse.json({ counts });
 }

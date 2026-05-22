@@ -8,6 +8,8 @@ Route: `/leads` (SDR + Admin only)
 
 The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page** with four tabs. The SDR works leads from the Inbox, validates them, and routes them to Sales, marks them as quoted, rejects them, or puts them on hold.
 
+> **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Verify Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
+
 ---
 
 ## Tab: All Leads (Inbox)

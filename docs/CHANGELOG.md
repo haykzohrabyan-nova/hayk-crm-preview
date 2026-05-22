@@ -3,6 +3,46 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-22] — Sync docs with performance Phase 1–2
+
+### Changed
+- `docs/FuturePlan/Performance/performance-optimization.md` — marked Phase 1–2 complete; dev Strict Mode + coalesce notes
+- `docs/architecture.md` — scoped list APIs, new routes/utils, migration 073, performance section
+- `docs/api-contract.md` — `GET /api/orders/orders`, `GET /api/leads/[id]`, `GET /api/customers`, slim quote list
+- `docs/schema.md` — migration `073_performance_indexes.sql`
+- `docs/realtime-live-updates.md` — sidebar-only tickets channel, debounce, coalesced refetch pattern
+- `docs/component-architecture.md`, `docs/feature-specs/tickets.md` — updated fetch paths and realtime
+- `docs/TODO.md` — TODO-007 complete; TODO-006 no longer blocks performance work
+
+## [2026-05-22] — Performance Phase 2: slim list payloads
+
+### Added
+- `lib/utils/ticket-list-select.ts`, `lib/utils/lead-list-select.ts` — shared slim column definitions
+- `lib/utils/fetch-lead.ts` — fetch full lead for drawers via `GET /api/leads/[id]`
+- `lib/utils/lead-access.ts` — shared lead read authorization for detail API
+
+### Changed
+- `app/api/tickets/route.ts` — quote list uses slim select (no `quote_skus` / notes); scoped to quote-stage statuses
+- `app/api/leads/workspace/route.ts` — slim lead + customer columns for list tables
+- `app/api/customers/route.ts` — slim customer fields + lightweight lead/ticket aggregates (no nested `customers(*)`)
+- `app/api/leads/[id]/route.ts` — includes sales_owner/locked_by joins; expanded read access for sales pipeline
+- `components/leads/leads-page.tsx`, `components/sales/sales-page.tsx` — fetch full lead on drawer open
+- `components/crm/crm-page.tsx` — silent CRM refresh on realtime (no skeleton flash)
+- `components/orders/production-page.tsx` — coalesce mount/realtime refetches (fixes duplicate `orders` + `counts` in dev)
+
+## [2026-05-22] — Performance Phase 1: scoped orders API and SQL counts
+
+### Added
+- `app/api/orders/orders/route.ts` — slim orders list (order/cancelled only, no `quote_skus`)
+- `lib/utils/db-counts.ts` — shared `countExact()` + ticket role scoping helpers
+- `supabase/migrations/073_performance_indexes.sql` — partial indexes for orders, production, leads counts
+
+### Changed
+- `components/orders/orders-page.tsx` — fetches `/api/orders/orders` instead of full `/api/tickets`
+- `app/api/tickets/counts/route.ts`, `app/api/sidebar-counts/route.ts`, `app/api/production/counts/route.ts`, `app/api/leads/workspace/counts/route.ts`, `app/api/leads/sales-counts/route.ts` — SQL head counts instead of loading rows into Node.js
+- `components/quotes/quotes-page.tsx` — removed duplicate Supabase realtime channel (sidebar broadcasts `bazaar:tickets-changed`)
+- `components/layout/sidebar.tsx` — debounced sidebar badge refetch (~300ms)
+
 ## [2026-05-22] — 2FA QR code shows user name in authenticator app
 
 ### Changed
@@ -15,6 +55,8 @@ Format: `## [version or date] — description`, newest first.
 
 ### Changed
 - `docs/TODO.md` — added TODO-007 (performance); TODO-006 marked as prerequisite
+
+> **Superseded (2026-05-22):** TODO-007 Phase 1–2 implemented; performance no longer deferred on TODO-006. See changelog entries `Performance Phase 1` and `Performance Phase 2`.
 
 ## [2026-05-21] — Fix PaymentConfig type errors in API routes
 

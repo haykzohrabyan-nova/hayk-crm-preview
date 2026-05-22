@@ -168,7 +168,8 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
   └── components/leads/leads-page.tsx  [Client Component "use client"]
         ├── Tabs: All Leads | On Hold | Directed to Sales | Rejected | Won
         ├── Tab state: local useState (not synced to URL)
-        ├── Per-tab API: GET /api/leads/workspace?status=...&scope=...
+        ├── Per-tab API: GET /api/leads/workspace?status=...&scope=... (slim list)
+        ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
         ├── Search: client-side filter on fetched data
         ├── Sort: client-side sort by Created or Urgency (column headers on desktop,
         │         cycling pill button on mobile)
@@ -204,7 +205,8 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
   └── components/sales/sales-page.tsx  [Client Component "use client"]
         ├── Tabs: Pipeline | On Hold | Rejected
         ├── Tab state: local useState
-        ├── Per-tab API: GET /api/leads/workspace?status=...
+        ├── Per-tab API: GET /api/leads/workspace?status=... (slim list)
+        ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
         └── components/sales/sales-drawer.tsx (opens on Claim / Open / View click)
 ```
 
@@ -234,11 +236,9 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
         ├── Tabs: All | Draft | Sent | Won | Routed to Sales* (count badge on all)
         │         * "Routed to Sales" only visible to Sales + Admin roles
         ├── Counts: GET /api/tickets/counts
-        ├── Data: GET /api/tickets?kind=quote
+        ├── Data: GET /api/tickets?kind=quote (slim list — no quote_skus)
         │         Routed tickets enriched with created_by_name
-        ├── Supabase Realtime: direct postgres_changes channel "quotes-page-tickets"
-        │         (independent of sidebar — cross-session updates work instantly)
-        ├── Window events: bazaar:tickets-changed + bazaar:refresh-counts
+        ├── Realtime: bazaar:tickets-changed + bazaar:refresh-counts (sidebar only — no page-level channel)
         ├── Search: client-side filter
         ├── Claim action (Routed tab): PATCH /api/tickets/[id] { claim_ownership: true }
         └── Row click → /quotes/[id]
@@ -252,9 +252,9 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
 app/(app)/orders/page.tsx  [Server Component — thin wrapper]
   └── components/orders/orders-page.tsx  [Client Component "use client"]
         ├── Tabs: All | Pending Payment | Cancelled (count badge on all; default tab = Pending Payment)
-        ├── Only shows ticket_status = 'order' tickets (draft/sent/approved/routed excluded)
-        ├── Counts: GET /api/tickets/counts (filters by ticket_status = 'order')
-        ├── Data: GET /api/tickets?kind=quote (filtered to 'order' status client-side)
+        ├── Only shows ticket_status = 'order' + 'cancelled' (excludes evidence-pending)
+        ├── Counts: GET /api/tickets/counts
+        ├── Data: GET /api/orders/orders (scoped slim list — no quote_skus)
         ├── Columns: Order #, Contact, Title (⚡ Rush), Total, Payment status pill, Priority, Due Date, Created
         ├── No "New Order" button — orders created only through Quotes flow
         ├── Search: client-side filter
@@ -534,9 +534,9 @@ Ownership is only released by a terminal action:
 
 | Layer | Where | How |
 |-------|-------|-----|
-| Page load | Client Component (useEffect) | `fetch('/api/...')` Route Handler |
+| Page load | Client Component (useEffect) | `fetch('/api/...')` Route Handler — scoped list endpoints (see `docs/architecture.md`) |
 | Tab switch | Client Component | `fetch('/api/...')` Route Handler |
-| Drawer open | Client Component | `fetch('/api/...')` Route Handler |
+| Drawer open | Client Component | `fetch('/api/leads/[id]')` for full lead record (`lib/utils/fetch-lead.ts`) |
 | After mutation | Client Component | Optimistic update or re-fetch |
 | Count refresh | Client Component | `window.dispatchEvent(new Event("bazaar:refresh-counts"))` |
 | Realtime DB change | `sidebar.tsx` subscription | `window.dispatchEvent(new Event("bazaar:leads-changed"))` |
@@ -551,9 +551,11 @@ Components that listen to `bazaar:leads-changed` (dispatched by `components/layo
 
 | Component | Behavior |
 |-----------|---------|
-| `components/leads/leads-page.tsx` | Silent re-fetch of current tab's leads; skips if drawer is open |
-| `components/sales/sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open |
+| `components/leads/leads-page.tsx` | Silent re-fetch of current tab's leads; skips if drawer is open; full lead on drawer open via `fetchLeadById()` |
+| `components/sales/sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open; full lead on drawer open |
+| `components/crm/crm-page.tsx` | Silent re-fetch on `bazaar:leads-changed` (no skeleton flash) |
 | `components/admin/admin-dashboard.tsx` | Silent re-fetch of all KPIs (no skeleton flash) |
+| `components/orders/production-page.tsx` | Coalesced refetch on mount + `bazaar:tickets-changed` |
 
 See `docs/realtime-live-updates.md` for full architecture and implementation guide.
 

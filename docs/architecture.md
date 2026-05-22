@@ -120,11 +120,11 @@ BazarCRM/
 │   │   ├── auth/change-password/         ✓ POST — password update
 │   │   ├── leads/
 │   │   │   ├── manual/route.ts           ✓ POST — manual lead creation with dedup
-│   │   │   ├── workspace/route.ts        ✓ GET — SDR/Admin lead queue with filters
-│   │   │   ├── workspace/counts/route.ts ✓ GET — SDR tab badge counts
-│   │   │   ├── sales-counts/route.ts     ✓ GET — sales tab badge counts
+│   │   │   ├── workspace/route.ts        ✓ GET — slim lead list for table UIs
+│   │   │   ├── workspace/counts/route.ts ✓ GET — SDR tab badge counts (SQL head counts)
+│   │   │   ├── sales-counts/route.ts     ✓ GET — sales tab badge counts (SQL head counts)
 │   │   │   └── [id]/
-│   │   │       ├── route.ts              ✓ GET/PATCH — lead detail + field update
+│   │   │       ├── route.ts              ✓ GET full lead (drawers) / PATCH field update
 │   │   │       ├── lock/route.ts         ✓ POST — acquire lock + set sdr_id
 │   │   │       ├── unlock/route.ts       ✓ POST — release lock
 │   │   │       ├── hold/route.ts         ✓ POST — put lead on hold
@@ -133,22 +133,33 @@ BazarCRM/
 │   │   │       ├── activities/route.ts   ✓ GET — lead activity timeline
 │   │   │       └── reassign/route.ts     ✓ POST — Admin reassign/unassign lead
 │   │   ├── customers/
-│   │   │   ├── route.ts                  ✓ GET — customer list
+│   │   │   ├── route.ts                  ✓ GET — slim customer list + lightweight aggregates
 │   │   │   ├── lookup/route.ts           ✓ GET — phone/email dedup lookup
 │   │   │   ├── companies/route.ts        ✓ GET — company name autocomplete
 │   │   │   ├── [id]/route.ts             ✓ GET/PATCH — customer profile
 │   │   │   └── [id]/merge/route.ts       ✓ POST — merge duplicate customers
 │   │   ├── tickets/
-│   │   │   ├── route.ts                  ✓ GET list (own + routed for sales/admin) / POST create (supports 'routed' status)
-│   │   │   ├── counts/route.ts           ✓ GET — tab badge counts (drafts/sent/approved/orders/routed)
-│   │   │   └── [id]/route.ts             ✓ GET single / PATCH update (supports claim_ownership for sales/admin)
+│   │   │   ├── route.ts                  ✓ GET list (slim quote payload when kind=quote) / POST create
+│   │   │   ├── counts/route.ts           ✓ GET — tab badge counts (SQL head counts)
+│   │   │   └── [id]/route.ts             ✓ GET single / PATCH update (supports claim_ownership)
+│   │   ├── orders/
+│   │   │   └── orders/route.ts           ✓ GET — slim orders list (order/cancelled, no quote_skus)
+│   │   ├── payments/
+│   │   │   ├── pending/route.ts          ✓ GET — payment evidence queue
+│   │   │   └── counts/route.ts           ✓ GET — payments tab badge counts
+│   │   ├── production/
+│   │   │   ├── orders/route.ts           ✓ GET — in_production list
+│   │   │   └── counts/route.ts           ✓ GET — production tab badge counts
+│   │   ├── completed/
+│   │   │   ├── orders/route.ts           ✓ GET — completed list
+│   │   │   └── counts/route.ts           ✓ GET — completed tab badge counts
 │   │   ├── activities/route.ts           ✓ GET — unified activity feed (ticket + lead)
 │   │   ├── activity/route.ts             ✓ GET/POST — per-contact activity log
 │   │   ├── dashboard/kpis/route.ts       ✓ GET — role-scoped KPI data
 │   │   ├── lookups/
 │   │   │   ├── route.ts                  ✓ GET — active dropdown options by category
 │   │   │   └── products/route.ts         ✓ GET — product catalog (types + materials)
-│   │   ├── sidebar-counts/route.ts       ✓ GET — sidebar badge counts
+│   │   ├── sidebar-counts/route.ts       ✓ GET — sidebar badge counts (SQL head counts, debounced client-side)
 │   │   └── admin/
 │   │       ├── users/route.ts            ✓ GET all users
 │   │       ├── users/create/route.ts     ✓ POST create user
@@ -246,16 +257,45 @@ BazarCRM/
 │   └── utils/
 │       ├── phone.ts                      ✓ Phone formatting + validation
 │       ├── ticket-math.ts               ✓ QuoteSku interface + pricing computation helpers
-│       ├── compute-checkout.ts          ✓ Checkout state machine — computes deposit due, balance, payment status from TicketPaymentDraft
+│       ├── compute-checkout.ts          ✓ Checkout state machine — deposit due, balance, payment status
+│       ├── db-counts.ts                 ✓ countExact(), scopeJobTicketsQuery(), payment filter constants
+│       ├── ticket-list-select.ts        ✓ Slim quote/orders list column definitions
+│       ├── lead-list-select.ts          ✓ Slim lead workspace column definitions (reference)
+│       ├── fetch-lead.ts                ✓ Client helper — full lead fetch for drawers
+│       ├── lead-access.ts               ✓ canReadLead() — GET /api/leads/[id] authorization
 │       └── email.ts                     ✓ Email utility helpers
 ├── supabase/
-│   └── migrations/                       ✓ 66 migrations (001–066, with test-only gaps at 062–064)
+│   └── migrations/                       ✓ 73 migrations (001–072 + 073 performance indexes)
 ├── docs/                                 ✓ All feature specs + architecture docs
 ├── proxy.ts                              ✓ AAL2 + RBAC session enforcement
 ├── components.json                       ✓ shadcn config — style: base-nova
 ├── vercel.json                           ✓
 └── .env.local.example                    ✓ Key names template
 ```
+
+---
+
+## Performance — Scoped List APIs (2026-05-22)
+
+List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table views. Full records load only on detail routes or drawer open.
+
+| Page | List endpoint | Notes |
+|------|---------------|-------|
+| `/quotes` | `GET /api/tickets?kind=quote` | Slim select; quote-stage statuses only |
+| `/orders` | `GET /api/orders/orders` | `order` + `cancelled`; excludes evidence-pending |
+| `/payments` | `GET /api/payments/pending` | Evidence queue only |
+| `/production` | `GET /api/production/orders` | `in_production` only |
+| `/completed` | `GET /api/completed/orders` | `completed` only |
+| `/leads`, `/sales` | `GET /api/leads/workspace` | Slim list; **`GET /api/leads/[id]`** on drawer open |
+| `/crm` | `GET /api/customers` | Slim customer + lead/ticket aggregates |
+
+**Tab/sidebar counts** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`.
+
+**Realtime:** Single sidebar subscription per table → `bazaar:*-changed` window events. Sidebar badge refetch debounced ~300 ms. `production-page.tsx` coalesces mount + event refetches (see `docs/realtime-live-updates.md`).
+
+**Indexes:** `073_performance_indexes.sql` — partial indexes on orders, production, leads.
+
+Full spec: `docs/FuturePlan/Performance/performance-optimization.md`
 
 ---
 

@@ -231,8 +231,15 @@ export function Sidebar() {
         .catch(() => {});
     }
 
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function debouncedFetchBadges() {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(fetchBadges, 300);
+    }
+
     fetchBadges();
-    window.addEventListener("bazaar:refresh-counts", fetchBadges);
+    window.addEventListener("bazaar:refresh-counts", debouncedFetchBadges);
 
     const supabase = createClient();
     let cancelled = false;
@@ -255,7 +262,7 @@ export function Sidebar() {
           { event: "*", schema: "public", table: "leads" },
           (payload) => {
             console.log("[Realtime] leads event:", payload.eventType, payload);
-            fetchBadges();
+            debouncedFetchBadges();
             window.dispatchEvent(new Event("bazaar:leads-changed"));
           }
         )
@@ -272,7 +279,7 @@ export function Sidebar() {
           { event: "*", schema: "public", table: "job_tickets" },
           (payload) => {
             console.log("[Realtime] tickets event:", payload.eventType, payload);
-            fetchBadges();
+            debouncedFetchBadges();
             window.dispatchEvent(new Event("bazaar:tickets-changed"));
           }
         )
@@ -303,7 +310,8 @@ export function Sidebar() {
 
     return () => {
       cancelled = true;
-      window.removeEventListener("bazaar:refresh-counts", fetchBadges);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      window.removeEventListener("bazaar:refresh-counts", debouncedFetchBadges);
       // Clean up channels if they were created
       const refs = supabase as unknown as Record<string, unknown>;
       if (refs["_sidebarLeadsCh"]) {

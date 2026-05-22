@@ -781,6 +781,17 @@ create unique index tickets_reference_code_idx on public.job_tickets(reference_c
   where reference_code is not null;
 create index tickets_created_by_idx    on public.job_tickets(created_by_id);
 
+-- added migration 073 (performance — partial indexes for list/count queries)
+create index job_tickets_payment_evidence_pending_idx on public.job_tickets(ticket_status)
+  where payment_evidence_url is not null and payment_paid_at is null;
+create index job_tickets_in_production_released_idx on public.job_tickets(production_released_at desc)
+  where ticket_status = 'in_production';
+create index job_tickets_order_status_idx on public.job_tickets(created_at desc)
+  where ticket_status in ('order', 'cancelled');
+
+-- leads (073)
+create index leads_prev_status_idx on public.leads(prev_status) where prev_status is not null;
+
 -- activities
 create index activities_customer_id_idx on public.activities(customer_id);
 create index activities_lead_id_idx    on public.activities(lead_id);
@@ -1154,4 +1165,5 @@ When creating Supabase migrations under `supabase/migrations/`:
 070_payment_status_columns.sql       ← idempotent add of payment_status/prepayment_status if missing
 071_payment_evidence_amount.sql      ← payment_evidence_amount column; backfill incorrectly auto-paid evidence tickets
 072_net_terms_auto_production.sql    ← net terms auto-release to in_production support
+073_performance_indexes.sql          ← partial indexes for orders, production, leads count queries
 ```

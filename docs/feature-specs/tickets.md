@@ -55,7 +55,8 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 ## `/quotes` — Quoted Requests page
 
-**Component:** `components/quotes/quotes-page.tsx`
+**Component:** `components/quotes/quotes-page.tsx`  
+**List API:** `GET /api/tickets?kind=quote` — slim payload (no `quote_skus` on list). Full record on `/quotes/[id]`.
 
 ### Tabs (count badge on all tabs)
 
@@ -88,7 +89,8 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 ## `/orders` — Orders page
 
-**Component:** `components/orders/orders-page.tsx`
+**Component:** `components/orders/orders-page.tsx`  
+**List API:** `GET /api/orders/orders` — scoped to `order` + `cancelled`, excludes payment-evidence-pending rows.
 
 ### Tabs (count badge on all tabs)
 
@@ -118,7 +120,10 @@ Queue of orders where customer uploaded payment evidence and accountant has not 
 
 ## `/production` — In Production (Accountant + Admin)
 
-**Component:** `components/orders/production-page.tsx`
+**Component:** `components/orders/production-page.tsx`  
+**List API:** `GET /api/production/orders`
+
+**Realtime:** Coalesced refetch on mount + `bazaar:tickets-changed` (avoids duplicate list/count requests in dev Strict Mode).
 
 **Tabs:** All in Production | Balance Due
 
@@ -393,7 +398,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 
 ### Realtime
 
-- Direct Supabase `postgres_changes` channel on `job_tickets` (within the component, independent of sidebar) — silent re-fetch
+- `bazaar:tickets-changed` → silent re-fetch (sidebar subscription; no page-level channel)
 - `bazaar:leads-changed` → silent re-fetch (updates lead info card)
 - `bazaar:activities-changed` → refreshes History tab
 
@@ -403,7 +408,8 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `GET /api/tickets` | GET | List tickets. SDRs see own + any they routed (`routed_by_id = userId`). Sales/Admin see own + all `routed`. `kind`, `search` params. |
+| `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `quote_skus`). SDRs see own + routed-by. Sales/Admin see own + all `routed`. |
+| `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `order` + `cancelled`, excludes evidence-pending, slim payload. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates ORD-YYYY-NNN for orders. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket. Sales/Admin can GET `routed` tickets they don't own. |
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |

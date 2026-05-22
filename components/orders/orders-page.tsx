@@ -103,11 +103,9 @@ export default function OrdersPage() {
 
   const fetchOrders = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    // Fetch all tickets — we show both quote-kind and order-kind on this page
-    // since a "quote" that becomes an order is still the same record
-    fetch("/api/tickets")
+    fetch("/api/orders/orders")
       .then((r) => r.json())
-      .then((d) => { if (d.tickets) setOrders(d.tickets); })
+      .then((d) => { if (d.orders) setOrders(d.orders); })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
   }, []);
