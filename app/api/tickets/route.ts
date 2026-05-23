@@ -300,6 +300,10 @@ export async function POST(request: NextRequest) {
     contact_email,
     contact_company,
     contact_phone,
+    industry,
+    website,
+    source,
+    authority,
     quote_skus = [],
     notes,
     order_source,
@@ -363,8 +367,19 @@ export async function POST(request: NextRequest) {
   // ── Upsert customer so they appear in CRM ──────────────────────────────────
   // Only when contact info is provided and no existing customer_id is given.
   let resolvedCustomerId: string | null = customer_id ?? null;
+  let resolvedLeadId: string | null = linked_lead_id ?? null;
 
-  if (!resolvedCustomerId && (contact_email || contact_phone)) {
+  const isNewCustomerFromContact = !resolvedCustomerId && (contact_email || contact_phone);
+  if (isNewCustomerFromContact) {
+    if (!source?.trim()) {
+      return NextResponse.json({ error: "Source is required.", code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+    if (!industry?.trim()) {
+      return NextResponse.json({ error: "Industry is required.", code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+  }
+
+  if (isNewCustomerFromContact) {
     const { digitsOnly } = await import("@/lib/utils/phone").catch(() => ({ digitsOnly: (s: string) => s }));
     const phoneDigits = contact_phone ? digitsOnly(contact_phone) : null;
 
@@ -381,6 +396,14 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       resolvedCustomerId = existing.id;
+      await admin
+        .from("customers")
+        .update({
+          ...(industry ? { industry } : {}),
+          ...(website ? { website } : {}),
+          updated_at: now,
+        })
+        .eq("id", existing.id);
     } else {
       // Create new customer
       const nameParts = (contact_name ?? "").split(" ");
@@ -390,11 +413,32 @@ export async function POST(request: NextRequest) {
         email: contact_email ?? null,
         phone: phoneDigits ?? null,
         company: contact_company ?? null,
+        industry: industry ?? null,
+        website: website ?? null,
         created_at: now,
         updated_at: now,
       }).select("id").single();
       if (newCustomer) resolvedCustomerId = newCustomer.id;
     }
+  }
+
+  // When Sales creates a quote without an existing lead, capture source/authority on a new lead.
+  if (!resolvedLeadId && resolvedCustomerId && source?.trim()) {
+    const hasSkus = Array.isArray(quote_skus) && quote_skus.length > 0;
+    const { data: newLead } = await admin
+      .from("leads")
+      .insert({
+        customer_id: resolvedCustomerId,
+        source: source.trim(),
+        authority: authority?.trim() || null,
+        is_inbox: false,
+        status: hasSkus ? "Quoted" : "Pending",
+        sales_status: hasSkus ? "Quote Sent" : null,
+        sdr_id: userId,
+      })
+      .select("id")
+      .single();
+    if (newLead) resolvedLeadId = newLead.id;
   }
 
   // Human-readable reference: QUO-YYYY-NNNN for quotes, ORD-YYYY-NNN for orders
@@ -421,7 +465,7 @@ export async function POST(request: NextRequest) {
     title: title.trim(),
     reference_code,
     customer_id: resolvedCustomerId,
-    linked_lead_id: linked_lead_id ?? null,
+    linked_lead_id: resolvedLeadId,
     // When an SDR's quote is auto-routed to Sales, preserve their identity so
     // they can still view the ticket in read-only mode after Sales claims it.
     routed_by_id: ticket_status === "routed" ? userId : null,
@@ -491,7 +535,7 @@ export async function POST(request: NextRequest) {
   // Log activity
   await admin.from("activities").insert({
     type: "order_ticket_created",
-    lead_id: linked_lead_id ?? null,
+    lead_id: resolvedLeadId,
     customer_id: resolvedCustomerId,
     ticket_id: ticket.id,
     by_user_id: userId,
@@ -500,7 +544,7 @@ export async function POST(request: NextRequest) {
   });
 
   // TODO-002: update linked lead status when ticket is created
-  if (linked_lead_id) {
+  if (resolvedLeadId) {
     const hasSkus = Array.isArray(quote_skus) && quote_skus.length > 0;
     const newLeadStatus = hasSkus ? "Quoted" : "Validated";
     const newSalesStatus = hasSkus ? "Quote Sent" : null;
@@ -512,11 +556,11 @@ export async function POST(request: NextRequest) {
         ...(newSalesStatus ? { sales_status: newSalesStatus } : {}),
         updated_at: now,
       })
-      .eq("id", linked_lead_id);
+      .eq("id", resolvedLeadId);
 
     await admin.from("activities").insert({
       type: "lead_status_changed",
-      lead_id: linked_lead_id,
+      lead_id: resolvedLeadId,
       customer_id: resolvedCustomerId,
       ticket_id: ticket.id,
       by_user_id: userId,

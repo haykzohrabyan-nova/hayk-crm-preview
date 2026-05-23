@@ -29,6 +29,18 @@ import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { emptySkuRow } from "@/components/quotes/shared/utils";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
 import type { LookupOption as SharedLookupOption, SkuLookups as SharedSkuLookups } from "@/components/quotes/shared/types";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+const AUTHORITY_OPTIONS = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
+];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,6 +149,10 @@ export default function NewQuoteForm() {
   const [contactEmail, setContactEmail] = useState(searchParams.get("email") ?? "");
   const [contactPhone, setContactPhone] = useState(searchParams.get("phone") ?? "");
   const [contactCompany, setContactCompany] = useState(searchParams.get("company") ?? "");
+  const [contactSource, setContactSource] = useState("");
+  const [contactIndustry, setContactIndustry] = useState("");
+  const [contactAuthority, setContactAuthority] = useState("");
+  const [contactWebsite, setContactWebsite] = useState("");
   // Lifted from CustomerTab so lock state survives tab navigation
   const [customerLocked, setCustomerLocked] = useState(false);
   const [customerFoundName, setCustomerFoundName] = useState<string | null>(null);
@@ -194,6 +210,10 @@ export default function NewQuoteForm() {
   const [quoteLookups, setQuoteLookups] = useState<QuoteLookups>({
     ticket_priority: [], quote_channel: [], ticket_payment: [], follow_up_freq: [],
   });
+  const [customerLookups, setCustomerLookups] = useState<{ source: LookupOption[]; industry: LookupOption[] }>({
+    source: [],
+    industry: [],
+  });
 
   useEffect(() => {
     fetch("/api/lookups/products")
@@ -216,6 +236,16 @@ export default function NewQuoteForm() {
           quote_channel:   d.quote_channel   ?? [],
           ticket_payment:  d.ticket_payment  ?? [],
           follow_up_freq:  d.follow_up_freq  ?? [],
+        });
+      })
+      .catch(() => {});
+
+    fetch("/api/lookups?categories=source,industry")
+      .then((r) => r.json())
+      .then((d: Record<string, LookupOption[]>) => {
+        setCustomerLookups({
+          source: d.source ?? [],
+          industry: d.industry ?? [],
         });
       })
       .catch(() => {});
@@ -284,6 +314,12 @@ export default function NewQuoteForm() {
           const eErr = validateEmail(contactEmail);
           if (eErr) errors.customerContact = `Email: ${eErr}`;
         }
+      }
+      if (!contactSource) {
+        errors.customerSource = "Source is required.";
+      }
+      if (!contactIndustry) {
+        errors.customerIndustry = "Industry is required.";
       }
     }
 
@@ -403,6 +439,10 @@ export default function NewQuoteForm() {
       contact_email: contactEmail || lead?.customer?.email || undefined,
       contact_company: contactCompany || lead?.customer?.company || undefined,
       contact_phone: contactPhone || lead?.customer?.phone || undefined,
+      industry: contactIndustry || lead?.customer?.industry || undefined,
+      website: contactWebsite || lead?.customer?.website || undefined,
+      source: contactSource || lead?.source || undefined,
+      authority: contactAuthority || undefined,
       quote_skus: skus,
       notes: notes || undefined,
       order_source: orderSource,
@@ -676,6 +716,12 @@ export default function NewQuoteForm() {
                 email={contactEmail} setEmail={(v) => { setContactEmail(v); setFieldErrors((e) => ({ ...e, customerContact: "" })); }}
                 phone={contactPhone} setPhone={(v) => { setContactPhone(v); setFieldErrors((e) => ({ ...e, customerContact: "" })); }}
                 company={contactCompany} setCompany={setContactCompany}
+                source={contactSource} setSource={(v) => { setContactSource(v); setFieldErrors((e) => ({ ...e, customerSource: "" })); }}
+                industry={contactIndustry} setIndustry={(v) => { setContactIndustry(v); setFieldErrors((e) => ({ ...e, customerIndustry: "" })); }}
+                authority={contactAuthority} setAuthority={setContactAuthority}
+                website={contactWebsite} setWebsite={setContactWebsite}
+                sourceOpts={customerLookups.source}
+                industryOpts={customerLookups.industry}
                 locked={customerLocked} setLocked={setCustomerLocked}
                 foundName={customerFoundName} setFoundName={setCustomerFoundName}
                 errors={fieldErrors}
@@ -946,6 +992,12 @@ interface CustomerTabProps {
   email: string; setEmail: (v: string) => void;
   phone: string; setPhone: (v: string) => void;
   company: string; setCompany: (v: string) => void;
+  source: string; setSource: (v: string) => void;
+  industry: string; setIndustry: (v: string) => void;
+  authority: string; setAuthority: (v: string) => void;
+  website: string; setWebsite: (v: string) => void;
+  sourceOpts: LookupOption[];
+  industryOpts: LookupOption[];
   locked: boolean; setLocked: (v: boolean) => void;
   foundName: string | null; setFoundName: (v: string | null) => void;
   errors?: Record<string, string>;
@@ -959,6 +1011,8 @@ interface CrmCustomer {
   email: string | null;
   company: string | null;
   phone: string | null;
+  industry: string | null;
+  website: string | null;
 }
 
 function CustomerTab(p: CustomerTabProps) {
@@ -992,6 +1046,8 @@ function CustomerTab(p: CustomerTabProps) {
     p.setLastName(c.last_name ?? "");
     p.setEmail(c.email ?? "");
     p.setCompany(c.company ?? "");
+    p.setIndustry(c.industry ?? p.industry);
+    p.setWebsite(c.website ?? p.website);
     setFoundName([c.first_name, c.last_name].filter(Boolean).join(" ") || "Customer");
     setLocked(true);
     setCandidates([]);
@@ -1005,6 +1061,8 @@ function CustomerTab(p: CustomerTabProps) {
     p.setLastName("");
     p.setEmail("");
     p.setCompany("");
+    p.setIndustry("");
+    p.setWebsite("");
   }
 
   function clearLock() {
@@ -1015,6 +1073,10 @@ function CustomerTab(p: CustomerTabProps) {
     p.setLastName("");
     p.setEmail("");
     p.setCompany("");
+    p.setIndustry("");
+    p.setWebsite("");
+    p.setSource("");
+    p.setAuthority("");
   }
 
   function handlePhoneChange(v: string) {
@@ -1029,6 +1091,8 @@ function CustomerTab(p: CustomerTabProps) {
       p.setLastName("");
       p.setEmail("");
       p.setCompany("");
+      p.setIndustry("");
+      p.setWebsite("");
     }
 
     // Debounce search — trigger after 600ms of no typing
@@ -1220,6 +1284,89 @@ function CustomerTab(p: CustomerTabProps) {
           className="w-full px-3 py-2 rounded-md text-sm border outline-none"
           style={locked ? lockedStyle : fieldStyle}
         />
+      </div>
+
+      {/* Row 4: Source | Decision Maker */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Source <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
+          <Select value={p.source} onValueChange={(v) => p.setSource(v ?? "")}>
+            <SelectTrigger
+              className="h-9 text-sm w-full"
+              style={p.errors?.customerSource ? { borderColor: "var(--color-danger)" } : undefined}
+            >
+              <SelectValue placeholder="Select source…">
+                {p.sourceOpts.find((s) => s.value === p.source)?.label ?? "Select source…"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {p.sourceOpts.map((s) => (
+                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {p.errors?.customerSource && (
+            <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.errors.customerSource}</p>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Decision Maker?
+          </label>
+          <Select value={p.authority} onValueChange={(v) => p.setAuthority(v ?? "")}>
+            <SelectTrigger className="h-9 text-sm w-full">
+              <SelectValue placeholder="Select…">
+                {AUTHORITY_OPTIONS.find((a) => a.value === p.authority)?.label ?? "Select…"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {AUTHORITY_OPTIONS.map((a) => (
+                <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Row 5: Industry | Website */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Industry <span style={{ color: "var(--color-danger)" }}>*</span>
+          </label>
+          <Select value={p.industry} onValueChange={(v) => p.setIndustry(v ?? "")}>
+            <SelectTrigger
+              className="h-9 text-sm w-full"
+              style={p.errors?.customerIndustry ? { borderColor: "var(--color-danger)" } : undefined}
+            >
+              <SelectValue placeholder="Select industry…">
+                {p.industryOpts.find((i) => i.value === p.industry)?.label ?? "Select industry…"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {p.industryOpts.map((i) => (
+                <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {p.errors?.customerIndustry && (
+            <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.errors.customerIndustry}</p>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Website / Social
+          </label>
+          <input
+            value={p.website}
+            onChange={(e) => p.setWebsite(e.target.value)}
+            placeholder="https://"
+            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+            style={fieldStyle}
+          />
+        </div>
       </div>
     </div>
   );

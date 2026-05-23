@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-23] — Quote Customer tab matches lead fields
+
+### Changed
+- `components/quotes/new-quote-form.tsx` — Customer step now includes Source *, Industry *, Decision Maker?, and Website / Social (same as Add Lead); Source and Industry required before advancing
+- `app/api/tickets/route.ts` — POST saves industry/website on customer upsert; creates a linked lead with source/authority when Sales adds a quote without an existing lead
+
 ## [2026-05-23] — Fix admin password-reset email delivery
 
 ### Fixed
