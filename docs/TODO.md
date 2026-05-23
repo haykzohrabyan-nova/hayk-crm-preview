@@ -27,7 +27,7 @@ When a lead reaches a **terminal state**, the drawer becomes fully read-only for
 | State | Set by |
 |-------|--------|
 | `status = "Rejected"` | SDR or Sales |
-| `sales_status = "Won"` | Auto-set when linked ticket becomes an order |
+| `sales_status = "Won"` | Auto-set when linked ticket enters **`in_production`** |
 | `sales_status = "Dropped"` | Sales rep |
 
 The `isReadOnly` flag disables all inputs and hides all action buttons. An SDR who accidentally rejected a lead cannot be helped without direct DB access.

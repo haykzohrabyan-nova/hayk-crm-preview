@@ -849,8 +849,8 @@
           </div>
           <div class="flow-arrow">→</div>
           <div class="flow-step">
-            <div class="flow-node order">Won → Order</div>
-            <div class="flow-note">Customer approves or rep converts via Tickets</div>
+            <div class="flow-node order">Order → Production → Won</div>
+            <div class="flow-note">Customer approves or rep converts; Won credit when ticket enters production</div>
           </div>
         </div>
       </div>
@@ -932,13 +932,13 @@
 
       <div class="info-box success">
         <span class="info-icon">🏆</span>
-        <div>A lead is marked <strong>"Won"</strong> automatically — not manually — when the linked quote becomes a confirmed order. This happens whether the customer approves via the public link, or a rep clicks "Convert to Order".</div>
+        <div>A lead is marked <strong>"Won"</strong> automatically — not manually — when the linked ticket is released to <strong>production</strong> (<code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;">ticket_status = in_production</code>). Order conversion alone does not count as Won; payment gates and production release must pass first.</div>
       </div>
 
       <div class="two-col">
         <div class="card">
           <div class="card-title">🔍 SDR Won Tab</div>
-          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">SDRs have a "Won" tab in their workspace showing all their leads that converted to orders. Each row shows:</p>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">SDRs have a "Won" tab in their workspace showing all their leads whose linked ticket entered production. Each row shows:</p>
           <ul style="font-size:12.5px;color:var(--muted);padding-left:16px;">
             <li>Order reference (ORD-YYYY-NNN)</li>
             <li>Total value ($)</li>
@@ -948,10 +948,11 @@
         </div>
         <div class="card">
           <div class="card-title">💼 Sales Won</div>
-          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Sales reps see "Won" in their pipeline stats. The lead's <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;">sales_status</code> is auto-updated to "Won" when:</p>
+          <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Sales reps see "Won" in their dashboard KPIs. Won count and Won Value use tickets in <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;">in_production</code> or <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;">completed</code>. The lead's <code style="background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;">sales_status</code> is auto-updated to "Won" when production release succeeds via:</p>
           <ul style="font-size:12.5px;color:var(--muted);padding-left:16px;">
-            <li>Customer clicks "Confirm &amp; Accept" on the public quote page</li>
-            <li>Rep clicks "Convert to Order" in the CRM</li>
+            <li>Payment confirmed + auto-release (cash, accountant confirm, net terms)</li>
+            <li>Manual production release by staff</li>
+            <li>Customer confirm that immediately passes production gates</li>
           </ul>
         </div>
       </div>
@@ -1141,7 +1142,7 @@
 
       <div class="info-box success">
         <span class="info-icon">✅</span>
-        <div>Once the customer confirms, the CRM instantly: creates the order, assigns the ORD-YYYY-NNN reference, marks the linked lead as "Won", locks the record so only admins can modify it, and makes the payment link available for the rep to send.</div>
+        <div>Once the customer confirms, the CRM instantly: creates the order, assigns the ORD-YYYY-NNN reference, locks the record so only admins can modify it, and makes the payment link available for the rep to send. The linked lead is marked <strong>"Won"</strong> only when the ticket is released to production (payment gates permitting).</div>
       </div>
     </section>
 
@@ -2769,13 +2770,13 @@
               <td>Q15</td>
               <td>Sales-B manually converts quote to order (clicks "Convert to Order")</td>
               <td>Check lead status + SDR's Won tab</td>
-              <td>Lead <code style="font-size:11px;">sales_status → "Won"</code>; lead exits Directed to Sales; appears in SDR-A's Won tab with ORD reference; ticket locked for Sales-B (read-only except payment_status)</td>
+              <td>Lead <code style="font-size:11px;">ticket_status → "order"</code>; lead stays in Directed to Sales until production release; after production: <code style="font-size:11px;">sales_status → "Won"</code>; appears in SDR-A's Won tab with ORD reference; ticket locked for Sales-B (read-only except payment_status)</td>
             </tr>
             <tr>
               <td>Q16</td>
               <td>Customer clicks "Confirm &amp; Accept" on public quote link</td>
               <td>Check ticket + lead status</td>
-              <td><code style="font-size:11px;">client_confirmed = true</code>; <code style="font-size:11px;">ticket_status → "order"</code>; ORD-YYYY-NNN assigned; <code style="font-size:11px;">sales_status → "Won"</code>; SDR sees lead in Won tab</td>
+              <td><code style="font-size:11px;">client_confirmed = true</code>; <code style="font-size:11px;">ticket_status → "order"</code>; ORD-YYYY-NNN assigned; <code style="font-size:11px;">sales_status → "Won"</code> only if production auto-release succeeds; SDR sees lead in Won tab after production</td>
             </tr>
           </tbody>
         </table>

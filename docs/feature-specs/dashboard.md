@@ -62,10 +62,10 @@ KPIs are **scoped to the current Sales rep** (`sales_owner_id = userId`). New in
 
 | Card | Value | Query basis | Subtext | Accent |
 |------|-------|-------------|---------|--------|
-| Won Value | sum of `quote_final_total` from Won tickets in period | `job_tickets WHERE created_by_id=me AND ticket_status IN (order/in_production/completed) AND created_at >= periodStart` | period label | ✓ (highlighted) |
+| Won Value | sum of `quote_final_total` from Won tickets in period | `job_tickets WHERE created_by_id=me AND ticket_status IN ('in_production','completed') AND production_released_at >= periodStart` (or `created_at` fallback) | period label | ✓ (highlighted) |
 | New in Pipeline | unclaimed Routed to Sales leads (global) | `leads WHERE status='Routed to Sales' AND sales_owner_id IS NULL` | "waiting to be claimed" | |
 | Active Deals | leads where sales work is in progress | `leads WHERE sales_owner_id=me AND sales_status IN ('Ongoing','Quote Sent')` — includes both pre-quote and post-quote leads | "ongoing" | |
-| Won | count of won tickets in period | Same `job_tickets` query as Won Value — `count` field — period-consistent with the revenue figure | period label | |
+| Won | count of won tickets in period | Same `job_tickets` query as Won Value — **`in_production` + `completed` only** (pending `order` status excluded) — period-consistent with the revenue figure | period label | |
 | On Hold | leads with `sales_status = On Hold` | `leads WHERE sales_owner_id=me` filtered in JS | "paused deals" | |
 | Pipeline Value | sum of active quote values | `job_tickets WHERE created_by_id=me AND ticket_status IN (draft/sent)` | "current total" | |
 
@@ -96,11 +96,11 @@ KPIs are **global** — all SDRs and Sales reps combined.
 
 | Card | Value | Subtext | Accent |
 |------|-------|---------|--------|
-| Total Revenue | sum of `quote_total` for Won leads in period | period label | ✓ (highlighted) |
+| Total Revenue | sum of `quote_final_total` from tickets in production in period | `job_tickets WHERE ticket_status IN ('in_production','completed')` filtered by period | period label | ✓ (highlighted) |
 | Total Leads | count of all leads created in period | period label | |
 | In Inbox | `is_inbox = true` leads | "waiting for SDR" | |
 | Routed to Sales | `status = Routed to Sales` leads | "active pipeline" | |
-| Won | count of Won leads in period | period label | |
+| Won | count of leads with `sales_status = 'Won'` created in period | Leads marked Won when linked ticket enters production — count uses lead query, revenue uses ticket totals | period label | |
 | Pipeline Value | sum of `quote_total` for Routed to Sales leads | "current total" | |
 
 ### Team Section

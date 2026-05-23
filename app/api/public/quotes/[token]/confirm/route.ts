@@ -9,7 +9,7 @@ import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
 //   1. Sets client_confirmed = true
 //   2. Sets ticket_status = "order" (auto-converts; Stripe payment will plug in here later)
 //   3. Generates ORD-YYYY-NNN reference code via increment_order_sequence RPC
-//   4. Net terms / gate-satisfied tickets auto-release to in_production
+//   4. Net terms / gate-satisfied tickets auto-release to in_production (lead marked Won then)
 //   5. Logs activity entries
 
 type Params = { params: Promise<{ token: string }> };
@@ -96,13 +96,6 @@ export async function POST(_request: NextRequest, { params }: Params) {
       created_at: now,
     },
   ]);
-
-  if (row.linked_lead_id) {
-    await admin
-      .from("leads")
-      .update({ sales_status: "Won", updated_at: now })
-      .eq("id", row.linked_lead_id);
-  }
 
   const releaseResult = await maybeAutoReleaseProduction(
     admin,

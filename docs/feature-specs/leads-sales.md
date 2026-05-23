@@ -8,7 +8,7 @@ Route: `/sales` (Sales + Admin only)
 
 The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep opens a lead, it is **locked** to them — other Sales reps see it in read-only mode with a "Being worked by [Name]" banner. See `docs/feature-specs/lead-locking.md` for full locking behavior.
 
- Sales reps work these leads: claim them, update their status, create quotes and orders, and put them on hold.
+ Sales reps work these leads: claim them, update their status, create quotes and orders, and put them on hold. **Won credit** for linked leads is applied when the ticket enters **`in_production`**, not at order conversion.
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Sales Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
@@ -184,7 +184,7 @@ Same pattern as SDR pipeline:
 **1. Sales Status: `Won` and `Dropped` options missing from dropdown**
 - Current dropdown: `Ongoing`, `Quote Sent`
 - Spec dropdown: `Ongoing`, `Quote Sent`, `Won`, `Dropped`
-- `Won` is set automatically when an approved order ticket is created. `Dropped` is set when the lead is lost without a formal rejection.
+- `Won` is set automatically when the linked ticket enters **`in_production`** (via `markLeadWonOnProduction()`). `Dropped` is set when the lead is lost without a formal rejection.
 - **When building:** Add `Won` and `Dropped` to `SALES_STATUS_OPTIONS` in `components/sales/sales-drawer.tsx`; move lead out of Pipeline tab when either is selected.
 
 **2. Order / Quote tab** ✅ Built (2026-05-12)

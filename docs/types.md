@@ -147,7 +147,7 @@ export type SalesStatus =
 
 export type QuoteChannel = 'SMS' | 'WhatsApp' | 'Email' | 'In-person'
 
-export type LeadUrgency = 'High' | 'Medium' | 'Low'
+export type LeadUrgency = 'High' | 'Medium' | 'Low'  // DB storage; lookup_values use lowercase keys — map via lib/utils/urgency-form.ts in forms
 
 export interface Lead {
   id: string

@@ -34,11 +34,12 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - **Resend invoice link** on production/completed detail
 
 ### Accountant
-- Default pages: `/dashboard`, `/payments`, `/production`, `/completed`, `/settings`
+- Default pages: `/dashboard`, `/payments`, `/orders`, `/production`, `/completed`, `/settings`
 - Default home after login: `/payments`
 - Review customer-submitted payment evidence on `/payments`
 - **Confirm payment** via `record_payment` PATCH action
-- View production and completed orders (read-only except mark complete)
+- View orders, production, and completed orders (read-only except mark complete)
+- **GET any ticket** via `/api/tickets/[id]` — matches list scoping so order detail pages do not 403
 - **Mark Completed** on in-production orders **only when paid in full** (`isTicketPaidInFull()`)
 - Cannot edit quote line items or change ticket status otherwise
 
@@ -63,8 +64,8 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/quotes` | ✓ | ✓ | ✓ | ✗ | Quoted Requests list |
 | `/quotes/new` | ✓ | ✓ | ✓ | ✗ | Create new quote/order |
 | `/quotes/[id]` | ✓ | ✓ | ✓ | ✗ | View/edit ticket detail |
-| `/orders` | ✓ | ✓ | ✓ | ✗ | Pending-payment orders (excludes evidence-pending, in-production, completed) |
-| `/orders/[id]` | ✓ | ✓ | ✓ | ✗ | |
+| `/orders` | ✓ | ✓ | ✓ | ✓ | Pending-payment orders (excludes evidence-pending, in-production, completed) |
+| `/orders/[id]` | ✓ | ✓ | ✓ | ✓ | Read via `GET /api/tickets/[id]` — accountant can open any order |
 | `/payments` | ✗ | ✗ | ✓ | ✓ | Payment review queue |
 | `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment review detail |
 | `/production` | ✗ | ✗ | ✓ | ✓ | In Production list |

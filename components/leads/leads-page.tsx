@@ -1764,14 +1764,17 @@ export function LeadsPage() {
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
-                    No won leads yet. Won leads appear here when a linked quote becomes an order.
+                    No won leads yet. Won leads appear here when a linked order is released to production.
                   </td>
                 </tr>
               ) : (
                 filtered.map((lead, idx) => {
-                  // Find the order ticket — the one with ticket_status = "order"
+                  // Prefer the ticket currently in production (or completed)
                   const tickets = (lead as Lead & { tickets?: { id: string; reference_code: string | null; quote_final_total: number | null; ticket_status: string; created_by: { id: string; full_name: string | null } | null }[] }).tickets ?? [];
-                  const orderTicket = tickets.find((t) => t.ticket_status === "order") ?? tickets[0];
+                  const orderTicket =
+                    tickets.find((t) => t.ticket_status === "in_production" || t.ticket_status === "completed")
+                    ?? tickets.find((t) => t.ticket_status === "order")
+                    ?? tickets[0];
                   return (
                     <tr
                       key={lead.id}

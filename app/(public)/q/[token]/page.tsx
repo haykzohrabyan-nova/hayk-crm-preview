@@ -10,6 +10,7 @@ import { PublicQuoteDocument } from "@/components/public/public-quote-document";
 import { AddressMapLink, AddressMapText } from "@/components/public/address-map-link";
 import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { companyAddressFull, mapLinkStyle } from "@/lib/utils/maps-link";
+import { digitsOnly } from "@/lib/utils/phone";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -524,9 +525,11 @@ function CashPanel({ refCode, receiptId, onReceiptChange }: {
           </label>
           <input
             type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
             value={receiptId}
-            onChange={(e) => onReceiptChange(e.target.value)}
-            placeholder="e.g. RCT-10482"
+            onChange={(e) => onReceiptChange(digitsOnly(e.target.value))}
+            placeholder="e.g. 10482"
             style={{ width: "100%", padding: "10px 14px", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 14, color: TEXT, background: SURFACE, outline: "none" }}
           />
         </div>

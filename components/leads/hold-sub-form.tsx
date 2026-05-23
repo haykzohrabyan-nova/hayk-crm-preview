@@ -9,6 +9,8 @@ interface HoldSubFormProps {
   onConfirm: () => void;
   onCancel: () => void;
   saving?: boolean;
+  /** When true, fills the modal body (no nested card chrome). */
+  fullScreen?: boolean;
 }
 
 const labelStyle = {
@@ -39,71 +41,85 @@ export function HoldSubForm({
   onConfirm,
   onCancel,
   saving,
+  fullScreen = false,
 }: HoldSubFormProps) {
   return (
     <div
-      className="flex flex-col gap-3 rounded-[10px] border p-4"
-      style={{ background: "var(--color-row-alt)", borderColor: "var(--color-border)" }}
+      className={
+        fullScreen
+          ? "flex flex-1 flex-col gap-5 min-h-0"
+          : "flex flex-col gap-3 rounded-[10px] border p-4"
+      }
+      style={
+        fullScreen
+          ? undefined
+          : { background: "var(--color-row-alt)", borderColor: "var(--color-border)" }
+      }
     >
-      <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+      <p
+        className={fullScreen ? "text-base font-semibold shrink-0" : "text-sm font-medium"}
+        style={{ color: "var(--color-text-primary)" }}
+      >
         Put on hold
       </p>
 
-      {/* Hold Reason — radio grid */}
-      <div>
-        <label style={labelStyle}>Hold Reason *</label>
-        <div className="grid grid-cols-2 gap-2 mt-1">
-          {reasons.map((r) => {
-            const selected = form.hold_reason === r.value;
-            return (
-              <label
-                key={r.value}
-                className="flex items-center gap-2.5 cursor-pointer rounded-[8px] border px-3 py-2.5 text-sm transition-all"
-                style={{
-                  borderColor: selected ? "var(--color-accent)" : "var(--color-border)",
-                  background: selected ? "color-mix(in srgb, var(--color-accent) 8%, transparent)" : "var(--color-surface)",
-                  color: "var(--color-text-primary)",
-                }}
-              >
-                <input
-                  type="radio"
-                  name="hold_reason"
-                  value={r.value}
-                  checked={selected}
-                  onChange={() => onChange({ ...form, hold_reason: r.value })}
-                  className="accent-[var(--color-accent)] shrink-0"
-                />
-                {r.label}
-              </label>
-            );
-          })}
+      <div className={fullScreen ? "flex-1 flex flex-col gap-5 min-h-0 overflow-y-auto" : "flex flex-col gap-3"}>
+        {/* Hold Reason — radio grid */}
+        <div>
+          <label style={labelStyle}>Hold Reason *</label>
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            {reasons.map((r) => {
+              const selected = form.hold_reason === r.value;
+              return (
+                <label
+                  key={r.value}
+                  className="flex items-center gap-2.5 cursor-pointer rounded-[8px] border px-3 py-2.5 text-sm transition-all"
+                  style={{
+                    borderColor: selected ? "var(--color-accent)" : "var(--color-border)",
+                    background: selected ? "color-mix(in srgb, var(--color-accent) 8%, transparent)" : "var(--color-surface)",
+                    color: "var(--color-text-primary)",
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="hold_reason"
+                    value={r.value}
+                    checked={selected}
+                    onChange={() => onChange({ ...form, hold_reason: r.value })}
+                    className="accent-[var(--color-accent)] shrink-0"
+                  />
+                  {r.label}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Notes */}
+        <div>
+          <label style={labelStyle}>Notes (optional)</label>
+          <textarea
+            rows={fullScreen ? 4 : 2}
+            value={form.hold_notes}
+            onChange={(e) => onChange({ ...form, hold_notes: e.target.value })}
+            placeholder="Any additional context…"
+            style={{ ...inputStyle, resize: "vertical" }}
+          />
+        </div>
+
+        {/* Hold Until */}
+        <div>
+          <label style={labelStyle}>Hold Until (optional)</label>
+          <input
+            type="date"
+            value={form.hold_until}
+            onChange={(e) => onChange({ ...form, hold_until: e.target.value })}
+            style={inputStyle}
+          />
         </div>
       </div>
 
-      {/* Notes */}
-      <div>
-        <label style={labelStyle}>Notes (optional)</label>
-        <textarea
-          rows={2}
-          value={form.hold_notes}
-          onChange={(e) => onChange({ ...form, hold_notes: e.target.value })}
-          placeholder="Any additional context…"
-          style={{ ...inputStyle, resize: "vertical" }}
-        />
-      </div>
-
-      {/* Hold Until */}
-      <div>
-        <label style={labelStyle}>Hold Until (optional)</label>
-        <input
-          type="date"
-          value={form.hold_until}
-          onChange={(e) => onChange({ ...form, hold_until: e.target.value })}
-          style={inputStyle}
-        />
-      </div>
-
-      <div className="flex justify-end gap-2 pt-1">
+      <div className={`flex justify-end gap-2 shrink-0 ${fullScreen ? "pt-2" : "pt-1"}`}>
         <button
           type="button"
           onClick={onCancel}

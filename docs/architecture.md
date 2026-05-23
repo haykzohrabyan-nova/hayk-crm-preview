@@ -349,6 +349,10 @@ npm run dev
 
 # Production build check
 npm run build
+
+# DEV ONLY — wipe tickets, payment evidence, and reset Won/Quoted leads for clean testing
+# Requires .env.local with SUPABASE_SECRET_KEY + NEXT_PUBLIC_SUPABASE_URL
+npm run reset-test-data
 ```
 
 **Auth bypass in dev:** If `NEXT_PUBLIC_SUPABASE_URL` is empty in `.env.local`, `proxy.ts` skips all auth checks so you can work on the UI without Supabase credentials.

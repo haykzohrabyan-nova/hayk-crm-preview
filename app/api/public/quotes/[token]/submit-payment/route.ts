@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
 import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
@@ -336,12 +337,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     await admin.from("activities").insert(activityRows);
   }
 
-  // Mark linked lead Won when customer converts quote → order via payment
-  if (wasSent && ticket.linked_lead_id) {
-    await admin
-      .from("leads")
-      .update({ sales_status: "Won", updated_at: now })
-      .eq("id", ticket.linked_lead_id);
+  // Mark linked lead Won only when released to production
+  if (autoReleased && ticket.linked_lead_id) {
+    await markLinkedLeadWonOnProduction(admin, ticket.linked_lead_id, now);
   }
 
   return NextResponse.json({

@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient();
 
-  // Won tab: leads where sales_status = "Won", scoped to this SDR (or all for admin)
+  // Won tab: leads where sales_status = "Won" (released to production), scoped to this SDR
   if (won) {
     let wonQuery = admin
       .from("leads")

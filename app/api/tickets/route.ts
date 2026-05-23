@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
+import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
 import type { PaymentConfig } from "@/lib/types";
 import {
   QUOTE_LIST_STATUSES,
@@ -148,6 +149,10 @@ async function maybeAutoRecordCashPayment(
   }
 
   await admin.from("job_tickets").update(payPatch).eq("id", ticket.id);
+
+  if (autoReleased) {
+    await markLinkedLeadWonOnProduction(admin, ticket.linked_lead_id, now);
+  }
 
   // Activity log
   await admin.from("activities").insert({

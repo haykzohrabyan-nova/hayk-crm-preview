@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
+import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
 import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
 import type { PaymentConfig } from "@/lib/types";
 
@@ -119,12 +120,7 @@ export async function maybeAutoReleaseProduction(
     },
   ]);
 
-  if (ticket.linked_lead_id && fromStatus === "sent") {
-    await admin
-      .from("leads")
-      .update({ sales_status: "Won", updated_at: now })
-      .eq("id", ticket.linked_lead_id);
-  }
+  await markLinkedLeadWonOnProduction(admin, ticket.linked_lead_id, now);
 
   return { released: true, reference_code: referenceCode };
 }

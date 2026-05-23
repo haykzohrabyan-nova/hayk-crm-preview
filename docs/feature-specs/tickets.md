@@ -21,8 +21,8 @@
 - `sent` — quote delivered to client; awaiting approval
 - `approved` — **retired** — kept in `TicketStatus` type for backwards compatibility only; new code never sets this
 - `routed` — SDR's quote exceeded High-Value Threshold; routed to Sales for claiming
-- `order` — confirmed production order. Set by customer confirm, rep convert, or payment auto-release.
-- `in_production` — released to shop floor (`production_released_at` set). Net terms may enter here unpaid.
+- `order` — confirmed production order. Set by customer confirm, rep convert, or payment auto-release. **Does not** mark the linked lead Won — that happens at production release.
+- `in_production` — released to shop floor (`production_released_at` set). Net terms may enter here unpaid. **Linked lead `sales_status` → `Won`** via `markLeadWonOnProduction()`.
 - `completed` — finished; customer notified (email/SMS pickup message); public page shows **Ready for pickup**
 - `cancelled` — terminal; no payment recorded
 
@@ -265,8 +265,16 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 | Back | Any tab (hidden on first tab if Customer tab is first) | Previous tab |
 | Next | Any tab before Quote | Validate + advance |
 | Save Draft | Line Items tab onwards | `POST /api/tickets` with `status = 'draft'` |
-| Save & Send Quote | Quote tab | `POST /api/tickets` with `status = 'sent'`; redirects to `/quotes` |
+| Save & Send Quote | Quote tab | `POST /api/tickets` with `status = 'sent'`; blocked until `validateQuoteSend()` passes (see Send validation below); redirects to `/quotes` |
 | Cancel | Any | Navigate back |
+
+### Send validation (draft save vs send)
+
+Draft saves (`Save Draft`, `Save Changes`) allow incomplete fields. **Send Quote**, **Save & Send Quote**, and **Convert to Order** are disabled until all required send fields pass `lib/utils/validate-quote-send.ts`.
+
+When blocked, an amber banner lists missing fields (e.g. Title, Due date, line items, Sales Permit # when tax exempt, delivery destination, **Receipt ID** when cash/offline deposit or full cash-only payment).
+
+**Receipt ID:** digits only — `inputMode="numeric"`, non-digit characters stripped on input; validation rejects non-numeric values.
 
 ---
 
@@ -333,11 +341,15 @@ Single scrollable view combining all three edit sections, separated by labelled 
 
 Hidden entirely when record is locked (`isLocked = true`).
 
+**Layout:** **Cancel Ticket** on the left; **Send Quote** / **Resend Quote** / **Convert to Order** grouped on the right. Convert uses verify-button styling (navy/gold), not success-green pill styling.
+
+Send and Convert buttons are **disabled** when send validation fails; same amber missing-fields banner as new-quote form.
+
 | Action | Condition | Effect |
 |--------|-----------|--------|
-| Send Quote | `status = 'draft'` | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; logs `ticket_sent` |
-| Resend Quote | `status = 'sent'` | Same — re-triggers delivery; logs `ticket_sent` with `resend: true` in payload |
-| Convert to Order | `status = 'draft'` or `'sent'` | `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`; updates linked lead `sales_status = 'Won'` |
+| Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; logs `ticket_sent` |
+| Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers delivery; logs `ticket_sent` with `resend: true` in payload |
+| Convert to Order | `status = 'draft'` or `'sent'` and validation passes | `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead `sales_status = 'Won'` — Won credit happens when ticket enters `in_production` |
 | Cancel Ticket | non-locked only | `PATCH → ticket_status = 'cancelled'` |
 
 ### Payment Link Bar
@@ -411,7 +423,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `quote_skus`). SDRs see own + routed-by. Sales/Admin see own + all `routed`. |
 | `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `order` + `cancelled`, excludes evidence-pending, slim payload. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates ORD-YYYY-NNN for orders. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
-| `GET /api/tickets/[id]` | GET | Single ticket. Sales/Admin can GET `routed` tickets they don't own. |
+| `GET /api/tickets/[id]` | GET | Single ticket by UUID or reference code (`QUO-*`, `ORD-*`). Sales/Admin can GET `routed` tickets they don't own. **Accountant** can GET any ticket (matches list scoping). |
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |
 | `GET /api/tickets/[id]/evidence` | GET | Signed URL for payment evidence file (Accountant + Admin) |
 | `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, in_production, completed, routed, cancelled, total }`. Orders count excludes evidence-pending. |

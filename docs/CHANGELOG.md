@@ -3,6 +3,74 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-23] — Fix admin password-reset email delivery
+
+### Fixed
+- `lib/utils/resolve-app-url.ts` — shared login URL builder; prefers `NEXT_PUBLIC_APP_URL`, falls back to admin request origin (avoids `localhost` links in production emails)
+- `lib/integrations/send-welcome-email.ts` — login button always uses `/login`; logs and returns `loginUrl` for verification
+- `app/api/admin/users/[id]/route.ts` — passes request origin into welcome/reset emails; `email_delivery.login_url` in API response
+- `app/api/admin/users/create/route.ts` — same await + `email_delivery` on welcome email
+- `components/admin/users-section.tsx` — toast confirms email sent or shows failure reason; browser `console.info` on delivery result; edit dialog notes reset email is sent when Instantly is configured
+
+## [2026-05-23] — Documentation sync
+
+### Changed
+- Feature specs, API contract, RBAC, schema, dashboard, navigation, session summary, architecture, TODO, and CRM logic overview updated for Won-on-production, quote send validation, accountant ticket read access, hold modal UX, urgency mapping, and `npm run reset-test-data`
+
+## [2026-05-23] — Full test database reset script
+
+### Added
+- `supabase/migrations/076_full_test_reset.sql` — dev-only SQL wipe (DB tables + sequence counters; no storage)
+- `scripts/full-test-reset.mjs` — `npm run reset-test-data` clears payment-evidence bucket via Storage API then wipes DB
+
+### Fixed
+- Lead view/verify drawer — urgency select now maps DB values (`High`/`Medium`/`Low`) to lookup select values (`high`/`medium`/`low`) so saved urgency displays correctly when reopening a lead
+
+## [2026-05-23] — SDR hold modal full-screen
+
+### Changed
+- Lead verify drawer — putting a lead on hold hides contact/lead form and tabs; hold UI fills the modal body
+
+## [2026-05-23] — Receipt ID numbers only
+
+### Changed
+- Receipt ID fields (cash / offline) accept digits only — numeric keyboard on mobile, non-numeric characters stripped on input
+- Send validation rejects Receipt ID values that are not all digits
+
+## [2026-05-23] — Quote send validation
+
+### Added
+- `lib/utils/validate-quote-send.ts` — shared validation for required fields before sending a quote
+
+### Changed
+- Quote send validation — Receipt ID required when cash/offline is selected; Send Quote disabled with warning banner until complete
+
+## [2026-05-23] — Quote detail action bar layout
+
+### Changed
+- Quote detail bottom bar — Cancel Ticket on the left; Send/Resend Quote and Convert to Order grouped on the right
+- Convert to Order uses verify button styling (solid navy/gold) instead of success pill appearance
+
+## [2026-05-23] — Accountant order detail access
+
+### Fixed
+- `GET /api/tickets/[id]` — accountants can open any order from `/orders` (was 403 unless payment evidence or in-production)
+
+## [2026-05-23] — Won credit on production release
+
+### Added
+- `lib/utils/mark-lead-won-on-production.ts` — shared helper to mark linked leads Won when a ticket enters production
+- `supabase/migrations/075_won_on_production_release.sql` — backfill Won status to match production release
+
+### Changed
+- Lead `sales_status: "Won"` (SDR Won tab) is set only when the linked ticket is released to `in_production`, not at order conversion
+- Sales dashboard Won KPIs count tickets in `in_production` or `completed` only (not pending `order` status)
+- Admin dashboard revenue and won-leads metrics aligned to production release; fixed won-leads count using lead query instead of ticket array length
+- Leads Won tab empty state and ticket display prefer in-production tickets
+
+### Removed
+- Early Won marking on manual order conversion, public quote confirm, and payment submit (before production gates pass)
+
 ## [2026-05-22] — Quote reference codes (QUO-YYYY-NNNN)
 
 ### Added

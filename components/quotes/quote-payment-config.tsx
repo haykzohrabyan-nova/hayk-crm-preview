@@ -5,6 +5,7 @@ import { ChevronDown } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { DatePicker } from "@/components/ui/date-picker";
+import { digitsOnly } from "@/lib/utils/phone";
 
 // ── Payment channels (matches pulse-quote-payment.js PAY_CHANNELS) ────────────
 
@@ -529,9 +530,11 @@ export default function QuotePaymentConfig({ quoteTotal, initialConfig, onChange
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. RCT-10482"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  placeholder="e.g. 10482"
                   value={cfg.ticket_receipt_id}
-                  onChange={(e) => patch({ ticket_receipt_id: e.target.value })}
+                  onChange={(e) => patch({ ticket_receipt_id: digitsOnly(e.target.value) })}
                   style={field}
                 />
               </div>
@@ -623,9 +626,11 @@ export default function QuotePaymentConfig({ quoteTotal, initialConfig, onChange
               </label>
               <input
                 type="text"
-                placeholder="e.g. RCT-10482"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                placeholder="e.g. 10482"
                 value={cfg.ticket_receipt_id}
-                onChange={(e) => patch({ ticket_receipt_id: e.target.value })}
+                onChange={(e) => patch({ ticket_receipt_id: digitsOnly(e.target.value) })}
                 style={field}
               />
             </div>

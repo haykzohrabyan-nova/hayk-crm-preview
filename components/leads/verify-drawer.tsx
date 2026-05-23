@@ -17,6 +17,7 @@ import { StatusPill } from "@/components/ui/status-pill";
 import { HoldSubForm } from "@/components/leads/hold-sub-form";
 import { Activity, HoldForm, Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
+import { URGENCY_NOT_DEFINED, urgencyDbToForm, urgencyFormToDb } from "@/lib/utils/urgency-form";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
 import {
@@ -83,7 +84,7 @@ const AUTHORITY_OPTIONS = [
   { value: "no", label: "No" },
 ];
 
-const URGENCY_NOT_DEFINED = { value: "not_defined", label: "Not Defined" };
+const URGENCY_NOT_DEFINED_OPTION = URGENCY_NOT_DEFINED;
 
 function formFromLead(lead: Lead): DrawerForm {
   const c = lead.customer;
@@ -97,7 +98,7 @@ function formFromLead(lead: Lead): DrawerForm {
     company: c?.company ?? "",
     industry: c?.industry ?? "",
     website: c?.website ?? "",
-    urgency: lead.urgency ?? "not_defined",
+    urgency: urgencyDbToForm(lead.urgency),
     is_returning_customer: lead.is_returning_customer,
     initial_interest: lead.initial_interest ?? "",
     sdr_comment: lead.sdr_comment ?? "",
@@ -210,6 +211,17 @@ export function VerifyDrawer({
   const isRejected = lead.status === "Rejected";
   const isReadOnly = readOnly || (isRejected && !isAdmin);
 
+  // Re-sync form when opening a different lead in the same drawer instance
+  useEffect(() => {
+    setLead(initialLead);
+    setForm(formFromLead(initialLead));
+    setProductRows(rowsFromLead(initialLead));
+    setFooterMode("actions");
+    setActiveTab("info");
+    setActivitiesFetched(false);
+    setActivities([]);
+  }, [initialLead]);
+
   // Product types from admin panel
   const [productTypes, setProductTypes] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
@@ -296,7 +308,7 @@ export function VerifyDrawer({
     return {
       source: form.source || null,
       authority: form.authority || null,
-      urgency: (form.urgency && form.urgency !== "not_defined") ? form.urgency : null,
+      urgency: urgencyFormToDb(form.urgency),
       is_returning_customer: form.is_returning_customer,
       sdr_comment: form.sdr_comment || null,
       initial_interest: form.initial_interest.trim() || null,
@@ -466,7 +478,7 @@ export function VerifyDrawer({
 
   const sources = lookups.source ?? [];
   const industries = lookups.industry ?? [];
-  const urgencyOptions = [URGENCY_NOT_DEFINED, ...(lookups.urgency ?? [])];
+  const urgencyOptions = [URGENCY_NOT_DEFINED_OPTION, ...(lookups.urgency ?? [])];
   const rejectReasons = lookups.reject_reason ?? [];
   const holdReasons = lookups.hold_reason ?? [];
 
@@ -562,7 +574,8 @@ export function VerifyDrawer({
           </div>
         )}
 
-        {/* Tab bar */}
+        {/* Tab bar — hidden while putting on hold */}
+        {footerMode !== "hold" && (
         <div
           className="flex shrink-0"
           style={{ borderBottom: "1px solid var(--color-border)" }}
@@ -581,10 +594,23 @@ export function VerifyDrawer({
             </button>
           ))}
         </div>
+        )}
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+        <div className={`flex-1 min-h-0 overflow-y-auto px-5 py-5 ${footerMode === "hold" ? "flex flex-col" : "space-y-6"}`}>
 
+          {footerMode === "hold" ? (
+            <HoldSubForm
+              fullScreen
+              form={holdForm}
+              reasons={holdReasons}
+              onChange={setHoldForm}
+              onConfirm={handleHoldConfirm}
+              onCancel={() => setFooterMode("actions")}
+              saving={saving}
+            />
+          ) : (
+          <>
           {activeTab === "info" && (
             <>
               {/* Contact Information */}
@@ -1035,9 +1061,12 @@ export function VerifyDrawer({
               )}
             </section>
           )}
+          </>
+          )}
         </div>
 
         {/* ── Footer ─────────────────────────────────────────────────────── */}
+        {footerMode !== "hold" && (
         <div
           className="shrink-0 px-5 py-4 space-y-3"
           style={{ borderTop: "1px solid var(--color-border)" }}
@@ -1070,18 +1099,6 @@ export function VerifyDrawer({
                 </button>
               </div>
             </div>
-          )}
-
-          {/* Hold sub-form */}
-          {footerMode === "hold" && (
-            <HoldSubForm
-              form={holdForm}
-              reasons={holdReasons}
-              onChange={setHoldForm}
-              onConfirm={handleHoldConfirm}
-              onCancel={() => setFooterMode("actions")}
-              saving={saving}
-            />
           )}
 
           {/* Reject sub-form */}
@@ -1239,6 +1256,7 @@ export function VerifyDrawer({
             </button>
           )}
         </div>
+        )}
       </div>
       </div>
     </>

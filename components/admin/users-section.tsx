@@ -52,7 +52,49 @@ interface UserRow {
   created_at: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+interface EmailDelivery {
+  attempted: boolean;
+  ok: boolean;
+  error?: string;
+  login_url?: string;
+}
+
+function logEmailDelivery(
+  context: "create" | "reset",
+  email: string,
+  delivery?: EmailDelivery,
+) {
+  if (!delivery) return;
+  const label = context === "reset" ? "password-reset" : "welcome";
+  if (delivery.ok) {
+    console.info(
+      `[admin-user-email:${label}] Instantly accepted send to ${email}`,
+      delivery.login_url ? `— login button: ${delivery.login_url}` : "",
+    );
+  } else {
+    console.warn(`[admin-user-email:${label}] failed for ${email}`, delivery.error ?? "unknown error");
+  }
+}
+
+function emailDeliveryToast(
+  base: string,
+  email: string,
+  delivery?: EmailDelivery,
+  reset = false,
+): { message: string; type: "success" | "error" } {
+  if (!delivery?.attempted) {
+    return { message: base, type: "success" };
+  }
+  if (delivery.ok) {
+    const kind = reset ? "Password reset email sent" : "Welcome email sent";
+    return { message: `${base} — ${kind} to ${email}.`, type: "success" };
+  }
+  const kind = reset ? "password reset email" : "welcome email";
+  return {
+    message: `${base} — ${kind} failed${delivery.error ? `: ${delivery.error}` : ""}. Share the password manually.`,
+    type: "error",
+  };
+}
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
@@ -125,7 +167,7 @@ function CreateUserDialog({
   roles: Role[];
   open: boolean;
   onClose: () => void;
-  onCreated: (user: UserRow) => void;
+  onCreated: (user: UserRow, emailDelivery?: EmailDelivery) => void;
 }) {
   const [form, setForm] = useState({
     full_name: "",
@@ -165,8 +207,9 @@ function CreateUserDialog({
     const data = await res.json();
     setSaving(false);
     if (!res.ok) { setError(data.error ?? "Failed to create user."); return; }
+    logEmailDelivery("create", data.user?.email ?? form.email, data.email_delivery);
     reset();
-    onCreated(data.user);
+    onCreated(data.user, data.email_delivery);
   }
 
   const nonAdminRoles = roles.filter((r) => r.name !== "admin");
@@ -297,7 +340,7 @@ function EditUserDialog({
   roles: Role[];
   open: boolean;
   onClose: () => void;
-  onSaved: (updated: UserRow) => void;
+  onSaved: (updated: UserRow, emailDelivery?: EmailDelivery) => void;
 }) {
   const [fullName, setFullName] = useState("");
   const [roleId, setRoleId] = useState("");
@@ -354,7 +397,8 @@ function EditUserDialog({
     const data = await res.json();
     setSaving(false);
     if (!res.ok) { setError(data.error ?? "Failed to save."); return; }
-    onSaved(data.user);
+    logEmailDelivery("reset", data.user?.email ?? user.email, data.email_delivery);
+    onSaved(data.user, data.email_delivery);
   }
 
   return (
@@ -425,7 +469,7 @@ function EditUserDialog({
             </div>
             {newPw && (
               <p className="text-xs text-muted-foreground">
-                User will be required to change this password on next login.
+                User will be required to change this password on next login. A reset email with the new password will be sent via Instantly (if configured).
               </p>
             )}
           </div>
@@ -788,10 +832,15 @@ export function UsersSection() {
         roles={roles}
         open={createOpen}
         onClose={() => setCreateOpen(false)}
-        onCreated={(user) => {
+        onCreated={(user, emailDelivery) => {
           setCreateOpen(false);
           setUsers((prev) => [user, ...prev]);
-          showToast(`User ${user.full_name ?? user.email} created — share their password.`);
+          const toast = emailDeliveryToast(
+            `User ${user.full_name ?? user.email} created`,
+            user.email,
+            emailDelivery,
+          );
+          showToast(toast.message, toast.type);
         }}
       />
 
@@ -801,10 +850,11 @@ export function UsersSection() {
         roles={roles}
         open={editingUser !== null}
         onClose={() => setEditingUser(null)}
-        onSaved={(updated) => {
+        onSaved={(updated, emailDelivery) => {
           setUsers((prev) => prev.map((u) => u.id === updated.id ? { ...u, ...updated } : u));
           setEditingUser(null);
-          showToast("User updated.");
+          const toast = emailDeliveryToast("User updated", updated.email, emailDelivery, true);
+          showToast(toast.message, toast.type);
         }}
       />
 

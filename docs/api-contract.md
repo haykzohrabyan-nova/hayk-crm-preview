@@ -29,7 +29,7 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 | `prev_status` | `string` | Filter by `prev_status` value — used by Sales Rejected tab to restrict to `Routed to Sales` |
 | `scope` | `string` | `mine` — restrict to leads where `sdr_id = current user` |
 | `search` | `string` | Full-text search on name, email, phone, company |
-| `won` | `"true"` | Return leads where `sales_status = 'Won'`. SDR sees own won leads; admin sees all. Response rows include joined order fields: `reference_code`, `quote_final_total`, and `created_by` (closer's full name from `user_profiles`). |
+| `won` | `"true"` | Return leads where `sales_status = 'Won'` (set when linked ticket enters production). SDR sees own won leads; admin sees all. Response rows include joined ticket fields: `reference_code`, `quote_final_total`, and `created_by` (closer's full name from `user_profiles`). Prefers in-production ticket when multiple exist. |
 
 **Response `200`:**
 ```json
@@ -497,6 +497,31 @@ Create a new ticket.
 
 ---
 
+### `GET /api/tickets/[id]`
+
+Returns a single ticket with full detail (line items, payment config, linked lead/customer joins).
+
+**Auth:** Requires authenticated session.
+
+**URL segment:** UUID or human reference code (`QUO-YYYY-NNNN`, `ORD-YYYY-NNN`).
+
+**Access scoping:**
+- **Admin** — any ticket
+- **Accountant** — any ticket (matches `scopeJobTicketsQuery` on list routes; fixes 403 on `/orders/[id]`)
+- **Sales / Admin** — may also read `routed` tickets they do not own (SDR hand-offs awaiting claim)
+- **SDR / Sales** — own tickets (`created_by_id = currentUser`) only, plus routed exception above
+
+**Response `200`:**
+```json
+{ "ticket": Ticket }
+```
+
+**Response `403`:** Ticket exists but caller lacks read access.
+
+**Response `404`:** Ticket not found.
+
+---
+
 ### `PATCH /api/tickets/[id]`
 
 Partial ticket update. Six distinct operation modes:
@@ -579,7 +604,10 @@ Body: Any subset of ticket fields plus optional:
   - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
   - Sets `ticket_kind = "order"`
   - Logs `ticket_converted` activity
-  - If ticket has `linked_lead_id`: updates `leads.sales_status = 'Won'` on the linked lead
+  - **Does not** set `leads.sales_status = 'Won'` — Won is deferred until production release (`markLeadWonOnProduction()`)
+- If `ticket_status` transitions to `"in_production"` (manual release, payment confirm, net terms auto-release, etc.):
+  - Sets `production_released_at`
+  - If ticket has `linked_lead_id`: calls `markLeadWonOnProduction()` → `leads.sales_status = 'Won'`
 - If `quote_approval_last_requested_at` is set → logs `quote_approval_requested`
 - If `follow_up_completed` transitions to `true` → logs `quote_follow_up_completed`
 - If `follow_up_at` is reset → logs `quote_follow_up_reset`
@@ -860,8 +888,8 @@ Customer confirms a quote, converting it to an order.
 - Sets `client_confirmed = true`, `ticket_status = "order"`, `ticket_kind = "order"`
 - Generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
 - May auto-release to `in_production` when net terms / payment gates pass (`maybeAutoReleaseProduction`)
+- If auto-release succeeds: `markLeadWonOnProduction()` sets linked lead `sales_status = 'Won'`
 - Logs `order_ticket_status_changed` and `ticket_client_confirmed` activities with `by_user_id = null` (customer action)
-- If ticket has `linked_lead_id`: updates `leads.sales_status = 'Won'` on the linked lead (SDR/Sales Won tracking)
 
 **Response `200`:**
 ```json
@@ -885,12 +913,12 @@ Customer submits payment proof or records an in-person payment from the public p
 | `method` | Yes | `wire` \| `ach` \| `zelle` \| `check` \| `card` \| `cash` |
 | `amount` | Yes | Payment amount (numeric string) |
 | `file` | Conditional | Evidence file — required for wire/ACH/zelle/check/card |
-| `receiptId` | No | Receipt reference for cash-in-person |
+| `receiptId` | Conditional | Receipt reference for cash-in-person — **digits only**; required when quote send validation requires it |
 
 **Business rules:**
 - Allowed when `ticket_status IN ('sent', 'order', 'in_production')`
 - Wire/ACH/Zelle/check/card: stores file in `payment-evidence` bucket; sets evidence fields + `payment_evidence_amount`; **does not** update `payment_amount_received` or mark paid — queues for accountant on `/payments`
-- Cash: records payment immediately; may auto-release to `in_production` when gates pass
+- Cash: records payment immediately; may auto-release to `in_production` when gates pass — **lead Won** only if production release succeeds
 - `sent` → `order` conversion on first payment (generates ORD reference)
 - Follow-up balance payments allowed when already partially paid or `in_production`
 - Logs `ticket_payment_evidence_submitted` and status-change activities in History
@@ -1078,8 +1106,8 @@ Returns KPI metrics scoped to the current user's role and optional date range.
 - `claimed_leads` — current snapshot: `Pending/Validated` workspace leads owned by an SDR
 - `inbox_leads` — current snapshot: leads still in inbox (`is_inbox = true`)
 - `routed_leads` — current snapshot: leads with `status = 'Routed to Sales'`
-- `won_leads` — leads with `sales_status = 'Won'` in the selected period
-- `total_revenue` — sum of `quote_total` for won leads in the selected period
+- `won_leads` — leads with `sales_status = 'Won'` created in the selected period (Won set at production release)
+- `total_revenue` — sum of `quote_final_total` from tickets in `in_production` or `completed` created in the selected period
 - `pipeline_value` — sum of `quote_total` for all `Routed to Sales` leads (live snapshot)
 - `sdr_performance` — per-SDR breakdown: `{ id, full_name, handled, routed, rejected, quote_value, share_pct }`
 - `rejection_reasons` — top rejection reasons: `{ reason, count }[]` sorted by count desc
@@ -1329,16 +1357,22 @@ Update a user's role, active status, full name, or reset their temp password.
 ```
 
 **Business rules:**
-- If `new_temp_password` is provided: calls `supabase.auth.admin.updateUserById` to set the new password, sets `must_change_password = true` on `user_profiles`, then **automatically sends a branded password-reset email** to the user via Instantly AI (fire-and-forget). Email includes their new temp password and a login CTA. Silently skips if Instantly is not configured.
+- If `new_temp_password` is provided: calls `supabase.auth.admin.updateUserById` to set the new password, sets `must_change_password = true` on `user_profiles`, then **awaits** a branded password-reset email via Instantly AI. Email includes their new temp password and a login CTA. Response includes delivery status so the admin UI can confirm or surface failures.
 - Cannot change own role or deactivate own account
 - Cannot deactivate the last active Admin (guard: count of active Admins > 1)
 
 **Response `200`:**
 ```json
 {
-  "user": UserProfile
+  "user": UserProfile,
+  "email_delivery": {
+    "attempted": true,
+    "ok": true
+  }
 }
 ```
+
+When Instantly is not configured or delivery fails, `email_delivery.ok` is `false` and `error` explains why (e.g. `"Instantly credentials not configured."`). Omitted when no password was reset.
 
 ---
 

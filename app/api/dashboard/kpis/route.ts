@@ -131,12 +131,12 @@ export async function GET(request: NextRequest) {
         .from("leads")
         .select("id, status, sales_status")
         .eq("sales_owner_id", userId),
-      // Won value + count: tickets this rep owns that became orders in the period
+      // Won value + count: tickets this rep owns released to production in the period
       admin
         .from("job_tickets")
         .select("quote_final_total", { count: "exact" })
         .eq("created_by_id", userId)
-        .in("ticket_status", ["order", "in_production", "completed"])
+        .in("ticket_status", ["in_production", "completed"])
         .gte("created_at", periodStart),
       // Pipeline value: active quote/draft tickets owned by this rep (all-time snapshot)
       admin
@@ -210,11 +210,11 @@ export async function GET(request: NextRequest) {
       .from("leads")
       .select("id", { count: "exact", head: true })
       .eq("status", "Routed to Sales"),
-    // Won revenue: sum final totals from actual orders in period
+    // Won revenue: sum final totals from tickets in production in period
     admin
       .from("job_tickets")
       .select("quote_final_total")
-      .in("ticket_status", ["order", "in_production", "completed"])
+      .in("ticket_status", ["in_production", "completed"])
       .gte("created_at", periodStart),
     // Pipeline value: sum final totals from active quotes/drafts
     admin
@@ -234,7 +234,7 @@ export async function GET(request: NextRequest) {
       .select("id", { count: "exact", head: true })
       .eq("sales_status", "Quote Sent")
       .gte("created_at", periodStart),
-    // Leads created in period that were Won (converted to order)
+    // Leads created in period that were Won (released to production)
     admin
       .from("leads")
       .select("id", { count: "exact", head: true })
@@ -339,7 +339,7 @@ export async function GET(request: NextRequest) {
     ordered_leads:     ordered_leads_count,
     inbox_leads:       inboxLeads.count ?? 0,
     routed_leads:      routedLeads.count ?? 0,
-    won_leads:         wonTickets.length,
+    won_leads:         orderedLeads.count ?? 0,
     total_revenue:     wonTickets.reduce((s, t) => s + ((t.quote_final_total as number) ?? 0), 0),
     pipeline_value:    pipeline.reduce((s, t) => s + ((t.quote_final_total as number) ?? 0), 0),
     sdr_performance,

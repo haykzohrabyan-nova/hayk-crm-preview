@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { sendQuoteToCustomer, sendPaymentReminder, sendPaymentConfirmed, sendInvoiceLinkToCustomer, sendOrderReadyToCustomer, resolveTicketOutreach } from "@/lib/integrations/send-quote";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
+import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
 import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
 import {
   assignOrderReferenceCode,
@@ -123,6 +124,10 @@ async function maybeAutoRecordCashPayment(
 
   await admin.from("job_tickets").update(payPatch).eq("id", ticket.id);
 
+  if (autoReleased) {
+    await markLinkedLeadWonOnProduction(admin, ticket.linked_lead_id, now);
+  }
+
   await admin.from("activities").insert({
     type:        "ticket_payment_evidence_submitted",
     lead_id:     ticket.linked_lead_id ?? null,
@@ -169,25 +174,16 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   // Scope check: reps can only view their own tickets.
   // Exception: sales/admin can view 'routed' tickets (SDR hand-offs awaiting claim).
-  // Exception: accountant can view any order with payment evidence for review.
+  // Exception: accountant can view any ticket (matches scopeJobTicketsQuery on list routes).
   const isRoutedForSales =
     ticket.ticket_status === "routed" &&
     (roleName === "sales" || roleName === "admin");
 
-  const isAccountantEvidenceReview =
-    roleName === "accountant" &&
-    (ticket as Record<string, unknown>).payment_evidence_url != null;
-
-  const isAccountantProductionView =
-    roleName === "accountant" &&
-    (ticket.ticket_status === "in_production" || ticket.ticket_status === "completed");
-
   if (
     roleName !== "admin" &&
+    roleName !== "accountant" &&
     ticket.created_by_id !== userId &&
-    !isRoutedForSales &&
-    !isAccountantEvidenceReview &&
-    !isAccountantProductionView
+    !isRoutedForSales
   ) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
@@ -530,6 +526,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const hadPendingEvidence = !!cur?.payment_evidence_submitted_at && !!cur?.payment_evidence_url;
 
     if (payPatch.production_released_at) {
+      await markLinkedLeadWonOnProduction(admin, existing.linked_lead_id, now);
+
       await admin.from("activities").insert({
         type:        "ticket_production_released",
         lead_id:     existing.linked_lead_id ?? null,
@@ -773,6 +771,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     .eq("id", ticketId)
     .single();
 
+  if (
+    responseTicket?.ticket_status === "in_production" &&
+    existing.ticket_status !== "in_production"
+  ) {
+    await markLinkedLeadWonOnProduction(admin, existing.linked_lead_id, now);
+  }
+
   // Log activity for every meaningful action
   if ("ticket_status" in body) {
     const isResend = body.ticket_status === "sent" && existing.ticket_status === "sent";
@@ -804,15 +809,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         payload: { reference_code: patch.reference_code ?? null },
         created_at: now,
       });
-
-      // Mark the linked lead as Won — gives SDR and Sales credit.
-      // Case 1: SDR routed → Sales converted  Case 2: SDR converted directly  Case 3: no lead (skip)
-      if (existing.linked_lead_id) {
-        await admin
-          .from("leads")
-          .update({ sales_status: "Won", updated_at: now })
-          .eq("id", existing.linked_lead_id);
-      }
     } else if (body.ticket_status !== existing.ticket_status) {
       await admin.from("activities").insert({
         type: "order_ticket_status_changed",

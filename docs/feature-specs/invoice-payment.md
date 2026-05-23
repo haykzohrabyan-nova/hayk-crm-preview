@@ -145,7 +145,7 @@ Additional UX:
 
 ### Payment evidence workflow (Accountant)
 
-1. Customer submits proof via `POST /api/public/quotes/[token]/submit-payment` (multipart: `method`, `amount`, optional `file`, optional `receiptId`)
+1. Customer submits proof via `POST /api/public/quotes/[token]/submit-payment` (multipart: `method`, `amount`, optional `file`, optional `receiptId` — **digits only** for cash)
 2. For wire / ACH / Zelle / check / card: file stored in Supabase Storage `payment-evidence` bucket; `payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_amount` set; **payment totals are NOT updated**
 3. Ticket appears on **`/payments`** only (excluded from `/orders` until confirmed)
 4. Accountant opens `/payments/[id]`, reviews evidence (`GET /api/tickets/[id]/evidence` signed URL), clicks **Confirm**
@@ -163,6 +163,14 @@ Triggered from:
 - Accountant `record_payment` confirm
 
 Shared helper: `lib/utils/maybe-auto-release-production.ts` (migration 072 adds net-terms support flag if needed).
+
+When production release succeeds, `markLeadWonOnProduction()` sets the linked lead's `sales_status = 'Won'` (SDR Won tab + dashboard metrics). Won is **not** set at order conversion alone.
+
+### Quote send validation (staff)
+
+Before a rep can **Send Quote** or **Convert to Order**, `lib/utils/validate-quote-send.ts` checks required fields. Draft saves remain permissive.
+
+When cash/offline deposit or full cash-only payment is configured, **Receipt ID** is required and must be numeric only. Missing fields disable send buttons and show an amber banner listing what's incomplete.
 
 ### Resend invoice link & pickup notification
 

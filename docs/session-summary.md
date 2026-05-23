@@ -1,6 +1,35 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 21, 2026
-**Status:** MVP complete + full order lifecycle (Payments → Production → Completed) + Accountant role + public customer portal with payment evidence review + unified ticket detail overview across all stages. See **May 21, 2026 session** below for latest shipped work. Documentation synced 2026-05-21.
+**Last updated:** May 23, 2026
+**Status:** MVP complete + full order lifecycle + Won credit on production release + quote send validation + dev test reset. See **May 23, 2026 session** below for latest shipped work.
+
+---
+
+## May 23, 2026 — Won on production, quote validation, UX fixes
+
+### Won credit timing
+- Lead `sales_status: "Won"` (SDR Won tab) set only when linked ticket enters **`in_production`**, not at order conversion
+- `lib/utils/mark-lead-won-on-production.ts` — shared helper called from all production-release paths
+- Sales dashboard Won KPIs count tickets in `in_production` + `completed` only
+- Admin revenue/won-leads aligned; migration `075_won_on_production_release.sql` backfills existing data
+
+### Quote send validation
+- `lib/utils/validate-quote-send.ts` — shared validation before Send / Convert
+- Draft save still allowed with incomplete fields; Send disabled with amber missing-fields banner
+- Receipt ID required for cash/offline paths; **digits only**
+
+### Quote detail UX
+- Action bar: Cancel left; Send/Resend/Convert grouped right; Convert uses verify button styling
+
+### SDR / leads UX
+- Hold modal: full-screen hold form hides tabs + lead form until confirmed/cancelled
+- Urgency fix: `lib/utils/urgency-form.ts` maps DB `High`/`Medium`/`Low` ↔ lookup `high`/`medium`/`low`
+
+### Accountant access
+- `GET /api/tickets/[id]` — accountants can read any ticket (fixes 403 on `/orders/[id]`)
+
+### Dev test reset
+- `npm run reset-test-data` — clears `payment-evidence` bucket via Storage API, then runs DB wipe SQL
+- `supabase/migrations/076_full_test_reset.sql` — DB-only portion (no direct `storage.objects` delete)
 
 ---
 
@@ -135,7 +164,7 @@ Full business-rule enforcement and payment workflow built:
 - **Record locking**: Once a customer approves a quote (`client_confirmed = true`), the record is **locked for SDR/Sales users**. Only admins can cancel or edit it. A "Record Locked" banner is shown to non-admins. `isLocked` logic: `ticket.ticket_status === "cancelled" || (isCustomerApproved && userRole !== "admin")`.
 - **"Convert to Order" (was "Mark Won")**: The "Mark Won" button was replaced with **"Convert to Order"**. Clicking it sets `ticket_status = "order"`, auto-generates `ORD-YYYY-NNN` reference code, sets `ticket_kind = "order"`, and logs `ticket_converted` activity. Mirrors the customer confirmation flow exactly.
 - **`approved` status phased out**: The intermediate `approved` state is no longer used. Tickets go directly `sent → order` (either by customer or by rep clicking "Convert to Order"). The `approved` status is kept in the `TicketStatus` type for backwards compatibility only.
-- **SDR/Sales Won tracking**: When a ticket becomes an order (either path), the linked lead's `sales_status` is automatically updated to `"Won"`. Handled in both `PATCH /api/tickets/[id]` (manual conversion) and `POST /api/public/quotes/[token]/confirm` (customer confirmation).
+- **SDR/Sales Won tracking**: When a linked ticket enters **`in_production`**, the lead's `sales_status` is automatically updated to `"Won"`. Handled by `markLeadWonOnProduction()` on all production-release paths (not at order conversion).
 - **SDR workspace "Won" tab**: New "Won" tab added to `/leads` (SDR workspace) at `components/leads/leads-page.tsx`. Shows all leads where `sales_status = "Won"` for the current SDR (admin sees all). Displays order reference code, total, and closer name. API: `GET /api/leads/workspace?won=true`. Count: `GET /api/leads/workspace/counts` now includes `won`.
 - **Payment Link Bar**: New `PaymentLinkBar` component visible on confirmed, unpaid orders. Shows: copyable public URL `/q/[token]` + channel selector (Email/SMS/WhatsApp) + pre-filled destination (switches to email or phone on channel change, user can override) + "Send Payment Link" button. Triggers `PATCH /api/tickets/[id]` with `{ send_payment_reminder: true, reminder_channel, reminder_destination }`.
 - **Payment reminder email template**: New `lib/integrations/payment-reminder-template.ts` — dedicated "Pay Now" focused email. Shows order reference, amount due, payment methods, large "Pay Now" CTA. No line items.
@@ -348,7 +377,7 @@ See `docs/schema.md` → Migration File Order for the full list (001–054). Key
 | 052 | `add_public_token_to_tickets` | `public_token` UUID column + unique index on job_tickets |
 | 053 | `add_payment_status_to_tickets` | `payment_status` column (`unpaid`\|`partial`\|`paid`, default `unpaid`) |
 | 054 | `add_prepayment_status_to_tickets` | `prepayment_status` column (`pending`\|`paid`, default `pending`) — Stripe-ready |
-| 055 | `reset_tickets_for_testing` | **DEV ONLY** — deletes all job_tickets + ticket activities; resets order sequence counter; resets Won/Quoted leads |
+| 076 | `full_test_reset` | **DEV ONLY** — SQL wipe for clean testing; use with `npm run reset-test-data` for storage + DB |
 | 056 | `add_idle_timeout_to_company_settings` | adds `session_idle_timeout_minutes` INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to `company_settings` |
 | 057 | `create_user_sessions` | `user_sessions` table: one row per login session; tracks `signed_in_at`, `signed_out_at`, `sign_out_reason`; RLS: users read/write own rows, admin reads all via service role |
 | 058 | `add_reports_page` | adds `/reports` to `pages` table (section: main, sort_order: 9); access granted per-role via Admin panel |
@@ -453,7 +482,7 @@ SALES PIPELINE (Routed to Sales)
 | ~~Prepayment / Deposit system~~ | ✅ Done (2026-05-15) | Full/Partial toggle, deposit status tracking, payment schedule on public page, Stripe-ready |
 | ~~Record Locking~~ | ✅ Done (2026-05-16) | Customer-approved records locked for non-admins; "Record Locked" banner |
 | ~~Convert to Order flow~~ | ✅ Done (2026-05-16) | "Convert to Order" button replaces "Mark Won"; auto ORD-YYYY-NNN; `approved` status retired |
-| ~~SDR/Sales Won tracking~~ | ✅ Done (2026-05-16) | `leads.sales_status = "Won"` auto-set on order conversion; "Won" tab in SDR workspace |
+| ~~SDR/Sales Won tracking~~ | ✅ Done (2026-05-16, updated 2026-05-23) | `leads.sales_status = "Won"` on **production release**; "Won" tab in SDR workspace |
 | ~~Payment Link Bar~~ | ✅ Done (2026-05-16) | Send payment reminders via Email/SMS/WhatsApp from locked order detail |
 | ~~Mobile-responsive detail page~~ | ✅ Done (2026-05-16) | `flex-col lg:flex-row`, wrapping header, responsive grids, swipeable tabs |
 | ~~User Session Tracking~~ | ✅ Done (2026-05-17) | Idle sign-out timer, session logging, admin User Activity tab, `/policy` page. |

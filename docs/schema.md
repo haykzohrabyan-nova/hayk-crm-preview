@@ -342,7 +342,7 @@ create table public.leads (
 **`sales_status` (Sales pipeline):**
 - `Ongoing` — Sales rep has claimed the lead and is actively working it
 - `Quote Sent` — Sales has sent a formal quote
-- `Won` — converted to an order
+- `Won` — linked ticket released to **`in_production`** (auto-set by `markLeadWonOnProduction()` — not at order conversion)
 - `On Hold` — Sales-initiated hold; can only return to `Ongoing` or go to `Rejected`
 - `Rejected` — **TERMINAL** for Sales. Only Admin can change this. (Note: a Sales-rejected lead uses `sales_status = 'Rejected'`; the `status` field remains `Routed to Sales`)
 
@@ -1151,7 +1151,7 @@ When creating Supabase migrations under `supabase/migrations/`:
 052_add_public_token_to_tickets.sql  ← adds public_token UUID column (DEFAULT gen_random_uuid()) + unique index to job_tickets
 053_add_payment_status_to_tickets.sql ← adds payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK ('unpaid','partial','paid') to job_tickets
 054_add_prepayment_status_to_tickets.sql ← adds prepayment_status TEXT NOT NULL DEFAULT 'pending' CHECK ('pending','paid') to job_tickets; Stripe webhook will update this
-055_reset_tickets_for_testing.sql    ← DEV ONLY: deletes all job_tickets + ticket activities, resets order_sequence_counters, resets Won/Quoted leads back to Ongoing/Validated
+055_reset_tickets_for_testing.sql    ← DEV ONLY: deletes all job_tickets + ticket activities, resets order_sequence_counters, resets Won/Quoted leads back to Ongoing/Validated. **Superseded for full resets** by `npm run reset-test-data` (see `scripts/full-test-reset.mjs` + migration 076)
 056_add_idle_timeout_to_company_settings.sql ← adds session_idle_timeout_minutes INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to company_settings
 057_create_user_sessions.sql         ← user_sessions table: one row per login session; tracks signed_in_at, signed_out_at, sign_out_reason ('manual'|'auto'|'deactivated'|'unknown'); RLS: users read/write own rows, admin reads all via service role
 058_add_reports_page.sql             ← seeds /reports page entry
@@ -1166,4 +1166,7 @@ When creating Supabase migrations under `supabase/migrations/`:
 071_payment_evidence_amount.sql      ← payment_evidence_amount column; backfill incorrectly auto-paid evidence tickets
 072_net_terms_auto_production.sql    ← net terms auto-release to in_production support
 073_performance_indexes.sql          ← partial indexes for orders, production, leads count queries
+074_quote_reference_codes.sql        ← quote_sequence_counters, increment_quote_sequence RPC, QUO-YYYY-NNNN on quote create
+075_won_on_production_release.sql    ← backfill leads.sales_status = Won to match tickets in in_production/completed
+076_full_test_reset.sql              ← DEV ONLY: SQL wipe of tickets, activities, evidence fields, sequence counters (no storage)
 ```

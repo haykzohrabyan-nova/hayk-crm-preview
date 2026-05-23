@@ -6,7 +6,7 @@ Route: `/leads` (SDR + Admin only)
 
 ## Overview
 
-The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page** with four tabs. The SDR works leads from the Inbox, validates them, and routes them to Sales, marks them as quoted, rejects them, or puts them on hold.
+The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page** with five tabs. The SDR works leads from the Inbox, validates them, and routes them to Sales, marks them as quoted, rejects them, puts them on hold, or tracks Won conversions.
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Verify Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
@@ -127,7 +127,35 @@ Client-side filters applied to the fetched result set:
 | `Quoted` | `Quote Sent` | Quote Sent | Sales rep created a quote with line items and sent it |
 | `Routed to Sales` | `On Hold` | On Hold | Sales rep put the lead on hold |
 | `Routed to Sales` | `Dropped` | Dropped | Sales rep dropped the deal without formal reject |
-| `Quoted` | `Won` | _(excluded)_ | Order confirmed — lead exits this tab, appears in Won tab |
+| `Quoted` | `Won` | _(excluded)_ | Linked ticket released to production — lead exits this tab, appears in Won tab |
+
+---
+
+## Tab: Won
+
+**Data:** `GET /api/leads/workspace?won=true`
+
+- **SDR:** only their own won leads (`sdr_id = currentUserId`)
+- **Admin:** all won leads across every SDR
+
+A lead appears here when its linked ticket is released to **`in_production`** (not merely when it becomes an `order`). `markLeadWonOnProduction()` sets `sales_status = 'Won'` on all production-release paths (payment gates, accountant confirm, net terms auto-release, manual release).
+
+### Table Columns
+
+| Column | Notes |
+|--------|-------|
+| Name | |
+| Company | |
+| Order Ref | `ORD-YYYY-NNN` from linked ticket (prefers in-production ticket when multiple exist) |
+| Total | `quote_final_total` from linked ticket |
+| Closer | Sales rep who created/owns the ticket |
+| Won At | Relative time from ticket `production_released_at` or lead `updated_at` |
+
+### Behaviors
+
+- **Rows are clickable** — opens Verify Drawer in **read-only mode** (no lock, no action buttons)
+- Empty state copy explains that Won credit applies when the order enters production
+- Count badge from `GET /api/leads/workspace/counts` → `counts.won`
 
 ---
 
@@ -203,7 +231,7 @@ Fields (editable when verifying, read-only when viewing):
 | Company Name | Text | No | |
 | Industry | Dropdown | Yes | **Admin-managed** — loaded from `lookup_values` (`industry` category). Edit in Admin → Dropdown Options. |
 | Website / Social | Text | No | |
-| Urgency | Dropdown | No | **Admin-managed** — loaded from `lookup_values` (`urgency` category). "Not Defined" is a static sentinel prepended to the list. Edit real options in Admin → Dropdown Options. |
+| Urgency | Dropdown | No | **Admin-managed** — loaded from `lookup_values` (`urgency` category). "Not Defined" is a static sentinel prepended to the list. Edit real options in Admin → Dropdown Options. Lookup values use lowercase keys (`high`, `medium`, `low`); the DB stores title case (`High`, `Medium`, `Low`). `lib/utils/urgency-form.ts` maps between them on load/save so saved urgency displays correctly when reopening the drawer. |
 | Returning Customer | Checkbox | No | "Returning Customer (Existing Client)" — blue highlight row when checked |
 
 ### Lead Info Tab — Verify Lead Comment section
@@ -248,7 +276,7 @@ Actions available depending on drawer mode and current `status`. **All action bu
 |--------|---------------|--------------|
 | ~~**Validate**~~ | _Removed_ | The Validate step has been removed from the SDR workflow. SDRs go directly to Route to Sales, On Hold, or Reject. |
 | **Route to Sales** | Edit mode, any status | Saves all form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
-| **On Hold** | Edit mode, status not Rejected | Opens hold sub-form inline in footer |
+| **On Hold** | Edit mode, status not Rejected | Replaces drawer body with full-screen hold sub-form (tabs + lead form hidden until hold is confirmed or cancelled) |
 | **Resume** | Edit mode, `status = 'On Hold'` | Saves all form edits + restores to `Pending` |
 | **Reject** | Edit mode, status not Rejected | Opens rejection form inline in footer — **TERMINAL** |
 | **Save** | Edit mode (far-right of footer) | `PATCH /api/leads/[id]` with current form values; closes drawer on success |
@@ -262,7 +290,9 @@ Actions available depending on drawer mode and current `status`. **All action bu
 
 **Reject is terminal:** Once `status = 'Rejected'` is set, the drawer reopens in read-only mode for all non-Admin users. Only Admin sees an "Admin Override" banner with the ability to change status.
 
-### Hold Sub-form (inline in drawer footer)
+### Hold Sub-form (full-screen in drawer body)
+
+When the SDR clicks **On Hold**, the drawer tabs and lead form are hidden; the hold UI fills the modal body and the footer action row is hidden until hold is confirmed or cancelled (`fullScreen` prop on `HoldSubForm`).
 
 Radio button grid (2 columns). **Reasons are admin-managed** — loaded from `lookup_values` (`hold_reason` category) via `GET /api/lookups`. Admin edits from **Admin → Dropdown Options** without a code change.
 
@@ -407,7 +437,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 ### ✅ Built and working
 | Feature | Notes |
 |---------|-------|
-| All Leads / On Hold / Directed to Sales / Rejected tabs | Tab counts visible before clicking; scoped correctly per SDR |
+| All Leads / On Hold / Directed to Sales / Rejected / Won tabs | Tab counts visible before clicking; scoped correctly per SDR |
 | Lock-based lead visibility (soft lock / permanent ownership) | SDRs only see unlocked leads + their own; locked-by-other leads hidden; closing drawer does NOT release lock |
 | Admin Edit action (no lock) | Admin opens any lead in **edit mode** without acquiring a lock — "Save Changes" button in footer; active SDR's lock untouched |
 | Admin "Working" column | All Leads table shows which SDR owns each lead; mobile cards too |
@@ -416,7 +446,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Manual Add Lead modal | Phone lookup + deduplication banner + customer auto-fill |
 | Verify Drawer (soft lock, lock banner) | Lock acquired on Verify; ownership persists across close/save/validate/hold until Route or Reject |
 | Product Interests — select + quantity + has-design rows | Row-based UI in both Add Lead modal and Verify Drawer; each row has product select, quantity input, and Has Design toggle; present in both Add Lead modal and Verify Drawer |
-| Hold action (with reason, notes, hold-until date) | Full hold sub-form; SDR retains ownership while on hold |
+| Hold action (with reason, notes, hold-until date) | Full-screen hold sub-form hides lead form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
 | Reject (terminal) | Reason + notes; read-only after; ownership released |
 | Route to Sales | Available from any status (Pending, Validated, On Hold). Sets status + sales_status = Ongoing; ownership released |

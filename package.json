@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "reset-test-data": "node --env-file=.env.local scripts/full-test-reset.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

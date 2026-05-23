@@ -89,26 +89,43 @@ export async function PATCH(
   const { data: authUser } = await admin.auth.admin.getUserById(id);
   const userEmail = authUser?.user?.email ?? "";
 
-  // If a new temp password was set, email the user their new credentials
-  if (new_temp_password && userEmail) {
-    const { data: companyRow } = await admin
-      .from("company_settings")
-      .select("company_name,logo_url,address_line1,address_line2,city,state,zip,phone,email,website")
-      .eq("id", 1)
-      .single();
+  // If a new temp password was set, email the user their new credentials.
+  // Must await — fire-and-forget gets cut off when the serverless function returns on Vercel.
+  let emailDelivery: { attempted: boolean; ok: boolean; error?: string; login_url?: string } | undefined;
+  if (new_temp_password) {
+    if (!userEmail) {
+      emailDelivery = { attempted: false, ok: false, error: "User has no email address on file." };
+    } else {
+      const { data: companyRow } = await admin
+        .from("company_settings")
+        .select("company_name,logo_url,address_line1,address_line2,city,state,zip,phone,email,website")
+        .eq("id", 1)
+        .single();
 
-    sendWelcomeEmail({
-      fullName: profile.full_name ?? userEmail,
-      email: userEmail,
-      tempPassword: new_temp_password,
-      company: companyRow ?? {},
-      isReset: true,
-    }).then((result) => {
-      if (!result.ok) {
-        console.error("[send-reset-email] delivery failed:", result.error);
-      }
-    });
+      const result = await sendWelcomeEmail({
+        fullName: profile.full_name ?? userEmail,
+        email: userEmail,
+        tempPassword: new_temp_password,
+        company: companyRow ?? {},
+        isReset: true,
+        appOrigin: request.nextUrl.origin,
+      });
+
+      emailDelivery = {
+        attempted: true,
+        ok: result.ok,
+        ...(result.loginUrl ? { login_url: result.loginUrl } : {}),
+        ...(result.ok ? {} : { error: result.error }),
+      };
+
+      console.log(
+        `[admin-user-reset] user ${id} (${userEmail}) — email ${result.ok ? "sent" : "failed"} — login: ${result.loginUrl ?? "n/a"}${result.error ? ` — ${result.error}` : ""}`,
+      );
+    }
   }
 
-  return NextResponse.json({ user: { ...profile, email: userEmail } });
+  return NextResponse.json({
+    user: { ...profile, email: userEmail },
+    ...(emailDelivery ? { email_delivery: emailDelivery } : {}),
+  });
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
@@ -16,6 +16,10 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
+import {
+  formatQuoteSendMissingMessage,
+  getQuoteSendMissingFields,
+} from "@/lib/utils/validate-quote-send";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 import { createClient } from "@/lib/supabase/client";
 
@@ -361,27 +365,18 @@ export default function NewQuoteForm() {
     }
 
     if (status === "sent") {
-      const destChannel = paymentDraft.ticket_quote_channel;
-      const destEmail   = paymentDraft.ticket_dest_email?.trim() ?? "";
-      const destPhone   = paymentDraft.ticket_dest_phone?.trim() ?? "";
-
-      if (destChannel === "email" || destChannel === "both") {
-        if (!destEmail) {
-          setError("Please enter the customer's email address in the 'Send quote via' section.");
-          setTab("quote");
-          return;
-        }
-        const eErr = validateEmail(destEmail);
-        if (eErr) { setError(`Email address is invalid: ${eErr}`); setTab("quote"); return; }
-      }
-      if (destChannel === "sms" || destChannel === "both") {
-        if (!destPhone) {
-          setError("Please enter the customer's phone number in the 'Send quote via' section.");
-          setTab("quote");
-          return;
-        }
-        const pErr = validatePhone(destPhone);
-        if (pErr) { setError(`Phone number is invalid: ${pErr}`); setTab("quote"); return; }
+      const missing = getQuoteSendMissingFields({
+        title,
+        dueDate,
+        skus,
+        taxExempt,
+        salesPermit,
+        paymentDraft,
+      });
+      if (missing.length > 0) {
+        setError(formatQuoteSendMissingMessage(missing));
+        setTab("quote");
+        return;
       }
     }
 
@@ -471,6 +466,21 @@ export default function NewQuoteForm() {
       setSaving(false);
     }
   }
+
+  const sendMissingFields = useMemo(
+    () =>
+      getQuoteSendMissingFields({
+        title,
+        dueDate,
+        skus,
+        taxExempt,
+        salesPermit,
+        paymentDraft,
+      }),
+    [title, dueDate, skus, taxExempt, salesPermit, paymentDraft],
+  );
+  const quoteSendReady = sendMissingFields.length === 0;
+  const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -700,19 +710,32 @@ export default function NewQuoteForm() {
             )}
 
             {tab === "quote" && (
-              <QuoteForm
-                pricing={pricing}
-                shipping={shipping} setShipping={setShipping}
-                discountType={discountType} setDiscountType={setDiscountType}
-                discountValue={discountValue} setDiscountValue={setDiscountValue}
-                discountReason={discountReason} setDiscountReason={setDiscountReason}
-                taxRate={taxRate} setTaxRate={setTaxRate}
-                taxExempt={taxExempt} setTaxExempt={setTaxExempt}
-                salesPermit={salesPermit} setSalesPermit={(v) => { setSalesPermit(v); setFieldErrors((e) => ({ ...e, salesPermit: "" })); }}
-                salesPermitError={fieldErrors.salesPermit}
-                paymentDraft={paymentDraft}
-                onPaymentChange={setPaymentDraft}
-              />
+              <>
+                {sendMissingFields.length > 0 && (
+                  <div
+                    className="mb-4 flex items-start gap-2 rounded-lg px-4 py-3 text-sm"
+                    style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
+                  >
+                    <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: "var(--color-warning)" }} />
+                    <span>
+                      {sendMissingMessage} Complete {sendMissingFields.length === 1 ? "this field" : "these fields"} before sending.
+                    </span>
+                  </div>
+                )}
+                <QuoteForm
+                  pricing={pricing}
+                  shipping={shipping} setShipping={setShipping}
+                  discountType={discountType} setDiscountType={setDiscountType}
+                  discountValue={discountValue} setDiscountValue={setDiscountValue}
+                  discountReason={discountReason} setDiscountReason={setDiscountReason}
+                  taxRate={taxRate} setTaxRate={setTaxRate}
+                  taxExempt={taxExempt} setTaxExempt={setTaxExempt}
+                  salesPermit={salesPermit} setSalesPermit={(v) => { setSalesPermit(v); setFieldErrors((e) => ({ ...e, salesPermit: "" })); }}
+                  salesPermitError={fieldErrors.salesPermit}
+                  paymentDraft={paymentDraft}
+                  onPaymentChange={setPaymentDraft}
+                />
+              </>
             )}
           </div>
 
@@ -783,7 +806,8 @@ export default function NewQuoteForm() {
 
               {tab === "quote" && (
                 <button
-                  disabled={saving}
+                  disabled={saving || !quoteSendReady}
+                  title={!quoteSendReady ? sendMissingMessage : undefined}
                   onClick={() => handleSave("sent")}
                   className="px-5 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50"
                   style={{

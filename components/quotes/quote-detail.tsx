@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -23,6 +23,10 @@ import {
   Clock,
 } from "lucide-react";
 import { computePricing, formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
+import {
+  formatQuoteSendMissingMessage,
+  getQuoteSendMissingFields,
+} from "@/lib/utils/validate-quote-send";
 import { isPaymentEvidencePending, isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
 import { formatPhone, digitsOnly } from "@/lib/utils/phone";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -444,6 +448,23 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       return;
     }
 
+    const isSendAction = newStatus === "sent" || newStatus === "order";
+    if (isSendAction) {
+      const missing = getQuoteSendMissingFields({
+        title,
+        dueDate,
+        skus,
+        taxExempt,
+        salesPermit,
+        paymentDraft,
+      });
+      if (missing.length > 0) {
+        setError(formatQuoteSendMissingMessage(missing));
+        setSaving(false);
+        return;
+      }
+    }
+
     // ── High-value threshold check for SDR users ─────────────────────────────
     // Only fires when editing a draft (not when moving to sent/order/etc.)
     if (
@@ -472,18 +493,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
     setSaving(true);
     setError(null);
-
-    // Require a delivery destination when sending or saving a draft quote
-    if (ticket?.ticket_kind === "quote" && (newStatus === "sent" || (!newStatus && ticket?.ticket_status === "draft"))) {
-      const dest = paymentDraft.ticket_quote_channel === "email"
-        ? paymentDraft.ticket_dest_email
-        : paymentDraft.ticket_dest_phone;
-      if (!dest?.trim()) {
-        setError("Please enter a delivery destination (email or phone) in the payment configuration.");
-        setSaving(false);
-        return;
-      }
-    }
 
     // Require sales permit when tax exempt
     if (taxExempt && !salesPermit.trim()) {
@@ -579,6 +588,17 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     }
   }
 
+
+  const sendValidationInput = useMemo(
+    () => ({ title, dueDate, skus, taxExempt, salesPermit, paymentDraft }),
+    [title, dueDate, skus, taxExempt, salesPermit, paymentDraft],
+  );
+  const sendMissingFields = useMemo(
+    () => getQuoteSendMissingFields(sendValidationInput),
+    [sendValidationInput],
+  );
+  const quoteSendReady = sendMissingFields.length === 0;
+  const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -802,6 +822,19 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         </div>
       )}
 
+      {/* Missing required fields — draft/sent quotes cannot be sent until complete */}
+      {!editing && !isRoutedReadOnly && (ticket.ticket_status === "draft" || ticket.ticket_status === "sent") && sendMissingFields.length > 0 && (
+        <div
+          className="mx-4 mt-3 md:mx-6 md:mt-4 flex items-start gap-2 rounded-lg px-4 py-3 text-sm"
+          style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
+        >
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: "var(--color-warning)" }} />
+          <span>
+            {sendMissingMessage} Edit the quote to complete {sendMissingFields.length === 1 ? "this field" : "these fields"} before sending.
+          </span>
+        </div>
+      )}
+
       {/* Record-locked notice for non-admin users */}
       {isCustomerApproved && userRole !== "admin" && !isOverviewLayout && (
         <div
@@ -968,48 +1001,52 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
               className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-2 md:gap-3"
               style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
             >
-              {ticket.ticket_status === "draft" && (
-                <button
-                  disabled={saving}
-                  onClick={() => handleSave("sent")}
-                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                  style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-                >
-                  <Mail size={14} />
-                  Send Quote
-                </button>
-              )}
-              {ticket.ticket_status === "sent" && (
-                <button
-                  disabled={saving}
-                  onClick={() => handleSave("sent")}
-                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                  style={{ background: "var(--color-surface)", color: "var(--color-text-primary)", border: "1px solid var(--color-border)" }}
-                >
-                  <Mail size={14} />
-                  Resend Quote
-                </button>
-              )}
-              {(ticket.ticket_status === "sent" || ticket.ticket_status === "draft") && (
-                <button
-                  disabled={saving}
-                  onClick={() => handleSave("order")}
-                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                  style={{ background: "var(--color-success-bg)", color: "var(--color-success)", border: "1px solid var(--color-success-border)" }}
-                >
-                  <BadgeCheck size={14} />
-                  Convert to Order
-                </button>
-              )}
-              <div className="ml-auto">
-                <button
-                  disabled={saving}
-                  onClick={() => handleSave("cancelled")}
-                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-70 disabled:opacity-50"
-                  style={{ color: "var(--color-danger)" }}
-                >
-                  Cancel Ticket
-                </button>
+              <button
+                disabled={saving}
+                onClick={() => handleSave("cancelled")}
+                className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                style={{ color: "var(--color-danger)", border: "1px solid var(--color-danger-border)", background: "var(--color-danger-bg)" }}
+              >
+                Cancel Ticket
+              </button>
+
+              <div className="ml-auto flex flex-wrap items-center gap-2 md:gap-3">
+                {ticket.ticket_status === "draft" && (
+                  <button
+                    disabled={saving || !quoteSendReady}
+                    title={!quoteSendReady ? sendMissingMessage : undefined}
+                    onClick={() => handleSave("sent")}
+                    className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                    style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                  >
+                    <Mail size={14} />
+                    Send Quote
+                  </button>
+                )}
+                {ticket.ticket_status === "sent" && (
+                  <button
+                    disabled={saving || !quoteSendReady}
+                    title={!quoteSendReady ? sendMissingMessage : undefined}
+                    onClick={() => handleSave("sent")}
+                    className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                    style={{ background: "var(--color-surface)", color: "var(--color-text-primary)", border: "1px solid var(--color-border)" }}
+                  >
+                    <Mail size={14} />
+                    Resend Quote
+                  </button>
+                )}
+                {(ticket.ticket_status === "sent" || ticket.ticket_status === "draft") && (
+                  <button
+                    disabled={saving || !quoteSendReady}
+                    title={!quoteSendReady ? sendMissingMessage : undefined}
+                    onClick={() => handleSave("order")}
+                    className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
+                    style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+                  >
+                    <BadgeCheck size={14} />
+                    Convert to Order
+                  </button>
+                )}
               </div>
             </div>
           )}

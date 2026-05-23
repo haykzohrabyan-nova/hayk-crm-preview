@@ -69,7 +69,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Optionally send branded welcome email via Instantly
+  // Optionally send branded welcome email via Instantly (await so Vercel doesn't cut off delivery)
+  let emailDelivery: { attempted: boolean; ok: boolean; error?: string; login_url?: string } | undefined;
   if (send_welcome_email) {
     const { data: companyRow } = await admin
       .from("company_settings")
@@ -77,20 +78,31 @@ export async function POST(request: NextRequest) {
       .eq("id", 1)
       .single();
 
-    sendWelcomeEmail({
+    const result = await sendWelcomeEmail({
       fullName: full_name ?? email,
       email,
       tempPassword: temp_password,
       company: companyRow ?? {},
-    }).then((result) => {
-      if (!result.ok) {
-        console.error("[send-welcome-email] delivery failed:", result.error);
-      }
+      appOrigin: request.nextUrl.origin,
     });
+
+    emailDelivery = {
+      attempted: true,
+      ok: result.ok,
+      ...(result.loginUrl ? { login_url: result.loginUrl } : {}),
+      ...(result.ok ? {} : { error: result.error }),
+    };
+
+    console.log(
+      `[admin-user-create] ${email} — welcome email ${result.ok ? "sent" : "failed"} — login: ${result.loginUrl ?? "n/a"}${result.error ? ` — ${result.error}` : ""}`,
+    );
   }
 
   return NextResponse.json(
-    { user: { ...profile, email } },
+    {
+      user: { ...profile, email },
+      ...(emailDelivery ? { email_delivery: emailDelivery } : {}),
+    },
     { status: 201 }
   );
 }

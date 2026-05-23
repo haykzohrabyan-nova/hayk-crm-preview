@@ -254,7 +254,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | On Hold | `status = 'On Hold'` | count |
 | Directed to Sales | `status = 'Routed to Sales'` (just routed, not yet claimed) | count |
 | Rejected | `status = 'Rejected'` | — |
-| Won | `sales_status = 'Won'` — shows leads that converted to orders. SDR sees own; admin sees all. Table shows order reference, total, and closer's name. | count |
+| Won | `sales_status = 'Won'` — leads whose linked ticket entered **production** (`in_production`). SDR sees own; admin sees all. Table shows order reference, total, and closer's name. | count |
 
 ### `/sales` — Sales Pipeline
 
