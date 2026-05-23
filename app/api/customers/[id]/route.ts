@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
+import { normalizeAuthority } from "@/lib/utils/authority";
 
 export async function GET(
   _request: NextRequest,
@@ -41,6 +42,7 @@ const ALLOWED_FIELDS = [
   "company",
   "industry",
   "website",
+  "authority",
   "heat_tag",
 ] as const;
 
@@ -58,7 +60,13 @@ export async function PATCH(
   const update: Record<string, unknown> = {};
   for (const field of ALLOWED_FIELDS) {
     if (field in body) {
-      update[field] = field === "phone" ? digitsOnly(String(body[field] ?? "")) : body[field];
+      if (field === "phone") {
+        update[field] = digitsOnly(String(body[field] ?? ""));
+      } else if (field === "authority") {
+        update[field] = normalizeAuthority(String(body[field] ?? ""));
+      } else {
+        update[field] = body[field];
+      }
     }
   }
 

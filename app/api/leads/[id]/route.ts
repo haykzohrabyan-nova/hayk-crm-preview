@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
+import { normalizeAuthority } from "@/lib/utils/authority";
 import { canReadLead } from "@/lib/utils/lead-access";
 
 const IMMUTABLE = ["id", "created_at"];
@@ -22,7 +23,7 @@ export async function GET(
     .from("leads")
     .select(
       `*,
-      customer:customers(id, first_name, last_name, company, phone, email, industry, website),
+      customer:customers(id, first_name, last_name, company, phone, email, industry, website, authority),
       sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name),
       locked_by:user_profiles!leads_locked_by_id_fkey(id, full_name)`,
     )
@@ -52,7 +53,7 @@ export async function GET(
 // Fields whose changes are worth recording in the activity timeline
 const TRACKED_FIELDS = [
   "urgency", "interests", "quantities", "has_design", "sdr_comment",
-  "is_returning_customer", "brand", "source", "authority",
+  "is_returning_customer", "brand", "source",
   "sales_notes",
 ];
 
@@ -68,6 +69,10 @@ export async function PATCH(
 
   // Strip immutable fields
   for (const f of IMMUTABLE) delete body[f];
+
+  const customerAuthority =
+    body.authority !== undefined ? normalizeAuthority(String(body.authority ?? "")) : undefined;
+  delete body.authority;
 
   // Normalize "not_defined" sentinel → null, and capitalize to match DB constraint
   if (body.urgency === "not_defined" || body.urgency === "") {
@@ -139,11 +144,29 @@ export async function PATCH(
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
   }
 
+  if (customerAuthority !== undefined && current.customer_id) {
+    await admin
+      .from("customers")
+      .update({ authority: customerAuthority, updated_at: new Date().toISOString() })
+      .eq("id", current.customer_id);
+  }
+
+  let resultLead = lead;
+  if (customerAuthority !== undefined && current.customer_id) {
+    const { data: refreshed } = await admin
+      .from("leads")
+      .select("*, customer:customers(*)")
+      .eq("id", id)
+      .single();
+    if (refreshed) resultLead = refreshed;
+  }
+
   // Log field-level edits when no status change is happening
   if (!body.status) {
     const changedFields = TRACKED_FIELDS.filter(
       (f) => body[f] !== undefined && JSON.stringify(body[f]) !== JSON.stringify((current as Record<string, unknown>)[f])
     );
+    if (customerAuthority !== undefined) changedFields.push("authority");
     if (changedFields.length > 0) {
       await admin.from("activities").insert({
         lead_id: id,
@@ -199,5 +222,5 @@ export async function PATCH(
     });
   }
 
-  return NextResponse.json({ lead });
+  return NextResponse.json({ lead: resultLead });
 }

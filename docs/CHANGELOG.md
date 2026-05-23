@@ -3,6 +3,50 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-23] — Decision Maker on customer record
+
+### Added
+- `supabase/migrations/078_customer_authority.sql` — `customers.authority`; backfill from latest lead; drops unused `job_tickets.quote_authority`
+- `lib/utils/authority.ts` — `normalizeAuthority`, `authorityLabel`
+
+### Changed
+- Decision Maker is stored on **`customers.authority`**, not per-lead or per-quote
+- `app/api/leads/manual/route.ts`, `app/api/leads/[id]/route.ts`, `app/api/customers/route.ts`, `app/api/customers/[id]/route.ts` — read/write authority on customer
+- `components/leads/verify-drawer.tsx`, `components/leads/leads-page.tsx` — pre-fill and save authority via customer
+- `components/crm/customer-profile.tsx` — Decision Maker in contact grid and Edit modal
+- `components/sales/sales-drawer.tsx` — shows `customer.authority`
+- `app/api/leads/workspace/route.ts` — customer join includes `authority`
+
+## [2026-05-23] — Remove Decision Maker from quote flow
+
+### Changed
+- `components/quotes/new-quote-form.tsx` — Decision Maker removed from Customer and Info tabs; only Source stored on quote
+- `app/api/tickets/route.ts`, quote detail customer card, CRM profile — no longer read/write `quote_authority` on tickets
+
+## [2026-05-23] — Quote source on Info tab when customer pre-filled
+
+### Changed
+- `components/quotes/new-quote-form.tsx` — Source + Decision Maker shown on **Info** tab when Customer tab is skipped (CRM / linked lead); CRM Add Quote now saves `quote_source` on the ticket (not lead `source`)
+- `lib/utils/new-quote-from-customer.ts` — passes `customer_id`, `industry`, and `website` in URL params for richer pre-fill
+
+## [2026-05-23] — CRM customer profile: Add Quote + quote source
+
+### Added
+- `lib/utils/new-quote-from-customer.ts` — shared URL builder for CRM → New Quote pre-fill
+
+### Changed
+- `components/crm/customer-profile.tsx` — **Add Quote** button next to Edit; contact grid shows Company, Quote Source, Decision Maker; quote/order rows show source
+- `components/crm/crm-page.tsx` — uses shared `newQuoteUrlFromCustomer` helper
+- `app/api/tickets/route.ts` — list join includes `lead.source` for CRM profile display
+
+## [2026-05-23] — Documentation sync (direct quote source + approval gate)
+
+### Changed
+- `docs/schema.md`, `docs/types.md` — `quote_source`, `quote_authority` on `job_tickets`; migration 077
+- `docs/api-contract.md` — lookup enrichment (`latest_source`/`latest_authority`); `POST /api/tickets` body (`from_quote_page`, `quote_source`); approval gate on public payment submit
+- `docs/feature-specs/tickets.md`, `docs/feature-specs/crm.md`, `docs/feature-specs/invoice-payment.md` — Customer tab pre-fill, direct quote source, approval gate
+- `docs/session-summary.md`, `docs/component-architecture.md`, `docs/architecture.md`, `docs/order-ticket/README.md`, `docs/crm-logic-overview.html` — aligned with Quotes-page source-on-ticket behavior
+
 ## [2026-05-23] — Direct quote customer pre-fill and quote source
 
 ### Added
@@ -27,7 +71,7 @@ Format: `## [version or date] — description`, newest first.
 
 ### Changed
 - `components/quotes/new-quote-form.tsx` — Customer step now includes Source *, Industry *, Decision Maker?, and Website / Social (same as Add Lead); Source and Industry required before advancing
-- `app/api/tickets/route.ts` — POST saves industry/website on customer upsert; creates a linked lead with source/authority when Sales adds a quote without an existing lead
+- `app/api/tickets/route.ts` — POST saves industry/website on customer upsert; **lead/CRM flows** may create a linked lead with source/authority when no existing lead (superseded for Quotes page by `quote_source` on ticket — see entry above)
 
 ## [2026-05-23] — Fix admin password-reset email delivery
 

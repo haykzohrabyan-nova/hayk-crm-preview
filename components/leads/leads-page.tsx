@@ -260,6 +260,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
       company: c.company ?? f.company,
       industry: c.industry ?? f.industry,
       website: c.website ?? f.website,
+      authority: c.authority ?? f.authority,
     }));
     setDedupBanner("none");
   }

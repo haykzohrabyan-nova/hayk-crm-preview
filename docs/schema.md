@@ -200,6 +200,7 @@ Customers whose leads are still Pending/On Hold/Rejected and who have no tickets
 | `company` | `text` | |
 | `industry` | `text` | |
 | `website` | `text` | |
+| `authority` | `text` | Decision maker for this customer (`'yes'` \| `'no'` \| `null`) |
 | `heat_tag` | `text` | `'hot'` \| `'warm'` \| `'cold'` \| `null` |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
@@ -214,6 +215,7 @@ create table public.customers (
   company     text,
   industry    text,
   website     text,
+  authority   text,
   heat_tag    text        check (heat_tag in ('hot', 'warm', 'cold')),
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
@@ -245,7 +247,7 @@ Core lead record. A lead starts in the inbox (`is_inbox = true`) and moves to th
 | `customer_id` | `uuid` FK → `customers` | Linked customer profile; set when SDR chooses a customer during lead add or on first action |
 | `source` | `text` | e.g. `'Website'`, `'Google'`, `'Walk-in'` |
 | `brand` | `text` | |
-| `authority` | `text` | Decision-maker indicator |
+| `authority` | `text` | **Deprecated** — use `customers.authority`; column retained for legacy rows |
 | `status` | `text` NOT NULL | SDR lifecycle — see Status Enums |
 | `sales_status` | `text` | Sales pipeline — see Status Enums |
 | `is_inbox` | `boolean` DEFAULT `true` | `true` = AI inbox; `false` = workspace |
@@ -395,6 +397,7 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `follow_up_cycles` | `int` | Number of follow-up attempts |
 | `follow_up_frequency` | `text` | `'Daily'` \| `'Every 2 days'` \| `'Weekly'` |
 | `order_source` | `text` | `'quoted'` \| `'direct'` |
+| `quote_source` | `text` | Lead source for **direct quotes** (Quotes page only, no linked lead). From `source` lookup. |
 | `due_date` | `date` | Production due date |
 | `priority` | `text` | `'Low'` \| `'Normal'` \| `'High'` |
 | `special_requirements` | `text` | |
@@ -1169,4 +1172,6 @@ When creating Supabase migrations under `supabase/migrations/`:
 074_quote_reference_codes.sql        ← quote_sequence_counters, increment_quote_sequence RPC, QUO-YYYY-NNNN on quote create
 075_won_on_production_release.sql    ← backfill leads.sales_status = Won to match tickets in in_production/completed
 076_full_test_reset.sql              ← DEV ONLY: SQL wipe of tickets, activities, evidence fields, sequence counters (no storage)
+077_quote_source.sql                 ← quote_source column on job_tickets (direct Quotes-page creates)
+078_customer_authority.sql           ← customers.authority; backfill from leads; drop quote_authority
 ```

@@ -37,11 +37,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const AUTHORITY_OPTIONS = [
-  { value: "yes", label: "Yes" },
-  { value: "no", label: "No" },
-];
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface LeadInfo {
@@ -150,13 +145,12 @@ export default function NewQuoteForm() {
   const [contactPhone, setContactPhone] = useState(searchParams.get("phone") ?? "");
   const [contactCompany, setContactCompany] = useState(searchParams.get("company") ?? "");
   const [contactSource, setContactSource] = useState("");
-  const [contactIndustry, setContactIndustry] = useState("");
-  const [contactAuthority, setContactAuthority] = useState("");
-  const [contactWebsite, setContactWebsite] = useState("");
+  const [contactIndustry, setContactIndustry] = useState(searchParams.get("industry") ?? "");
+  const [contactWebsite, setContactWebsite] = useState(searchParams.get("website") ?? "");
   // Lifted from CustomerTab so lock state survives tab navigation
   const [customerLocked, setCustomerLocked] = useState(false);
   const [customerFoundName, setCustomerFoundName] = useState<string | null>(null);
-  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(searchParams.get("customer_id"));
 
   // ── Info tab fields ──────────────────────────────────────────────────────
   const [title, setTitle] = useState("");
@@ -190,6 +184,9 @@ export default function NewQuoteForm() {
         if (d.lead) {
           const l: LeadInfo = d.lead;
           setLead(l);
+          if (l.source) setContactSource(l.source);
+          if (l.customer?.industry) setContactIndustry((prev) => prev || l.customer!.industry || "");
+          if (l.customer?.website) setContactWebsite((prev) => prev || l.customer!.website || "");
         }
       })
       .catch(() => {});
@@ -331,6 +328,9 @@ export default function NewQuoteForm() {
       if (!dueDate) {
         errors.dueDate = "A due date is required.";
       }
+      if (skipCustomerTab && !leadId && !contactSource.trim()) {
+        errors.customerSource = "Source is required.";
+      }
     }
 
     if (tab === "lines") {
@@ -423,6 +423,12 @@ export default function NewQuoteForm() {
       return;
     }
 
+    if (skipCustomerTab && !leadId && !contactSource.trim()) {
+      setFieldErrors({ customerSource: "Source is required." });
+      setTab("info");
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
@@ -442,15 +448,11 @@ export default function NewQuoteForm() {
       contact_phone: contactPhone || lead?.customer?.phone || undefined,
       industry: contactIndustry || lead?.customer?.industry || undefined,
       website: contactWebsite || lead?.customer?.website || undefined,
-      ...(skipCustomerTab
-        ? {
-            source: contactSource || lead?.source || undefined,
-            authority: contactAuthority || undefined,
-          }
+      ...(leadId
+        ? {}
         : {
             from_quote_page: true,
             quote_source: contactSource || undefined,
-            quote_authority: contactAuthority || undefined,
           }),
       quote_skus: skus,
       notes: notes || undefined,
@@ -727,7 +729,6 @@ export default function NewQuoteForm() {
                 company={contactCompany} setCompany={setContactCompany}
                 source={contactSource} setSource={(v) => { setContactSource(v); setFieldErrors((e) => ({ ...e, customerSource: "" })); }}
                 industry={contactIndustry} setIndustry={(v) => { setContactIndustry(v); setFieldErrors((e) => ({ ...e, customerIndustry: "" })); }}
-                authority={contactAuthority} setAuthority={setContactAuthority}
                 website={contactWebsite} setWebsite={setContactWebsite}
                 sourceOpts={customerLookups.source}
                 industryOpts={customerLookups.industry}
@@ -740,17 +741,27 @@ export default function NewQuoteForm() {
             )}
 
             {tab === "info" && (
-              <InfoForm
-                title={title} setTitle={(v) => { setTitle(v); setFieldErrors((e) => ({ ...e, title: "" })); }}
-                priority={priority} setPriority={setPriority}
-                dueDate={dueDate} setDueDate={(v) => { setDueDate(v); setFieldErrors((e) => ({ ...e, dueDate: "" })); }}
-                rush={rush} setRush={setRush}
-                specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
-                notes={notes} setNotes={setNotes}
-                priorityOpts={quoteLookups.ticket_priority}
-                titleError={fieldErrors.title}
-                dueDateError={fieldErrors.dueDate}
-              />
+              <div className="space-y-5">
+                {skipCustomerTab && !leadId && (
+                  <QuoteSourceFields
+                    source={contactSource}
+                    setSource={(v) => { setContactSource(v); setFieldErrors((e) => ({ ...e, customerSource: "" })); }}
+                    sourceOpts={customerLookups.source}
+                    sourceError={fieldErrors.customerSource}
+                  />
+                )}
+                <InfoForm
+                  title={title} setTitle={(v) => { setTitle(v); setFieldErrors((e) => ({ ...e, title: "" })); }}
+                  priority={priority} setPriority={setPriority}
+                  dueDate={dueDate} setDueDate={(v) => { setDueDate(v); setFieldErrors((e) => ({ ...e, dueDate: "" })); }}
+                  rush={rush} setRush={setRush}
+                  specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
+                  notes={notes} setNotes={setNotes}
+                  priorityOpts={quoteLookups.ticket_priority}
+                  titleError={fieldErrors.title}
+                  dueDateError={fieldErrors.dueDate}
+                />
+              </div>
             )}
 
             {tab === "lines" && (
@@ -994,6 +1005,59 @@ function HighValueModal({ threshold, total, countdown, onOk, onCancel }: HighVal
   );
 }
 
+// ─── Quote source (Info tab when customer is pre-filled) ─────────────────────
+
+function QuoteSourceFields({
+  source,
+  setSource,
+  sourceOpts,
+  sourceError,
+}: {
+  source: string;
+  setSource: (v: string) => void;
+  sourceOpts: LookupOption[];
+  sourceError?: string;
+}) {
+  return (
+    <div
+      className="rounded-lg p-4 space-y-3"
+      style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}
+    >
+      <div>
+        <h3 className="text-sm font-semibold" style={{ color: "var(--color-text-primary)" }}>
+          Quote source
+        </h3>
+        <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+          Where did this quote opportunity come from? Stored on the quote record.
+        </p>
+      </div>
+      <div>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+          Source <span style={{ color: "var(--color-danger)" }}>*</span>
+        </label>
+        <Select value={source} onValueChange={(v) => setSource(v ?? "")}>
+          <SelectTrigger
+            className="h-9 text-sm w-full"
+            style={sourceError ? { borderColor: "var(--color-danger)" } : undefined}
+          >
+            <SelectValue placeholder="Select source…">
+              {sourceOpts.find((s) => s.value === source)?.label ?? "Select source…"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {sourceOpts.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {sourceError && (
+          <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{sourceError}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Customer Tab ─────────────────────────────────────────────────────────────
 
 interface CustomerTabProps {
@@ -1004,7 +1068,6 @@ interface CustomerTabProps {
   company: string; setCompany: (v: string) => void;
   source: string; setSource: (v: string) => void;
   industry: string; setIndustry: (v: string) => void;
-  authority: string; setAuthority: (v: string) => void;
   website: string; setWebsite: (v: string) => void;
   sourceOpts: LookupOption[];
   industryOpts: LookupOption[];
@@ -1025,7 +1088,6 @@ interface CrmCustomer {
   industry: string | null;
   website: string | null;
   latest_source?: string | null;
-  latest_authority?: string | null;
 }
 
 function CustomerTab(p: CustomerTabProps) {
@@ -1063,10 +1125,6 @@ function CustomerTab(p: CustomerTabProps) {
     p.setIndustry(c.industry ?? "");
     p.setWebsite(c.website ?? "");
     if (c.latest_source) p.setSource(c.latest_source);
-    if (c.latest_authority) {
-      const auth = c.latest_authority.toLowerCase();
-      p.setAuthority(auth === "yes" || auth === "no" ? auth : c.latest_authority);
-    }
     setFoundName([c.first_name, c.last_name].filter(Boolean).join(" ") || "Customer");
     setLocked(true);
     setCandidates([]);
@@ -1083,7 +1141,6 @@ function CustomerTab(p: CustomerTabProps) {
     p.setIndustry("");
     p.setWebsite("");
     p.setSource("");
-    p.setAuthority("");
     p.onCustomerCleared?.();
   }
 
@@ -1098,7 +1155,6 @@ function CustomerTab(p: CustomerTabProps) {
     p.setIndustry("");
     p.setWebsite("");
     p.setSource("");
-    p.setAuthority("");
     p.onCustomerCleared?.();
   }
 
@@ -1117,7 +1173,6 @@ function CustomerTab(p: CustomerTabProps) {
       p.setIndustry("");
       p.setWebsite("");
       p.setSource("");
-      p.setAuthority("");
       p.onCustomerCleared?.();
     }
 
@@ -1312,48 +1367,29 @@ function CustomerTab(p: CustomerTabProps) {
         />
       </div>
 
-      {/* Row 4: Source | Decision Maker */}
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-            Source <span style={{ color: "var(--color-danger)" }}>*</span>
-          </label>
-          <Select value={p.source} onValueChange={(v) => p.setSource(v ?? "")}>
-            <SelectTrigger
-              className="h-9 text-sm w-full"
-              style={p.errors?.customerSource ? { borderColor: "var(--color-danger)" } : undefined}
-            >
-              <SelectValue placeholder="Select source…">
-                {p.sourceOpts.find((s) => s.value === p.source)?.label ?? "Select source…"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {p.sourceOpts.map((s) => (
-                <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {p.errors?.customerSource && (
-            <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.errors.customerSource}</p>
-          )}
-        </div>
-        <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-            Decision Maker?
-          </label>
-          <Select value={p.authority} onValueChange={(v) => p.setAuthority(v ?? "")}>
-            <SelectTrigger className="h-9 text-sm w-full">
-              <SelectValue placeholder="Select…">
-                {AUTHORITY_OPTIONS.find((a) => a.value === p.authority)?.label ?? "Select…"}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {AUTHORITY_OPTIONS.map((a) => (
-                <SelectItem key={a.value} value={a.value}>{a.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      {/* Row 4: Source */}
+      <div>
+        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+          Source <span style={{ color: "var(--color-danger)" }}>*</span>
+        </label>
+        <Select value={p.source} onValueChange={(v) => p.setSource(v ?? "")}>
+          <SelectTrigger
+            className="h-9 text-sm w-full"
+            style={p.errors?.customerSource ? { borderColor: "var(--color-danger)" } : undefined}
+          >
+            <SelectValue placeholder="Select source…">
+              {p.sourceOpts.find((s) => s.value === p.source)?.label ?? "Select source…"}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {p.sourceOpts.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {p.errors?.customerSource && (
+          <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.errors.customerSource}</p>
+        )}
       </div>
 
       {/* Row 5: Industry | Website */}

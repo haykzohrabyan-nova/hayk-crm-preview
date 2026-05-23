@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
+import { normalizeAuthority } from "@/lib/utils/authority";
 
 export async function POST(request: NextRequest) {
   const { userId, errorResponse } = await requireSession();
@@ -70,6 +71,7 @@ export async function POST(request: NextRequest) {
         company: company ?? null,
         industry: industry ?? null,
         website: website ?? null,
+        authority: normalizeAuthority(authority),
       })
       .select()
       .single();
@@ -78,6 +80,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: cErr.message, code: "DB_ERROR" }, { status: 500 });
     }
     resolvedCustomerId = newCustomer.id;
+  } else if (resolvedCustomerId && authority !== undefined) {
+    await admin
+      .from("customers")
+      .update({
+        authority: normalizeAuthority(authority),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", resolvedCustomerId);
   }
 
   const { data: lead, error: lErr } = await admin
@@ -86,7 +96,6 @@ export async function POST(request: NextRequest) {
       customer_id: resolvedCustomerId,
       source: source ?? null,
       brand: brand ?? null,
-      authority: authority ?? null,
       urgency: (urgency && urgency !== "not_defined")
         ? urgency.charAt(0).toUpperCase() + urgency.slice(1).toLowerCase()
         : null,

@@ -49,17 +49,7 @@ function fullName(c: CrmCustomer): string {
   return [c.first_name, c.last_name].filter(Boolean).join(" ") || "—";
 }
 
-function newQuoteUrl(c: CrmCustomer): string {
-  const params = new URLSearchParams();
-  if (c.first_name) params.set("first_name", c.first_name);
-  if (c.last_name) params.set("last_name", c.last_name);
-  if (c.email) params.set("email", c.email);
-  if (c.phone) params.set("phone", c.phone);
-  if (c.company) params.set("company", c.company);
-  return `/quotes/new?${params.toString()}`;
-}
-
-// ─── Status Badge ─────────────────────────────────────────────────────────────
+import { newQuoteUrlFromCustomer } from "@/lib/utils/new-quote-from-customer";
 
 const STATUS_STYLE: Record<CustomerStatus, { bg: string; text: string; label: string }> = {
   new: { bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", label: "New Contact" },
@@ -358,7 +348,7 @@ export function CRMPage() {
                         View
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); router.push(newQuoteUrl(c)); }}
+                        onClick={(e) => { e.stopPropagation(); router.push(newQuoteUrlFromCustomer(c)); }}
                         className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] flex items-center gap-1"
                         style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
                         title="New quote for this customer"
@@ -421,7 +411,7 @@ export function CRMPage() {
                   View Profile
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); router.push(newQuoteUrl(c)); }}
+                  onClick={(e) => { e.stopPropagation(); router.push(newQuoteUrlFromCustomer(c)); }}
                   className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium flex items-center justify-center gap-1.5"
                   style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
                 >

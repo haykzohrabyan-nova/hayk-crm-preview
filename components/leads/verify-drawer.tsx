@@ -94,7 +94,7 @@ function formFromLead(lead: Lead): DrawerForm {
     first_name: c?.first_name ?? "",
     last_name: c?.last_name ?? "",
     source: lead.source ?? "",
-    authority: lead.authority ?? "",
+    authority: c?.authority ?? lead.authority ?? "",
     company: c?.company ?? "",
     industry: c?.industry ?? "",
     website: c?.website ?? "",
@@ -175,7 +175,8 @@ function hasContactChanged(lead: Lead, form: DrawerForm): boolean {
     (c?.last_name ?? "") !== form.last_name ||
     (c?.company ?? "") !== form.company ||
     (c?.industry ?? "") !== form.industry ||
-    (c?.website ?? "") !== form.website
+    (c?.website ?? "") !== form.website ||
+    (c?.authority ?? lead.authority ?? "") !== form.authority
   );
 }
 
@@ -328,6 +329,9 @@ export function VerifyDrawer({
     if (pErr || eErr) return;
 
     setSaving(true);
+    if (lead.customer_id && hasContactChanged(lead, form)) {
+      await maybeUpdateCustomer();
+    }
     const updated = await patchLead(buildLeadPayload());
     setSaving(false);
     if (!updated) return;

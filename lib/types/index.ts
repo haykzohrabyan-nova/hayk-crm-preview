@@ -96,6 +96,7 @@ export interface Customer {
   company: string | null
   industry: string | null
   website: string | null
+  authority: string | null
   heat_tag: HeatTag | null
   created_at: string
   updated_at: string
@@ -325,7 +326,6 @@ export interface JobTicket {
   // Order-specific
   order_source: OrderSource | null
   quote_source: string | null
-  quote_authority: string | null
   due_date: string | null
   priority: TicketPriority | null
   special_requirements: string | null

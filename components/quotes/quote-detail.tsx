@@ -87,7 +87,6 @@ interface Ticket {
   notes: string | null;
   order_source: string | null;
   quote_source: string | null;
-  quote_authority: string | null;
   linked_lead_id: string | null;
   priority: string | null;
   due_date: string | null;

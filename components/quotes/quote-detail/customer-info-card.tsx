@@ -7,7 +7,6 @@ interface CustomerForCard {
   contact_phone: string | null;
   contact_company: string | null;
   quote_source?: string | null;
-  quote_authority?: string | null;
   linked_lead_id?: string | null;
   customer: {
     first_name: string | null;
@@ -20,11 +19,6 @@ interface CustomerForCard {
   } | null;
 }
 
-const AUTHORITY_LABELS: Record<string, string> = {
-  yes: "Yes",
-  no: "No",
-};
-
 export function CustomerInfoCard({ ticket }: { ticket: CustomerForCard }) {
   const c = ticket.customer;
   const name = c
@@ -36,9 +30,6 @@ export function CustomerInfoCard({ ticket }: { ticket: CustomerForCard }) {
   const industry = c?.industry ?? null;
   const website = c?.website ?? null;
   const showQuoteMeta = !ticket.linked_lead_id && ticket.quote_source;
-  const authorityLabel = ticket.quote_authority
-    ? AUTHORITY_LABELS[ticket.quote_authority] ?? ticket.quote_authority
-    : null;
 
   return (
     <div
@@ -75,11 +66,6 @@ export function CustomerInfoCard({ ticket }: { ticket: CustomerForCard }) {
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
               Source: <span style={{ color: "var(--color-text-primary)" }}>{ticket.quote_source}</span>
             </p>
-            {authorityLabel && (
-              <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-                Decision maker: <span style={{ color: "var(--color-text-primary)" }}>{authorityLabel}</span>
-              </p>
-            )}
             {industry && (
               <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                 Industry: <span style={{ color: "var(--color-text-primary)" }}>{industry}</span>

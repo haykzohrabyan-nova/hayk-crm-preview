@@ -44,25 +44,24 @@ export async function GET(request: NextRequest) {
   const [{ data: leads }, { data: tickets }] = await Promise.all([
     admin
       .from("leads")
-      .select("customer_id, source, authority, created_at")
+      .select("customer_id, source, created_at")
       .in("customer_id", customerIds)
       .order("created_at", { ascending: false }),
     admin
       .from("job_tickets")
-      .select("customer_id, quote_source, quote_authority, created_at")
+      .select("customer_id, quote_source, created_at")
       .in("customer_id", customerIds)
       .not("quote_source", "is", null)
       .order("created_at", { ascending: false }),
   ]);
 
-  type Hint = { source: string | null; authority: string | null; at: string };
+  type Hint = { source: string | null; at: string };
   const hints = new Map<string, Hint>();
 
   for (const lead of leads ?? []) {
     if (!lead.customer_id || hints.has(lead.customer_id)) continue;
     hints.set(lead.customer_id, {
       source: lead.source ?? null,
-      authority: lead.authority ?? null,
       at: lead.created_at,
     });
   }
@@ -73,7 +72,6 @@ export async function GET(request: NextRequest) {
     if (!existing || ticket.created_at > existing.at) {
       hints.set(ticket.customer_id, {
         source: ticket.quote_source,
-        authority: ticket.quote_authority ?? null,
         at: ticket.created_at,
       });
     }
@@ -84,7 +82,6 @@ export async function GET(request: NextRequest) {
     return {
       ...c,
       latest_source: hint?.source ?? null,
-      latest_authority: hint?.authority ?? null,
     };
   });
 

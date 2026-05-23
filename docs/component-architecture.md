@@ -290,11 +290,14 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │         Customer tab hidden when lead_id or CRM params present
         │
         ├── Customer Tab — phone-first search:
-        │    Phone | Email → First Name | Last Name → Company field order
+        │    Phone | Email → First Name | Last Name → Company
+        │    Source * | Decision Maker? | Industry * | Website / Social
         │    600ms debounce → GET /api/customers/lookup?phone=...
         │    0 matches: all fields editable
         │    1+ matches: picker modal → select or create new
-        │    Selected: fields lock (read-only except Phone); lock state persists across tab navigation
+        │    Selected: identity fields lock (name/email/company); Source/Industry/Website stay editable
+        │    Pre-fill: all customer fields + latest_source/latest_authority from lookup
+        │    Save: from_quote_page + quote_source on ticket (no auto-lead); customer_id when known
         │
         ├── Info Tab — 50/50 grid layout:
         │    Row 1: Title (required *) | Priority segmented control (required *)
@@ -332,7 +335,7 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │    Current tab: gold underline, normal opacity
         │
         ├── Validation per tab before advancing:
-        │    Customer: name + email or phone required
+        │    Customer: name + phone or email + source + industry required
         │    Info: title + due date required (priority always has a value)
         │    Line Items: ≥1 fully-filled item (product + qty + unit price)
         │    Quote: destination required; Sales Permit # required if Tax Exempt
@@ -343,8 +346,8 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │
         ├── Data: GET /api/lookups, GET /api/lookups/products, GET /api/admin/company
         ├── Save Draft: POST /api/tickets { status: 'draft' } — available from Line Items onwards
-        ├── Save & Send: POST /api/tickets { status: 'sent' } → triggers email/SMS/WhatsApp delivery
-        └── Customer upsert: POST /api/customers on save if no customer_id yet
+        ├── Save & Send: POST /api/tickets { status: 'sent', from_quote_page?, quote_source? } → triggers delivery
+        └── Customer upsert: handled inside POST /api/tickets (match/create customer; quote_source on ticket when from Quotes page)
 ```
 
 ---
@@ -376,7 +379,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │
         ├── Left sidebar:
         │    LinkedLeadCard   — if ticket has linked_lead_id
-        │    CustomerInfoCard — if ticket has customer but no lead
+        │    CustomerInfoCard — if ticket has customer but no lead (shows quote_source, industry, website for direct quotes)
         │    (nothing)        — if neither
         │
         ├── 2-tab view: Overview | History  (draft edit mode may show full form instead)

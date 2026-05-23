@@ -62,22 +62,19 @@ Sarah Lee — Beta LLC
 
 **Multi-match picker** also shows status badge next to each name in the list.
 
-### API change needed
-`GET /api/customers/lookup` response expands to:
+### API — lookup enrichment (New Quote pre-fill)
+
+`GET /api/customers/lookup` returns customer rows enriched with:
+
 ```json
 {
-  "customers": [
-    {
-      ...Customer,
-      "order_count": 3,
-      "lead_count": 5,
-      "last_order_at": "2025-03-12T...",
-      "customer_status": "returning"
-    }
-  ],
-  "count": 1
+  "latest_source": "string | null"
 }
 ```
+
+`authority` is on the customer row directly. `latest_source` comes from the most recent lead or direct quote — used to pre-fill Source on New Quote.
+
+> CRM list dedup banner (`order_count`, `lead_count`, `customer_status`) is a separate enrichment on `GET /api/customers` — not on lookup.
 
 ---
 
@@ -89,11 +86,21 @@ A dedicated full page for a single customer. Accessible from:
 - Clicking customer name in the dedup banner
 
 ### Header
-- Customer name (large), company, phone, email
+- Customer name (large), company subtitle, phone, email
 - **Status badge**: New Contact / Known Customer / Returning Customer
 - Heat tag badge (Hot / Warm / Cold)
-- Edit button → opens Edit Customer modal
-- Created date
+- **Add Quote** button → `/quotes/new` with customer params pre-filled (same as CRM list)
+- **Edit** button → opens Edit Customer modal
+- **Merge Duplicate** button
+
+### Contact grid
+- Company, Phone, Email, Industry, Website
+- **Decision Maker** — `customers.authority` (`yes` / `no`)
+- **Quote Source** — latest from direct quotes (`quote_source`) or linked leads
+- Total Leads, Customer Since
+
+### Section: Quotes & Orders
+List of all `job_tickets` for this customer. Each row shows reference, date, **source** (quote or lead), total, and status. Click → quote/order detail.
 
 ### Section: Lead History
 Table of all leads ever created for this customer.
@@ -191,7 +198,7 @@ Once the CRM is built, both the **Add Lead modal** and the **Verify Drawer** wil
 
 ## Add Quote from CRM ✅ Built
 
-Available to SDR and Sales via **+ Add Quote** button in the CRM customer list (Actions column, next to View).
+Available to SDR and Sales via **+ Add Quote** button in the CRM customer list (Actions column, next to View) and on the **customer profile page** (`/crm/customers/[id]`, next to Edit).
 
 **Flow:**
 1. Clicking "Add Quote" navigates to `/quotes/new?first_name=...&last_name=...&email=...&phone=...&company=...` with the customer's details pre-filled as URL params

@@ -1,6 +1,24 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 23, 2026
-**Status:** MVP complete + full order lifecycle + Won credit on production release + quote send validation + dev test reset. See **May 23, 2026 session** below for latest shipped work.
+**Status:** MVP complete + full order lifecycle + Won credit on production release + quote send validation + direct quote source + dev test reset. See **May 23, 2026 session** below for latest shipped work.
+
+---
+
+## May 23, 2026 (continued) — Direct quote source, customer pre-fill, approval gate
+
+### Direct quote source (Quotes page only)
+- Migration `077_quote_source.sql` — `quote_source` + `quote_authority` on `job_tickets`
+- New Quote from `/quotes/new` sends `from_quote_page: true` + `quote_source`/`quote_authority`; source stored on ticket, not auto-lead
+- Lead/CRM entry points unchanged — source remains on linked lead
+- Quote detail `CustomerInfoCard` shows source, decision maker, industry, website for direct quotes (no linked lead)
+
+### Customer pre-fill on New Quote
+- `GET /api/customers/lookup` enriches matches with `latest_source` / `latest_authority` from most recent lead or prior direct quote
+- Selecting existing customer pre-fills all fields; passes `customer_id` on save
+
+### Customer approval gate (all payment types)
+- When `ticket_require_client_confirm = true`, production/payment gates wait for public-page confirm — cash/deposit/full pay alone no longer bypasses approval
+- Public `/q/[token]` checklist shows confirm step first when approval required
 
 ---
 
@@ -207,7 +225,7 @@ Full prepayment/deposit system built for Direct Order flow:
 
 Multiple UX improvements applied consistently to both `new-quote-form.tsx` and `quote-detail.tsx`:
 
-- **Phone-first customer search** in New Quote Customer tab: Phone | Email → First Name | Last Name → Company field order. Debounced lookup on phone number. If 1 match found: picker modal shown; fields auto-fill and lock. If 2+ matches: multi-customer picker. If no match: all fields editable.
+- **Phone-first customer search** in New Quote Customer tab: Phone | Email → First Name | Last Name → Company → Source * | Decision Maker? | Industry * | Website. Debounced lookup on phone number. If match found: picker modal; all fields pre-fill including source/industry/website from customer + latest lead/quote. Identity fields lock; Source/Industry/Website stay editable. `customer_id` + `quote_source` sent on save (Quotes page only).
 - **Customer lock persistence**: `locked` and `foundName` states lifted to parent `NewQuoteForm` component so they survive tab navigation.
 - **Dynamic quote destination pre-fill**: when customer is locked and "Send Via" channel changes, `quoteDestination` is automatically updated to the correct phone or email.
 - **Rush toggle**: Manual only — no connection to the due date. The auto-toggle was built then removed at owner request.
@@ -229,7 +247,7 @@ Major UX improvements and business rule enforcement:
 - **New Quote form — unified entry point**: 4-step wizard (Customer → Info → Line Items → Quote) when creating standalone. Customer tab hidden when entering from Lead (`?lead_id`) or CRM (`?first_name&last_name&...` params). Read-only lead/customer card shown on left sidebar instead.
 - **Customer upsert**: customer data saved to `customers` table on "Save Draft" or "Save & Send Quote" — customers created via quotes now appear in CRM.
 - **CRM "Add Quote" button**: new action on CRM page pre-fills customer params in URL → skips Customer tab, shows read-only customer card.
-- **Customer info card on quote detail**: if no linked lead but customer exists, shows customer card (`CustomerInfoCard` component) on the left sidebar.
+- **Customer info card on quote detail**: if no linked lead but customer exists, shows customer card (`CustomerInfoCard`) on the left sidebar — includes source, decision maker, industry, and website for direct quotes (`quote_source` on ticket).
 - **Validation**: required fields enforced per tab before advancing. Line Items requires ≥ 1 fully-filled item.
 - **Orders page**: now shows only `ticket_status = 'order'` tickets. `draft`, `sent`, `approved`, `routed` stay on Quotes page. "New Order" button removed.
 - **Sidebar counts**: Quotes badge = `draft+sent+approved` (SDR) or `draft+sent+approved+routed` (Sales/Admin). Orders badge = `order` status only.

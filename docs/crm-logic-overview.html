@@ -992,7 +992,7 @@
               <div class="timeline-dot" style="background:var(--navy);"></div>
               <div class="timeline-item-content">
                 <div class="timeline-item-title">New Quote button</div>
-                <div class="timeline-item-desc">Blank form. Rep enters customer details. Duplicate detection runs on phone entry.</div>
+                <div class="timeline-item-desc">Blank form with Customer tab. Phone lookup pre-fills all fields (source, industry, website, decision maker). Source saved on the <strong>quote ticket</strong> (<code style="font-size:11px;">quote_source</code>) — not as a new lead.</div>
               </div>
             </div>
           </div>
@@ -1142,7 +1142,7 @@
 
       <div class="info-box success">
         <span class="info-icon">✅</span>
-        <div>Once the customer confirms, the CRM instantly: creates the order, assigns the ORD-YYYY-NNN reference, locks the record so only admins can modify it, and makes the payment link available for the rep to send. The linked lead is marked <strong>"Won"</strong> only when the ticket is released to production (payment gates permitting).</div>
+        <div>When <strong>Require customer approval</strong> is enabled on a quote, the customer must click <strong>Confirm &amp; Accept</strong> on the public page before payment or production gates open — paying a deposit or full amount alone does not skip approval. Once confirmed, the CRM assigns the ORD-YYYY-NNN reference, locks the record for non-admins, and enables payment/production flows. The linked lead is marked <strong>"Won"</strong> only when the ticket is released to production (payment gates permitting).</div>
       </div>
     </section>
 
@@ -1720,7 +1720,7 @@
             <tr><td><strong>Verify Drawer</strong> (SDR lead screen)</td><td>Phone: required, 10-digit US format. Email: valid format if filled.</td></tr>
             <tr><td><strong>Customer Profile</strong> (edit panel)</td><td>Phone: valid format if filled. Email: valid format if filled.</td></tr>
             <tr><td><strong>Manual Lead Entry</strong></td><td>Phone: required, 10-digit format. Email: valid format if filled.</td></tr>
-            <tr><td><strong>New Quote Form — Customer tab</strong></td><td>At least one of phone/email required. Phone: 10-digit format. Email: valid format.</td></tr>
+            <tr><td><strong>New Quote Form — Customer tab</strong></td><td>Phone or email required. Phone: 10-digit format. Email: valid format. <strong>Source</strong> and <strong>Industry</strong> required. Existing customer lookup pre-fills all fields including source from latest lead or prior direct quote.</td></tr>
             <tr><td><strong>New Quote Form — Quote tab (Send)</strong></td><td>Destination validated for format: email format if channel = Email; 10-digit phone if channel = SMS/WhatsApp.</td></tr>
             <tr><td><strong>Create User (Admin)</strong></td><td>Email: valid format checked before POST.</td></tr>
             <tr><td><strong>Company Settings</strong></td><td>Phone: 10-digit format. Email: valid format. Website: must start with http:// or https://. ZIP: valid US format. All validated synchronously on save.</td></tr>
@@ -2638,7 +2638,7 @@
       <!-- LEAD STATUS SYNC RULES -->
       <div class="card" style="margin-top:4px;">
         <div class="card-title">🔗 Lead Status Sync When a Quote/Ticket Is Created</div>
-        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">When <code style="font-size:11px;">POST /api/tickets</code> creates a ticket with a <code style="font-size:11px;">linked_lead_id</code>, the linked lead's status is automatically updated:</p>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">When <code style="font-size:11px;">POST /api/tickets</code> creates a ticket with a <code style="font-size:11px;">linked_lead_id</code>, the linked lead's status is automatically updated. <strong>Direct Quotes page creates</strong> (<code style="font-size:11px;">from_quote_page: true</code>) store <code style="font-size:11px;">quote_source</code> on the ticket and do <em>not</em> auto-create or update a lead.</p>
         <table class="data-table">
           <thead><tr><th>Ticket created with…</th><th>Lead status set to</th><th>sales_status set to</th><th>Effect on Sales Pipeline page</th><th>Effect on SDR Directed to Sales</th></tr></thead>
           <tbody>

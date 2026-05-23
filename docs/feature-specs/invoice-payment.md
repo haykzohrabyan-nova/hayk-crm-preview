@@ -219,6 +219,13 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 - "Will be auto-updated by Stripe" note
 - `payment_status` bar (Unpaid / Partial / Paid) shown for all orders
 
+**Customer approval gate (`ticket_require_client_confirm`):**
+
+- When enabled, `lib/utils/compute-checkout.ts` requires `client_confirmed = true` before production release — regardless of payment type (cash, deposit, full pay, net terms)
+- Public `/q/[token]` shows confirm step before payment when gate is on
+- Cash auto-record on ticket create/update does not simulate `client_confirmed` when approval is required
+- `POST /api/public/quotes/[token]/submit-payment` does not set `client_confirmed` or convert to order before customer confirms
+
 ---
 
 ## Phase C — Stripe Card Payment

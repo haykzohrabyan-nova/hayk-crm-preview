@@ -100,7 +100,8 @@ Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id 
 **Business rules:**
 - Phone normalized to digits-only before save
 - **Customer linking:** pass either `customer_id` (selected existing) OR `create_customer: true` (create new from form data) OR neither (no customer yet — can be linked later)
-- If `create_customer: true`: server creates a `customers` row from the lead's contact fields, sets `customer_id` on the new lead
+- If `create_customer: true`: server creates a `customers` row from the lead's contact fields (including **`authority`**), sets `customer_id` on the new lead
+- If `customer_id` is provided and **`authority`** is set: updates `customers.authority` (not `leads.authority`)
 - Default `status = 'Pending'`
 - Logs `lead_manual_created` activity
 
@@ -196,6 +197,7 @@ Partial update of a lead. `created_at` is always stripped from the body (immutab
 
 **Business rules:**
 - Phone and `quote_destination` are normalized to digits-only on every write
+- **`authority`** in the body updates **`customers.authority`** (not `leads.authority`); response includes refreshed `customer` join
 - Logs `lead_status_changed` activity if `status` or `sales_status` changes
 - **Terminal state guard:** If current `status = 'Rejected'` or `sales_status = 'Rejected'`, only Admin can apply changes. Non-admin → returns `403` with `code: 'LEAD_REJECTED_TERMINAL'`
 - **Lock guard:** If `locked_by_id` is set to a different user, returns `409` unless the caller is Admin
@@ -301,7 +303,7 @@ Returns the CRM customer registry with lightweight per-customer aggregates. Used
 
 ### `GET /api/customers/lookup`
 
-Smart deduplication — used by the Manual Add Lead form and Verify Drawer. Returns **all** customer profiles matching the phone or email (there may be multiple).
+Smart deduplication — used by the Manual Add Lead form, Verify Drawer, and **New Quote Customer tab**. Returns **all** customer profiles matching the phone or email (there may be multiple).
 
 **Query params:**
 
@@ -314,11 +316,17 @@ Smart deduplication — used by the Manual Add Lead form and Verify Drawer. Retu
 - Phone takes priority: if `phone` param is provided, only phone lookup runs
 - Email lookup only runs if `phone` is not provided
 - Returns all matching records (0, 1, or many)
+- Each customer row includes **`authority`** directly; enriched with **`latest_source`** from the most recent lead or direct quote for pre-fill on New Quote
 
 **Response `200`:**
 ```json
 {
-  "customers": [Customer],
+  "customers": [
+    {
+      "...Customer fields (including authority)...",
+      "latest_source": "string | null"
+    }
+  ],
   "count": "number"
 }
 ```
@@ -361,7 +369,7 @@ Update a customer profile. Called when SDR chooses "Yes, update profile" on the 
 
 **Body:** Any subset of customer fields (except `id`, `created_at`).
 
-**Allowed fields:** `first_name`, `last_name`, `email`, `phone`, `company`, `industry`, `website`, `heat_tag`
+**Allowed fields:** `first_name`, `last_name`, `email`, `phone`, `company`, `industry`, `website`, `authority`, `heat_tag`
 
 **Business rules:**
 - Phone normalized to digits-only
@@ -439,6 +447,10 @@ Create a new ticket.
   "contact_name": "string",
   "contact_company": "string",
   "contact_phone": "string | null",
+  "industry": "string | null",
+  "website": "string | null",
+  "from_quote_page": "boolean",
+  "quote_source": "string | null",
   "title": "string",
   "priority": "string | null",
   "due_date": "ISO date | null",
@@ -461,32 +473,43 @@ Create a new ticket.
   "quote_payment_types": "string[]",
   "prepayment_type": "full | percent | fixed | null",
   "prepayment_value": "string | null",
-  "prepayment_status": "pending | paid",
-  "payment_status": "unpaid | partial | paid",
-  "public_token": "uuid",
   "quote_channel": "string | null",
   "quote_destination": "string | null",
   "quote_reminder_date": "ISO date | null",
   "follow_up_cycles": "number | null",
   "follow_up_frequency": "string | null",
-  "customer_data": {
-    "first_name": "string",
-    "last_name": "string | null",
-    "email": "string | null",
-    "phone": "string | null",
-    "company": "string | null"
-  }
+  "ticket_payment_strategy": "partial | full | net | null",
+  "ticket_deposit_type": "percent | fixed | null",
+  "ticket_deposit_value": "number | null",
+  "ticket_dep_handling": "cash | gateway | null",
+  "ticket_receipt_id": "string | null",
+  "ticket_partial_channels": "string[] | null",
+  "ticket_full_channels": "string[] | null",
+  "ticket_require_client_confirm": "boolean | null",
+  "ticket_net_terms_label": "string | null",
+  "ticket_quote_channel": "sms | email | both | null",
+  "ticket_dest_phone": "string | null",
+  "ticket_dest_email": "string | null",
+  "ticket_follow_up_enabled": "boolean | null",
+  "ticket_follow_up_count": "number | null",
+  "ticket_follow_up_freq": "daily | every-3-days | weekly | null"
 }
 ```
 
 **Business rules:**
 - `created_by_id = current_user`
 - `ticket_status` defaults to `'draft'` if not provided; `'routed'` is accepted for HVT saves from SDRs
-- **Customer upsert:** if `customer_data` is provided and `customer_id` is null, the server upserts a `customers` row (matches on email/phone; creates new if no match) and sets `customer_id`
+- **Customer upsert:** when contact fields are provided and `customer_id` is null, the server matches on email/phone, creates or updates the `customers` row (industry/website), and sets `customer_id`. When `customer_id` is passed (existing customer from lookup), industry/website are updated on that row if provided.
+- **Source handling:**
+  - **`from_quote_page: true`** (Quotes page, no linked lead): requires `quote_source` + `industry`; stores `quote_source` on `job_tickets`; **does not** auto-create a linked lead
+  - **Lead / CRM flows** (`linked_lead_id` or `source` without `from_quote_page`): may auto-create a linked lead with `source` when no lead exists yet
+- For `ticket_kind = 'quote'`: auto-generates `QUO-YYYY-NNNN` reference code via `increment_quote_sequence(year)`
 - For `ticket_kind = 'order'`: auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence(year)` PL/pgSQL function
 - Sets `design_required = true` if any SKU has `design_required = true`; same for `die_cut`
 - If `linked_lead_id` is provided, updates the linked lead's `status` to `'Quoted'` or `'Validated'`
+- Sets `routed_by_id = userId` when `ticket_status = 'routed'`
 - Logs `order_ticket_created` activity
+- May auto-record cash deposit/full payment when configured — **does not** set `client_confirmed` when `ticket_require_client_confirm = true`
 
 **Response `201`:**
 ```json
@@ -919,7 +942,8 @@ Customer submits payment proof or records an in-person payment from the public p
 - Allowed when `ticket_status IN ('sent', 'order', 'in_production')`
 - Wire/ACH/Zelle/check/card: stores file in `payment-evidence` bucket; sets evidence fields + `payment_evidence_amount`; **does not** update `payment_amount_received` or mark paid — queues for accountant on `/payments`
 - Cash: records payment immediately; may auto-release to `in_production` when gates pass — **lead Won** only if production release succeeds
-- `sent` → `order` conversion on first payment (generates ORD reference)
+- When `ticket_require_client_confirm = true`: payment alone does **not** set `client_confirmed` or convert `sent` → `order`; customer must confirm on `/q/[token]` first
+- `sent` → `order` conversion on first payment only when approval gate is off or customer already confirmed
 - Follow-up balance payments allowed when already partially paid or `in_production`
 - Logs `ticket_payment_evidence_submitted` and status-change activities in History
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
+import { normalizeAuthority } from "@/lib/utils/authority";
 
 const CUSTOMER_LIST_SELECT =
   "id, first_name, last_name, email, phone, company, industry, heat_tag, created_at, updated_at";
@@ -115,7 +116,7 @@ export async function POST(request: NextRequest) {
   if (errorResponse) return errorResponse;
 
   const body = await request.json();
-  const { first_name, last_name, email, phone, company, industry, website } = body;
+  const { first_name, last_name, email, phone, company, industry, website, authority } = body;
 
   if (!phone) {
     return NextResponse.json(
@@ -135,6 +136,7 @@ export async function POST(request: NextRequest) {
       company: company ?? null,
       industry: industry ?? null,
       website: website ?? null,
+      authority: normalizeAuthority(authority),
     })
     .select()
     .single();

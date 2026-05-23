@@ -224,7 +224,7 @@ export async function GET(request: NextRequest) {
       .select(
         `*,
          customer:customers(id, first_name, last_name, company, phone, email),
-         lead:leads(id, status, sales_status, urgency)`,
+         lead:leads(id, status, sales_status, urgency, source)`,
       )
       .order("created_at", { ascending: false });
 
@@ -306,7 +306,6 @@ export async function POST(request: NextRequest) {
     authority,
     from_quote_page = false,
     quote_source,
-    quote_authority,
     quote_skus = [],
     notes,
     order_source,
@@ -450,7 +449,6 @@ export async function POST(request: NextRequest) {
       .insert({
         customer_id: resolvedCustomerId,
         source: source.trim(),
-        authority: authority?.trim() || null,
         is_inbox: false,
         status: hasSkus ? "Quoted" : "Pending",
         sales_status: hasSkus ? "Quote Sent" : null,
@@ -495,7 +493,6 @@ export async function POST(request: NextRequest) {
     contact_company: contact_company ?? null,
     contact_phone: contact_phone ?? null,
     quote_source: isDirectQuotePage ? (quote_source?.trim() || null) : null,
-    quote_authority: isDirectQuotePage ? (quote_authority?.trim() || null) : null,
     quote_skus,
     notes: notes ?? null,
     order_source: order_source ?? null,

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package } from "lucide-react";
+import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package, FilePlus } from "lucide-react";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { StatusPill } from "@/components/ui/status-pill";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -10,6 +10,8 @@ import { EmailInput } from "@/components/ui/email-input";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
 import { quoteDetailPath } from "@/lib/utils/reference-codes";
+import { newQuoteUrlFromCustomer } from "@/lib/utils/new-quote-from-customer";
+import { authorityLabel } from "@/lib/utils/authority";
 import {
   Select,
   SelectContent,
@@ -29,6 +31,7 @@ interface Customer {
   company: string | null;
   industry: string | null;
   website: string | null;
+  authority: string | null;
   heat_tag: "hot" | "warm" | "cold" | null;
   created_at: string;
   updated_at: string;
@@ -52,8 +55,16 @@ interface TicketSummary {
   title: string | null;
   reference_code: string | null;
   quote_final_total: number | null;
+  quote_source: string | null;
+  linked_lead_id: string | null;
   rush: boolean;
   created_at: string;
+  lead?: { source: string | null } | null;
+}
+
+interface SourceOption {
+  value: string;
+  label: string;
 }
 
 interface ProfileData {
@@ -82,6 +93,15 @@ function fullName(c: Customer): string {
   return [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unknown";
 }
 
+function sourceLabel(value: string | null | undefined, labels: Record<string, string>): string | null {
+  if (!value) return null;
+  return labels[value] ?? value;
+}
+
+function ticketSource(t: TicketSummary, labels: Record<string, string>): string | null {
+  return sourceLabel(t.quote_source ?? t.lead?.source ?? null, labels);
+}
+
 const CUSTOMER_STATUS_STYLE = {
   new: { bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", label: "New Contact" },
   known: { bg: "var(--color-info-bg)", text: "var(--color-info-text)", label: "Known Customer" },
@@ -108,6 +128,11 @@ const HEAT_OPTIONS = [
   { value: "hot", label: "Hot" },
   { value: "warm", label: "Warm" },
   { value: "cold", label: "Cold" },
+];
+
+const AUTHORITY_OPTIONS = [
+  { value: "yes", label: "Yes" },
+  { value: "no", label: "No" },
 ];
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
@@ -144,6 +169,7 @@ interface EditForm {
   company: string;
   industry: string;
   website: string;
+  authority: string;
   heat_tag: string;
 }
 
@@ -164,6 +190,7 @@ function EditCustomerModal({
     company: customer.company ?? "",
     industry: customer.industry ?? "",
     website: customer.website ?? "",
+    authority: customer.authority ?? "",
     heat_tag: customer.heat_tag ?? "",
   });
   const [saving, setSaving] = useState(false);
@@ -191,6 +218,7 @@ function EditCustomerModal({
         company: form.company || null,
         industry: form.industry || null,
         website: form.website || null,
+        authority: form.authority || null,
         heat_tag: form.heat_tag || null,
       }),
     });
@@ -237,6 +265,19 @@ function EditCustomerModal({
           <div>
             <label className={labelCls} style={labelStyle}>Industry</label>
             <input className={inputCls} style={inputStyle} value={form.industry} onChange={(e) => setForm((f) => ({ ...f, industry: e.target.value }))} placeholder="Industry" />
+          </div>
+          <div>
+            <label className={labelCls} style={labelStyle}>Decision Maker?</label>
+            <Select value={form.authority} onValueChange={(v) => setForm((f) => ({ ...f, authority: v ?? "" }))}>
+              <SelectTrigger className="h-9 text-sm w-full">
+                <SelectValue placeholder="Select…">
+                  {AUTHORITY_OPTIONS.find((o) => o.value === form.authority)?.label ?? "Select…"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {AUTHORITY_OPTIONS.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
           </div>
           <div className="col-span-2">
             <label className={labelCls} style={labelStyle}>Website / Social</label>
@@ -500,6 +541,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
+  const [sourceLabels, setSourceLabels] = useState<Record<string, string>>({});
   const [editOpen, setEditOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -508,10 +550,13 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
     Promise.all([
       fetch(`/api/customers/${customerId}`).then((r) => r.json()),
       fetch(`/api/tickets?customer_id=${customerId}`).then((r) => r.json()),
+      fetch("/api/lookups?categories=source").then((r) => r.json()),
     ])
-      .then(([customerData, ticketData]) => {
+      .then(([customerData, ticketData, lookupData]) => {
         setData(customerData);
         setTickets(ticketData.tickets ?? []);
+        const opts: SourceOption[] = lookupData?.source ?? [];
+        setSourceLabels(Object.fromEntries(opts.map((o) => [o.value, o.label])));
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -542,6 +587,18 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
 
   const { customer: c, leads, lead_count, customer_status } = data;
   const statusStyle = CUSTOMER_STATUS_STYLE[customer_status];
+
+  const latestQuoteSource = (() => {
+    for (const t of tickets) {
+      const src = ticketSource(t, sourceLabels);
+      if (src) return src;
+    }
+    for (const lead of leads) {
+      const src = sourceLabel(lead.source, sourceLabels);
+      if (src) return src;
+    }
+    return null;
+  })();
 
   return (
     <div className="space-y-6">
@@ -597,6 +654,14 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
               Merge Duplicate
             </button>
             <button
+              onClick={() => router.push(newQuoteUrlFromCustomer(c))}
+              className="flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80 active:scale-[0.97]"
+              style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+            >
+              <FilePlus className="h-3.5 w-3.5" />
+              Add Quote
+            </button>
+            <button
               onClick={() => setEditOpen(true)}
               className="flex items-center gap-1.5 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80"
               style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
@@ -609,6 +674,12 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
 
         {/* Contact fields grid */}
         <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>Company</p>
+            <p className="text-[13px] font-medium" style={{ color: c.company ? "var(--color-text-primary)" : "var(--color-text-muted)" }}>
+              {c.company || "—"}
+            </p>
+          </div>
           <div>
             <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>Phone</p>
             {c.phone
@@ -623,7 +694,9 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
           </div>
           {[
             { label: "Industry", value: c.industry },
+            { label: "Decision Maker", value: authorityLabel(c.authority) },
             { label: "Website", value: c.website },
+            { label: "Quote Source", value: latestQuoteSource },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>{label}</p>
@@ -756,6 +829,10 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
                     <p className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
                       {t.reference_code ? `${t.reference_code} · ` : ""}
                       {relativeTime(t.created_at)}
+                      {(() => {
+                        const src = ticketSource(t, sourceLabels);
+                        return src ? ` · Source: ${src}` : "";
+                      })()}
                     </p>
                   </div>
                 </div>

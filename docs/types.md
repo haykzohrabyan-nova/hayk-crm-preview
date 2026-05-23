@@ -112,6 +112,7 @@ export interface Customer {
   company: string | null
   industry: string | null
   website: string | null
+  authority: string | null   // 'yes' | 'no' — decision maker
   heat_tag: HeatTag | null
   created_at: string
   updated_at: string
@@ -280,6 +281,7 @@ export interface JobTicket {
   priority: string | null           // from `ticket_priority` lookup
   due_date: string | null           // ISO date
   order_source: string | null       // from `order_source` lookup
+  quote_source: string | null       // direct Quotes-page creates only (from `source` lookup)
   rush: boolean
   special_requirements: string | null
   notes: string | null

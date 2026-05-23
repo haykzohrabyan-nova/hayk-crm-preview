@@ -172,20 +172,23 @@ All post-draft detail routes share:
 | Left sidebar | Read-only lead/customer card | None |
 | Main area | 3-tab form (Info, Line Items, Quote) | 4-tab form (Customer, Info, Line Items, Quote) |
 | Starting tab | Info | Customer |
+| Source input | **Info tab** — Quote source card (required); pre-filled from linked lead when present | **Customer tab** — Source * required before advancing |
 
 ### Customer Tab (only shown when no lead/CRM params)
 
-Field order: **Phone** | **Email** → **First Name** | **Last Name** → **Company**
+Field order: **Phone** | **Email** → **First Name** | **Last Name** → **Company** → **Source** * | **Decision Maker?** → **Industry** * | **Website / Social**
 
 **Phone-first customer search:**
 - As the user types a phone number (600 ms debounce), `GET /api/customers/lookup?phone=...` is called
 - **0 matches** → all fields remain editable; user fills in fresh
 - **1 match** → picker modal shown with the matched customer; user selects it or chooses "Create New"
 - **2+ matches** → same modal with all matches listed; user picks one or creates new
-- When a customer is **selected**: all fields except Phone auto-fill and lock (read-only). Only Phone input is editable.
+- When a customer is **selected**: identity fields (name, email, company) auto-fill and lock (read-only). **Phone stays editable.** Source, Industry, Decision Maker, and Website remain editable (rep may set source for *this* quote).
+- Pre-fill includes **all customer fields** plus **`latest_source`** / **`latest_authority`** from the customer's most recent lead or prior direct quote
 - Lock state is **lifted to the parent component** and survives tab navigation (navigating to Info and back does not reset the lock)
+- Selected customer's `customer_id` is stored in form state and sent on save
 
-> Customer data is **not saved to DB** until the user clicks Save Draft or Save & Send Quote. Customer is upserted into `customers` table at save time so they appear in CRM.
+> Customer data is **not saved to DB** until the user clicks Save Draft or Save & Send Quote. Customer is upserted into `customers` table at save time so they appear in CRM. **Source is stored on the ticket** (`quote_source`, `quote_authority`) — not on a new lead — for Quotes-page-only creates.
 
 ### Info Tab
 
@@ -240,7 +243,7 @@ Each SKU row:
 
 | Tab | Required before Next |
 |-----|----------------------|
-| Customer | First Name |
+| Customer | First + Last Name; phone or email; **Source**; **Industry** |
 | Info | Title |
 | Line Items | ≥ 1 fully filled item (product + qty + unit price) |
 | Quote | Destination field (email / phone / location) must not be empty |
@@ -296,7 +299,7 @@ When blocked, an amber banner lists missing fields (e.g. Title, Due date, line i
 
 ### Layout
 
-- **Left sidebar** (sticky): `LinkedLeadCard` if lead is linked; `CustomerInfoCard` if customer exists but no lead; nothing if neither
+- **Left sidebar** (sticky): `LinkedLeadCard` if lead is linked; `CustomerInfoCard` if customer exists but no lead (shows source/industry/website for direct quotes via `quote_source`); nothing if neither
 - **Right**: **2-tab view — Info | History**
 
 ### Info Tab
@@ -422,7 +425,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 |-------|--------|---------|
 | `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `quote_skus`). SDRs see own + routed-by. Sales/Admin see own + all `routed`. |
 | `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `order` + `cancelled`, excludes evidence-pending, slim payload. |
-| `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates ORD-YYYY-NNN for orders. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
+| `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders). Direct Quotes page: stores `quote_source` on ticket (no auto-lead). Lead/CRM flows: may create linked lead with `source`. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket by UUID or reference code (`QUO-*`, `ORD-*`). Sales/Admin can GET `routed` tickets they don't own. **Accountant** can GET any ticket (matches list scoping). |
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |
 | `GET /api/tickets/[id]/evidence` | GET | Signed URL for payment evidence file (Accountant + Admin) |
@@ -499,10 +502,12 @@ When a `routed` quote is **claimed** by Sales:
 
 When a quote is saved (draft or sent) from `new-quote-form.tsx`:
 
-1. If `customer_id` already exists in form state → use it
-2. Else if contact fields (name/email/phone) are present → `POST /api/customers` with upsert logic (match on email or phone; create if no match)
+1. If `customer_id` already exists in form state (existing customer selected from lookup) → use it; update industry/website on customer if changed
+2. Else if contact fields (name/email/phone) are present → server upserts via `POST /api/tickets` (match on email or phone; create if no match)
 3. Set `customer_id` on the `job_tickets` row
-4. Customer appears in CRM immediately
+4. **Quotes page only** (`from_quote_page: true`): store `quote_source` + `quote_authority` on the ticket; do **not** auto-create a linked lead
+5. **Lead / CRM entry**: source stays on the linked lead (existing behavior)
+6. Customer appears in CRM immediately
 
 ---
 

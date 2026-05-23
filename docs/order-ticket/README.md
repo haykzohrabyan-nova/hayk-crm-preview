@@ -56,7 +56,7 @@ This folder contains all research, analysis, and planning documents for the **Ti
 - **`supabase/migrations/047`** — `REPLICA IDENTITY FULL` + `ALTER PUBLICATION supabase_realtime ADD TABLE job_tickets` — enables Realtime broadcasts for quote/order pages
 - **API routes** — `GET/POST /api/tickets`, `GET/PATCH /api/tickets/[id]`, `GET /api/tickets/counts`, `GET /api/activities` (combined lead+ticket lifetime)
 - **`lib/utils/ticket-math.ts`** — `computePricing()`, `skuLineTotal()`, `formatCurrency()` pure helpers
-- **`/quotes/new`** — new quote creation page with lead info card + 3-tab form (Info → Line Items → Quote); Save Draft + Save & Send actions
+- **`/quotes/new`** — new quote creation page; 4-tab form when standalone (Customer → Info → Line Items → Quote); Customer tab skipped from lead/CRM; direct quotes store `quote_source` on ticket; Save Draft + Save & Send actions
 - **`/quotes/[id]`** — permanent quote/order detail page; 2-tab view (Info | History); read-only by default, edit toggled; record-locked for non-admins once customer approves; Send validation before Send/Convert; action bar Cancel left / Send+Convert right; "Convert to Order" creates order (Won credit deferred until production release)
 - **`/quotes`** — Quoted Requests list with tabs (All / Draft / Sent / Approved), search, count badges, realtime refresh
 - **`/orders`** — Orders list with tabs (All / Pending Payment / Cancelled), Rush indicator, due-date warnings, realtime refresh *(superseded: in-production and completed orders now on `/production` and `/completed`)*

@@ -213,7 +213,7 @@ BazarCRM/
 │   ├── orders/
 │   │   └── orders-page.tsx               ✓ Orders list (All / Pending Payment / Cancelled tabs)
 │   ├── quotes/
-│   │   ├── new-quote-form.tsx            ✓ 3-tab New Quote/Order form
+│   │   ├── new-quote-form.tsx            ✓ 4-tab New Quote form (Customer optional); direct quote source on ticket
 │   │   ├── quote-detail.tsx              ✓ Quote/Order detail + edit (used at /quotes/[id] + /orders/[id])
 │   │   ├── quote-payment-config.tsx      ✓ Payment config panel (strategy, deposit, channels)
 │   │   ├── quotes-page.tsx               ✓ Quoted Requests list (All/Draft/Sent/Won/Routed tabs)

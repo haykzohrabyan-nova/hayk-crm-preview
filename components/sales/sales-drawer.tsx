@@ -9,6 +9,7 @@ import { Activity, HoldForm, Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import { lookupLabel } from "@/lib/utils/lookups";
+import { authorityLabel } from "@/lib/utils/authority";
 import { formatCurrency } from "@/lib/utils/format";
 import {
   Select,
@@ -440,7 +441,7 @@ export function SalesDrawer({
                     <input
                       className={inputCls}
                       style={{ ...inputStyle, opacity: 0.75 }}
-                      value={lead.authority === "yes" ? "Yes" : lead.authority === "no" ? "No" : "—"}
+                      value={authorityLabel(c?.authority ?? lead.authority) ?? "—"}
                       readOnly
                     />
                   </div>
