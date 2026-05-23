@@ -203,11 +203,8 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
   const isCompleted    = status === "completed";
   const isInProduction = status === "in_production";
   const requireConfirm = ticket.ticket_require_client_confirm ?? true;
-  const channels       = getChannels(ticket);
-  const isPartialCash  = strategy === "partial" && ticket.ticket_dep_handling === "cash";
-  const isCashOnly     = strategy === "full" && channels.length === 1 && channels[0] === "cash";
   const isConfirmed    = isConfirmedOverride ?? ticket.client_confirmed ?? false;
-  const confirmed      = isConfirmed || !requireConfirm || isCashOnly || isPartialCash;
+  const confirmed      = isConfirmed || !requireConfirm;
 
   const evidencePending =
     !!ticket.payment_evidence_submitted_at &&
@@ -224,7 +221,7 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
   else if (fullyPaid) phase = "fully_paid";
   else if (evidencePending) phase = "evidence_pending";
   else if ((depositPaid || isInProduction) && remaining > 0.01) phase = "balance_due";
-  else if (!confirmed && requireConfirm && !isPartialCash && !isCashOnly) phase = "needs_confirm";
+  else if (!confirmed && requireConfirm) phase = "needs_confirm";
   else if (strategy === "net") phase = "net_terms";
 
   const payAmount = !depositPaid && strategy === "partial"
@@ -883,9 +880,7 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
     payAmount, payLabel, payButtonText, checklistTitle, actionTitle, actionSubtitle,
   } = portal;
 
-  const isPartialCash = strategy === "partial" && ticket.ticket_dep_handling === "cash";
-  const isCashOnly    = strategy === "full" && channels.length === 1 && channels[0] === "cash";
-  const priceStepDone = portal.isConfirmed || isCashOnly || isPartialCash;
+  const priceStepDone = portal.isConfirmed;
 
   const [localSubmitted, setLocalSubmitted] = useState(false);
 
@@ -987,9 +982,7 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
 
   const channelLabelStr = channels.map((ch) => CHANNEL_LABELS[ch] ?? ch).join(", ");
 
-  const confirmLabel =
-    isCashOnly || isPartialCash ? "Not required (cash in person)" :
-    requireConfirm ? "Required" : "Not required";
+  const confirmLabel = requireConfirm ? "Required" : "Not required";
 
   const blockReason =
     !priceStepDone ? null :

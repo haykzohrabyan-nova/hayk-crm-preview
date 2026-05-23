@@ -124,12 +124,13 @@ export async function POST(request: NextRequest, { params }: Params) {
   const fullyPaid   = newTotal >= quoteTotal - 0.01;
 
   const needsAccountantReview = EVIDENCE_REQUIRED_CHANNELS.has(method);
+  const requireConfirm = ticket.ticket_require_client_confirm ?? true;
+  const alreadyConfirmed = !!ticket.client_confirmed;
 
   const patch: Record<string, unknown> = {
     updated_at:                   now,
     payment_method_used:          method,
     payment_evidence_submitted_at: now,
-    client_confirmed:             true,
   };
 
   if (evidenceStoragePath) {
@@ -156,8 +157,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
-  // Convert sent → order when customer submits payment
-  if (ticket.ticket_status === "sent") {
+  // Convert sent → order only after the customer has confirmed (or when confirmation is off).
+  if (ticket.ticket_status === "sent" && (!requireConfirm || alreadyConfirmed)) {
     try {
       patch.reference_code = await assignOrderReferenceCode(
         admin,
@@ -193,7 +194,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const simulatedTicket = {
     quote_final_total:       quoteTotal,
-    client_confirmed:        true,
+    client_confirmed:        alreadyConfirmed,
     payment_amount_received: simulatedAmountReceived,
     payment_paid_at:         simulatedPaidAt,
     deposit_amount:          ticket.deposit_amount ?? null,

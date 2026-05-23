@@ -6,14 +6,24 @@ interface CustomerForCard {
   contact_email: string | null;
   contact_phone: string | null;
   contact_company: string | null;
+  quote_source?: string | null;
+  quote_authority?: string | null;
+  linked_lead_id?: string | null;
   customer: {
     first_name: string | null;
     last_name: string | null;
     company: string | null;
     phone: string | null;
     email: string | null;
+    industry?: string | null;
+    website?: string | null;
   } | null;
 }
+
+const AUTHORITY_LABELS: Record<string, string> = {
+  yes: "Yes",
+  no: "No",
+};
 
 export function CustomerInfoCard({ ticket }: { ticket: CustomerForCard }) {
   const c = ticket.customer;
@@ -23,6 +33,12 @@ export function CustomerInfoCard({ ticket }: { ticket: CustomerForCard }) {
   const email = c?.email ?? ticket.contact_email ?? "";
   const phone = c?.phone ?? ticket.contact_phone ?? "";
   const company = c?.company ?? ticket.contact_company ?? "";
+  const industry = c?.industry ?? null;
+  const website = c?.website ?? null;
+  const showQuoteMeta = !ticket.linked_lead_id && ticket.quote_source;
+  const authorityLabel = ticket.quote_authority
+    ? AUTHORITY_LABELS[ticket.quote_authority] ?? ticket.quote_authority
+    : null;
 
   return (
     <div
@@ -53,6 +69,37 @@ export function CustomerInfoCard({ ticket }: { ticket: CustomerForCard }) {
             <Mail size={14} style={{ color: "var(--color-text-muted)" }} />
             <span className="text-sm break-all" style={{ color: "var(--color-text-primary)" }}>{email}</span>
           </a>
+        )}
+        {showQuoteMeta && (
+          <div className="pt-2 space-y-1.5 border-t" style={{ borderColor: "var(--color-border)" }}>
+            <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+              Source: <span style={{ color: "var(--color-text-primary)" }}>{ticket.quote_source}</span>
+            </p>
+            {authorityLabel && (
+              <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                Decision maker: <span style={{ color: "var(--color-text-primary)" }}>{authorityLabel}</span>
+              </p>
+            )}
+            {industry && (
+              <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                Industry: <span style={{ color: "var(--color-text-primary)" }}>{industry}</span>
+              </p>
+            )}
+            {website && (
+              <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
+                Website:{" "}
+                <a
+                  href={website.startsWith("http") ? website : `https://${website}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:opacity-70 transition-opacity"
+                  style={{ color: "var(--color-text-primary)" }}
+                >
+                  {website}
+                </a>
+              </p>
+            )}
+          </div>
         )}
         {!name && !email && !phone && (
           <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>No customer details recorded.</p>

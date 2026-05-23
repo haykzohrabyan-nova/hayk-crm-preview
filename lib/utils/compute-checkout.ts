@@ -104,16 +104,13 @@ export function isPartialCashDeposit(config: PaymentConfig): boolean {
   return config.paymentStrategy === "partial" && config.depHandling === "cash";
 }
 
-/** Full payment recorded while confirmation is required → treat as confirmed. */
+/** @deprecated Payment no longer auto-confirms the quote when approval is required. */
 export function shouldAutoConfirmOnFullPayment(
-  config: PaymentConfig,
-  amountPaid: number,
-  quoteTotal: number,
+  _config: PaymentConfig,
+  _amountPaid: number,
+  _quoteTotal: number,
 ): boolean {
-  if (isCashInPerson(config)) return false;
-  if (config.requireClientConfirm === false) return false;
-  if (config.paymentStrategy !== "full") return false;
-  return amountPaid >= quoteTotal - 0.01;
+  return false;
 }
 
 /** Plain-text description of the production gate shown in the payment config UI. */
@@ -121,19 +118,23 @@ export function describeGatePreview(config: PaymentConfig, quoteTotal: number): 
   const fmt = (n: number) =>
     n.toLocaleString("en-US", { style: "currency", currency: "USD" });
 
-  if (isCashInPerson(config)) {
-    return `Cash in person — record full payment (${fmt(quoteTotal)}) with receipt ID → production. No quote confirmation required.`;
-  }
-  if (isPartialCashDeposit(config)) {
-    const dep =
-      config.depositType === "percent"
-        ? round2(quoteTotal * clamp(config.depositValue, 0) / 100)
-        : round2(Math.min(clamp(config.depositValue), quoteTotal));
-    return `Cash / offline deposit (${fmt(dep)}) with receipt ID → production starts. Client can pay remaining balance while in production.`;
+  const needConfirm = config.requireClientConfirm !== false;
+
+  if (!needConfirm) {
+    if (isCashInPerson(config)) {
+      return `Cash in person — record full payment (${fmt(quoteTotal)}) with receipt ID → production. No quote confirmation required.`;
+    }
+    if (isPartialCashDeposit(config)) {
+      const dep =
+        config.depositType === "percent"
+          ? round2(quoteTotal * clamp(config.depositValue, 0) / 100)
+          : round2(Math.min(clamp(config.depositValue), quoteTotal));
+      return `Cash / offline deposit (${fmt(dep)}) with receipt ID → production starts. Client can pay remaining balance while in production.`;
+    }
   }
 
   const parts: string[] = [];
-  if (config.requireClientConfirm !== false) parts.push("Quote price must be confirmed");
+  if (needConfirm) parts.push("Customer must confirm on the public quote link");
 
   if (config.paymentStrategy === "partial") {
     const dep =
@@ -197,13 +198,12 @@ export function computeCheckout(
     (quoteTotal > 0 && amountPaid >= quoteTotal);
 
   // ── Price step ────────────────────────────────────────────────────────────
-  const autoConfirmed = shouldAutoConfirmOnFullPayment(config, amountPaid, quoteTotal);
+  // When client confirmation is required, only the public confirm action (or
+  // explicit client_confirmed on the ticket) satisfies the price gate —
+  // never cash-in-person, partial-cash, or full payment alone.
   const priceStepDone =
-    cashInPerson ||
-    partialCashDeposit ||
     !requireClientConfirm ||
-    ticket.client_confirmed ||
-    autoConfirmed;
+    ticket.client_confirmed;
 
   // ── Payment step ──────────────────────────────────────────────────────────
   const paymentStepDone =
@@ -272,11 +272,9 @@ export function computeCheckout(
       id: "price",
       label: "Quote Confirmed",
       description:
-        cashInPerson || partialCashDeposit
-          ? "Not required — cash in person"
-          : requireClientConfirm
-            ? "Customer must confirm the quote"
-            : "No confirmation required",
+        requireClientConfirm
+          ? "Customer must confirm on the public quote link"
+          : "No confirmation required",
       done: priceStepDone,
       active: !priceStepDone,
     },

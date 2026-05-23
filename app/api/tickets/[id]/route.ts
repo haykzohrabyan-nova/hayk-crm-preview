@@ -95,7 +95,7 @@ async function maybeAutoRecordCashPayment(
 
   const simulated = {
     quote_final_total:       total,
-    client_confirmed:        true,
+    client_confirmed:        false,
     payment_amount_received: depositAmt,
     payment_paid_at:         isCashFull ? now : null,
     deposit_amount:          depositAmt,
@@ -158,7 +158,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .from("job_tickets")
     .select(
       `*,
-       customer:customers(id, first_name, last_name, company, phone, email),
+       customer:customers(id, first_name, last_name, company, phone, email, industry, website),
        lead:leads(
          id, status, sales_status, urgency, initial_interest, source,
          sdr_comment, hold_reason, rejection_reason, is_returning_customer, interests,

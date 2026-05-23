@@ -310,13 +310,11 @@ export function OrderPaymentSummary({ ticket, compact = false }: { ticket: Summa
         <SummaryRow
           label="Price confirmation"
           value={
-            ticket.ticket_dep_handling === "cash" && strategy === "partial"
-              ? "Not required (cash deposit)"
-              : ticket.ticket_require_client_confirm === false
-                ? "Not required"
-                : ticket.client_confirmed
-                  ? "Confirmed by customer"
-                  : "Required — pending"
+            ticket.ticket_require_client_confirm === false
+              ? "Not required"
+              : ticket.client_confirmed
+                ? "Confirmed by customer"
+                : "Required — pending"
           }
         />
         {ticket.ticket_receipt_id && !ticket.deposit_receipt_id && (

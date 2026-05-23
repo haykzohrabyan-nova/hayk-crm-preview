@@ -156,6 +156,7 @@ export default function NewQuoteForm() {
   // Lifted from CustomerTab so lock state survives tab navigation
   const [customerLocked, setCustomerLocked] = useState(false);
   const [customerFoundName, setCustomerFoundName] = useState<string | null>(null);
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
 
   // ── Info tab fields ──────────────────────────────────────────────────────
   const [title, setTitle] = useState("");
@@ -432,7 +433,7 @@ export default function NewQuoteForm() {
       ticket_status: status,
       title: title.trim(),
       linked_lead_id: leadId ?? undefined,
-      customer_id: lead?.customer?.id ?? undefined,
+      customer_id: selectedCustomerId ?? lead?.customer?.id ?? undefined,
       contact_name: contactName || (lead?.customer
         ? `${lead.customer.first_name ?? ""} ${lead.customer.last_name ?? ""}`.trim()
         : undefined),
@@ -441,8 +442,16 @@ export default function NewQuoteForm() {
       contact_phone: contactPhone || lead?.customer?.phone || undefined,
       industry: contactIndustry || lead?.customer?.industry || undefined,
       website: contactWebsite || lead?.customer?.website || undefined,
-      source: contactSource || lead?.source || undefined,
-      authority: contactAuthority || undefined,
+      ...(skipCustomerTab
+        ? {
+            source: contactSource || lead?.source || undefined,
+            authority: contactAuthority || undefined,
+          }
+        : {
+            from_quote_page: true,
+            quote_source: contactSource || undefined,
+            quote_authority: contactAuthority || undefined,
+          }),
       quote_skus: skus,
       notes: notes || undefined,
       order_source: orderSource,
@@ -725,7 +734,8 @@ export default function NewQuoteForm() {
                 locked={customerLocked} setLocked={setCustomerLocked}
                 foundName={customerFoundName} setFoundName={setCustomerFoundName}
                 errors={fieldErrors}
-                onCustomerFound={() => {}}
+                onCustomerFound={(c) => setSelectedCustomerId(c.id)}
+                onCustomerCleared={() => setSelectedCustomerId(null)}
               />
             )}
 
@@ -1002,6 +1012,7 @@ interface CustomerTabProps {
   foundName: string | null; setFoundName: (v: string | null) => void;
   errors?: Record<string, string>;
   onCustomerFound?: (customer: CrmCustomer) => void;
+  onCustomerCleared?: () => void;
 }
 
 interface CrmCustomer {
@@ -1013,6 +1024,8 @@ interface CrmCustomer {
   phone: string | null;
   industry: string | null;
   website: string | null;
+  latest_source?: string | null;
+  latest_authority?: string | null;
 }
 
 function CustomerTab(p: CustomerTabProps) {
@@ -1042,12 +1055,18 @@ function CustomerTab(p: CustomerTabProps) {
     p.errors?.[key] ? { border: "1px solid var(--color-danger)" } : {};
 
   function applyCustomer(c: CrmCustomer) {
+    if (c.phone) p.setPhone(c.phone);
     p.setFirstName(c.first_name ?? "");
     p.setLastName(c.last_name ?? "");
     p.setEmail(c.email ?? "");
     p.setCompany(c.company ?? "");
-    p.setIndustry(c.industry ?? p.industry);
-    p.setWebsite(c.website ?? p.website);
+    p.setIndustry(c.industry ?? "");
+    p.setWebsite(c.website ?? "");
+    if (c.latest_source) p.setSource(c.latest_source);
+    if (c.latest_authority) {
+      const auth = c.latest_authority.toLowerCase();
+      p.setAuthority(auth === "yes" || auth === "no" ? auth : c.latest_authority);
+    }
     setFoundName([c.first_name, c.last_name].filter(Boolean).join(" ") || "Customer");
     setLocked(true);
     setCandidates([]);
@@ -1063,6 +1082,9 @@ function CustomerTab(p: CustomerTabProps) {
     p.setCompany("");
     p.setIndustry("");
     p.setWebsite("");
+    p.setSource("");
+    p.setAuthority("");
+    p.onCustomerCleared?.();
   }
 
   function clearLock() {
@@ -1077,6 +1099,7 @@ function CustomerTab(p: CustomerTabProps) {
     p.setWebsite("");
     p.setSource("");
     p.setAuthority("");
+    p.onCustomerCleared?.();
   }
 
   function handlePhoneChange(v: string) {
@@ -1093,6 +1116,9 @@ function CustomerTab(p: CustomerTabProps) {
       p.setCompany("");
       p.setIndustry("");
       p.setWebsite("");
+      p.setSource("");
+      p.setAuthority("");
+      p.onCustomerCleared?.();
     }
 
     // Debounce search — trigger after 600ms of no typing

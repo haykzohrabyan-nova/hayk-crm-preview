@@ -115,6 +115,8 @@ function fmt(n: number): string {
 }
 
 function buildGatePreview(cfg: TicketPaymentDraft, quoteTotal: number): string {
+  const needConfirm = cfg.ticket_require_client_confirm !== false;
+
   const isCashOnly =
     cfg.ticket_payment_strategy === "full" &&
     cfg.ticket_full_channels.length === 1 &&
@@ -124,19 +126,19 @@ function buildGatePreview(cfg: TicketPaymentDraft, quoteTotal: number): string {
     cfg.ticket_payment_strategy === "partial" &&
     cfg.ticket_dep_handling === "cash";
 
-  // Mirror shadow app: describeGatePreview in pulse-quote-payment.js
+  if (!needConfirm) {
+    if (isCashOnly) {
+      return `With current settings: Cash in person — record full payment (${fmt(quoteTotal)}) with receipt ID → production. No quote confirmation.`;
+    }
 
-  if (isCashOnly) {
-    return `With current settings: Cash in person — record full payment (${fmt(quoteTotal)}) with receipt ID → production. No quote confirmation.`;
-  }
-
-  if (isPartialCash) {
-    const dep = computeDeposit(quoteTotal, cfg.ticket_deposit_type, cfg.ticket_deposit_value);
-    return `With current settings: Cash / offline deposit (${fmt(dep)}) with receipt ID → production starts. Client can pay remaining balance while in production.`;
+    if (isPartialCash) {
+      const dep = computeDeposit(quoteTotal, cfg.ticket_deposit_type, cfg.ticket_deposit_value);
+      return `With current settings: Cash / offline deposit (${fmt(dep)}) with receipt ID → production starts. Client can pay remaining balance while in production.`;
+    }
   }
 
   const parts: string[] = [];
-  if (cfg.ticket_require_client_confirm !== false) parts.push("Quote price must be confirmed");
+  if (needConfirm) parts.push("Customer must confirm on the public quote link");
 
   if (cfg.ticket_payment_strategy === "partial") {
     const dep = computeDeposit(quoteTotal, cfg.ticket_deposit_type, cfg.ticket_deposit_value);
@@ -223,10 +225,10 @@ export default function QuotePaymentConfig({ quoteTotal, initialConfig, onChange
   function toggleFullChannel(id: string) {
     if (id === "cash") {
       // Cash is exclusive — selecting it deselects all others; deselecting it restores defaults
+      const selectingCash = !(fullChannels.length === 1 && fullChannels[0] === "cash");
       patch({
-        ticket_full_channels: fullChannels.length === 1 && fullChannels[0] === "cash"
-          ? [...DEFAULT_FULL_CHANNELS]
-          : ["cash"],
+        ticket_full_channels: selectingCash ? ["cash"] : [...DEFAULT_FULL_CHANNELS],
+        ...(selectingCash ? { ticket_require_client_confirm: false } : {}),
       });
       return;
     }

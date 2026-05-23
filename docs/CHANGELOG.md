@@ -3,6 +3,26 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-23] — Direct quote customer pre-fill and quote source
+
+### Added
+- `supabase/migrations/077_quote_source.sql` — `quote_source` and `quote_authority` columns on `job_tickets` for Quotes-page creates
+
+### Changed
+- `app/api/customers/lookup/route.ts` — enriches matches with latest lead or direct-quote source/authority for pre-fill
+- `components/quotes/new-quote-form.tsx` — selecting an existing customer pre-fills all fields (including source, industry, website, decision maker); passes `customer_id`; sends `from_quote_page` + `quote_source`/`quote_authority` instead of creating a lead
+- `app/api/tickets/route.ts` — stores source on the ticket for direct Quotes-page creates; skips auto-lead creation in that path
+- `components/quotes/quote-detail/customer-info-card.tsx` — shows source, decision maker, industry, and website for direct quotes without a linked lead
+
+## [2026-05-23] — Honor customer approval gate for all payment types
+
+### Fixed
+- `lib/utils/compute-checkout.ts` — when `ticket_require_client_confirm` is on, production waits for `client_confirmed` from the public page; cash/full/deposit payment alone no longer skips approval
+- `app/api/tickets/route.ts`, `app/api/tickets/[id]/route.ts` — cash auto-record no longer simulates confirmed when approval is required
+- `app/api/public/quotes/[token]/submit-payment/route.ts` — payment submit no longer sets `client_confirmed` or converts to order before customer confirms
+- `app/(public)/q/[token]/page.tsx` — public checklist always shows confirm step first when approval is required
+- `components/quotes/quote-payment-config.tsx`, `order-payment-summary.tsx` — gate preview and summary match the stricter rule
+
 ## [2026-05-23] — Quote Customer tab matches lead fields
 
 ### Changed

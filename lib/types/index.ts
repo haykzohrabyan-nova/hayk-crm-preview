@@ -324,6 +324,8 @@ export interface JobTicket {
 
   // Order-specific
   order_source: OrderSource | null
+  quote_source: string | null
+  quote_authority: string | null
   due_date: string | null
   priority: TicketPriority | null
   special_requirements: string | null

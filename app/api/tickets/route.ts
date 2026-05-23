@@ -121,7 +121,7 @@ async function maybeAutoRecordCashPayment(
 
   const simulated = {
     quote_final_total:       total,
-    client_confirmed:        true,
+    client_confirmed:        false,
     payment_amount_received: depositAmt,
     payment_paid_at:         isCashFull ? now : null,
     deposit_amount:          depositAmt,
@@ -304,6 +304,9 @@ export async function POST(request: NextRequest) {
     website,
     source,
     authority,
+    from_quote_page = false,
+    quote_source,
+    quote_authority,
     quote_skus = [],
     notes,
     order_source,
@@ -369,14 +372,31 @@ export async function POST(request: NextRequest) {
   let resolvedCustomerId: string | null = customer_id ?? null;
   let resolvedLeadId: string | null = linked_lead_id ?? null;
 
+  const isDirectQuotePage = from_quote_page === true;
+  const effectiveSource = isDirectQuotePage ? quote_source : source;
+
   const isNewCustomerFromContact = !resolvedCustomerId && (contact_email || contact_phone);
-  if (isNewCustomerFromContact) {
-    if (!source?.trim()) {
+  const needsQuoteCustomerMeta =
+    isDirectQuotePage && !resolvedLeadId && (isNewCustomerFromContact || resolvedCustomerId);
+
+  if (isNewCustomerFromContact || needsQuoteCustomerMeta) {
+    if (!effectiveSource?.trim()) {
       return NextResponse.json({ error: "Source is required.", code: "VALIDATION_ERROR" }, { status: 400 });
     }
     if (!industry?.trim()) {
       return NextResponse.json({ error: "Industry is required.", code: "VALIDATION_ERROR" }, { status: 400 });
     }
+  }
+
+  if (resolvedCustomerId && !isNewCustomerFromContact && (industry || website)) {
+    await admin
+      .from("customers")
+      .update({
+        ...(industry ? { industry } : {}),
+        ...(website ? { website } : {}),
+        updated_at: now,
+      })
+      .eq("id", resolvedCustomerId);
   }
 
   if (isNewCustomerFromContact) {
@@ -422,8 +442,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // When Sales creates a quote without an existing lead, capture source/authority on a new lead.
-  if (!resolvedLeadId && resolvedCustomerId && source?.trim()) {
+  // CRM / lead flows: capture source on a new lead. Direct Quotes page stores source on the ticket instead.
+  if (!resolvedLeadId && resolvedCustomerId && source?.trim() && !isDirectQuotePage) {
     const hasSkus = Array.isArray(quote_skus) && quote_skus.length > 0;
     const { data: newLead } = await admin
       .from("leads")
@@ -474,6 +494,8 @@ export async function POST(request: NextRequest) {
     contact_email: contact_email ?? null,
     contact_company: contact_company ?? null,
     contact_phone: contact_phone ?? null,
+    quote_source: isDirectQuotePage ? (quote_source?.trim() || null) : null,
+    quote_authority: isDirectQuotePage ? (quote_authority?.trim() || null) : null,
     quote_skus,
     notes: notes ?? null,
     order_source: order_source ?? null,
