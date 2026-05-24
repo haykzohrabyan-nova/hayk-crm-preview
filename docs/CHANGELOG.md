@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-24] — Fix production TypeScript build
+
+### Fixed
+- `app/api/tickets/route.ts` — quote list query result typed for dynamic Supabase select string
+- `lib/utils/lookups.ts` — `lookupLabel` accepts `{ value, label }` options (fixes customer profile industry display)
+
 ## [2026-05-24] — Documentation sync (quote-until-payment + balance flow)
 
 ### Changed

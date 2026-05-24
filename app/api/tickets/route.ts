@@ -215,7 +215,7 @@ export async function GET(request: NextRequest) {
         .in("ticket_status", [...QUOTE_LIST_STATUSES])
         .order("created_at", { ascending: false }),
     );
-    data = result.data;
+    data = (result.data as Record<string, unknown>[] | null) ?? null;
     error = result.error;
   } else {
     let q = admin
@@ -237,7 +237,7 @@ export async function GET(request: NextRequest) {
     }
 
     const result = await applyScope(q);
-    data = result.data;
+    data = (result.data as Record<string, unknown>[] | null) ?? null;
     error = result.error;
   }
 
