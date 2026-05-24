@@ -12,17 +12,24 @@ export async function PATCH(
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const { role_id, is_active, full_name, new_temp_password } = body as {
+  const { role_id, is_active, full_name, new_temp_password, mfa_required } = body as {
     role_id?: string;
     is_active?: boolean;
     full_name?: string;
     new_temp_password?: string;
+    mfa_required?: boolean;
   };
 
-  // Safety: admin cannot change their own role or deactivate themselves
-  if (id === adminId && (role_id !== undefined || is_active === false)) {
+  // Safety: admin cannot change their own role, deactivate themselves, or disable own 2FA
+  if (
+    id === adminId &&
+    (role_id !== undefined || is_active === false || mfa_required === false)
+  ) {
     return NextResponse.json(
-      { error: "You cannot change your own role or deactivate your own account.", code: "SELF_MODIFY" },
+      {
+        error: "You cannot change your own role, deactivate your account, or disable your own 2FA.",
+        code: "SELF_MODIFY",
+      },
       { status: 400 }
     );
   }
@@ -68,6 +75,7 @@ export async function PATCH(
   if (full_name !== undefined) updates.full_name = full_name;
   if (role_id !== undefined) updates.role_id = role_id;
   if (is_active !== undefined) updates.is_active = is_active;
+  if (mfa_required !== undefined) updates.mfa_required = mfa_required;
   if (new_temp_password) updates.must_change_password = true;
 
   if (Object.keys(updates).length === 0) {

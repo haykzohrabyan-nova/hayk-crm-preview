@@ -158,8 +158,12 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 
 The existing `proxy.ts` enforces:
 1. Unauthenticated → redirect to `/login`
-2. No TOTP enrolled → redirect to `/setup-2fa`
-3. Session not AAL2 → redirect to `/verify-2fa`
+2. No TOTP enrolled → redirect to `/setup-2fa` *(skipped when `user_profiles.mfa_required = false`)*
+3. Session not AAL2 → redirect to `/verify-2fa` *(skipped when `mfa_required = false`)*
+
+Admins can toggle **`mfa_required`** per user on **Admin → Users** (confirmation dialog). Default is `true` for all users. Admins cannot disable their own 2FA.
+
+**Remember this device (30 days):** on the login page, users can opt in to skip the authenticator step on the same browser for 30 days after their next successful 2FA verification. Signing out revokes trust for that browser.
 
 **New steps 4–6:**
 

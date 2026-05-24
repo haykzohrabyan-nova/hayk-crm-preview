@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Eye,
   EyeOff,
+  Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,6 +50,7 @@ interface UserRow {
   role_display_name: string;
   is_active: boolean;
   must_change_password: boolean;
+  mfa_required: boolean;
   created_at: string;
 }
 
@@ -507,6 +509,84 @@ function StatusBadge({ active }: { active: boolean }) {
   );
 }
 
+function MfaBadge({ required }: { required: boolean }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold",
+        required
+          ? "bg-[var(--color-badge-bg)] text-[var(--color-badge-text)] border-transparent"
+          : "bg-[var(--color-warning-bg)] text-[var(--color-warning)] border-[var(--color-warning-border)]",
+      )}
+    >
+      <Shield className="h-3 w-3" />
+      {required ? "Required" : "Off"}
+    </span>
+  );
+}
+
+function MfaConfirmDialog({
+  user,
+  open,
+  saving,
+  onClose,
+  onConfirm,
+}: {
+  user: UserRow | null;
+  open: boolean;
+  saving: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const enabling = user ? user.mfa_required === false : false;
+  const displayName = user?.full_name?.trim() || user?.email || "this user";
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!v && !saving) onClose(); }}>
+      <DialogContent className="max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>
+            {enabling ? "Require two-factor authentication?" : "Disable two-factor authentication?"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm" style={{ color: "var(--color-text-muted)" }}>
+          {enabling ? (
+            <>
+              <p>
+                <strong style={{ color: "var(--color-text-primary)" }}>{displayName}</strong> will be
+                required to set up an authenticator app before accessing the CRM on their next login.
+              </p>
+              <p>If they already enrolled 2FA, they will need to verify it each session as usual.</p>
+            </>
+          ) : (
+            <>
+              <p>
+                <strong style={{ color: "var(--color-text-primary)" }}>{displayName}</strong> will be
+                able to sign in with their password only — no authenticator code.
+              </p>
+              <p style={{ color: "var(--color-warning-text-deep)" }}>
+                This reduces account security. Only disable 2FA if you have a specific business reason.
+              </p>
+            </>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={saving}
+            variant={enabling ? "default" : "destructive"}
+          >
+            {saving ? "Saving…" : enabling ? "Require 2FA" : "Disable 2FA"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main UsersSection export ─────────────────────────────────────────────────
 
 export function UsersSection() {
@@ -519,6 +599,8 @@ export function UsersSection() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
+  const [mfaConfirmUser, setMfaConfirmUser] = useState<UserRow | null>(null);
+  const [mfaSaving, setMfaSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const showToast = (message: string, type: "success" | "error" = "success") =>
@@ -532,7 +614,12 @@ export function UsersSection() {
     if (showInactive) params.set("is_active", "false");
     const res = await fetch(`/api/admin/users?${params}`);
     const data = await res.json();
-    setUsers(data.users ?? []);
+    setUsers(
+      (data.users ?? []).map((u: UserRow) => ({
+        ...u,
+        mfa_required: u.mfa_required !== false,
+      })),
+    );
     setLoading(false);
   }, [search, roleFilter, showInactive]);
 
@@ -558,7 +645,35 @@ export function UsersSection() {
     showToast(user.is_active ? "User deactivated." : "User reactivated.");
   }
 
-  const TABLE_HEADERS = ["Name", "Email", "Role", "Status", "Reset PW", "Joined", "Actions"];
+  async function handleMfaConfirm() {
+    if (!mfaConfirmUser) return;
+    const nextRequired = !mfaConfirmUser.mfa_required;
+    setMfaSaving(true);
+    const res = await fetch(`/api/admin/users/${mfaConfirmUser.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mfa_required: nextRequired }),
+    });
+    const data = await res.json();
+    setMfaSaving(false);
+    if (!res.ok) {
+      showToast(data.error ?? "Failed to update 2FA setting.", "error");
+      return;
+    }
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.id === mfaConfirmUser.id ? { ...u, mfa_required: nextRequired } : u,
+      ),
+    );
+    showToast(
+      nextRequired
+        ? `2FA is now required for ${mfaConfirmUser.full_name ?? mfaConfirmUser.email}.`
+        : `2FA disabled for ${mfaConfirmUser.full_name ?? mfaConfirmUser.email}.`,
+    );
+    setMfaConfirmUser(null);
+  }
+
+  const TABLE_HEADERS = ["Name", "Email", "Role", "Status", "2FA", "Reset PW", "Joined", "Actions"];
 
   return (
     <div className="space-y-6">
@@ -640,7 +755,7 @@ export function UsersSection() {
             {loading ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <tr key={i} style={{ borderTop: i > 0 ? "1px solid var(--color-border)" : undefined }}>
-                  {Array.from({ length: 7 }).map((_, j) => (
+                  {Array.from({ length: 8 }).map((_, j) => (
                     <td key={j} className="px-3 py-3">
                       <div
                         className="h-4 animate-pulse rounded"
@@ -652,7 +767,7 @@ export function UsersSection() {
               ))
             ) : users.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                   No users found.
                 </td>
               </tr>
@@ -693,6 +808,17 @@ export function UsersSection() {
                   </td>
                   {/* Status */}
                   <td className="px-3 py-2.5"><StatusBadge active={user.is_active} /></td>
+                  {/* 2FA */}
+                  <td className="px-3 py-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setMfaConfirmUser(user)}
+                      className="rounded-md transition-opacity hover:opacity-80"
+                      title="Change 2FA requirement"
+                    >
+                      <MfaBadge required={user.mfa_required !== false} />
+                    </button>
+                  </td>
                   {/* Must change PW */}
                   <td className="px-3 py-2.5">
                     {user.must_change_password ? (
@@ -795,6 +921,12 @@ export function UsersSection() {
                   <span className="font-medium">Joined</span>
                   <span className="normal-case tracking-normal text-xs" style={{ color: "var(--color-text-primary)" }}>{relativeTime(user.created_at)}</span>
                 </div>
+                <div className="flex justify-between items-center gap-2">
+                  <span className="font-medium">2FA</span>
+                  <button type="button" onClick={() => setMfaConfirmUser(user)}>
+                    <MfaBadge required={user.mfa_required !== false} />
+                  </button>
+                </div>
                 {user.must_change_password && (
                   <div className="flex justify-between items-center gap-2">
                     <span className="font-medium">Reset PW</span>
@@ -856,6 +988,15 @@ export function UsersSection() {
           const toast = emailDeliveryToast("User updated", updated.email, emailDelivery, true);
           showToast(toast.message, toast.type);
         }}
+      />
+
+      {/* MFA confirm dialog */}
+      <MfaConfirmDialog
+        user={mfaConfirmUser}
+        open={mfaConfirmUser !== null}
+        saving={mfaSaving}
+        onClose={() => setMfaConfirmUser(null)}
+        onConfirm={handleMfaConfirm}
       />
 
       {/* Toast */}

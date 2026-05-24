@@ -13,7 +13,8 @@
 > | B+++ | Production / completed lifecycle + net terms auto-release | ✅ Built (migrations 069, 072) — in-production on **`/orders?tab=in_production`**, `/completed`, `maybe-auto-release-production.ts`, `markLeadWonOnProduction()` |
 > | B+++ | Quote-until-payment + balance on public link | ✅ Built — `maybe-convert-quote-to-order.ts`; confirm sets `client_confirmed` only; balance pay while in production |
 > | B+++ | Customer notifications (payment confirmed, invoice link, pickup ready) | ✅ Built — `payment-confirmed-template.ts`, `invoice-link-template.ts`, `order-ready-template.ts` |
-> | C | Stripe Card payment | ⏳ Deferred — DB ready, API wiring not started |
+> | C | Stripe Card payment (online Checkout) | ⏳ Deferred — DB ready, API wiring not started |
+| C-alt | Offline card via merchant terminal + authorization queue | ⏳ Planned — see [`offline-card-payment.md`](./offline-card-payment.md) |
 > | D | Zelle code matching | ⏳ Deferred |
 > | E | Dashboard revenue KPIs | ⏳ Deferred |
 

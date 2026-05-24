@@ -66,6 +66,7 @@ create table if not exists public.user_profiles (
   avatar_url            text,
   is_active             boolean     not null default true,
   must_change_password  boolean     not null default false,
+  mfa_required          boolean     not null default true,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
@@ -781,6 +782,7 @@ create or replace view public.user_profiles_with_role as
     up.avatar_url,
     up.is_active,
     up.must_change_password,
+    up.mfa_required,
     up.created_at,
     up.updated_at,
     r.name          as role_name,

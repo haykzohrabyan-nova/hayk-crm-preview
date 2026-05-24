@@ -3,6 +3,51 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-24] — Remove Stripe/Zelle from admin Integrations tab
+
+### Removed
+- Admin → Settings → Integrations: Stripe and Zelle “Coming soon” cards (no API integration planned for now)
+
+### Changed
+- `components/admin/integrations-section.tsx` — shows Twilio and Instantly only
+
+## [2026-05-24] — Remember device for 30 days (skip 2FA)
+
+### Added
+- Login page **Remember this device for 30 days** checkbox — after one successful 2FA verify, skips authenticator on that browser for 30 days
+- `mfa_trusted_devices` table + `supabase/migrations/081_mfa_trusted_devices.sql`
+- `lib/auth/mfa-trust.ts`, `lib/auth/remember-mfa-client.ts`, `POST/DELETE /api/auth/mfa-trust`
+
+### Changed
+- `proxy.ts` — honors trusted-device cookie before redirecting to `/verify-2fa`
+- `verify-2fa`, `setup-2fa` — create trust cookie when remember option was checked at login
+- Sidebar + mobile nav sign out — revokes trusted device for the browser
+
+## [2026-05-24] — Admin per-user 2FA toggle
+
+### Fixed
+- `supabase/migrations/080_user_mfa_required.sql` — `DROP VIEW` before recreate (Postgres rejects mid-list column insert on `CREATE OR REPLACE VIEW`)
+
+### Added
+- `user_profiles.mfa_required` — admin can require or skip TOTP per user (default `true`)
+- `supabase/migrations/080_user_mfa_required.sql`
+- `lib/auth/mfa-required.ts` — shared MFA requirement helper
+- Admin → Users: **2FA** column with confirmation dialog before enabling/disabling
+
+### Changed
+- `proxy.ts` — skips `/setup-2fa` and `/verify-2fa` when `mfa_required = false`; single profile fetch per request
+- `app/api/admin/users/[id]/route.ts` — PATCH accepts `mfa_required`; blocks admin from disabling own 2FA
+- `app/(auth)/setup-2fa/page.tsx`, `app/(auth)/verify-2fa/page.tsx` — redirect away when 2FA not required
+- `docs/rbac.md`, `supabase/schema.sql` — document new column
+
+## [2026-05-24] — Offline card payment integration plan
+
+### Added
+- `docs/feature-specs/offline-card-payment.md` — planned merchant-terminal card flow (PCI rules, PDF/online authorization, `/payments` queue, staff workflow)
+
+### Changed
+- `docs/feature-specs/invoice-payment.md` — Phase C-alt row linking to offline card payment spec
+
 ## [2026-05-24] — Documentation sync (mobile UX, detail actions, loading)
 
 ### Changed

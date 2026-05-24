@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { ShieldCheck, Smartphone } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
+import { isMfaRequired } from "@/lib/auth/mfa-required";
+import { maybeCreateMfaTrustAfterVerify, revokeMfaTrustOnSignOut } from "@/lib/auth/remember-mfa-client";
 import { OtpInput } from "@/components/auth/otp-input";
 
 function Verify2FAForm() {
@@ -12,6 +14,32 @@ function Verify2FAForm() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [checkingProfile, setCheckingProfile] = useState(true);
+
+  useEffect(() => {
+    async function checkMfaRequired() {
+      const supabase = createClient();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+      if (!user) {
+        setCheckingProfile(false);
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("mfa_required")
+        .eq("id", user.id)
+        .single();
+      if (!isMfaRequired(profile)) {
+        const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
+        window.location.assign(next);
+        return;
+      }
+      setCheckingProfile(false);
+    }
+    checkMfaRequired();
+  }, [searchParams]);
 
   // Auto-submit when all 6 digits are entered
   useEffect(() => {
@@ -64,6 +92,8 @@ function Verify2FAForm() {
 
     await supabase.auth.refreshSession();
 
+    await maybeCreateMfaTrustAfterVerify();
+
     // Log session start — fire-and-forget, never block navigation
     fetch("/api/auth/session", {
       method: "POST",
@@ -76,6 +106,7 @@ function Verify2FAForm() {
   }
 
   async function handleSignOut() {
+    await revokeMfaTrustOnSignOut();
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.assign("/login");
@@ -91,6 +122,12 @@ function Verify2FAForm() {
         boxShadow: "0 2px 12px rgba(0,0,0,0.06)",
       }}
     >
+      {checkingProfile ? (
+        <p className="text-center text-sm py-8" style={{ color: "var(--color-text-muted)" }}>
+          Loading…
+        </p>
+      ) : (
+      <>
       {/* Step dots — step 1 done, step 2 active */}
       <div className="flex items-center justify-center gap-2 mb-7">
         <div className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--color-success)" }} />
@@ -182,6 +219,8 @@ function Verify2FAForm() {
           2-factor verification active
         </span>
       </div>
+      </>
+      )}
     </div>
   );
 }

@@ -6,6 +6,8 @@ import { QRCodeSVG } from "qrcode.react";
 import { ShieldCheck, KeyRound } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
+import { isMfaRequired } from "@/lib/auth/mfa-required";
+import { maybeCreateMfaTrustAfterVerify } from "@/lib/auth/remember-mfa-client";
 import { OtpInput } from "@/components/auth/otp-input";
 
 function Setup2FAForm() {
@@ -39,13 +41,22 @@ function Setup2FAForm() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      const { data: profile } = user
-        ? await supabase
-            .from("user_profiles")
-            .select("full_name")
-            .eq("id", user.id)
-            .single()
-        : { data: null };
+      let profile: { mfa_required?: boolean | null; full_name?: string | null } | null = null;
+
+      if (user) {
+        const { data: profileRow } = await supabase
+          .from("user_profiles")
+          .select("mfa_required, full_name")
+          .eq("id", user.id)
+          .single();
+        profile = profileRow;
+
+        if (!isMfaRequired(profile)) {
+          const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
+          window.location.assign(next);
+          return;
+        }
+      }
 
       const accountName =
         profile?.full_name?.trim() || user?.email?.split("@")[0] || "User";
@@ -107,6 +118,7 @@ function Setup2FAForm() {
     }
 
     await supabase.auth.refreshSession();
+    await maybeCreateMfaTrustAfterVerify();
     const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
     window.location.assign(next);
   }

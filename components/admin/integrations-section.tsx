@@ -1,38 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { CreditCard, Smartphone, Clock, MessageSquare, Mail, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
+import { MessageSquare, Mail, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
-
-// ─── Coming-soon cards ────────────────────────────────────────────────────────
-
-const COMING_SOON = [
-  {
-    id: "stripe",
-    name: "Stripe",
-    description:
-      "Accept card payments directly from quotes. Automatically mark tickets as paid when a client pays online. Supports one-time charges and prepayment splits.",
-    icon: CreditCard,
-    notes: [
-      "Send a payment link from the quote detail page",
-      "Auto-update ticket status on successful charge",
-      "Sync prepayment and balance amounts",
-    ],
-  },
-  {
-    id: "zelle",
-    name: "Zelle",
-    description:
-      "Record and track Zelle payments on quotes and orders. Link your business Zelle account so reps can include payment instructions on quote PDFs.",
-    icon: Smartphone,
-    notes: [
-      "Display Zelle details on quote PDFs",
-      "Manual payment confirmation by rep",
-      "Track payment status per ticket",
-    ],
-  },
-];
 
 // ─── Twilio card ──────────────────────────────────────────────────────────────
 
@@ -294,70 +265,9 @@ export function IntegrationsSection() {
 
       {/* Live integrations */}
       <div>
-        <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--color-text-muted)" }}>
-          Connected
-        </h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <TwilioCard />
           <InstantlyCard />
-        </div>
-      </div>
-
-      {/* Coming soon */}
-      <div>
-        <h3 className="text-[12px] font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--color-text-muted)" }}>
-          Coming soon
-        </h3>
-        <div className="grid gap-4 sm:grid-cols-2">
-          {COMING_SOON.map(({ id, name, description, icon: Icon, notes }) => (
-            <div
-              key={id}
-              className="rounded-[10px] border p-5"
-              style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-            >
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
-                    style={{ background: "var(--color-badge-bg)" }}
-                  >
-                    <Icon className="h-5 w-5" style={{ color: "var(--color-badge-text)" }} />
-                  </div>
-                  <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-                    {name}
-                  </p>
-                </div>
-                <span
-                  className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium whitespace-nowrap"
-                  style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}
-                >
-                  <Clock className="h-3 w-3" />
-                  Coming soon
-                </span>
-              </div>
-
-              <p className="text-sm mb-3" style={{ color: "var(--color-text-muted)" }}>
-                {description}
-              </p>
-
-              <ul className="space-y-1">
-                {notes.map((note) => (
-                  <li key={note} className="flex items-start gap-2 text-[13px]" style={{ color: "var(--color-text-muted)" }}>
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full" style={{ background: "var(--color-accent)" }} />
-                    {note}
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                disabled
-                className="mt-4 w-full rounded-md py-2 text-sm font-medium opacity-40 cursor-not-allowed"
-                style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-              >
-                Configure {name}
-              </button>
-            </div>
-          ))}
         </div>
       </div>
     </div>

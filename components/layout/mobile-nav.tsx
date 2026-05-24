@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/components/layout/theme-provider";
 import { createClient } from "@/lib/supabase/client";
+import { revokeMfaTrustOnSignOut } from "@/lib/auth/remember-mfa-client";
 import type { Page } from "@/lib/types";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -132,6 +133,7 @@ export function MobileNav() {
     } catch {
       // best-effort — never block sign-out
     }
+    await revokeMfaTrustOnSignOut();
     const supabase = createClient();
     await supabase.auth.signOut();
     window.location.assign("/login");

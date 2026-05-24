@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Lock, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
+import { setRememberMfaPreference } from "@/lib/auth/remember-mfa-client";
 import { EmailInput } from "@/components/ui/email-input";
 
 function StepDots({ step }: { step: 1 | 2 }) {
@@ -28,6 +29,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -42,6 +44,7 @@ function LoginForm() {
       setLoading(false);
       return;
     }
+    setRememberMfaPreference(rememberDevice);
     const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
     router.push(next);
   }
@@ -155,6 +158,28 @@ function LoginForm() {
             </button>
           </div>
         </div>
+
+        {/* Remember this device — skips 2FA for 30 days after next successful verify */}
+        <label
+          className="flex items-start gap-2.5 cursor-pointer select-none -mt-1"
+          htmlFor="remember-device"
+        >
+          <input
+            id="remember-device"
+            type="checkbox"
+            checked={rememberDevice}
+            onChange={(e) => setRememberDevice(e.target.checked)}
+            className="mt-0.5 rounded"
+            style={{ accentColor: "var(--color-accent)" }}
+          />
+          <span className="text-[12px] leading-snug" style={{ color: "var(--color-text-muted)" }}>
+            <span style={{ color: "var(--color-text-primary)", fontWeight: 500 }}>
+              Remember this device for 30 days
+            </span>
+            {" — "}
+            skip the authenticator code on this browser after your next successful sign-in.
+          </span>
+        </label>
 
         {/* Submit */}
         <button

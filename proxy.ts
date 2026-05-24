@@ -2,6 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
 import { resolveDefaultHomePath } from "@/lib/auth/resolve-default-home";
+import { isMfaRequired } from "@/lib/auth/mfa-required";
+import { hasValidMfaTrust } from "@/lib/auth/mfa-trust";
 
 function continueTargetFromRequest(request: NextRequest): string | null {
   const explicit = safeReturnPath(request.nextUrl.searchParams.get("next"));
@@ -80,59 +82,74 @@ export async function proxy(request: NextRequest) {
   }
 
   if (user) {
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("is_active, must_change_password, mfa_required, role_id, roles(name)")
+      .eq("id", user.id)
+      .single();
+
+    const mfaRequired = isMfaRequired(profile);
+
     const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
     const current = aal?.currentLevel;
     const next = aal?.nextLevel;
 
-    // No MFA enrolled → force setup
-    if (current === "aal1" && next === "aal1" && !pathname.startsWith("/setup-2fa") && !isPublic) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/setup-2fa";
-      url.search = "";
-      const ct = continueTargetFromRequest(request);
-      if (ct) url.searchParams.set("next", ct);
-      return NextResponse.redirect(url);
+    const mfaTrusted =
+      mfaRequired && user ? await hasValidMfaTrust(request, user.id) : false;
+
+    if (mfaRequired && !mfaTrusted) {
+      // No MFA enrolled → force setup
+      if (current === "aal1" && next === "aal1" && !pathname.startsWith("/setup-2fa") && !isPublic) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/setup-2fa";
+        url.search = "";
+        const ct = continueTargetFromRequest(request);
+        if (ct) url.searchParams.set("next", ct);
+        return NextResponse.redirect(url);
+      }
+
+      // MFA enrolled but not verified this session → verify
+      if (current === "aal1" && next === "aal2" && !pathname.startsWith("/verify-2fa") && !isPublic) {
+        const url = request.nextUrl.clone();
+        url.pathname = "/verify-2fa";
+        url.search = "";
+        const ct = continueTargetFromRequest(request);
+        if (ct) url.searchParams.set("next", ct);
+        return NextResponse.redirect(url);
+      }
+    } else if (
+      (pathname.startsWith("/setup-2fa") || pathname.startsWith("/verify-2fa")) &&
+      !isPublic
+    ) {
+      const dest = await resolveDefaultHomePath(supabase);
+      return NextResponse.redirect(new URL(dest, request.nextUrl.origin));
     }
 
-    // MFA enrolled but not verified this session → verify
-    if (current === "aal1" && next === "aal2" && !pathname.startsWith("/verify-2fa") && !isPublic) {
-      const url = request.nextUrl.clone();
-      url.pathname = "/verify-2fa";
-      url.search = "";
-      const ct = continueTargetFromRequest(request);
-      if (ct) url.searchParams.set("next", ct);
-      return NextResponse.redirect(url);
-    }
+    const sessionReady = current === "aal2" || !mfaRequired || mfaTrusted;
 
-    // Fully verified (aal2): kick auth-flow pages back to app
-    if (current === "aal2" && isAuthFlow && !pathname.startsWith("/change-password")) {
+    // App-ready session: kick auth-flow pages back to app
+    if (sessionReady && isAuthFlow && !pathname.startsWith("/change-password")) {
       const explicit = safeReturnPath(request.nextUrl.searchParams.get("next"));
       const dest = explicit ?? (await resolveDefaultHomePath(supabase));
       return NextResponse.redirect(new URL(dest, request.nextUrl.origin));
     }
 
     // Legacy /production routes — merged into /orders (tab + detail)
-    if (current === "aal2" && pathname === "/production") {
+    if (sessionReady && pathname === "/production") {
       const url = request.nextUrl.clone();
       url.pathname = "/orders";
       url.searchParams.set("tab", "in_production");
       return NextResponse.redirect(url);
     }
-    if (current === "aal2" && pathname.startsWith("/production/")) {
+    if (sessionReady && pathname.startsWith("/production/")) {
       const url = request.nextUrl.clone();
       url.pathname = pathname.replace(/^\/production\//, "/orders/");
       url.search = "";
       return NextResponse.redirect(url);
     }
 
-    // Only run DB checks for app pages (not static, not auth flow, not public customer links)
-    if (current === "aal2" && !isStatic && !isAuthFlow && !isPublic) {
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("is_active, must_change_password, role_id, roles(name)")
-        .eq("id", user.id)
-        .single();
-
+    // App pages: profile, password gate, RBAC
+    if (sessionReady && !isStatic && !isAuthFlow && !isPublic) {
       // Deactivated user → sign out and redirect
       if (profile && !profile.is_active) {
         await supabase.auth.signOut();
@@ -151,13 +168,9 @@ export async function proxy(request: NextRequest) {
       }
 
       // Role-based route access (skip admin role — they get everything)
-      // Some routes are available to all authenticated users regardless of role.
       const universalRoutes = ["/profile", "/dashboard"];
       const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
       if (roleName && roleName !== "admin" && !universalRoutes.some((r) => pathname.startsWith(r))) {
-        // Fetch all pages this role can access, then check if the current
-        // pathname matches any of them — exact match OR prefix (e.g. /quotes
-        // grants access to /quotes/new and /quotes/[id]).
         const { data: permissions } = await supabase
           .from("role_permissions")
           .select("pages!inner(route)")
@@ -172,7 +185,6 @@ export async function proxy(request: NextRequest) {
         );
 
         if (!hasAccess) {
-          // User does not have access to this route → redirect to their home
           const dest = await resolveDefaultHomePath(supabase);
           return NextResponse.redirect(new URL(dest, request.nextUrl.origin));
         }
