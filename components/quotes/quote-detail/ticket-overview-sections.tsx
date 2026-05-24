@@ -4,11 +4,18 @@ import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
 import { OrderPaymentSummary } from "@/components/quotes/quote-detail/order-payment-summary";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { formatCurrency } from "@/lib/utils/ticket-math";
 import { emptySkuRow as sharedEmptySkuRow } from "@/components/quotes/shared/utils";
 import type { QuoteSku, ProductType, SkuLookups } from "@/components/quotes/shared/types";
 import type { QuoteFormTicket } from "@/components/quotes/shared/quote-form";
 import type { SummaryTicket } from "@/components/quotes/quote-detail/order-payment-summary";
 import type { TicketPaymentDraft } from "@/components/quotes/quote-payment-config";
+import {
+  DetailSection,
+  DetailSectionTitle,
+  DetailNotesBox,
+  DetailPricingTable,
+} from "@/components/quotes/quote-detail/detail-layout-primitives";
 
 function emptySkuRow(): QuoteSku {
   return sharedEmptySkuRow();
@@ -20,6 +27,13 @@ interface OverviewTicket {
   quote_skus?: QuoteSku[] | null;
   special_requirements: string | null;
   notes: string | null;
+  quote_subtotal: number | null;
+  quote_shipping: number | null;
+  quote_pre_tax_total: number | null;
+  quote_tax_amount: number | null;
+  quote_final_total: number | null;
+  discount_type: string | null;
+  discount_value: string | null;
 }
 
 interface Props {
@@ -46,6 +60,25 @@ interface Props {
   onPaymentChange: (v: TicketPaymentDraft) => void;
   showPaymentSummary: boolean;
   canViewPaymentEvidence?: boolean;
+  totalLabel?: "Order Total" | "Quote Total";
+}
+
+function buildPricingRows(ticket: SectionTicket): { label: string; value: string; muted?: boolean }[] {
+  const subtotal = ticket.quote_subtotal ?? 0;
+  const shipping = ticket.quote_shipping ?? 0;
+  const preTax = ticket.quote_pre_tax_total ?? 0;
+  const taxAmount = ticket.quote_tax_amount ?? 0;
+  const finalTotal = Number(ticket.quote_final_total ?? 0);
+  const discountAmount = Math.max(Math.round((subtotal + shipping - preTax) * 100) / 100, 0);
+
+  return [
+    { label: "Subtotal", value: formatCurrency(subtotal) },
+    { label: "Shipping", value: shipping > 0 ? formatCurrency(shipping) : "—", muted: shipping <= 0 },
+    { label: "Discount", value: discountAmount > 0 ? formatCurrency(discountAmount) : "—", muted: discountAmount <= 0 },
+    { label: "Pre-tax Total", value: formatCurrency(preTax), muted: true },
+    { label: "Tax", value: taxAmount > 0 ? formatCurrency(taxAmount) : "—", muted: taxAmount <= 0 },
+    { label: "Order Total", value: formatCurrency(finalTotal) },
+  ];
 }
 
 /** Shared read-only body below the snapshot card (payments / production / quote stages). */
@@ -73,43 +106,21 @@ export function TicketOverviewSections({
   onPaymentChange,
   showPaymentSummary,
   canViewPaymentEvidence = true,
+  totalLabel = "Order Total",
 }: Props) {
   const paymentReviewAbove = isPaymentEvidencePending(ticket);
+  const pricingRows = buildPricingRows(ticket);
+  if (pricingRows.length > 0) {
+    pricingRows[pricingRows.length - 1] = {
+      ...pricingRows[pricingRows.length - 1],
+      label: totalLabel,
+    };
+  }
+
   return (
     <>
-      {(ticket.special_requirements || ticket.notes) && (
-        <div
-          className="rounded-lg p-4 space-y-3"
-          style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}
-        >
-          {ticket.special_requirements && (
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
-                Special Requirements
-              </p>
-              <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--color-text-primary)" }}>
-                {ticket.special_requirements}
-              </p>
-            </div>
-          )}
-          {ticket.notes && (
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
-                Internal Notes
-              </p>
-              <p className="text-sm whitespace-pre-wrap" style={{ color: "var(--color-text-primary)" }}>
-                {ticket.notes}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div>
-        <div className="flex items-center gap-3 mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>Line Items</p>
-          <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
-        </div>
+      <DetailSection>
+        <DetailSectionTitle>Line Items</DetailSectionTitle>
         <LineItemsForm
           editing={false}
           skus={ticket.quote_skus?.length ? ticket.quote_skus : [emptySkuRow()]}
@@ -119,54 +130,67 @@ export function TicketOverviewSections({
           onRemove={() => {}}
           onAdd={() => {}}
         />
-      </div>
+      </DetailSection>
 
-      <div>
-        <div className="flex items-center gap-3 mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>
-            {paymentReviewAbove ? "Quote details" : "Pricing"}
-          </p>
-          <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
-        </div>
-        <QuoteForm
-          editing={false}
-          ticket={ticket}
-          hidePricingSummary={paymentReviewAbove}
-          pricing={pricing}
-          shipping={shipping}
-          setShipping={setShipping}
-          discountType={discountType}
-          setDiscountType={setDiscountType}
-          discountValue={discountValue}
-          setDiscountValue={setDiscountValue}
-          discountReason={discountReason}
-          setDiscountReason={setDiscountReason}
-          taxRate={taxRate}
-          setTaxRate={setTaxRate}
-          taxExempt={taxExempt}
-          setTaxExempt={setTaxExempt}
-          salesPermit={salesPermit}
-          setSalesPermit={setSalesPermit}
-          salesPermitError={salesPermitError}
-          paymentDraft={paymentDraft}
-          onPaymentChange={onPaymentChange}
-        />
-      </div>
-
-      {showPaymentSummary && (
-        <div>
-          <div className="flex items-center gap-3 mb-4">
-            <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>
-              {paymentReviewAbove ? "Order settings" : "Payment & Order Settings"}
-            </p>
-            <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
-          </div>
-          <OrderPaymentSummary
+      <DetailSection>
+        <DetailSectionTitle>{paymentReviewAbove ? "Quote details" : "Pricing"}</DetailSectionTitle>
+        {!paymentReviewAbove && (
+          <DetailPricingTable rows={pricingRows} totalLabel={totalLabel} />
+        )}
+        <div className={paymentReviewAbove ? "" : "mt-5"}>
+          <QuoteForm
+            editing={false}
             ticket={ticket}
-            canViewPaymentEvidence={canViewPaymentEvidence}
-            paymentReviewAbove={paymentReviewAbove}
+            hidePricingSummary
+            pricing={pricing}
+            shipping={shipping}
+            setShipping={setShipping}
+            discountType={discountType}
+            setDiscountType={setDiscountType}
+            discountValue={discountValue}
+            setDiscountValue={setDiscountValue}
+            discountReason={discountReason}
+            setDiscountReason={setDiscountReason}
+            taxRate={taxRate}
+            setTaxRate={setTaxRate}
+            taxExempt={taxExempt}
+            setTaxExempt={setTaxExempt}
+            salesPermit={salesPermit}
+            setSalesPermit={setSalesPermit}
+            salesPermitError={salesPermitError}
+            paymentDraft={paymentDraft}
+            onPaymentChange={onPaymentChange}
           />
         </div>
+      </DetailSection>
+
+      {(ticket.special_requirements || ticket.notes) && (
+        <DetailSection>
+          <DetailSectionTitle>Notes &amp; Requirements</DetailSectionTitle>
+          <div className="space-y-4">
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                Special Requirements
+              </p>
+              <DetailNotesBox>{ticket.special_requirements}</DetailNotesBox>
+            </div>
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                Internal Notes
+              </p>
+              <DetailNotesBox>{ticket.notes}</DetailNotesBox>
+            </div>
+          </div>
+        </DetailSection>
+      )}
+
+      {showPaymentSummary && (
+        <OrderPaymentSummary
+          ticket={ticket}
+          canViewPaymentEvidence={canViewPaymentEvidence}
+          paymentReviewAbove={paymentReviewAbove}
+          layout="grid"
+        />
       )}
     </>
   );

@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
+import { Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
+import {
+  MobileListCard,
+  MobileListCardRow,
+  MobileListCardFields,
+  MobileListCardSkeleton,
+  MobileListCardEmpty,
+  TicketListToolbar,
+} from "@/components/ui/mobile-list-card";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { formatQuoteListDueNow, getQuoteListDueNowAmount } from "@/lib/utils/quote-list-due-now";
 import { quoteListStatus } from "@/lib/utils/quote-list-status";
@@ -94,6 +102,147 @@ function parseLocalDate(dateStr: string): Date {
 function isOverdue(dateStr: string | null): boolean {
   if (!dateStr) return false;
   return parseLocalDate(dateStr) < new Date();
+}
+
+function QuoteMobileCard({
+  quote: q,
+  onOpen,
+}: {
+  quote: QuoteTicket;
+  onOpen: () => void;
+}) {
+  const statusStyle = quoteListStatus(q);
+  const overdue = isOverdue(q.quote_reminder_date);
+
+  return (
+    <MobileListCard onClick={onOpen}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <span className="text-xs font-mono font-medium" style={{ color: "var(--color-text-primary)" }}>
+            {q.reference_code ?? "—"}
+          </span>
+          <p className="font-semibold text-sm mt-1.5 truncate" style={{ color: "var(--color-text-primary)" }}>
+            {displayName(q)}
+          </p>
+          {q.customer?.company && (
+            <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
+          )}
+        </div>
+        <span
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0"
+          style={{ background: statusStyle.bg, color: statusStyle.text }}
+        >
+          {statusStyle.label}
+        </span>
+      </div>
+
+      {q.title && (
+        <p className="text-sm truncate" style={{ color: "var(--color-text-primary)" }}>{q.title}</p>
+      )}
+
+      <MobileListCardFields>
+        <MobileListCardRow label="Channel" value={q.quote_channel ?? "—"} />
+        <MobileListCardRow
+          label="Total"
+          value={q.quote_final_total != null ? formatCurrency(q.quote_final_total) : "—"}
+        />
+        <MobileListCardRow
+          label="Due Now"
+          value={formatQuoteListDueNow(q)}
+          valueColor={getQuoteListDueNowAmount(q) != null ? "var(--color-warning)" : undefined}
+        />
+        <MobileListCardRow
+          label="Follow-up"
+          value={
+            q.quote_reminder_date
+              ? new Date(q.quote_reminder_date + "T00:00:00").toLocaleDateString()
+              : "—"
+          }
+          valueColor={overdue ? "var(--color-danger)" : undefined}
+        />
+        <MobileListCardRow label="Created" value={relativeTime(q.created_at)} />
+      </MobileListCardFields>
+
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        className="w-full flex items-center justify-center gap-1 px-2.5 py-2 rounded-md text-xs font-medium border transition-opacity hover:opacity-70"
+        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
+      >
+        <ExternalLink size={11} /> View quote
+      </button>
+    </MobileListCard>
+  );
+}
+
+function RoutedQuoteMobileCard({
+  quote: q,
+  userRole,
+  claimingId,
+  onView,
+  onClaim,
+}: {
+  quote: QuoteTicket;
+  userRole: string | null;
+  claimingId: string | null;
+  onView: () => void;
+  onClaim: () => void;
+}) {
+  return (
+    <MobileListCard>
+      <div className="min-w-0">
+        <p className="font-semibold text-sm truncate" style={{ color: "var(--color-text-primary)" }}>
+          {displayName(q)}
+        </p>
+        {q.customer?.company && (
+          <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
+        )}
+      </div>
+
+      {q.title && (
+        <p className="text-sm truncate" style={{ color: "var(--color-text-primary)" }}>{q.title}</p>
+      )}
+
+      <MobileListCardFields>
+        <MobileListCardRow label="Quote #" value={q.reference_code ?? "—"} />
+        <MobileListCardRow
+          label="Total"
+          value={q.quote_final_total != null ? formatCurrency(q.quote_final_total) : "—"}
+          valueColor="var(--color-warning)"
+        />
+        <MobileListCardRow
+          label="Due Now"
+          value={formatQuoteListDueNow(q)}
+          valueColor={getQuoteListDueNowAmount(q) != null ? "var(--color-warning)" : undefined}
+        />
+        <MobileListCardRow label="Routed By" value={q.created_by_name ?? "SDR"} />
+        <MobileListCardRow label="Date" value={relativeTime(q.created_at)} />
+      </MobileListCardFields>
+
+      {userRole === "sdr" ? (
+        <button
+          type="button"
+          onClick={onView}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
+          style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
+        >
+          <ExternalLink size={12} />
+          View
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={claimingId === q.id}
+          onClick={onClaim}
+          className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
+          style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
+        >
+          <UserCheck size={12} />
+          {claimingId === q.id ? "Claiming…" : "Claim"}
+        </button>
+      )}
+    </MobileListCard>
+  );
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -229,7 +378,7 @@ export default function QuotesPage() {
     <div className="space-y-5" style={{ color: "var(--color-text-primary)" }}>
 
       {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4 sm:mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Quoted Requests
@@ -240,7 +389,7 @@ export default function QuotesPage() {
         </div>
         <button
           onClick={() => router.push("/quotes/new")}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-opacity hover:opacity-80"
+          className="flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-md text-sm font-medium transition-opacity hover:opacity-80 shrink-0"
           style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
         >
           <Plus size={15} /> New Quote
@@ -262,64 +411,19 @@ export default function QuotesPage() {
         </div>
       )}
 
-      {/* Tabs + search row */}
-      <div className="flex items-end justify-between border-b mb-0" style={{ borderColor: "var(--color-border)" }}>
-        <div className="flex">
-          {TABS.map((t) => {
-            const count = tabCounts[t.id] ?? 0;
-            return (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className="px-4 py-2.5 text-sm relative transition-colors"
-                style={{
-                  color: tab === t.id ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
-                  fontWeight: tab === t.id ? 500 : 400,
-                }}
-              >
-                {t.label}
-                {count > 0 && (
-                  <span
-                    className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
-                    style={{
-                      background: tab === t.id
-                        ? t.id === "routed" ? "var(--color-warning-bg)" : "var(--color-badge-bg)"
-                        : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
-                      color: t.id === "routed" ? "var(--color-warning)" : "var(--color-badge-text)",
-                      border: t.id === "routed" ? "1px solid var(--color-warning-border)" : "none",
-                    }}
-                  >
-                    {count}
-                  </span>
-                )}
-                {tab === t.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t" style={{ background: "var(--color-tab-underline)" }} />
-                )}
-              </button>
-            );
-          })}
-        </div>
+      <TicketListToolbar
+        tabs={TABS.map((t) => ({ id: t.id, label: t.label }))}
+        activeTab={tab}
+        onTabChange={(id) => setTab(id as Tab)}
+        tabCounts={tabCounts}
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search quotes…"
+      />
 
-        {/* Search */}
-        <div className="relative mb-2">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--color-text-muted)" }} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search quotes…"
-            className="pl-8 pr-3 py-1.5 text-sm rounded-md border outline-none w-52"
-            style={{
-              background: "var(--color-bg)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text-primary)",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Table */}
+      {/* Desktop table */}
       <div
-        className="rounded-b-xl border border-t-0 overflow-hidden"
+        className="hidden lg:block rounded-b-xl border border-t-0 overflow-hidden"
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
@@ -538,6 +642,42 @@ export default function QuotesPage() {
               })}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Mobile cards */}
+      <div className="flex flex-col gap-3 lg:hidden">
+        {loading ? (
+          <MobileListCardSkeleton />
+        ) : filtered.length === 0 ? (
+          <MobileListCardEmpty
+            message={
+              search
+                ? "No quotes match your search."
+                : isRoutedTab
+                ? "No routed quotes — all clear!"
+                : "No quotes yet."
+            }
+          />
+        ) : isRoutedTab ? (
+          filtered.map((q) => (
+            <RoutedQuoteMobileCard
+              key={q.id}
+              quote={q}
+              userRole={userRole}
+              claimingId={claimingId}
+              onView={() => router.push(quoteDetailPath(q))}
+              onClaim={() => handleClaim(q)}
+            />
+          ))
+        ) : (
+          filtered.map((q) => (
+            <QuoteMobileCard
+              key={q.id}
+              quote={q}
+              onOpen={() => router.push(quoteDetailPath(q))}
+            />
+          ))
         )}
       </div>
 

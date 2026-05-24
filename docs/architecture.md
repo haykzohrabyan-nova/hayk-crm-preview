@@ -178,7 +178,7 @@ BazarCRM/
 │   │       ├── materials/route.ts        ✓ GET/POST materials
 │   │       └── materials/[id]/route.ts   ✓ PATCH/DELETE material
 │   ├── globals.css                       ✓ Tailwind v4 + BazaarPrinting CSS tokens
-│   ├── layout.tsx                        ✓ Root layout — Inter font, ThemeProvider
+│   ├── layout.tsx                        ✓ Root layout — Inter font, ThemeProvider, GlobalLoadingProvider
 │   └── page.tsx                          ✓ Redirects → /dashboard
 ├── components/                           ✓ Feature-based folders — no loose files at root
 │   ├── admin/
@@ -204,6 +204,7 @@ BazarCRM/
 │   │   ├── sidebar.tsx                   ✓ Collapsible left sidebar (role-aware nav)
 │   │   ├── mobile-nav.tsx                ✓ Mobile bottom nav drawer
 │   │   ├── theme-provider.tsx            ✓ Light/dark theme + useTheme hook
+│   │   ├── global-loading-provider.tsx   ✓ App-wide loading overlay + useGlobalLoading hook
 │   │   ├── idle-timer.tsx                ✓ Idle detection → warning modal → auto sign-out
 │   │   └── global-event-handlers.tsx     ✓ App-wide window event wiring
 │   ├── leads/
@@ -211,14 +212,20 @@ BazarCRM/
 │   │   ├── verify-drawer.tsx             ✓ SDR lead work drawer (edit + read-only modes)
 │   │   └── hold-sub-form.tsx             ✓ Hold reason sub-form (used inside VerifyDrawer)
 │   ├── orders/
-│   │   └── orders-page.tsx               ✓ Orders list (All / Pending Payment / Cancelled tabs)
+│   │   ├── orders-page.tsx               ✓ Orders list (All / Pending Payment / In Production / Cancelled)
+│   │   ├── payments-page.tsx             ✓ Accountant payment evidence queue
+│   │   ├── production-page.tsx           ✓ Legacy — redirects to /orders?tab=in_production
+│   │   └── completed-page.tsx            ✓ Completed orders list
 │   ├── quotes/
 │   │   ├── new-quote-form.tsx            ✓ 4-tab New Quote form (Customer optional); direct quote source on ticket
 │   │   ├── quote-detail.tsx              ✓ Quote/Order detail + edit (used at /quotes/[id] + /orders/[id])
 │   │   ├── quote-payment-config.tsx      ✓ Payment config panel (strategy, deposit, channels)
 │   │   ├── quotes-page.tsx               ✓ Quoted Requests list (All/Draft/Sent/Won/Routed tabs)
 │   │   ├── quote-detail/                 ← sub-components split from quote-detail
-│   │   │   ├── customer-info-card.tsx    ✓ Left sidebar customer card
+│   │   │   ├── customer-info-card.tsx    ✓ Left sidebar customer card (lookup labels)
+│   │   │   ├── detail-quick-actions.tsx  ✓ Sidebar actions (send, convert, mark complete, …)
+│   │   │   ├── detail-layout-primitives.tsx ✓ Stat cards, section titles, spec pills
+│   │   │   ├── ticket-stats-row.tsx      ✓ Top stats row on overview layout
 │   │   │   ├── history-section.tsx       ✓ Activity timeline tab
 │   │   │   └── ticket-skeleton.tsx       ✓ Loading skeleton
 │   │   └── shared/                       ← shared between new-quote-form + quote-detail

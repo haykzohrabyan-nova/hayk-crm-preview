@@ -1268,7 +1268,9 @@
 
       <div class="card" style="margin-top:4px;">
         <div class="card-title">📱 Mobile-Friendly Design</div>
-        <p style="font-size:13px;color:var(--muted);">The order/quote detail page is fully responsive. On mobile: the customer info card stacks above the content, tabs scroll horizontally, form fields go single-column, and action buttons wrap. The header abbreviates badge labels automatically.</p>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">List pages (Quotes, Orders, Payments, Completed, Leads, Sales, CRM) use a <strong>card layout below 1024px</strong> (<code>lg</code>) — each row becomes a stacked card via <code>MobileListCard</code>; no horizontal table scroll.</p>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:10px;">Quote/order detail overview: customer card + <strong>all action buttons</strong> (Send/Resend, Convert, Cancel, Mark Completed, Customer Link) live in the left sidebar under the contact card. Stats row on mobile: full-width total + 2×2 grid. Single page scroll on phones; desktop xl+ scrolls only the Overview/History panel.</p>
+        <p style="font-size:13px;color:var(--muted);">Slow saves (Send Quote, Convert, Confirm payment) show a full-screen loading overlay. Industry and source tags use admin lookup labels, not raw values like <code>walk_in</code>.</p>
       </div>
     </section>
 

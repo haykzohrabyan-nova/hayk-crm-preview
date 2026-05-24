@@ -1,6 +1,34 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 24, 2026
-**Status:** MVP complete + quote-until-payment + balance on public link + public confirm UX fixes. See **May 23–24, 2026** sections below.
+**Status:** MVP complete + quote-until-payment + balance on public link + May 24 UI polish (mobile lists, detail redesign, global loading). See sections below.
+
+---
+
+## May 24, 2026 — Mobile lists, detail UX, global loading
+
+### Mobile list pages (`lg` breakpoint)
+- Shared `components/ui/mobile-list-card.tsx` — `MobileListCard`, skeleton/empty states, `TicketListToolbar` (scrollable tabs + full-width search)
+- **Quotes, Orders, In Production, Completed, Payments** — desktop table (`hidden lg:block`) + mobile card list (`lg:hidden`); no horizontal table scroll on phones
+- Rule: `.cursor/rules/mobile-table-cards.mdc` (breakpoint `lg`, matches Leads/Sales + MobileNav)
+- `MobileListCard` uses a clickable `div` (not nested `<button>`) so View / Confirm actions are valid HTML
+
+### Quote & order detail redesign
+- Overview layout (`context` quote sent+, order, payment, production, completed): stats row → left sidebar (customer/lead + **DetailQuickActions**) → right Overview/History panel
+- Desktop (`xl+`): only the Overview/History panel scrolls; stats + sidebar stay fixed
+- Mobile/tablet: single page scroll (no nested scroll trap); status badges swipe horizontally (`touch-pan-x`)
+- Stats row on mobile: full-width **Order/Quote Total**, then 2×2 grid (Received, Balance Due, Due Date, Payment)
+- `CustomerInfoCard` — industry + quote source resolved via `/api/lookups` labels (not raw `retail_apparel` / `walk_in`)
+
+### Quote lifecycle actions — sidebar
+- **Cancel Ticket**, **Send/Resend Quote**, **Convert to Order** moved from bottom action bar into `DetailQuickActions` under the customer/lead card (with Customer Link, Mark Completed, Resend Link)
+- Bottom duplicate action bar removed on overview layout
+
+### Global loading overlay
+- `components/layout/global-loading-provider.tsx` in root layout — `useGlobalLoading()` with `showLoading`, `hideLoading`, `runWithLoading`, `GLOBAL_LOADING_MESSAGES`
+- Wired on: New Quote save/send, quote detail save/send/convert/complete/release, payments Confirm
+
+### Docs
+- `docs/component-architecture.md`, `docs/feature-specs/tickets.md`, `docs/session-summary.md`, `docs/architecture.md`, `docs/crm-logic-overview.html` — synced with above
 
 ---
 
@@ -390,11 +418,12 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/sales` | main | ✅ Built |
 | `/crm` | main | ✅ Built |
 | `/crm/customers/[id]` | main | ✅ Built — full customer profile page |
-| `/quotes` | main | ✅ Built — Quoted Requests list (All / Draft / Sent / Won / Routed to Sales tabs) |
-| `/quotes/new` | main | ✅ Built — New Quote/Order form (Customer + 3 tabs; Customer tab conditional) |
-| `/quotes/[id]` | main | ✅ Built — Quote/Order detail; record locked after customer approval (non-admins); "Convert to Order" button; Payment Link Bar; payment status badge; mobile-responsive |
-| `/orders` | main | ✅ Built — Orders list (3 tabs: All / Pending Payment / Cancelled); Payment status column |
-| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; locked for non-admins after confirmation; Payment Link Bar; payment status badge; deposit status bar; mobile-responsive |
+| `/quotes` | main | ✅ Built — Quoted Requests list; mobile cards at `< lg`; `TicketListToolbar` |
+| `/quotes/new` | main | ✅ Built — New Quote form; global loading on Save & Send |
+| `/quotes/[id]` | main | ✅ Built — overview layout; sidebar actions (Send/Resend, Convert, Cancel, Customer Link); stats row; lookup labels on customer card |
+| `/orders` | main | ✅ Built — Orders list (All / Pending Payment / In Production / Cancelled); mobile cards at `< lg` |
+| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; Mark Completed + Resend Link in sidebar; overview layout |
+| `/payments` | main | ✅ Built — evidence queue; mobile cards; Confirm shows global loading |
 | `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
 | `/reports` | main | ✅ Built (placeholder) — 7 planned report types shown; full charts after Stripe; migration 058 adds page to DB |

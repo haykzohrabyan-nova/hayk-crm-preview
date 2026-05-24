@@ -6,6 +6,7 @@ import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { emptySkuRow } from "./utils";
 import { SkuRow } from "./sku-row";
 import type { ProductType, SkuLookups } from "./types";
+import { DetailLineItemCard } from "@/components/quotes/quote-detail/detail-layout-primitives";
 
 interface LineItemsFormProps {
   /** When false, renders a read-only list. Default true. */
@@ -48,29 +49,21 @@ export function LineItemsForm({
         {skus.map((sku, i) => {
           const computedLineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
           const lineTotal = sku.line_total ?? computedLineTotal;
+          const name = [
+            sku.product_type || "—",
+            sku.material,
+            sku.lamination && sku.lamination !== "None" ? sku.lamination : null,
+          ].filter(Boolean).join(" · ");
+          const specs: string[] = [];
+          if (sku.color_mode) specs.push(sku.color_mode);
+          if (sku.sides) specs.push(sku.sides);
+          if (sku.roll_direction) specs.push(sku.roll_direction);
+          if (sku.width && sku.height) specs.push(`${sku.width}" × ${sku.height}"`);
+          if (sku.quantity) specs.push(`Qty: ${sku.quantity}`);
+          if (sku.unit_price) specs.push(`${formatCurrency(sku.unit_price)} ea`);
+          if (sku.comment) specs.push(sku.comment);
           return (
-            <div key={i} className="rounded-lg p-3 border" style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}>
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-                    {sku.product_type || "—"}{sku.material ? ` · ${sku.material}` : ""}{sku.lamination && sku.lamination !== "None" ? ` · ${sku.lamination}` : ""}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                    {sku.color_mode ? `${sku.color_mode}` : ""}{sku.sides ? ` · ${sku.sides}` : ""}{sku.roll_direction ? ` · ${sku.roll_direction}` : ""}
-                  </p>
-                  <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                    {sku.width && sku.height ? `${sku.width}" × ${sku.height}" · ` : ""}
-                    {sku.quantity ? `Qty: ${sku.quantity}` : ""}{sku.unit_price ? ` · ${formatCurrency(sku.unit_price)} ea` : ""}
-                  </p>
-                  {sku.comment && (
-                    <p className="text-xs mt-1 italic" style={{ color: "var(--color-text-muted)" }}>{sku.comment}</p>
-                  )}
-                </div>
-                {lineTotal > 0 && (
-                  <span className="text-sm font-semibold" style={{ color: "var(--color-text-primary)" }}>{formatCurrency(lineTotal)}</span>
-                )}
-              </div>
-            </div>
+            <DetailLineItemCard key={i} name={name} specs={specs} price={lineTotal} />
           );
         })}
       </div>

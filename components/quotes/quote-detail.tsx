@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -20,7 +20,6 @@ import {
   Lock,
   Link,
   Copy,
-  Clock,
 } from "lucide-react";
 import { computePricing, formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import {
@@ -48,6 +47,13 @@ import { CustomerInfoCard } from "@/components/quotes/quote-detail/customer-info
 import { OrderPaymentSummary } from "@/components/quotes/quote-detail/order-payment-summary";
 import { TicketDetailOverview } from "@/components/quotes/quote-detail/ticket-detail-overview";
 import { TicketOverviewSections } from "@/components/quotes/quote-detail/ticket-overview-sections";
+import { TicketStatsRow } from "@/components/quotes/quote-detail/ticket-stats-row";
+import { DetailQuickActions } from "@/components/quotes/quote-detail/detail-quick-actions";
+import { DetailStatusDotBadge } from "@/components/quotes/quote-detail/detail-layout-primitives";
+import {
+  GLOBAL_LOADING_MESSAGES,
+  useGlobalLoading,
+} from "@/components/layout/global-loading-provider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -216,6 +222,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { showLoading, hideLoading } = useGlobalLoading();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [noticeIsWarning, setNoticeIsWarning] = useState(false);
@@ -396,6 +403,25 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
   // ─── Save ─────────────────────────────────────────────────────────────────
 
+  function globalSaveMessage(newStatus?: string, extraFields?: Record<string, unknown>): string {
+    if (newStatus === "sent") return GLOBAL_LOADING_MESSAGES.sendingQuote;
+    if (newStatus === "order") return GLOBAL_LOADING_MESSAGES.convertingOrder;
+    if (newStatus === "routed") return GLOBAL_LOADING_MESSAGES.routingQuote;
+    if (extraFields?.ticket_status === "completed") return GLOBAL_LOADING_MESSAGES.completingOrder;
+    if (extraFields?.release_production) return GLOBAL_LOADING_MESSAGES.releasingProduction;
+    return GLOBAL_LOADING_MESSAGES.saving;
+  }
+
+  function beginSaveLoading(message: string) {
+    setSaving(true);
+    showLoading(message);
+  }
+
+  function endSaveLoading() {
+    setSaving(false);
+    hideLoading();
+  }
+
   async function handleSave(
     newStatus?: string,
     extraFields?: Record<string, unknown>,
@@ -406,7 +432,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
     // Extra-fields-only update (payment status, lifecycle transitions) — skip form validation
     if (!newStatus && extraFields && Object.keys(extraFields).length > 0) {
-      setSaving(true);
+      beginSaveLoading(globalSaveMessage(newStatus, extraFields));
       setError(null);
       setNotice(null);
       try {
@@ -437,7 +463,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       } catch {
         setError("Network error. Please try again.");
       } finally {
-        setSaving(false);
+        endSaveLoading();
       }
       return;
     }
@@ -504,15 +530,15 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       return;
     }
 
-    setSaving(true);
     setError(null);
 
     // Require sales permit when tax exempt
     if (taxExempt && !salesPermit.trim()) {
       setSalesPermitError("Sales Permit # is required when Tax Exempt is selected.");
-      setSaving(false);
       return;
     }
+
+    beginSaveLoading(globalSaveMessage(newStatus));
 
     const body: Record<string, unknown> = {
       title: title.trim(),
@@ -559,7 +585,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       const json = await res.json();
       if (!res.ok) {
         setError(json.error ?? "Failed to save.");
-        setSaving(false);
         return;
       }
       const saved = json.ticket as Ticket;
@@ -590,7 +615,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     } catch {
       setError("Network error. Please try again.");
     } finally {
-      setSaving(false);
+      endSaveLoading();
     }
   }
 
@@ -601,7 +626,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   }
 
   async function handleReleaseProduction() {
-    setSaving(true);
+    beginSaveLoading(GLOBAL_LOADING_MESSAGES.releasingProduction);
     try {
       const res = await fetch(`/api/tickets/${ticketId}`, {
         method: "PATCH",
@@ -614,7 +639,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     } catch {
       setError("Network error.");
     } finally {
-      setSaving(false);
+      endSaveLoading();
     }
   }
 
@@ -723,21 +748,126 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const viewTabs = isOverviewLayout
     ? [{ id: "info" as Tab, label: "Overview" }, { id: "history" as Tab, label: "History" }]
     : VIEW_TABS;
+  const showStatsRow = isOverviewLayout && context !== "payment";
+  const statsTotalLabel = context === "quote" ? "Quote Total" as const : "Order Total" as const;
 
   // SDR read-only: this SDR created the quote but it was routed to Sales.
   // They can view it but cannot edit it regardless of ticket status.
   const isRoutedReadOnly = userRole === "sdr" && ticket.routed_by_id != null && ticket.routed_by_id === userId;
   const canViewPaymentEvidence = userRole === "accountant" || userRole === "admin";
 
+  const detailQuickActionsProps = {
+    ticket,
+    userRole,
+    saving,
+    onMarkComplete: requestMarkComplete,
+    onCancelTicket: () => { void handleSave("cancelled"); },
+    onSendQuote: () => { void handleSave("sent"); },
+    onConvertToOrder: openAdminConvertModal,
+    quoteSendReady,
+    sendMissingMessage,
+    isLocked,
+    isRoutedReadOnly,
+    clientConfirmed: !!ticket.client_confirmed,
+  };
+
+  const currentTicket = ticket;
+
+  function renderDetailStatusBadges(compact: boolean): ReactNode[] {
+    if (editing) return [];
+
+    const badges: ReactNode[] = [];
+    const t = currentTicket;
+
+    if (t.ticket_status === "in_production") {
+      badges.push(<DetailStatusDotBadge key="prod" label={compact ? "In Production" : "In Production"} variant="info" compact={compact} />);
+    } else if (isStageDetailView && t.ticket_status === "completed") {
+      badges.push(<DetailStatusDotBadge key="done" label="Completed" variant="success" compact={compact} />);
+    } else if (t.client_confirmed) {
+      badges.push(<DetailStatusDotBadge key="conf" label={compact ? "Confirmed" : "Confirmed by Customer"} variant="success" compact={compact} />);
+    } else if (isPaymentView) {
+      badges.push(<DetailStatusDotBadge key="review" label={compact ? "Review" : "Pending review"} variant="warning" compact={compact} />);
+    } else if (isCustomerApproved && !isStageDetailView) {
+      if (t.convert_meta?.by_admin && (t.convert_meta.confirm_required_missing || t.convert_meta.payment_missing)) {
+        badges.push(
+          <span
+            key="override"
+            className={`inline-flex items-center gap-1 rounded-full font-medium shrink-0 whitespace-nowrap ${
+              compact ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs"
+            }`}
+            title={t.convert_meta.by_name
+              ? `${t.convert_meta.by_name} converted — customer confirm and/or payment missing`
+              : "Admin converted — confirm and/or payment missing"}
+            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
+          >
+            <AlertTriangle size={12} className="shrink-0" />
+            {compact ? "Override" : (
+              <span className="truncate max-w-[240px]">
+                {t.convert_meta.by_name ? `${t.convert_meta.by_name} — ` : "Admin — "}
+                {t.convert_meta.confirm_required_missing && t.convert_meta.payment_missing
+                  ? "confirm & payment missing"
+                  : t.convert_meta.confirm_required_missing
+                    ? "confirm missing"
+                    : "payment missing"}
+              </span>
+            )}
+          </span>,
+        );
+      } else {
+        badges.push(<DetailStatusDotBadge key="order" label={compact ? "Order" : "Converted to Order"} variant="info" compact={compact} />);
+      }
+    } else {
+      badges.push(
+        <span
+          key="status"
+          className={`capitalize shrink-0 whitespace-nowrap rounded-full font-medium ${
+            compact ? "px-2 py-0.5 text-[11px]" : "px-2.5 py-1 text-xs"
+          }`}
+          style={{ background: statusColors.bg, color: statusColors.text }}
+        >
+          {t.ticket_status}
+        </span>,
+      );
+    }
+
+    if (isCustomerApproved) {
+      if (isPaymentEvidencePending(t)) {
+        badges.push(<DetailStatusDotBadge key="evidence" label={compact ? "Review" : "Payment under review"} variant="warning" compact={compact} />);
+      } else {
+        const ps = t.payment_status ?? "unpaid";
+        const paymentVariant = ps === "paid" ? "success" : ps === "partial" ? "accent" : "danger";
+        const paymentLabel = ps === "paid" ? (compact ? "Paid" : "Paid in full") : ps === "partial" ? (compact ? "Partial" : "Partial Payment") : "Unpaid";
+        badges.push(<DetailStatusDotBadge key="pay" label={paymentLabel} variant={paymentVariant} compact={compact} />);
+      }
+    }
+
+    if (t.priority && t.priority !== "Normal") {
+      badges.push(
+        <DetailStatusDotBadge
+          key="priority"
+          label={compact ? t.priority : `${t.priority} Priority`}
+          variant={t.priority === "High" ? "danger" : t.priority === "Medium" ? "warning" : "info"}
+          compact={compact}
+        />,
+      );
+    }
+
+    return badges;
+  }
+
+  const statusBadges = renderDetailStatusBadges(false);
+  const mobileStatusBadges = renderDetailStatusBadges(true);
+
 
   return (
     <>
-    <div className="min-h-screen" style={{ background: "var(--color-bg)" }}>
+    <div className="min-h-screen -mx-4 lg:mx-0" style={{ background: "var(--color-bg)" }}>
       {/* Header */}
       <div
-        className="sticky top-0 z-10 border-b flex items-center gap-2 flex-wrap px-4 py-3 md:px-6 md:py-4"
+        className="sticky top-0 z-10 border-b"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
+        <div className="flex items-center gap-2 px-3 py-2.5 md:px-6 md:py-4">
         <button
           onClick={() => {
             if (context === "production" || ticket.ticket_status === "in_production") {
@@ -755,15 +885,24 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         </button>
         <div className="w-px h-5 shrink-0" style={{ background: "var(--color-border)" }} />
         {ticket.reference_code ? (
-          /* Quote or order — show reference code as primary title */
-          <div className="flex-1 min-w-0 flex flex-col justify-center">
-            <h1 className="text-base md:text-xl font-semibold font-mono leading-tight truncate" style={{ color: "var(--color-text-primary)" }}>
-              {ticket.reference_code}
-            </h1>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <h1 className="text-base md:text-xl font-semibold font-mono leading-tight truncate" style={{ color: "var(--color-text-primary)" }}>
+                {ticket.reference_code}
+              </h1>
+              {ticket.title && (
+                <span
+                  className="hidden md:inline text-xs truncate max-w-[200px] px-2 py-0.5 rounded-full border shrink-0"
+                  style={{ background: "var(--color-row-alt)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                >
+                  {ticket.title}
+                </span>
+              )}
+            </div>
             {ticket.title && (
-              <span className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>
+              <p className="text-xs truncate mt-0.5 md:hidden" style={{ color: "var(--color-text-muted)" }}>
                 {ticket.title}
-              </span>
+              </p>
             )}
           </div>
         ) : (
@@ -775,112 +914,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           </div>
         )}
 
-        {!editing && ticket.ticket_status === "in_production" ? (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
-            style={{ background: "var(--color-info-bg)", color: "var(--color-info-text)", border: "1px solid var(--color-info-border)" }}
-          >
-            <span className="h-1.5 w-1.5 rounded-full" style={{ background: "var(--color-info-text)" }} />
-            In Production
-          </span>
-        ) : isStageDetailView && ticket.ticket_status === "completed" ? (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
-            style={{ background: "var(--color-success-bg)", color: "var(--color-success)", border: "1px solid var(--color-success-border)" }}
-          >
-            <BadgeCheck size={12} />
-            Completed
-          </span>
-        ) : ticket.client_confirmed ? (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
-            style={{ background: "var(--color-success-bg)", color: "var(--color-success)", border: "1px solid var(--color-success-border)" }}
-          >
-            <BadgeCheck size={12} />
-            <span className="hidden sm:inline">Confirmed by Customer</span>
-            <span className="sm:hidden">Confirmed</span>
-          </span>
-        ) : isPaymentView ? (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
-            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
-          >
-            <Clock size={12} />
-            Pending review
-          </span>
-        ) : isCustomerApproved && !isStageDetailView ? (
-          ticket.convert_meta?.by_admin && (ticket.convert_meta.confirm_required_missing || ticket.convert_meta.payment_missing) ? (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0 max-w-[260px] truncate"
-            title={ticket.convert_meta.by_name
-              ? `${ticket.convert_meta.by_name} converted — customer confirm and/or payment missing`
-              : "Admin converted — confirm and/or payment missing"}
-            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
-          >
-            <AlertTriangle size={12} className="shrink-0" />
-            <span className="hidden sm:inline truncate">
-              {ticket.convert_meta.by_name
-                ? `${ticket.convert_meta.by_name} — `
-                : "Admin — "}
-              {ticket.convert_meta.confirm_required_missing && ticket.convert_meta.payment_missing
-                ? "confirm & payment missing"
-                : ticket.convert_meta.confirm_required_missing
-                  ? "confirm missing"
-                  : "payment missing"}
-            </span>
-            <span className="sm:hidden truncate">Override</span>
-          </span>
-          ) : (
-          <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
-            style={{ background: "var(--color-info-bg)", color: "var(--color-info-text)", border: "1px solid var(--color-info-border)" }}
-          >
-            <BadgeCheck size={12} />
-            <span className="hidden sm:inline">Converted to Order</span>
-            <span className="sm:hidden">Order</span>
-          </span>
-          )
-        ) : (
-          <span
-            className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium capitalize shrink-0"
-            style={{ background: statusColors.bg, color: statusColors.text }}
-          >
-            {ticket.ticket_status}
-          </span>
-        )}
-
-        {/* Payment status badge — shown on all orders */}
-        {isCustomerApproved && (() => {
-          if (isPaymentEvidencePending(ticket)) {
-            return (
-              <span
-                className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
-                style={{
-                  background: "var(--color-warning-bg)",
-                  color: "var(--color-warning)",
-                  border: "1px solid var(--color-warning-border)",
-                }}
-              >
-                Payment under review
-              </span>
-            );
-          }
-          const ps = ticket.payment_status ?? "unpaid";
-          const PAYMENT_BADGE: Record<string, { bg: string; text: string; border: string; label: string }> = {
-            unpaid:  { bg: "var(--color-danger-bg)",  text: "var(--color-danger)",  border: "var(--color-danger-border)",  label: "Unpaid"  },
-            partial: { bg: "var(--color-warning-bg)", text: "var(--color-warning)", border: "var(--color-warning-border)", label: "Partial" },
-            paid:    { bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)", label: "Paid"    },
-          };
-          const style = PAYMENT_BADGE[ps] ?? PAYMENT_BADGE.unpaid;
-          return (
-            <span
-              className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
-              style={{ background: style.bg, color: style.text, border: `1px solid ${style.border}` }}
-            >
-              {style.label}
-            </span>
-          );
-        })()}
+        <div className="hidden md:flex md:flex-wrap md:items-center md:gap-2 md:shrink-0">
+          {statusBadges}
+        </div>
 
         {/* Download PDF — icon only on mobile */}
         <a
@@ -904,12 +940,22 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             <span className="hidden sm:inline">Edit</span>
           </button>
         )}
+        </div>
+
+        {mobileStatusBadges.length > 0 && (
+          <div
+            className="md:hidden flex gap-2 overflow-x-auto touch-pan-x px-3 pb-2.5 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            {mobileStatusBadges}
+          </div>
+        )}
       </div>
 
       {/* Error banner */}
       {error && (
         <div
-          className="mx-4 mt-3 md:mx-6 md:mt-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm"
+          className="mx-3 mt-3 md:mx-6 md:mt-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm"
           style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", border: "1px solid var(--color-danger-border)" }}
         >
           <AlertCircle size={15} /> {error}
@@ -982,17 +1028,140 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         </div>
       )}
 
+      {isOverviewLayout ? (
+        <div className="w-full px-3 py-3 md:px-6 md:py-6 flex flex-col">
+          <div className="flex flex-col min-h-0 xl:h-[calc(100svh-6.5rem)] xl:max-h-[calc(100svh-6.5rem)]">
+            {showStatsRow && (
+              <div className="shrink-0">
+                <TicketStatsRow ticket={ticket} totalLabel={statsTotalLabel} />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-4 md:gap-5 flex-1 min-h-0 xl:overflow-hidden">
+              <aside className="w-full shrink-0 self-start">
+                {ticket.lead ? (
+                  <LinkedLeadCard
+                    lead={ticket.lead}
+                    productionReleasedAt={ticket.production_released_at}
+                  />
+                ) : (ticket.customer || ticket.contact_name || ticket.contact_email || ticket.contact_phone) ? (
+                  <CustomerInfoCard ticket={ticket} />
+                ) : null}
+                <DetailQuickActions {...detailQuickActionsProps} />
+              </aside>
+
+              <div
+                className="flex flex-col min-w-0 rounded-[14px] border xl:min-h-0 xl:h-full xl:overflow-hidden"
+                style={{
+                  background: "var(--color-surface)",
+                  borderColor: "var(--color-border)",
+                  boxShadow: "0 1px 3px color-mix(in srgb, var(--color-text-primary) 6%, transparent)",
+                }}
+              >
+                <div
+                  className="flex shrink-0 overflow-x-auto touch-pan-x border-b px-1 xl:sticky xl:top-0 z-[1]"
+                  style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
+                >
+                  {viewTabs.map((t) => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTab(t.id)}
+                      className="flex-1 md:flex-none px-4 py-3 text-[13px] md:py-3.5 md:text-[13.5px] font-medium transition-colors relative whitespace-nowrap shrink-0 border-b-2 -mb-px text-center md:text-left"
+                      style={{
+                        color: tab === t.id ? "var(--color-text-primary)" : "var(--color-text-muted)",
+                        borderBottomColor: tab === t.id ? "var(--color-tab-underline)" : "transparent",
+                        fontWeight: tab === t.id ? 500 : 400,
+                      }}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Inner scroll only on xl+ — mobile/tablet use single page scroll (main) */}
+                <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
+                  {tab === "info" && (
+                    <>
+                      <div className="px-4 pt-4 pb-2 md:px-7 md:pt-6">
+                        <TicketDetailOverview
+                          ticket={ticket}
+                          context={context}
+                          userRole={userRole}
+                          saving={saving}
+                          onMarkComplete={requestMarkComplete}
+                          completeNotice={notice}
+                          completeNoticeIsWarning={noticeIsWarning}
+                        />
+                      </div>
+                      <TicketOverviewSections
+                        ticket={ticket}
+                        products={products}
+                        skuLookups={skuLookups}
+                        pricing={pricing}
+                        shipping={shipping}
+                        setShipping={setShipping}
+                        discountType={discountType}
+                        setDiscountType={setDiscountType}
+                        discountValue={discountValue}
+                        setDiscountValue={setDiscountValue}
+                        discountReason={discountReason}
+                        setDiscountReason={setDiscountReason}
+                        taxRate={taxRate}
+                        setTaxRate={setTaxRate}
+                        taxExempt={taxExempt}
+                        setTaxExempt={setTaxExempt}
+                        salesPermit={salesPermit}
+                        setSalesPermit={(v) => { setSalesPermit(v); setSalesPermitError(undefined); }}
+                        salesPermitError={salesPermitError}
+                        paymentDraft={paymentDraft}
+                        onPaymentChange={setPaymentDraft}
+                        showPaymentSummary={showPaymentSummary}
+                        canViewPaymentEvidence={canViewPaymentEvidence}
+                        totalLabel={statsTotalLabel}
+                      />
+                    </>
+                  )}
+
+                  {tab === "history" && (
+                    <div className="p-4 md:p-6">
+                      <HistorySection ticketId={ticketId} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {!editing && !isStageDetailView && ticket.ticket_status === "completed" ? (
+            <div
+              className="mt-4 rounded-xl px-4 py-3 md:px-5 flex items-center gap-2"
+              style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" }}
+            >
+              <span className="h-2 w-2 rounded-full" style={{ background: "var(--color-success)" }} />
+              <span className="text-[13px] font-medium" style={{ color: "var(--color-success)" }}>
+                Order completed
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : (
       <div className="w-full px-4 py-4 md:px-6 md:py-6 flex flex-col lg:flex-row gap-4 lg:gap-6">
         {/* Left: Lead info card OR Customer info card */}
         {ticket.lead ? (
           <aside className="w-full lg:w-72 lg:shrink-0">
             <LinkedLeadCard lead={ticket.lead} />
+            <DetailQuickActions {...detailQuickActionsProps} />
           </aside>
         ) : (ticket.customer || ticket.contact_name || ticket.contact_email || ticket.contact_phone) ? (
           <aside className="w-full lg:w-72 lg:shrink-0">
             <CustomerInfoCard ticket={ticket} />
+            <DetailQuickActions {...detailQuickActionsProps} />
           </aside>
-        ) : null}
+        ) : (
+          <aside className="w-full lg:w-72 lg:shrink-0">
+            <DetailQuickActions {...detailQuickActionsProps} />
+          </aside>
+        )}
 
         {/* Right: Content */}
         <div className="flex-1 min-w-0">
@@ -1135,77 +1304,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             {tab === "history" && <HistorySection ticketId={ticketId} />}
           </div>
 
-          {/* Bottom action bar — view mode. Hidden once customer has confirmed (record is committed).
-              Only shown for draft/sent states; order state uses the combined order-status card below. */}
-          {!editing && !isLocked && !ticket.client_confirmed && ticket.ticket_status !== "order" && !isRoutedReadOnly && (
-            <div
-              className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-2 md:gap-3"
-              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-            >
-              <button
-                disabled={saving}
-                onClick={() => handleSave("cancelled")}
-                className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                style={{ color: "var(--color-danger)", border: "1px solid var(--color-danger-border)", background: "var(--color-danger-bg)" }}
-              >
-                Cancel Ticket
-              </button>
-
-              <div className="ml-auto flex flex-wrap items-center gap-2 md:gap-3">
-                {ticket.ticket_status === "draft" && (
-                  <button
-                    disabled={saving || !quoteSendReady}
-                    title={!quoteSendReady ? sendMissingMessage : undefined}
-                    onClick={() => handleSave("sent")}
-                    className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                    style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-                  >
-                    <Mail size={14} />
-                    Send Quote
-                  </button>
-                )}
-                {ticket.ticket_status === "sent" && (
-                  <button
-                    disabled={saving || !quoteSendReady}
-                    title={!quoteSendReady ? sendMissingMessage : undefined}
-                    onClick={() => handleSave("sent")}
-                    className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                    style={{ background: "var(--color-surface)", color: "var(--color-text-primary)", border: "1px solid var(--color-border)" }}
-                  >
-                    <Mail size={14} />
-                    Resend Quote
-                  </button>
-                )}
-                {userRole === "admin" && (ticket.ticket_status === "sent" || ticket.ticket_status === "draft") && (
-                  <button
-                    disabled={saving}
-                    onClick={openAdminConvertModal}
-                    className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                    style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-                  >
-                    <BadgeCheck size={14} />
-                    Convert to Order
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Cancel ticket — order status, non-locked, admin only */}
-          {!editing && !isLocked && ticket.ticket_status === "order" && userRole === "admin" && (
-            <div className="mt-4 flex justify-end">
-              <button
-                disabled={saving}
-                onClick={() => handleSave("cancelled")}
-                className="px-3 py-1.5 text-xs font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50"
-                style={{ color: "var(--color-danger)", border: "1px solid var(--color-danger-border)", background: "var(--color-danger-bg)" }}
-              >
-                Cancel Ticket
-              </button>
-            </div>
-          )}
-
-          {/* Order lifecycle — completed banner only; in_production actions live in overview */}
+          {/* Order lifecycle — completed banner only; quote/order actions live in sidebar quick actions */}
           {!editing && !isStageDetailView && ticket.ticket_status === "completed" ? (
               <div
                 className="mt-4 rounded-xl px-4 py-3 md:px-5 flex items-center gap-2"
@@ -1245,6 +1344,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           )}
         </div>
       </div>
+      )}
+
     </div>
 
     {/* ── Admin convert confirmation ─────────────────────────────────────── */}

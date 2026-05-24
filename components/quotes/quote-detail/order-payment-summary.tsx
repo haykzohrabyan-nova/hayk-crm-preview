@@ -4,6 +4,13 @@ import { formatCurrency } from "@/lib/utils/ticket-math";
 import { computeCheckout, getChannelLabel } from "@/lib/utils/compute-checkout";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import type { PaymentConfig } from "@/lib/types";
+import {
+  DetailSection,
+  DetailSectionTitle,
+  DetailDataGrid,
+  DetailDataCell,
+  DetailFollowUpCard,
+} from "@/components/quotes/quote-detail/detail-layout-primitives";
 
 export interface SummaryTicket {
   id?: string;
@@ -433,6 +440,7 @@ export function OrderPaymentSummary({
   compact = false,
   canViewPaymentEvidence = true,
   paymentReviewAbove = false,
+  layout = "default",
 }: {
   ticket: SummaryTicket;
   compact?: boolean;
@@ -440,6 +448,7 @@ export function OrderPaymentSummary({
   canViewPaymentEvidence?: boolean;
   /** Payment review card is shown above — omit duplicate live payment / evidence rows. */
   paymentReviewAbove?: boolean;
+  layout?: "default" | "grid";
 }) {
   const strategy = ticket.ticket_payment_strategy ?? "full";
   const total    = Number(ticket.quote_final_total ?? 0);
@@ -480,6 +489,68 @@ export function OrderPaymentSummary({
   const showEvidenceLink = canViewPaymentEvidence && !!ticket.payment_evidence_url;
   const showEvidencePendingNote =
     evidencePending && !!ticket.payment_evidence_url && !canViewPaymentEvidence;
+
+  if (paymentReviewAbove && !compact && layout === "grid") {
+    return (
+      <>
+        <DetailSection>
+          <DetailSectionTitle>Payment plan</DetailSectionTitle>
+          <DetailDataGrid>
+            <DetailDataCell label="Strategy" value={STRATEGY_LABEL[strategy] ?? strategy} />
+            <DetailDataCell label="Accepted channels" value={channelStr} />
+            {strategy === "partial" && ticket.ticket_dep_handling && (
+              <DetailDataCell
+                label="Deposit collection"
+                value={ticket.ticket_dep_handling === "cash" ? "Cash / offline" : "Online gateway"}
+              />
+            )}
+            {strategy === "net" && (
+              <DetailDataCell label="Terms" value={netTerms.charAt(0).toUpperCase() + netTerms.slice(1)} />
+            )}
+            <DetailDataCell
+              label="Price confirmation"
+              value={
+                ticket.ticket_require_client_confirm === false
+                  ? "Not required"
+                  : ticket.client_confirmed
+                    ? "Confirmed by customer"
+                    : "Required — pending"
+              }
+            />
+          </DetailDataGrid>
+        </DetailSection>
+        <DetailSection>
+          <DetailSectionTitle>Quote delivery</DetailSectionTitle>
+          <DetailDataGrid>
+            <DetailDataCell
+              label="Send quote via"
+              value={ticket.ticket_quote_channel ? (CHANNEL_LABEL[ticket.ticket_quote_channel] ?? ticket.ticket_quote_channel) : "—"}
+            />
+            <DetailDataCell label="Destination" value={sendDest} />
+          </DetailDataGrid>
+        </DetailSection>
+        {followUpEnabled && (
+          <DetailSection>
+            <DetailSectionTitle>Follow-up schedule</DetailSectionTitle>
+            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-3">
+              <DetailFollowUpCard label="Reminders" value="Enabled" valueColor="var(--color-success)" />
+              <DetailFollowUpCard label="Follow-ups" value={String(ticket.ticket_follow_up_count ?? "—")} />
+              <DetailFollowUpCard
+                label="Frequency"
+                value={ticket.ticket_follow_up_freq ? (FREQ_LABEL[ticket.ticket_follow_up_freq] ?? ticket.ticket_follow_up_freq) : "—"}
+              />
+              <DetailFollowUpCard
+                label="Start date"
+                value={ticket.quote_reminder_date
+                  ? new Date(ticket.quote_reminder_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                  : "—"}
+              />
+            </div>
+          </DetailSection>
+        )}
+      </>
+    );
+  }
 
   if (paymentReviewAbove && !compact) {
     return (
@@ -628,12 +699,160 @@ export function OrderPaymentSummary({
     );
   }
 
+  if (layout === "grid") {
+    const statusLabel = evidencePending
+      ? "Under review — awaiting confirmation"
+      : PAYMENT_STATUS_LABEL[ticket.payment_status ?? "unpaid"] ?? "Unpaid";
+
+    return (
+      <>
+        <DetailSection>
+          <DetailSectionTitle>Payment &amp; order settings</DetailSectionTitle>
+          <DetailDataGrid>
+            <DetailDataCell label="Strategy" value={STRATEGY_LABEL[strategy] ?? strategy} />
+            <DetailDataCell
+              label="Payment status"
+              value={statusLabel}
+              valueColor={evidencePending ? "var(--color-warning-text-deep)" : ticket.payment_status === "partial" ? "var(--color-accent-dark)" : undefined}
+            />
+            {strategy === "partial" && depositPaid && (
+              <>
+                <DetailDataCell label="Deposit paid" value={formatCurrency(depositAmt)} valueColor="var(--color-success)" />
+                <DetailDataCell label="Deposit paid at" value={fmtDate(ticket.deposit_paid_at)} />
+                {ticket.deposit_method && (
+                  <DetailDataCell label="Deposit method" value={getChannelLabel(ticket.deposit_method)} />
+                )}
+                <DetailDataCell
+                  label="Balance due"
+                  value={formatCurrency(balanceDue)}
+                  valueColor={balanceDue > 0.01 ? "var(--color-danger)" : "var(--color-success)"}
+                />
+              </>
+            )}
+            {strategy === "partial" && !depositPaid && (
+              <>
+                <DetailDataCell label="Deposit due" value={formatCurrency(checkout.depositDue)} valueColor="var(--color-warning-text-deep)" />
+                <DetailDataCell label="Balance after deposit" value={formatCurrency(Math.max(0, total - checkout.depositDue))} />
+              </>
+            )}
+            {strategy === "full" && !fullyPaid && amountPaid <= 0 && (
+              <DetailDataCell label="Due now" value={formatCurrency(total)} valueColor="var(--color-danger)" />
+            )}
+            {strategy === "full" && amountPaid > 0 && (
+              <DetailDataCell label="Paid so far" value={formatCurrency(amountPaid)} valueColor="var(--color-success)" />
+            )}
+            {strategy === "net" && (
+              <DetailDataCell label="Terms" value={netTerms.charAt(0).toUpperCase() + netTerms.slice(1)} />
+            )}
+            {fullyPaid && (
+              <DetailDataCell label="Total received" value={formatCurrency(amountPaid)} valueColor="var(--color-success)" />
+            )}
+            {ticket.payment_paid_at && (
+              <DetailDataCell label="Fully paid at" value={fmtDate(ticket.payment_paid_at)} />
+            )}
+            {ticket.balance_paid_at && (
+              <DetailDataCell label="Balance paid at" value={fmtDate(ticket.balance_paid_at)} />
+            )}
+            {strategy === "partial" && ticket.ticket_dep_handling && (
+              <DetailDataCell
+                label="Deposit collection"
+                value={ticket.ticket_dep_handling === "cash" ? "Cash / offline" : "Online gateway"}
+              />
+            )}
+            <DetailDataCell
+              label="Price confirmation"
+              value={
+                ticket.ticket_require_client_confirm === false
+                  ? "Not required"
+                  : ticket.client_confirmed
+                    ? "Confirmed by customer"
+                    : "Required — pending"
+              }
+            />
+            <DetailDataCell label="Accepted channels" value={channelStr} />
+          </DetailDataGrid>
+        </DetailSection>
+
+        <DetailSection>
+          <DetailSectionTitle>Quote delivery</DetailSectionTitle>
+          <DetailDataGrid>
+            <DetailDataCell
+              label="Send quote via"
+              value={ticket.ticket_quote_channel ? (CHANNEL_LABEL[ticket.ticket_quote_channel] ?? ticket.ticket_quote_channel) : "—"}
+            />
+            <DetailDataCell label="Destination" value={sendDest} />
+          </DetailDataGrid>
+        </DetailSection>
+
+        <DetailSection>
+          <DetailSectionTitle>Follow-up schedule</DetailSectionTitle>
+          <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-3">
+            <DetailFollowUpCard
+              label="Reminders"
+              value={followUpEnabled ? "Enabled" : "Disabled"}
+              valueColor={followUpEnabled ? "var(--color-success)" : undefined}
+            />
+            {followUpEnabled && (
+              <>
+                <DetailFollowUpCard label="Follow-ups" value={String(ticket.ticket_follow_up_count ?? "—")} />
+                <DetailFollowUpCard
+                  label="Frequency"
+                  value={ticket.ticket_follow_up_freq ? (FREQ_LABEL[ticket.ticket_follow_up_freq] ?? ticket.ticket_follow_up_freq) : "—"}
+                />
+                <DetailFollowUpCard
+                  label="Start date"
+                  value={ticket.quote_reminder_date
+                    ? new Date(ticket.quote_reminder_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    : "—"}
+                />
+              </>
+            )}
+          </div>
+        </DetailSection>
+
+        <DetailSection>
+          <DetailSectionTitle>Production &amp; evidence</DetailSectionTitle>
+          <DetailDataGrid>
+            {ticket.reference_code && (
+              <DetailDataCell label="Order reference" value={ticket.reference_code} />
+            )}
+            <DetailDataCell label="Production released" value={fmtDate(ticket.production_released_at)} />
+            <DetailDataCell
+              label="Status"
+              value={ticket.ticket_status.replace(/_/g, " ")}
+              valueColor="var(--color-info-text)"
+            />
+            <DetailDataCell label="Accepted channels" value={channelStr} />
+            {showEvidenceLink && ticket.id && (
+              <DetailDataCell
+                label="Payment evidence"
+                value={
+                  <a
+                    href={`/api/tickets/${ticket.id}/evidence`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                    style={{ color: "var(--color-tab-active)" }}
+                  >
+                    View uploaded file
+                  </a>
+                }
+              />
+            )}
+            {showEvidencePendingNote && (
+              <DetailDataCell label="Payment proof" value="Submitted — awaiting review" valueColor="var(--color-warning-text-deep)" />
+            )}
+          </DetailDataGrid>
+        </DetailSection>
+      </>
+    );
+  }
+
   return (
     <div
       className="rounded-lg p-4 space-y-6"
       style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}
     >
-      {/* Payment summary */}
       <Section title="Payment Summary">
         <SummaryRow label="Strategy" value={STRATEGY_LABEL[strategy] ?? strategy} />
         <SummaryRow label="Quote total" value={formatCurrency(total)} />

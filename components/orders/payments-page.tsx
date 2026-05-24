@@ -4,6 +4,17 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, CheckCircle2, Clock, Loader2, CreditCard } from "lucide-react";
 import {
+  GLOBAL_LOADING_MESSAGES,
+  useGlobalLoading,
+} from "@/components/layout/global-loading-provider";
+import {
+  MobileListCard,
+  MobileListCardRow,
+  MobileListCardFields,
+  MobileListCardSkeleton,
+  MobileListCardEmpty,
+} from "@/components/ui/mobile-list-card";
+import {
   displayContactName,
   formatCurrency,
   formatDateTime,
@@ -81,6 +92,7 @@ function TableSkeleton() {
 
 export function PaymentsPage() {
   const router = useRouter();
+  const { showLoading, hideLoading } = useGlobalLoading();
   const [orders, setOrders]           = useState<PendingOrder[]>([]);
   const [loading, setLoading]         = useState(true);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -113,6 +125,7 @@ export function PaymentsPage() {
 
     setConfirmingId(order.id);
     setConfirmErr(null);
+    showLoading(GLOBAL_LOADING_MESSAGES.confirmingPayment);
 
     try {
       const res = await fetch(`/api/tickets/${order.id}`, {
@@ -128,7 +141,6 @@ export function PaymentsPage() {
       const data = await res.json();
       if (!res.ok) {
         setConfirmErr(data.error ?? "Failed to confirm payment.");
-        setConfirmingId(null);
         return;
       }
       window.dispatchEvent(new Event("bazaar:tickets-changed"));
@@ -138,6 +150,7 @@ export function PaymentsPage() {
       setConfirmErr("Network error — please try again.");
     } finally {
       setConfirmingId(null);
+      hideLoading();
     }
   }
 
@@ -191,12 +204,12 @@ export function PaymentsPage() {
         </div>
       )}
 
-      {/* Table */}
+      {/* Desktop table */}
       <div
-        className="rounded-[10px] border overflow-x-auto"
+        className="hidden lg:block rounded-[10px] border overflow-hidden"
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
-        <table className="w-full min-w-[920px] border-collapse">
+        <table className="w-full border-collapse">
           <thead>
             <tr style={{ borderBottom: "1px solid var(--color-border)", background: "var(--color-row-alt)" }}>
               {["Order", "Customer", "Claimed", "Method", "Submitted", "Actions"].map((h) => (
@@ -367,6 +380,107 @@ export function PaymentsPage() {
             </tbody>
           )}
         </table>
+      </div>
+
+      {/* Mobile cards */}
+      <div className="flex flex-col gap-3 lg:hidden">
+        {loading ? (
+          <MobileListCardSkeleton count={2} />
+        ) : orders.length === 0 ? (
+          <MobileListCardEmpty message="No orders pending payment review." />
+        ) : (
+          orders.map((order) => {
+            const claimed = claimedAmount(order);
+            const relTime = relativeTime(order.payment_evidence_submitted_at);
+            const isConfirming = confirmingId === order.id;
+
+            return (
+              <MobileListCard key={order.id} onClick={() => router.push(`/payments/${order.id}`)}>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-sm font-semibold font-mono" style={{ color: "var(--color-text-primary)" }}>
+                      {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
+                    </span>
+                    {order.title && (
+                      <p className="text-xs mt-1 truncate" style={{ color: "var(--color-text-muted)" }}>{order.title}</p>
+                    )}
+                    <p className="text-sm font-medium mt-1.5" style={{ color: "var(--color-text-primary)" }}>
+                      {customerLabel(order)}
+                    </p>
+                  </div>
+                  <span
+                    className="text-sm font-semibold tabular-nums shrink-0"
+                    style={{ color: "var(--color-text-primary)" }}
+                  >
+                    {fmt(claimed)}
+                  </span>
+                </div>
+
+                <MobileListCardFields>
+                  <MobileListCardRow label="Order Total" value={fmt(order.quote_final_total)} />
+                  <MobileListCardRow
+                    label="Method"
+                    value={
+                      order.payment_method_used
+                        ? (CHANNEL_LABELS[order.payment_method_used] ?? order.payment_method_used)
+                        : "—"
+                    }
+                  />
+                  <MobileListCardRow
+                    label="Submitted"
+                    value={
+                      <>
+                        {formatDateTime(order.payment_evidence_submitted_at)}
+                        {relTime && (
+                          <span className="block text-[10px] font-normal mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                            {relTime}
+                          </span>
+                        )}
+                      </>
+                    }
+                  />
+                </MobileListCardFields>
+
+                <div className="flex flex-col gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                  {order.payment_evidence_url && (
+                    <a
+                      href={`/api/tickets/${order.id}/evidence`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
+                      style={{
+                        borderColor: "var(--color-border)",
+                        color: "var(--color-text-primary)",
+                        background: "var(--color-bg)",
+                        textDecoration: "none",
+                      }}
+                    >
+                      <FileText size={14} />
+                      View Evidence
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    disabled={isConfirming}
+                    onClick={() => handleConfirm(order)}
+                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-4 py-2.5 text-[13px] font-medium disabled:opacity-60"
+                    style={{
+                      background: "var(--color-btn-primary-bg)",
+                      color: "var(--color-btn-primary-text)",
+                    }}
+                  >
+                    {isConfirming ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <CheckCircle2 size={14} />
+                    )}
+                    Confirm Payment
+                  </button>
+                </div>
+              </MobileListCard>
+            );
+          })
+        )}
       </div>
     </div>
   );

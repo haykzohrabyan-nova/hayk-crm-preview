@@ -6,15 +6,22 @@ alwaysApply: false
 
 # Mobile Table → Card Pattern
 
-**Rule:** Every data table in the app MUST have a card-based fallback for mobile (below `sm` breakpoint). Never show a horizontal-scrolling table on mobile — render each row as a card instead.
+**Rule:** Every data table in the app MUST have a card-based fallback for mobile (below `lg` breakpoint — matches sidebar / MobileNav switch). Never show a horizontal-scrolling table on mobile — render each row as a card instead.
+
+## Shared components
+
+Use `components/ui/mobile-list-card.tsx`:
+- `MobileListCard`, `MobileListCardRow`, `MobileListCardFields` — card shell + label/value rows
+- `MobileListCardSkeleton`, `MobileListCardEmpty` — loading / empty states
+- `TicketListToolbar` — scrollable tabs + full-width search on tabbed list pages
 
 ## Pattern
 
-Use `hidden sm:block` on the table wrapper and `sm:hidden` on the card list:
+Use `hidden lg:block` on the table wrapper and `lg:hidden` on the card list:
 
 ```tsx
 {/* ── Desktop: table ── */}
-<div className="hidden sm:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+<div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
   <table className="w-full text-sm">
     <thead>…</thead>
     <tbody>
@@ -26,7 +33,7 @@ Use `hidden sm:block` on the table wrapper and `sm:hidden` on the card list:
 </div>
 
 {/* ── Mobile: card list ── */}
-<div className="flex flex-col gap-3 sm:hidden">
+<div className="flex flex-col gap-3 lg:hidden">
   {items.map((item) => (
     <div
       key={item.id}
@@ -75,7 +82,7 @@ Use `hidden sm:block` on the table wrapper and `sm:hidden` on the card list:
 
 ## Do's & Don'ts
 
-- ✅ `hidden sm:block` for table, `sm:hidden` for card list — always both together
+- ✅ `hidden lg:block` for table, `lg:hidden` for card list — always both together
 - ✅ Cards are self-contained — all the same data as the table row, just stacked vertically
 - ✅ Action buttons stay at the bottom of each card
 - ❌ Never use `overflow-x-auto` as the mobile solution — cards only

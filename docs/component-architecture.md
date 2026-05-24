@@ -54,7 +54,7 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 | Detail sections | `components/quotes/quote-detail/*`, `components/orders/*-detail-overview.tsx` | Extract shared blocks here |
 | Shared form blocks | `components/quotes/shared/` | Used by new-quote-form + quote-detail edit mode |
 | Pure helpers | `lib/utils/format.ts`, `ticket-math.ts`, etc. | **Never copy** `relativeTime` / date formatters into components |
-| Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider |
+| Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider, **global-loading-provider** |
 | Public customer UI | `components/public/` | `/q/[token]` only |
 
 **Anti-patterns to avoid:**
@@ -117,7 +117,9 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `UrgencyPill` | `components/ui/urgency-pill.tsx` | Tables, drawers |
 | `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail (SMS & WhatsApp destination) |
 | `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail (Email destination) |
-| `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar) |
+| `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar); industry/source lookup labels |
+| `MobileListCard` / `TicketListToolbar` | `components/ui/mobile-list-card.tsx` | Quotes, Orders, In Production, Completed, Payments list pages (mobile card fallback at `< lg`) |
+| `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), Customer Link, Mark Completed, Resend invoice |
 | `DatePicker` | `components/ui/date-picker.tsx` | New Quote form (Due Date field), Quote Detail (Due Date edit), Quote tab (First Reminder date) |
 
 > **Rule:** Every phone or email input in the app **must** use `PhoneInput` or `EmailInput`. Never add a raw `<input type="tel">` or `<input type="email">` in a component.
@@ -243,6 +245,7 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
         ├── Realtime: bazaar:tickets-changed + bazaar:refresh-counts (sidebar only — no page-level channel)
         ├── Columns: Contact, Title, Channel, Total, Due Now, Status pill, Follow-up, Created
         ├── Search: client-side filter
+        ├── Mobile (< lg): `MobileListCard` per row + `TicketListToolbar`; desktop: table
         ├── Claim action (Routed tab): PATCH /api/tickets/[id] { claim_ownership: true }
         └── Row click → /quotes/[id]
 ```
@@ -261,6 +264,7 @@ app/(app)/orders/page.tsx  [Server Component — thin wrapper]
         ├── Columns: Order #, Contact, Title (⚡ Rush), Total, Status pill (from status_label), Payment status pill, Priority, Due Date, Created
         ├── No "New Order" button — orders created only through Quotes flow
         ├── Search: client-side filter
+        ├── Mobile (< lg): `MobileListCard` per row + `TicketListToolbar`; desktop: table
         └── Row click → /orders/[id]
 
 app/(app)/orders/[id]/page.tsx  [Server Component — thin wrapper]
@@ -350,6 +354,7 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         ├── Data: GET /api/lookups, GET /api/lookups/products, GET /api/admin/company
         ├── Save Draft: POST /api/tickets { status: 'draft' } — available from Line Items onwards
         ├── Save & Send: POST /api/tickets { status: 'sent', from_quote_page?, quote_source? } → triggers delivery
+        │    Shows global loading overlay ("Sending quote…") via `useGlobalLoading()`
         └── Customer upsert: handled inside POST /api/tickets (match/create customer; quote_source on ticket when from Quotes page)
 ```
 
@@ -370,20 +375,30 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │     components/quotes/quote-detail/ticket-skeleton.tsx
         │     components/quotes/quote-detail/ticket-detail-overview.tsx
         │     components/quotes/quote-detail/ticket-overview-sections.tsx
-        │     components/quotes/quote-detail/quote-stage-overview.tsx
+        │     components/quotes/quote-detail/detail-layout-primitives.tsx
+        │     components/quotes/quote-detail/ticket-stats-row.tsx
+        │     components/quotes/quote-detail/detail-quick-actions.tsx
         │     components/orders/payment-detail-overview.tsx
         │     components/orders/production-detail-overview.tsx
+        │
+        ├── Overview layout (`isOverviewLayout` — sent quote, order, payment, production, completed):
+        │    Top: `TicketStatsRow` (5 stat cards; mobile: 100% total + 2×2 grid)
+        │    Grid: left sidebar (always) + right Overview/History panel
+        │    Desktop xl+: fixed viewport height; only right panel scrolls
+        │    Mobile/tablet: single page scroll (no nested scroll on Overview panel)
         │
         ├── Context prop routes overview card:
         │    context="quote" | "order" | "payment" | "production" | "completed"
         │    Payment context → PaymentDetailOverview (evidence review + Confirm)
-        │    Production context → ProductionDetailOverview (Resend invoice + Mark Completed)
-        │    Quote/order sent stage → QuoteStageOverview (Customer link + Copy)
+        │    Production context → ProductionDetailOverview (contextual notices)
+        │    Quote sent stage → quote link actions in DetailQuickActions (not separate bar)
         │
-        ├── Left sidebar:
+        ├── Left sidebar (always rendered in overview layout):
         │    LinkedLeadCard   — if ticket has linked_lead_id
-        │    CustomerInfoCard — if ticket has customer but no lead (shows quote_source, industry, website for direct quotes)
-        │    (nothing)        — if neither
+        │    CustomerInfoCard — if customer/contact exists (lookup labels for industry + quote_source)
+        │    DetailQuickActions — all lifecycle actions stacked below card:
+        │      Quote: Cancel, Send/Resend Quote, Convert to Order (admin)
+        │      Order: Cancel (admin), Customer Link, Mark Completed, Resend invoice link
         │
         ├── 2-tab view: Overview | History  (draft edit mode may show full form instead)
         │    Overview tab: context-specific snapshot + read-only line items / pricing / payment config
@@ -391,6 +406,8 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         ├── View mode default; Edit button toggles edit mode (quote stage only when unlocked)
         │    Edit lock: customer-approved tickets (status: order/in_production/completed) are read-only
         │    for non-admins. "Record Locked" banner shown. Admin can still edit/cancel.
+        │
+        ├── Long-running saves: global loading overlay (`useGlobalLoading`) on send, convert, complete, etc.
         │
         ├── Header badges:
         │    Confirmed by Customer (green) — if client_confirmed = true
@@ -417,9 +434,8 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         ├── Prepayment (read-only):
         │    "Prepayment" field: `Partial — 25%` / `Partial — $500` / `Full Payment` / hidden
         │
-        ├── Status actions (read-only mode, quote context):
-        │    Send Quote (draft) / Resend Quote (sent) / Convert to Order (**admin only**) / Cancel Ticket
-        ├── In-production on /orders/[id]: ProductionDetailOverview; header badge In Production; Mark Completed primary CTA
+        ├── Status actions: see `DetailQuickActions` in left sidebar (no bottom action bar on overview layout)
+        ├── In-production on /orders/[id]: header badge In Production; Mark Completed in DetailQuickActions
         ├── Payment review (order context): PricingPaymentSummary read-only for sales/SDR; evidence hidden
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true (ticket_id = UUID or ORD-* / QUO-*)
         ├── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed

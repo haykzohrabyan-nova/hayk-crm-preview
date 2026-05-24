@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, Zap, ExternalLink } from "lucide-react";
+import {
+  MobileListCard,
+  MobileListCardRow,
+  MobileListCardFields,
+  MobileListCardSkeleton,
+  MobileListCardEmpty,
+  TicketListToolbar,
+} from "@/components/ui/mobile-list-card";
+import { Zap, ExternalLink } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import {
   displayContactName,
@@ -86,6 +94,235 @@ const PRIORITY_STYLE: Record<string, { color: string }> = {
 
 function displayName(o: OrderTicket): string {
   return displayContactName(o.customer, { preferPerson: true });
+}
+
+function OrderMobileCard({
+  order: o,
+  onOpen,
+}: {
+  order: OrderTicket;
+  onOpen: () => void;
+}) {
+  const statusStyle = STATUS_TONE_STYLE[o.status_tone] ?? STATUS_TONE_STYLE.converted;
+  const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
+  const overdue = isOverdue(o.due_date);
+  const dueSoon = isDueSoon(o.due_date);
+  const ps = paymentDisplay(o);
+
+  return (
+    <MobileListCard onClick={onOpen}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          {o.reference_code ? (
+            <span className="text-xs font-mono px-1.5 py-0.5 rounded inline-block" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
+              {o.reference_code}
+            </span>
+          ) : (
+            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Draft</span>
+          )}
+          <p className="font-semibold text-sm mt-1.5 truncate" style={{ color: "var(--color-text-primary)" }}>
+            {displayName(o)}
+          </p>
+          {o.customer?.company && (
+            <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium max-w-[140px] truncate"
+            title={o.status_label}
+            style={{ background: statusStyle.bg, color: statusStyle.text }}
+          >
+            {o.status_label}
+          </span>
+          <span
+            className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
+            style={{ background: ps.bg, color: ps.text }}
+          >
+            {ps.label}
+          </span>
+        </div>
+      </div>
+
+      {(o.title || o.rush) && (
+        <div className="flex items-center gap-1.5 min-w-0">
+          {o.rush && (
+            <span title="Rush" style={{ color: "var(--color-danger)" }}>
+              <Zap size={13} className="shrink-0" />
+            </span>
+          )}
+          <p className="text-sm truncate" style={{ color: "var(--color-text-primary)" }}>
+            {o.title ?? "—"}
+          </p>
+        </div>
+      )}
+
+      <MobileListCardFields>
+        <MobileListCardRow
+          label="Total"
+          value={o.quote_final_total != null ? formatCurrency(o.quote_final_total) : "—"}
+        />
+        <MobileListCardRow label="Priority" value={o.priority ?? "—"} valueColor={priorityStyle.color} />
+        <MobileListCardRow
+          label="Due Date"
+          value={
+            o.due_date
+              ? `${new Date(o.due_date + "T00:00:00").toLocaleDateString()}${overdue ? " ⚠" : ""}`
+              : "—"
+          }
+          valueColor={overdue ? "var(--color-danger)" : dueSoon ? "var(--color-warning)" : undefined}
+        />
+        <MobileListCardRow label="Created" value={relativeTime(o.created_at)} />
+      </MobileListCardFields>
+
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        className="w-full flex items-center justify-center gap-1 px-2.5 py-2 rounded-md text-xs font-medium border transition-opacity hover:opacity-70"
+        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
+      >
+        <ExternalLink size={11} /> View order
+      </button>
+    </MobileListCard>
+  );
+}
+
+function OrdersTableDesktop({
+  orders: filtered,
+  onOpen,
+}: {
+  orders: OrderTicket[];
+  onOpen: (id: string) => void;
+}) {
+  return (
+    <table className="w-full">
+      <thead>
+        <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
+          {["Order #", "Contact", "Title", "Total", "Priority", "Due Date", "Status", "Payment", "Created"].map((h) => (
+            <th
+              key={h}
+              className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
+              style={{ color: "var(--color-text-muted)" }}
+            >
+              {h}
+            </th>
+          ))}
+          <th className="px-4 py-3 w-16" />
+        </tr>
+      </thead>
+      <tbody>
+        {filtered.map((o, idx) => {
+          const statusStyle = STATUS_TONE_STYLE[o.status_tone] ?? STATUS_TONE_STYLE.converted;
+          const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
+          const overdue = isOverdue(o.due_date);
+          const dueSoon = isDueSoon(o.due_date);
+
+          return (
+            <tr
+              key={o.id}
+              className="cursor-pointer transition-colors"
+              style={{ background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)")}
+              onClick={() => onOpen(o.id)}
+            >
+              <td className="px-4 py-3">
+                {o.reference_code ? (
+                  <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
+                    {o.reference_code}
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Draft</span>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(o)}</p>
+                {o.customer?.company && (
+                  <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                <div className="flex items-center gap-1.5">
+                  {o.rush && (
+                    <span title="Rush" style={{ color: "var(--color-danger)" }}>
+                      <Zap size={13} />
+                    </span>
+                  )}
+                  <span className="text-sm truncate max-w-[180px]" style={{ color: "var(--color-text-primary)" }}>
+                    {o.title ?? "—"}
+                  </span>
+                </div>
+              </td>
+              <td className="px-4 py-3">
+                <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+                  {o.quote_final_total != null ? formatCurrency(o.quote_final_total) : "—"}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <span className="text-sm font-medium" style={{ color: priorityStyle.color }}>
+                  {o.priority ?? "—"}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                {o.due_date ? (
+                  <span
+                    className="text-xs font-medium"
+                    style={{
+                      color: overdue ? "var(--color-danger)" :
+                             dueSoon ? "var(--color-warning)" :
+                             "var(--color-text-muted)",
+                    }}
+                  >
+                    {new Date(o.due_date + "T00:00:00").toLocaleDateString()}
+                    {overdue && " ⚠"}
+                  </span>
+                ) : (
+                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>
+                )}
+              </td>
+              <td className="px-4 py-3">
+                <span
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium max-w-[180px] truncate"
+                  title={o.status_label}
+                  style={{ background: statusStyle.bg, color: statusStyle.text }}
+                >
+                  {o.status_label}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                {(() => {
+                  const ps = paymentDisplay(o);
+                  return (
+                    <span
+                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      style={{ background: ps.bg, color: ps.text }}
+                    >
+                      {ps.label}
+                    </span>
+                  );
+                })()}
+              </td>
+              <td className="px-4 py-3">
+                <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+                  {relativeTime(o.created_at)}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); onOpen(o.id); }}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-opacity hover:opacity-70"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
+                >
+                  <ExternalLink size={11} /> View
+                </button>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -196,64 +433,23 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Tabs + search */}
-      <div className="flex items-end justify-between border-b mb-0" style={{ borderColor: "var(--color-border)" }}>
-        <div className="flex">
-          {TABS.map((t) => {
-            const count = tabCounts[t.id] ?? 0;
-            return (
-              <button
-                key={t.id}
-                onClick={() => selectTab(t.id)}
-                className="px-4 py-2.5 text-sm relative transition-colors"
-                style={{
-                  color: tab === t.id ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
-                  fontWeight: tab === t.id ? 500 : 400,
-                }}
-              >
-                {t.label}
-                {count > 0 && (
-                  <span
-                    className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
-                    style={{
-                      background: tab === t.id ? "var(--color-badge-bg)" : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
-                      color: "var(--color-badge-text)",
-                    }}
-                  >
-                    {count}
-                  </span>
-                )}
-                {tab === t.id && (
-                  <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t" style={{ background: "var(--color-tab-underline)" }} />
-                )}
-              </button>
-            );
-          })}
-        </div>
+      <TicketListToolbar
+        tabs={TABS.map((t) => ({ id: t.id, label: t.label }))}
+        activeTab={tab}
+        onTabChange={(id) => selectTab(id as Tab)}
+        tabCounts={tabCounts}
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search orders…"
+      />
 
-        <div className="relative mb-2">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--color-text-muted)" }} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search orders…"
-            className="pl-8 pr-3 py-1.5 text-sm rounded-md border outline-none w-52"
-            style={{
-              background: "var(--color-bg)",
-              border: "1px solid var(--color-border)",
-              color: "var(--color-text-primary)",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Table */}
+      {/* Desktop table */}
       <div
-        className="rounded-b-xl border border-t-0 overflow-hidden"
+        className="hidden lg:block rounded-b-xl border border-t-0 overflow-hidden"
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableSkeleton cols={9} />
+          <DesktopTableSkeleton cols={9} />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -261,132 +457,20 @@ export default function OrdersPage() {
             </p>
           </div>
         ) : (
-          <table className="w-full">
-            <thead>
-              <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Order #", "Contact", "Title", "Total", "Priority", "Due Date", "Status", "Payment", "Created"].map((h) => (
-                  <th
-                    key={h}
-                    className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
-                    style={{ color: "var(--color-text-muted)" }}
-                  >
-                    {h}
-                  </th>
-                ))}
-                <th className="px-4 py-3 w-16" />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((o, idx) => {
-                const statusStyle = STATUS_TONE_STYLE[o.status_tone] ?? STATUS_TONE_STYLE.converted;
-                const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
-                const overdue = isOverdue(o.due_date);
-                const dueSoon = isDueSoon(o.due_date);
+          <OrdersTableDesktop orders={filtered} onOpen={(id) => router.push(`/orders/${id}`)} />
+        )}
+      </div>
 
-                return (
-                  <tr
-                    key={o.id}
-                    className="cursor-pointer transition-colors"
-                    style={{ background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)" }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)")}
-                    onClick={() => router.push(`/orders/${o.id}`)}
-                  >
-                    <td className="px-4 py-3">
-                      {o.reference_code ? (
-                        <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
-                          {o.reference_code}
-                        </span>
-                      ) : (
-                        <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Draft</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(o)}</p>
-                      {o.customer?.company && (
-                        <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        {o.rush && (
-                          <span title="Rush" style={{ color: "var(--color-danger)" }}>
-                            <Zap size={13} />
-                          </span>
-                        )}
-                        <span className="text-sm truncate max-w-[180px]" style={{ color: "var(--color-text-primary)" }}>
-                          {o.title ?? "—"}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-                        {o.quote_final_total != null ? formatCurrency(o.quote_final_total) : "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-sm font-medium" style={{ color: priorityStyle.color }}>
-                        {o.priority ?? "—"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {o.due_date ? (
-                        <span
-                          className="text-xs font-medium"
-                          style={{
-                            color: overdue ? "var(--color-danger)" :
-                                   dueSoon ? "var(--color-warning)" :
-                                   "var(--color-text-muted)",
-                          }}
-                        >
-                          {new Date(o.due_date + "T00:00:00").toLocaleDateString()}
-                          {overdue && " ⚠"}
-                        </span>
-                      ) : (
-                        <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium max-w-[180px] truncate"
-                        title={o.status_label}
-                        style={{ background: statusStyle.bg, color: statusStyle.text }}
-                      >
-                        {o.status_label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      {(() => {
-                        const ps = paymentDisplay(o);
-                        return (
-                          <span
-                            className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
-                            style={{ background: ps.bg, color: ps.text }}
-                          >
-                            {ps.label}
-                          </span>
-                        );
-                      })()}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {relativeTime(o.created_at)}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); router.push(`/orders/${o.id}`); }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-opacity hover:opacity-70"
-                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
-                      >
-                        <ExternalLink size={11} /> View
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {/* Mobile cards */}
+      <div className="flex flex-col gap-3 lg:hidden">
+        {loading ? (
+          <MobileListCardSkeleton />
+        ) : filtered.length === 0 ? (
+          <MobileListCardEmpty message={search ? "No orders match your search." : "No orders yet."} />
+        ) : (
+          filtered.map((o) => (
+            <OrderMobileCard key={o.id} order={o} onOpen={() => router.push(`/orders/${o.id}`)} />
+          ))
         )}
       </div>
 
@@ -401,7 +485,7 @@ export default function OrdersPage() {
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
-function TableSkeleton({ cols }: { cols: number }) {
+function DesktopTableSkeleton({ cols }: { cols: number }) {
   return (
     <div className="animate-pulse">
       {[...Array(6)].map((_, i) => (

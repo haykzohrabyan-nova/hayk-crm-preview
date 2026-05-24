@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import NextTopLoader from "nextjs-toploader";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { ThemeProvider } from "@/components/layout/theme-provider";
+import { GlobalLoadingProvider } from "@/components/layout/global-loading-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { GlobalEventHandlers } from "@/components/layout/global-event-handlers";
 import "./globals.css";
@@ -26,12 +27,14 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} antialiased`} suppressHydrationWarning>
         <ThemeProvider>
+          <GlobalLoadingProvider>
           <TooltipProvider>
             <GlobalEventHandlers />
             <NextTopLoader color="var(--color-accent)" showSpinner={false} />
             {children}
             <SpeedInsights />
           </TooltipProvider>
+          </GlobalLoadingProvider>
         </ThemeProvider>
       </body>
     </html>

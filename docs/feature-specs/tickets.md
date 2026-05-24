@@ -62,6 +62,8 @@ A new quote can be started from three places. The entry point controls the UI sh
 **Component:** `components/quotes/quotes-page.tsx`  
 **List API:** `GET /api/tickets?kind=quote` — slim payload (no `quote_skus` on list). Full record on `/quotes/[id]`.
 
+**Mobile (< `lg`):** `TicketListToolbar` (scrollable tabs + full-width search) + `MobileListCard` per row. Desktop: full table. See `components/ui/mobile-list-card.tsx` and `.cursor/rules/mobile-table-cards.mdc`.
+
 ### Tabs (count badge on all tabs)
 
 | Tab | Filter | Visible to |
@@ -98,6 +100,8 @@ A new quote can be started from three places. The entry point controls the UI sh
 **Component:** `components/orders/orders-page.tsx`  
 **List API:** `GET /api/orders/orders` — scoped to `order` + `in_production` + `cancelled`. Includes evidence-pending rows for the ticket owner.
 
+**Mobile (< `lg`):** same card pattern as Quotes (`MobileListCard` + `TicketListToolbar`).
+
 ### Tabs (count badge on all tabs; URL `?tab=`)
 
 | Tab | Filter |
@@ -128,9 +132,11 @@ When customer submitted payment evidence:
 
 Queue of orders where customer uploaded payment evidence and accountant has not yet confirmed.
 
+**Mobile (< `lg`):** card list with Evidence + Confirm buttons per row (no horizontal table scroll).
+
 **Row click** → `/payments/[id]` (`QuoteDetail` with `context="payment"`)
 
-**Actions:** Confirm payment (`PATCH { record_payment: true }` — accountant/admin only), view evidence file
+**Actions:** Confirm payment (`PATCH { record_payment: true }` — accountant/admin only; shows global loading overlay), view evidence file
 
 ---
 
@@ -138,12 +144,12 @@ Queue of orders where customer uploaded payment evidence and accountant has not 
 
 In-production tickets appear on **`/orders?tab=in_production`**, not a separate nav page (migration `079_remove_production_page.sql`).
 
-**Detail:** `/orders/[id]` — `ProductionDetailOverview` via `ticket-detail-overview.tsx` when `ticket_status = 'in_production'`.
+**Detail:** `/orders/[id]` — overview layout with `ProductionDetailOverview` in Overview tab when `ticket_status = 'in_production'`.
 
-**Actions (overview card):**
+**Actions (left sidebar `DetailQuickActions`, below customer card):**
 - **Resend invoice link** — emails/SMS `/q/{token}`; channel icons (Mail / SMS / both) from ticket outreach settings
 - **Mark Completed** — admin always (modal when balance due); accountant when paid in full → sends pickup notification with same `/q/{token}` URL
-- **In Production** status shown in header badge only (not duplicated in action bar)
+- **In Production** status shown in header badge only (not duplicated in overview body)
 
 Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in codebase but UI redirects to `/orders`.
 
@@ -153,6 +159,8 @@ Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in
 
 **Component:** `components/orders/completed-page.tsx`
 
+**Mobile (< `lg`):** `MobileListCard` list + full-width search.
+
 **Row click** → `/completed/[id]` (`QuoteDetail` with `context="completed"`)
 
 **Actions:** Resend invoice link (customer portal access)
@@ -161,17 +169,20 @@ Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in
 
 ## Unified ticket detail (Overview + History)
 
-All post-draft detail routes share:
+All post-draft detail routes share the **overview layout** (`isOverviewLayout`):
 
 | Component | Purpose |
 |-----------|---------|
-| `ticket-detail-overview.tsx` | Routes to payment / production / quote-stage snapshot |
+| `ticket-stats-row.tsx` | Top stat cards (total, received, balance, due date, payment) |
+| `customer-info-card.tsx` / `linked-lead-card.tsx` | Left sidebar contact card (lookup labels for industry/source) |
+| `detail-quick-actions.tsx` | **All action buttons** under customer card |
+| `ticket-detail-overview.tsx` | Routes to payment / production / quote-stage contextual notices |
 | `ticket-overview-sections.tsx` | Line items, pricing, payment config (read-only) |
 | `history-section.tsx` | Full activity trail |
 
-**Quote-stage overview** (`quote-stage-overview.tsx`) on sent quotes includes:
-- **Customer link** — opens `/q/{token}` in new tab (works while staff logged in)
-- **Copy** — copies full public URL with **Copied!** feedback
+**Customer link** (sent quotes / orders with `public_token`): **Customer Link** + **Copy Link** in `DetailQuickActions` — opens `/q/{token}` in new tab; copy with **Copied!** feedback.
+
+**Global loading:** slow PATCH/POST actions use `useGlobalLoading()` full-screen overlay (send quote, convert, confirm payment, etc.).
 
 ---
 
@@ -295,7 +306,7 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 | Back | Any tab (hidden on first tab if Customer tab is first) | Previous tab |
 | Next | Any tab before Quote | Validate + advance |
 | Save Draft | Line Items tab onwards | `POST /api/tickets` with `status = 'draft'` |
-| Save & Send Quote | Quote tab | `POST /api/tickets` with `status = 'sent'`; blocked until `validateQuoteSend()` passes (see Send validation below); redirects to `/quotes` |
+| Save & Send Quote | Quote tab | `POST /api/tickets` with `status = 'sent'`; blocked until `validateQuoteSend()` passes; global loading overlay; redirects to `/quotes` or quote detail |
 | Cancel | Any | Navigate back |
 
 ### Send validation (draft save vs send)
@@ -326,8 +337,18 @@ When blocked, an amber banner lists missing fields (e.g. Title, Due date, line i
 
 ### Layout
 
-- **Left sidebar** (sticky): `LinkedLeadCard` if lead is linked; `CustomerInfoCard` if customer exists but no lead (shows `quote_source`, industry, website for direct quotes); nothing if neither
-- **Right**: **2-tab view — Info | History**
+**Overview layout** (default for sent quotes, orders, payments review, production, completed — not draft edit mode):
+
+- **Top:** `TicketStatsRow` — Order/Quote Total, Received, Balance Due, Due Date, Payment (mobile: full-width total + 2×2 grid for the other four)
+- **Two-column grid:**
+  - **Left sidebar** (always shown): `LinkedLeadCard` or `CustomerInfoCard`, then **`DetailQuickActions`** (all action buttons)
+  - **Right panel:** Overview | History tabs; on desktop (`xl+`) only this panel scrolls
+- **Mobile:** customer card stacks above content; single page scroll; header status badges swipe horizontally
+
+**Legacy layout** (draft quotes in edit/view): same sidebar + `DetailQuickActions`; form tabs may differ.
+
+- **CustomerInfoCard:** contact block + tags; **industry** and **quote source** display lookup **labels** from `/api/lookups?categories=source,industry` (e.g. "Retail Apparel", "Walk-in"), not raw stored values
+- **Right**: **2-tab view — Overview | History** (or full edit form for draft)
 
 ### Info Tab
 
@@ -367,20 +388,37 @@ Single scrollable view combining all three edit sections, separated by labelled 
 | `client_confirmed = true` AND `userRole = 'admin'` | ❌ No | Admin retains full control |
 | Any non-confirmed ticket | ❌ No | Normal edit flow |
 
-### Action bar (read-only mode)
+### Sidebar quick actions (`DetailQuickActions`)
 
-Hidden entirely when record is locked (`isLocked = true`).
+All primary actions live **under the customer/lead card** in the left sidebar — not in a bottom bar (overview layout).
 
-**Layout:** **Cancel Ticket** on the left; **Send Quote** / **Resend Quote** / **Convert to Order** grouped on the right. Convert uses verify-button styling (navy/gold), not success-green pill styling.
+Hidden entirely when record is locked (`isLocked = true`) for quote lifecycle actions; production actions follow their own rules.
 
 Send and Convert buttons are **disabled** when send validation fails; same amber missing-fields banner as new-quote form.
+
+**Quote stage (draft / sent):**
 
 | Action | Condition | Effect |
 |--------|-----------|--------|
 | Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; logs `ticket_sent` |
 | Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers delivery; logs `ticket_sent` with `resend: true` in payload |
-| Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | `PATCH → ticket_status = 'order'`; confirmation modal; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead Won until production |
+| Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead Won until production |
 | Cancel Ticket | non-locked only | `PATCH → ticket_status = 'cancelled'` |
+
+**Order / production stage (same sidebar block):**
+
+| Action | Condition |
+|--------|-----------|
+| Customer Link + Copy Link | `public_token` set; sent quote or order |
+| Mark Completed | `in_production`; admin always; accountant only if paid in full |
+| Resend invoice link | `in_production` or `completed`; sends via ticket outreach channel |
+| Cancel Ticket | Admin only; `ticket_status = 'order'` |
+
+Long-running actions (send, convert, complete, confirm payment) show the **global loading overlay** (`useGlobalLoading()` — see `components/layout/global-loading-provider.tsx`).
+
+### ~~Action bar (read-only mode)~~ — removed on overview layout
+
+> **Deprecated UI:** The bottom action bar (Cancel left / Send+Convert right) was removed May 2026. Use **Sidebar quick actions** above.
 
 ### Payment Link Bar
 
@@ -434,7 +472,7 @@ When an SDR clicks "Save Changes" on a `draft` quote and `pricing.final_total > 
 When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 - A yellow banner is shown: "This quote exceeded the high-value threshold and was routed to Sales for handling. You are viewing it in **read-only mode**."
 - The **Edit button is hidden**
-- The **bottom action bar** (Send Quote / Cancel / etc.) is hidden
+- **Sidebar quote actions** (Send Quote / Cancel / Convert) are hidden
 - All form fields are displayed but not editable
 - The History tab is fully accessible
 

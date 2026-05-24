@@ -19,6 +19,10 @@ import {
 } from "@/lib/utils/validate-quote-send";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 import { CustomerSidebarCard } from "@/components/quotes/customer-sidebar-card";
+import {
+  GLOBAL_LOADING_MESSAGES,
+  useGlobalLoading,
+} from "@/components/layout/global-loading-provider";
 import { createClient } from "@/lib/supabase/client";
 
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
@@ -109,6 +113,7 @@ export default function NewQuoteForm() {
   const [products, setProducts] = useState<ProductType[]>([]);
   const [companyCfg, setCompanyCfg] = useState<CompanySettings>({ default_tax_rate: null, high_value_threshold: null });
   const [saving, setSaving] = useState(false);
+  const { showLoading, hideLoading } = useGlobalLoading();
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -449,6 +454,13 @@ export default function NewQuoteForm() {
 
     setSaving(true);
     setError(null);
+    const loadingMessage =
+      status === "sent"
+        ? GLOBAL_LOADING_MESSAGES.sendingQuote
+        : status === "routed"
+          ? GLOBAL_LOADING_MESSAGES.routingQuote
+          : GLOBAL_LOADING_MESSAGES.savingDraft;
+    showLoading(loadingMessage);
 
     const contactName = `${contactFirstName} ${contactLastName}`.trim();
 
@@ -511,7 +523,6 @@ export default function NewQuoteForm() {
     };
 
     try {
-      console.log("[Save & Send] POST body →", body);
       const res = await fetch("/api/tickets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -520,7 +531,6 @@ export default function NewQuoteForm() {
       const json = await res.json();
       if (!res.ok) {
         setError(json.error ?? "Failed to save quote.");
-        setSaving(false);
         return;
       }
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
@@ -532,7 +542,9 @@ export default function NewQuoteForm() {
       }
     } catch {
       setError("Network error. Please try again.");
+    } finally {
       setSaving(false);
+      hideLoading();
     }
   }
 

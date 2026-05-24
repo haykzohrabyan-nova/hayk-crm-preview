@@ -3,6 +3,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Zap, ExternalLink } from "lucide-react";
+import {
+  MobileListCard,
+  MobileListCardRow,
+  MobileListCardFields,
+  MobileListCardSkeleton,
+  MobileListCardEmpty,
+} from "@/components/ui/mobile-list-card";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { displayContactName, formatDate } from "@/lib/utils/format";
 
@@ -48,6 +55,80 @@ function displayName(o: CompletedOrder): string {
   return displayContactName(o.customer, { preferPerson: true });
 }
 
+function CompletedMobileCard({
+  order: o,
+  onOpen,
+}: {
+  order: CompletedOrder;
+  onOpen: () => void;
+}) {
+  const ps = PAYMENT_STYLE[o.payment_status ?? "unpaid"] ?? PAYMENT_STYLE.unpaid;
+  const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
+
+  return (
+    <MobileListCard onClick={onOpen}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          {o.reference_code ? (
+            <span className="text-xs font-mono px-1.5 py-0.5 rounded inline-block" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
+              {o.reference_code}
+            </span>
+          ) : (
+            <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>
+          )}
+          <p className="font-semibold text-sm mt-1.5 truncate" style={{ color: "var(--color-text-primary)" }}>
+            {displayName(o)}
+          </p>
+          {o.customer?.company && (
+            <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
+          )}
+        </div>
+        <span
+          className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0"
+          style={{ background: ps.bg, color: ps.text }}
+        >
+          {ps.label}
+        </span>
+      </div>
+
+      {(o.title || o.rush) && (
+        <div className="flex items-center gap-1.5 min-w-0">
+          {o.rush && (
+            <span title="Rush" style={{ color: "var(--color-danger)" }}>
+              <Zap size={13} className="shrink-0" />
+            </span>
+          )}
+          <p className="text-sm truncate" style={{ color: "var(--color-text-primary)" }}>
+            {o.title ?? "—"}
+          </p>
+        </div>
+      )}
+
+      <MobileListCardFields>
+        <MobileListCardRow
+          label="Total"
+          value={o.quote_final_total != null ? formatCurrency(o.quote_final_total) : "—"}
+        />
+        <MobileListCardRow label="Priority" value={o.priority ?? "—"} valueColor={priorityStyle.color} />
+        <MobileListCardRow
+          label="Due Date"
+          value={o.due_date ? new Date(o.due_date + "T00:00:00").toLocaleDateString() : "—"}
+        />
+        <MobileListCardRow label="Completed" value={formatDate(o.updated_at)} />
+      </MobileListCardFields>
+
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        className="w-full flex items-center justify-center gap-1 px-2.5 py-2 rounded-md text-xs font-medium border transition-opacity hover:opacity-70"
+        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
+      >
+        <ExternalLink size={11} /> View order
+      </button>
+    </MobileListCard>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CompletedPage() {
@@ -89,7 +170,7 @@ export function CompletedPage() {
     <div className="space-y-5" style={{ color: "var(--color-text-primary)" }}>
 
       {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4 lg:mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Completed Orders
@@ -99,14 +180,14 @@ export function CompletedPage() {
           </p>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: "var(--color-text-muted)" }} />
+        {/* Search — full width on mobile */}
+        <div className="relative w-full lg:w-52 shrink-0">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search orders…"
-            className="pl-8 pr-3 py-1.5 text-sm rounded-md border outline-none w-52"
+            className="w-full pl-8 pr-3 py-2 lg:py-1.5 text-sm rounded-md border outline-none"
             style={{
               background: "var(--color-bg)",
               border:     "1px solid var(--color-border)",
@@ -116,9 +197,9 @@ export function CompletedPage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Desktop table */}
       <div
-        className="rounded-[10px] border overflow-hidden"
+        className="hidden lg:block rounded-[10px] border overflow-hidden"
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
@@ -241,6 +322,19 @@ export function CompletedPage() {
               })}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Mobile cards */}
+      <div className="flex flex-col gap-3 lg:hidden">
+        {loading ? (
+          <MobileListCardSkeleton />
+        ) : filtered.length === 0 ? (
+          <MobileListCardEmpty message={search ? "No orders match your search." : "No completed orders yet."} />
+        ) : (
+          filtered.map((o) => (
+            <CompletedMobileCard key={o.id} order={o} onOpen={() => router.push(`/completed/${o.id}`)} />
+          ))
         )}
       </div>
 

@@ -3,6 +3,59 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-24] — Documentation sync (mobile UX, detail actions, loading)
+
+### Changed
+- `docs/component-architecture.md` — mobile list cards, global loading, overview layout, `DetailQuickActions` sidebar actions
+- `docs/feature-specs/tickets.md` — quote detail layout, action placement, mobile stats, loading overlay, customer lookup labels
+- `docs/session-summary.md` — May 24 UI polish section
+- `docs/architecture.md` — `GlobalLoadingProvider`, `mobile-list-card` in component tree
+- `docs/crm-logic-overview.html` — mobile detail + list UX summary
+
+## [2026-05-24] — Global loading overlay for slow saves
+
+### Added
+- `components/layout/global-loading-provider.tsx` — app-wide loading overlay with `useGlobalLoading()` (`showLoading`, `hideLoading`, `runWithLoading`) and preset messages in `GLOBAL_LOADING_MESSAGES`
+
+### Changed
+- Root layout wraps app in `GlobalLoadingProvider`
+- Customer info card on quote/order detail — industry and quote source show lookup labels (e.g. “Retail Apparel”, “Walk-in”) instead of raw values like `retail_apparel` / `walk_in`
+- Quote detail — Cancel Ticket, Send/Resend Quote, and Convert to Order moved under the customer info card in `DetailQuickActions` (same stack as Customer Link, Mark Completed, etc.); removed duplicate bottom action bar
+- **New quote** — Save Draft / Save & Send Quote show full-screen loading with contextual message
+- **Quote detail** — save, send, convert, complete, and release-to-production actions show loading overlay
+- **Payments** — Confirm payment shows loading overlay
+
+## [2026-05-24] — Fix order detail scroll trap (double scroll)
+
+### Fixed
+- `MobileListCard` — use a clickable `div` instead of `button` so nested action buttons (View, Confirm, etc.) no longer cause hydration errors
+- Quote/order detail overview — inner panel scroll scoped to `xl+` only; mobile/tablet use single page scroll so you can scroll back up after reaching the bottom
+- Removed `overscroll-contain` that blocked scroll chaining between nested panels
+- Horizontal badge/stats rows use `touch-pan-x` so sideways swipe does not steal vertical scroll on touch devices
+
+### Changed
+- Order detail stats row on mobile — full-width Order Total, then 2×2 grid for Received, Balance Due, Due Date, and Payment
+
+## [2026-05-24] — Mobile card layout for ticket list pages
+
+### Added
+- `components/ui/mobile-list-card.tsx` — shared `MobileListCard`, skeleton/empty states, and `TicketListToolbar` (scrollable tabs + full-width search)
+
+### Changed
+- **Quotes, Orders, In Production, Completed, Payments** list pages — tables hidden below `lg`; each row renders as a stacked card on mobile (no horizontal scroll)
+- `.cursor/rules/mobile-table-cards.mdc` — breakpoint aligned to `lg` (matches leads/sales and MobileNav)
+
+## [2026-05-24] — Quote & order detail redesign
+
+### Changed
+- Quote/order detail **mobile layout** — two-row header with swipeable status badges; full-width total stat + horizontal stats scroll; side-by-side action buttons; tighter padding; line items stack price below specs on small screens
+- `components/quotes/quote-detail.tsx` — overview layout: stats + customer/actions stay fixed on desktop; only the Overview/History panel scrolls
+- `components/quotes/quote-detail/detail-layout-primitives.tsx`, `ticket-stats-row.tsx`, `detail-quick-actions.tsx` — shared redesign building blocks
+- `components/ui/linked-lead-card.tsx`, `customer-info-card.tsx` — avatar, tags, production strip
+- `components/quotes/quote-detail/ticket-overview-sections.tsx`, `order-payment-summary.tsx`, `line-items-form.tsx` — section titles, pricing table, data grids, spec-pill line items
+- `components/quotes/quote-detail/quote-stage-overview.tsx`, `production-detail-overview.tsx` — slim contextual notices (stats/actions moved out)
+- `components/quotes/quote-detail/ticket-skeleton.tsx` — loading state matches new layout
+
 ## [2026-05-24] — Lifecycle flow diagram (lead → production)
 
 ### Added
