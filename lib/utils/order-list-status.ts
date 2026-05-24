@@ -6,6 +6,7 @@ export type OrderListStatusTone =
   | "confirmed"
   | "converted"
   | "awaiting_confirmation"
+  | "admin_override"
   | "in_production"
   | "cancelled";
 
@@ -19,6 +20,9 @@ export function orderListStatus(input: {
   payment_evidence_url?: string | null;
   payment_evidence_submitted_at?: string | null;
   payment_paid_at?: string | null;
+  deposit_paid_at?: string | null;
+  payment_amount_received?: number | null;
+  deposit_amount?: number | null;
 }): { label: string; tone: OrderListStatusTone } {
   const { ticket_status } = input;
 
@@ -44,19 +48,33 @@ export function orderListStatus(input: {
     const confirmed =
       !!input.client_confirmed || !!input.confirmed_by_customer;
 
-    if (confirmed) {
-      return { label: "Confirmed by Customer", tone: "confirmed" };
+    const confirmRequired = input.require_client_confirm !== false;
+    const adminName = input.converted_by_name?.trim() || "Admin";
+    const confirmMissing = confirmRequired && !confirmed;
+    const received = Number(input.payment_amount_received ?? input.deposit_amount ?? 0);
+    const paymentMissing = !input.deposit_paid_at && !input.payment_paid_at && received <= 0.01;
+
+    if (input.converted_by_admin && (confirmMissing || paymentMissing)) {
+      if (confirmMissing && paymentMissing) {
+        return {
+          label: `${adminName} converted — confirm & payment missing`,
+          tone: "admin_override",
+        };
+      }
+      if (confirmMissing) {
+        return {
+          label: `${adminName} converted — confirm missing`,
+          tone: "admin_override",
+        };
+      }
+      return {
+        label: `${adminName} converted — payment missing`,
+        tone: "admin_override",
+      };
     }
 
-    const confirmRequired = input.require_client_confirm !== false;
-    if (confirmRequired && input.converted_by_admin) {
-      const name = input.converted_by_name?.trim();
-      return {
-        label: name
-          ? `Admin converted — customer confirm missing`
-          : "Admin converted — confirm missing",
-        tone: "awaiting_confirmation",
-      };
+    if (confirmed) {
+      return { label: "Confirmed by Customer", tone: "confirmed" };
     }
 
     const name = input.converted_by_name?.trim();

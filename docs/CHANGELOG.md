@@ -3,6 +3,20 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-23] — Quote stays quote until payment
+
+### Added
+- `lib/utils/maybe-convert-quote-to-order.ts` — central order conversion gate (payment recorded, net terms on confirm, or admin override)
+- `lib/utils/quote-list-status.ts` — quote list badges: **Confirmed — awaiting deposit**, **Awaiting payment confirmation**
+
+### Changed
+- **Public confirm** — sets `client_confirmed` only; quote remains on `/quotes` until payment (net terms still convert + auto-release on confirm)
+- **Public payment submit** — wire/ACH evidence keeps ticket as quote; cash + receipt records deposit then converts; confirm required before pay
+- **Accountant `record_payment`** — converts quote → order then releases to production when gates pass
+- **Payments queue** — includes `sent` quotes with pending evidence (not only orders)
+- **Admin manual convert** — highlighted banner and status pill with admin name + missing customer confirm and/or missing payment
+- `lib/utils/manual-convert-meta.ts`, `lib/utils/order-list-status.ts` — admin override labels on orders list and detail
+
 ## [2026-05-23] — Quoted Requests Due Now column
 
 ### Added

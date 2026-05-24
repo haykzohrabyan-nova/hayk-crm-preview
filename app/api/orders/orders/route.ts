@@ -23,6 +23,9 @@ export async function GET() {
       payment_evidence_url,
       payment_evidence_submitted_at,
       payment_paid_at,
+      deposit_paid_at,
+      deposit_amount,
+      payment_amount_received,
       title, reference_code, quote_final_total,
       priority, due_date, rush, created_at,
       customer:customers(id, first_name, last_name, company)
@@ -104,18 +107,12 @@ export async function GET() {
       o.ticket_status === "order" &&
       (!!o.client_confirmed || customerConfirmedByTicket.has(o.id));
 
-    const uid =
-      o.ticket_status === "order" && !confirmedByCustomer
-        ? converterByTicket.get(o.id)
-        : undefined;
+    const uid = o.ticket_status === "order" ? converterByTicket.get(o.id) : undefined;
     const converterProfile = uid ? profileById.get(uid) : undefined;
     const convertedByName = converterProfile?.full_name ?? null;
     const roleRaw = converterProfile?.roles as { name?: string } | { name?: string }[] | null;
     const converterRole = Array.isArray(roleRaw) ? roleRaw[0]?.name : roleRaw?.name;
-    const convertedByAdmin =
-      converterRole === "admin" &&
-      o.ticket_require_client_confirm !== false &&
-      !confirmedByCustomer;
+    const convertedByAdmin = converterRole === "admin";
 
     const { label, tone } = orderListStatus({
       ticket_status: o.ticket_status,
@@ -127,6 +124,9 @@ export async function GET() {
       payment_evidence_url: o.payment_evidence_url,
       payment_evidence_submitted_at: o.payment_evidence_submitted_at,
       payment_paid_at: o.payment_paid_at,
+      deposit_paid_at: o.deposit_paid_at as string | null | undefined,
+      payment_amount_received: o.payment_amount_received as number | null | undefined,
+      deposit_amount: o.deposit_amount as number | null | undefined,
     });
 
     return { ...o, status_label: label, status_tone: tone };

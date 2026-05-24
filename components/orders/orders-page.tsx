@@ -71,6 +71,7 @@ const STATUS_TONE_STYLE: Record<OrderListStatusTone, { bg: string; text: string 
   confirmed:              { bg: "var(--color-success-bg)", text: "var(--color-success)" },
   converted:              { bg: "var(--color-info-bg)",    text: "var(--color-info-text)" },
   awaiting_confirmation:  { bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)" },
+  admin_override:         { bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)" },
   in_production:          { bg: "var(--color-info-bg)",    text: "var(--color-info-text)" },
   cancelled:              { bg: "var(--color-danger-bg)",  text: "var(--color-danger)" },
 };

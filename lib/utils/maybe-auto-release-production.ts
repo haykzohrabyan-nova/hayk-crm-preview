@@ -1,31 +1,14 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
+import { maybeConvertQuoteToOrder, type ConvertQuoteTicket } from "@/lib/utils/maybe-convert-quote-to-order";
 import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
 import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
 import type { PaymentConfig } from "@/lib/types";
 
-export interface AutoReleaseTicket {
-  id: string;
-  ticket_status: string;
+export interface AutoReleaseTicket extends ConvertQuoteTicket {
   client_confirmed: boolean | null;
-  quote_final_total: number | null;
-  reference_code: string | null;
   production_released_at: string | null;
-  payment_amount_received: number | null;
-  payment_paid_at: string | null;
   payment_status: string | null;
-  deposit_amount: number | null;
-  deposit_paid_at: string | null;
-  balance_paid_at: string | null;
-  ticket_payment_strategy: string | null;
-  ticket_deposit_type: string | null;
-  ticket_deposit_value: number | null;
-  ticket_dep_handling: string | null;
-  ticket_full_channels: string[] | null;
-  ticket_partial_channels: string[] | null;
-  ticket_require_client_confirm: boolean | null;
-  linked_lead_id: string | null;
-  customer_id: string | null;
 }
 
 /** Release to production when price + payment gates are satisfied (net terms, cash, etc.). */
@@ -53,20 +36,35 @@ export async function maybeAutoReleaseProduction(
   const checkout = computeCheckout(cfg, {
     quote_final_total:       Number(ticket.quote_final_total ?? 0),
     client_confirmed:        !!ticket.client_confirmed,
-    payment_amount_received: ticket.payment_amount_received,
-    payment_paid_at:         ticket.payment_paid_at,
-    deposit_amount:          ticket.deposit_amount,
-    deposit_paid_at:         ticket.deposit_paid_at,
-    balance_paid_at:         ticket.balance_paid_at,
+    payment_amount_received: ticket.payment_amount_received ?? null,
+    payment_paid_at:         ticket.payment_paid_at ?? null,
+    deposit_amount:          ticket.deposit_amount ?? null,
+    deposit_paid_at:         ticket.deposit_paid_at ?? null,
+    balance_paid_at:         ticket.balance_paid_at ?? null,
     production_released_at:  null,
-    ticket_payment_strategy: ticket.ticket_payment_strategy as "full" | "partial" | "net" | null,
-    ticket_deposit_type:     ticket.ticket_deposit_type as "percent" | "fixed" | null,
-    ticket_deposit_value:    ticket.ticket_deposit_value,
+    ticket_payment_strategy: ticket.ticket_payment_strategy ?? null,
+    ticket_deposit_type:     ticket.ticket_deposit_type ?? null,
+    ticket_deposit_value:    ticket.ticket_deposit_value ?? null,
   });
 
   if (!checkout.canReleaseProduction) return { released: false };
 
-  const fromStatus = ticket.ticket_status;
+  // Ensure order conversion before production release (quote stays quote until payment).
+  let workingTicket = ticket;
+  if (ticket.ticket_status === "sent" || ticket.ticket_status === "approved") {
+    const convertResult = await maybeConvertQuoteToOrder(admin, ticket, now, context);
+    if (convertResult.converted) {
+      workingTicket = {
+        ...ticket,
+        ticket_status:  "order",
+        reference_code: convertResult.reference_code ?? ticket.reference_code ?? null,
+      };
+    } else {
+      return { released: false };
+    }
+  }
+
+  const fromStatus = workingTicket.ticket_status;
   const patch: Record<string, unknown> = {
     updated_at:             now,
     production_released_at: now,
@@ -78,7 +76,7 @@ export async function maybeAutoReleaseProduction(
     patch.client_confirmed = true;
   }
 
-  let referenceCode = ticket.reference_code;
+  let referenceCode = workingTicket.reference_code ?? null;
   if (!referenceCode || referenceCode.startsWith("QUO-")) {
     try {
       referenceCode = await assignOrderReferenceCode(admin, referenceCode);
@@ -88,14 +86,14 @@ export async function maybeAutoReleaseProduction(
     }
   }
 
-  if (strategy === "net" && !ticket.payment_status) {
+  if (strategy === "net" && !workingTicket.payment_status) {
     patch.payment_status = "unpaid";
   }
 
   const { error: updateErr } = await admin
     .from("job_tickets")
     .update(patch)
-    .eq("id", ticket.id);
+    .eq("id", workingTicket.id);
 
   if (updateErr) return { released: false };
 

@@ -34,7 +34,7 @@ export async function GET() {
     `)
     .not("payment_evidence_url", "is", null)
     .is("payment_paid_at", null)
-    .in("ticket_status", ["order", "in_production"])
+    .in("ticket_status", ["sent", "order", "in_production"])
     .order("payment_evidence_submitted_at", { ascending: true });
 
   if (error) {

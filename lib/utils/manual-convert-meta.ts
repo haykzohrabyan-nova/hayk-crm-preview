@@ -1,30 +1,33 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { isPaymentEvidencePending, type TicketPaymentFields } from "@/lib/utils/invoice-payment-summary";
 
 export type ManualConvertMeta = {
   by_admin: boolean;
   by_name: string | null;
   confirm_required_missing: boolean;
+  payment_missing: boolean;
 };
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-/** Admin manual convert while customer confirmation was still required. */
+function isPaymentMissing(ticket: TicketPaymentFields): boolean {
+  if (isPaymentEvidencePending(ticket)) return false;
+  const received = Number(ticket.payment_amount_received ?? ticket.deposit_amount ?? 0);
+  if (ticket.deposit_paid_at || ticket.payment_paid_at) return false;
+  return received <= 0.01;
+}
+
+/** Admin manual convert while customer confirmation and/or payment may still be missing. */
 export async function fetchManualConvertMeta(
   admin: AdminClient,
   ticketId: string,
-  ticket: {
+  ticket: TicketPaymentFields & {
     ticket_status: string;
     client_confirmed?: boolean | null;
     ticket_require_client_confirm?: boolean | null;
   },
 ): Promise<ManualConvertMeta | null> {
-  if (ticket.ticket_status !== "order" || ticket.client_confirmed) {
-    return null;
-  }
-
-  if (ticket.ticket_require_client_confirm === false) {
-    return null;
-  }
+  if (ticket.ticket_status !== "order") return null;
 
   const { data: activity } = await admin
     .from("activities")
@@ -46,9 +49,16 @@ export async function fetchManualConvertMeta(
   const roleName = (profile?.roles as { name?: string } | null)?.name;
   if (roleName !== "admin") return null;
 
+  const confirmRequired = ticket.ticket_require_client_confirm !== false;
+  const confirmMissing = confirmRequired && !ticket.client_confirmed;
+  const paymentMissing = isPaymentMissing(ticket);
+
+  if (!confirmMissing && !paymentMissing) return null;
+
   return {
     by_admin: true,
     by_name: profile?.full_name ?? null,
-    confirm_required_missing: true,
+    confirm_required_missing: confirmMissing,
+    payment_missing: paymentMissing,
   };
 }

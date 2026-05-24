@@ -1,27 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { computeCheckout } from "@/lib/utils/compute-checkout";
-import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
-import type { PaymentConfig } from "@/lib/types";
+import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket } from "@/lib/utils/maybe-auto-release-production";
+import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
 import { randomUUID } from "crypto";
 
 // POST /api/public/quotes/[token]/submit-payment
-// No auth required — used by the public customer-facing quote page (/q/[token]).
-//
-// Accepts multipart/form-data:
-//   method       : string   — wire | ach | zelle | check | card | cash
-//   amount       : string   — payment amount (numeric)
-//   file?        : File     — payment evidence (screenshot / PDF / photo ID)
-//   receiptId?   : string   — for cash-in-person payments (no file required)
-//
-// Uploads the file to Supabase Storage (payment-evidence bucket),
-// records the payment on job_tickets, then runs computeCheckout to determine
-// if production can be auto-released (same logic as shadow app maybeAutoStartProduction).
+// Quote stays quote until payment is recorded (cash) or accountant confirms (evidence).
 
 type Params = { params: Promise<{ token: string }> };
 
-// Channels that require evidence file upload from the customer
 const EVIDENCE_REQUIRED_CHANNELS = new Set(["wire", "ach", "zelle", "check", "card"]);
 
 export async function POST(request: NextRequest, { params }: Params) {
@@ -32,20 +19,9 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const admin = createAdminClient();
 
-  // ── Resolve ticket ─────────────────────────────────────────────────────────
   const { data: ticket, error: fetchErr } = await admin
     .from("job_tickets")
-    .select(`
-      id, ticket_status, quote_final_total,
-      client_confirmed, production_released_at,
-      payment_amount_received, payment_paid_at,
-      deposit_amount, deposit_paid_at, balance_paid_at,
-      payment_evidence_url,
-      ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
-      ticket_dep_handling, ticket_partial_channels, ticket_full_channels,
-      ticket_require_client_confirm,
-      linked_lead_id, customer_id, reference_code
-    `)
+    .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " ") + ", payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_receipt_id")
     .eq("public_token", token)
     .single();
 
@@ -53,18 +29,31 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Quote not found." }, { status: 404 });
   }
 
-  if (!["sent", "order", "in_production"].includes(ticket.ticket_status)) {
+  const row = ticket as unknown as AutoReleaseTicket & {
+    payment_evidence_url: string | null;
+    payment_evidence_submitted_at: string | null;
+    ticket_receipt_id: string | null;
+  };
+
+  if (!["sent", "order", "in_production"].includes(row.ticket_status)) {
     return NextResponse.json({ error: "This quote is not open for payment." }, { status: 400 });
   }
 
-  const alreadyPaidBefore = Number(ticket.payment_amount_received ?? 0);
-  const isFollowUpPayment = alreadyPaidBefore > 0.01 || ticket.ticket_status === "in_production";
+  const requireConfirm = row.ticket_require_client_confirm ?? true;
+  if (requireConfirm && !row.client_confirmed) {
+    return NextResponse.json(
+      { error: "Please confirm the quote before submitting payment.", code: "CONFIRM_REQUIRED" },
+      { status: 409 },
+    );
+  }
 
-  if (ticket.payment_evidence_url && !isFollowUpPayment) {
+  const alreadyPaidBefore = Number(row.payment_amount_received ?? 0);
+  const isFollowUpPayment = alreadyPaidBefore > 0.01 || row.ticket_status === "in_production";
+
+  if (row.payment_evidence_url && !isFollowUpPayment) {
     return NextResponse.json({ error: "Payment evidence already submitted." }, { status: 409 });
   }
 
-  // ── Parse multipart form ───────────────────────────────────────────────────
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -90,20 +79,16 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Payment evidence file is required for this payment method." }, { status: 400 });
   }
 
-  // ── Upload file to Supabase Storage ───────────────────────────────────────
   let evidenceStoragePath: string | null = null;
   if (file) {
-    const ext      = file.name.split(".").pop() ?? "bin";
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath = `${ticket.id}/${randomUUID()}-${safeName}`;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const storagePath = `${row.id}/${randomUUID()}-${safeName}`;
+    const buffer = Buffer.from(await file.arrayBuffer());
 
     const { error: uploadErr } = await admin.storage
       .from("payment-evidence")
       .upload(storagePath, buffer, {
-        contentType: file.type || `application/${ext}`,
+        contentType: file.type || "application/octet-stream",
         upsert: false,
       });
 
@@ -111,225 +96,81 @@ export async function POST(request: NextRequest, { params }: Params) {
       console.error("[submit-payment] storage upload failed:", uploadErr);
       return NextResponse.json({ error: "Failed to upload payment evidence. Please try again." }, { status: 500 });
     }
-
     evidenceStoragePath = storagePath;
   }
 
   const now = new Date().toISOString();
-
-  // ── Build payment patch ────────────────────────────────────────────────────
-  const quoteTotal  = Number(ticket.quote_final_total ?? 0);
-  const alreadyPaid = Number(ticket.payment_amount_received ?? 0);
+  const quoteTotal  = Number(row.quote_final_total ?? 0);
+  const alreadyPaid = Number(row.payment_amount_received ?? 0);
   const newTotal    = Math.min(alreadyPaid + amount, quoteTotal);
   const fullyPaid   = newTotal >= quoteTotal - 0.01;
-
   const needsAccountantReview = EVIDENCE_REQUIRED_CHANNELS.has(method);
-  const requireConfirm = ticket.ticket_require_client_confirm ?? true;
-  const alreadyConfirmed = !!ticket.client_confirmed;
+  const strategy = row.ticket_payment_strategy ?? "full";
 
   const patch: Record<string, unknown> = {
-    updated_at:                   now,
-    payment_method_used:          method,
+    updated_at:                    now,
+    payment_method_used:           method,
     payment_evidence_submitted_at: now,
   };
 
-  if (evidenceStoragePath) {
-    patch.payment_evidence_url = evidenceStoragePath;
-  }
+  if (evidenceStoragePath) patch.payment_evidence_url = evidenceStoragePath;
+  if (receiptId) patch.ticket_receipt_id = receiptId;
 
-  if (receiptId) {
-    patch.ticket_receipt_id = receiptId;
-  }
-
-  // Wire / ACH / Zelle / check / card — customer uploads proof; accountant confirms
-  // before we record payment totals or mark the ticket paid.
   if (needsAccountantReview) {
     patch.payment_evidence_amount = amount;
   } else {
     patch.payment_amount_received = newTotal;
+    patch.deposit_amount = amount;
 
-    if (fullyPaid && !ticket.payment_paid_at) {
+    if (strategy === "partial" && !row.deposit_paid_at) {
+      patch.deposit_paid_at    = now;
+      patch.deposit_receipt_id = receiptId;
+      patch.deposit_method     = method;
+      patch.payment_status     = "partial";
+    }
+
+    if (fullyPaid && !row.payment_paid_at) {
       patch.payment_paid_at = now;
       patch.payment_status  = "paid";
       patch.balance_paid_at = now;
-    } else if (!fullyPaid && newTotal > alreadyPaid) {
+    } else if (!fullyPaid && newTotal > alreadyPaid && strategy !== "partial") {
       patch.payment_status = "partial";
     }
   }
 
-  // Convert sent → order only after the customer has confirmed (or when confirmation is off).
-  if (ticket.ticket_status === "sent" && (!requireConfirm || alreadyConfirmed)) {
-    try {
-      patch.reference_code = await assignOrderReferenceCode(
-        admin,
-        (ticket.reference_code as string | null) ?? null,
-      );
-    } catch {
-      // proceed without ORD if sequence fails
-    }
-    patch.ticket_status = "order";
-    patch.ticket_kind   = "order";
-  }
-
-  // ── Auto-production gate (mirrors maybeAutoStartProduction) ───────────────
-  // Build a minimal PaymentConfig from the ticket's per-ticket columns so
-  // computeCheckout can evaluate canReleaseProduction.
-  const cfg = {
-    paymentStrategy:     (ticket.ticket_payment_strategy as "full" | "partial" | "net") ?? "full",
-    depositType:         (ticket.ticket_deposit_type as "percent" | "fixed") ?? "percent",
-    depositValue:        ticket.ticket_deposit_value ?? 0,
-    depHandling:         (ticket.ticket_dep_handling as "cash" | "gateway") ?? "gateway",
-    paymentChannels:     ticket.ticket_full_channels ?? ticket.ticket_partial_channels ?? [],
-    requireClientConfirm: ticket.ticket_require_client_confirm ?? true,
-  } as PaymentConfig;
-
-  // Simulate the ticket state after this patch to evaluate the gate
-  const simulatedAmountReceived = needsAccountantReview ? alreadyPaid : newTotal;
-  const simulatedPaidAt = needsAccountantReview
-    ? (ticket.payment_paid_at ?? null)
-    : (fullyPaid ? now : (ticket.payment_paid_at ?? null));
-  const simulatedBalancePaidAt = needsAccountantReview
-    ? (ticket.balance_paid_at ?? null)
-    : (fullyPaid ? now : (ticket.balance_paid_at ?? null));
-
-  const simulatedTicket = {
-    quote_final_total:       quoteTotal,
-    client_confirmed:        alreadyConfirmed,
-    payment_amount_received: simulatedAmountReceived,
-    payment_paid_at:         simulatedPaidAt,
-    deposit_amount:          ticket.deposit_amount ?? null,
-    deposit_paid_at:         ticket.deposit_paid_at ?? null,
-    balance_paid_at:         simulatedBalancePaidAt,
-    production_released_at:  null,
-    ticket_payment_strategy: ticket.ticket_payment_strategy ?? null,
-    ticket_deposit_type:     ticket.ticket_deposit_type ?? null,
-    ticket_deposit_value:    ticket.ticket_deposit_value ?? null,
-  };
-
-  const checkout = computeCheckout(cfg, simulatedTicket);
-  let autoReleased = false;
-
-  // For channels that need accountant review (evidence uploaded), do NOT
-  // auto-release — let the Accountant confirm first.
-  // For cash / net / partial-cash-deposit channels, auto-release immediately.
-  if (!needsAccountantReview && checkout.canReleaseProduction && ticket.ticket_status !== "in_production") {
-    patch.production_released_at = now;
-    patch.ticket_status          = "in_production";
-    autoReleased = true;
-  }
-
-  // ── Persist ────────────────────────────────────────────────────────────────
-  const { data: updated, error: updateErr } = await admin
+  const { error: updateErr } = await admin
     .from("job_tickets")
     .update(patch)
-    .eq("id", ticket.id)
-    .select()
-    .single();
+    .eq("id", row.id);
 
   if (updateErr) {
     console.error("[submit-payment] db update failed:", updateErr);
     return NextResponse.json({ error: "Failed to record payment. Please try again." }, { status: 500 });
   }
 
-  const refCode = (updated?.reference_code as string | null) ?? (patch.reference_code as string | null) ?? ticket.reference_code ?? null;
-  const wasSent = ticket.ticket_status === "sent";
-  const newlyConfirmed = !ticket.client_confirmed;
-
-  type ActivityInsert = {
-    type: string;
-    lead_id: string | null;
-    customer_id: string | null;
-    ticket_id: string;
-    by_user_id: null;
-    payload: Record<string, unknown>;
-    created_at: string;
-  };
-
-  const activityRows: ActivityInsert[] = [];
-
-  if (newlyConfirmed) {
-    activityRows.push({
-      type: "ticket_client_confirmed",
-      lead_id: ticket.linked_lead_id ?? null,
-      customer_id: ticket.customer_id ?? null,
-      ticket_id: ticket.id,
-      by_user_id: null,
-      payload: { via: "public_payment", reference_code: refCode },
-      created_at: now,
-    });
-  }
-
-  if (wasSent) {
-    activityRows.push({
-      type: "order_ticket_status_changed",
-      lead_id: ticket.linked_lead_id ?? null,
-      customer_id: ticket.customer_id ?? null,
-      ticket_id: ticket.id,
-      by_user_id: null,
-      payload: {
-        from: "sent",
-        to: autoReleased ? "in_production" : "order",
-        via: "public_payment",
-        reference_code: refCode,
-      },
-      created_at: now,
-    });
-  } else if (autoReleased) {
-    activityRows.push({
-      type: "order_ticket_status_changed",
-      lead_id: ticket.linked_lead_id ?? null,
-      customer_id: ticket.customer_id ?? null,
-      ticket_id: ticket.id,
-      by_user_id: null,
-      payload: { from: "order", to: "in_production", via: "public_payment", auto: true },
-      created_at: now,
-    });
-  }
+  const activityRows: Record<string, unknown>[] = [];
 
   if (needsAccountantReview) {
     activityRows.push({
       type: "ticket_payment_evidence_submitted",
-      lead_id: ticket.linked_lead_id ?? null,
-      customer_id: ticket.customer_id ?? null,
-      ticket_id: ticket.id,
+      lead_id: row.linked_lead_id ?? null,
+      customer_id: row.customer_id ?? null,
+      ticket_id: row.id,
       by_user_id: null,
-      payload: {
-        method,
-        amount,
-        has_file: !!evidenceStoragePath,
-        receipt_id: receiptId,
-        via: "public_payment",
-      },
+      payload: { method, amount, has_file: !!evidenceStoragePath, receipt_id: receiptId, via: "public_payment" },
       created_at: now,
     });
   } else {
     activityRows.push({
       type: "ticket_payment_recorded",
-      lead_id: ticket.linked_lead_id ?? null,
-      customer_id: ticket.customer_id ?? null,
-      ticket_id: ticket.id,
+      lead_id: row.linked_lead_id ?? null,
+      customer_id: row.customer_id ?? null,
+      ticket_id: row.id,
       by_user_id: null,
       payload: {
         mode: fullyPaid ? "full" : isFollowUpPayment ? "balance" : "deposit",
-        method,
-        amount,
-        receipt_id: receiptId,
-        new_total: newTotal,
-        fully_paid: fullyPaid,
-        via: "public_payment",
+        method, amount, receipt_id: receiptId, new_total: newTotal, fully_paid: fullyPaid, via: "public_payment",
       },
-      created_at: now,
-    });
-  }
-
-  if (autoReleased) {
-    activityRows.push({
-      type: "ticket_production_released",
-      lead_id: ticket.linked_lead_id ?? null,
-      customer_id: ticket.customer_id ?? null,
-      ticket_id: ticket.id,
-      by_user_id: null,
-      payload: { released_at: now, auto: true, via: "public_payment" },
       created_at: now,
     });
   }
@@ -338,14 +179,35 @@ export async function POST(request: NextRequest, { params }: Params) {
     await admin.from("activities").insert(activityRows);
   }
 
-  // Mark linked lead Won only when released to production
-  if (autoReleased && ticket.linked_lead_id) {
-    await markLinkedLeadWonOnProduction(admin, ticket.linked_lead_id, now);
+  let autoReleased = false;
+  let referenceCode = row.reference_code;
+
+  if (!needsAccountantReview) {
+    const { data: fresh } = await admin
+      .from("job_tickets")
+      .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
+      .eq("id", row.id)
+      .single();
+
+    if (fresh) {
+      const freshRow = fresh as unknown as AutoReleaseTicket;
+      const convertResult = await maybeConvertQuoteToOrder(admin, freshRow, now, { via: "public_payment" });
+      if (convertResult.converted) referenceCode = convertResult.reference_code ?? referenceCode;
+
+      const postConvert = convertResult.converted
+        ? { ...freshRow, ticket_status: "order", reference_code: referenceCode }
+        : freshRow;
+
+      const releaseResult = await maybeAutoReleaseProduction(admin, postConvert, now, { via: "public_payment" });
+      autoReleased = releaseResult.released;
+      if (releaseResult.reference_code) referenceCode = releaseResult.reference_code;
+    }
   }
 
   return NextResponse.json({
-    ok:           true,
+    ok: true,
     autoReleased,
-    referenceCode: updated?.reference_code ?? null,
+    referenceCode,
+    evidencePending: needsAccountantReview,
   });
 }

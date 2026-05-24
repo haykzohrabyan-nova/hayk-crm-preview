@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { sendQuoteToCustomer, sendPaymentReminder, sendPaymentConfirmed, sendInvoiceLinkToCustomer, sendOrderReadyToCustomer, resolveTicketOutreach } from "@/lib/integrations/send-quote";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
+import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
 import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
 import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
 import {
@@ -31,6 +32,7 @@ async function maybeAutoRecordCashPayment(
     ticket_deposit_type: string | null;
     ticket_deposit_value: number | null;
     ticket_require_client_confirm: boolean | null;
+    client_confirmed?: boolean | null;
     quote_final_total: number | null;
     deposit_paid_at: string | null;
     payment_paid_at: string | null;
@@ -96,7 +98,7 @@ async function maybeAutoRecordCashPayment(
 
   const simulated = {
     quote_final_total:       total,
-    client_confirmed:        false,
+    client_confirmed:        !!ticket.client_confirmed,
     payment_amount_received: depositAmt,
     payment_paid_at:         isCashFull ? now : null,
     deposit_amount:          depositAmt,
@@ -111,19 +113,34 @@ async function maybeAutoRecordCashPayment(
   const checkout = computeCheckout(cfg, simulated);
   let autoReleased = false;
 
-  if (checkout.canReleaseProduction) {
-    try {
-      payPatch.reference_code = await assignOrderReferenceCode(admin, ticket.reference_code ?? null);
-    } catch {
-      // proceed without ORD if sequence fails
-    }
-    payPatch.production_released_at = now;
-    payPatch.ticket_status          = "in_production";
-    payPatch.ticket_kind            = "order";
-    autoReleased = true;
-  }
-
   await admin.from("job_tickets").update(payPatch).eq("id", ticket.id);
+
+  if (checkout.canReleaseProduction) {
+    const { data: fresh } = await admin
+      .from("job_tickets")
+      .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
+      .eq("id", ticket.id)
+      .single();
+
+    if (fresh) {
+      const freshRow = fresh as unknown as import("@/lib/utils/maybe-auto-release-production").AutoReleaseTicket;
+      await maybeConvertQuoteToOrder(admin, freshRow, now, { via: "staff_cash_record" });
+      const { data: afterConvert } = await admin
+        .from("job_tickets")
+        .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
+        .eq("id", ticket.id)
+        .single();
+      if (afterConvert) {
+        const releaseResult = await maybeAutoReleaseProduction(
+          admin,
+          afterConvert as unknown as import("@/lib/utils/maybe-auto-release-production").AutoReleaseTicket,
+          now,
+          { via: "staff_cash_record" },
+        );
+        autoReleased = releaseResult.released;
+      }
+    }
+  }
 
   if (autoReleased) {
     await markLinkedLeadWonOnProduction(admin, ticket.linked_lead_id, now);
@@ -451,13 +468,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // Fetch current ticket amounts + payment config for auto-production gate
     const { data: cur } = await admin
       .from("job_tickets")
-      .select(`quote_final_total, payment_amount_received, deposit_amount, deposit_paid_at,
+      .select(`id, ticket_status, quote_final_total, payment_amount_received, deposit_amount, deposit_paid_at,
                balance_paid_at, payment_paid_at, client_confirmed, production_released_at,
                payment_evidence_url, payment_evidence_submitted_at,
                public_token, reference_code, quote_channel, quote_destination, title,
                ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
                ticket_dep_handling, ticket_full_channels, ticket_partial_channels,
-               ticket_require_client_confirm,
+               ticket_require_client_confirm, linked_lead_id, customer_id,
                customer:customers(first_name, last_name, email, phone)`)
       .eq("id", ticketId)
       .single();
@@ -490,36 +507,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       payPatch.payment_status = "partial";
     }
 
-    // ── Auto-production gate (mirrors shadow app maybeAutoStartProduction) ────
-    // Build a minimal PaymentConfig from per-ticket columns, then run
-    // computeCheckout on the simulated post-patch state.
-    if (!payPatch.production_released_at && !cur?.production_released_at) {
-      const cfg = {
-        paymentStrategy:      (cur?.ticket_payment_strategy as "full" | "partial" | "net") ?? "full",
-        depositType:          (cur?.ticket_deposit_type as "percent" | "fixed") ?? "percent",
-        depositValue:         cur?.ticket_deposit_value ?? 0,
-        depHandling:          (cur?.ticket_dep_handling as "cash" | "gateway") ?? "gateway",
-        paymentChannels:      cur?.ticket_full_channels ?? cur?.ticket_partial_channels ?? [],
-        requireClientConfirm: cur?.ticket_require_client_confirm ?? true,
-      } as PaymentConfig;
-      const simulatedTicket = {
-        quote_final_total:       Number(cur?.quote_final_total ?? 0),
-        client_confirmed:        !!(cur?.client_confirmed),
-        payment_amount_received: newTotal,
-        payment_paid_at:         fullyPaid ? now : (cur?.payment_paid_at ?? null),
-        deposit_amount:          mode === "deposit" ? amount : (cur?.deposit_amount ?? null),
-        deposit_paid_at:         mode === "deposit" ? now : (cur?.deposit_paid_at ?? null),
-        balance_paid_at:         (mode === "balance" || mode === "full") ? now : (cur?.balance_paid_at ?? null),
-        production_released_at:  null,
-        ticket_payment_strategy: cur?.ticket_payment_strategy ?? null,
-        ticket_deposit_type:     cur?.ticket_deposit_type ?? null,
-        ticket_deposit_value:    cur?.ticket_deposit_value ?? null,
-      };
-      const checkout = computeCheckout(cfg, simulatedTicket);
-      if (checkout.canReleaseProduction) {
-        payPatch.production_released_at = now;
-        payPatch.ticket_status          = "in_production";
-      }
+    // Clear evidence queue fields once accountant confirms
+    if (cur?.payment_evidence_url) {
+      payPatch.payment_evidence_url = null;
+      payPatch.payment_evidence_submitted_at = null;
     }
 
     const { data: payUpdated, error: payErr } = await admin
@@ -535,27 +526,40 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
     const hadPendingEvidence = !!cur?.payment_evidence_submitted_at && !!cur?.payment_evidence_url;
 
-    if (payPatch.production_released_at) {
-      await markLinkedLeadWonOnProduction(admin, existing.linked_lead_id, now);
+    const { data: freshRow } = await admin
+      .from("job_tickets")
+      .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
+      .eq("id", ticketId)
+      .single();
 
-      await admin.from("activities").insert({
-        type:        "ticket_production_released",
-        lead_id:     existing.linked_lead_id ?? null,
-        customer_id: existing.customer_id ?? null,
-        ticket_id:   ticketId,
-        by_user_id:  userId,
-        payload:     { released_at: now, auto: true, via: "accountant_confirm" },
-        created_at:  now,
-      });
-      await admin.from("activities").insert({
-        type:        "order_ticket_status_changed",
-        lead_id:     existing.linked_lead_id ?? null,
-        customer_id: existing.customer_id ?? null,
-        ticket_id:   ticketId,
-        by_user_id:  userId,
-        payload:     { from: "order", to: "in_production", via: "accountant_confirm", auto: true },
-        created_at:  now,
-      });
+    let productionReleased = false;
+    if (freshRow) {
+      const convertResult = await maybeConvertQuoteToOrder(
+        admin,
+        freshRow as unknown as import("@/lib/utils/maybe-auto-release-production").AutoReleaseTicket,
+        now,
+        { byUserId: userId, via: "accountant_confirm" },
+      );
+
+      const { data: afterConvert } = await admin
+        .from("job_tickets")
+        .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
+        .eq("id", ticketId)
+        .single();
+
+      if (afterConvert) {
+        const releaseResult = await maybeAutoReleaseProduction(
+          admin,
+          afterConvert as unknown as import("@/lib/utils/maybe-auto-release-production").AutoReleaseTicket,
+          now,
+          { byUserId: userId, via: "accountant_confirm" },
+        );
+        productionReleased = releaseResult.released;
+      }
+    }
+
+    if (productionReleased) {
+      await markLinkedLeadWonOnProduction(admin, existing.linked_lead_id, now);
     }
 
     await admin.from("activities").insert({
@@ -591,7 +595,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           companyRow,
           {
             amountConfirmed: amount,
-            inProduction: !!(payPatch.production_released_at ?? payUpdated?.ticket_status === "in_production"),
+            inProduction: productionReleased || payUpdated?.ticket_status === "in_production",
             fullyPaid,
           },
         ).then((result) => {
@@ -608,7 +612,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           by_user_id: userId,
           payload: {
             amount,
-            in_production: !!(payPatch.production_released_at ?? payUpdated?.ticket_status === "in_production"),
+            in_production: productionReleased || payUpdated?.ticket_status === "in_production",
             fully_paid: fullyPaid,
           },
           created_at: now,
@@ -828,6 +832,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           require_client_confirm: existing.ticket_require_client_confirm ?? true,
           client_confirmed: !!existing.client_confirmed,
           converted_by_role: roleName,
+          payment_received: Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0) > 0.01
+            || !!existing.deposit_paid_at
+            || !!existing.payment_paid_at,
         },
         created_at: now,
       });

@@ -97,7 +97,7 @@ export async function GET() {
             q
               .not("payment_evidence_url", "is", null)
               .is("payment_paid_at", null)
-              .in("ticket_status", ["order", "in_production"]),
+              .in("ticket_status", ["sent", "order", "in_production"]),
           ).then((n) => { counts["/payments"] = n; })
         : Promise.resolve(),
 

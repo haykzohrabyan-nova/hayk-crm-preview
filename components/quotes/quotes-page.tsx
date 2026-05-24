@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Search, Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { formatQuoteListDueNow, getQuoteListDueNowAmount } from "@/lib/utils/quote-list-due-now";
+import { quoteListStatus } from "@/lib/utils/quote-list-status";
 import { quoteDetailPath, ticketPathSegment } from "@/lib/utils/reference-codes";
 import { createClient } from "@/lib/supabase/client";
 
@@ -22,6 +23,13 @@ interface QuoteTicket {
   ticket_deposit_value: number | null;
   prepayment_type: string | null;
   prepayment_value: string | null;
+  client_confirmed: boolean | null;
+  ticket_require_client_confirm: boolean | null;
+  payment_evidence_url: string | null;
+  payment_evidence_submitted_at: string | null;
+  payment_paid_at: string | null;
+  deposit_paid_at: string | null;
+  payment_amount_received: number | null;
   quote_reminder_date: string | null;
   created_at: string;
   updated_at: string;
@@ -439,7 +447,7 @@ export default function QuotesPage() {
             </thead>
             <tbody>
               {filtered.map((q, idx) => {
-                const statusStyle = STATUS_STYLE[q.ticket_status] ?? STATUS_STYLE.draft;
+                const statusStyle = quoteListStatus(q);
                 const overdue = isOverdue(q.quote_reminder_date);
                 return (
                   <tr

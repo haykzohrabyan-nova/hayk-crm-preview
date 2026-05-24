@@ -1,16 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket } from "@/lib/utils/maybe-auto-release-production";
-import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
+import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
 
 // POST /api/public/quotes/[token]/confirm
 // No auth required — customer clicks "Confirm & Accept" on the public quote page.
-// Validates that the ticket is in "sent" status, then:
-//   1. Sets client_confirmed = true
-//   2. Sets ticket_status = "order" (auto-converts; Stripe payment will plug in here later)
-//   3. Generates ORD-YYYY-NNN reference code via increment_order_sequence RPC
-//   4. Net terms / gate-satisfied tickets auto-release to in_production (lead marked Won then)
-//   5. Logs activity entries
+// Sets client_confirmed only; quote stays quote until payment (except net terms).
 
 type Params = { params: Promise<{ token: string }> };
 
@@ -47,27 +42,16 @@ export async function POST(_request: NextRequest, { params }: Params) {
   if (row.ticket_status !== "sent") {
     return NextResponse.json(
       { error: "This quote is no longer available for confirmation.", code: "INVALID_STATUS" },
-      { status: 409 }
+      { status: 409 },
     );
   }
 
   const now = new Date().toISOString();
 
-  let reference_code: string | null = row.reference_code;
-
-  try {
-    reference_code = await assignOrderReferenceCode(admin, reference_code);
-  } catch {
-    // proceed without ORD if sequence fails
-  }
-
   const { error: updateErr } = await admin
     .from("job_tickets")
     .update({
       client_confirmed: true,
-      ticket_status: "order",
-      ticket_kind: "order",
-      reference_code,
       updated_at: now,
     })
     .eq("id", row.id);
@@ -76,37 +60,38 @@ export async function POST(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  await admin.from("activities").insert([
-    {
-      type: "ticket_client_confirmed",
-      lead_id: row.linked_lead_id ?? null,
-      customer_id: row.customer_id ?? null,
-      ticket_id: row.id,
-      by_user_id: null,
-      payload: { via: "public_link", reference_code },
-      created_at: now,
-    },
-    {
-      type: "order_ticket_status_changed",
-      lead_id: row.linked_lead_id ?? null,
-      customer_id: row.customer_id ?? null,
-      ticket_id: row.id,
-      by_user_id: null,
-      payload: { from: "sent", to: "order", via: "public_confirm", reference_code },
-      created_at: now,
-    },
-  ]);
+  await admin.from("activities").insert({
+    type:        "ticket_client_confirmed",
+    lead_id:     row.linked_lead_id ?? null,
+    customer_id: row.customer_id ?? null,
+    ticket_id:   row.id,
+    by_user_id:  null,
+    payload:     { via: "public_link", reference_code: row.reference_code },
+    created_at:  now,
+  });
+
+  const confirmedRow = { ...row, client_confirmed: true };
+
+  // Net terms ($0 upfront): convert to order on confirm.
+  const convertResult = await maybeConvertQuoteToOrder(admin, confirmedRow, now, {
+    via: "public_confirm",
+  });
+
+  const postConvertRow = convertResult.converted
+    ? { ...confirmedRow, ticket_status: "order", reference_code: convertResult.reference_code ?? row.reference_code }
+    : confirmedRow;
 
   const releaseResult = await maybeAutoReleaseProduction(
     admin,
-    { ...row, client_confirmed: true, ticket_status: "order", reference_code },
+    postConvertRow,
     now,
     { via: "public_confirm" },
   );
 
   return NextResponse.json({
     ok: true,
-    reference_code: releaseResult.reference_code ?? reference_code,
+    reference_code: releaseResult.reference_code ?? convertResult.reference_code ?? row.reference_code,
     in_production: releaseResult.released,
+    converted_to_order: convertResult.converted,
   });
 }

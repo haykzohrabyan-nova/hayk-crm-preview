@@ -562,17 +562,21 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         return;
       }
       const saved = json.ticket as Ticket;
-      if (
-        newStatus === "order" &&
-        userRole === "admin" &&
-        saved.ticket_require_client_confirm !== false &&
-        !saved.client_confirmed
-      ) {
-        saved.convert_meta = {
-          by_admin: true,
-          by_name: null,
-          confirm_required_missing: true,
-        };
+      if (newStatus === "order" && userRole === "admin") {
+        const paymentMissing =
+          !saved.deposit_paid_at &&
+          !saved.payment_paid_at &&
+          Number(saved.payment_amount_received ?? saved.deposit_amount ?? 0) <= 0.01;
+        const confirmMissing =
+          saved.ticket_require_client_confirm !== false && !saved.client_confirmed;
+        if (confirmMissing || paymentMissing) {
+          saved.convert_meta = {
+            by_admin: true,
+            by_name: null,
+            confirm_required_missing: confirmMissing,
+            payment_missing: paymentMissing,
+          };
+        }
       }
       setTicket(saved);
       populateEditState(saved);
@@ -655,7 +659,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     void handleSave("order", undefined, { skipSendValidation: true });
   }
 
-  const adminConvertBanner = ticket?.convert_meta?.confirm_required_missing && ticket.convert_meta.by_admin;
+  const adminConvertBanner = ticket?.convert_meta?.by_admin &&
+    (ticket.convert_meta.confirm_required_missing || ticket.convert_meta.payment_missing);
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -783,15 +788,26 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             Pending review
           </span>
         ) : isCustomerApproved && !isStageDetailView ? (
-          ticket.convert_meta?.confirm_required_missing && ticket.convert_meta.by_admin ? (
+          ticket.convert_meta?.by_admin && (ticket.convert_meta.confirm_required_missing || ticket.convert_meta.payment_missing) ? (
           <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0 max-w-[220px] truncate"
-            title="Customer confirmation was required but admin converted to order"
+            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0 max-w-[260px] truncate"
+            title={ticket.convert_meta.by_name
+              ? `${ticket.convert_meta.by_name} converted — customer confirm and/or payment missing`
+              : "Admin converted — confirm and/or payment missing"}
             style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
           >
             <AlertTriangle size={12} className="shrink-0" />
-            <span className="hidden sm:inline truncate">Admin converted — confirm missing</span>
-            <span className="sm:hidden truncate">Confirm missing</span>
+            <span className="hidden sm:inline truncate">
+              {ticket.convert_meta.by_name
+                ? `${ticket.convert_meta.by_name} — `
+                : "Admin — "}
+              {ticket.convert_meta.confirm_required_missing && ticket.convert_meta.payment_missing
+                ? "confirm & payment missing"
+                : ticket.convert_meta.confirm_required_missing
+                  ? "confirm missing"
+                  : "payment missing"}
+            </span>
+            <span className="sm:hidden truncate">Override</span>
           </span>
           ) : (
           <span
@@ -899,14 +915,25 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
         >
           <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: "var(--color-warning)" }} />
-          <span>
-            <strong>Customer confirmation was required</strong> on this quote but has not been received.
-            {ticket.convert_meta?.by_name ? (
-              <> Order was converted by admin ({ticket.convert_meta.by_name}).</>
-            ) : (
-              <> Order was converted by an administrator.</>
-            )}
-          </span>
+          <div className="space-y-1">
+            <p>
+              <strong>
+                {ticket.convert_meta?.by_name ?? "An administrator"} converted this to an order
+              </strong>
+              {" "}without the normal customer payment flow.
+            </p>
+            <ul className="list-disc pl-4 space-y-0.5">
+              {ticket.convert_meta?.confirm_required_missing && (
+                <li>Customer approval — <strong>Missing</strong></li>
+              )}
+              {ticket.convert_meta?.payment_missing && (
+                <li>Payment — <strong>None received</strong></li>
+              )}
+            </ul>
+            <p className="text-xs pt-1" style={{ color: "var(--color-text-muted)" }}>
+              Production cannot start until required confirmation and payment gates are satisfied.
+            </p>
+          </div>
         </div>
       )}
 

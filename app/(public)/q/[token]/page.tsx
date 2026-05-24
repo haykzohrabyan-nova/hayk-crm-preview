@@ -969,6 +969,12 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
       const data = await res.json();
       if (!res.ok) { setConfirmErr(data.error ?? "Something went wrong. Please try again."); setConfirming(false); return; }
       setLocalConfirmed(true);
+      setConfirming(false);
+      if (data.in_production) {
+        setFeedback("Quote confirmed — your order is now in production.");
+      } else {
+        setFeedback("Quote confirmed — please submit your deposit payment to continue.");
+      }
       onConfirmed();
     } catch {
       setConfirmErr("Network error. Please check your connection and try again.");
