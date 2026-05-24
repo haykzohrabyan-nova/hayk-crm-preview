@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-24] — Lifecycle flow diagram (lead → production)
+
+### Added
+- `docs/order-ticket/lifecycle-flow.md` — mermaid + ASCII flowcharts for quote-until-payment, confirm gate, payments queue, order conversion, production release, and Won timing
+- `docs/order-ticket/lifecycle-flow.html` — browser-rendered version with all mermaid diagrams, tables, and ASCII reference (matches `lifecycle-flow.md`)
+
 ## [2026-05-24] — Fix production TypeScript build
 
 ### Fixed

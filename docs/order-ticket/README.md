@@ -10,7 +10,8 @@ This folder contains all research, analysis, and planning documents for the **Ti
 
 | File | Purpose |
 |------|---------|
-| [`shadow-project-analysis.md`](./shadow-project-analysis.md) | Complete analysis of the `sdr-crm-system` POC — what it built, how it works, what to port |
+| [`lifecycle-flow.md`](./lifecycle-flow.md) | **Current** lead → quote → order → in production flowcharts (mermaid + ASCII) |
+| [`lifecycle-flow.html`](./lifecycle-flow.html) | Same diagrams as HTML — open in browser; styled like `crm-logic-overview.html` |
 | [`data-model.md`](./data-model.md) | Field-by-field comparison: current `job_tickets` schema vs shadow project's richer model; what needs to be added |
 | [`workflows.md`](./workflows.md) | Every role's order/quote creation flow from the shadow project; entry points, state transitions, status rules |
 | [`open-questions.md`](./open-questions.md) | All owner decisions — fully resolved 2026-05-11 |
