@@ -1,15 +1,8 @@
-import { Suspense } from "react";
-import QuoteDetail from "@/components/quotes/quote-detail";
-
-export const metadata = { title: "In Production — BazaarPrinting CRM" };
+import { redirect } from "next/navigation";
 
 type Props = { params: Promise<{ id: string }> };
 
-export default async function ProductionDetailPage({ params }: Props) {
+export default async function ProductionDetailRedirectPage({ params }: Props) {
   const { id } = await params;
-  return (
-    <Suspense>
-      <QuoteDetail ticketId={id} context="production" />
-    </Suspense>
-  );
+  redirect(`/orders/${id}`);
 }

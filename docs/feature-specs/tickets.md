@@ -2,7 +2,9 @@
 
 > **Status: Built** — full quote → order → payment → production → completed lifecycle as of 2026-05-21.
 
-**Routes:** `/quotes` · `/orders` · `/payments` · `/production` · `/completed` · `/quotes/new` · `/quotes/[id]` · `/orders/[id]` · `/payments/[id]` · `/production/[id]` · `/completed/[id]`
+**Routes:** `/quotes` · `/orders` · `/payments` · `/completed` · `/quotes/new` · `/quotes/[id]` · `/orders/[id]` · `/payments/[id]` · `/completed/[id]`
+
+> Legacy `/production` and `/production/[id]` redirect to `/orders?tab=in_production` and `/orders/[id]`.
 
 ### Ticket Status Flow
 
@@ -31,9 +33,9 @@
 | Status | Primary page |
 |--------|----------------|
 | `draft`, `sent`, `approved`, `routed` | `/quotes` |
-| `order` (no pending evidence) | `/orders` |
-| `order` + payment evidence pending | `/payments` only |
-| `in_production` | `/production` |
+| `order` (no pending evidence) | `/orders` (Pending Payment tab) |
+| `order` + payment evidence pending | `/orders` for ticket owner (Awaiting payment confirmation) **and** `/payments` for accountant |
+| `in_production` | `/orders` (In Production tab) |
 | `completed` | `/completed` |
 | `cancelled` | `/orders` (Cancelled tab) |
 
@@ -90,19 +92,29 @@ A new quote can be started from three places. The entry point controls the UI sh
 ## `/orders` — Orders page
 
 **Component:** `components/orders/orders-page.tsx`  
-**List API:** `GET /api/orders/orders` — scoped to `order` + `cancelled`, excludes payment-evidence-pending rows.
+**List API:** `GET /api/orders/orders` — scoped to `order` + `in_production` + `cancelled`. Includes evidence-pending rows for the ticket owner.
 
-### Tabs (count badge on all tabs)
+### Tabs (count badge on all tabs; URL `?tab=`)
 
 | Tab | Filter |
 |-----|--------|
-| All | `order` + `cancelled` (excludes evidence-pending) |
-| Pending Payment | `ticket_status = 'order'` (excludes evidence-pending) — **default tab** |
+| All | `order` + `in_production` + `cancelled` |
+| Pending Payment | `ticket_status = 'order'` (includes evidence-pending) |
+| In Production | `ticket_status = 'in_production'` |
 | Cancelled | `ticket_status = 'cancelled'` |
 
-> Tickets with customer-submitted payment proof awaiting review appear on **`/payments`** only, not here.
+**Status column:** API `status_label` / `status_tone` — e.g. Confirmed by Customer, Converted by {name}, Awaiting payment confirmation, In Production.
 
-**Row click** → `/orders/[id]` (`QuoteDetail` with `context="order"`)
+**Row click** → `/orders/[id]` (`QuoteDetail` with `context="order"`). In-production orders use the same detail route (header badge **In Production**).
+
+### Order detail — payment under review (owner view)
+
+When customer submitted payment evidence:
+- **Pricing & payment** combined read-only card (`PricingPaymentSummary`) for sales/SDR
+- Duplicate **Pricing** overview section hidden; quote metadata in **Quote details**
+- Evidence file link **not shown** to sales/SDR — accountant/admin only via `GET /api/tickets/[id]/evidence`
+- **Order settings** section shows payment config read-only
+- Confirm payment only on `/payments/[id]` or order detail for accountant/admin (`record_payment`)
 
 ---
 
@@ -114,24 +126,22 @@ Queue of orders where customer uploaded payment evidence and accountant has not 
 
 **Row click** → `/payments/[id]` (`QuoteDetail` with `context="payment"`)
 
-**Actions:** Confirm payment (`PATCH { record_payment: true }`), view evidence file
+**Actions:** Confirm payment (`PATCH { record_payment: true }` — accountant/admin only), view evidence file
 
 ---
 
-## `/production` — In Production (Accountant + Admin)
+## In production (on `/orders`)
 
-**Component:** `components/orders/production-page.tsx`  
-**List API:** `GET /api/production/orders`
+In-production tickets appear on **`/orders?tab=in_production`**, not a separate nav page (migration `079_remove_production_page.sql`).
 
-**Realtime:** Coalesced refetch on mount + `bazaar:tickets-changed` (avoids duplicate list/count requests in dev Strict Mode).
-
-**Tabs:** All in Production | Balance Due
-
-**Row click** → `/production/[id]` (`QuoteDetail` with `context="production"`)
+**Detail:** `/orders/[id]` — `ProductionDetailOverview` via `ticket-detail-overview.tsx` when `ticket_status = 'in_production'`.
 
 **Actions (overview card):**
-- **Resend invoice link** — emails/SMS `/q/{token}` to customer
-- **Mark Completed** — admin always; accountant when paid in full → sends pickup notification
+- **Resend invoice link** — emails/SMS `/q/{token}`; channel icons (Mail / SMS / both) from ticket outreach settings
+- **Mark Completed** — primary CTA in header area; admin always; accountant when paid in full → sends pickup notification
+- **In Production** status shown in header badge only (not duplicated in action bar)
+
+Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in codebase but UI redirects to `/orders`.
 
 ---
 
@@ -167,30 +177,43 @@ All post-draft detail routes share:
 
 ### Layout
 
-| | With Lead / CRM params | Without params |
-|--|--|--|
-| Left sidebar | Read-only lead/customer card | None |
-| Main area | 3-tab form (Info, Line Items, Quote) | 4-tab form (Customer, Info, Line Items, Quote) |
-| Starting tab | Info | Customer |
-| Source input | **Info tab** — Quote source card (required); pre-filled from linked lead when present | **Customer tab** — Source * required before advancing |
+| | With Lead params | With CRM params (`customer_id` + contact) | Standalone (Quotes page) |
+|--|--|--|--|
+| Left sidebar | Read-only `LinkedLeadCard` | Read-only customer card | None |
+| Main area | 3-tab form (Info, Line Items, Quote) | 3-tab form | 4-tab form (Customer, Info, Line Items, Quote) |
+| Starting tab | Info | Info | Customer |
+| Source input | Pre-filled from linked lead (`leads.source`) — not editable on quote | **Info tab** — Quote source card (required); saved as `quote_source` on ticket | **Customer tab** — Source * required before advancing; saved as `quote_source` on ticket |
 
-### Customer Tab (only shown when no lead/CRM params)
+### Customer Tab (only shown for standalone Quotes page — no `lead_id`, no CRM params)
 
-Field order: **Phone** | **Email** → **First Name** | **Last Name** → **Company** → **Source** * | **Decision Maker?** → **Industry** * | **Website / Social**
+Field order: **Phone** | **Email** → **First Name** | **Last Name** → **Company** → **Source** * → **Industry** * | **Website / Social**
+
+> **Decision Maker** is **not** on the quote form. It lives on the **customer record** (`customers.authority`) and is set in Add Lead, Verify Drawer, or CRM Edit Customer.
 
 **Phone-first customer search:**
 - As the user types a phone number (600 ms debounce), `GET /api/customers/lookup?phone=...` is called
 - **0 matches** → all fields remain editable; user fills in fresh
 - **1 match** → picker modal shown with the matched customer; user selects it or chooses "Create New"
 - **2+ matches** → same modal with all matches listed; user picks one or creates new
-- When a customer is **selected**: identity fields (name, email, company) auto-fill and lock (read-only). **Phone stays editable.** Source, Industry, Decision Maker, and Website remain editable (rep may set source for *this* quote).
-- Pre-fill includes **all customer fields** plus **`latest_source`** / **`latest_authority`** from the customer's most recent lead or prior direct quote
+- When a customer is **selected**: identity fields (name, email, company) auto-fill and lock (read-only). **Phone stays editable.** Source, Industry, and Website remain editable (rep may set source for *this* quote).
+- Pre-fill includes **all customer fields** (`industry`, `website`, `authority` on customer row) plus **`latest_source`** from the customer's most recent lead or prior direct quote
+- Industry and Source selects show **admin lookup labels** (value stored in DB)
 - Lock state is **lifted to the parent component** and survives tab navigation (navigating to Info and back does not reset the lock)
 - Selected customer's `customer_id` is stored in form state and sent on save
 
-> Customer data is **not saved to DB** until the user clicks Save Draft or Save & Send Quote. Customer is upserted into `customers` table at save time so they appear in CRM. **Source is stored on the ticket** (`quote_source`, `quote_authority`) — not on a new lead — for Quotes-page-only creates.
+> Customer contact data is **upserted on save** (Save Draft / Save & Send). **Source for Quotes-page-only creates** is stored on the ticket as `quote_source` — **not** on a new lead. Send `from_quote_page: true` with `POST /api/tickets`.
 
-### Info Tab
+### Info Tab — Quote source (CRM Add Quote only)
+
+When the Customer tab is skipped **and** there is **no** linked lead (`skipCustomerTab && !leadId`), a **Quote source** card appears at the top of the Info tab:
+- Required before save
+- Admin-managed source lookup (label shown, value stored)
+- Saved as `job_tickets.quote_source` with `from_quote_page: true`
+- Does **not** write to `leads.source`
+
+When entering from a **linked lead**, source comes from the lead — no Quote source card on Info.
+
+### Info Tab — General fields
 
 - Title \* (required)
 - Priority (Low / Normal / High — from `ticket_priority` lookup; **Urgent** is system-set and filtered from user-facing dropdown)
@@ -299,7 +322,7 @@ When blocked, an amber banner lists missing fields (e.g. Title, Due date, line i
 
 ### Layout
 
-- **Left sidebar** (sticky): `LinkedLeadCard` if lead is linked; `CustomerInfoCard` if customer exists but no lead (shows source/industry/website for direct quotes via `quote_source`); nothing if neither
+- **Left sidebar** (sticky): `LinkedLeadCard` if lead is linked; `CustomerInfoCard` if customer exists but no lead (shows `quote_source`, industry, website for direct quotes); nothing if neither
 - **Right**: **2-tab view — Info | History**
 
 ### Info Tab
@@ -424,19 +447,19 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `quote_skus`). SDRs see own + routed-by. Sales/Admin see own + all `routed`. |
-| `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `order` + `cancelled`, excludes evidence-pending, slim payload. |
+| `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `order` + `in_production` + `cancelled`; includes evidence-pending for owner; returns `status_label` / `status_tone`. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders). Direct Quotes page: stores `quote_source` on ticket (no auto-lead). Lead/CRM flows: may create linked lead with `source`. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket by UUID or reference code (`QUO-*`, `ORD-*`). Sales/Admin can GET `routed` tickets they don't own. **Accountant** can GET any ticket (matches list scoping). |
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |
 | `GET /api/tickets/[id]/evidence` | GET | Signed URL for payment evidence file (Accountant + Admin) |
-| `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, in_production, completed, routed, cancelled, total }`. Orders count excludes evidence-pending. |
+| `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, in_production, completed, routed, cancelled, total }`. `orders` includes evidence-pending `order` rows. |
 | `GET /api/payments/pending` | GET | Evidence-pending queue (Accountant + Admin) |
 | `GET /api/payments/counts` | GET | Payments page badge counts |
-| `GET /api/production/orders` | GET | In-production list |
-| `GET /api/production/counts` | GET | Production tab badge counts |
+| `GET /api/production/orders` | GET | Legacy in-production list (UI uses `/orders` tab) |
+| `GET /api/production/counts` | GET | Legacy production tab counts |
 | `GET /api/completed/orders` | GET | Completed orders list |
 | `GET /api/completed/counts` | GET | Completed page badge counts |
-| `GET /api/activities` | GET | `?ticket_id=xxx&include_linked_lead=true` → full lifetime (lead + ticket activities merged) |
+| `GET /api/activities` | GET | `?ticket_id=xxx` (UUID or `QUO-*` / `ORD-*`) + optional `include_linked_lead=true` → full lifetime merged |
 | `GET /api/public/quotes/[token]` | GET (no auth) | Public ticket data for `/q/[token]` customer page |
 | `POST /api/public/quotes/[token]/confirm` | POST (no auth) | Customer confirms quote → order; may auto-release production |
 | `POST /api/public/quotes/[token]/submit-payment` | POST (no auth) | Customer payment proof upload (multipart) |
@@ -468,12 +491,11 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | Badge | SDR | Sales | Accountant | Admin |
 |-------|-----|-------|------------|-------|
 | `/quotes` | draft + sent (own) | + all `routed` | — | all |
-| `/orders` | active orders (own) | all active | — | all |
+| `/orders` | scoped orders (own) | scoped orders | pending + in_production | pending + in_production |
 | `/payments` | — | — | pending evidence count | pending evidence count |
-| `/production` | — | — | in-production count | in-production count |
 | `/completed` | — | — | completed count | completed count |
 
-Counts from dedicated endpoints (`/api/payments/counts`, `/api/production/counts`, `/api/completed/counts`, `/api/sidebar-counts`). Refresh via `bazaar:refresh-counts`.
+Counts from `GET /api/tickets/counts`, `/api/payments/counts`, `/api/completed/counts`, `/api/sidebar-counts`. Refresh via `bazaar:refresh-counts`.
 
 ---
 
@@ -502,12 +524,14 @@ When a `routed` quote is **claimed** by Sales:
 
 When a quote is saved (draft or sent) from `new-quote-form.tsx`:
 
-1. If `customer_id` already exists in form state (existing customer selected from lookup) → use it; update industry/website on customer if changed
+1. If `customer_id` already exists in form state (existing customer selected from lookup or CRM) → use it; update industry/website on customer if changed
 2. Else if contact fields (name/email/phone) are present → server upserts via `POST /api/tickets` (match on email or phone; create if no match)
 3. Set `customer_id` on the `job_tickets` row
-4. **Quotes page only** (`from_quote_page: true`): store `quote_source` + `quote_authority` on the ticket; do **not** auto-create a linked lead
-5. **Lead / CRM entry**: source stays on the linked lead (existing behavior)
+4. **Quotes page / CRM Add Quote** (`from_quote_page: true`): store `quote_source` on the ticket; do **not** auto-create a linked lead
+5. **Lead entry** (`linked_lead_id`): source stays on the linked lead; no `quote_source` on ticket
 6. Customer appears in CRM immediately
+
+> **Decision Maker** (`customers.authority`) is never written from the quote form — only from Add Lead, Verify Drawer, or CRM Edit Customer.
 
 ---
 

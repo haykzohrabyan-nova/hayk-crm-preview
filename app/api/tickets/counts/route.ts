@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import {
   countExact,
-  ORDERS_COUNT_PAYMENT_FILTER,
   scopedTicketCount,
 } from "@/lib/utils/db-counts";
 
@@ -34,9 +33,7 @@ export async function GET() {
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "draft")),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "sent")),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "approved")),
-      scopedTicketCount(admin, roleName, userId, (q) =>
-        q.eq("ticket_status", "order").or(ORDERS_COUNT_PAYMENT_FILTER),
-      ),
+      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "order")),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "in_production")),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "completed")),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "cancelled")),

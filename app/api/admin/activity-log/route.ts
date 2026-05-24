@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { activityDisplayRef } from "@/lib/utils/activity-ticket-ref";
 
 // Human-readable labels for every activity type logged by the system
 const ACTION_LABELS: Record<string, string> = {
@@ -15,6 +16,20 @@ const ACTION_LABELS: Record<string, string> = {
   lead_manual_created: "Created lead manually",
   lead_reassigned: "Reassigned lead",
   customer_merged: "Merged customer records",
+  contact_edited: "Edited customer profile",
+  order_ticket_created: "Quote / order created",
+  order_ticket_updated: "Updated quote / order",
+  order_ticket_status_changed: "Changed ticket status",
+  ticket_client_confirmed: "Customer confirmed quote",
+  ticket_converted: "Converted to order",
+  ticket_sent: "Sent quote to customer",
+  ticket_resent: "Resent quote to customer",
+  ticket_payment_evidence_submitted: "Payment evidence submitted",
+  ticket_payment_recorded: "Payment recorded",
+  ticket_production_released: "Released to production",
+  ticket_payment_reminder_sent: "Payment reminder sent",
+  ticket_invoice_resent: "Invoice link resent",
+  ticket_order_ready_sent: "Pickup notification sent",
 };
 
 export async function GET(request: NextRequest) {
@@ -31,7 +46,7 @@ export async function GET(request: NextRequest) {
   let query = admin
     .from("activities")
     .select(
-      `id, type, channel, payload, created_at, by_user_id,
+      `id, type, channel, payload, created_at, by_user_id, ticket_id, lead_id,
        customer:customers(first_name, last_name, company)`,
       { count: "exact" }
     )
@@ -61,16 +76,33 @@ export async function GET(request: NextRequest) {
 
   const profileMap = new Map((profiles ?? []).map((p) => [p.id, p]));
 
-  // Enrich activities with actor name, role, and human-readable label
+  const ticketIds = [...new Set(activities.map((a) => a.ticket_id).filter(Boolean))] as string[];
+  const ticketMap = new Map<string, { id: string; reference_code: string | null }>();
+
+  if (ticketIds.length > 0) {
+    const { data: tickets } = await admin
+      .from("job_tickets")
+      .select("id, reference_code")
+      .in("id", ticketIds);
+    for (const t of tickets ?? []) {
+      if (t.id) ticketMap.set(t.id, t);
+    }
+  }
+
+  // Enrich activities with actor name, role, human-readable label, and ticket ref
   const enriched = activities.map((a) => ({
     id: a.id,
     type: a.type,
-    label: ACTION_LABELS[a.type] ?? a.type,
+    label: ACTION_LABELS[a.type] ?? a.type.replace(/_/g, " "),
     channel: a.channel,
     payload: a.payload,
     created_at: a.created_at,
     actor: a.by_user_id ? (profileMap.get(a.by_user_id) ?? null) : null,
     customer: a.customer,
+    ticket_ref: activityDisplayRef(
+      { ticket_id: a.ticket_id, lead_id: a.lead_id, payload: a.payload },
+      a.ticket_id ? ticketMap.get(a.ticket_id) : null,
+    ),
   }));
 
   return NextResponse.json({ activities: enriched, total: count ?? 0 });

@@ -96,22 +96,30 @@ A dedicated full page for a single customer. Accessible from:
 ### Contact grid
 - Company, Phone, Email, Industry, Website
 - **Decision Maker** — `customers.authority` (`yes` / `no`)
-- **Quote Source** — latest from direct quotes (`quote_source`) or linked leads
 - Total Leads, Customer Since
+
+> **Source** is quote/lead metadata — shown on each quote row in Quotes & Orders and on lead history, not in the company contact grid.
 
 ### Section: Quotes & Orders
 List of all `job_tickets` for this customer. Each row shows reference, date, **source** (quote or lead), total, and status. Click → quote/order detail.
 
 ### Section: Lead History
+
 Table of all leads ever created for this customer.
+
+**Component:** `components/leads/lead-history-table.tsx` (shared with Leads **Won** tab).
 
 | Column | Notes |
 |--------|-------|
-| Status | `StatusPill` |
-| Source | |
-| SDR | Who created/worked it |
+| Status | `sales_status` via `StatusPill` — not SDR inbox `status` |
+| Source | Lookup label (e.g. Phone call) |
+| Urgency | `UrgencyPill` |
+| Quote / Order | `QUO-…` / `ORD-…` from nested `job_tickets` on `GET /api/customers/[id]` — no amounts |
 | Created | Relative time |
-| Action | **View** → opens Verify Drawer in read-only mode |
+
+**Data:** Lead rows from `GET /api/customers/[id]` include nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` so refs are visible to SDRs without scoped ticket list access.
+
+**Row click (SDR on Won-equivalent rows):** navigates to customer profile when opened from Leads Won tab; on customer profile, rows are display-only (no drawer).
 
 ### Section: Order History
 Table of all `job_tickets` linked to this customer.
@@ -169,11 +177,14 @@ A customer is marked **Great Heat** if `heat_tag = 'hot'` OR if any of their lea
 - Email
 - Phone
 - Company (autocomplete from existing company names)
-- Industry
+- **Industry** — admin-managed lookup select (label shown, value stored)
+- **Decision Maker?** — Yes / No (`customers.authority`)
 - Website
 - Heat Tag (Hot / Warm / Cold / None)
 
 **Save** → `PATCH /api/customers/[id]` + logs `contact_edited` activity.
+
+**Display:** Contact grid shows industry and decision maker as **human-readable labels**, not raw DB values.
 
 ---
 
@@ -201,10 +212,10 @@ Once the CRM is built, both the **Add Lead modal** and the **Verify Drawer** wil
 Available to SDR and Sales via **+ Add Quote** button in the CRM customer list (Actions column, next to View) and on the **customer profile page** (`/crm/customers/[id]`, next to Edit).
 
 **Flow:**
-1. Clicking "Add Quote" navigates to `/quotes/new?first_name=...&last_name=...&email=...&phone=...&company=...` with the customer's details pre-filled as URL params
-2. The New Quote form detects these params, **skips the Customer tab**, and shows a read-only customer info card on the left sidebar
+1. Clicking "Add Quote" navigates to `/quotes/new?customer_id=...&first_name=...&last_name=...&email=...&phone=...&company=...&industry=...&website=...` (via `lib/utils/new-quote-from-customer.ts`)
+2. The New Quote form detects CRM params, **skips the Customer tab**, shows a read-only customer card on the left sidebar, and shows **Quote source** (required) on the **Info** tab
 3. User fills in Info → Line Items → Quote as normal
-4. On save: the existing customer record is linked via `customer_id` (matched by email/phone); no duplicate created
+4. On save: existing customer linked via `customer_id`; `quote_source` stored on ticket with `from_quote_page: true`; no duplicate customer or auto-lead created
 
 > **No drawer used** — the New Quote page (`/quotes/new`) handles all entry points (lead, CRM, standalone).
 

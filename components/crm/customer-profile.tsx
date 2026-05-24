@@ -3,8 +3,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package, FilePlus } from "lucide-react";
-import { UrgencyPill } from "@/components/ui/urgency-pill";
-import { StatusPill } from "@/components/ui/status-pill";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
@@ -12,6 +10,8 @@ import { validateEmail } from "@/lib/utils/email";
 import { quoteDetailPath } from "@/lib/utils/reference-codes";
 import { newQuoteUrlFromCustomer } from "@/lib/utils/new-quote-from-customer";
 import { authorityLabel } from "@/lib/utils/authority";
+import { lookupLabel } from "@/lib/utils/lookups";
+import { LeadHistoryTable } from "@/components/leads/lead-history-table";
 import {
   Select,
   SelectContent,
@@ -46,6 +46,12 @@ interface LeadSummary {
   rejection_reason: string | null;
   created_at: string;
   updated_at: string;
+  tickets?: {
+    id: string;
+    reference_code: string | null;
+    ticket_kind: string | null;
+    ticket_status: string | null;
+  }[];
 }
 
 interface TicketSummary {
@@ -62,7 +68,7 @@ interface TicketSummary {
   lead?: { source: string | null } | null;
 }
 
-interface SourceOption {
+interface LookupOption {
   value: string;
   label: string;
 }
@@ -175,10 +181,12 @@ interface EditForm {
 
 function EditCustomerModal({
   customer,
+  industries,
   onClose,
   onSaved,
 }: {
   customer: Customer;
+  industries: LookupOption[];
   onClose: () => void;
   onSaved: (updated: Customer) => void;
 }) {
@@ -264,7 +272,18 @@ function EditCustomerModal({
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>Industry</label>
-            <input className={inputCls} style={inputStyle} value={form.industry} onChange={(e) => setForm((f) => ({ ...f, industry: e.target.value }))} placeholder="Industry" />
+            <Select value={form.industry} onValueChange={(v) => setForm((f) => ({ ...f, industry: v ?? "" }))}>
+              <SelectTrigger className="h-9 text-sm w-full">
+                <SelectValue placeholder="Select industry…">
+                  {industries.find((i) => i.value === form.industry)?.label ?? "Select industry…"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {industries.map((i) => (
+                  <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>Decision Maker?</label>
@@ -542,6 +561,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
   const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
   const [sourceLabels, setSourceLabels] = useState<Record<string, string>>({});
+  const [industries, setIndustries] = useState<LookupOption[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
@@ -550,13 +570,14 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
     Promise.all([
       fetch(`/api/customers/${customerId}`).then((r) => r.json()),
       fetch(`/api/tickets?customer_id=${customerId}`).then((r) => r.json()),
-      fetch("/api/lookups?categories=source").then((r) => r.json()),
+      fetch("/api/lookups?categories=source,industry").then((r) => r.json()),
     ])
       .then(([customerData, ticketData, lookupData]) => {
         setData(customerData);
         setTickets(ticketData.tickets ?? []);
-        const opts: SourceOption[] = lookupData?.source ?? [];
-        setSourceLabels(Object.fromEntries(opts.map((o) => [o.value, o.label])));
+        const sourceOpts: LookupOption[] = lookupData?.source ?? [];
+        setSourceLabels(Object.fromEntries(sourceOpts.map((o) => [o.value, o.label])));
+        setIndustries(lookupData?.industry ?? []);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -587,18 +608,6 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
 
   const { customer: c, leads, lead_count, customer_status } = data;
   const statusStyle = CUSTOMER_STATUS_STYLE[customer_status];
-
-  const latestQuoteSource = (() => {
-    for (const t of tickets) {
-      const src = ticketSource(t, sourceLabels);
-      if (src) return src;
-    }
-    for (const lead of leads) {
-      const src = sourceLabel(lead.source, sourceLabels);
-      if (src) return src;
-    }
-    return null;
-  })();
 
   return (
     <div className="space-y-6">
@@ -693,10 +702,9 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
               : <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>—</p>}
           </div>
           {[
-            { label: "Industry", value: c.industry },
+            { label: "Industry", value: lookupLabel(industries, c.industry, "—") },
             { label: "Decision Maker", value: authorityLabel(c.authority) },
             { label: "Website", value: c.website },
-            { label: "Quote Source", value: latestQuoteSource },
           ].map(({ label, value }) => (
             <div key={label}>
               <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>{label}</p>
@@ -716,76 +724,10 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
         </div>
       </div>
 
-      {/* Lead History */}
-      <section>
-        <h2 className="text-[13px] font-semibold uppercase tracking-[0.06em] mb-3" style={{ color: "var(--color-text-muted)" }}>
-          Lead History
-        </h2>
-
-        {/* Desktop */}
-        <div className="hidden lg:block rounded-[10px] border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
-          <table className="w-full text-sm">
-            <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
-              <tr>
-                {["SDR Status", "Sales Status", "Source", "Urgency", "Created"].map((h) => (
-                  <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {leads.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-12 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
-                    No leads yet.
-                  </td>
-                </tr>
-              ) : (
-                leads.map((lead, idx) => (
-                  <tr
-                    key={lead.id}
-                    style={{
-                      background: idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
-                      borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
-                    }}
-                  >
-                    <td className="px-3 py-2.5"><StatusPill status={lead.status} /></td>
-                    <td className="px-3 py-2.5">
-                      {lead.sales_status ? <StatusPill status={lead.sales_status} /> : <span style={{ color: "var(--color-text-muted)" }}>—</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.source || "—"}</td>
-                    <td className="px-3 py-2.5">
-                      <UrgencyPill urgency={lead.urgency} />
-                    </td>
-                    <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
-                      {relativeTime(lead.created_at)}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Mobile */}
-        <div className="flex flex-col gap-3 lg:hidden">
-          {leads.length === 0 ? (
-            <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
-              No leads yet.
-            </div>
-          ) : leads.map((lead) => (
-            <div key={lead.id} className="rounded-[10px] border p-4 space-y-2" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
-              <div className="flex items-center gap-2 flex-wrap">
-                <StatusPill status={lead.status} />
-                {lead.sales_status && <StatusPill status={lead.sales_status} />}
-              </div>
-              <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
-                <div className="flex justify-between"><span>Source</span><span className="normal-case tracking-normal">{lead.source || "—"}</span></div>
-                <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{relativeTime(lead.created_at)}</span></div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
+      <LeadHistoryTable
+        leads={leads}
+        sourceLabels={sourceLabels}
+      />
 
       {/* Quotes & Orders */}
       <section>
@@ -868,6 +810,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
       {editOpen && (
         <EditCustomerModal
           customer={c}
+          industries={industries}
           onClose={() => setEditOpen(false)}
           onSaved={handleCustomerSaved}
         />

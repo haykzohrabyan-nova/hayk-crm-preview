@@ -282,22 +282,37 @@ List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table vi
 | Page | List endpoint | Notes |
 |------|---------------|-------|
 | `/quotes` | `GET /api/tickets?kind=quote` | Slim select; quote-stage statuses only |
-| `/orders` | `GET /api/orders/orders` | `order` + `cancelled`; excludes evidence-pending |
+| `/orders` | `GET /api/orders/orders` | `order` + `in_production` + `cancelled`; includes evidence-pending for owner; `status_label` / `status_tone` |
 | `/payments` | `GET /api/payments/pending` | Evidence queue only |
-| `/production` | `GET /api/production/orders` | `in_production` only |
 | `/completed` | `GET /api/completed/orders` | `completed` only |
 | `/leads`, `/sales` | `GET /api/leads/workspace` | Slim list; **`GET /api/leads/[id]`** on drawer open |
 | `/crm` | `GET /api/customers` | Slim customer + lead/ticket aggregates |
 
 **Tab/sidebar counts** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`.
 
-**Realtime:** Single sidebar subscription per table → `bazaar:*-changed` window events. Sidebar badge refetch debounced ~300 ms. `production-page.tsx` coalesces mount + event refetches (see `docs/realtime-live-updates.md`).
+**Realtime:** Single sidebar subscription per table → `bazaar:*-changed` window events. Sidebar badge refetch debounced ~300 ms. Legacy `production-page.tsx` coalesced refetch pattern documented in `docs/realtime-live-updates.md`.
 
 **Indexes:** `073_performance_indexes.sql` — partial indexes on orders, production, leads.
 
 **Completed:** [performance-optimization.md](./FuturePlan/Performance/performance-optimization.md) (Phase 1–2)
 
 **Future work:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md) (combined page-data, SWR, pagination)
+
+---
+
+## Customer attribute ownership
+
+Where key customer-facing fields are stored (May 2026):
+
+| Attribute | Stored on | Set from | Notes |
+|-----------|-----------|----------|-------|
+| **Decision Maker** | `customers.authority` | Add Lead, Verify Drawer, CRM Edit | `'yes'` / `'no'`. Not on quote form. Legacy `leads.authority` deprecated. |
+| **Industry** | `customers.industry` | Add Lead, Verify, New Quote upsert, CRM Edit | Admin lookup value; UI shows label |
+| **Source (lead)** | `leads.source` | Add Lead, Verify | Per inquiry |
+| **Source (direct quote)** | `job_tickets.quote_source` | New Quote Customer tab or CRM Info tab | Requires `from_quote_page: true`; no auto-lead |
+| **Website** | `customers.website` | Lead/quote/CRM customer flows | |
+
+**Migrations:** `077_quote_source.sql`, `078_customer_authority.sql`
 
 ---
 

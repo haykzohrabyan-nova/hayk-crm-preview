@@ -1,7 +1,7 @@
-import { ProductionPage } from "@/components/orders/production-page";
+import { redirect } from "next/navigation";
 
-export const metadata = { title: "In Production — BazaarPrinting CRM" };
+export const metadata = { title: "Orders — BazaarPrinting CRM" };
 
-export default function Page() {
-  return <ProductionPage />;
+export default function ProductionRedirectPage() {
+  redirect("/orders?tab=in_production");
 }

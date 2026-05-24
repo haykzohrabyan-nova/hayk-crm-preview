@@ -36,6 +36,10 @@ interface QuoteFormProps {
   salesPermitError?: string;
   paymentDraft: TicketPaymentDraft;
   onPaymentChange: (cfg: TicketPaymentDraft) => void;
+  customerPhone?: string;
+  customerEmail?: string;
+  /** When true, hides the pricing breakdown (shown elsewhere, e.g. combined payment review card). */
+  hidePricingSummary?: boolean;
 }
 
 export function QuoteForm(p: QuoteFormProps) {
@@ -71,28 +75,29 @@ export function QuoteForm(p: QuoteFormProps) {
 
     return (
       <div className="space-y-4">
-        {/* Pricing summary */}
-        <div className="rounded-lg p-4 space-y-2" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
-          <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--color-text-muted)" }}>Pricing Summary</h4>
-          {([
-            ["Subtotal", subtotal],
-            ["Shipping", shipping],
-            ["Discount", -discount_amount],
-            ["Pre-tax Total", pre_tax],
-            ["Tax", tax_amount],
-          ] as [string, number][]).map(([label, val]) => (
-            <div key={label} className="flex justify-between text-sm">
-              <span style={{ color: "var(--color-text-muted)" }}>{label}</span>
-              <span style={{ color: val < 0 ? "var(--color-danger)" : "var(--color-text-primary)" }}>
-                {val !== 0 ? formatCurrency(Math.abs(val)) : "—"}
-              </span>
+        {!p.hidePricingSummary && (
+          <div className="rounded-lg p-4 space-y-2" style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)" }}>
+            <h4 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--color-text-muted)" }}>Pricing Summary</h4>
+            {([
+              ["Subtotal", subtotal],
+              ["Shipping", shipping],
+              ["Discount", -discount_amount],
+              ["Pre-tax Total", pre_tax],
+              ["Tax", tax_amount],
+            ] as [string, number][]).map(([label, val]) => (
+              <div key={label} className="flex justify-between text-sm">
+                <span style={{ color: "var(--color-text-muted)" }}>{label}</span>
+                <span style={{ color: val < 0 ? "var(--color-danger)" : "var(--color-text-primary)" }}>
+                  {val !== 0 ? formatCurrency(Math.abs(val)) : "—"}
+                </span>
+              </div>
+            ))}
+            <div className="flex justify-between font-semibold text-lg pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
+              <span style={{ color: "var(--color-text-primary)" }}>Total</span>
+              <span className="tabular-nums" style={{ color: "var(--color-accent)" }}>{formatCurrency(final_total)}</span>
             </div>
-          ))}
-          <div className="flex justify-between font-semibold text-base pt-2 border-t" style={{ borderColor: "var(--color-border)" }}>
-            <span style={{ color: "var(--color-text-primary)" }}>Total</span>
-            <span style={{ color: "var(--color-accent)" }}>{formatCurrency(final_total)}</span>
           </div>
-        </div>
+        )}
 
         {/* Key adjustments read-only */}
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
@@ -253,6 +258,8 @@ export function QuoteForm(p: QuoteFormProps) {
         quoteTotal={p.pricing.final_total}
         initialConfig={p.paymentDraft}
         onChange={p.onPaymentChange}
+        customerPhone={p.customerPhone}
+        customerEmail={p.customerEmail}
       />
     </div>
   );

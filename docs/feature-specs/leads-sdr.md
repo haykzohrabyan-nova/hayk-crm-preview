@@ -138,24 +138,27 @@ Client-side filters applied to the fetched result set:
 - **SDR:** only their own won leads (`sdr_id = currentUserId`)
 - **Admin:** all won leads across every SDR
 
-A lead appears here when its linked ticket is released to **`in_production`** (not merely when it becomes an `order`). `markLeadWonOnProduction()` sets `sales_status = 'Won'` on all production-release paths (payment gates, accountant confirm, net terms auto-release, manual release).
+A lead appears here when its linked ticket is released to **`in_production`**. `markLeadWonOnProduction()` sets `sales_status = 'Won'` on all production-release paths (payment gates, accountant confirm, net terms auto-release, manual release).
+
+**Component:** `components/leads/lead-history-table.tsx` — same table as customer profile **Lead History** (`lib/utils/lead-history-display.ts` for refs and source labels).
 
 ### Table Columns
 
 | Column | Notes |
 |--------|-------|
-| Name | |
-| Company | |
-| Order Ref | `ORD-YYYY-NNN` from linked ticket (prefers in-production ticket when multiple exist) |
-| Total | `quote_final_total` from linked ticket |
-| Closer | Sales rep who created/owns the ticket |
-| Won At | Relative time from ticket `production_released_at` or lead `updated_at` |
+| Status | `sales_status` via `StatusPill` (Won, Quote Sent, etc.) — **not** SDR inbox `status` |
+| Source | Lookup label via `leadSourceLabel()` (e.g. Phone call) |
+| Urgency | `UrgencyPill` |
+| Quote / Order | `QUO-…` / `ORD-…` badges from nested tickets — **reference codes only, no amounts** |
+| Created | Relative time |
 
 ### Behaviors
 
-- **Rows are clickable** — opens Verify Drawer in **read-only mode** (no lock, no action buttons)
+- **Rows are clickable (SDR)** — navigates to **`/crm/customers/[customer_id]`** (`redirectSdrWonToCustomer()`), not the Verify Drawer
+- **Admin** — row click still opens Verify Drawer in read-only mode
 - Empty state copy explains that Won credit applies when the order enters production
 - Count badge from `GET /api/leads/workspace/counts` → `counts.won`
+- API returns nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` only — **no `quote_final_total` or closer name** in the browser
 
 ---
 
@@ -227,7 +230,7 @@ Fields (editable when verifying, read-only when viewing):
 | Last Name | Text | No | |
 | Source | Dropdown | Yes | **Admin-managed** — loaded from `lookup_values` (`source` category). Edit in Admin → Dropdown Options. |
 | Created | Read-only | — | Timestamp, shown with lock icon |
-| Authority | Dropdown | No | Decision maker? Yes / No |
+| Authority | Dropdown | No | Decision maker? Yes / No — stored on **`customers.authority`**, not on the lead row. Pre-filled from customer when an existing profile is linked. |
 | Company Name | Text | No | |
 | Industry | Dropdown | Yes | **Admin-managed** — loaded from `lookup_values` (`industry` category). Edit in Admin → Dropdown Options. |
 | Website / Social | Text | No | |
@@ -279,7 +282,7 @@ Actions available depending on drawer mode and current `status`. **All action bu
 | **On Hold** | Edit mode, status not Rejected | Replaces drawer body with full-screen hold sub-form (tabs + lead form hidden until hold is confirmed or cancelled) |
 | **Resume** | Edit mode, `status = 'On Hold'` | Saves all form edits + restores to `Pending` |
 | **Reject** | Edit mode, status not Rejected | Opens rejection form inline in footer — **TERMINAL** |
-| **Save** | Edit mode (far-right of footer) | `PATCH /api/leads/[id]` with current form values; closes drawer on success |
+| **Save** | Edit mode (far-right of footer) | `PATCH /api/leads/[id]` with current form values; **Decision Maker** in payload updates `customers.authority`; contact field changes may prompt "Update customer profile?"; closes drawer on success |
 | **Close** | Read-only mode only | Dismisses modal — ownership is **not** released |
 
 **Save button** is always visible at the far right of the footer when in edit mode (navy style). Route, Hold, and Reject also auto-save form fields before executing their specific action.
@@ -385,10 +388,11 @@ Required fields (*): Phone, First Name, Source, Industry.
 
 **If SDR selected an existing customer:**
 - Lead is created with `customer_id = existing_customer.id`
+- If **Decision Maker** changed → `customers.authority` updated (not `leads.authority`)
 - No new customer created
 
 **If SDR filled fresh info (no existing customer chosen):**
-- New `customers` row created with: first_name, last_name, email, phone, company, industry, website
+- New `customers` row created with: first_name, last_name, email, phone, company, industry, website, **authority**
 - Lead created with `customer_id = new_customer.id`
 
 ---
@@ -403,7 +407,7 @@ When the SDR takes an action on a lead (Hold / Route to Sales / Reject) **and** 
 Update John Smith's customer profile with the new information?
 [Yes, update profile]  [No, keep existing profile]
 ```
-- Yes → `PATCH /api/customers/[id]` with changed fields
+- Yes → `PATCH /api/customers/[id]` with changed fields (including **authority** and **industry** lookup values)
 - No → lead saved as-is; customer record unchanged
 
 **If lead has no customer linked yet:**

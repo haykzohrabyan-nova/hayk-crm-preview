@@ -1,20 +1,29 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 23, 2026
-**Status:** MVP complete + full order lifecycle + Won credit on production release + quote send validation + direct quote source + dev test reset. See **May 23, 2026 session** below for latest shipped work.
+**Status:** MVP complete + full order lifecycle + Won credit on production release + quote send validation + customer-level attributes + dev test reset. See **May 23, 2026 session** below for latest shipped work.
 
 ---
 
-## May 23, 2026 (continued) — Direct quote source, customer pre-fill, approval gate
+## May 23, 2026 (continued) — Customer attributes, quote source, CRM flows
 
-### Direct quote source (Quotes page only)
-- Migration `077_quote_source.sql` — `quote_source` + `quote_authority` on `job_tickets`
-- New Quote from `/quotes/new` sends `from_quote_page: true` + `quote_source`/`quote_authority`; source stored on ticket, not auto-lead
-- Lead/CRM entry points unchanged — source remains on linked lead
-- Quote detail `CustomerInfoCard` shows source, decision maker, industry, website for direct quotes (no linked lead)
+### Decision Maker on customer record
+- Migration `078_customer_authority.sql` — `customers.authority`; backfill from latest lead; drops unused `job_tickets.quote_authority`
+- Add Lead, Verify Drawer, Sales Drawer, CRM profile read/write **Decision Maker** on the **customer**, not per-lead or per-quote
+- `PATCH /api/leads/[id]` with `authority` updates `customers.authority` and returns refreshed customer join
+
+### Direct quote source (Quotes page + CRM Add Quote)
+- Migration `077_quote_source.sql` — `quote_source` on `job_tickets` (direct Quotes-page / CRM creates only)
+- Standalone New Quote: Source on **Customer tab** → `quote_source` on ticket with `from_quote_page: true`
+- CRM Add Quote: Customer tab skipped; **Quote source** required on **Info tab** → same ticket fields
+- Lead entry (`?lead_id`): source from linked lead — no quote source card
 
 ### Customer pre-fill on New Quote
-- `GET /api/customers/lookup` enriches matches with `latest_source` / `latest_authority` from most recent lead or prior direct quote
-- Selecting existing customer pre-fills all fields; passes `customer_id` on save
+- `GET /api/customers/lookup` returns customer row (incl. `authority`, `industry`) + `latest_source` enrichment
+- Industry/source selects show admin lookup **labels**
+
+### CRM profile
+- Edit Customer: industry lookup select + Decision Maker field
+- Contact grid shows industry label, decision maker, quote source
 
 ### Customer approval gate (all payment types)
 - When `ticket_require_client_confirm = true`, production/payment gates wait for public-page confirm — cash/deposit/full pay alone no longer bypasses approval
@@ -56,18 +65,19 @@
 ### Payment evidence & accountant workflow
 - Customer wire/ACH/Zelle/check/card proof **no longer auto-marks paid** — queues on `/payments` for accountant review
 - `payment_evidence_amount` column (migration 071) — correct amount shown while pending
-- Orders with pending evidence **excluded from `/orders`** — appear on `/payments` only until confirmed
+- Orders with pending evidence visible on **`/orders`** for ticket owner (Awaiting payment confirmation); accountants confirm on **`/payments`**
 - `/payments/[id]` — dedicated payment review detail; list rows open here (not `/orders/[id]`)
-- `record_payment` action clears evidence and sends **payment confirmed** email when applicable
-- Accountant role: default home `/payments`, can confirm payment, view production/completed, **Mark Completed** when paid in full
+- `record_payment` — **accountant + admin only**; clears evidence and sends **payment confirmed** email when applicable
+- Accountant role: default home `/payments`, can confirm payment, view orders (in-production tab), completed, **Mark Completed** when paid in full
 
 ### Production & completed pages
-- `/production` + `/production/[id]` — in-production queue and detail (`context="production"`)
+- In-production orders on **`/orders?tab=in_production`** and **`/orders/[id]`** (legacy `/production` redirects)
 - `/completed` + `/completed/[id]` — finished orders and detail (`context="completed"`)
-- `/orders` narrowed to active orders + cancelled (no in-production, no evidence-pending)
-- Admin **Mark Completed** on production; accountant when **paid in full** (`isTicketPaidInFull()`)
-- **Resend invoice link** on production/completed detail — emails/SMS permanent `/q/{token}` link
+- `/orders` tabs: All / Pending Payment / In Production / Cancelled
+- Admin **Mark Completed** on in-production order detail; accountant when **paid in full** (`isTicketPaidInFull()`)
+- **Resend invoice link** on in-production/completed detail — emails/SMS permanent `/q/{token}` link
 - **Pickup notification** on mark complete — `sendOrderReadyToCustomer()` + History `ticket_order_ready_sent`
+- **`markLeadWonOnProduction()`** — sets lead `sales_status = Won` on production release (SDR Won tab)
 
 ### Public page (`/q/[token]`)
 - Unified portal phases: confirm → pay → evidence review → in production → **ready for pickup** (`order_ready`)
@@ -77,7 +87,9 @@
 - Staff logged in can preview `/q/{token}` — proxy skips RBAC on public paths
 
 ### CRM detail UX
-- Unified **Overview + History** on `/quotes/[id]`, `/orders/[id]`, `/payments/[id]`, `/production/[id]`, `/completed/[id]`
+- Unified **Overview + History** on `/quotes/[id]`, `/orders/[id]`, `/payments/[id]`, `/completed/[id]`
+- Shared **LeadHistoryTable** on customer profile + Leads Won tab (Quote/Order refs, no SDR Status column)
+- SDR Won row click → customer profile (`/crm/customers/[id]`)
 - Quote stage overview: **Customer link** + **Copy** (with Copied! feedback)
 - Quotes **All** tab badge = draft + sent + approved only (excludes in-production)
 
@@ -170,7 +182,7 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - `/quotes/new` — `new-quote-form.tsx` — new quote form with up to 4 tabs: Customer (optional, shown for new customers), Line Items, Quote, Settings; the Customer tab is hidden when a lead or CRM customer is pre-selected via URL params
 - `/quotes/[id]` — `quote-detail.tsx` — full detail view + edit mode, 2-tab layout (Info + History); Info tab contains all sections stacked
 - `/quotes` — `quotes-page.tsx` — 4-tab Quoted Requests list with counts, search, sort
-- `/orders` — `orders-page.tsx` — 3-tab Orders list (All | Pending Payment | Cancelled) with counts; default tab Pending Payment; excludes evidence-pending, in-production, and completed tickets
+- `/orders` — `orders-page.tsx` — 4-tab Orders list (All | Pending Payment | In Production | Cancelled); includes evidence-pending for owner; API `status_label` / `status_tone`
 - All dropdowns dynamically loaded from `lookup_values` via `/api/lookups`; `renderLookupOptions` helper prevents data loss for deactivated values
 - Sidebar badges for `/quotes` and `/orders`
 - `GET /api/lookups/products` — public product-type + material lookup for quote forms
@@ -183,7 +195,7 @@ Full business-rule enforcement and payment workflow built:
 - **"Convert to Order" (was "Mark Won")**: The "Mark Won" button was replaced with **"Convert to Order"**. Clicking it sets `ticket_status = "order"`, auto-generates `ORD-YYYY-NNN` reference code, sets `ticket_kind = "order"`, and logs `ticket_converted` activity. Mirrors the customer confirmation flow exactly.
 - **`approved` status phased out**: The intermediate `approved` state is no longer used. Tickets go directly `sent → order` (either by customer or by rep clicking "Convert to Order"). The `approved` status is kept in the `TicketStatus` type for backwards compatibility only.
 - **SDR/Sales Won tracking**: When a linked ticket enters **`in_production`**, the lead's `sales_status` is automatically updated to `"Won"`. Handled by `markLeadWonOnProduction()` on all production-release paths (not at order conversion).
-- **SDR workspace "Won" tab**: New "Won" tab added to `/leads` (SDR workspace) at `components/leads/leads-page.tsx`. Shows all leads where `sales_status = "Won"` for the current SDR (admin sees all). Displays order reference code, total, and closer name. API: `GET /api/leads/workspace?won=true`. Count: `GET /api/leads/workspace/counts` now includes `won`.
+- **SDR workspace "Won" tab**: `LeadHistoryTable` shared with customer profile — Status (`sales_status`), Source, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. API: `GET /api/leads/workspace?won=true` (nested tickets, no totals). Count: `counts.won`.
 - **Payment Link Bar**: New `PaymentLinkBar` component visible on confirmed, unpaid orders. Shows: copyable public URL `/q/[token]` + channel selector (Email/SMS/WhatsApp) + pre-filled destination (switches to email or phone on channel change, user can override) + "Send Payment Link" button. Triggers `PATCH /api/tickets/[id]` with `{ send_payment_reminder: true, reminder_channel, reminder_destination }`.
 - **Payment reminder email template**: New `lib/integrations/payment-reminder-template.ts` — dedicated "Pay Now" focused email. Shows order reference, amount due, payment methods, large "Pay Now" CTA. No line items.
 - **Payment reminder SMS**: `sendPaymentReminder()` in `lib/integrations/send-quote.ts` handles Email/SMS/WhatsApp. SMS uses `toE164()` phone normalizer to ensure E.164 format (`+13233413620`) required by Twilio.
@@ -225,7 +237,7 @@ Full prepayment/deposit system built for Direct Order flow:
 
 Multiple UX improvements applied consistently to both `new-quote-form.tsx` and `quote-detail.tsx`:
 
-- **Phone-first customer search** in New Quote Customer tab: Phone | Email → First Name | Last Name → Company → Source * | Decision Maker? | Industry * | Website. Debounced lookup on phone number. If match found: picker modal; all fields pre-fill including source/industry/website from customer + latest lead/quote. Identity fields lock; Source/Industry/Website stay editable. `customer_id` + `quote_source` sent on save (Quotes page only).
+- **Phone-first customer search** in New Quote Customer tab: Phone | Email → First Name | Last Name → Company → Source * → Industry * | Website. Debounced lookup. Pre-fill from customer + `latest_source`. Identity fields lock; Source/Industry/Website stay editable. `customer_id` + `from_quote_page` + `quote_source` on save. Decision Maker is on customer record only (not quote form).
 - **Customer lock persistence**: `locked` and `foundName` states lifted to parent `NewQuoteForm` component so they survive tab navigation.
 - **Dynamic quote destination pre-fill**: when customer is locked and "Send Via" channel changes, `quoteDestination` is automatically updated to the correct phone or email.
 - **Rush toggle**: Manual only — no connection to the due date. The auto-toggle was built then removed at owner request.
@@ -247,7 +259,7 @@ Major UX improvements and business rule enforcement:
 - **New Quote form — unified entry point**: 4-step wizard (Customer → Info → Line Items → Quote) when creating standalone. Customer tab hidden when entering from Lead (`?lead_id`) or CRM (`?first_name&last_name&...` params). Read-only lead/customer card shown on left sidebar instead.
 - **Customer upsert**: customer data saved to `customers` table on "Save Draft" or "Save & Send Quote" — customers created via quotes now appear in CRM.
 - **CRM "Add Quote" button**: new action on CRM page pre-fills customer params in URL → skips Customer tab, shows read-only customer card.
-- **Customer info card on quote detail**: if no linked lead but customer exists, shows customer card (`CustomerInfoCard`) on the left sidebar — includes source, decision maker, industry, and website for direct quotes (`quote_source` on ticket).
+- **Customer info card on quote detail**: if no linked lead but customer exists, shows customer card (`CustomerInfoCard`) on the left sidebar — includes source (`quote_source`), industry, and website for direct quotes.
 - **Validation**: required fields enforced per tab before advancing. Line Items requires ≥ 1 fully-filled item.
 - **Orders page**: now shows only `ticket_status = 'order'` tickets. `draft`, `sent`, `approved`, `routed` stay on Quotes page. "New Order" button removed.
 - **Sidebar counts**: Quotes badge = `draft+sent+approved` (SDR) or `draft+sent+approved+routed` (Sales/Admin). Orders badge = `order` status only.
@@ -470,7 +482,7 @@ SALES PIPELINE (Routed to Sales)
 
 - **Dashboard revenue** — `GET /api/dashboard/kpis` now sums `job_tickets.quote_final_total` for all revenue/won-value/pipeline-value KPIs. Previously used `leads.quote_total` (stale snapshot never updated after quote edits). Applies to both Sales and Admin dashboard variants.
 - **Admin override for terminal leads** — `SalesDrawer` and `VerifyDrawer` accept an `isAdmin` prop. When admin opens a Won/Dropped/Rejected lead: amber "Admin override" banner shown, drawer fully editable. Won leads show a caution note to handle the linked order manually in Tickets. Non-admins still see the red lock banner.
-- **Order lifecycle** — Dedicated `/production`, `/production/[id]`, `/completed`, `/completed/[id]` pages. Mark Completed on production detail (admin always; accountant when paid in full). Pickup notification on complete. Auto-release via `maybe-auto-release-production.ts`. *(Initial 2026-05-17 admin buttons on order detail superseded by this.)*
+- **Order lifecycle** — In-production on `/orders?tab=in_production` + `/orders/[id]` (legacy `/production` redirects). `/completed` for finished orders. Mark Completed on order detail when in production. Pickup notification on complete. Auto-release via `maybe-auto-release-production.ts`. Won credit via `markLeadWonOnProduction()` on production release.
 - **Dashboard session KPI cards** — Two new cards on admin dashboard: "Active Users" (users with an open session right now) and "Idle Sign-outs" (auto sign-outs in the last 7 days). Data sourced from `GET /api/admin/sessions`.
 
 ### 7. Count Badges Pattern

@@ -26,6 +26,31 @@ interface ActivityItem {
   created_at: string;
   actor: ActivityActor | null;
   customer: ActivityCustomer | null;
+  ticket_ref: string | null;
+}
+
+function TicketRefBadge({ ref }: { ref: string }) {
+  const isOrder = ref.startsWith("ORD-");
+  const isQuote = ref.startsWith("QUO-");
+  return (
+    <span
+      className="inline-flex items-center rounded px-2 py-0.5 text-[11px] font-medium font-mono"
+      style={{
+        background: isOrder
+          ? "var(--color-success-bg)"
+          : isQuote
+            ? "var(--color-info-bg)"
+            : "var(--color-neutral-bg)",
+        color: isOrder
+          ? "var(--color-success)"
+          : isQuote
+            ? "var(--color-info-text)"
+            : "var(--color-neutral-text)",
+      }}
+    >
+      {ref}
+    </span>
+  );
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -88,7 +113,7 @@ function Skeleton() {
             borderTop: i > 0 ? "1px solid var(--color-border)" : undefined,
           }}
         >
-          {[40, 55, 35, 20].map((w, j) => (
+          {[40, 55, 35, 20, 20].map((w, j) => (
             <td key={j} className="px-4 py-3">
               <div
                 className="h-3.5 animate-pulse rounded"
@@ -187,7 +212,7 @@ export function ActivityLogSection() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)" }}>
-              {["Who", "Action", "Lead / Customer", "When"].map((h) => (
+              {["Who", "Action", "Lead / Customer", "Quote / Order", "When"].map((h) => (
                 <th
                   key={h}
                   className="px-4 py-2.5 text-left"
@@ -207,7 +232,7 @@ export function ActivityLogSection() {
             ) : activities.length === 0 ? (
               <tr>
                 <td
-                  colSpan={4}
+                  colSpan={5}
                   className="px-4 py-10 text-center text-sm"
                   style={{ color: "var(--color-text-muted)" }}
                 >
@@ -246,6 +271,15 @@ export function ActivityLogSection() {
                     <span className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>
                       {customerName(a.customer) ?? "—"}
                     </span>
+                  </td>
+
+                  {/* Quote / Order */}
+                  <td className="px-4 py-3">
+                    {a.ticket_ref ? (
+                      <TicketRefBadge ref={a.ticket_ref} />
+                    ) : (
+                      <span className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>—</span>
+                    )}
                   </td>
 
                   {/* When */}
@@ -307,6 +341,11 @@ export function ActivityLogSection() {
                 <div>{a.label}</div>
                 {customerName(a.customer) && (
                   <div style={{ color: "var(--color-text-muted)" }}>{customerName(a.customer)}</div>
+                )}
+                {a.ticket_ref && (
+                  <div className="pt-0.5">
+                    <TicketRefBadge ref={a.ticket_ref} />
+                  </div>
                 )}
               </div>
             </div>

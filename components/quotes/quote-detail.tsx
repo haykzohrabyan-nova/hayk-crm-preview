@@ -27,6 +27,8 @@ import {
   formatQuoteSendMissingMessage,
   getQuoteSendMissingFields,
 } from "@/lib/utils/validate-quote-send";
+import { buildAdminConvertPreview } from "@/lib/utils/admin-convert-preview";
+import type { ManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { isPaymentEvidencePending, isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
 import { formatPhone, digitsOnly } from "@/lib/utils/phone";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -160,6 +162,7 @@ interface Ticket {
   payment_evidence_url:           string | null;
   payment_evidence_submitted_at:  string | null;
   payment_evidence_amount:        number | null;
+  convert_meta?: ManualConvertMeta | null;
 }
 
 interface ProductType {
@@ -247,7 +250,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [hvModal, setHvModal] = useState(false);
   const [hvCountdown, setHvCountdown] = useState(30);
   const hvTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const handleSaveRef = useRef<((newStatus?: string) => Promise<void>) | null>(null);
+  const [convertModal, setConvertModal] = useState<ReturnType<typeof buildAdminConvertPreview> | null>(null);
+  const handleSaveRef = useRef<((newStatus?: string, extraFields?: Record<string, unknown>, opts?: { skipSendValidation?: boolean }) => Promise<void>) | null>(null);
 
   // Edit state mirrors ticket fields
   const [title, setTitle] = useState("");
@@ -391,7 +395,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
   // ─── Save ─────────────────────────────────────────────────────────────────
 
-  async function handleSave(newStatus?: string, extraFields?: Record<string, unknown>) {
+  async function handleSave(
+    newStatus?: string,
+    extraFields?: Record<string, unknown>,
+    opts?: { skipSendValidation?: boolean },
+  ) {
     // Keep ref current for the HV countdown timer
     handleSaveRef.current = handleSave;
 
@@ -453,7 +461,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     }
 
     const isSendAction = newStatus === "sent" || newStatus === "order";
-    if (isSendAction) {
+    if (isSendAction && !opts?.skipSendValidation) {
       const missing = getQuoteSendMissingFields({
         title,
         dueDate,
@@ -553,8 +561,21 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         setSaving(false);
         return;
       }
-      setTicket(json.ticket);
-      populateEditState(json.ticket);
+      const saved = json.ticket as Ticket;
+      if (
+        newStatus === "order" &&
+        userRole === "admin" &&
+        saved.ticket_require_client_confirm !== false &&
+        !saved.client_confirmed
+      ) {
+        saved.convert_meta = {
+          by_admin: true,
+          by_name: null,
+          confirm_required_missing: true,
+        };
+      }
+      setTicket(saved);
+      populateEditState(saved);
       setEditing(false);
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
       // If we just routed a quote, redirect SDR back to the quotes list
@@ -604,6 +625,38 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const quoteSendReady = sendMissingFields.length === 0;
   const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
 
+  function openAdminConvertModal() {
+    if (!ticket) return;
+    setConvertModal(
+      buildAdminConvertPreview({
+        missingSendFields: sendMissingFields,
+        requireClientConfirm: ticket.ticket_require_client_confirm !== false,
+        clientConfirmed: false,
+        clientConfirmedFlag: ticket.client_confirmed,
+        quoteFinalTotal: pricing.final_total,
+        paymentAmountReceived: ticket.payment_amount_received,
+        paymentPaidAt: ticket.payment_paid_at,
+        depositAmount: ticket.deposit_amount,
+        depositPaidAt: ticket.deposit_paid_at,
+        balancePaidAt: ticket.balance_paid_at,
+        productionReleasedAt: ticket.production_released_at,
+        ticketPaymentStrategy: ticket.ticket_payment_strategy,
+        ticketDepositType: ticket.ticket_deposit_type,
+        ticketDepositValue: ticket.ticket_deposit_value,
+        ticketDepHandling: ticket.ticket_dep_handling,
+        ticketFullChannels: ticket.ticket_full_channels,
+        ticketPartialChannels: ticket.ticket_partial_channels,
+      }),
+    );
+  }
+
+  function confirmAdminConvert() {
+    setConvertModal(null);
+    void handleSave("order", undefined, { skipSendValidation: true });
+  }
+
+  const adminConvertBanner = ticket?.convert_meta?.confirm_required_missing && ticket.convert_meta.by_admin;
+
   // ─── Render ───────────────────────────────────────────────────────────────
 
   if (loading) return <TicketSkeleton />;
@@ -648,6 +701,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   // SDR read-only: this SDR created the quote but it was routed to Sales.
   // They can view it but cannot edit it regardless of ticket status.
   const isRoutedReadOnly = userRole === "sdr" && ticket.routed_by_id != null && ticket.routed_by_id === userId;
+  const canViewPaymentEvidence = userRole === "accountant" || userRole === "admin";
 
 
   return (
@@ -660,8 +714,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       >
         <button
           onClick={() => {
-            if (context === "production") router.push("/production");
-            else if (context === "completed") router.push("/completed");
+            if (context === "production" || ticket.ticket_status === "in_production") {
+              router.push("/orders?tab=in_production");
+            } else if (context === "completed") router.push("/completed");
             else if (context === "payment") router.push("/payments");
             else if (context === "order") router.push("/orders");
             else if (context === "quote") router.push("/quotes");
@@ -694,7 +749,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           </div>
         )}
 
-        {isStageDetailView && ticket.ticket_status === "in_production" ? (
+        {!editing && ticket.ticket_status === "in_production" ? (
           <span
             className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
             style={{ background: "var(--color-info-bg)", color: "var(--color-info-text)", border: "1px solid var(--color-info-border)" }}
@@ -728,6 +783,17 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             Pending review
           </span>
         ) : isCustomerApproved && !isStageDetailView ? (
+          ticket.convert_meta?.confirm_required_missing && ticket.convert_meta.by_admin ? (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0 max-w-[220px] truncate"
+            title="Customer confirmation was required but admin converted to order"
+            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
+          >
+            <AlertTriangle size={12} className="shrink-0" />
+            <span className="hidden sm:inline truncate">Admin converted — confirm missing</span>
+            <span className="sm:hidden truncate">Confirm missing</span>
+          </span>
+          ) : (
           <span
             className="inline-flex items-center gap-1 px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium shrink-0"
             style={{ background: "var(--color-info-bg)", color: "var(--color-info-text)", border: "1px solid var(--color-info-border)" }}
@@ -736,6 +802,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             <span className="hidden sm:inline">Converted to Order</span>
             <span className="sm:hidden">Order</span>
           </span>
+          )
         ) : (
           <span
             className="px-2 py-0.5 md:px-2.5 md:py-1 rounded-full text-xs font-medium capitalize shrink-0"
@@ -822,6 +889,23 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           <span>
             This quote exceeded the high-value threshold and was routed to Sales for handling.
             You are viewing it in <strong>read-only mode</strong> — a Sales rep will complete and send it.
+          </span>
+        </div>
+      )}
+
+      {adminConvertBanner && (
+        <div
+          className="mx-4 mt-3 md:mx-6 md:mt-4 flex items-start gap-2 rounded-lg px-4 py-3 text-sm"
+          style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
+        >
+          <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: "var(--color-warning)" }} />
+          <span>
+            <strong>Customer confirmation was required</strong> on this quote but has not been received.
+            {ticket.convert_meta?.by_name ? (
+              <> Order was converted by admin ({ticket.convert_meta.by_name}).</>
+            ) : (
+              <> Order was converted by an administrator.</>
+            )}
           </span>
         </div>
       )}
@@ -920,6 +1004,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     paymentDraft={paymentDraft}
                     onPaymentChange={setPaymentDraft}
                     showPaymentSummary={showPaymentSummary}
+                    canViewPaymentEvidence={canViewPaymentEvidence}
                   />
                 </div>
               ) : (
@@ -988,7 +1073,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                       </p>
                       <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
                     </div>
-                    <OrderPaymentSummary ticket={ticket} />
+                    <OrderPaymentSummary
+                      ticket={ticket}
+                      canViewPaymentEvidence={canViewPaymentEvidence}
+                      paymentReviewAbove={isPaymentEvidencePending(ticket)}
+                    />
                   </div>
                 )}
               </div>
@@ -1039,11 +1128,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     Resend Quote
                   </button>
                 )}
-                {(ticket.ticket_status === "sent" || ticket.ticket_status === "draft") && (
+                {userRole === "admin" && (ticket.ticket_status === "sent" || ticket.ticket_status === "draft") && (
                   <button
-                    disabled={saving || !quoteSendReady}
-                    title={!quoteSendReady ? sendMissingMessage : undefined}
-                    onClick={() => handleSave("order")}
+                    disabled={saving}
+                    onClick={openAdminConvertModal}
                     className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
                     style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                   >
@@ -1069,35 +1157,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             </div>
           )}
 
-          {/* Order lifecycle buttons — admin, or accountant when paid in full */}
-          {!editing && !isStageDetailView && (
-            ticket.ticket_status === "order" ? null
-            : ticket.ticket_status === "in_production" &&
-              (userRole === "admin" || (userRole === "accountant" && isTicketPaidInFull(ticket))) ? (
-              <div
-                className="mt-4 rounded-xl px-4 py-3 md:px-5 flex flex-wrap items-center gap-3"
-                style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-              >
-                <span className="text-[12px] font-medium uppercase tracking-wider mr-auto" style={{ color: "var(--color-text-muted)" }}>
-                  Order Progress
-                </span>
-                <div
-                  className="flex items-center gap-1.5 text-[12px] font-medium"
-                  style={{ color: "var(--color-info-text)" }}
-                >
-                  <span className="h-2 w-2 rounded-full" style={{ background: "var(--color-info-text)" }} />
-                  In Production
-                </div>
-                <button
-                  disabled={saving}
-                  onClick={() => handleSave(undefined, { ticket_status: "completed" })}
-                  className="px-4 py-2 text-sm font-medium rounded-md transition-opacity hover:opacity-80 disabled:opacity-50 inline-flex items-center gap-2"
-                  style={{ background: "var(--color-success-bg)", color: "var(--color-success)", border: "1px solid var(--color-success-border)" }}
-                >
-                  Mark Completed
-                </button>
-              </div>
-            ) : ticket.ticket_status === "completed" ? (
+          {/* Order lifecycle — completed banner only; in_production actions live in overview */}
+          {!editing && !isStageDetailView && ticket.ticket_status === "completed" ? (
               <div
                 className="mt-4 rounded-xl px-4 py-3 md:px-5 flex items-center gap-2"
                 style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" }}
@@ -1108,7 +1169,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                 </span>
               </div>
             ) : null
-          )}
+          }
 
           {/* Bottom action bar — edit mode */}
           {editing && (
@@ -1137,6 +1198,101 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         </div>
       </div>
     </div>
+
+    {/* ── Admin convert confirmation ─────────────────────────────────────── */}
+    {convertModal && (
+      <div
+        style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.55)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: 12,
+            padding: 28,
+            maxWidth: 520,
+            width: "90%",
+          }}
+        >
+          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+            <AlertTriangle size={28} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 8 }}>
+                Convert to order?
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--color-text-muted)", margin: 0, lineHeight: 1.55 }}>
+                Only administrators can convert quotes to orders. Review the items below before continuing.
+              </p>
+            </div>
+          </div>
+
+          <ul style={{ margin: "0 0 16px", paddingLeft: 20, fontSize: 14, color: "var(--color-text-primary)", lineHeight: 1.6 }}>
+            {convertModal.missingSendFields.length > 0 && (
+              <li>
+                <strong>Missing required information:</strong>{" "}
+                {convertModal.missingSendFields.join(", ")}.
+              </li>
+            )}
+            {convertModal.confirmRequiredMissing && (
+              <li>
+                <strong>Customer confirmation</strong> was enabled on this quote but the customer has not confirmed yet.
+              </li>
+            )}
+            {convertModal.wouldReleaseProduction && (
+              <li>
+                Payment gates are satisfied — this order may <strong>release to production immediately</strong> after convert.
+              </li>
+            )}
+            {convertModal.missingSendFields.length === 0 && !convertModal.confirmRequiredMissing && !convertModal.wouldReleaseProduction && (
+              <li>The ticket will become an order with reference <strong>ORD-…</strong>.</li>
+            )}
+          </ul>
+
+          <p style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 20 }}>
+            Are you sure you want to convert this quote to an order?
+          </p>
+
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => setConvertModal(null)}
+              style={{
+                background: "transparent",
+                color: "var(--color-text-muted)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 6,
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmAdminConvert}
+              style={{
+                background: "var(--color-btn-verify-bg)",
+                color: "var(--color-btn-verify-text)",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Yes, convert to order
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* ── High-Value Threshold Modal (SDR only) ─────────────────────────── */}
     {hvModal && (

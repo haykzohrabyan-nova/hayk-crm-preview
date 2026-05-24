@@ -160,7 +160,7 @@ The API (`PATCH /api/tickets/[id]`) already accepts arbitrary `ticket_status` va
 
 Also update the Orders page (`components/orders/orders-page.tsx`) to surface an "In Production" count in the tab badges.
 
-> **Superseded (2026-05-21):** In-production and completed orders moved to dedicated `/production` and `/completed` pages. Orders page tabs are All / Pending Payment / Cancelled only.
+> **Superseded (2026-05-23):** In-production orders merged back into `/orders` (In Production tab). `/production` redirects; completed orders remain on `/completed`.
 
 ---
 
@@ -208,6 +208,46 @@ Not blocking; implement when load time or list size becomes a problem:
 **Spec:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md)
 
 **Suggested first task:** `GET /api/production/page-data` → `{ orders, counts }` (~300–450 ms savings per load)
+
+---
+
+## [OPEN — OWNER QUESTION] Sent-quote email vs live portal mismatch (TODO-008)
+
+**Status:** ⚠️ **Owner decision needed** — not built; product/policy choice  
+**Priority:** Medium (customer trust / billing disputes)  
+**Related:** [open-questions.md § B6](./order-ticket/open-questions.md)  
+**Files to touch (depends on owner answer):** `lib/integrations/send-quote.ts`, quote email/SMS templates, `components/quotes/quote-detail.tsx`
+
+### The Problem
+
+When a rep **Send Quote**s, the email/SMS is built **at send time** with the current total and line items (`sendQuoteToCustomer` embeds `quote_final_total` and SKU data). That message is a **snapshot**.
+
+If the rep later **edits** a still-`sent` quote (adds items, changes price) and clicks **Save Changes**:
+
+- The **public link** (`/q/{token}`) shows the **updated** quote (live DB read).
+- The **original email** still shows the **old** total and items.
+- **Save Changes does not notify the customer** — only **Resend Quote** sends a fresh email.
+
+This creates a real mismatch: the customer may trust the inbox number while the portal shows something different.
+
+### Owner decision — pick one (or combine)
+
+- [ ] **A — Link-only email** — Quote email/SMS shows reference + “View your quote” CTA only; **no total or line items in the email**. Portal is the single source of truth for pricing. Edits after send are less dangerous.
+- [ ] **B — Require resend after edit** — Keep full quote in email; after any save on a `sent` quote, UI **blocks or strongly prompts** “Resend quote to customer?” (auto-resend optional).
+- [ ] **C — Lock line items after first send** — No edits to SKUs/pricing once `ticket_status = sent` unless admin duplicates the ticket (stricter; aligns with “email = contract”).
+- [ ] **D — A + soft resend prompt** — Link-only email **and** optional “Resend” nudge when material fields change (recommended hybrid).
+
+### Current workaround (no code change)
+
+Reps should click **Resend Quote** after any material edit on a sent quote. Nothing enforces this today.
+
+### Implementation notes (after owner picks)
+
+| Option | Rough work |
+|--------|------------|
+| A / D | Strip totals/SKUs from `send-quote.ts` email + SMS bodies; keep PDF/link on portal |
+| B / D | Post-save banner or modal on `quote-detail.tsx` when `ticket_status === "sent"` and pricing/SKUs changed |
+| C | Disable SKU/pricing fields in edit mode when sent; or API reject non-admin PATCH on `quote_skus` / totals |
 
 ---
 

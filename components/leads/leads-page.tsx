@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Search, RefreshCw, X, User, Clock, ArrowUpDown, ChevronUp, ChevronDown, Plus } from "lucide-react";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { Button } from "@/components/ui/button";
@@ -26,8 +27,8 @@ import { Lead, Customer, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
-import { formatCurrency } from "@/lib/utils/ticket-math";
 import { fetchLeadById } from "@/lib/utils/fetch-lead";
+import { LeadHistoryTable, type LeadHistoryRow } from "@/components/leads/lead-history-table";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -761,6 +762,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
 // ─── Main LeadsPage component ─────────────────────────────────────────────────
 
 export function LeadsPage() {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState<Tab>("all");
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -774,6 +776,7 @@ export function LeadsPage() {
   const [drawerReadOnly, setDrawerReadOnly] = useState(false);
   const [drawerLockedBy, setDrawerLockedBy] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
   // Reassign modal state (admin only)
@@ -827,6 +830,7 @@ export function LeadsPage() {
           .eq("id", uid)
           .single();
         const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
+        setUserRole(roleName ?? null);
         setIsAdmin(roleName === "admin");
       }
     });
@@ -897,7 +901,19 @@ export function LeadsPage() {
 
   // ── Open drawer ───────────────────────────────────────────────────────────
 
+  /** Won + Directed-to-Sales leads are view-only for SDR — open customer profile instead of the verify drawer. */
+  function redirectSdrWonToCustomer(lead: Lead): boolean {
+    if (userRole !== "sdr" || lead.sales_status !== "Won") return false;
+    if (lead.customer_id) {
+      router.push(`/crm/customers/${lead.customer_id}`);
+    } else {
+      showToast("No customer linked to this lead.", "error");
+    }
+    return true;
+  }
+
   async function handleWorkLead(lead: Lead) {
+    if (redirectSdrWonToCustomer(lead)) return;
     const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
     const data = await res.json();
     const full = (await fetchLeadById(lead.id)) ?? lead;
@@ -914,6 +930,7 @@ export function LeadsPage() {
   }
 
   async function handleViewLead(lead: Lead) {
+    if (redirectSdrWonToCustomer(lead)) return;
     const full = (await fetchLeadById(lead.id)) ?? lead;
     setDrawerLead(full);
     setDrawerReadOnly(!isAdmin);
@@ -1019,7 +1036,11 @@ export function LeadsPage() {
           c?.last_name?.toLowerCase().includes(q) ||
           c?.email?.toLowerCase().includes(q) ||
           c?.phone?.includes(q) ||
-          c?.company?.toLowerCase().includes(q)
+          c?.company?.toLowerCase().includes(q) ||
+          l.source?.toLowerCase().includes(q) ||
+          l.status?.toLowerCase().includes(q) ||
+          (l.sales_status?.toLowerCase().includes(q) ?? false) ||
+          l.urgency?.toLowerCase().includes(q)
         );
       })
     : leads;
@@ -1750,69 +1771,15 @@ export function LeadsPage() {
 
       {/* ── Won tab ── */}
       {activeTab === "won" && (
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
-          <table className="w-full text-sm">
-            <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
-              <tr>
-                {["Customer", "Company", "Order", "Amount", "Closed By", "Won"].map((h) => (
-                  <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <TableSkeleton cols={6} />
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
-                    No won leads yet. Won leads appear here when a linked order is released to production.
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((lead, idx) => {
-                  // Prefer the ticket currently in production (or completed)
-                  const tickets = (lead as Lead & { tickets?: { id: string; reference_code: string | null; quote_final_total: number | null; ticket_status: string; created_by: { id: string; full_name: string | null } | null }[] }).tickets ?? [];
-                  const orderTicket =
-                    tickets.find((t) => t.ticket_status === "in_production" || t.ticket_status === "completed")
-                    ?? tickets.find((t) => t.ticket_status === "order")
-                    ?? tickets[0];
-                  return (
-                    <tr
-                      key={lead.id}
-                      className="cursor-pointer transition-colors"
-                      style={{
-                        background: idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
-                        borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
-                      }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
-                      onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)}
-                    >
-                      <td className="px-3 py-3 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
-                      <td className="px-3 py-3 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
-                      <td className="px-3 py-3">
-                        {orderTicket?.reference_code ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium" style={{ background: "var(--color-success-bg)", color: "var(--color-success)" }}>
-                            {orderTicket.reference_code}
-                          </span>
-                        ) : "—"}
-                      </td>
-                      <td className="px-3 py-3 text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>
-                        {orderTicket?.quote_final_total != null ? formatCurrency(orderTicket.quote_final_total) : "—"}
-                      </td>
-                      <td className="px-3 py-3 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {orderTicket?.created_by?.full_name ?? "—"}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {relativeTime(lead.updated_at)}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+        <LeadHistoryTable
+          leads={filtered as LeadHistoryRow[]}
+          sourceLabels={Object.fromEntries((lookups.source ?? []).map((s) => [s.value, s.label]))}
+          emptyMessage="No won leads yet. Won leads appear here when a linked order is released to production."
+          loading={loading}
+          showTitle={false}
+          borderRadius="12px"
+          onLeadClick={(lead) => (isAdmin ? handleViewLead : handleWorkLead)(lead as Lead)}
+        />
       )}
 
       {/* Add Lead Modal */}

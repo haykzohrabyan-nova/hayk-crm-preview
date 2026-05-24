@@ -6,7 +6,7 @@ const LEAD_WORKSPACE_LIST_SELECT =
   "id, customer_id, status, sales_status, source, urgency, initial_interest, created_at, updated_at, locked_by_id, sales_owner_id, sdr_id, hold_reason, hold_until, held_at, rejection_reason, prev_status, customer:customers(id, first_name, last_name, company, phone, email, industry, website, authority), sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name), locked_by:user_profiles!leads_locked_by_id_fkey(id, full_name)";
 
 const LEAD_WON_LIST_SELECT =
-  "id, customer_id, status, sales_status, source, urgency, initial_interest, created_at, updated_at, customer:customers(id, first_name, last_name, company, phone, email, industry, website, authority), sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name), tickets:job_tickets(id, reference_code, quote_final_total, ticket_status, created_by_id)";
+  "id, customer_id, status, sales_status, source, urgency, created_at, updated_at, sdr_id, rejection_reason, tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)";
 
 type LeadCustomer = {
   first_name?: string | null;
@@ -56,44 +56,13 @@ export async function GET(request: NextRequest) {
 
     let leads = data ?? [];
 
-    const creatorIds = [
-      ...new Set(
-        leads.flatMap((l) =>
-          ((l as Record<string, unknown>).tickets as { created_by_id: string | null }[] ?? [])
-            .map((t) => t.created_by_id)
-            .filter(Boolean),
-        ),
-      ),
-    ] as string[];
-
-    const creatorMap: Record<string, string> = {};
-    if (creatorIds.length > 0) {
-      const { data: profiles } = await admin
-        .from("user_profiles")
-        .select("id, full_name")
-        .in("id", creatorIds);
-      for (const p of profiles ?? []) {
-        if (p.id) creatorMap[p.id] = p.full_name ?? "Unknown";
-      }
-    }
-
-    leads = leads.map((lead) => ({
-      ...lead,
-      tickets: ((lead as Record<string, unknown>).tickets as { created_by_id: string | null; id: string; reference_code: string | null; quote_final_total: number | null; ticket_status: string }[] ?? []).map((t) => ({
-        ...t,
-        created_by: t.created_by_id ? { id: t.created_by_id, full_name: creatorMap[t.created_by_id] ?? null } : null,
-      })),
-    })) as typeof leads;
-
     if (search) {
       leads = leads.filter((lead) => {
-        const c = leadCustomer(lead);
         return (
-          c?.first_name?.toLowerCase().includes(search) ||
-          c?.last_name?.toLowerCase().includes(search) ||
-          c?.email?.toLowerCase().includes(search) ||
-          c?.phone?.includes(search) ||
-          c?.company?.toLowerCase().includes(search)
+          lead.status?.toLowerCase().includes(search) ||
+          lead.sales_status?.toLowerCase().includes(search) ||
+          lead.source?.toLowerCase().includes(search) ||
+          lead.urgency?.toLowerCase().includes(search)
         );
       });
     }

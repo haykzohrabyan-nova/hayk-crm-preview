@@ -98,7 +98,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `QuotesPage` | `components/quotes/quotes-page.tsx` | All roles |
 | `OrdersPage` | `components/orders/orders-page.tsx` | All roles |
 | `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin |
-| `ProductionPage` | `components/orders/production-page.tsx` | Accountant + Admin |
+| `ProductionPage` | `components/orders/production-page.tsx` | Legacy — UI redirects to `/orders?tab=in_production` |
 | `CompletedPage` | `components/orders/completed-page.tsx` | Accountant + Admin |
 | `AccountantDashboard` | `components/admin/accountant-dashboard.tsx` | Accountant only |
 | `NewQuoteForm` | `components/quotes/new-quote-form.tsx` | Sales + SDR (create), Admin |
@@ -113,6 +113,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | Component | File | Used in |
 |-----------|------|---------|
 | `StatusPill` | `components/ui/status-pill.tsx` | Tables, drawers |
+| `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Customer profile Lead History + Leads Won tab (desktop + mobile) |
 | `UrgencyPill` | `components/ui/urgency-pill.tsx` | Tables, drawers |
 | `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail (SMS & WhatsApp destination) |
 | `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail (Email destination) |
@@ -186,6 +187,7 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
 | On Hold | `status=On Hold&scope=mine` | SDR sees own; Admin sees all |
 | Directed to Sales | `status=Routed to Sales&scope=mine` | SDR sees own; Admin sees all |
 | Rejected | `status=Rejected&scope=mine` | SDR sees own (leads they rejected); Admin sees all SDR-rejected leads |
+| Won | `won=true` | Shared `LeadHistoryTable`; SDR row click → `/crm/customers/[id]`; Admin → read-only Verify Drawer |
 
 **All Leads table columns:** Name, Company, Source, Phone, Urgency, Status, **Owner**, Created, Action
 
@@ -251,11 +253,11 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/orders/page.tsx  [Server Component — thin wrapper]
   └── components/orders/orders-page.tsx  [Client Component "use client"]
-        ├── Tabs: All | Pending Payment | Cancelled (count badge on all; default tab = Pending Payment)
-        ├── Only shows ticket_status = 'order' + 'cancelled' (excludes evidence-pending)
-        ├── Counts: GET /api/tickets/counts
-        ├── Data: GET /api/orders/orders (scoped slim list — no quote_skus)
-        ├── Columns: Order #, Contact, Title (⚡ Rush), Total, Payment status pill, Priority, Due Date, Created
+        ├── Tabs: All | Pending Payment | In Production | Cancelled (count badge on all; default tab = All; URL `?tab=`)
+        ├── Data: `order` + `in_production` + `cancelled` (includes evidence-pending for ticket owner)
+        ├── Counts: GET /api/tickets/counts (orders, in_production, cancelled)
+        ├── Data: GET /api/orders/orders (scoped slim list — status_label / status_tone from API)
+        ├── Columns: Order #, Contact, Title (⚡ Rush), Total, Status pill (from status_label), Payment status pill, Priority, Due Date, Created
         ├── No "New Order" button — orders created only through Quotes flow
         ├── Search: client-side filter
         └── Row click → /orders/[id]
@@ -282,24 +284,24 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │     components/quotes/shared/quote-form.tsx → components/quotes/quote-payment-config.tsx
         │
         ├── Entry modes (detected from URL params):
-        │    ?lead_id=uuid     → LeadCard left sidebar, skip Customer tab, start on Info
-        │    ?first_name=...   → CustomerInfoCard left sidebar, skip Customer tab, start on Info
-        │    (none)            → No left sidebar, show Customer tab as step 1
+        │    ?lead_id=uuid        → LinkedLeadCard sidebar, skip Customer tab, start on Info; source from lead
+        │    ?customer_id=...     → Customer card sidebar, skip Customer tab, start on Info; Quote source on Info tab
+        │    (none)               → No sidebar, Customer tab as step 1; quote_source on ticket at save
         │
         ├── Tabs: [Customer] | Info | Line Items | Quote
         │         Customer tab hidden when lead_id or CRM params present
         │
-        ├── Customer Tab — phone-first search:
-        │    Phone | Email → First Name | Last Name → Company
-        │    Source * | Decision Maker? | Industry * | Website / Social
+        ├── Customer Tab — phone-first search (standalone only):
+        │    Phone | Email → First Name | Last Name → Company → Source * → Industry * | Website
         │    600ms debounce → GET /api/customers/lookup?phone=...
         │    0 matches: all fields editable
         │    1+ matches: picker modal → select or create new
-        │    Selected: identity fields lock (name/email/company); Source/Industry/Website stay editable
-        │    Pre-fill: all customer fields + latest_source/latest_authority from lookup
+        │    Selected: identity fields lock; Source/Industry/Website stay editable
+        │    Pre-fill: customer fields (incl. authority on customer row) + latest_source from lookup
         │    Save: from_quote_page + quote_source on ticket (no auto-lead); customer_id when known
+        │    Decision Maker NOT on quote — lives on customers.authority (lead/CRM only)
         │
-        ├── Info Tab — 50/50 grid layout:
+        ├── Info Tab — 50/50 grid layout (after optional Quote source card for CRM):
         │    Row 1: Title (required *) | Priority segmented control (required *)
         │      Priority options: Low / Normal / High — each button uses per-priority colors
         │      (same segmented style as Discount type control, no pill buttons)
@@ -416,17 +418,16 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │
         ├── Status actions (read-only mode, quote context):
         │    Send Quote (draft) / Resend Quote (sent) / Convert to Order / Cancel Ticket (admin only on locked)
-        ├── Production actions (production/completed context):
-        │    Resend invoice link — PATCH { resend_invoice: true }
-        │    Mark Completed — admin always; accountant when paid in full
-        ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true
+        ├── In-production on /orders/[id]: ProductionDetailOverview; header badge In Production; Mark Completed primary CTA
+        ├── Payment review (order context): PricingPaymentSummary read-only for sales/SDR; evidence hidden
+        ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true (ticket_id = UUID or ORD-* / QUO-*)
         ├── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
         └── Rendered at:
              /quotes/[id]  (context="quote")
-             /orders/[id]  (context="order")
+             /orders/[id]  (context="order" — includes in_production)
              /payments/[id] (context="payment")
-             /production/[id] (context="production")
              /completed/[id] (context="completed")
+             (/production/[id] redirects to /orders/[id])
 ```
 
 ---
@@ -500,6 +501,9 @@ app/(app)/crm/page.tsx  [Server Component — thin wrapper]
 
 app/(app)/crm/customers/[id]/page.tsx  [Server Component — thin wrapper]
   └── components/crm/customer-profile.tsx  [Client Component]
+        ├── GET /api/customers/[id] — customer + leads with nested job_tickets (quote/order refs)
+        ├── Lead History: components/leads/lead-history-table.tsx (Status = sales_status, Quote/Order refs)
+        └── Quotes & Orders, Order History, Activity Timeline sections
 ```
 
 ---
@@ -618,9 +622,11 @@ On mount:
 
 ```
 /notifications
-  ├── Tab 1: Order / Lead Activity  → <ActivityLogSection />   (existing — lead/ticket events)
-  └── Tab 2: User Activity          → <UserActivitySection />  (new — session KPIs per user)
+  ├── Tab 1: Order / Lead Activity  → <ActivityLogSection />   (columns: Who | Action | Lead/Customer | Quote/Order | When)
+  └── Tab 2: User Activity          → <UserActivitySection />  (session KPIs per user)
 ```
+
+`ActivityLogSection` uses `GET /api/admin/activity-log` — each row includes `ticket_ref` (`QUO-*`, `ORD-*`, ticket UUID suffix, or lead UUID suffix).
 
 `components/admin/user-activity-section.tsx`:
 - Fetches `GET /api/admin/sessions?from=&limit=&offset=&user_id=`

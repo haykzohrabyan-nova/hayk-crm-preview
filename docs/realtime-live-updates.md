@@ -500,7 +500,7 @@ function scheduleRefetch(delayMs: number) {
 }
 ```
 
-Use `scheduleRefetch(50)` on mount and `scheduleRefetch(300)` on `bazaar:tickets-changed`. Implemented on `/production`; optional for other ticket list pages.
+Use `scheduleRefetch(50)` on mount and `scheduleRefetch(300)` on `bazaar:tickets-changed`. Legacy pattern on `production-page.tsx`; `/orders` uses standard list refetch.
 
 ---
 

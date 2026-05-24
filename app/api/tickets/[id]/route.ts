@@ -10,6 +10,7 @@ import {
   assignOrderReferenceCode,
   resolveTicketId,
 } from "@/lib/utils/reference-codes";
+import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import type { PaymentConfig } from "@/lib/types";
 
 type Params = { params: Promise<{ id: string }> };
@@ -199,7 +200,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
     created_by = profile ?? null;
   }
 
-  return NextResponse.json({ ticket: { ...ticket, created_by } });
+  const convert_meta = await fetchManualConvertMeta(admin, ticketId, ticket);
+
+  return NextResponse.json({ ticket: { ...ticket, created_by, convert_meta } });
 }
 
 // ─── PATCH /api/tickets/[id] ──────────────────────────────────────────────────
@@ -223,7 +226,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code")
+    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at")
     .eq("id", ticketId)
     .single();
 
@@ -424,6 +427,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Body: { record_payment: true, payment_mode: "deposit"|"balance"|"full",
   //         payment_method: string, payment_amount: number, receipt_id?: string }
   if (body.record_payment === true) {
+    if (roleName !== "admin" && roleName !== "accountant") {
+      return NextResponse.json(
+        { error: "Only accountants can confirm submitted payments.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+
     const mode   = body.payment_mode   as "deposit" | "balance" | "full" | undefined;
     const method = body.payment_method as string | undefined;
     const amount = Number(body.payment_amount);
@@ -722,6 +732,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const isManualConvertToOrder =
     body.ticket_status === "order" && existing.ticket_status !== "order";
 
+  if (isManualConvertToOrder && roleName !== "admin") {
+    return NextResponse.json(
+      { error: "Only administrators can convert quotes to orders.", code: "FORBIDDEN" },
+      { status: 403 },
+    );
+  }
+
   if (isManualConvertToOrder) {
     patch.ticket_kind = "order";
     if (!("reference_code" in body)) {
@@ -806,7 +823,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         customer_id: existing.customer_id ?? null,
         ticket_id: ticketId,
         by_user_id: userId,
-        payload: { reference_code: patch.reference_code ?? null },
+        payload: {
+          reference_code: patch.reference_code ?? null,
+          require_client_confirm: existing.ticket_require_client_confirm ?? true,
+          client_confirmed: !!existing.client_confirmed,
+          converted_by_role: roleName,
+        },
         created_at: now,
       });
     } else if (body.ticket_status !== existing.ticket_status) {

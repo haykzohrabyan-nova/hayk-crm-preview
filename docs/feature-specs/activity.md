@@ -21,13 +21,13 @@ Used by:
 - **Sales Drawer** History tab — fetched lazily on first open
 - **Verify Drawer** History tab — fetched lazily on first open
 
-### Ticket-scoped (built — 2026-05-12)
-**`GET /api/activities?ticket_id=xxx`** — activities for a specific job ticket.
+### Ticket-scoped (built — 2026-05-12, updated 2026-05-23)
+**`GET /api/activities?ticket_id=xxx`** — activities for a specific job ticket. **`ticket_id`** accepts UUID or reference code (`QUO-YYYY-NNN`, `ORD-YYYY-NNN`) via `resolveTicketId()`.
 
 **`GET /api/activities?ticket_id=xxx&include_linked_lead=true`** — fetches both the ticket's activities AND its linked lead's activities, merges them chronologically (oldest first), and adds a `_source` field (`"lead"` or `"ticket"`) to each row.
 
 Used by:
-- **Quote/Order detail page** (`quote-detail.tsx`) History tab — full lifetime of the record across both lead and ticket phases
+- **Quote/Order detail page** (`quote-detail.tsx`) History tab — full lifetime of the record across both lead and ticket phases. Order detail URLs like `/orders/[id]` where `id` is `ORD-2026-003` resolve correctly.
 
 ### Contact-scoped (planned)
 **`GET /api/activities?contact_id=xxx`** — all activities across every lead for a customer.

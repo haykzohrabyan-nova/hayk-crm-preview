@@ -29,7 +29,7 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 | `prev_status` | `string` | Filter by `prev_status` value — used by Sales Rejected tab to restrict to `Routed to Sales` |
 | `scope` | `string` | `mine` — restrict to leads where `sdr_id = current user` |
 | `search` | `string` | Full-text search on name, email, phone, company |
-| `won` | `"true"` | Return leads where `sales_status = 'Won'` (set when linked ticket enters production). SDR sees own won leads; admin sees all. Response rows include joined ticket fields: `reference_code`, `quote_final_total`, and `created_by` (closer's full name from `user_profiles`). Prefers in-production ticket when multiple exist. |
+| `won` | `"true"` | Return leads where `sales_status = 'Won'` (set when linked ticket enters production). SDR sees own won leads; admin sees all. Response uses slim lead fields plus nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` only — **no order totals or closer names** (Won tab matches customer Lead History). |
 
 **Response `200`:**
 ```json
@@ -363,6 +363,44 @@ Create a new customer profile from the Add Lead form (when SDR enters new info a
 
 ---
 
+### `GET /api/customers/[id]`
+
+Full customer profile for `/crm/customers/[id]`. Powers **Lead History** on the customer page.
+
+**Response `200`:**
+```json
+{
+  "customer": Customer,
+  "leads": [
+    {
+      "id": "uuid",
+      "status": "string",
+      "sales_status": "string",
+      "source": "string",
+      "urgency": "string",
+      "created_at": "ISO",
+      "updated_at": "ISO",
+      "sdr_id": "uuid",
+      "rejection_reason": "string | null",
+      "tickets": [
+        {
+          "id": "uuid",
+          "reference_code": "QUO-2026-001 | ORD-2026-001 | null",
+          "ticket_kind": "quote | order",
+          "ticket_status": "string"
+        }
+      ]
+    }
+  ],
+  "lead_count": 0,
+  "customer_status": "new | known"
+}
+```
+
+Each lead includes nested **`tickets:job_tickets(...)`** (reference codes only — no totals). This ensures SDRs see quote/order refs on Lead History without relying on scoped `GET /api/tickets`.
+
+---
+
 ### `PATCH /api/customers/[id]`
 
 Update a customer profile. Called when SDR chooses "Yes, update profile" on the action prompt.
@@ -579,7 +617,7 @@ Partial ticket update. Six distinct operation modes:
 - Logs `ticket_invoice_resent` with `{ channel, destination }`
 - Returns `{ ok: true, channel }` or `502` on send failure
 
-**Mode 3 — Record payment (Accountant + Admin):**
+**Mode 3 — Record payment (Accountant + Admin only):**
 ```json
 {
   "record_payment": true,
@@ -773,11 +811,22 @@ Returns tab badge counts for the Payments page.
 
 ### `GET /api/orders/orders`
 
-Scoped list for the `/orders` page — **`ticket_status IN ('order', 'cancelled')`**, slim payload (no `quote_skus`).
+Scoped list for the `/orders` page — **`ticket_status IN ('order', 'in_production', 'cancelled')`**, slim payload (no `quote_skus`).
 
-**Excludes** tickets with pending payment evidence (those appear on `/payments` only). Filter constant: `ORDERS_VISIBLE_PAYMENT_FILTER` in `lib/utils/db-counts.ts`.
+**Includes** evidence-pending `order` rows for the ticket owner (sales/SDR scoped via `scopeJobTicketsQuery()`). Accountants still confirm on `/payments`; owners see those orders on `/orders` with status **Awaiting payment confirmation**.
 
 **Role scope:** Same as `GET /api/tickets` via `scopeJobTicketsQuery()` — SDR own tickets, Sales own + routed-by, Admin all.
+
+Each row is enriched server-side with **`status_label`** and **`status_tone`** from `lib/utils/order-list-status.ts`:
+
+| Condition | `status_label` | `status_tone` |
+|-----------|----------------|---------------|
+| `in_production` | In Production | `in_production` |
+| `cancelled` | Cancelled | `cancelled` |
+| `order` + evidence pending | Awaiting payment confirmation | `awaiting_confirmation` |
+| `order` + customer confirmed | Confirmed by Customer | `confirmed` |
+| `order` + converted, not confirmed | Converted by {name} | `converted` |
+| `order` (fallback) | Converted | `converted` |
 
 **Response `200`:**
 ```json
@@ -786,8 +835,12 @@ Scoped list for the `/orders` page — **`ticket_status IN ('order', 'cancelled'
     {
       "id": "uuid",
       "ticket_kind": "order",
-      "ticket_status": "order | cancelled",
+      "ticket_status": "order | in_production | cancelled",
       "payment_status": "unpaid | partial | paid",
+      "payment_evidence_url": "string | null",
+      "payment_evidence_submitted_at": "ISO | null",
+      "payment_paid_at": "ISO | null",
+      "client_confirmed": false,
       "title": "string",
       "reference_code": "string | null",
       "quote_final_total": 0,
@@ -795,6 +848,8 @@ Scoped list for the `/orders` page — **`ticket_status IN ('order', 'cancelled'
       "due_date": "ISO date | null",
       "rush": false,
       "created_at": "ISO",
+      "status_label": "Confirmed by Customer",
+      "status_tone": "confirmed",
       "customer": { "id": "uuid", "first_name": "string", "last_name": "string", "company": "string | null" }
     }
   ]
@@ -803,13 +858,15 @@ Scoped list for the `/orders` page — **`ticket_status IN ('order', 'cancelled'
 
 ---
 
-## Production
+## Production (legacy APIs)
+
+> **UI (2026-05-23):** In-production orders live on **`/orders?tab=in_production`**. `/production` redirects to that tab; `/production/[id]` redirects to `/orders/[id]`. Sidebar nav entry removed (migration `079_remove_production_page.sql`). The endpoints below remain for backward compatibility and may be removed later.
 
 ### `GET /api/production/orders`
 
 Returns all tickets with `ticket_status = 'in_production'`.
 
-**Auth:** Any authenticated role (page access is RBAC-gated in UI).
+**Auth:** Any authenticated role (legacy — prefer `GET /api/orders/orders` + client tab filter).
 
 **Response `200`:**
 ```json
@@ -820,7 +877,7 @@ Returns all tickets with `ticket_status = 'in_production'`.
 
 ### `GET /api/production/counts`
 
-Returns tab badge counts for the Production page. SQL head counts via `lib/utils/db-counts.ts`.
+Legacy production tab badge counts. Orders page tab counts now come from `GET /api/tickets/counts` (`orders`, `in_production`, `cancelled`).
 
 **Response `200`:**
 ```json
@@ -971,7 +1028,7 @@ Unified activity endpoint. Supports both lead-scoped and ticket-scoped queries.
 | Param | Type | Description |
 |-------|------|-------------|
 | `lead_id` | `uuid` | Activities for this lead |
-| `ticket_id` | `uuid` | Activities for this job ticket |
+| `ticket_id` | `uuid` **or** reference code | Activities for this job ticket. Accepts ticket UUID or `QUO-YYYY-NNN` / `ORD-YYYY-NNN` — resolved via `resolveTicketId()` (same as `GET /api/tickets/[id]`). |
 | `include_linked_lead` | `"true"` | When used with `ticket_id`: also fetches the ticket's linked lead activities, merges them chronologically (oldest first), adds `_source: "lead" | "ticket"` to each row |
 
 **Response `200`:**
@@ -1420,7 +1477,12 @@ Paginated activity log across all users. Admin only. Powers the `/notifications`
 }
 ```
 
-Each activity is enriched with `actor` (`{ id, full_name, role_name }`) and `customer` (`{ first_name, last_name, company }`) via server-side joins.
+Each activity is enriched with:
+- `actor` — `{ id, full_name, role_name }`
+- `customer` — `{ first_name, last_name, company }`
+- `ticket_ref` — display ref from `lib/utils/activity-ticket-ref.ts` (`activityDisplayRef`): payload `reference_code` → linked ticket `reference_code` → last 8 chars of ticket UUID → last 8 chars of lead UUID (lead-only events)
+
+Powers the **Quote / Order** column on `/notifications`.
 
 ---
 

@@ -3,7 +3,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import {
   countExact,
-  ORDERS_COUNT_PAYMENT_FILTER,
   scopedTicketCount,
 } from "@/lib/utils/db-counts";
 
@@ -82,10 +81,15 @@ export async function GET() {
         counts["/quotes"] = quoteCount;
       })(),
 
-      // /orders badge — active orders not awaiting payment evidence review (/payments)
-      scopedTicketCount(admin, roleName, userId, (q) =>
-        q.eq("ticket_status", "order").or(ORDERS_COUNT_PAYMENT_FILTER),
-      ).then((n) => { counts["/orders"] = n; }),
+      // /orders badge — pending payment + in production (includes evidence-pending orders)
+      Promise.all([
+        scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "order")),
+        scopedTicketCount(admin, roleName, userId, (q) =>
+          q.eq("ticket_status", "in_production"),
+        ),
+      ]).then(([pendingOrders, inProduction]) => {
+        counts["/orders"] = pendingOrders + inProduction;
+      }),
 
       // /payments badge — orders with evidence submitted but not yet confirmed
       roleName === "accountant" || roleName === "admin"
@@ -95,13 +99,6 @@ export async function GET() {
               .is("payment_paid_at", null)
               .in("ticket_status", ["order", "in_production"]),
           ).then((n) => { counts["/payments"] = n; })
-        : Promise.resolve(),
-
-      // /production badge — orders currently in production
-      roleName === "accountant" || roleName === "admin"
-        ? countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "in_production")).then(
-            (n) => { counts["/production"] = n; },
-          )
         : Promise.resolve(),
 
       // /completed badge — completed orders (global count for admin/accountant)

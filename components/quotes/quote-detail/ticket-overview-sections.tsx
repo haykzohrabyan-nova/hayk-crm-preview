@@ -3,6 +3,7 @@
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
 import { OrderPaymentSummary } from "@/components/quotes/quote-detail/order-payment-summary";
+import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import { emptySkuRow as sharedEmptySkuRow } from "@/components/quotes/shared/utils";
 import type { QuoteSku, ProductType, SkuLookups } from "@/components/quotes/shared/types";
 import type { QuoteFormTicket } from "@/components/quotes/shared/quote-form";
@@ -44,6 +45,7 @@ interface Props {
   paymentDraft: TicketPaymentDraft;
   onPaymentChange: (v: TicketPaymentDraft) => void;
   showPaymentSummary: boolean;
+  canViewPaymentEvidence?: boolean;
 }
 
 /** Shared read-only body below the snapshot card (payments / production / quote stages). */
@@ -70,7 +72,9 @@ export function TicketOverviewSections({
   paymentDraft,
   onPaymentChange,
   showPaymentSummary,
+  canViewPaymentEvidence = true,
 }: Props) {
+  const paymentReviewAbove = isPaymentEvidencePending(ticket);
   return (
     <>
       {(ticket.special_requirements || ticket.notes) && (
@@ -119,12 +123,15 @@ export function TicketOverviewSections({
 
       <div>
         <div className="flex items-center gap-3 mb-4">
-          <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>Pricing</p>
+          <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>
+            {paymentReviewAbove ? "Quote details" : "Pricing"}
+          </p>
           <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
         </div>
         <QuoteForm
           editing={false}
           ticket={ticket}
+          hidePricingSummary={paymentReviewAbove}
           pricing={pricing}
           shipping={shipping}
           setShipping={setShipping}
@@ -150,11 +157,15 @@ export function TicketOverviewSections({
         <div>
           <div className="flex items-center gap-3 mb-4">
             <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>
-              Payment &amp; Evidence
+              {paymentReviewAbove ? "Order settings" : "Payment & Order Settings"}
             </p>
             <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
           </div>
-          <OrderPaymentSummary ticket={ticket} compact />
+          <OrderPaymentSummary
+            ticket={ticket}
+            canViewPaymentEvidence={canViewPaymentEvidence}
+            paymentReviewAbove={paymentReviewAbove}
+          />
         </div>
       )}
     </>

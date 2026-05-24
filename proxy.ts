@@ -111,6 +111,20 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL(dest, request.nextUrl.origin));
     }
 
+    // Legacy /production routes — merged into /orders (tab + detail)
+    if (current === "aal2" && pathname === "/production") {
+      const url = request.nextUrl.clone();
+      url.pathname = "/orders";
+      url.searchParams.set("tab", "in_production");
+      return NextResponse.redirect(url);
+    }
+    if (current === "aal2" && pathname.startsWith("/production/")) {
+      const url = request.nextUrl.clone();
+      url.pathname = pathname.replace(/^\/production\//, "/orders/");
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+
     // Only run DB checks for app pages (not static, not auth flow, not public customer links)
     if (current === "aal2" && !isStatic && !isAuthFlow && !isPublic) {
       const { data: profile } = await supabase

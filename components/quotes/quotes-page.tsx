@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Search, Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { formatQuoteListDueNow, getQuoteListDueNowAmount } from "@/lib/utils/quote-list-due-now";
 import { quoteDetailPath, ticketPathSegment } from "@/lib/utils/reference-codes";
 import { createClient } from "@/lib/supabase/client";
 
@@ -16,6 +17,11 @@ interface QuoteTicket {
   reference_code: string | null;
   quote_channel: string | null;
   quote_final_total: number | null;
+  ticket_payment_strategy: "full" | "partial" | "net" | null;
+  ticket_deposit_type: "percent" | "fixed" | null;
+  ticket_deposit_value: number | null;
+  prepayment_type: string | null;
+  prepayment_value: string | null;
   quote_reminder_date: string | null;
   created_at: string;
   updated_at: string;
@@ -309,7 +315,7 @@ export default function QuotesPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableSkeleton cols={isRoutedTab ? 7 : 8} />
+          <TableSkeleton cols={isRoutedTab ? 8 : 9} />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -325,7 +331,7 @@ export default function QuotesPage() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Contact", "Quote #", "Title", "Total", "Routed By", "Date", ""].map((h) => (
+                {["Contact", "Quote #", "Title", "Total", "Due Now", "Routed By", "Date", ""].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -364,6 +370,18 @@ export default function QuotesPage() {
                   <td className="px-4 py-3">
                     <span className="text-sm font-semibold" style={{ color: "var(--color-warning)" }}>
                       {q.quote_final_total != null ? formatCurrency(q.quote_final_total) : "—"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span
+                      className="text-sm font-medium"
+                      style={{
+                        color: getQuoteListDueNowAmount(q) != null
+                          ? "var(--color-warning)"
+                          : "var(--color-text-muted)",
+                      }}
+                    >
+                      {formatQuoteListDueNow(q)}
                     </span>
                   </td>
                   <td className="px-4 py-3">
@@ -407,7 +425,7 @@ export default function QuotesPage() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Contact", "Quote #", "Title", "Channel", "Total", "Status", "Follow-up", "Created"].map((h) => (
+                {["Contact", "Quote #", "Title", "Channel", "Total", "Due Now", "Status", "Follow-up", "Created"].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -458,6 +476,18 @@ export default function QuotesPage() {
                     <td className="px-4 py-3">
                       <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
                         {q.quote_final_total != null ? formatCurrency(q.quote_final_total) : "—"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className="text-sm font-medium"
+                        style={{
+                          color: getQuoteListDueNowAmount(q) != null
+                            ? "var(--color-warning)"
+                            : "var(--color-text-muted)",
+                        }}
+                      >
+                        {formatQuoteListDueNow(q)}
                       </span>
                     </td>
                     <td className="px-4 py-3">

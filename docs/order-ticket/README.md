@@ -56,10 +56,10 @@ This folder contains all research, analysis, and planning documents for the **Ti
 - **`supabase/migrations/047`** — `REPLICA IDENTITY FULL` + `ALTER PUBLICATION supabase_realtime ADD TABLE job_tickets` — enables Realtime broadcasts for quote/order pages
 - **API routes** — `GET/POST /api/tickets`, `GET/PATCH /api/tickets/[id]`, `GET /api/tickets/counts`, `GET /api/activities` (combined lead+ticket lifetime)
 - **`lib/utils/ticket-math.ts`** — `computePricing()`, `skuLineTotal()`, `formatCurrency()` pure helpers
-- **`/quotes/new`** — new quote creation page; 4-tab form when standalone (Customer → Info → Line Items → Quote); Customer tab skipped from lead/CRM; direct quotes store `quote_source` on ticket; Save Draft + Save & Send actions
+- **`/quotes/new`** — new quote creation page; 4-tab form when standalone (Customer → Info → Line Items → Quote); Customer tab skipped from lead/CRM; direct quotes store `quote_source` on ticket; Decision Maker on `customers.authority` only; Save Draft + Save & Send actions
 - **`/quotes/[id]`** — permanent quote/order detail page; 2-tab view (Info | History); read-only by default, edit toggled; record-locked for non-admins once customer approves; Send validation before Send/Convert; action bar Cancel left / Send+Convert right; "Convert to Order" creates order (Won credit deferred until production release)
 - **`/quotes`** — Quoted Requests list with tabs (All / Draft / Sent / Approved), search, count badges, realtime refresh
-- **`/orders`** — Orders list with tabs (All / Pending Payment / Cancelled), Rush indicator, due-date warnings, realtime refresh *(superseded: in-production and completed orders now on `/production` and `/completed`)*
+- **`/orders`** — Orders list with tabs (All / Pending Payment / In Production / Cancelled), API status labels, Rush indicator, due-date warnings, realtime refresh
 - **"Create Quote / Order" button** — wired in both `verify-drawer.tsx` and `sales-drawer.tsx`: saves lead silently → navigates to `/quotes/new?lead_id=xxx`
 - **Full lifetime history** — History tab on quote detail shows complete journey from lead creation through quote to order; each entry labelled Lead / Ticket with icons
 - **Sidebar badges** — `/quotes` and `/orders` nav items now show live count badges via `sidebar-counts` API

@@ -1164,7 +1164,8 @@ When creating Supabase migrations under `supabase/migrations/`:
 065_payment_remittance.sql           ← company wire/ACH/Zelle remittance fields on company_settings
 066_per_ticket_payment_config.sql    ← per-ticket payment strategy, channels, deposit, recording columns on job_tickets
 068_accountant_role_and_payment_evidence.sql ← accountant system role + payment_evidence_url/submitted_at on job_tickets
-069_production_and_completed_pages.sql ← /production and /completed page seeds + role permissions
+069_production_and_completed_pages.sql ← /production and /completed page seeds + role permissions (production nav removed in 079)
+079_remove_production_page.sql       ← DELETE /production from pages; in-production merged into /orders
 070_payment_status_columns.sql       ← idempotent add of payment_status/prepayment_status if missing
 071_payment_evidence_amount.sql      ← payment_evidence_amount column; backfill incorrectly auto-paid evidence tickets
 072_net_terms_auto_production.sql    ← net terms auto-release to in_production support

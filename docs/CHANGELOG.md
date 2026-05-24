@@ -3,6 +3,175 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-23] — Quoted Requests Due Now column
+
+### Added
+- **Quoted Requests** (`/quotes`) — **Due Now** column shows partial deposit amount when configured; `—` when full payment, net terms, or no payment strategy selected
+- `lib/utils/quote-list-due-now.ts` — shared list display helper
+
+### Changed
+- `lib/utils/ticket-list-select.ts` — quote list select includes payment strategy / deposit fields
+- `app/api/tickets/route.ts` — uses shared `TICKET_QUOTE_LIST_SELECT` (removed duplicate inline select)
+
+## [2026-05-23] — Orders page default tab is All
+
+### Changed
+- `/orders` — default tab changed from **Pending Payment** to **All** (no `?tab=` in URL)
+
+## [2026-05-23] — Admin-only convert to order with confirmation modal
+
+### Changed
+- **Convert to Order** — only **admin** can manually convert (SDR/Sales button hidden; API returns 403)
+- Admin convert shows confirmation modal listing missing send fields, missing customer confirmation, and whether production may auto-release
+- Orders list + order detail — **Admin converted — customer confirm missing** when admin converted while `ticket_require_client_confirm` was on and customer never confirmed
+- `ticket_converted` activity payload records `require_client_confirm`, `client_confirmed`, and `converted_by_role`
+
+### Added
+- `lib/utils/admin-convert-preview.ts`, `lib/utils/manual-convert-meta.ts`
+
+## [2026-05-23] — Owner question: sent-quote email vs portal mismatch
+
+### Added
+- `docs/TODO.md` — **TODO-008** (owner decision): quote email snapshot vs live `/q/{token}` after post-send edits; options: link-only email, resend prompt, lock after send
+- `docs/order-ticket/open-questions.md` — **B6** cross-reference
+
+## [2026-05-23] — Documentation sync with May 23 workflow changes
+
+### Changed
+- `docs/navigation.md`, `docs/api-contract.md`, `docs/rbac.md`, `docs/component-architecture.md`, `docs/feature-specs/*` — mirror production merge into `/orders`, SDR Won → customer profile, shared `LeadHistoryTable`, order list status labels, payment review UX, activity log Quote/Order column, and `GET /api/activities` reference-code resolution
+
+## [2026-05-23] — Activity log shows quote/order reference
+
+### Changed
+- Admin **Activity Log** — lead-only events show last 8 chars of lead UUID when no quote/order ref; ticket events still show `QUO-…` / `ORD-…` or ticket UUID suffix
+
+### Changed
+- Admin **Activity Log** (`/notifications` → Order / Lead Activity) — new **Quote / Order** column with `QUO-…` / `ORD-…` from linked ticket or payload; falls back to last 8 chars of ticket UUID
+- `GET /api/admin/activity-log` — enriches rows with `ticket_ref`; expanded action labels for ticket events
+
+## [2026-05-23] — Order history tab with ORD reference URLs
+
+### Fixed
+- `GET /api/activities?ticket_id=ORD-…` — resolves reference codes to ticket UUID (same as `/api/tickets/[id]`); History tab was empty despite activities in the DB
+
+## [2026-05-23] — Lead History drops SDR Status column
+
+### Changed
+- `LeadHistoryTable` — removed **SDR Status** (stale `Quoted` after production); **Status** column shows `sales_status` only (Won, Quote Sent, etc.)
+
+## [2026-05-23] — Customer lead history shows order refs for SDR
+
+### Fixed
+- Customer profile **Lead History** — quote/order refs loaded via nested `job_tickets` on `GET /api/customers/[id]` (same as Won tab); no longer depends on scoped `/api/tickets` list, which hid sales-owned orders from SDRs
+
+## [2026-05-23] — Shared LeadHistoryTable component
+
+### Added
+- `components/leads/lead-history-table.tsx` — single Lead History table (desktop + mobile) used on customer profile and Leads Won tab
+
+### Changed
+- `components/crm/customer-profile.tsx` — Lead History via `LeadHistoryTable` (Quote / Order column, source labels)
+- `components/leads/leads-page.tsx` — Won tab uses same component
+
+### Removed
+- `components/leads/lead-history-ticket-refs.tsx` — folded into `LeadHistoryTable`
+
+## [2026-05-23] — Lead history quote/order refs and source labels
+
+### Changed
+- Customer **Lead History** and Leads **Won** tab — new **Quote / Order** column (reference codes only, no amounts); source shows lookup label (e.g. Phone call) instead of raw value
+- `GET /api/leads/workspace?won=true` — nested tickets return `reference_code`, `ticket_kind`, `ticket_status` only (no totals)
+- `lib/utils/lead-history-display.ts` — shared ref/source helpers for lead history tables
+
+## [2026-05-23] — SDR Won tab matches customer lead history
+
+### Changed
+- Leads **Won** tab — same columns as customer **Lead History** (SDR Status, Sales Status, Source, Urgency, Created); no order ref or amounts
+- `GET /api/leads/workspace?won=true` — same lead fields as customer profile lead history (no ticket join; order totals never sent to the browser)
+
+## [2026-05-23] — SDR Won leads open customer profile
+
+### Changed
+- Leads workspace — SDR clicking a **Won** lead (including from **Directed to Sales** if won) navigates to `/crm/customers/[id]` instead of the editable verify drawer
+
+## [2026-05-23] — Combined pricing & payment summary on order review
+
+### Changed
+- Order detail (payment under review) — **Pricing & payment** single card merges quote breakdown with deposit/submitted/remaining amounts; order total and remaining use larger accent typography
+- Overview **Pricing** section hidden during payment review (quote tax/discount metadata moves to **Quote details**)
+
+## [2026-05-23] — Orders: show evidence-pending to ticket owner
+
+### Changed
+- `/orders` — orders awaiting accountant payment confirmation are visible again for the owning sales/SDR user (scoped tickets); status **Awaiting payment confirmation**, payment pill **Awaiting review**
+- Order detail — evidence-pending orders show read-only payment review card for sales/SDR (no Confirm button); accountants still confirm on `/payments` or order detail
+- Payment evidence file link hidden from sales/SDR on order detail; only accountant/admin can open `/api/tickets/[id]/evidence`
+- Order detail with payment under review — grouped layout: **Payment review** card with full **Payment summary** (deposit due, amount submitted, remaining after confirmation) plus **Order settings** below; removed duplicate evidence sections
+- Tab/sidebar order counts include evidence-pending `order` rows
+- `PATCH /api/tickets/[id]` — `record_payment` restricted to accountant and admin
+
+## [2026-05-23] — Order detail in-production UI
+
+### Changed
+- Order detail overview — **Payment & Order Settings** section now shows full read-only config: payment strategy/channels, **Send quote via**, destination, **Quote follow-up schedule**, plus payment status (was compact summary only)
+- Order detail (`/orders/[id]`) — **In Production** shown only in the header badge; removed from bottom action bar and production overview card; **Mark Completed** uses primary CTA button styling; **Resend invoice link** shows Mail / SMS / both icons from ticket outreach channel
+
+## [2026-05-23] — Orders list status labels
+
+### Changed
+- `GET /api/orders/orders` — returns ready-to-display `status_label` and `status_tone` per row (customer confirm, rep convert, in production, cancelled); no DB change
+- `lib/utils/order-list-status.ts` — shared label logic from `client_confirmed` + activities
+- Orders page Status column — renders `status_label` from API (no client-side confirm/convert inference)
+
+## [2026-05-23] — Merge In Production into Orders page
+
+### Added
+- `supabase/migrations/079_remove_production_page.sql` — removes `/production` from sidebar nav
+
+### Changed
+- `/orders` — new **In Production** tab with count badge; rows show **In Production** status pill
+- `GET /api/orders/orders` — includes `ticket_status = in_production` alongside order and cancelled
+- Sidebar `/orders` badge — pending payment + in production counts combined
+- `/production` and `/production/[id]` — redirect to `/orders?tab=in_production` and `/orders/[id]`
+- `proxy.ts` — legacy `/production` URL redirects before RBAC
+- Quote detail — **In Production** header badge and back link when status is `in_production`
+
+### Removed
+- Standalone **In Production** sidebar nav item (page consolidated into Orders)
+
+## [2026-05-23] — New Quote customer sidebar: company, website, decision maker
+
+### Added
+- `components/quotes/customer-sidebar-card.tsx` — shared read-only customer card for New Quote sidebar
+
+### Changed
+- `components/quotes/new-quote-form.tsx` — customer card shows company, website, and decision maker; visible for CRM and locked lookup customers
+- `lib/utils/new-quote-from-customer.ts` — passes `authority` in Add Quote URL
+
+## [2026-05-23] — New Quote: prefill Send quote via from customer
+
+### Changed
+- `components/quotes/quote-payment-config.tsx`, `new-quote-form.tsx` — Send quote via destination pre-fills phone/email from customer contact; channel change refreshes from customer (user can still edit)
+
+## [2026-05-23] — CRM profile: source only on quote rows
+
+### Changed
+- `components/crm/customer-profile.tsx` — removed Quote Source from company contact grid; source remains on individual quote/order rows
+
+## [2026-05-23] — Documentation sync (customer attributes + quote flows)
+
+### Changed
+- `docs/feature-specs/tickets.md`, `docs/component-architecture.md` — quote entry modes; source on ticket vs lead; Decision Maker removed from quote form
+- `docs/feature-specs/crm.md` — Edit Customer industry select + authority; Add Quote flow with Info-tab source
+- `docs/feature-specs/leads-sdr.md` — authority stored on customer
+- `docs/architecture.md` — customer attribute ownership table
+- `docs/crm-logic-overview.html`, `docs/session-summary.md`, `docs/order-ticket/README.md` — flow diagrams aligned
+
+## [2026-05-23] — CRM Edit Customer industry select
+
+### Changed
+- `components/crm/customer-profile.tsx` — Edit Customer uses admin **Industry** lookup select (label shown, value stored); profile grid shows industry label
+
 ## [2026-05-23] — Decision Maker on customer record
 
 ### Added

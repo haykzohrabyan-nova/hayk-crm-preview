@@ -10,7 +10,7 @@
 > | B++ | Per-ticket payment config (`QuotePaymentConfig`) + checkout stepper + payment recording | ✅ Built (migrations 065, 066) |
 > | B++ | Admin → Payment tab (Wire/ACH/Zelle remittance settings) | ✅ Built — `components/admin/payment-section.tsx`, migration 065 |
 > | B+++ | Payment evidence queue + accountant role | ✅ Built (migrations 068, 071) — `/payments`, `record_payment`, customer proof upload |
-> | B+++ | Production / completed lifecycle + net terms auto-release | ✅ Built (migrations 069, 072) — `/production`, `/completed`, `maybe-auto-release-production.ts` |
+> | B+++ | Production / completed lifecycle + net terms auto-release | ✅ Built (migrations 069, 072) — in-production on **`/orders?tab=in_production`**, `/completed`, `maybe-auto-release-production.ts`, `markLeadWonOnProduction()` |
 > | B+++ | Customer notifications (payment confirmed, invoice link, pickup ready) | ✅ Built — `payment-confirmed-template.ts`, `invoice-link-template.ts`, `order-ready-template.ts` |
 > | C | Stripe Card payment | ⏳ Deferred — DB ready, API wiring not started |
 > | D | Zelle code matching | ⏳ Deferred |
@@ -147,9 +147,9 @@ Additional UX:
 
 1. Customer submits proof via `POST /api/public/quotes/[token]/submit-payment` (multipart: `method`, `amount`, optional `file`, optional `receiptId` — **digits only** for cash)
 2. For wire / ACH / Zelle / check / card: file stored in Supabase Storage `payment-evidence` bucket; `payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_amount` set; **payment totals are NOT updated**
-3. Ticket appears on **`/payments`** only (excluded from `/orders` until confirmed)
-4. Accountant opens `/payments/[id]`, reviews evidence (`GET /api/tickets/[id]/evidence` signed URL), clicks **Confirm**
-5. `PATCH /api/tickets/[id]` with `{ record_payment: true, payment_mode, payment_method, payment_amount }` records payment, clears evidence fields, may auto-release production, sends **payment confirmed** email/SMS
+3. Ticket appears on **`/payments`** for accountant confirm. Ticket **owner** (sales/SDR) also sees it on **`/orders`** with status **Awaiting payment confirmation** (read-only payment review card; no evidence file link).
+4. Accountant opens `/payments/[id]` or order detail, reviews evidence (`GET /api/tickets/[id]/evidence` — accountant/admin only), clicks **Confirm**
+5. `PATCH /api/tickets/[id]` with `{ record_payment: true, … }` — **accountant + admin only**; records payment, clears evidence fields, may auto-release production, sends **payment confirmed** email/SMS
 6. Cash / in-person channels without evidence file may still auto-record and auto-release when gates pass
 
 ### Net terms auto-production
@@ -195,8 +195,8 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 | `GET /api/public/quotes/[token]/pdf` | None | Customer PDF download |
 | `GET /api/payments/pending` | Accountant + Admin | Evidence-pending queue |
 | `GET /api/payments/counts` | Accountant + Admin | Tab badge counts |
-| `GET /api/production/orders` | Authenticated | In-production list |
-| `GET /api/production/counts` | Authenticated | Production tab counts |
+| `GET /api/production/orders` | Authenticated | Legacy — prefer `GET /api/orders/orders` |
+| `GET /api/production/counts` | Authenticated | Legacy production tab counts |
 | `GET /api/completed/orders` | Authenticated | Completed list |
 | `GET /api/completed/counts` | Authenticated | Completed tab counts |
 | `GET /api/tickets/[id]/evidence` | Staff with ticket access | Signed URL for evidence file |
@@ -362,15 +362,20 @@ Dashboard KPI cards:
 | `app/api/public/quotes/[token]/submit-payment/route.ts` | B+++ | ✅ Built | Customer payment proof upload |
 | `app/(app)/payments/page.tsx` | B+++ | ✅ Built | Accountant payment review queue |
 | `app/(app)/payments/[id]/page.tsx` | B+++ | ✅ Built | Payment review detail |
-| `app/(app)/production/page.tsx` | B+++ | ✅ Built | In-production queue |
-| `app/(app)/production/[id]/page.tsx` | B+++ | ✅ Built | Production detail |
+| `app/(app)/production/page.tsx` | B+++ | ⚠ Legacy | Redirects to `/orders?tab=in_production` |
+| `app/(app)/production/[id]/page.tsx` | B+++ | ⚠ Legacy | Redirects to `/orders/[id]` |
 | `app/(app)/completed/page.tsx` | B+++ | ✅ Built | Completed orders list |
 | `app/(app)/completed/[id]/page.tsx` | B+++ | ✅ Built | Completed order detail |
 | `components/orders/payments-page.tsx` | B+++ | ✅ Built | Payments list |
-| `components/orders/payment-detail-overview.tsx` | B+++ | ✅ Built | Payment review overview card |
-| `components/orders/production-page.tsx` | B+++ | ✅ Built | Production list |
-| `components/orders/production-detail-overview.tsx` | B+++ | ✅ Built | Production overview + Mark Completed |
+| `components/orders/payment-detail-overview.tsx` | B+++ | ✅ Built | Payment review + PricingPaymentSummary |
+| `components/orders/production-page.tsx` | B+++ | ⚠ Legacy | Superseded by `/orders?tab=in_production` |
+| `components/orders/production-detail-overview.tsx` | B+++ | ✅ Built | In-production overview on `/orders/[id]` |
 | `components/orders/completed-page.tsx` | B+++ | ✅ Built | Completed list |
+| `components/leads/lead-history-table.tsx` | — | ✅ Built | Shared Lead History (customer + Won tab) |
+| `lib/utils/lead-history-display.ts` | — | ✅ Built | Quote/order refs + source labels |
+| `lib/utils/order-list-status.ts` | — | ✅ Built | Orders list status_label / status_tone |
+| `lib/utils/activity-ticket-ref.ts` | — | ✅ Built | Activity log display ref |
+| `lib/utils/mark-lead-won-on-production.ts` | — | ✅ Built | Won on production release |
 | `app/api/tickets/[id]/route.ts` | A | ✅ Built | `record_payment`, `resend_invoice`, mark completed, send triggers |
 | `app/api/tickets/[id]/evidence/route.ts` | B+++ | ✅ Built | Signed evidence file URL |
 | `components/quotes/quote-detail.tsx` | B+ | ✅ Built | Unified Overview + History across all contexts |

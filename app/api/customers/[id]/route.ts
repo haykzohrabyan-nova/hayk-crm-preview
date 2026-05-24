@@ -18,7 +18,9 @@ export async function GET(
     admin.from("customers").select("*").eq("id", id).single(),
     admin
       .from("leads")
-      .select("id, status, sales_status, source, urgency, created_at, updated_at, sdr_id, rejection_reason")
+      .select(
+        "id, status, sales_status, source, urgency, created_at, updated_at, sdr_id, rejection_reason, tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)",
+      )
       .eq("customer_id", id)
       .order("created_at", { ascending: false }),
   ]);

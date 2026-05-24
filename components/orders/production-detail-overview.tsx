@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, Zap, CheckCircle2, Loader2, Mail } from "lucide-react";
+import { Calendar, Zap, CheckCircle2, Loader2 } from "lucide-react";
+import { OutreachChannelIcons } from "@/components/ui/outreach-channel-icons";
+import { resolveOutreachChannelKind, OUTREACH_CHANNEL_LABEL } from "@/lib/utils/outreach-channel-display";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { formatDate, isOverdue } from "@/lib/utils/format";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
@@ -32,6 +34,8 @@ interface OverviewTicket {
   ticket_partial_channels: string[] | null;
   ticket_full_channels: string[] | null;
   ticket_require_client_confirm: boolean | null;
+  ticket_quote_channel: "sms" | "email" | "both" | null;
+  quote_channel: string | null;
 }
 
 function Stat({ label, value, highlight }: { label: string; value: string; highlight?: "success" | "warning" | "danger" | "info" }) {
@@ -121,6 +125,7 @@ export function ProductionDetailOverview({
   const canMarkComplete =
     ticket.ticket_status === "in_production" &&
     (userRole === "admin" || (userRole === "accountant" && paidInFull));
+  const resendChannelKind = resolveOutreachChannelKind(ticket);
 
   async function handleResendInvoice() {
     setResending(true);
@@ -154,13 +159,6 @@ export function ProductionDetailOverview({
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-2.5">
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold"
-            style={{ background: "var(--color-info-bg)", color: "var(--color-info-text)", border: "1px solid var(--color-info-border)" }}
-          >
-            <span className="h-2 w-2 rounded-full" style={{ background: "var(--color-info-text)" }} />
-            {ticket.ticket_status === "completed" ? "Completed" : "In Production"}
-          </span>
           {ticket.rush && (
             <span
               className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold"
@@ -172,7 +170,7 @@ export function ProductionDetailOverview({
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap ml-auto">
           {canResendInvoice && (
             <button
               type="button"
@@ -184,9 +182,13 @@ export function ProductionDetailOverview({
                 color: "var(--color-text-primary)",
                 background: "var(--color-bg)",
               }}
-              title="Email or SMS the customer their order link and invoice"
+              title={`Send via ${OUTREACH_CHANNEL_LABEL[resendChannelKind]} — customer order link and invoice`}
             >
-              {resending ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+              {resending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <OutreachChannelIcons kind={resendChannelKind} size={14} />
+              )}
               Resend invoice link
             </button>
           )}
@@ -195,11 +197,10 @@ export function ProductionDetailOverview({
               type="button"
               disabled={saving || resending}
               onClick={onMarkComplete}
-              className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
               style={{
-                background: "var(--color-success-bg)",
-                color: "var(--color-success)",
-                border: "1px solid var(--color-success-border)",
+                background: "var(--color-btn-primary-bg)",
+                color: "var(--color-btn-primary-text)",
               }}
               title={userRole === "accountant" ? "Mark complete when paid in full" : undefined}
             >

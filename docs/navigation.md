@@ -44,16 +44,16 @@ app/
     │   └── [id]/page.tsx             ✓ EXISTS — Quote detail (Overview + History when sent+)
     │
     ├── orders/
-    │   ├── page.tsx                  ✓ EXISTS — Orders list (All / Pending Payment / Cancelled; excludes in-production, evidence-pending)
-    │   └── [id]/page.tsx             ✓ EXISTS — Order detail (QuoteDetail context="order")
+    │   ├── page.tsx                  ✓ EXISTS — Orders list (All / Pending Payment / In Production / Cancelled)
+    │   └── [id]/page.tsx             ✓ EXISTS — Order detail (QuoteDetail context="order"; in-production uses same route)
     │
     ├── payments/
     │   ├── page.tsx                  ✓ EXISTS — Accountant payment review queue (accountant + admin)
     │   └── [id]/page.tsx             ✓ EXISTS — Payment review detail (context="payment")
     │
-    ├── production/
-    │   ├── page.tsx                  ✓ EXISTS — In Production list (accountant + admin)
-    │   └── [id]/page.tsx             ✓ EXISTS — Production detail (context="production")
+    ├── production/                   ⚠ LEGACY — redirects to /orders (proxy.ts); pages row removed (migration 079)
+    │   ├── page.tsx                  → redirect /orders?tab=in_production
+    │   └── [id]/page.tsx             → redirect /orders/[id]
     │
     ├── completed/
     │   ├── page.tsx                  ✓ EXISTS — Completed orders list (accountant + admin)
@@ -93,7 +93,7 @@ BAZAARPRINTING                      ← brand logo text (accent color)
 ✓ Leads                            /leads          (badge: inbox count)
 ✓ CRM                              /crm
 ✓ Quoted Requests                  /quotes         (badge: active quotes)
-✓ Orders                           /orders         (badge: sent/active orders)
+✓ Orders                           /orders         (badge: pending payment + in production)
 
 ─── Bottom ─────────────────────
 ✓ Settings                         /settings
@@ -112,7 +112,7 @@ BAZAARPRINTING
 ✓ Pipeline                         /sales          (badge: pipeline count)
 ✓ CRM                              /crm
 ✓ Quoted Requests                  /quotes         (badge: active quotes)
-✓ Orders                           /orders         (badge: sent/active orders)
+✓ Orders                           /orders         (badge: pending payment + in production)
 
 ─── Bottom ─────────────────────
 ✓ Settings                         /settings
@@ -129,7 +129,7 @@ BAZAARPRINTING
 ─── Main ───────────────────────
 ✓ Dashboard                        /dashboard
 ✓ Payments                         /payments         (badge: pending evidence)
-✓ In Production                    /production       (badge: in production count)
+✓ Orders                           /orders           (badge: pending payment + in production)
 ✓ Completed                        /completed        (badge: completed count)
 
 ─── Bottom ─────────────────────
@@ -150,9 +150,8 @@ BAZAARPRINTING
 ✓ Pipeline                         /sales          (badge: pipeline count)
 ✓ CRM                              /crm
 ✓ Quoted Requests                  /quotes         (badge: active quotes)
-✓ Orders                           /orders         (badge: active orders)
+✓ Orders                           /orders         (badge: pending payment + in production)
 ✓ Payments                         /payments       (admin only — optional queue access)
-✓ In Production                    /production
 ✓ Completed                        /completed
 
 ─── Admin ──────────────────────
@@ -180,7 +179,6 @@ BAZAARPRINTING
 | Quoted Requests (`/quotes`) | `FileText` |
 | Orders (`/orders`) | `Package` |
 | Payments (`/payments`) | `CreditCard` |
-| In Production (`/production`) | `Factory` |
 | Completed (`/completed`) | `PackageCheck` |
 | Settings (personal) | `Settings` |
 | Admin Panel | `ShieldCheck` |
@@ -216,15 +214,17 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 /quotes?tab=approved → Approved
 /quotes?tab=routed  → Routed to Sales (sales/admin only)
 
-/orders             → defaults to Pending Payment tab (in-page state; no URL param yet)
-/orders             → tabs: All | Pending Payment | Cancelled
+/orders             → defaults to All tab (`?tab=` omitted)
+/orders?tab=pending         → Pending Payment
+/orders?tab=in_production  → In Production
+/orders?tab=cancelled       → Cancelled
 
 /payments             → Accountant payment review queue (no tabs)
 
-/production           → In Production tabs: All | Balance Due
-
 /completed            → Completed orders (search only, no tabs)
 ```
+
+> **Legacy redirects:** `/production` → `/orders?tab=in_production`; `/production/[id]` → `/orders/[id]` (`proxy.ts`).
 
 Tab switches use `router.replace` (not `router.push`) — no browser history pollution.
 
@@ -237,8 +237,9 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 | `/quotes/[id]` | `quote` | `/quotes` |
 | `/orders/[id]` | `order` | `/orders` |
 | `/payments/[id]` | `payment` | `/payments` |
-| `/production/[id]` | `production` | `/production` |
 | `/completed/[id]` | `completed` | `/completed` |
+
+In-production orders use **`/orders/[id]`** with `context="order"` (header badge **In Production**). Legacy `/production/[id]` redirects here.
 
 All non-draft detail views use **Overview + History** tabs and shared overview sections (`ticket-detail-overview.tsx`).
 
@@ -254,7 +255,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | On Hold | `status = 'On Hold'` | count |
 | Directed to Sales | `status = 'Routed to Sales'` (just routed, not yet claimed) | count |
 | Rejected | `status = 'Rejected'` | — |
-| Won | `sales_status = 'Won'` — leads whose linked ticket entered **production** (`in_production`). SDR sees own; admin sees all. Table shows order reference, total, and closer's name. | count |
+| Won | `sales_status = 'Won'` — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. | count |
 
 ### `/sales` — Sales Pipeline
 
@@ -276,13 +277,18 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 ### `/orders` — Orders
 
-> Only `ticket_status = 'order'` or `'cancelled'`. Tickets with pending payment evidence or already in production/completed appear on `/payments`, `/production`, or `/completed` instead.
+Includes **`order`**, **`in_production`**, and **`cancelled`** tickets (scoped per role). Evidence-pending orders are **included** for the ticket owner with status **Awaiting payment confirmation**; accountants also see them on **`/payments`**.
 
 | Tab | Content | Badge |
 |-----|---------|-------|
-| All | `order` + `cancelled` (excludes evidence-pending) | count |
-| Pending Payment | `ticket_status = 'order'` (excludes evidence-pending) — default tab | count |
+| All | `order` + `in_production` + `cancelled` | count — **default tab** |
+| Pending Payment | `ticket_status = 'order'` (includes evidence-pending for owner) | count |
+| In Production | `ticket_status = 'in_production'` | count |
 | Cancelled | `ticket_status = 'cancelled'` | count |
+
+List API: `GET /api/orders/orders`. Tab counts: `GET /api/tickets/counts` (`orders`, `in_production`, `cancelled`). Status column uses API `status_label` / `status_tone`.
+
+Row click → `/orders/[id]`.
 
 ### `/payments` — Payment review (Accountant + Admin)
 
@@ -291,15 +297,6 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | Pending evidence | `payment_evidence_url IS NOT NULL` and not yet confirmed |
 
 Row click → `/payments/[id]`. Counts: `GET /api/payments/counts`.
-
-### `/production` — In Production (Accountant + Admin)
-
-| Tab | Content |
-|-----|---------|
-| All in Production | `ticket_status = 'in_production'` |
-| Balance Due | in production + unpaid/partial balance |
-
-Row click → `/production/[id]`. Counts: `GET /api/production/counts`.
 
 ### `/completed` — Completed (Accountant + Admin)
 
@@ -320,7 +317,7 @@ No sub-tabs. Single table view with filters (search, role filter, show inactive 
 `/notifications` — built, accessible to all roles via DB-driven page permissions.
 
 - Shows the system `activities` table — all lead actions, customer merges, etc.
-- Columns: Who (name + role pill) | Action (human-readable label) | Lead / Customer | When (relative, hover for absolute)
+- Columns: Who (name + role pill) | Action (human-readable label) | Lead / Customer | **Quote / Order** (`ticket_ref`) | When (relative, hover for absolute)
 - Paginated 50 per page with "Load more" button; total event count in header
 - Mobile card layout below `sm` breakpoint
 - Live-refreshes when `bazaar:activities-changed` event fires
@@ -347,8 +344,6 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/orders/[id]` | Order |
 | `/payments` | Payments |
 | `/payments/[id]` | Payment Review |
-| `/production` | In Production |
-| `/production/[id]` | In Production |
 | `/completed` | Completed Orders |
 | `/completed/[id]` | Completed Order |
 | `/q/[token]` | Customer portal (public) |

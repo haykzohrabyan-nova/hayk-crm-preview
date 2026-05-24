@@ -94,7 +94,7 @@ from public.roles r where r.name = 'admin';
 | First Name | Yes | |
 | Last Name | No | |
 | Source | Yes | Manual, Website, Google, Walk-in, Referral, etc. |
-| Authority | No | Decision Maker? Yes / No |
+| Authority | No | Decision Maker? Yes / No — stored on **customer** (`customers.authority`) |
 | Company Name | No | |
 | Industry | Yes | |
 | Website / Social | No | |

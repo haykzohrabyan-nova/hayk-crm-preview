@@ -82,6 +82,20 @@ interface Props {
   quoteTotal: number;
   initialConfig?: Partial<TicketPaymentDraft>;
   onChange: (config: TicketPaymentDraft) => void;
+  /** Customer contact from New Quote form — used to prefill quote delivery destination. */
+  customerPhone?: string;
+  customerEmail?: string;
+}
+
+function quoteDestFromCustomer(
+  channel: TicketPaymentDraft["ticket_quote_channel"],
+  phone: string,
+  email: string,
+): Pick<TicketPaymentDraft, "ticket_dest_phone" | "ticket_dest_email"> {
+  return {
+    ticket_dest_phone: phone,
+    ticket_dest_email: email,
+  };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -165,7 +179,13 @@ function buildGatePreview(cfg: TicketPaymentDraft, quoteTotal: number): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function QuotePaymentConfig({ quoteTotal, initialConfig, onChange }: Props) {
+export default function QuotePaymentConfig({
+  quoteTotal,
+  initialConfig,
+  onChange,
+  customerPhone = "",
+  customerEmail = "",
+}: Props) {
   const [cfg, setCfg] = useState<TicketPaymentDraft>({
     ...PAYMENT_CONFIG_DEFAULTS,
     ...initialConfig,
@@ -192,6 +212,27 @@ export default function QuotePaymentConfig({ quoteTotal, initialConfig, onChange
     onChange(cfg);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg]);
+
+  // Prefill delivery destination from customer contact when available (empty fields only)
+  useEffect(() => {
+    if (!customerPhone.trim() && !customerEmail.trim()) return;
+    setCfg((prev) => {
+      const fromCustomer = quoteDestFromCustomer(
+        prev.ticket_quote_channel,
+        customerPhone.trim(),
+        customerEmail.trim(),
+      );
+      const updates: Partial<TicketPaymentDraft> = {};
+      if (customerPhone.trim() && !prev.ticket_dest_phone.trim()) {
+        updates.ticket_dest_phone = fromCustomer.ticket_dest_phone;
+      }
+      if (customerEmail.trim() && !prev.ticket_dest_email.trim()) {
+        updates.ticket_dest_email = fromCustomer.ticket_dest_email;
+      }
+      if (Object.keys(updates).length === 0) return prev;
+      return { ...prev, ...updates };
+    });
+  }, [customerPhone, customerEmail]);
 
   function patch(updates: Partial<TicketPaymentDraft>) {
     setCfg((prev) => ({ ...prev, ...updates }));
@@ -725,7 +766,13 @@ export default function QuotePaymentConfig({ quoteTotal, initialConfig, onChange
             </label>
             <SelectWrap
               value={quoteChannel}
-              onChange={(v) => patch({ ticket_quote_channel: v as "sms" | "email" | "both" })}
+              onChange={(v) => {
+                const channel = v as "sms" | "email" | "both";
+                patch({
+                  ticket_quote_channel: channel,
+                  ...quoteDestFromCustomer(channel, customerPhone.trim(), customerEmail.trim()),
+                });
+              }}
             >
               <option value="sms">SMS</option>
               <option value="email">Email</option>

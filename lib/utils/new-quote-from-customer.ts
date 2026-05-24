@@ -8,6 +8,7 @@ export function newQuoteUrlFromCustomer(c: {
   company?: string | null;
   industry?: string | null;
   website?: string | null;
+  authority?: string | null;
 }): string {
   const params = new URLSearchParams();
   if (c.id) params.set("customer_id", c.id);
@@ -18,5 +19,6 @@ export function newQuoteUrlFromCustomer(c: {
   if (c.company) params.set("company", c.company);
   if (c.industry) params.set("industry", c.industry);
   if (c.website) params.set("website", c.website);
+  if (c.authority) params.set("authority", c.authority);
   return `/quotes/new?${params.toString()}`;
 }

@@ -8,6 +8,7 @@ import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-prod
 import type { PaymentConfig } from "@/lib/types";
 import {
   QUOTE_LIST_STATUSES,
+  TICKET_QUOTE_LIST_SELECT,
 } from "@/lib/utils/ticket-list-select";
 import {
   formatOrderReference,
@@ -17,8 +18,6 @@ import {
   assignOrderReferenceCode,
 } from "@/lib/utils/reference-codes";
 
-const TICKET_QUOTE_LIST_SELECT =
-  "id, ticket_kind, ticket_status, title, reference_code, quote_channel, quote_final_total, quote_reminder_date, created_at, updated_at, created_by_id, routed_by_id, customer:customers(id, first_name, last_name, company)";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

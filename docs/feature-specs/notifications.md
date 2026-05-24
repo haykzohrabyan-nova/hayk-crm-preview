@@ -53,6 +53,7 @@ Shows all system activity from the `activities` table, newest first.
 | Who | User full name + role badge (SDR / Sales / Admin color-coded) |
 | Action | Human-readable label (e.g. "Routed lead to Sales") |
 | Lead / Customer | Contact name if present |
+| Quote / Order | `ticket_ref` from API — `QUO-…` / `ORD-…`, ticket UUID suffix, or lead UUID suffix (lead-only events) |
 | When | Relative time (hover tooltip shows absolute datetime) |
 
 ### Features

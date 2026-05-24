@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Search, Zap, ExternalLink } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import {
@@ -11,6 +11,7 @@ import {
   relativeTime,
 } from "@/lib/utils/format";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import type { OrderListStatusTone } from "@/lib/utils/order-list-status";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,6 +19,8 @@ interface OrderTicket {
   id: string;
   ticket_kind: string;
   ticket_status: string;
+  status_label: string;
+  status_tone: OrderListStatusTone;
   payment_status: "unpaid" | "partial" | "paid" | null;
   payment_evidence_url: string | null;
   payment_evidence_submitted_at: string | null;
@@ -44,20 +47,32 @@ const PAYMENT_STYLE: Record<string, { bg: string; text: string; label: string }>
   paid:    { bg: "var(--color-success-bg)", text: "var(--color-success)", label: "Paid" },
 };
 
-type Tab = "all" | "pending" | "cancelled";
+function paymentDisplay(o: OrderTicket): { bg: string; text: string; label: string } {
+  if (isPaymentEvidencePending(o)) {
+    return {
+      bg: "var(--color-warning-bg)",
+      text: "var(--color-warning-text-deep)",
+      label: "Awaiting review",
+    };
+  }
+  return PAYMENT_STYLE[o.payment_status ?? "unpaid"] ?? PAYMENT_STYLE.unpaid;
+}
+
+type Tab = "all" | "pending" | "in_production" | "cancelled";
 
 const TABS: { id: Tab; label: string; statuses?: string[] }[] = [
-  { id: "all",       label: "All",             statuses: ["order", "cancelled"] },
-  { id: "pending",   label: "Pending Payment",  statuses: ["order"] },
-  { id: "cancelled", label: "Cancelled",        statuses: ["cancelled"] },
+  { id: "all",            label: "All",             statuses: ["order", "in_production", "cancelled"] },
+  { id: "pending",        label: "Pending Payment", statuses: ["order"] },
+  { id: "in_production",  label: "In Production",   statuses: ["in_production"] },
+  { id: "cancelled",      label: "Cancelled",       statuses: ["cancelled"] },
 ];
 
-const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  draft:     { bg: "var(--color-neutral-bg)",  text: "var(--color-neutral-text)", label: "Draft" },
-  sent:      { bg: "var(--color-info-bg)",     text: "var(--color-info-text)",    label: "Sent" },
-  approved:  { bg: "var(--color-success-bg)",  text: "var(--color-success)",      label: "Won" },
-  cancelled: { bg: "var(--color-danger-bg)",   text: "var(--color-danger)",       label: "Cancelled" },
-  order:     { bg: "var(--color-badge-bg)",    text: "var(--color-badge-text)",   label: "Order" },
+const STATUS_TONE_STYLE: Record<OrderListStatusTone, { bg: string; text: string }> = {
+  confirmed:              { bg: "var(--color-success-bg)", text: "var(--color-success)" },
+  converted:              { bg: "var(--color-info-bg)",    text: "var(--color-info-text)" },
+  awaiting_confirmation:  { bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)" },
+  in_production:          { bg: "var(--color-info-bg)",    text: "var(--color-info-text)" },
+  cancelled:              { bg: "var(--color-danger-bg)",  text: "var(--color-danger)" },
 };
 
 const PRIORITY_STYLE: Record<string, { color: string }> = {
@@ -76,11 +91,27 @@ function displayName(o: OrderTicket): string {
 
 export default function OrdersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [orders, setOrders] = useState<OrderTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<Tab>("pending");
+  const [tab, setTab] = useState<Tab>("all");
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t === "all" || t === "pending" || t === "in_production" || t === "cancelled") {
+      setTab(t);
+    }
+  }, [searchParams]);
+
+  function selectTab(next: Tab) {
+    setTab(next);
+    const url = new URL(window.location.href);
+    if (next === "all") url.searchParams.delete("tab");
+    else url.searchParams.set("tab", next);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }
 
   // ─── Fetch counts ───────────────────────────────────────────────────────
 
@@ -89,10 +120,14 @@ export default function OrdersPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.counts) {
+          const pending = d.counts.orders ?? 0;
+          const inProduction = d.counts.in_production ?? 0;
+          const cancelled = d.counts.cancelled ?? 0;
           setTabCounts({
-            all:       (d.counts.orders ?? 0) + (d.counts.cancelled ?? 0),
-            pending:   d.counts.orders   ?? 0,
-            cancelled: d.counts.cancelled ?? 0,
+            all: pending + inProduction + cancelled,
+            pending,
+            in_production: inProduction,
+            cancelled,
           });
         }
       })
@@ -132,8 +167,6 @@ export default function OrdersPage() {
 
   const filtered = orders.filter((o) => {
     if (activeTabDef.statuses && !activeTabDef.statuses.includes(o.ticket_status)) return false;
-    // Awaiting accountant review — shown on /payments only
-    if (o.ticket_status === "order" && isPaymentEvidencePending(o)) return false;
     if (search) {
       const s = search.toLowerCase();
       const name = displayName(o).toLowerCase();
@@ -157,7 +190,7 @@ export default function OrdersPage() {
             Orders
           </h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-            Orders awaiting customer payment — proof under review appears on Payments
+            Active orders and in-production jobs — payment proof awaiting accountant review stays visible here for the rep who owns the order
           </p>
         </div>
       </div>
@@ -170,7 +203,7 @@ export default function OrdersPage() {
             return (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => selectTab(t.id)}
                 className="px-4 py-2.5 text-sm relative transition-colors"
                 style={{
                   color: tab === t.id ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
@@ -244,7 +277,7 @@ export default function OrdersPage() {
             </thead>
             <tbody>
               {filtered.map((o, idx) => {
-                const statusStyle = STATUS_STYLE[o.ticket_status] ?? STATUS_STYLE.draft;
+                const statusStyle = STATUS_TONE_STYLE[o.status_tone] ?? STATUS_TONE_STYLE.converted;
                 const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
                 const overdue = isOverdue(o.due_date);
                 const dueSoon = isDueSoon(o.due_date);
@@ -314,15 +347,16 @@ export default function OrdersPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                        className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium max-w-[180px] truncate"
+                        title={o.status_label}
                         style={{ background: statusStyle.bg, color: statusStyle.text }}
                       >
-                        {statusStyle.label}
+                        {o.status_label}
                       </span>
                     </td>
                     <td className="px-4 py-3">
                       {(() => {
-                        const ps = PAYMENT_STYLE[o.payment_status ?? "unpaid"] ?? PAYMENT_STYLE.unpaid;
+                        const ps = paymentDisplay(o);
                         return (
                           <span
                             className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"

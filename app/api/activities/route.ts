@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { resolveTicketId } from "@/lib/utils/reference-codes";
 
 /**
  * GET /api/activities
@@ -35,6 +36,14 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
   const SELECT = "*, by_user:user_profiles!activities_by_user_id_fkey(id, full_name)";
 
+  let resolvedTicketId: string | null = null;
+  if (ticketId) {
+    resolvedTicketId = await resolveTicketId(admin, ticketId);
+    if (!resolvedTicketId) {
+      return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
+    }
+  }
+
   // ── Simple single-source fetch ────────────────────────────────────────────
   if (!includeLinkedLead) {
     let query = admin
@@ -43,7 +52,7 @@ export async function GET(request: NextRequest) {
       .order("created_at", { ascending: false });
 
     if (leadId) query = query.eq("lead_id", leadId);
-    if (ticketId) query = query.eq("ticket_id", ticketId);
+    if (resolvedTicketId) query = query.eq("ticket_id", resolvedTicketId);
 
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
@@ -55,7 +64,7 @@ export async function GET(request: NextRequest) {
   const { data: ticket, error: tErr } = await admin
     .from("job_tickets")
     .select("id, linked_lead_id, title, reference_code, ticket_kind")
-    .eq("id", ticketId!)
+    .eq("id", resolvedTicketId!)
     .single();
 
   if (tErr || !ticket) {
@@ -68,7 +77,7 @@ export async function GET(request: NextRequest) {
       admin
         .from("activities")
         .select(SELECT)
-        .eq("ticket_id", ticketId!)
+        .eq("ticket_id", resolvedTicketId!)
     ).then((r) => ({ data: r.data, error: r.error })),
   ];
 

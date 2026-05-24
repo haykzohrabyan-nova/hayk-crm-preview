@@ -27,14 +27,14 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - **Claim** routed quotes (transfers ownership and sets status back to `draft`)
 
 ### Admin
-- Default pages: all pages including `/admin/*`, `/payments`, `/production`, `/completed`
+- Default pages: all pages including `/admin/*`, `/payments`, `/orders`, `/completed`
 - All SDR and Sales capabilities
 - Manage users, roles, system settings
 - **Mark Completed** on any in-production order (paid or unpaid)
 - **Resend invoice link** on production/completed detail
 
 ### Accountant
-- Default pages: `/dashboard`, `/payments`, `/orders`, `/production`, `/completed`, `/settings`
+- Default pages: `/dashboard`, `/payments`, `/orders`, `/completed`, `/settings`
 - Default home after login: `/payments`
 - Review customer-submitted payment evidence on `/payments`
 - **Confirm payment** via `record_payment` PATCH action
@@ -64,12 +64,12 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/quotes` | ✓ | ✓ | ✓ | ✗ | Quoted Requests list |
 | `/quotes/new` | ✓ | ✓ | ✓ | ✗ | Create new quote/order |
 | `/quotes/[id]` | ✓ | ✓ | ✓ | ✗ | View/edit ticket detail |
-| `/orders` | ✓ | ✓ | ✓ | ✓ | Pending-payment orders (excludes evidence-pending, in-production, completed) |
-| `/orders/[id]` | ✓ | ✓ | ✓ | ✓ | Read via `GET /api/tickets/[id]` — accountant can open any order |
+| `/orders` | ✓ | ✓ | ✓ | ✓ | Orders list: pending payment, in production, cancelled (includes evidence-pending for ticket owner) |
+| `/orders/[id]` | ✓ | ✓ | ✓ | ✓ | Order / in-production detail via `GET /api/tickets/[id]` — sales/SDR read-only during payment review; accountant confirms on `/payments` or here |
 | `/payments` | ✗ | ✗ | ✓ | ✓ | Payment review queue |
-| `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment review detail |
-| `/production` | ✗ | ✗ | ✓ | ✓ | In Production list |
-| `/production/[id]` | ✗ | ✗ | ✓ | ✓ | Mark complete if paid (accountant) |
+| `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment review detail — Confirm payment, view evidence |
+| `/production` | — | — | — | — | **Removed from nav** — redirects to `/orders?tab=in_production` |
+| `/production/[id]` | — | — | — | — | Redirects to `/orders/[id]` |
 | `/completed` | ✗ | ✗ | ✓ | ✓ | Completed orders |
 | `/completed/[id]` | ✗ | ✗ | ✓ | ✓ | Resend invoice link |
 | `/q/[token]` | ✓ | ✓ | ✓ | ✓ | Public — staff preview while logged in |
@@ -106,14 +106,14 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | `POST /api/tickets` | ✓ | ✓ | ✓ |
 | `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | Accountant: evidence review OR in_production/completed |
 | `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ | Accountant: payment fields + mark `completed` when paid in full |
-| `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | Accountant + Admin |
-| `PATCH … { resend_invoice: true }` | ✗ | ✗ | ✓ | ✓ | Admin + Accountant (production/completed detail) |
+| `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin only |
+| `PATCH … { resend_invoice: true }` | ✗ | ✗ | ✓ | ✓ | Admin + Accountant (order/completed detail) |
 | `PATCH … { release_production: true }` | ✗ | ✗ | ✓ | Admin |
-| `GET /api/payments/pending` | ✗ | ✗ | ✓ | Accountant + Admin |
-| `GET /api/payments/counts` | ✗ | ✗ | ✓ | Accountant + Admin |
-| `GET /api/production/orders` | ✗ | ✗ | ✓ | Accountant + Admin |
-| `GET /api/completed/orders` | ✗ | ✗ | ✓ | Accountant + Admin |
-| `GET /api/tickets/[id]/evidence` | ✗ | ✗ | ✓ | Accountant + Admin — signed URL for proof file |
+| `GET /api/payments/pending` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
+| `GET /api/payments/counts` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
+| `GET /api/production/orders` | ✗ | ✗ | ✓ | ✓ | Legacy — prefer `GET /api/orders/orders` |
+| `GET /api/completed/orders` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
+| `GET /api/tickets/[id]/evidence` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — signed URL; hidden from sales/SDR on order detail UI |
 | `GET /api/tickets/counts` | ✓ | ✓ | ✓ |
 | `GET /api/lookups` | ✓ | ✓ | ✓ |
 | `GET /api/lookups/products` | ✓ | ✓ | ✓ |

@@ -6,9 +6,6 @@ import {
   ChevronLeft,
   ChevronRight,
   AlertCircle,
-  User,
-  Phone,
-  Mail,
   AlertTriangle,
 } from "lucide-react";
 import { computePricing, formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
@@ -21,6 +18,7 @@ import {
   getQuoteSendMissingFields,
 } from "@/lib/utils/validate-quote-send";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
+import { CustomerSidebarCard } from "@/components/quotes/customer-sidebar-card";
 import { createClient } from "@/lib/supabase/client";
 
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
@@ -59,6 +57,7 @@ interface LeadInfo {
     email: string | null;
     industry: string | null;
     website: string | null;
+    authority?: string | null;
   } | null;
 }
 
@@ -147,6 +146,7 @@ export default function NewQuoteForm() {
   const [contactSource, setContactSource] = useState("");
   const [contactIndustry, setContactIndustry] = useState(searchParams.get("industry") ?? "");
   const [contactWebsite, setContactWebsite] = useState(searchParams.get("website") ?? "");
+  const [contactAuthority, setContactAuthority] = useState(searchParams.get("authority") ?? "");
   // Lifted from CustomerTab so lock state survives tab navigation
   const [customerLocked, setCustomerLocked] = useState(false);
   const [customerFoundName, setCustomerFoundName] = useState<string | null>(null);
@@ -185,8 +185,11 @@ export default function NewQuoteForm() {
           const l: LeadInfo = d.lead;
           setLead(l);
           if (l.source) setContactSource(l.source);
+          if (l.customer?.phone) setContactPhone((prev) => prev || l.customer!.phone || "");
+          if (l.customer?.email) setContactEmail((prev) => prev || l.customer!.email || "");
           if (l.customer?.industry) setContactIndustry((prev) => prev || l.customer!.industry || "");
           if (l.customer?.website) setContactWebsite((prev) => prev || l.customer!.website || "");
+          if (l.customer?.authority) setContactAuthority((prev) => prev || l.customer!.authority || "");
         }
       })
       .catch(() => {});
@@ -195,6 +198,21 @@ export default function NewQuoteForm() {
   useEffect(() => {
     fetchLead();
   }, [fetchLead]);
+
+  useEffect(() => {
+    const id = selectedCustomerId;
+    if (!id) return;
+    fetch(`/api/customers/${id}`)
+      .then((r) => r.json())
+      .then((d) => {
+        const c = d.customer;
+        if (!c) return;
+        if (c.company) setContactCompany((prev) => prev || c.company || "");
+        if (c.website) setContactWebsite((prev) => prev || c.website || "");
+        if (c.authority) setContactAuthority((prev) => prev || c.authority || "");
+      })
+      .catch(() => {});
+  }, [selectedCustomerId]);
 
   // Silently refresh lead card if lead is updated elsewhere (another tab / another user)
   useEffect(() => {
@@ -579,44 +597,18 @@ export default function NewQuoteForm() {
           </aside>
         )}
 
-        {/* ── Left: CRM Customer Card (read-only, when arriving from CRM) ── */}
-        {!lead && hasCustomerParams && (
+        {/* ── Left: Customer Card (CRM or locked existing customer) ── */}
+        {!lead && (hasCustomerParams || customerLocked) && (
           <aside className="w-72 shrink-0">
-            <div
-              className="rounded-xl p-5 sticky top-24"
-              style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-            >
-              <h3 className="text-xs font-semibold uppercase tracking-wider mb-4" style={{ color: "var(--color-text-muted)" }}>
-                Customer
-              </h3>
-              <div className="space-y-3">
-                {(contactFirstName || contactLastName) && (
-                  <div className="flex items-start gap-2">
-                    <User size={14} className="mt-0.5 shrink-0" style={{ color: "var(--color-accent)" }} />
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-                        {[contactFirstName, contactLastName].filter(Boolean).join(" ")}
-                      </p>
-                      {contactCompany && (
-                        <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{contactCompany}</p>
-                      )}
-                    </div>
-                  </div>
-                )}
-                {contactPhone && (
-                  <a href={`tel:${contactPhone}`} className="flex items-center gap-2 hover:opacity-70 transition-opacity">
-                    <Phone size={14} style={{ color: "var(--color-text-muted)" }} />
-                    <span className="text-sm" style={{ color: "var(--color-text-primary)" }}>{contactPhone}</span>
-                  </a>
-                )}
-                {contactEmail && (
-                  <a href={`mailto:${contactEmail}`} className="flex items-center gap-2 hover:opacity-70 transition-opacity">
-                    <Mail size={14} style={{ color: "var(--color-text-muted)" }} />
-                    <span className="text-sm break-all" style={{ color: "var(--color-text-primary)" }}>{contactEmail}</span>
-                  </a>
-                )}
-              </div>
-            </div>
+            <CustomerSidebarCard
+              firstName={contactFirstName}
+              lastName={contactLastName}
+              company={contactCompany}
+              phone={contactPhone}
+              email={contactEmail}
+              website={contactWebsite}
+              authority={contactAuthority || null}
+            />
           </aside>
         )}
 
@@ -735,8 +727,14 @@ export default function NewQuoteForm() {
                 locked={customerLocked} setLocked={setCustomerLocked}
                 foundName={customerFoundName} setFoundName={setCustomerFoundName}
                 errors={fieldErrors}
-                onCustomerFound={(c) => setSelectedCustomerId(c.id)}
-                onCustomerCleared={() => setSelectedCustomerId(null)}
+                onCustomerFound={(c) => {
+                  setSelectedCustomerId(c.id);
+                  if (c.authority) setContactAuthority(c.authority);
+                }}
+                onCustomerCleared={() => {
+                  setSelectedCustomerId(null);
+                  setContactAuthority("");
+                }}
               />
             )}
 
@@ -801,6 +799,8 @@ export default function NewQuoteForm() {
                   salesPermitError={fieldErrors.salesPermit}
                   paymentDraft={paymentDraft}
                   onPaymentChange={setPaymentDraft}
+                  customerPhone={contactPhone || lead?.customer?.phone || ""}
+                  customerEmail={contactEmail || lead?.customer?.email || ""}
                 />
               </>
             )}
@@ -1087,6 +1087,7 @@ interface CrmCustomer {
   phone: string | null;
   industry: string | null;
   website: string | null;
+  authority?: string | null;
   latest_source?: string | null;
 }
 
