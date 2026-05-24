@@ -3,6 +3,37 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-24] — Documentation sync (quote-until-payment + balance flow)
+
+### Changed
+- `docs/feature-specs/invoice-payment.md`, `docs/feature-specs/tickets.md`, `docs/api-contract.md` — quote-until-payment, balance on public link, admin-only convert, orders list status, public confirm UX
+- `docs/session-summary.md`, `docs/component-architecture.md`, `docs/navigation.md`, `docs/architecture.md`, `docs/crm-logic-overview.html` — aligned with May 23–24 workflow changes
+
+## [2026-05-23] — Public quote page: price confirmation display fix
+
+### Fixed
+- **Public quote link** (`/q/[token]`) — Step 1 title no longer always reads **Quote price confirmed** when confirmation is still pending; shows **Confirm quote price** until the customer accepts
+- Step 1 subtitle distinguishes **Not required** / **Confirmed** / **Customer must confirm the quote** (not lumped together)
+- Payment summary **Price confirmation** row shows **Required — pending** vs **Confirmed** vs **Not required**
+
+## [2026-05-23] — Balance payment validation UX + completion flow polish
+
+### Changed
+- **Orders list** — in-production orders with pending balance payment evidence show **Awaiting payment confirmation** (same as deposit flow); row stays on Orders, appears in Payments queue for accountant review
+- **Public quote link** — balance submission while in production shows **Balance payment under review** copy; Step 3 shows review / paid-in-full states; polling updates when accountant confirms
+- **Payment confirmed email/SMS** — when balance is confirmed on an already in-production order, messaging says **paid in full** (not “now in production”)
+- **Mark Completed** — pickup email on complete still uses same `/q/{token}` URL (unchanged)
+
+### Added
+- **TODO-009** / open-questions **B7** — owner question: intended flow when admin marks completed with balance still due
+
+## [2026-05-23] — Balance payments on public link + admin complete guard
+
+### Changed
+- **Public quote link** (`/q/[token]`) — in-production orders with remaining balance show **Pay remaining balance** under the **In production** checklist step (same pay modal as balance due)
+- **`POST /api/public/quotes/[token]/submit-payment`** — balance/cash payments no longer overwrite deposit amount; follow-up payments allowed on `order` and `in_production`
+- **Mark Completed** — accountants blocked when balance due (unchanged); **admin** must confirm via modal when completing with outstanding balance; API requires `acknowledge_outstanding_balance: true`
+
 ## [2026-05-23] — Quote stays quote until payment
 
 ### Added

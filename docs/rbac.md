@@ -105,7 +105,7 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | `GET /api/tickets` | ✓ (own) | ✓ (own + all routed) | ✓ (all) |
 | `POST /api/tickets` | ✓ | ✓ | ✓ |
 | `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | Accountant: evidence review OR in_production/completed |
-| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ | Accountant: payment fields + mark `completed` when paid in full |
+| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ (incl. manual convert to order) | Accountant: payment fields + `record_payment`; mark `completed` when paid in full |
 | `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin only |
 | `PATCH … { resend_invoice: true }` | ✗ | ✗ | ✓ | ✓ | Admin + Accountant (order/completed detail) |
 | `PATCH … { release_production: true }` | ✗ | ✗ | ✓ | Admin |

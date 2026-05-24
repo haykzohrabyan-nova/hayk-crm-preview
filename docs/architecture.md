@@ -258,6 +258,15 @@ BazarCRM/
 │       ├── phone.ts                      ✓ Phone formatting + validation
 │       ├── ticket-math.ts               ✓ QuoteSku interface + pricing computation helpers
 │       ├── compute-checkout.ts          ✓ Checkout state machine — deposit due, balance, payment status
+│       ├── maybe-convert-quote-to-order.ts ✓ Quote → order conversion gate
+│       ├── maybe-auto-release-production.ts ✓ Production release when gates pass
+│       ├── invoice-payment-summary.ts   ✓ Paid-in-full + evidence-pending helpers
+│       ├── order-list-status.ts         ✓ Orders list status_label / status_tone
+│       ├── quote-list-status.ts         ✓ Quotes list status badges
+│       ├── quote-list-due-now.ts        ✓ Due Now column for quote list
+│       ├── manual-convert-meta.ts       ✓ Admin convert banner labels
+│       ├── admin-convert-preview.ts     ✓ Admin convert confirmation modal
+│       ├── mark-lead-won-on-production.ts ✓ Won credit on production release
 │       ├── db-counts.ts                 ✓ countExact(), scopeJobTicketsQuery(), payment filter constants
 │       ├── ticket-list-select.ts        ✓ Slim quote/orders list column definitions
 │       ├── lead-list-select.ts          ✓ Slim lead workspace column definitions (reference)

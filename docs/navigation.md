@@ -294,7 +294,7 @@ Row click → `/orders/[id]`.
 
 | Content | Filter |
 |---------|--------|
-| Pending evidence | `payment_evidence_url IS NOT NULL` and not yet confirmed |
+| Pending evidence | `payment_evidence_url IS NOT NULL` — includes **`sent`** quotes, **`order`**, **`in_production`**, **`completed`** |
 
 Row click → `/payments/[id]`. Counts: `GET /api/payments/counts`.
 

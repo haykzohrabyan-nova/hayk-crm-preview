@@ -1,6 +1,6 @@
 # Order Ticket Module — Documentation Index
 
-> **Note:** This folder is **historical research and phase planning** from the shadow-project port (Phases 0–7, completed 2026-05-12). For the **current shipped behaviour** (payments queue, production/completed lifecycle, public portal, accountant role), use `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, and `docs/navigation.md`. References to **OrderDrawer** below describe the original POC — the live app uses dedicated pages (`/quotes/new`, `/quotes/[id]`, etc.) instead.
+> **Note:** This folder is **historical research and phase planning** from the shadow-project port (Phases 0–7, completed 2026-05-12). For the **current shipped behaviour** (quote-until-payment, payments queue including sent quotes, balance on public link, production/completed lifecycle, public confirm UX, accountant role), use `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, and `docs/navigation.md`. Open owner questions: **B6** (email vs portal), **B7** (complete with balance due) in [`open-questions.md`](./open-questions.md).
 
 This folder contains all research, analysis, and planning documents for the **Tickets phase** of BazarCRM (Quotes & Orders). All owner questions resolved on 2026-05-11. Phases 0–7 complete as of 2026-05-12.
 

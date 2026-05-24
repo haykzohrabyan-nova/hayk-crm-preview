@@ -42,19 +42,29 @@ export function buildPaymentConfirmedEmail(data: PaymentConfirmedData): { subjec
 
   const companyName = company.company_name ?? "BazaarPrinting";
   const firstName = customerName.split(" ")[0] || customerName;
-  const subject = inProduction
-    ? `Payment Confirmed — ${referenceCode} is now in production · ${companyName}`
-    : `Payment Confirmed — ${referenceCode} · ${companyName}`;
 
-  const headline = inProduction
-    ? "Your payment is confirmed — production has started"
-    : "Your payment is confirmed";
+  const subject =
+    fullyPaid && inProduction
+      ? `Payment Confirmed — ${referenceCode} paid in full · ${companyName}`
+      : inProduction
+        ? `Payment Confirmed — ${referenceCode} is now in production · ${companyName}`
+        : `Payment Confirmed — ${referenceCode} · ${companyName}`;
 
-  const bodyLine = inProduction
-    ? `We&rsquo;ve verified your payment of <strong style="color:#374151;">${fmt(amountConfirmed)}</strong> for order <strong style="color:#374151;">${esc(referenceCode)}</strong>. Your order is now <strong style="color:#374151;">in production</strong>.`
-    : fullyPaid
-      ? `We&rsquo;ve verified your payment of <strong style="color:#374151;">${fmt(amountConfirmed)}</strong> for order <strong style="color:#374151;">${esc(referenceCode)}</strong>.`
-      : `We&rsquo;ve verified your payment of <strong style="color:#374151;">${fmt(amountConfirmed)}</strong> for order <strong style="color:#374151;">${esc(referenceCode)}</strong>. We&rsquo;ll notify you when production begins.`;
+  const headline =
+    fullyPaid && inProduction
+      ? "Your order is paid in full"
+      : inProduction
+        ? "Your payment is confirmed — production has started"
+        : "Your payment is confirmed";
+
+  const bodyLine =
+    fullyPaid && inProduction
+      ? `We&rsquo;ve verified your payment of <strong style="color:#374151;">${fmt(amountConfirmed)}</strong> for order <strong style="color:#374151;">${esc(referenceCode)}</strong>. Your order is <strong style="color:#374151;">paid in full</strong> and remains in production — we&rsquo;ll notify you when it&rsquo;s ready for pickup.`
+      : inProduction
+        ? `We&rsquo;ve verified your payment of <strong style="color:#374151;">${fmt(amountConfirmed)}</strong> for order <strong style="color:#374151;">${esc(referenceCode)}</strong>. Your order is now <strong style="color:#374151;">in production</strong>.`
+        : fullyPaid
+          ? `We&rsquo;ve verified your payment of <strong style="color:#374151;">${fmt(amountConfirmed)}</strong> for order <strong style="color:#374151;">${esc(referenceCode)}</strong>. Your order is <strong style="color:#374151;">paid in full</strong>.`
+          : `We&rsquo;ve verified your payment of <strong style="color:#374151;">${fmt(amountConfirmed)}</strong> for order <strong style="color:#374151;">${esc(referenceCode)}</strong>. We&rsquo;ll notify you when production begins.`;
 
   const cityLine = [company.city, company.state, company.zip].filter(Boolean).join(", ");
   const footerLines = [

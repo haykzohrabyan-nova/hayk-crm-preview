@@ -418,17 +418,35 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   // Accountants may mark in-production orders complete only when paid in full.
+  // Admins may complete with outstanding balance only after explicit acknowledgment.
+  if ("ticket_status" in body && body.ticket_status === "completed" && existing.ticket_status === "in_production") {
+    if (roleName === "accountant") {
+      if (!isTicketPaidInFull(existing)) {
+        return NextResponse.json(
+          { error: "Order must be paid in full before marking completed.", code: "VALIDATION_ERROR" },
+          { status: 400 },
+        );
+      }
+    } else if (roleName === "admin" && !isTicketPaidInFull(existing) && body.acknowledge_outstanding_balance !== true) {
+      const total = Number(existing.quote_final_total ?? 0);
+      const paid = Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0);
+      const balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
+      return NextResponse.json(
+        {
+          error: `This order has ${balanceDue.toFixed(2)} outstanding. Confirm completion with outstanding balance before proceeding.`,
+          code: "BALANCE_DUE",
+          balance_due: balanceDue,
+        },
+        { status: 400 },
+      );
+    }
+  }
+
   if (roleName === "accountant" && "ticket_status" in body && body.ticket_status !== existing.ticket_status) {
     if (body.ticket_status === "completed") {
       if (existing.ticket_status !== "in_production") {
         return NextResponse.json(
           { error: "Only in-production orders can be marked completed.", code: "VALIDATION_ERROR" },
-          { status: 400 },
-        );
-      }
-      if (!isTicketPaidInFull(existing)) {
-        return NextResponse.json(
-          { error: "Order must be paid in full before marking completed.", code: "VALIDATION_ERROR" },
           { status: 400 },
         );
       }
@@ -595,7 +613,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           companyRow,
           {
             amountConfirmed: amount,
-            inProduction: productionReleased || payUpdated?.ticket_status === "in_production",
+            inProduction:
+              productionReleased ||
+              payUpdated?.ticket_status === "in_production" ||
+              existing.ticket_status === "in_production" ||
+              !!cur?.production_released_at,
             fullyPaid,
           },
         ).then((result) => {
@@ -612,7 +634,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           by_user_id: userId,
           payload: {
             amount,
-            in_production: productionReleased || payUpdated?.ticket_status === "in_production",
+            in_production:
+              productionReleased ||
+              payUpdated?.ticket_status === "in_production" ||
+              existing.ticket_status === "in_production" ||
+              !!cur?.production_released_at,
             fully_paid: fullyPaid,
           },
           created_at: now,
@@ -884,6 +910,29 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     (responseTicket ?? updated)?.ticket_status === "completed";
 
   if (markedCompleted) {
+    const total = Number((responseTicket ?? updated)?.quote_final_total ?? existing.quote_final_total ?? 0);
+    const paid = Number((responseTicket ?? updated)?.payment_amount_received ?? existing.payment_amount_received ?? existing.deposit_amount ?? 0);
+    const balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
+    const completedWithBalance = balanceDue > 0.01;
+
+    if (completedWithBalance) {
+      await admin.from("activities").insert({
+        type:        "order_ticket_status_changed",
+        lead_id:     existing.linked_lead_id ?? null,
+        customer_id: existing.customer_id ?? null,
+        ticket_id:   ticketId,
+        by_user_id:  userId,
+        payload:     {
+          from: "in_production",
+          to: "completed",
+          via: "admin_complete_with_balance",
+          balance_due: balanceDue,
+          acknowledge_outstanding_balance: true,
+        },
+        created_at: new Date().toISOString(),
+      });
+    }
+
     try {
       const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
         admin

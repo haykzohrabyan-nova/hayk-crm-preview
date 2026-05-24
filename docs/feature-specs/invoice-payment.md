@@ -1,6 +1,6 @@
 # Feature Spec — Invoice & Payment Flow
 
-> **Status: Phases A + B + B+ + B++ + accountant review queue + production lifecycle built. Phases C–E deferred.**
+> **Status: Phases A + B + B+ + B++ + accountant review queue + production lifecycle + quote-until-payment built. Phases C–E deferred.**
 >
 > | Phase | What | Status |
 > |-------|------|--------|
@@ -11,6 +11,7 @@
 > | B++ | Admin → Payment tab (Wire/ACH/Zelle remittance settings) | ✅ Built — `components/admin/payment-section.tsx`, migration 065 |
 > | B+++ | Payment evidence queue + accountant role | ✅ Built (migrations 068, 071) — `/payments`, `record_payment`, customer proof upload |
 > | B+++ | Production / completed lifecycle + net terms auto-release | ✅ Built (migrations 069, 072) — in-production on **`/orders?tab=in_production`**, `/completed`, `maybe-auto-release-production.ts`, `markLeadWonOnProduction()` |
+> | B+++ | Quote-until-payment + balance on public link | ✅ Built — `maybe-convert-quote-to-order.ts`; confirm sets `client_confirmed` only; balance pay while in production |
 > | B+++ | Customer notifications (payment confirmed, invoice link, pickup ready) | ✅ Built — `payment-confirmed-template.ts`, `invoice-link-template.ts`, `order-ready-template.ts` |
 > | C | Stripe Card payment | ⏳ Deferred — DB ready, API wiring not started |
 > | D | Zelle code matching | ⏳ Deferred |
@@ -118,24 +119,33 @@ flowchart TD
 ### On Confirm
 
 `POST /api/public/quotes/[token]/confirm`:
-- Sets `client_confirmed = true`, `ticket_status = "order"`, `ticket_kind = "order"`
-- Generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
-- Logs `order_ticket_status_changed` activity (`by_user_id = null` — customer action)
-- May auto-release to `in_production` when net terms / payment gates are satisfied (`maybeAutoReleaseProduction`)
-- Returns `{ ok: true, reference_code }`
+- Sets `client_confirmed = true` only (does **not** always convert to `order` immediately)
+- **Quote stays on `/quotes`** until payment is recorded or net-terms gates pass — see `lib/utils/maybe-convert-quote-to-order.ts`
+- **Net terms exception:** on confirm, may convert to `order` and auto-release to `in_production` when `$0` upfront gates pass
+- Logs `ticket_client_confirmed` activity (`by_user_id = null` — customer action)
+- May auto-release to `in_production` when payment + confirm gates already satisfied (`maybeAutoReleaseProduction`)
+- Returns `{ ok: true, reference_code, in_production?, converted_to_order? }`
 - Page transitions to payment stepper or success state depending on payment config
 
-### Public portal phases (as of 2026-05-21)
+### Public portal phases (as of 2026-05-23)
 
-The customer page derives a **portal phase** from ticket status + payment state:
+The customer page derives a **portal phase** from ticket status + payment state (`computePortalState()` in `app/(public)/q/[token]/page.tsx`):
 
 | Phase | When | Customer sees |
 |-------|------|---------------|
-| `confirm` | `sent`, not yet confirmed | "Confirm & Accept Quote" CTA |
-| `pay` | Confirmed or direct order, balance due | Payment method panels + checkout stepper |
-| `evidence_pending` | Wire/ACH/Zelle/check/card proof uploaded, accountant not yet confirmed | Amber **under review** banner — not marked paid |
-| `in_production` | `ticket_status = in_production`, not completed | Production progress messaging |
+| `needs_confirm` | `sent`, `ticket_require_client_confirm = true`, not yet `client_confirmed` | Step 1 title **Confirm quote price** + **Confirm & Accept Quote** button; summary **Required — pending** |
+| `needs_payment` | Price gate open, deposit/full not yet paid | Payment step active — deposit or full pay CTA |
+| `evidence_pending` | Wire/ACH/Zelle/check/card proof uploaded, accountant not yet confirmed | Amber **under review** — not marked paid; balance submissions while in production use **Balance payment under review** copy |
+| `balance_due` | Partial deposit paid (or in production) with remaining balance | **Pay remaining balance** — CTA under Step 3 (In production) when already in shop |
+| `fully_paid` | Paid in full (may still be in production) | **Paid in full** messaging; Step 3 shows production / pickup states |
+| `net_terms` | Net strategy, price gate open | Net terms copy; optional early pay |
 | `order_ready` | `ticket_status = completed` | Green **Ready for pickup** banner with shop address + phone |
+
+**Step 1 (price confirmation) display rules:**
+- **Confirm quote price** + **Customer must confirm the quote** — when approval required and not yet confirmed
+- **Quote price confirmed** + **Confirmed** — only after customer clicks Confirm
+- **Quote price confirmation** + **Not required** — when `ticket_require_client_confirm = false`
+- Payment summary row: **Required — pending** / **Confirmed** / **Not required** (matches staff `order-payment-summary.tsx`)
 
 Additional UX:
 - Addresses (company + pickup) open **Google Maps** on click (`components/public/address-map-link.tsx`)
@@ -147,10 +157,10 @@ Additional UX:
 
 1. Customer submits proof via `POST /api/public/quotes/[token]/submit-payment` (multipart: `method`, `amount`, optional `file`, optional `receiptId` — **digits only** for cash)
 2. For wire / ACH / Zelle / check / card: file stored in Supabase Storage `payment-evidence` bucket; `payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_amount` set; **payment totals are NOT updated**
-3. Ticket appears on **`/payments`** for accountant confirm. Ticket **owner** (sales/SDR) also sees it on **`/orders`** with status **Awaiting payment confirmation** (read-only payment review card; no evidence file link).
+3. Ticket appears on **`/payments`** for accountant confirm — queue includes **`sent`** quotes and **`in_production`** orders with pending evidence. Ticket **owner** (sales/SDR) also sees evidence-pending rows on **`/orders`** with status **Awaiting payment confirmation** (read-only payment review card; no evidence file link for sales/SDR).
 4. Accountant opens `/payments/[id]` or order detail, reviews evidence (`GET /api/tickets/[id]/evidence` — accountant/admin only), clicks **Confirm**
-5. `PATCH /api/tickets/[id]` with `{ record_payment: true, … }` — **accountant + admin only**; records payment, clears evidence fields, may auto-release production, sends **payment confirmed** email/SMS
-6. Cash / in-person channels without evidence file may still auto-record and auto-release when gates pass
+5. `PATCH /api/tickets/[id]` with `{ record_payment: true, … }` — **accountant + admin only**; runs `maybeConvertQuoteToOrder()` then `maybeAutoReleaseProduction()`; clears evidence fields; sends **payment confirmed** email/SMS (balance on in-production orders emphasizes **paid in full**)
+6. Cash / in-person channels without evidence file may still auto-record and auto-release when gates pass (respecting `ticket_require_client_confirm`)
 
 ### Net terms auto-production
 
@@ -182,8 +192,9 @@ When cash/offline deposit or full cash-only payment is configured, **Receipt ID*
 History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_ready_failed`, `ticket_payment_confirmed_sent`.
 
 **Mark Completed rules:**
-- Admin — always on in-production orders
-- Accountant — only when `isTicketPaidInFull()` (`lib/utils/invoice-payment-summary.ts`)
+- **Admin** — may mark in-production orders complete; when balance is still due, UI shows acknowledgment modal and API requires `acknowledge_outstanding_balance: true` (see **TODO-009** / open-questions **B7** for owner policy)
+- **Accountant** — only when `isTicketPaidInFull()` (`lib/utils/invoice-payment-summary.ts`)
+- Pickup email (`sendOrderReadyToCustomer`) always uses the same `/q/{public_token}` URL
 
 ### Public & staff API routes
 
@@ -353,12 +364,18 @@ Dashboard KPI cards:
 | `lib/integrations/invoice-link-template.ts` | B+++ | ✅ Built | Resend customer portal link |
 | `lib/integrations/order-ready-template.ts` | B+++ | ✅ Built | Pickup-ready notification |
 | `lib/utils/compute-checkout.ts` | B++ | ✅ Built | Payment stepper + production gate evaluation |
+| `lib/utils/maybe-convert-quote-to-order.ts` | B+++ | ✅ Built | Quote → order conversion gate (payment, net confirm, admin override) |
 | `lib/utils/maybe-auto-release-production.ts` | B+++ | ✅ Built | Shared auto-release to in_production |
 | `lib/utils/invoice-payment-summary.ts` | B+++ | ✅ Built | Paid-in-full + evidence-pending helpers |
+| `lib/utils/quote-list-status.ts` | — | ✅ Built | Quote list status badges |
+| `lib/utils/quote-list-due-now.ts` | — | ✅ Built | Due Now column display for quote list |
+| `lib/utils/order-list-status.ts` | — | ✅ Built | Orders list status_label / status_tone |
+| `lib/utils/manual-convert-meta.ts` | — | ✅ Built | Admin convert banner labels |
+| `lib/utils/admin-convert-preview.ts` | — | ✅ Built | Admin convert confirmation modal |
 | `app/(public)/layout.tsx` | B | ✅ Built | Minimal public layout (no auth) |
 | `app/(public)/q/[token]/page.tsx` | B | ✅ Built | Customer-facing quote/order/payment portal |
 | `app/api/public/quotes/[token]/route.ts` | B | ✅ Built | Public GET — safe ticket fields |
-| `app/api/public/quotes/[token]/confirm/route.ts` | B | ✅ Built | Customer confirm → convert to order |
+| `app/api/public/quotes/[token]/confirm/route.ts` | B | ✅ Built | Customer confirm — sets `client_confirmed`; converts via `maybeConvertQuoteToOrder` when gates pass |
 | `app/api/public/quotes/[token]/submit-payment/route.ts` | B+++ | ✅ Built | Customer payment proof upload |
 | `app/(app)/payments/page.tsx` | B+++ | ✅ Built | Accountant payment review queue |
 | `app/(app)/payments/[id]/page.tsx` | B+++ | ✅ Built | Payment review detail |

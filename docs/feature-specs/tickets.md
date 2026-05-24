@@ -1,6 +1,6 @@
 # Feature Spec — Tickets (Quotes & Orders)
 
-> **Status: Built** — full quote → order → payment → production → completed lifecycle as of 2026-05-21.
+> **Status: Built** — full quote → order → payment → production → completed lifecycle as of 2026-05-23.
 
 **Routes:** `/quotes` · `/orders` · `/payments` · `/completed` · `/quotes/new` · `/quotes/[id]` · `/orders/[id]` · `/payments/[id]` · `/completed/[id]`
 
@@ -11,21 +11,21 @@
 ```
 [New Quote Created]
   └─ draft  ──► sent ──► order ──► in_production ──► completed
-       │           │       ▲
-       │           └───────┘  (customer confirms via /q/[token])
-       │                ▲
-       │                └─── (rep clicks "Convert to Order")
+       │           │       ▲              ▲
+       │           │       │              └── production release (payment + confirm gates)
+       │           │       └── quote → order via payment recorded, net confirm, or admin convert
+       │           └── client_confirmed on /q/[token] (quote may stay sent until payment)
        │
        └─ [SDR total > HV threshold] ──► routed ──► [Sales claims] ──► draft (new owner)
 ```
 
 - `draft` — in progress, not yet sent to client
-- `sent` — quote delivered to client; awaiting approval
+- `sent` — quote delivered to client; may remain here after customer confirms until payment converts to order (**quote-until-payment**)
 - `approved` — **retired** — kept in `TicketStatus` type for backwards compatibility only; new code never sets this
 - `routed` — SDR's quote exceeded High-Value Threshold; routed to Sales for claiming
-- `order` — confirmed production order. Set by customer confirm, rep convert, or payment auto-release. **Does not** mark the linked lead Won — that happens at production release.
-- `in_production` — released to shop floor (`production_released_at` set). Net terms may enter here unpaid. **Linked lead `sales_status` → `Won`** via `markLeadWonOnProduction()`.
-- `completed` — finished; customer notified (email/SMS pickup message); public page shows **Ready for pickup**
+- `order` — production order (`ticket_kind = order`, `ORD-*`). Set by payment recorded, net terms on confirm, or **admin** manual convert. **Does not** mark the linked lead Won — that happens at production release.
+- `in_production` — released to shop floor (`production_released_at` set). Partial orders may owe balance. **Linked lead `sales_status` → `Won`** via `markLeadWonOnProduction()`.
+- `completed` — finished; customer notified (email/SMS pickup message with same `/q/{token}` URL); public page shows **Ready for pickup**
 - `cancelled` — terminal; no payment recorded
 
 ### Where tickets appear by status
@@ -33,13 +33,15 @@
 | Status | Primary page |
 |--------|----------------|
 | `draft`, `sent`, `approved`, `routed` | `/quotes` |
-| `order` (no pending evidence) | `/orders` (Pending Payment tab) |
+| `sent` + payment evidence pending | `/quotes` **and** `/payments` (accountant queue) |
+| `order` (no pending evidence) | `/orders` |
 | `order` + payment evidence pending | `/orders` for ticket owner (Awaiting payment confirmation) **and** `/payments` for accountant |
 | `in_production` | `/orders` (In Production tab) |
+| `in_production` + balance evidence pending | `/orders` (Awaiting payment confirmation) **and** `/payments` |
 | `completed` | `/completed` |
 | `cancelled` | `/orders` (Cancelled tab) |
 
-> **Record Locking:** Once a ticket becomes an `order` via **customer confirmation** (`client_confirmed = true`), the record is locked for SDR/Sales users. Only Admins can edit or cancel. Locking applies to the order detail header buttons, action bar, and editing mode.
+> **Record Locking:** Once `client_confirmed = true`, the record is locked for SDR/Sales users. Only Admins can edit or cancel. Locking applies to the order detail header buttons, action bar, and editing mode. Manual admin convert without customer confirm shows an amber **Admin converted** banner instead of **Confirmed by Customer**.
 
 ---
 
@@ -70,7 +72,9 @@ A new quote can be started from three places. The entry point controls the UI sh
 | Won | `ticket_status = 'approved'` | All roles |
 | **Routed to Sales** | `ticket_status = 'routed'` | **Sales + Admin** (Claim button) · **SDR** (View button, read-only) |
 
-**Table columns (standard tabs):** Contact, Title, Channel, Total, Status pill, Follow-up (red if overdue), Created
+**Table columns (standard tabs):** Contact, Title, Channel, Total, **Due Now** (partial deposit when configured; `—` otherwise), Status pill, Follow-up (red if overdue), Created
+
+**Status pills on `/quotes`** (from `lib/utils/quote-list-status.ts`): e.g. **Sent**, **Confirmed — awaiting deposit**, **Awaiting payment confirmation** (evidence pending on sent quote).
 
 **Routed to Sales tab columns:** Contact, Title, Total (warning color), Routed By (SDR name), Date, Action button
 
@@ -98,12 +102,12 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 | Tab | Filter |
 |-----|--------|
-| All | `order` + `in_production` + `cancelled` |
+| All | `order` + `in_production` + `cancelled` — **default tab** |
 | Pending Payment | `ticket_status = 'order'` (includes evidence-pending) |
 | In Production | `ticket_status = 'in_production'` |
 | Cancelled | `ticket_status = 'cancelled'` |
 
-**Status column:** API `status_label` / `status_tone` — e.g. Confirmed by Customer, Converted by {name}, Awaiting payment confirmation, In Production.
+**Status column:** API `status_label` / `status_tone` from `lib/utils/order-list-status.ts` — e.g. Confirmed by Customer, Converted by {name}, **Awaiting payment confirmation** (evidence pending on `order` **or** `in_production`), In Production, **Admin converted — …** (admin override without confirm/payment).
 
 **Row click** → `/orders/[id]` (`QuoteDetail` with `context="order"`). In-production orders use the same detail route (header badge **In Production**).
 
@@ -138,7 +142,7 @@ In-production tickets appear on **`/orders?tab=in_production`**, not a separate 
 
 **Actions (overview card):**
 - **Resend invoice link** — emails/SMS `/q/{token}`; channel icons (Mail / SMS / both) from ticket outreach settings
-- **Mark Completed** — primary CTA in header area; admin always; accountant when paid in full → sends pickup notification
+- **Mark Completed** — admin always (modal when balance due); accountant when paid in full → sends pickup notification with same `/q/{token}` URL
 - **In Production** status shown in header badge only (not duplicated in action bar)
 
 Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in codebase but UI redirects to `/orders`.
@@ -375,7 +379,7 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 |--------|-----------|--------|
 | Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; logs `ticket_sent` |
 | Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers delivery; logs `ticket_sent` with `resend: true` in payload |
-| Convert to Order | `status = 'draft'` or `'sent'` and validation passes | `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead `sales_status = 'Won'` — Won credit happens when ticket enters `in_production` |
+| Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | `PATCH → ticket_status = 'order'`; confirmation modal; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead Won until production |
 | Cancel Ticket | non-locked only | `PATCH → ticket_status = 'cancelled'` |
 
 ### Payment Link Bar
@@ -461,7 +465,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `GET /api/completed/counts` | GET | Completed page badge counts |
 | `GET /api/activities` | GET | `?ticket_id=xxx` (UUID or `QUO-*` / `ORD-*`) + optional `include_linked_lead=true` → full lifetime merged |
 | `GET /api/public/quotes/[token]` | GET (no auth) | Public ticket data for `/q/[token]` customer page |
-| `POST /api/public/quotes/[token]/confirm` | POST (no auth) | Customer confirms quote → order; may auto-release production |
+| `POST /api/public/quotes/[token]/confirm` | POST (no auth) | Customer confirm — sets `client_confirmed`; converts when gates pass |
 | `POST /api/public/quotes/[token]/submit-payment` | POST (no auth) | Customer payment proof upload (multipart) |
 
 ---
@@ -475,7 +479,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `order_ticket_status_changed` | Status transition (claim, route, etc.) |
 | `ticket_sent` | Quote sent or resent. Payload: `{ channel, destination, resend?: true }` |
 | `ticket_client_confirmed` | Customer confirms via public page |
-| `ticket_converted` | Rep clicks "Convert to Order". Payload: `{ from, to: 'order', reference_code }` |
+| `ticket_converted` | Admin manual convert (or system convert on payment). Payload includes `require_client_confirm`, `client_confirmed`, `converted_by_role` |
 | `ticket_payment_reminder_sent` | Payment reminder sent. Payload: `{ channel, destination }` |
 | `ticket_payment_evidence_submitted` | Customer uploaded proof on public page. Payload: `{ method, amount }` |
 | `ticket_payment_recorded` | Accountant/staff recorded payment via `record_payment` |
@@ -558,35 +562,43 @@ Delivery is fire-and-forget: errors are logged to console but never block the re
 
 Each ticket has a `public_token` (UUID, unique, unguessable). The public URL is `{APP_URL}/q/{public_token}`.
 
-No login required — `proxy.ts` allows `/q/` paths without auth.
+No login required — `proxy.ts` allows `/q/` paths without auth. Staff can preview the same URL while logged in.
 
-**Page contents:**
-- Company branding (logo or name, address, contact)
-- Quote reference + status badge
-- Rush Order banner (if applicable)
-- Line items table (desktop) / cards (mobile)
-- **Pricing Summary**: Subtotal → Shipping → Discount → Tax → **Order Total** (gold)
-- **Payment Schedule** (partial prepayment only):
-  - Amber box: **Deposit Due Now** — calculated amount — "Required to begin your order"
-  - **Balance Remaining** — "Due upon completion / delivery"
-  - Hidden for Full Payment orders
-- Accepted Payment Methods
-- Special requirements (if set)
-- **"Confirm & Accept Quote"** button — only shown when `ticket_status === "sent"`
+**Unified portal (`QuotePortalSection`)** — one permanent link adapts by phase:
+
+| Step / area | Pending confirm | After confirm / not required |
+|-------------|-----------------|------------------------------|
+| Step 1 title | **Confirm quote price** | **Quote price confirmed** or **Quote price confirmation** (not required) |
+| Step 1 subtitle | Customer must confirm the quote + button | Confirmed / Not required |
+| Step 2 | Payment (deposit or full) | Same; evidence → amber review |
+| Step 3 | Ready for production | In production; **Pay remaining balance** when partial and balance due |
+| Payment summary | Price confirmation: **Required — pending** | Confirmed / Not required |
 
 **On confirm:**
 - `POST /api/public/quotes/[token]/confirm`
-- Sets `client_confirmed = true`, `ticket_status = "order"`, generates `ORD-YYYY-NNN` reference code
-- Logs `order_ticket_status_changed` activity (by_user_id = null — customer action)
-- Returns `{ ok: true, reference_code }`
-- Page transitions to "Order Confirmed" success state
+- Sets `client_confirmed = true` only — quote **stays on `/quotes`** until payment converts (net terms exception: may convert + auto-release on confirm)
+- Logs `ticket_client_confirmed` activity (`by_user_id = null`)
+- Returns `{ ok: true, reference_code, in_production?, converted_to_order? }`
+
+**Balance payments while in production:**
+- Customer uses same `/q/{token}` link
+- `POST …/submit-payment` accepts `in_production` / `completed` for follow-up balance
+- Evidence → `/payments` queue; owner sees **Awaiting payment confirmation** on `/orders`
+- After accountant confirms → customer sees **paid in full** on public page
+
+### Convert to Order (admin only)
+
+SDR/Sales **Convert to Order** button is hidden; API returns `403` for non-admin.
+
+**Admin** sees convert with confirmation modal (`lib/utils/admin-convert-preview.ts`) listing missing send fields, missing customer confirmation, and whether production may auto-release. Orders list/detail show **Admin converted — customer confirm missing** (etc.) when applicable.
 
 ### New API Routes
 
 | Route | Auth | Purpose |
 |-------|------|---------|
 | `GET /api/public/quotes/[token]` | None | Returns safe public ticket fields + company settings |
-| `POST /api/public/quotes/[token]/confirm` | None | Customer confirms → converts to order |
+| `POST /api/public/quotes/[token]/confirm` | None | Customer confirm — sets `client_confirmed`; converts via `maybeConvertQuoteToOrder` when gates pass |
+| `POST /api/public/quotes/[token]/submit-payment` | None | Customer payment proof (multipart); balance while in-production |
 
 ### New Files
 
@@ -600,7 +612,7 @@ No login required — `proxy.ts` allows `/q/` paths without auth.
 | `supabase/migrations/052_add_public_token_to_tickets.sql` | `public_token` column + unique index |
 | `app/api/dev/quote-email-preview/route.ts` | Dev-only GET route — renders the email template in-browser with fake data |
 | `app/api/public/quotes/[token]/route.ts` | Public ticket fetch (no auth) |
-| `app/api/public/quotes/[token]/confirm/route.ts` | Customer confirmation endpoint (no auth) |
+| `app/api/public/quotes/[token]/confirm/route.ts` | Customer confirmation — `client_confirmed` only; order conversion via payment gates |
 
 ### Email Template Design Notes (`quote-email-template.ts`)
 
@@ -612,21 +624,11 @@ No login required — `proxy.ts` allows `/q/` paths without auth.
 - Contains full quote info: company branding, reference + status, line items table, pricing summary, payment methods, gold CTA button, footer with contact details
 - Preview: `GET /api/dev/quote-email-preview` (dev server only)
 
-### Deferred (Stripe/Zelle Payment)
-
-The confirm endpoint currently auto-converts to `order` without collecting payment. The DB is ready for Stripe:
-- `prepayment_status` column (`pending` | `paid`) on `job_tickets` — webhook will flip to `"paid"` automatically
-- `payment_status` column (`unpaid` | `partial` | `paid`) — tracks overall order payment
-
-When Stripe is wired:
-1. `POST .../confirm` → sets `ticket_status = "approved"` + creates Stripe Payment Intent for deposit amount
-2. Customer pays → Stripe webhook → sets `prepayment_status = "paid"`, `ticket_status = "order"`
-
----
-
 ## Deferred
 
 - **Dashboard revenue integration** — approved ticket totals surfaced on Dashboard KPIs
 - **Stripe payment collection** — see `docs/feature-specs/invoice-payment.md` for full spec
 - **Zelle code matching** — automated memo parsing; manual "Mark as Paid" fallback
 - **WhatsApp delivery** — requires Meta Business Manager registration
+- **Mark completed with balance due** — owner policy (**TODO-009** / open-questions **B7**)
+- **Sent-quote email vs live portal after edit** — owner policy (**TODO-008** / open-questions **B6**)

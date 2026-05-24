@@ -125,6 +125,11 @@ export function ProductionDetailOverview({
   const canMarkComplete =
     ticket.ticket_status === "in_production" &&
     (userRole === "admin" || (userRole === "accountant" && paidInFull));
+  const markCompleteTitle = !paidInFull && userRole === "admin"
+    ? `Mark completed — ${formatCurrency(balanceDue)} balance still due`
+    : userRole === "accountant"
+      ? "Mark complete when paid in full"
+      : undefined;
   const resendChannelKind = resolveOutreachChannelKind(ticket);
 
   async function handleResendInvoice() {
@@ -202,7 +207,7 @@ export function ProductionDetailOverview({
                 background: "var(--color-btn-primary-bg)",
                 color: "var(--color-btn-primary-text)",
               }}
-              title={userRole === "accountant" ? "Mark complete when paid in full" : undefined}
+              title={markCompleteTitle}
             >
               {saving ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
               Mark Completed

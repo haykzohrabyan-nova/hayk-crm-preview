@@ -29,7 +29,7 @@ import {
 } from "@/lib/utils/validate-quote-send";
 import { buildAdminConvertPreview } from "@/lib/utils/admin-convert-preview";
 import type { ManualConvertMeta } from "@/lib/utils/manual-convert-meta";
-import { isPaymentEvidencePending, isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
+import { isPaymentEvidencePending, isTicketPaidInFull, computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { formatPhone, digitsOnly } from "@/lib/utils/phone";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
@@ -251,6 +251,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [hvCountdown, setHvCountdown] = useState(30);
   const hvTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [convertModal, setConvertModal] = useState<ReturnType<typeof buildAdminConvertPreview> | null>(null);
+  const [completeModalBalance, setCompleteModalBalance] = useState<number | null>(null);
   const handleSaveRef = useRef<((newStatus?: string, extraFields?: Record<string, unknown>, opts?: { skipSendValidation?: boolean }) => Promise<void>) | null>(null);
 
   // Edit state mirrors ticket fields
@@ -659,6 +660,26 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     void handleSave("order", undefined, { skipSendValidation: true });
   }
 
+  function requestMarkComplete() {
+    if (!ticket) return;
+    if (isTicketPaidInFull(ticket)) {
+      void handleSave(undefined, { ticket_status: "completed" });
+      return;
+    }
+    if (userRole === "admin") {
+      const balance = computeInvoicePaymentSummary(ticket).balanceDue;
+      setCompleteModalBalance(balance);
+    }
+  }
+
+  function confirmMarkCompleteWithBalance() {
+    setCompleteModalBalance(null);
+    void handleSave(undefined, {
+      ticket_status: "completed",
+      acknowledge_outstanding_balance: true,
+    });
+  }
+
   const adminConvertBanner = ticket?.convert_meta?.by_admin &&
     (ticket.convert_meta.confirm_required_missing || ticket.convert_meta.payment_missing);
 
@@ -1004,7 +1025,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     context={context}
                     userRole={userRole}
                     saving={saving}
-                    onMarkComplete={() => handleSave(undefined, { ticket_status: "completed" })}
+                    onMarkComplete={requestMarkComplete}
                     completeNotice={notice}
                     completeNoticeIsWarning={noticeIsWarning}
                   />
@@ -1315,6 +1336,84 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
               }}
             >
               Yes, convert to order
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* ── Admin mark complete with outstanding balance ───────────────────── */}
+    {completeModalBalance != null && (
+      <div
+        style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.55)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: 12,
+            padding: 28,
+            maxWidth: 520,
+            width: "90%",
+          }}
+        >
+          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+            <AlertTriangle size={28} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 8 }}>
+                Mark completed with balance due?
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--color-text-muted)", margin: 0, lineHeight: 1.55 }}>
+                This order still has{" "}
+                <strong style={{ color: "var(--color-warning-text-deep)" }}>
+                  {formatCurrency(completeModalBalance)}
+                </strong>{" "}
+                outstanding. If you continue:
+              </p>
+              <ul style={{ margin: "12px 0 0", paddingLeft: 20, fontSize: 14, color: "var(--color-text-muted)", lineHeight: 1.6 }}>
+                <li>The order moves to <strong>Completed</strong> and the customer receives a pickup-ready notification.</li>
+                <li>The balance remains on the order until the customer pays via the public quote link.</li>
+                <li>Accountants cannot mark orders complete until paid in full.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => setCompleteModalBalance(null)}
+              style={{
+                background: "transparent",
+                color: "var(--color-text-muted)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 6,
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmMarkCompleteWithBalance}
+              style={{
+                background: "var(--color-btn-primary-bg)",
+                color: "var(--color-btn-primary-text)",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Yes, mark completed
             </button>
           </div>
         </div>

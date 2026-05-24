@@ -1,6 +1,34 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 23, 2026
-**Status:** MVP complete + full order lifecycle + Won credit on production release + quote send validation + customer-level attributes + dev test reset. See **May 23, 2026 session** below for latest shipped work.
+**Last updated:** May 24, 2026
+**Status:** MVP complete + quote-until-payment + balance on public link + public confirm UX fixes. See **May 23–24, 2026** sections below.
+
+---
+
+## May 23–24, 2026 — Quote-until-payment, balance flow, public confirm UX
+
+### Quote stays quote until payment
+- `lib/utils/maybe-convert-quote-to-order.ts` — central conversion gate (payment recorded, net terms on confirm, admin override)
+- Public **Confirm** sets `client_confirmed` only; ticket remains on `/quotes` until payment (net terms may still convert + auto-release)
+- Payments queue includes **`sent`** quotes with pending evidence
+- Quote list badges: **Confirmed — awaiting deposit**, **Awaiting payment confirmation**; **Due Now** column for partial deposits
+
+### Admin convert + orders list
+- **Convert to Order** — admin only (SDR/Sales hidden; API 403)
+- Admin convert modal + **Admin converted — …** status labels (`manual-convert-meta.ts`, `order-list-status.ts`)
+- Orders default tab **All**; evidence pending on `order` **or** `in_production` → **Awaiting payment confirmation**
+
+### Balance on public link
+- In-production partial orders: **Pay remaining balance** under Step 3 on `/q/[token]`
+- Balance evidence → same accountant flow; payment confirmed email says **paid in full** when already in production
+- **Mark Completed** — accountant blocked if balance due; admin acknowledgment modal + `acknowledge_outstanding_balance`; pickup email uses same `/q/{token}` URL
+
+### Public page confirm display (QUO-2026-0008 fix)
+- Step 1 title **Confirm quote price** when pending (not hardcoded **Quote price confirmed**)
+- Payment summary: **Required — pending** / **Confirmed** / **Not required**
+
+### Owner questions (docs only)
+- **TODO-008** / **B6** — sent-quote email vs live portal after edit
+- **TODO-009** / **B7** — mark completed with balance still due
 
 ---
 
@@ -27,7 +55,8 @@
 
 ### Customer approval gate (all payment types)
 - When `ticket_require_client_confirm = true`, production/payment gates wait for public-page confirm — cash/deposit/full pay alone no longer bypasses approval
-- Public `/q/[token]` checklist shows confirm step first when approval required
+- Public `/q/[token]` Step 1: **Confirm quote price** when pending; **Quote price confirmed** only after customer clicks Confirm; **Not required** when toggle off
+- Payment summary row matches staff UI: **Required — pending** / **Confirmed** / **Not required**
 
 ---
 

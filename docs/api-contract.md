@@ -629,8 +629,8 @@ Partial ticket update. Six distinct operation modes:
 ```
 - Records deposit / balance / full payment; updates running `payment_amount_received`
 - Sets `payment_status` to `partial` or `paid`; clears `payment_evidence_*` fields when confirming submitted proof
-- Runs `computeCheckout` after recording — may auto-release to `in_production` when gates pass
-- When confirming customer-submitted evidence: sends **payment confirmed** email/SMS; logs `ticket_payment_confirmed_sent`
+- Runs `maybeConvertQuoteToOrder()` then `maybeAutoReleaseProduction()` when gates pass
+- When confirming customer-submitted evidence: sends **payment confirmed** email/SMS (balance on in-production orders: **paid in full** messaging); logs `ticket_payment_confirmed_sent`
 - Logs `ticket_payment_recorded` activity
 
 **Mode 4 — Claim (Sales/Admin only):**
@@ -658,14 +658,15 @@ Body: Any subset of ticket fields plus optional:
 `activity_by_role` is stripped from the stored record but used to attribute the activity log entry.
 
 **Business rules (Mode 5):**
-- If `ticket_status` transitions to `"completed"` from `"in_production"`: sends pickup-ready notification via `sendOrderReadyToCustomer()`; logs `ticket_order_ready_sent` or `ticket_order_ready_failed`
+- If `ticket_status` transitions to `"completed"` from `"in_production"`: sends pickup-ready notification via `sendOrderReadyToCustomer()` (same `/q/{public_token}` URL); logs `ticket_order_ready_sent` or `ticket_order_ready_failed`
 - **Accountant** may set `ticket_status = "completed"` only on in-production orders that are **paid in full** (`isTicketPaidInFull()`)
-- If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
+- **Admin** may mark completed with outstanding balance only when body includes `acknowledge_outstanding_balance: true` (UI shows confirmation modal); see **TODO-009**
 - If `ticket_status` transitions to `"order"` (manual "Convert to Order"):
-  - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
-  - Sets `ticket_kind = "order"`
-  - Logs `ticket_converted` activity
+  - **Admin only** — non-admin receives `403`
+  - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`; sets `ticket_kind = "order"`
+  - Logs `ticket_converted` activity with `require_client_confirm`, `client_confirmed`, `converted_by_role`
   - **Does not** set `leads.sales_status = 'Won'` — Won is deferred until production release (`markLeadWonOnProduction()`)
+- If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
 - If `ticket_status` transitions to `"in_production"` (manual release, payment confirm, net terms auto-release, etc.):
   - Sets `production_released_at`
   - If ticket has `linked_lead_id`: calls `markLeadWonOnProduction()` → `leads.sales_status = 'Won'`
@@ -768,7 +769,7 @@ Returns orders with customer-submitted payment evidence awaiting accountant conf
 
 **Auth:** Accountant or Admin only.
 
-**Filter:** `payment_evidence_url IS NOT NULL`, `payment_paid_at IS NULL`, `ticket_status IN ('order', 'in_production')`
+**Filter:** `payment_evidence_url IS NOT NULL`, evidence not yet cleared, `ticket_status IN ('sent', 'order', 'in_production', 'completed')`
 
 **Response `200`:**
 ```json
@@ -821,10 +822,11 @@ Each row is enriched server-side with **`status_label`** and **`status_tone`** f
 
 | Condition | `status_label` | `status_tone` |
 |-----------|----------------|---------------|
-| `in_production` | In Production | `in_production` |
 | `cancelled` | Cancelled | `cancelled` |
-| `order` + evidence pending | Awaiting payment confirmation | `awaiting_confirmation` |
+| Evidence pending (any status) | Awaiting payment confirmation | `awaiting_confirmation` |
+| `in_production` | In Production | `in_production` |
 | `order` + customer confirmed | Confirmed by Customer | `confirmed` |
+| `order` + admin convert, confirm/payment missing | Admin converted — … | `admin_override` |
 | `order` + converted, not confirmed | Converted by {name} | `converted` |
 | `order` (fallback) | Converted | `converted` |
 
@@ -957,26 +959,26 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
 
 ### `POST /api/public/quotes/[token]/confirm`
 
-Customer confirms a quote, converting it to an order.
+Customer confirms a quote on the public portal.
 
 **Auth:** None — public route.
 
 **Request body:** Empty `{}`.
 
 **Business rules:**
-- Ticket must have `ticket_status = "sent"`; returns `400` if already confirmed or not in sent state
-- Sets `client_confirmed = true`, `ticket_status = "order"`, `ticket_kind = "order"`
-- Generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`
-- May auto-release to `in_production` when net terms / payment gates pass (`maybeAutoReleaseProduction`)
-- If auto-release succeeds: `markLeadWonOnProduction()` sets linked lead `sales_status = 'Won'`
-- Logs `order_ticket_status_changed` and `ticket_client_confirmed` activities with `by_user_id = null` (customer action)
+- Ticket must have `ticket_status = "sent"` (returns `409` if already confirmed or wrong status)
+- Sets `client_confirmed = true` only — **does not** always convert to `order` immediately
+- **Quote-until-payment:** ticket stays on `/quotes` until payment is recorded (except net terms — may convert + auto-release on confirm via `maybeConvertQuoteToOrder` + `maybeAutoReleaseProduction`)
+- If already `client_confirmed`, returns `{ ok: true, already_confirmed: true }`
+- If production auto-release succeeds: `markLeadWonOnProduction()` sets linked lead `sales_status = 'Won'`
+- Logs `ticket_client_confirmed` activity with `by_user_id = null` (customer action)
 
 **Response `200`:**
 ```json
-{ "ok": true, "reference_code": "ORD-2026-042" }
+{ "ok": true, "reference_code": "ORD-2026-042", "in_production": false, "converted_to_order": false }
 ```
 
-**Response `400`:** Already confirmed or wrong status.
+**Response `409`:** Already confirmed or wrong status.
 
 ---
 
@@ -996,13 +998,13 @@ Customer submits payment proof or records an in-person payment from the public p
 | `receiptId` | Conditional | Receipt reference for cash-in-person — **digits only**; required when quote send validation requires it |
 
 **Business rules:**
-- Allowed when `ticket_status IN ('sent', 'order', 'in_production')`
-- Wire/ACH/Zelle/check/card: stores file in `payment-evidence` bucket; sets evidence fields + `payment_evidence_amount`; **does not** update `payment_amount_received` or mark paid — queues for accountant on `/payments`
-- Cash: records payment immediately; may auto-release to `in_production` when gates pass — **lead Won** only if production release succeeds
-- When `ticket_require_client_confirm = true`: payment alone does **not** set `client_confirmed` or convert `sent` → `order`; customer must confirm on `/q/[token]` first
-- `sent` → `order` conversion on first payment only when approval gate is off or customer already confirmed
-- Follow-up balance payments allowed when already partially paid or `in_production`
-- Logs `ticket_payment_evidence_submitted` and status-change activities in History
+- Allowed when `ticket_status IN ('sent', 'order', 'in_production', 'completed')`
+- When `ticket_require_client_confirm = true`: returns `409 CONFIRM_REQUIRED` if not yet `client_confirmed`
+- Wire/ACH/Zelle/check/card: stores file in `payment-evidence` bucket; sets evidence fields + `payment_evidence_amount`; **does not** update `payment_amount_received` — queues for accountant on `/payments`
+- Cash: records payment immediately; may convert + auto-release via `maybeConvertQuoteToOrder` / `maybeAutoReleaseProduction` when gates pass
+- Balance/follow-up payments: allowed when partially paid or `in_production`; cash balance does **not** overwrite `deposit_amount`
+- `sent` → `order` conversion on first payment only when approval gate satisfied (`maybeConvertQuoteToOrder`)
+- Logs `ticket_payment_evidence_submitted` or `ticket_payment_recorded` in History
 
 **Response `200`:**
 ```json

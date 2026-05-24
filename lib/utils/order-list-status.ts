@@ -26,22 +26,19 @@ export function orderListStatus(input: {
 }): { label: string; tone: OrderListStatusTone } {
   const { ticket_status } = input;
 
-  if (ticket_status === "in_production") {
-    return { label: "In Production", tone: "in_production" };
-  }
-
   if (ticket_status === "cancelled") {
     return { label: "Cancelled", tone: "cancelled" };
   }
 
-  if (
-    ticket_status === "order" &&
-    isPaymentEvidencePending(input as TicketPaymentFields)
-  ) {
+  if (isPaymentEvidencePending(input as TicketPaymentFields)) {
     return {
       label: "Awaiting payment confirmation",
       tone: "awaiting_confirmation",
     };
+  }
+
+  if (ticket_status === "in_production") {
+    return { label: "In Production", tone: "in_production" };
   }
 
   if (ticket_status === "order") {

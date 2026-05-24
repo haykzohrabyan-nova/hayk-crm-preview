@@ -149,6 +149,23 @@ Blocks: Edit button visibility logic, Cancel action, duplicate ticket API endpoi
 
 ---
 
+**B7. Admin marks order completed while balance is still due — intended flow?**
+
+⚠️ **OWNER DECISION NEEDED — 2026-05-23**
+
+**Problem:** In-production orders with partial deposit may still owe balance. Accountants are blocked from marking completed until paid in full. **Admins** can complete with balance due after acknowledging a modal; customer receives ready-for-pickup email with the same `/q/{token}` link where balance can still be paid.
+
+**Pick one:**
+
+- [ ] **A — Block all roles** — Completion requires paid in full for everyone (remove admin override).
+- [ ] **B — Admin override (current build)** — Admin may complete with balance due; pickup email sent; balance collected via public link afterward.
+- [ ] **C — Complete with balance-aware email** — Admin override allowed; pickup email explicitly states balance due before pickup.
+- [ ] **D — No pickup email until paid** — Admin may complete internally but customer notification waits until balance clears.
+
+**Tracked in:** [TODO-009](../TODO.md#open--owner-question-mark-completed-with-balance-still-due-todo-009)
+
+---
+
 ## Section C — Pricing & Business Rules
 
 ---

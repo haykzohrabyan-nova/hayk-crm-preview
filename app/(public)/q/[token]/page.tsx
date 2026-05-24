@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use, useRef } from "react";
+import { useEffect, useState, use, useRef, type CSSProperties } from "react";
 import {
   CheckCircle2, AlertCircle, Package, Loader2,
   Copy, Check, Upload, X, Clock,
@@ -181,7 +181,10 @@ interface PortalState {
   fullyPaid: boolean;
   isInProduction: boolean;
   isCompleted: boolean;
-  isConfirmed: boolean;
+  /** Customer clicked Confirm on the public link (or local session after confirm). */
+  customerConfirmed: boolean;
+  /** Price gate satisfied — customer confirmed or confirmation not required. */
+  priceGateOpen: boolean;
   requireConfirm: boolean;
   evidencePending: boolean;
   payAmount: number;
@@ -203,8 +206,8 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
   const isCompleted    = status === "completed";
   const isInProduction = status === "in_production";
   const requireConfirm = ticket.ticket_require_client_confirm ?? true;
-  const isConfirmed    = isConfirmedOverride ?? ticket.client_confirmed ?? false;
-  const confirmed      = isConfirmed || !requireConfirm;
+  const customerConfirmed = isConfirmedOverride ?? ticket.client_confirmed ?? false;
+  const priceGateOpen     = customerConfirmed || !requireConfirm;
 
   const evidencePending =
     !!ticket.payment_evidence_submitted_at &&
@@ -217,11 +220,12 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
     (total > 0 && amountPaid >= total - 0.01 && !evidencePending);
 
   let phase: PortalPhase = "needs_payment";
-  if (isCompleted) phase = "order_ready";
+  if (isCompleted && fullyPaid) phase = "order_ready";
+  else if (isCompleted && remaining > 0.01) phase = "balance_due";
   else if (fullyPaid) phase = "fully_paid";
   else if (evidencePending) phase = "evidence_pending";
   else if ((depositPaid || isInProduction) && remaining > 0.01) phase = "balance_due";
-  else if (!confirmed && requireConfirm) phase = "needs_confirm";
+  else if (!priceGateOpen && requireConfirm) phase = "needs_confirm";
   else if (strategy === "net") phase = "net_terms";
 
   const payAmount = !depositPaid && strategy === "partial"
@@ -240,6 +244,8 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
       ? "Your Order Status"
       : "To Start Production Checklist";
 
+  const submittedAmt = Number(ticket.payment_evidence_amount ?? 0);
+
   const actionCopy: Record<PortalPhase, { title: string; subtitle: string }> = {
     needs_confirm: {
       title: "Confirm your quote",
@@ -252,8 +258,10 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
         : `Full payment of ${fmt(total)} is required before we can start production.`,
     },
     evidence_pending: {
-      title: "Payment under review",
-      subtitle: "We've received your payment proof. Our team is validating it — you'll receive an email once confirmed, and this page will update when your order enters production.",
+      title: isInProduction ? "Balance payment under review" : "Payment under review",
+      subtitle: isInProduction
+        ? `We've received your balance payment${submittedAmt > 0 ? ` (${fmt(submittedAmt)})` : ""}. Our team is validating it — you'll receive an email once confirmed, and this page will update when paid in full.`
+        : "We've received your payment proof. Our team is validating it — you'll receive an email once confirmed, and this page will update when your order enters production.",
     },
     balance_due: {
       title: "Pay your remaining balance",
@@ -262,10 +270,12 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
         : `You've paid ${fmt(amountPaid)} so far. The remaining ${fmt(remaining)} is due upon completion / delivery — pay now if you'd like.`,
     },
     fully_paid: {
-      title: isInProduction ? "Order in production" : "Payment complete",
-      subtitle: isInProduction
-        ? "Your order is paid in full and currently in production. We'll be in touch with updates."
-        : "Thank you — your order is fully paid.",
+      title: isCompleted ? "Your order is ready for pickup" : isInProduction ? "Paid in full — in production" : "Payment complete",
+      subtitle: isCompleted
+        ? "Your order is complete and paid in full. Pickup details are below."
+        : isInProduction
+          ? "Thank you — your order is paid in full and is currently in production. We'll notify you when it's ready for pickup."
+          : "Thank you — your order is fully paid.",
     },
     net_terms: {
       title: isInProduction ? "Order in production" : "Net terms order",
@@ -283,7 +293,7 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
 
   return {
     phase, total, depositDue, amountPaid, remaining, depositPaid, fullyPaid,
-    isInProduction, isCompleted, isConfirmed: confirmed, requireConfirm, evidencePending,
+    isInProduction, isCompleted, customerConfirmed, priceGateOpen, requireConfirm, evidencePending,
     payAmount, payLabel, payButtonText, checklistTitle, actionTitle, actionSubtitle,
   };
 }
@@ -877,27 +887,32 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
   const {
     phase, total, depositDue, amountPaid, remaining, depositPaid, fullyPaid,
     isInProduction, isCompleted, requireConfirm, evidencePending,
+    customerConfirmed, priceGateOpen,
     payAmount, payLabel, payButtonText, checklistTitle, actionTitle, actionSubtitle,
   } = portal;
 
-  const priceStepDone = portal.isConfirmed;
+  const priceStepDone = priceGateOpen;
 
   const [localSubmitted, setLocalSubmitted] = useState(false);
 
   const paymentValidated =
     fullyPaid ||
-    (strategy === "partial" && depositPaid) ||
     (strategy === "net" && priceStepDone);
-  const awaitingReview = evidencePending || (localSubmitted && !paymentValidated);
+  const balanceDue = remaining > 0.01 && (depositPaid || isInProduction);
+  const awaitingReview = evidencePending || (localSubmitted && !fullyPaid);
 
   const paymentStepState: "done" | "review" | "active" | "idle" =
-    paymentValidated && !evidencePending ? "done"
+    fullyPaid && !evidencePending ? "done"
     : awaitingReview ? "review"
+    : balanceDue || phase === "needs_payment" || phase === "net_terms" ? "active"
+    : paymentValidated && !evidencePending ? "done"
     : priceStepDone ? "active"
     : "idle";
 
   const productionStepState: "done" | "review" | "active" | "idle" =
-    isCompleted || isInProduction ? "done"
+    isCompleted && fullyPaid ? "done"
+    : awaitingReview && isInProduction ? "review"
+    : isCompleted || isInProduction ? "done"
     : paymentValidated && !awaitingReview ? "active"
     : "idle";
 
@@ -920,6 +935,14 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
         color: "#D97706",
       };
     }
+    if (strategy === "partial" && depositPaid && remaining > 0.01) {
+      return {
+        text: evidencePending
+          ? `Balance payment of ${fmt(submittedAmount)} submitted — awaiting confirmation`
+          : `Deposit of ${fmt(depositAmt || amountPaid)} received · Balance ${fmt(remaining)} due — pay below`,
+        color: evidencePending ? "#D97706" : "#16A34A",
+      };
+    }
     if (strategy === "partial" && depositPaid) {
       return {
         text: `Deposit of ${fmt(depositAmt || amountPaid)} received · Balance ${fmt(remaining)} due later`,
@@ -935,25 +958,54 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
   const paymentStepDesc = paymentStepDescription();
 
   const canPay = !fullyPaid && payAmount > 0.01 && priceStepDone && !evidencePending && !localSubmitted && (
-    strategy === "net" || !paymentValidated || depositPaid || isInProduction
+    phase === "balance_due" ||
+    phase === "needs_payment" ||
+    phase === "net_terms" ||
+    (strategy === "net" && isInProduction)
   );
+
+  /** Balance due while in production (or completed early) — pay CTA lives under step 3. */
+  const payBalanceAfterProduction =
+    canPay &&
+    (isInProduction || (isCompleted && remaining > 0.01)) &&
+    (depositPaid || phase === "balance_due");
+
+  const canPayInPaymentStep = canPay && !payBalanceAfterProduction;
+
+  const balancePayButtonLabel =
+    payBalanceAfterProduction ? `${payButtonText} (${fmt(payAmount)})` : payButtonText;
+
+  const payButtonStyle: CSSProperties = {
+    marginTop: 10,
+    padding: "7px 18px",
+    background: NAVY,
+    color: GOLD,
+    border: "none",
+    borderRadius: 6,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: "pointer",
+  };
 
   function handlePaymentSubmitted(autoReleased: boolean, refCode: string | null) {
     setLocalSubmitted(true);
+    const isBalance = depositPaid || isInProduction || phase === "balance_due";
     setFeedback(
       autoReleased
         ? "Payment confirmed — your order has entered production!"
-        : "Thank you — we've received your payment proof. Our team will validate it and email you once confirmed.",
+        : isBalance
+          ? "Thank you — we've received your balance payment proof. Our team will validate it and email you once confirmed."
+          : "Thank you — we've received your payment proof. Our team will validate it and email you once confirmed.",
     );
     onPaymentSubmitted(autoReleased, refCode);
   }
 
-  // Poll while payment is awaiting accountant review so the page updates when confirmed
+  // Poll while payment evidence is awaiting accountant review
   useEffect(() => {
-    if (!awaitingReview || isInProduction || fullyPaid) return;
+    if (!awaitingReview || fullyPaid) return;
     const timer = setInterval(onRefresh, 30000);
     return () => clearInterval(timer);
-  }, [awaitingReview, isInProduction, fullyPaid, onRefresh]);
+  }, [awaitingReview, fullyPaid, onRefresh]);
 
   const [showPayModal, setShowPayModal] = useState(false);
   const [confirming, setConfirming]     = useState(false);
@@ -988,7 +1040,19 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
 
   const channelLabelStr = channels.map((ch) => CHANNEL_LABELS[ch] ?? ch).join(", ");
 
-  const confirmLabel = requireConfirm ? "Required" : "Not required";
+  const confirmSummaryLabel =
+    !requireConfirm
+      ? "Not required"
+      : customerConfirmed
+        ? "Confirmed"
+        : "Required — pending";
+
+  const priceConfirmStepTitle =
+    !requireConfirm
+      ? "Quote price confirmation"
+      : customerConfirmed
+        ? "Quote price confirmed"
+        : "Confirm quote price";
 
   const blockReason =
     !priceStepDone ? null :
@@ -998,7 +1062,7 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
 
   const pickupAddress = companyAddressFull(company);
 
-  if (isCompleted) {
+  if (isCompleted && fullyPaid) {
     return (
       <div style={{ border: `1px solid #BBF7D0`, borderRadius: 12, overflow: "hidden" }}>
         <div style={{ padding: "20px 24px", background: "#F0FDF4", borderBottom: `1px solid #BBF7D0` }}>
@@ -1066,6 +1130,14 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
       <div style={{ padding: "16px 24px", borderBottom: `1px solid ${BORDER}`, background: BG }}>
         <p style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 600, color: TEXT }}>{actionTitle}</p>
         <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>{actionSubtitle}</p>
+        {phase === "balance_due" && canPayInPaymentStep && (
+          <button
+            onClick={() => setShowPayModal(true)}
+            style={{ ...payButtonStyle, marginTop: 14, padding: "8px 20px" }}
+          >
+            {balancePayButtonLabel}
+          </button>
+        )}
       </div>
 
       {/* Two-column panel */}
@@ -1078,19 +1150,21 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
           </div>
           <ol style={{ listStyle: "none", margin: 0, padding: 0 }}>
 
-            {/* Step 1 — Quote confirmed */}
+            {/* Step 1 — Quote price confirmation */}
             <li style={{ display: "flex", gap: 12, paddingBottom: 16, borderBottom: `1px solid ${BORDER}` }}>
               <StepBadge num={1} state={priceStepDone ? "done" : "active"} />
               <div style={{ flex: 1 }}>
                 <p style={{ margin: "0 0 3px", fontSize: 14, fontWeight: 600, color: priceStepDone ? MUTED : TEXT }}>
-                  Quote price confirmed
+                  {priceConfirmStepTitle}
                 </p>
                 <p style={{ margin: 0, fontSize: 12, color: priceStepDone ? "#16A34A" : MUTED }}>
-                  {priceStepDone
-                    ? "Confirmed"
-                    : requireConfirm ? "Customer must confirm the quote" : "Not required"}
+                  {!requireConfirm
+                    ? "Not required"
+                    : customerConfirmed
+                      ? "Confirmed"
+                      : "Customer must confirm the quote"}
                 </p>
-                {!priceStepDone && requireConfirm && (
+                {requireConfirm && !customerConfirmed && (
                   <div style={{ marginTop: 10 }}>
                     {confirmErr && <p style={{ margin: "0 0 6px", fontSize: 12, color: "#DC2626" }}>{confirmErr}</p>}
                     <button
@@ -1116,10 +1190,10 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
                 <p style={{ margin: 0, fontSize: 12, color: paymentStepDesc.color, lineHeight: 1.5 }}>
                   {paymentStepDesc.text}
                 </p>
-                {canPay && (
+                {canPayInPaymentStep && (
                   <button
                     onClick={() => setShowPayModal(true)}
-                    style={{ marginTop: 10, padding: "7px 18px", background: NAVY, color: GOLD, border: "none", borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+                    style={payButtonStyle}
                   >
                     {payButtonText}
                   </button>
@@ -1130,24 +1204,48 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
             {/* Step 3 — Production / Pickup */}
             <li style={{ display: "flex", gap: 12, paddingTop: 16 }}>
               <StepBadge num={3} state={productionStepState} />
-              <div>
+              <div style={{ flex: 1 }}>
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: isCompleted ? "#16A34A" : isInProduction ? "#16A34A" : productionStepState === "active" ? TEXT : MUTED }}>
                   {isCompleted ? "Ready for pickup" : isInProduction ? "In production" : awaitingReview ? "Awaiting payment confirmation" : "Ready for production"}
                 </p>
-                {isCompleted && (
+                {isCompleted && fullyPaid && (
                   <p style={{ margin: "4px 0 0", fontSize: 12, color: "#16A34A", lineHeight: 1.5 }}>
                     Your order is complete — pick it up at our print shop
                   </p>
                 )}
-                {isInProduction && !isCompleted && (
+                {isCompleted && !fullyPaid && remaining > 0.01 && (
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#D97706", lineHeight: 1.5 }}>
+                    Ready for pickup — {fmt(remaining)} balance still due
+                  </p>
+                )}
+                {isInProduction && !isCompleted && !awaitingReview && (
                   <p style={{ margin: "4px 0 0", fontSize: 12, color: "#16A34A" }}>
                     Your order is being produced
+                  </p>
+                )}
+                {awaitingReview && isInProduction && !isCompleted && (
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#D97706", lineHeight: 1.5 }}>
+                    Balance payment submitted — awaiting confirmation
+                  </p>
+                )}
+                {fullyPaid && isInProduction && !isCompleted && !awaitingReview && (
+                  <p style={{ margin: "4px 0 0", fontSize: 12, color: "#16A34A", lineHeight: 1.5 }}>
+                    Paid in full — we'll notify you when ready for pickup
                   </p>
                 )}
                 {awaitingReview && !isInProduction && !isCompleted && (
                   <p style={{ margin: "4px 0 0", fontSize: 12, color: "#D97706", lineHeight: 1.5 }}>
                     Production starts after we confirm your payment
                   </p>
+                )}
+                {payBalanceAfterProduction && (
+                  <button
+                    type="button"
+                    onClick={() => setShowPayModal(true)}
+                    style={payButtonStyle}
+                  >
+                    {balancePayButtonLabel}
+                  </button>
                 )}
               </div>
             </li>
@@ -1186,7 +1284,7 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
                 ["Due now",       fmt(total),                     total > 0.01],
               ] : []),
               ...(channelLabelStr ? [["Channels", channelLabelStr, false]] : []),
-              ["Price confirmation", confirmLabel, false],
+              ["Price confirmation", confirmSummaryLabel, !requireConfirm ? false : !customerConfirmed],
             ] as [string, string, boolean][]).map(([label, value, warn]) => (
               <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                 <span style={{ fontSize: 13, color: MUTED, flexShrink: 0 }}>{label}</span>
@@ -1200,8 +1298,8 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
 
       </div>
 
-      {/* Full-width payment CTA */}
-      {canPay && (
+      {/* Full-width payment CTA — deposit / full pay only (balance uses step 3 button) */}
+      {canPayInPaymentStep && (
         <div style={{ padding: "16px 24px", borderTop: `1px solid ${BORDER}`, background: BG }}>
           <button
             onClick={() => setShowPayModal(true)}

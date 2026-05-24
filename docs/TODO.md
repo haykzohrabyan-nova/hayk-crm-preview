@@ -251,6 +251,40 @@ Reps should click **Resend Quote** after any material edit on a sent quote. Noth
 
 ---
 
+## [OPEN — OWNER QUESTION] Mark completed with balance still due (TODO-009)
+
+**Status:** ⚠️ **Owner decision needed** — partially built; policy choice  
+**Priority:** Medium (billing / pickup / customer comms)  
+**Related:** [open-questions.md § B7](./order-ticket/open-questions.md)  
+**Files to touch (depends on owner answer):** `app/api/tickets/[id]/route.ts`, `components/quotes/quote-detail.tsx`, `components/orders/production-detail-overview.tsx`, public `/q/[token]` portal
+
+### The Problem
+
+An in-production order may still have **outstanding balance** (partial deposit). Today:
+
+- **Accountant** cannot mark completed until paid in full.
+- **Admin** can mark completed with balance due after confirming a modal (`acknowledge_outstanding_balance: true`).
+- Customer still receives **ready-for-pickup email** with the same public link (`/q/{token}`) where they can pay the remaining balance.
+
+Is that the intended production flow, or should completion be blocked until paid in full for everyone?
+
+### Owner decision — pick one
+
+- [ ] **A — Block all roles** — No one can mark completed until `payment_amount_received` covers `quote_final_total` (remove admin override).
+- [ ] **B — Admin override (current)** — Admin may complete with balance due; pickup email sent; customer pays balance via public link afterward.
+- [ ] **C — Complete but different email** — Allow admin override but pickup email mentions balance due and links to pay before pickup.
+- [ ] **D — Complete silently** — Allow admin override; **no** pickup email until paid in full (manual resend or auto-send when balance clears).
+
+### Current behaviour (as built)
+
+| Role | Balance due | Mark completed |
+|------|-------------|----------------|
+| Accountant | Yes | Blocked |
+| Admin | Yes | Allowed after modal acknowledgment |
+| Customer portal | After admin complete | Shows pickup + pay balance if still due |
+
+---
+
 ## [TODO-006] Follow-Up Reminders — Sending Logic Not Built
 
 **Status:** Pending — data collected, no sending

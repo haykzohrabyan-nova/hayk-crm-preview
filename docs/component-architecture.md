@@ -241,6 +241,7 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
         ├── Data: GET /api/tickets?kind=quote (slim list — no quote_skus)
         │         Routed tickets enriched with created_by_name
         ├── Realtime: bazaar:tickets-changed + bazaar:refresh-counts (sidebar only — no page-level channel)
+        ├── Columns: Contact, Title, Channel, Total, Due Now, Status pill, Follow-up, Created
         ├── Search: client-side filter
         ├── Claim action (Routed tab): PATCH /api/tickets/[id] { claim_ownership: true }
         └── Row click → /quotes/[id]
@@ -417,7 +418,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    "Prepayment" field: `Partial — 25%` / `Partial — $500` / `Full Payment` / hidden
         │
         ├── Status actions (read-only mode, quote context):
-        │    Send Quote (draft) / Resend Quote (sent) / Convert to Order / Cancel Ticket (admin only on locked)
+        │    Send Quote (draft) / Resend Quote (sent) / Convert to Order (**admin only**) / Cancel Ticket
         ├── In-production on /orders/[id]: ProductionDetailOverview; header badge In Production; Mark Completed primary CTA
         ├── Payment review (order context): PricingPaymentSummary read-only for sales/SDR; evidence hidden
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true (ticket_id = UUID or ORD-* / QUO-*)
@@ -439,21 +440,18 @@ app/(public)/q/[token]/page.tsx  [Client Component "use client"]
       │
       ├── Data: GET /api/public/quotes/[token] (no auth; staff logged in can also view)
       │
-      ├── Portal phases (derived from ticket status + payment state):
-      │    confirm → pay → evidence_pending → in_production → order_ready
+      ├── Portal phases (`computePortalState`):
+      │    needs_confirm → needs_payment → evidence_pending → balance_due → fully_paid → order_ready
       │
-      ├── Sections (always visible):
-      │    Header (navy/gold branding) → Reference card → Line items → Pricing Summary
-      │    Payment Schedule (partial prepayment) → Accepted Payment Methods → Special Requirements
-      │    Clickable addresses → Google Maps (components/public/address-map-link.tsx)
+      ├── Checklist Step 1 (price confirmation):
+      │    Title: Confirm quote price (pending) | Quote price confirmed | Quote price confirmation (not required)
+      │    "Confirm & Accept Quote" → POST /api/public/quotes/[token]/confirm (sets client_confirmed only)
       │
-      ├── CTA — Quote First (order_source = 'quoted'):
-      │    "Confirm & Accept Quote" → POST /api/public/quotes/[token]/confirm
-      │
-      ├── Payment stepper (after confirm or direct order):
+      ├── Payment stepper (after price gate open):
       │    Channel panels: Wire / ACH / Zelle / Check / Card / Cash
-      │    POST /api/public/quotes/[token]/submit-payment (multipart evidence upload)
-      │    evidence_pending → amber "under review" (not marked paid until accountant confirms)
+      │    POST /api/public/quotes/[token]/submit-payment (multipart; balance while in_production)
+      │    evidence_pending → amber "under review" (balance copy when already in production)
+      │    Pay remaining balance CTA under Step 3 when in_production + partial
       │
       ├── Completed state:
       │    Green "Ready for pickup" banner with shop address + phone

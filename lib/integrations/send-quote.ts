@@ -583,9 +583,14 @@ export async function sendPaymentConfirmed(
 
     const firstName = customerName.split(" ")[0];
     const total = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(opts.amountConfirmed);
-    const body = opts.inProduction
-      ? `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed — your order is now in production. Track it here: ${orderUrl}`
-      : `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed. View your order: ${orderUrl}`;
+    const body =
+      opts.fullyPaid && opts.inProduction
+        ? `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed — your order is paid in full. Track it here: ${orderUrl}`
+        : opts.inProduction
+          ? `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed — your order is now in production. Track it here: ${orderUrl}`
+          : opts.fullyPaid
+            ? `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed — paid in full. View your order: ${orderUrl}`
+            : `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed. View your order: ${orderUrl}`;
     const normalised = toE164(destination);
     const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
 

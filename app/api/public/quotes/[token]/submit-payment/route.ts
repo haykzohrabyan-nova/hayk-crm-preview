@@ -35,8 +35,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     ticket_receipt_id: string | null;
   };
 
-  if (!["sent", "order", "in_production"].includes(row.ticket_status)) {
+  if (!["sent", "order", "in_production", "completed"].includes(row.ticket_status)) {
     return NextResponse.json({ error: "This quote is not open for payment." }, { status: 400 });
+  }
+
+  const quoteTotal  = Number(row.quote_final_total ?? 0);
+  const alreadyPaidBefore = Number(row.payment_amount_received ?? 0);
+  if (row.ticket_status === "completed" && alreadyPaidBefore >= quoteTotal - 0.01) {
+    return NextResponse.json({ error: "This order is already paid in full." }, { status: 400 });
   }
 
   const requireConfirm = row.ticket_require_client_confirm ?? true;
@@ -47,8 +53,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     );
   }
 
-  const alreadyPaidBefore = Number(row.payment_amount_received ?? 0);
-  const isFollowUpPayment = alreadyPaidBefore > 0.01 || row.ticket_status === "in_production";
+  const isFollowUpPayment =
+    row.ticket_status === "in_production" ||
+    row.ticket_status === "order" ||
+    row.ticket_status === "completed" ||
+    !!row.deposit_paid_at ||
+    alreadyPaidBefore > 0.01;
 
   if (row.payment_evidence_url && !isFollowUpPayment) {
     return NextResponse.json({ error: "Payment evidence already submitted." }, { status: 409 });
@@ -100,8 +110,7 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const now = new Date().toISOString();
-  const quoteTotal  = Number(row.quote_final_total ?? 0);
-  const alreadyPaid = Number(row.payment_amount_received ?? 0);
+  const alreadyPaid = alreadyPaidBefore;
   const newTotal    = Math.min(alreadyPaid + amount, quoteTotal);
   const fullyPaid   = newTotal >= quoteTotal - 0.01;
   const needsAccountantReview = EVIDENCE_REQUIRED_CHANNELS.has(method);
@@ -120,9 +129,12 @@ export async function POST(request: NextRequest, { params }: Params) {
     patch.payment_evidence_amount = amount;
   } else {
     patch.payment_amount_received = newTotal;
-    patch.deposit_amount = amount;
 
-    if (strategy === "partial" && !row.deposit_paid_at) {
+    const isInitialDeposit =
+      strategy === "partial" && !row.deposit_paid_at && !isFollowUpPayment;
+
+    if (isInitialDeposit) {
+      patch.deposit_amount     = amount;
       patch.deposit_paid_at    = now;
       patch.deposit_receipt_id = receiptId;
       patch.deposit_method     = method;
@@ -133,6 +145,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       patch.payment_paid_at = now;
       patch.payment_status  = "paid";
       patch.balance_paid_at = now;
+    } else if (isFollowUpPayment && !fullyPaid) {
+      patch.payment_status = "partial";
     } else if (!fullyPaid && newTotal > alreadyPaid && strategy !== "partial") {
       patch.payment_status = "partial";
     }

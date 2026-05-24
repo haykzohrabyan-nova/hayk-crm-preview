@@ -145,6 +145,6 @@ The following Route Handlers automatically insert activity rows when they run:
 | `PATCH /api/customers/[id]` | `contact_edited` |
 | `POST /api/tickets` | `order_ticket_created` |
 | `PATCH /api/tickets/[id]` | `quote_approval_requested` / `quote_follow_up_completed` / `quote_follow_up_reset` / `ticket_client_confirmed` / `ticket_sent` / `ticket_converted` / `ticket_payment_reminder_sent` / `ticket_payment_recorded` / `ticket_payment_confirmed_sent` / `ticket_invoice_resent` / `ticket_order_ready_sent` / `ticket_order_ready_failed` / `order_ticket_updated` / `order_ticket_status_changed` (claim, production release, mark completed) |
-| `POST /api/public/quotes/[token]/confirm` | `ticket_client_confirmed` / `order_ticket_status_changed` (customer, `by_user_id = null`) |
+| `POST /api/public/quotes/[token]/confirm` | `ticket_client_confirmed` only (customer, `by_user_id = null`); `ticket_converted` / production activities when gates pass on same request |
 | `POST /api/public/quotes/[token]/submit-payment` | `ticket_payment_evidence_submitted` / status transitions / production release |
 | `POST /api/outreach/send` | `outreach_sent` |

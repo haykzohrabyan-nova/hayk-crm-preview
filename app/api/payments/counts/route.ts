@@ -29,7 +29,7 @@ export async function GET() {
       .select("id", { count: "exact", head: true })
       .not("payment_evidence_url", "is", null)
       .is("payment_paid_at", null)
-      .in("ticket_status", ["sent", "order", "in_production"]),
+      .in("ticket_status", ["sent", "order", "in_production", "completed"]),
 
     // Orders currently in production
     admin

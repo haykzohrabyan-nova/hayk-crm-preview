@@ -1177,7 +1177,7 @@
 
       <div class="info-box success">
         <span class="info-icon">✅</span>
-        <div>When <strong>Require customer approval</strong> is enabled on a quote, the customer must click <strong>Confirm &amp; Accept</strong> on the public page before payment or production gates open — paying a deposit or full amount alone does not skip approval. Once confirmed, the CRM assigns the ORD-YYYY-NNN reference, locks the record for non-admins, and enables payment/production flows. The linked lead is marked <strong>"Won"</strong> only when the ticket is released to production (payment gates permitting).</div>
+        <div>When <strong>Require customer approval</strong> is enabled, the customer must click <strong>Confirm &amp; Accept</strong> on the public page before payment or production gates open — paying a deposit or full amount alone does not skip approval. Public Step 1 shows <strong>Confirm quote price</strong> until confirmed (not a misleading &ldquo;confirmed&rdquo; title). Confirm sets <code style="font-size:11px;">client_confirmed = true</code>; the quote may <strong>stay on /quotes</strong> until payment converts it to an order (net terms exception). ORD-YYYY-NNN is assigned on conversion; record locks for non-admins after customer confirm. Lead <strong>Won</strong> only when ticket enters production.</div>
       </div>
     </section>
 
@@ -2804,15 +2804,15 @@
             </tr>
             <tr>
               <td>Q15</td>
-              <td>Sales-B manually converts quote to order (clicks "Convert to Order")</td>
+              <td>Admin manually converts quote to order (clicks "Convert to Order") — <strong>admin only</strong></td>
               <td>Check lead status + SDR's Won tab</td>
-              <td>Lead <code style="font-size:11px;">ticket_status → "order"</code>; lead stays in Directed to Sales until production release; after production: <code style="font-size:11px;">sales_status → "Won"</code>; appears in SDR-A's Won tab with ORD reference; ticket locked for Sales-B (read-only except payment_status)</td>
+              <td>Lead <code style="font-size:11px;">ticket_status → "order"</code>; confirmation modal if confirm/payment missing; lead stays in Directed to Sales until production release; after production: <code style="font-size:11px;">sales_status → "Won"</code></td>
             </tr>
             <tr>
               <td>Q16</td>
               <td>Customer clicks "Confirm &amp; Accept" on public quote link</td>
               <td>Check ticket + lead status</td>
-              <td><code style="font-size:11px;">client_confirmed = true</code>; <code style="font-size:11px;">ticket_status → "order"</code>; ORD-YYYY-NNN assigned; <code style="font-size:11px;">sales_status → "Won"</code> only if production auto-release succeeds; SDR sees lead in Won tab after production</td>
+              <td><code style="font-size:11px;">client_confirmed = true</code>; quote may remain <code style="font-size:11px;">sent</code> until payment; <code style="font-size:11px;">ticket_status → "order"</code> on payment convert (net terms may convert on confirm); ORD assigned on conversion; <code style="font-size:11px;">sales_status → "Won"</code> only after production release</td>
             </tr>
           </tbody>
         </table>
