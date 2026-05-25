@@ -328,24 +328,22 @@ In `components/quotes/quote-detail.tsx` action bar:
 
 ---
 
-## Phase E — Dashboard Revenue Integration
+## Phase E — Dashboard & Reports Revenue Integration ✅
 
-Update `app/api/dashboard/kpis/route.ts`:
+**Built (May 2026):**
 
-```typescript
-// Revenue total
-const { data: revenue } = await admin
-  .from('job_tickets')
-  .select('payment_amount_received, payment_method_used, created_by_id')
-  .eq('payment_status', 'paid')
-  // non-admin: add .eq('created_by_id', userId)
+- `lib/utils/dashboard-metrics.ts` — `sumCashCollectedInPeriod`, `sumProductionReleasedValue`
+- `lib/utils/team-dashboard-metrics.ts` — per-user metrics on admin Team cards
+- `GET /api/dashboard/kpis` — **Cash Collected** from `ticket_payment_recorded`; production metrics use `production_released_at`
+- `GET /api/reports/summary` — cash collected, released order value, awaiting collection, rep scorecards, payment ledger
 
-// Compute: total revenue, breakdown by payment_method_used
-```
+**Dashboard KPI cards:**
+- **Cash Collected** (period) — matches Reports; primary money metric on Admin/Sales/SDR dashboards
+- **Released Order Value** — on Reports + Sales dashboard; removed from Admin dashboard top row (see Reports)
+- **Pipeline Value** — draft/sent quote totals (live snapshot)
+- Admin **Team** cards — Collected / Released / Balance due (sales) · Handled / Routed / Sourced (SDR)
 
-Dashboard KPI cards:
-- **Total Revenue** (period-scoped, same as other KPIs)
-- **Revenue by Method** (Card / Zelle / Offline) — bar or donut chart
+**Deferred:** Revenue by payment method chart on dashboard; Stripe integration unchanged.
 
 ---
 
@@ -403,7 +401,10 @@ Dashboard KPI cards:
 | `app/api/payments/stripe/create-session/route.ts` | C | ⏳ Deferred | Stripe Checkout session |
 | `app/api/payments/stripe/webhook/route.ts` | C | ⏳ Deferred | Stripe payment confirmation |
 | `app/api/payments/zelle/inbound/route.ts` | D | ⏳ Deferred | Inbound email parsing |
-| `app/api/dashboard/kpis/route.ts` | E | ⏳ Deferred | Revenue from paid tickets |
+| `app/api/dashboard/kpis/route.ts` | E | ✅ Built | Cash collected + production release metrics; team_member_metrics |
+| `app/api/reports/summary/route.ts` | E | ✅ Built | Full reporting + rep scorecards |
+| `lib/utils/dashboard-metrics.ts` | E | ✅ Built | Shared cash/release helpers |
+| `lib/utils/team-dashboard-metrics.ts` | E | ✅ Built | Admin Team card per-user stats |
 
 ---
 

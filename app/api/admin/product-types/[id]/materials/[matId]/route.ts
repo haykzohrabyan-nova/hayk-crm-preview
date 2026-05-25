@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 type Ctx = { params: Promise<{ id: string; matId: string }> };
 
 // Link a material to a product type
 export async function POST(_request: Request, { params }: Ctx) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const { id, matId } = await params;
   const admin = createAdminClient();
 
@@ -22,6 +26,9 @@ export async function POST(_request: Request, { params }: Ctx) {
 
 // Unlink a material from a product type
 export async function DELETE(_request: Request, { params }: Ctx) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const { id, matId } = await params;
   const admin = createAdminClient();
 

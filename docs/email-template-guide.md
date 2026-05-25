@@ -362,6 +362,7 @@ Use a nested `<table>` + `<td>`, NOT `display:inline-block` on a `<span>`:
 | File | Purpose | Preview route |
 |---|---|---|
 | `lib/integrations/quote-email-template.ts` | Customer quote / order confirmation | `GET /api/dev/quote-email-preview` |
+| `lib/integrations/welcome-email-template.ts` | New-user welcome + admin password reset | `GET /api/dev/quote-email-preview?template=welcome` or `?template=password-reset` (dev only) |
 | `lib/integrations/payment-reminder-template.ts` | Payment reminder for confirmed unpaid orders | — |
 | `lib/integrations/payment-confirmed-template.ts` | Payment confirmed after accountant reviews evidence | — |
 | `lib/integrations/invoice-link-template.ts` | Resend customer portal link (`/q/{token}`) | — |
@@ -373,7 +374,7 @@ All outbound customer messages are routed through `lib/integrations/send-quote.t
 
 ## Testing Checklist Before Sending
 
-- [ ] Preview at `localhost:3000/api/dev/quote-email-preview`
+- [ ] Preview at `localhost:3000/api/dev/quote-email-preview` (add `?template=welcome` or `?template=password-reset` for auth emails)
 - [ ] Send a real test via the CRM to your own Gmail account
 - [ ] Check on mobile (Gmail iOS / Apple Mail iOS)
 - [ ] Verify all links work and point to the production URL (not localhost)

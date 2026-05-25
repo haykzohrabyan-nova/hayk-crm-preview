@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 // Human-readable display names for each category, in the order they appear in the UI
 export const CATEGORY_META: Record<string, { label: string; section: "leads" | "order" }> = {
@@ -26,6 +27,9 @@ export const CATEGORY_META: Record<string, { label: string; section: "leads" | "
 
 // GET /api/admin/lookups — all categories with their values
 export async function GET() {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
 
   const { data, error } = await admin
@@ -62,6 +66,9 @@ export async function GET() {
 
 // POST /api/admin/lookups — create a new option in an existing category
 export async function POST(request: Request) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
   const body = await request.json();
   const { category, label } = body;

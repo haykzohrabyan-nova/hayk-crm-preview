@@ -1,6 +1,49 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 24, 2026
-**Status:** MVP complete + quote-until-payment + balance on public link + May 24 UI polish (mobile lists, detail redesign, global loading). See sections below.
+**Status:** MVP complete + quote-until-payment + dashboard/reports KPI alignment + API security hardening (May 24).
+
+---
+
+## May 24, 2026 — API security hardening
+
+### Route Handler auth
+- All admin catalog/lookup/material routes require login; mutations require **admin**
+- `requireSession()` enforces **MFA (AAL2)** on app APIs — matches `proxy.ts` page gate
+- `GET /api/admin/company` — non-admin gets safe fields only (no bank/Zelle in API response)
+- `GET /api/lookups/products`, ticket PDF/print — MFA + scope checks
+- `POST /api/customers/[id]/merge` — **admin + sales** only
+- `POST /api/auth/session` end — rejects spoofed `user_id`
+- `GET /api/dev/quote-email-preview` — 404 in production
+
+### New helpers
+- `lib/utils/ticket-access.ts` — shared ticket read/write authorization
+- `lib/auth/mfa-trust.ts` — `hasValidMfaTrustFromCookieValue()` for API + proxy
+
+### Browser storage
+- No API keys or tokens in localStorage — only UI prefs + MFA “remember me” flag in sessionStorage
+- Auth + trusted device in **httpOnly cookies**
+
+### Docs
+- **`docs/security.md`** (new), `api-contract.md`, `architecture.md`, `rbac.md`, `schema.md`, `feature-specs/admin.md`, `feature-specs/crm.md`, `feature-specs/tickets.md`, `component-architecture.md`, `types.md`, `order-ticket/product-catalog.md`, `order-ticket/integration-plan.md`
+
+---
+
+## May 24, 2026 — Dashboard & Reports KPI alignment
+
+### Money metrics
+- **Cash Collected** — recorded payments in period (`ticket_payment_recorded`); dashboard matches Reports (2 decimal places, `roundMoney`)
+- **Released Order Value** — quote totals at `production_released_at` in period (Reports KPI; Sales dashboard; not Admin top-row card)
+- **Awaiting Collection** — live balance due on open orders (Reports only; not period-filtered)
+- **Pipeline Value** — draft/sent quote totals (live snapshot)
+
+### Admin dashboard
+- Removed **SDR Performance** table, **Lead Sources**, **Rejection Reasons**
+- **Team** cards: sessions (7 days) + work metrics row (period) — SDR: Handled/Routed/Sourced · Sales: Collected/Released/Balance due
+- Team roster order: SDR → Sales → Accountant
+- KPI help text on all dashboard/report cards (`kpi-help-text.ts`)
+
+### Docs synced
+- `docs/feature-specs/dashboard.md`, `reports.md`, `api-contract.md`, `types.md`, `invoice-payment.md`, `CHANGELOG.md`
 
 ---
 
@@ -242,7 +285,7 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - `/orders` — `orders-page.tsx` — 4-tab Orders list (All | Pending Payment | In Production | Cancelled); includes evidence-pending for owner; API `status_label` / `status_tone`
 - All dropdowns dynamically loaded from `lookup_values` via `/api/lookups`; `renderLookupOptions` helper prevents data loss for deactivated values
 - Sidebar badges for `/quotes` and `/orders`
-- `GET /api/lookups/products` — public product-type + material lookup for quote forms
+- `GET /api/lookups/products` — authenticated + MFA product-type + material lookup for quote forms
 
 ### Record Locking, "Convert to Order", Won Tracking & Payment Link Bar (2026-05-16)
 
@@ -352,7 +395,7 @@ Full business rule implementation for routing high-value quotes from SDRs to Sal
 - `/admin/settings/dropdowns` — fully built; 15+ categories (lead + order/quote + SKU)
 - `/admin/settings/products` — product types + material library, full CRUD + link/unlink
 - `/admin/settings/company` — EmailInput + PhoneInput components, ZIP digits-only, client-side validation
-- `/admin/settings/integrations` — placeholder for Stripe + Zelle (configured buttons deferred)
+- `/admin/settings/integrations` — Twilio SMS + Instantly AI live; Stripe/Zelle out of scope this stage
 - Admin overview card grid updated with Integrations card
 - `components/ui/email-input.tsx` — added optional onBlur prop for external validation
 - All phone fields use `PhoneInput`; all email fields use `EmailInput` — no inline duplicates
@@ -426,7 +469,7 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/payments` | main | ✅ Built — evidence queue; mobile cards; Confirm shows global loading |
 | `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
-| `/reports` | main | ✅ Built (placeholder) — 7 planned report types shown; full charts after Stripe; migration 058 adds page to DB |
+| `/reports` | main | ✅ Built — cash collected, rep scorecards, payment ledger, awaiting collection (admin only) |
 | `/notifications` | main | ✅ Built — 2-tab layout: "Order / Lead Activity" (`ActivityLogSection`) + "User Activity" (`UserActivitySection` — session KPIs per user, admin only) |
 | `/admin` | admin | ✅ Built — card grid overview (all 7 cards correct, 6 built + 1 planned) |
 | `/admin/settings/users` | admin-sub | ✅ Built |
@@ -434,7 +477,7 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/admin/settings/dropdowns` | admin-sub | ✅ Built — all lead + order/quote categories |
 | `/admin/settings/products` | admin-sub | ✅ Built — product types, materials, links |
 | `/admin/settings/company` | admin-sub | ✅ Built — with EmailInput + PhoneInput validation |
-| `/admin/settings/integrations` | admin-sub | ✅ Built — Twilio SMS + Instantly AI live; Stripe + Zelle placeholder |
+| `/admin/settings/integrations` | admin-sub | ✅ Built — Twilio SMS + Instantly AI live (no Stripe/Zelle — out of scope this stage) |
 | `/admin/settings/notifications` | admin-sub | ⏳ Not built — broadcast form to send system messages to users/roles |
 
 ---
@@ -578,9 +621,10 @@ SALES PIPELINE (Routed to Sales)
 | ~~Admin Override (terminal leads)~~ | ✅ Done (2026-05-17) | Amber banner + fully editable drawer for admins on terminal leads. |
 | ~~Order lifecycle buttons~~ | ✅ Done (2026-05-17) | `order → in_production → completed` admin-only buttons on order detail. |
 | ~~Dashboard session KPI cards~~ | ✅ Done (2026-05-17) | "Active Users" + "Idle Sign-outs (7d)" cards on admin dashboard. |
-| Integrations — Stripe + Zelle | ⏳ Deferred | Placeholder built in Integrations tab; API wiring deferred. |
-| Follow-up reminders cron | ⏳ Deferred | Data saved, no sending logic built (TODO-006). |
-| ~~Reports placeholder~~ | ✅ Done (2026-05-17) | `/reports` page in nav; 7 planned charts shown; builds after Stripe. |
+| ~~Integrations — Twilio + Instantly~~ | ✅ Done | Live in Integrations tab |
+| Online payments (Stripe / Zelle auto-match) | ⏸ Out of scope | Current stage — offline payment recording only; see `docs/TODO.md` |
+| Follow-up reminders cron | ⏳ Open (TODO-006) | Data saved; no sending logic |
+| ~~Reports~~ | ✅ Done (2026-05-24) | Phase 1 + 2 — cash, scorecards, ledger, awaiting collection |
 | Notification bell | ⏳ Next | Per-user notification feed; bell icon in header/sidebar. |
 | AI / webhook lead ingestion | ⏳ Future | Auto-create leads from web form or external webhook. |
 

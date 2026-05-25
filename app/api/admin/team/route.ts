@@ -76,5 +76,12 @@ export async function GET() {
     };
   });
 
+  const ROLE_ORDER: Record<string, number> = { sdr: 0, sales: 1, accountant: 2 };
+  members.sort((a, b) => {
+    const byRole = (ROLE_ORDER[a.role_name] ?? 99) - (ROLE_ORDER[b.role_name] ?? 99);
+    if (byRole !== 0) return byRole;
+    return (a.full_name ?? "").localeCompare(b.full_name ?? "", undefined, { sensitivity: "base" });
+  });
+
   return NextResponse.json({ members });
 }

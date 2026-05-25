@@ -61,6 +61,8 @@ app/
     │
     ├── notifications/page.tsx        ✓ EXISTS — Activity Log
     │
+    ├── reports/page.tsx              ✓ EXISTS — Admin reports (cash collected, scorecards, ledger; see feature-specs/reports.md)
+    │
     ├── settings/page.tsx             → TO BUILD (currently stub — personal profile)
     │
     └── admin/
@@ -75,7 +77,7 @@ app/
                                         dropdowns     → DropdownsSection (all lookup_values categories) ✅
                                         products      → ProductsSection (product types, materials, links) ✅
                                         company       → CompanySection (branding, address, order defaults) ✅
-                                        integrations  → IntegrationsSection (Twilio SMS ✅ live, Instantly AI ✅ live, Stripe + Zelle — placeholder) ✅
+                                        integrations  → IntegrationsSection (Twilio SMS ✅ live, Instantly AI ✅ live; Stripe/Zelle out of scope) ✅
                                         notifications → ❌ Not needed — removed from scope
 ```
 
@@ -153,6 +155,7 @@ BAZAARPRINTING
 ✓ Orders                           /orders         (badge: pending payment + in production)
 ✓ Payments                         /payments       (admin only — optional queue access)
 ✓ Completed                        /completed
+✓ Reports                          /reports        (admin only — grant via Roles & Permissions)
 
 ─── Admin ──────────────────────
 ✓ Admin Panel                      /admin

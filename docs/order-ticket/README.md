@@ -1,6 +1,8 @@
 # Order Ticket Module — Documentation Index
 
-> **Note:** This folder is **historical research and phase planning** from the shadow-project port (Phases 0–7, completed 2026-05-12). For the **current shipped behaviour** (quote-until-payment, payments queue including sent quotes, balance on public link, production/completed lifecycle, public confirm UX, mobile list cards, overview detail layout, global loading overlay, accountant role), use `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, `docs/navigation.md`, and `docs/component-architecture.md`. Open owner questions: **B6** (email vs portal), **B7** (complete with balance due) in [`open-questions.md`](./open-questions.md).
+> **Note:** This folder is **historical research and phase planning** from the shadow-project port (Phases 0–7, completed 2026-05-12). For the **current shipped behaviour** (quote-until-payment, payments queue including sent quotes, balance on public link, production/completed lifecycle, public confirm UX, mobile list cards, overview detail layout, global loading overlay, accountant role), use `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, `docs/navigation.md`, and `docs/component-architecture.md`. Open owner questions: **B6** (email vs portal), **B7** (complete with balance due) in [`open-questions.md`](./open-questions.md) and [`owner-decisions-pending.html`](./owner-decisions-pending.html).
+>
+> **Schema:** References to `supabase/migrations/NNN_*.sql` below are **historical**. Current DDL lives in **`supabase/schema.sql`** — see `supabase/README.md` and `docs/schema.md`.
 
 This folder contains all research, analysis, and planning documents for the **Tickets phase** of BazarCRM (Quotes & Orders). All owner questions resolved on 2026-05-11. Phases 0–7 complete as of 2026-05-12.
 

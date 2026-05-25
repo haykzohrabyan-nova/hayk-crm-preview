@@ -1,11 +1,46 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { buildQuoteEmail } from "@/lib/integrations/quote-email-template";
+import { buildWelcomeEmail } from "@/lib/integrations/welcome-email-template";
 
 // GET /api/dev/quote-email-preview
-// Dev-only route — renders the quote email template in the browser so you can inspect the design.
-// NOT used in production. Remove or gate behind NODE_ENV check before going live.
+// GET /api/dev/quote-email-preview?template=welcome
+// GET /api/dev/quote-email-preview?template=password-reset
+// Dev-only — renders email HTML in the browser. Returns 404 in production.
 
-export async function GET() {
+const PREVIEW_COMPANY = {
+  company_name: "BazaarPrinting",
+  logo_url: null as string | null,
+  address_line1: "1234 Print Ave",
+  address_line2: "Suite 100",
+  city: "Los Angeles",
+  state: "CA",
+  zip: "90001",
+  phone: "(213) 555-0100",
+  email: "sales@bazaarprinting.co",
+  website: "https://bazaarprinting.co",
+};
+
+export async function GET(request: NextRequest) {
+  if (process.env.NODE_ENV === "production") {
+    return NextResponse.json({ error: "Not found." }, { status: 404 });
+  }
+
+  const template = request.nextUrl.searchParams.get("template");
+
+  if (template === "welcome" || template === "password-reset") {
+    const { html } = buildWelcomeEmail({
+      fullName: "Jane Rivera",
+      email: "jane.rivera@bazaarprinting.co",
+      tempPassword: "TempPass-2026!",
+      loginUrl: "http://localhost:3000/login",
+      company: PREVIEW_COMPANY,
+      isReset: template === "password-reset",
+    });
+    return new NextResponse(html, {
+      headers: { "Content-Type": "text/html; charset=utf-8" },
+    });
+  }
+
   const { html } = buildQuoteEmail({
     customerName: "John Smith",
     title: "Business Cards — Double Sided Gloss",
@@ -45,18 +80,7 @@ export async function GET() {
     taxRate: 9.1,
     paymentTypes: ["card_default", "zelle"],
     confirmUrl: "http://localhost:3000/q/preview-token-not-real",
-    company: {
-      company_name: "BazaarPrinting",
-      logo_url: null,
-      address_line1: "1234 Print Ave",
-      address_line2: "Suite 100",
-      city: "Los Angeles",
-      state: "CA",
-      zip: "90001",
-      phone: "(213) 555-0100",
-      email: "sales@bazaarprinting.co",
-      website: "https://bazaarprinting.co",
-    },
+    company: PREVIEW_COMPANY,
     isOrder: false,
   });
 

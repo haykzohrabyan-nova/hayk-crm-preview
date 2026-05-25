@@ -328,7 +328,7 @@ When blocked, an amber banner lists missing fields (e.g. Title, Due date, line i
 - Back button
 - Title + reference code badge (ORD-YYYY-NNN for orders)
 - Status pill
-- Save PDF link (`/api/tickets/[id]/pdf`)
+- Save PDF link (`/api/tickets/[id]/pdf`) — requires MFA-complete session + ticket read scope (`canAccessTicket()`)
 - **Edit button** — visibility rules:
   - `draft` or `sent` → always shown
   - `order` with `payment_status = 'unpaid'` (or null) → shown
@@ -502,6 +502,8 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `GET /api/completed/orders` | GET | Completed orders list |
 | `GET /api/completed/counts` | GET | Completed page badge counts |
 | `GET /api/activities` | GET | `?ticket_id=xxx` (UUID or `QUO-*` / `ORD-*`) + optional `include_linked_lead=true` → full lifetime merged |
+| `GET /api/tickets/[id]/pdf` | GET | PDF download — MFA + `canAccessTicket()` |
+| `GET /api/tickets/[id]/print` | GET | HTML print view — same auth as PDF |
 | `GET /api/public/quotes/[token]` | GET (no auth) | Public ticket data for `/q/[token]` customer page |
 | `POST /api/public/quotes/[token]/confirm` | POST (no auth) | Customer confirm — sets `client_confirmed`; converts when gates pass |
 | `POST /api/public/quotes/[token]/submit-payment` | POST (no auth) | Customer payment proof upload (multipart) |

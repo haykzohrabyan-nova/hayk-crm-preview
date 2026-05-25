@@ -416,7 +416,7 @@ POST   /api/admin/material-groups                      create a material group
 PATCH  /api/admin/material-groups/[id]                 rename group
 DELETE /api/admin/material-groups/[id]                 blocked if group has materials
 
-GET    /api/lookups/products                           public read for OrderDrawer
+GET    /api/lookups/products                           authenticated + MFA (quote form SKU dropdowns)
 ```
 
 ### OrderDrawer behavior

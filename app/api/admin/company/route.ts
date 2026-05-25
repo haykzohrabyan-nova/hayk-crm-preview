@@ -1,13 +1,22 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireSession } from "@/lib/auth/require-session";
 
-// GET /api/admin/company — fetch the single company_settings row
+const PUBLIC_SETTINGS_SELECT =
+  "default_tax_rate, high_value_threshold, rush_surcharge_percent, session_idle_timeout_minutes";
+
+// GET /api/admin/company — company settings (full row for admin; safe subset for others)
 export async function GET() {
+  const { roleName, errorResponse } = await requireSession();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
+  const isAdmin = roleName === "admin";
 
   const { data, error } = await admin
     .from("company_settings")
-    .select("*")
+    .select(isAdmin ? "*" : PUBLIC_SETTINGS_SELECT)
     .eq("id", 1)
     .single();
 
@@ -17,6 +26,9 @@ export async function GET() {
 
 // PATCH /api/admin/company — update company settings (admin only)
 export async function PATCH(request: Request) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
   const body = await request.json();
 

@@ -48,12 +48,12 @@ export function clearMfaTrustCookie(response: NextResponse) {
   });
 }
 
-/** Validate trust cookie for the signed-in user. Updates last_used_at on success. */
-export async function hasValidMfaTrust(
-  request: NextRequest,
+/** Validate trust cookie value for the signed-in user. Updates last_used_at on success. */
+export async function hasValidMfaTrustFromCookieValue(
   userId: string,
+  cookieValue: string | undefined | null,
 ): Promise<boolean> {
-  const parsed = parseMfaTrustCookie(request.cookies.get(MFA_TRUST_COOKIE)?.value);
+  const parsed = parseMfaTrustCookie(cookieValue);
   if (!parsed) return false;
 
   const admin = createAdminClient();
@@ -73,6 +73,17 @@ export async function hasValidMfaTrust(
     .eq("id", row.id);
 
   return true;
+}
+
+/** Validate trust cookie for the signed-in user. Updates last_used_at on success. */
+export async function hasValidMfaTrust(
+  request: NextRequest,
+  userId: string,
+): Promise<boolean> {
+  return hasValidMfaTrustFromCookieValue(
+    userId,
+    request.cookies.get(MFA_TRUST_COOKIE)?.value,
+  );
 }
 
 /** Create a trusted-device row and return cookie value + maxAge. */

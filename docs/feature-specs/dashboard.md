@@ -6,170 +6,143 @@ Route: `/dashboard` (all roles)
 
 ## Overview
 
-The Dashboard is the first page users land on after login. It shows role-scoped KPI cards, a quick-action area, and (for Admin) a live team overview.
+The Dashboard is the first page users land on after login. It shows role-scoped KPI cards and (for Admin) a live **Team** section with session activity plus per-user work metrics.
 
-**Architecture:** One route, four role-specific components. `dashboard-page.tsx` is a thin role-router that detects the logged-in user's role via Supabase and renders the appropriate component. No role-based conditionals inside the individual dashboards — each is self-contained and can be redesigned independently.
+**Architecture:** One route, four role-specific components. `dashboard-page.tsx` is a thin role-router that detects the logged-in user's role via Supabase and renders the appropriate component. No role-based conditionals inside the individual dashboards — each is self-contained.
 
 ```
-components/admin/dashboard-page.tsx        ← role router (detects role, renders one of:)
-  components/sales/sdr-dashboard.tsx       ← SDR-specific dashboard
-  components/sales/sales-dashboard.tsx       ← Sales-specific dashboard
-  components/admin/admin-dashboard.tsx       ← Admin-specific dashboard
-  components/admin/accountant-dashboard.tsx ← Accountant-specific dashboard (payments/production KPIs)
+components/admin/dashboard-page.tsx        ← role router
+  components/sales/sdr-dashboard.tsx       ← SDR dashboard
+  components/sales/sales-dashboard.tsx     ← Sales dashboard
+  components/admin/admin-dashboard.tsx       ← Admin dashboard
+  components/admin/accountant-dashboard.tsx  ← Accountant dashboard (payments KPIs)
 ```
 
-**Data:** `GET /api/dashboard/kpis?period=month`
+**Data:** `GET /api/dashboard/kpis?period=week|month|quarter`
 
-The API returns role-scoped data — SDR and Sales see only their own numbers, Admin sees global totals.
+Period boundaries match Reports presets: start of period → end of today (`getDashboardPeriodBounds`).
 
-The period defaults to "This Month" and is controlled by a compact segmented control (This Week / This Month / This Quarter) in each dashboard's header.
+The API returns role-scoped data — SDR and Sales see only their own numbers; Admin sees company totals.
+
+Each KPI card shows a **help line** below the value explaining how the number is calculated (`lib/utils/kpi-help-text.ts`).
+
+**Money detail:** Admin/Sales **Cash Collected** on the dashboard matches **Reports → Total Cash Collected** for the same period. Order value, balance due, rep scorecards, and payment ledger live on **Reports** (`/reports`).
 
 ---
 
 ## SDR Dashboard — `components/sales/sdr-dashboard.tsx`
 
-KPIs are **scoped to the current SDR**. The inbox count is global (how many unclaimed workspace leads are available).
+KPIs scoped to the current SDR. Inbox count is global (unclaimed workspace leads).
 
-### KPI Cards (2-column on mobile, 3-column on desktop)
+### KPI Cards
 
-| Card | Value | Query basis | Subtext | Accent |
-|------|-------|-------------|---------|--------|
-| Inbox | Unclaimed workspace leads | `leads WHERE is_inbox=false AND status IN ('Pending','Validated') AND locked_by_id IS NULL` — matches sidebar badge exactly | "leads waiting to be claimed" | ✓ (highlighted) |
-| Handled | Distinct leads acted on by this SDR in period | `activities WHERE by_user_id=me AND type IN (claimed/routed/rejected/held) AND created_at >= periodStart` — deduplicated by lead_id | period label | |
-| Routed to Sales | Distinct leads routed by this SDR in period | Same activities, filtered to `type = 'lead_routed_to_sales'` | period label | |
-| On Hold | Direct count of paused leads | `leads WHERE is_inbox=false AND sdr_id=me AND status='On Hold'` | "currently paused" | |
-| Rejected | Distinct leads rejected in period | Activities filtered to `type = 'lead_rejected'` | period label | |
-| Quote Value | `sum(quote_total)` for all leads acted on in period | Lead rows fetched by the handled lead IDs | period label | |
-| My Share | `my handled leads ÷ all SDR handled leads × 100` | Denominator uses same activity types across all users | "of all SDR work this period" | |
+| Card | Value | Period? | Accent |
+|------|-------|---------|--------|
+| **Sourced Cash** | Sum of payments on leads they sourced (SDR credit) | ✓ | ✓ |
+| Inbox | Unclaimed workspace leads | snapshot | |
+| Handled | Distinct leads acted on (claim/route/hold/reject activities) | ✓ | |
+| Routed to Sales | Distinct leads routed in period | ✓ | |
+| On Hold | Leads they parked on hold | snapshot | |
+| Rejected | Distinct leads rejected in period | ✓ | |
+| Quote Value | Sum of `quote_total` on handled leads | ✓ | |
+| My Share | Their handled ÷ all SDR handled × 100 | ✓ | |
 
-> **Why activities instead of `leads.updated_at`?** Using `updated_at` on the leads table causes drift — if Sales or Admin updates a lead the SDR processed last month, it would appear in the current month's counts. Activity records have their own `created_at` tied to when the SDR actually performed the action, so period counts are always accurate.
-
-### Period Selector
-
-This Week / This Month / This Quarter — updates all KPI cards on change.
-
-### Future Enhancements
-- Conversion rate card (leads routed ÷ leads handled)
-- Recent activity strip (last 5 events by this SDR)
+Activity-based counts (not `leads.updated_at`) — see `app/api/dashboard/kpis/route.ts` SDR branch.
 
 ---
 
 ## Sales Dashboard — `components/sales/sales-dashboard.tsx`
 
-KPIs are **scoped to the current Sales rep** (`sales_owner_id = userId`). New in Pipeline is global (unclaimed routed leads).
+KPIs scoped to the current sales rep (payment/production attribution via `reports-attribution`).
 
-### KPI Cards (2-column on mobile, 3-column on desktop)
+### KPI Cards
 
-| Card | Value | Query basis | Subtext | Accent |
-|------|-------|-------------|---------|--------|
-| Won Value | sum of `quote_final_total` from Won tickets in period | `job_tickets WHERE created_by_id=me AND ticket_status IN ('in_production','completed') AND production_released_at >= periodStart` (or `created_at` fallback) | period label | ✓ (highlighted) |
-| New in Pipeline | unclaimed Routed to Sales leads (global) | `leads WHERE status='Routed to Sales' AND sales_owner_id IS NULL` | "waiting to be claimed" | |
-| Active Deals | leads where sales work is in progress | `leads WHERE sales_owner_id=me AND sales_status IN ('Ongoing','Quote Sent')` — includes both pre-quote and post-quote leads | "ongoing" | |
-| Won | count of won tickets in period | Same `job_tickets` query as Won Value — **`in_production` + `completed` only** (pending `order` status excluded) — period-consistent with the revenue figure | period label | |
-| On Hold | leads with `sales_status = On Hold` | `leads WHERE sales_owner_id=me` filtered in JS | "paused deals" | |
-| Pipeline Value | sum of active quote values | `job_tickets WHERE created_by_id=me AND ticket_status IN (draft/sent)` | "current total" | |
+| Card | Value | Period? | Accent |
+|------|-------|---------|--------|
+| **Cash Collected** | Payments credited to this rep | ✓ | ✓ |
+| **Released Order Value** | Sum of `quote_final_total` when their orders hit production | ✓ | |
+| New in Pipeline | Unclaimed Routed to Sales leads | snapshot | |
+| Active Deals | `sales_status` Ongoing or Quote Sent | snapshot | |
+| Won | Count of production releases in period | ✓ | |
+| On Hold | Paused deals | snapshot | |
+| Pipeline Value | Sum of draft/sent quote totals (their tickets) | snapshot | |
 
-> **Active Deals note:** The lead's `status` field is intentionally NOT used as a filter. When Sales creates a quote for a lead the lead's status changes from `"Routed to Sales"` to `"Quoted"`, so filtering on `status` would cause quoted leads to disappear from Active Deals. `sales_status` alone correctly represents whether the deal is still in progress.
-
-> **Won count + Won Value are always in sync:** Both derive from the same `job_tickets` query with the same period filter, so switching from "This Month" to "This Quarter" updates both numbers together.
-
-### Quick Actions
-
-- **Go to Pipeline** → `/sales` (primary, accent-tinted)
-- **Quotes & Orders** → `/quotes`
-
-### Period Selector
-
-This Week / This Month / This Quarter.
-
-### Future Enhancements (when orders/quotes are live)
-- Follow-up alerts (tickets where `follow_up_at <= today`)
-- Orders created count
+**Won** count and **Released Order Value** use the same production-release query (`production_released_at` in period).
 
 ---
 
 ## Admin Dashboard — `components/admin/admin-dashboard.tsx`
 
-KPIs are **global** — all SDRs and Sales reps combined.
+KPIs are **company-wide**.
 
-### KPI Cards (2-column on mobile, 3-column on desktop)
+### KPI Cards
 
-| Card | Value | Subtext | Accent |
+| Card | Value | Period? | Accent |
 |------|-------|---------|--------|
-| Total Revenue | sum of `quote_final_total` from tickets in production in period | `job_tickets WHERE ticket_status IN ('in_production','completed')` filtered by period | period label | ✓ (highlighted) |
-| Total Leads | count of all leads created in period | period label | |
-| In Inbox | `is_inbox = true` leads | "waiting for SDR" | |
-| Routed to Sales | `status = Routed to Sales` leads | "active pipeline" | |
-| Won | count of leads with `sales_status = 'Won'` created in period | Leads marked Won when linked ticket enters production — count uses lead query, revenue uses ticket totals | period label | |
-| Pipeline Value | sum of `quote_total` for Routed to Sales leads | "current total" | |
+| **Cash Collected** | All recorded payments in period | ✓ | ✓ |
+| **Pipeline Value** | Sum of draft/sent `quote_final_total` | snapshot | |
+| Total Leads | Leads created in period (+ Open/Claimed/… sub-badges) | ✓ | |
+| In Inbox | Inbox leads (`is_inbox = true`) | snapshot | |
+| Routed to Sales | Current Routed to Sales count | snapshot | |
+| Won | Orders released to production in period (count) | ✓ | |
+
+Footer link points to **Reports** for released order value, awaiting collection, and payment ledger.
+
+> **Removed (May 2026):** Standalone **SDR Performance** table, **Lead Sources**, and **Rejection Reasons** blocks — consolidated into Team cards + Reports.
 
 ### Team Section
 
-A grid of cards showing all active users:
+Grid of active non-admin users from `GET /api/admin/team` (sorted **SDR → Sales → Accountant**, then name).
+
+**Row 1 — Sessions (last 7 days)** from `GET /api/admin/sessions`:
 
 | Field | Notes |
 |-------|-------|
-| Avatar | First initial, navy background |
-| Online dot | Green if last sign-in < 8 hours ago |
-| Name | Truncated |
-| Role | Display name |
-| Active deals | Sales reps only — count of claimed leads |
+| Avatar + online dot | Green = currently active session |
+| Sessions / Active time / Last seen | 7-day window (independent of dashboard period) |
+| Idle sign-outs | Warning badge when applicable |
 
-Data source: `GET /api/admin/team`
+**Row 2 — Work metrics (dashboard period)** from `team_member_metrics` in KPI response (`lib/utils/team-dashboard-metrics.ts`):
 
-### SDR Performance Table
+| Role | Columns |
+|------|---------|
+| **SDR** | Handled · Routed · **Sourced** (cash) |
+| **Sales** | **Collected** · **Released** · **Balance due** (live snapshot) |
 
-Period-scoped table showing each SDR's output side by side. Only visible to admins.
+Sales cards also show “X active deals” when `claimed_leads > 0` from team API.
 
-| Column | Value |
-|--------|-------|
-| Name | SDR's full name |
-| Handled | count of workspace leads they touched in period |
-| Routed | count of leads sent to Sales |
-| Rejected | count of leads rejected (red text) |
-| Quote Value | `sum(quote_total)` for their leads |
-| Share | their handled ÷ total handled across all SDRs — shown as % with a gold inline bar |
+Hidden when all work metrics are zero for that user.
 
-Sorted by Handled descending. Hidden when no SDR has activity in the period.
+---
 
-Data source: grouped from `sdr_id` field in `/api/dashboard/kpis` response.
+## Accountant Dashboard — `components/admin/accountant-dashboard.tsx`
 
-### Rejection Reasons Breakdown
+Payment queue KPIs from `GET /api/payments/counts` — see [`invoice-payment.md`](./invoice-payment.md).
 
-All-time breakdown of `rejection_reason` values across all rejected workspace leads. Displayed as a labeled list with red horizontal progress bars proportional to the max count. Top 8 reasons shown.
+---
 
-### Lead Sources Breakdown
+## Shared utilities
 
-All-time breakdown of `source` values across all workspace leads. Same list + bar pattern using gold (`var(--color-accent)`) bars.
-
-Both breakdowns are displayed side-by-side in a 2-column grid and only render when data exists.
-
-### Quick Actions
-
-- **Manage Users** → `/admin/settings/users` (primary)
-- **System Settings** → `/admin/settings`
-- **SDR Workspace** → `/leads`
-- **Sales Pipeline** → `/sales`
-
-### Period Selector
-
-This Week / This Month / This Quarter — affects KPI cards and SDR Performance Table. Rejection Reasons and Lead Sources are always all-time.
+| File | Purpose |
+|------|---------|
+| `lib/utils/dashboard-metrics.ts` | `sumCashCollectedInPeriod`, `sumProductionReleasedValue` |
+| `lib/utils/team-dashboard-metrics.ts` | Per-user metrics for admin Team cards |
+| `lib/utils/kpi-help-text.ts` | KPI calculation hints |
+| `lib/utils/get-period-start.ts` | `getDashboardPeriodBounds` (aligned with Reports) |
+| `components/ui/kpi-help-line.tsx` | Help text under card values |
 
 ---
 
 ## Loading States
 
-- **Role loading** (while `dashboard-page.tsx` detects role): full skeleton grid (6 KPI card skeletons)
-- **KPI loading** (while API fetches): individual KPI card skeletons (rectangles matching card dimensions)
-- Minimum skeleton display: 300 ms to avoid flash on fast connections
+- **Role loading:** skeleton grid while role resolves
+- **KPI loading:** card skeletons, 300 ms minimum display
+- Team section: loads independently via team + sessions APIs
 
 ---
 
 ## Design
 
-- KPI cards: `background: var(--color-surface)`, `border: 1px solid var(--color-border)`, `border-radius: 10px`, `padding: 20px`
-- Accent card: `background: var(--color-btn-verify-bg)` (navy light / orange dark), no border
-- KPI value: `28px / 600 / var(--color-text-primary)`
-- KPI label: `11px / 500 / uppercase / letter-spacing: 0.06em / var(--color-text-muted)`
-- Section headers: `13px / 600 / uppercase / letter-spacing: 0.06em / var(--color-text-muted)`
-- All colors via CSS variables — no hardcoded hex
+- KPI cards: `var(--color-surface)`, `border-radius: 10px`
+- Accent card: `var(--color-btn-verify-bg)`
+- All colors via CSS variables — no hardcoded hex in components

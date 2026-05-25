@@ -36,6 +36,7 @@ interface OrderTicket {
   title: string | null;
   reference_code: string | null;
   quote_final_total: number | null;
+  payment_amount_received: number | null;
   priority: string | null;
   due_date: string | null;
   rush: boolean;
@@ -96,6 +97,34 @@ function displayName(o: OrderTicket): string {
   return displayContactName(o.customer, { preferPerson: true });
 }
 
+function orderPaymentAmounts(o: OrderTicket): {
+  total: string;
+  received: string;
+  balanceDue: string;
+  receivedValue: number | null;
+  balanceDueValue: number | null;
+} {
+  if (o.quote_final_total == null) {
+    return { total: "—", received: "—", balanceDue: "—", receivedValue: null, balanceDueValue: null };
+  }
+
+  const total = Number(o.quote_final_total);
+  const receivedValue = o.payment_amount_received;
+  const received =
+    receivedValue != null && Number.isFinite(Number(receivedValue))
+      ? formatCurrency(Number(receivedValue))
+      : "—";
+  const balanceDueValue = Math.max(0, total - Number(receivedValue ?? 0));
+
+  return {
+    total: formatCurrency(total),
+    received,
+    balanceDue: formatCurrency(balanceDueValue),
+    receivedValue: receivedValue != null ? Number(receivedValue) : null,
+    balanceDueValue,
+  };
+}
+
 function OrderMobileCard({
   order: o,
   onOpen,
@@ -108,6 +137,7 @@ function OrderMobileCard({
   const overdue = isOverdue(o.due_date);
   const dueSoon = isDueSoon(o.due_date);
   const ps = paymentDisplay(o);
+  const amounts = orderPaymentAmounts(o);
 
   return (
     <MobileListCard onClick={onOpen}>
@@ -158,9 +188,24 @@ function OrderMobileCard({
       )}
 
       <MobileListCardFields>
+        <MobileListCardRow label="Total" value={amounts.total} />
         <MobileListCardRow
-          label="Total"
-          value={o.quote_final_total != null ? formatCurrency(o.quote_final_total) : "—"}
+          label="Received"
+          value={amounts.received}
+          valueColor={
+            amounts.receivedValue != null && amounts.receivedValue > 0.01
+              ? "var(--color-success)"
+              : undefined
+          }
+        />
+        <MobileListCardRow
+          label="Balance Due"
+          value={amounts.balanceDue}
+          valueColor={
+            amounts.balanceDueValue != null && amounts.balanceDueValue > 0.01
+              ? "var(--color-warning)"
+              : undefined
+          }
         />
         <MobileListCardRow label="Priority" value={o.priority ?? "—"} valueColor={priorityStyle.color} />
         <MobileListCardRow
@@ -198,7 +243,7 @@ function OrdersTableDesktop({
     <table className="w-full">
       <thead>
         <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-          {["Order #", "Contact", "Title", "Total", "Priority", "Due Date", "Status", "Payment", "Created"].map((h) => (
+          {["Order #", "Contact", "Title", "Total", "Received", "Balance Due", "Priority", "Due Date", "Status", "Payment", "Created"].map((h) => (
             <th
               key={h}
               className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -216,6 +261,7 @@ function OrdersTableDesktop({
           const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
           const overdue = isOverdue(o.due_date);
           const dueSoon = isDueSoon(o.due_date);
+          const amounts = orderPaymentAmounts(o);
 
           return (
             <tr
@@ -254,8 +300,34 @@ function OrdersTableDesktop({
                 </div>
               </td>
               <td className="px-4 py-3">
-                <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-                  {o.quote_final_total != null ? formatCurrency(o.quote_final_total) : "—"}
+                <span className="text-sm font-medium tabular-nums" style={{ color: "var(--color-text-primary)" }}>
+                  {amounts.total}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <span
+                  className="text-sm font-medium tabular-nums"
+                  style={{
+                    color:
+                      amounts.receivedValue != null && amounts.receivedValue > 0.01
+                        ? "var(--color-success)"
+                        : "var(--color-text-muted)",
+                  }}
+                >
+                  {amounts.received}
+                </span>
+              </td>
+              <td className="px-4 py-3">
+                <span
+                  className="text-sm font-medium tabular-nums"
+                  style={{
+                    color:
+                      amounts.balanceDueValue != null && amounts.balanceDueValue > 0.01
+                        ? "var(--color-warning)"
+                        : "var(--color-text-muted)",
+                  }}
+                >
+                  {amounts.balanceDue}
                 </span>
               </td>
               <td className="px-4 py-3">
@@ -449,7 +521,7 @@ export default function OrdersPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <DesktopTableSkeleton cols={9} />
+          <DesktopTableSkeleton cols={11} />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>

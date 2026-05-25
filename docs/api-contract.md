@@ -1,12 +1,43 @@
 # BazarCRM — API Contract
 
-All endpoints are Next.js 16 Route Handlers under `app/api/`. Every handler uses the **admin Supabase client** (`lib/supabase/admin.ts`) for writes and the **server client** (from `@supabase/ssr`) for reads with RLS applied.
-
-**Authentication:** All endpoints require an authenticated session. `proxy.ts` blocks unauthenticated requests before they reach Route Handlers. Handlers additionally call `supabase.auth.getUser()` and return `401` if no session.
+All endpoints are Next.js 16 Route Handlers under `app/api/`. Most handlers use the **admin Supabase client** (`lib/supabase/admin.ts`) for database access. The server client (from `@supabase/ssr`) is used where session cookies must be read or refreshed.
 
 **Base URL:** `/api` (relative, same origin).
 
-**Content type:** `application/json` throughout.
+**Content type:** `application/json` unless noted (PDF, HTML print, file upload).
+
+---
+
+## Authentication & authorization
+
+**Important:** `proxy.ts` does **not** protect `/api/*`. Every app Route Handler must enforce auth itself.
+
+### Helpers
+
+| Helper | Use |
+|--------|-----|
+| `requireSession()` | Logged in + MFA complete (AAL2 or valid trusted-device cookie) |
+| `requireAdmin()` | `requireSession()` + `roleName === 'admin'` |
+| `requireSession({ requireMfa: false })` | Sign-out / session-end only |
+
+Implemented in `lib/auth/require-session.ts` and `lib/auth/require-admin.ts`. Ticket scope: `lib/utils/ticket-access.ts` (`canAccessTicket`, `canMutateTicket`).
+
+### Error codes
+
+| HTTP | `code` | Meaning |
+|------|--------|---------|
+| `401` | `UNAUTHENTICATED` | No valid session |
+| `403` | `MFA_SETUP_REQUIRED` | Must enroll TOTP at `/setup-2fa` |
+| `403` | `MFA_VERIFY_REQUIRED` | Must verify TOTP at `/verify-2fa` |
+| `403` | `FORBIDDEN` | Wrong role or ticket/lead scope |
+
+Full security model: **`docs/security.md`**.
+
+### Public routes (no staff session)
+
+- `/api/public/quotes/[token]/*` — customer quote portal (token-gated UUID)
+- `/api/auth/change-password` — own session via `getUser()` (forced password change flow)
+- `/api/auth/mfa-trust` — POST requires AAL2; DELETE clears trust cookie
 
 ---
 
@@ -422,7 +453,30 @@ Update a customer profile. Called when SDR chooses "Yes, update profile" on the 
 
 ---
 
-### `GET /api/customers/companies`
+### `POST /api/customers/[id]/merge`
+
+Merge duplicate customer **source** (`id` in path) into **target** (`target_id` in body). Moves all leads and activities to the target, logs a merge activity, then **deletes** the source customer.
+
+**Auth:** Admin or Sales only (`403` for SDR, Accountant, etc.).
+
+**Body:**
+```json
+{
+  "target_id": "uuid"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "surviving_id": "uuid"
+}
+```
+
+**Errors:** `404` if either customer missing; `400` if `target_id === id`.
+
+---
 
 Company name autocomplete for the Company Name field in forms.
 
@@ -695,7 +749,7 @@ Body: Any subset of ticket fields plus optional:
 
 Renders the ticket as a PDF binary and returns it for direct download.
 
-**Auth:** Requires authenticated session. Returns `401` if no session, `404` if ticket not found.
+**Auth:** `requireSession()` (MFA) + `canAccessTicket()` — same scope as `GET /api/tickets/[id]`. Returns `401`/`403` if unauthorized, `404` if ticket not found.
 
 **Response `200`:**
 - `Content-Type: application/pdf`
@@ -712,7 +766,7 @@ The "Save PDF" button in `quote-detail.tsx` is an `<a href="/api/tickets/[id]/pd
 
 Returns a complete, fully-styled HTML document of the invoice. Used for browser print / Save as PDF via the system print dialog.
 
-**Auth:** Requires authenticated session. Returns `401` if no session, `404` if ticket not found.
+**Auth:** `requireSession()` (MFA) + `canAccessTicket()`. Returns `401`/`403` if unauthorized, `404` if ticket not found.
 
 **Response `200`:**
 - `Content-Type: text/html; charset=utf-8`
@@ -724,7 +778,7 @@ Returns a complete, fully-styled HTML document of the invoice. Used for browser 
 
 Returns a short-lived signed URL for the customer-uploaded payment evidence file.
 
-**Auth:** Requires authenticated session with access to the ticket.
+**Auth:** `requireSession()` + Accountant or Admin role.
 
 **Response `200`:**
 ```json
@@ -1129,40 +1183,40 @@ See `docs/realtime-live-updates.md` for the full architecture and pattern guide.
 
 ### `GET /api/dashboard/kpis`
 
-Returns KPI metrics scoped to the current user's role and optional date range.
+Returns KPI metrics scoped to the current user's role and period.
 
 **Query params:**
 
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
-| `period` | `'today' \| 'week' \| 'month' \| 'quarter' \| 'all'` | `'month'` | Time window |
-| `from` | `ISO date` | — | Custom range start (overrides `period`) |
-| `to` | `ISO date` | — | Custom range end |
+| `period` | `'week' \| 'month' \| 'quarter'` | `'month'` | Start of period → end of today (same as Reports presets) |
 
 **Response for SDR `200`:**
 ```json
 {
-  "period": "string",
-  "leads_handled": "number",
-  "leads_verified": "number",
-  "leads_routed": "number",
-  "leads_rejected": "number",
-  "leads_on_hold": "number",
+  "role": "sdr",
+  "inbox_count": "number",
+  "handled": "number",
+  "routed": "number",
+  "on_hold": "number",
+  "rejected": "number",
   "quote_value": "number",
-  "handled_share_percent": "number"
+  "sourced_cash": "number",
+  "share_pct": "number"
 }
 ```
 
 **Response for Sales `200`:**
 ```json
 {
-  "period": "string",
-  "leads_in_pipeline": "number",
-  "leads_won": "number",
-  "leads_dropped": "number",
-  "pipeline_value": "number",
+  "role": "sales",
+  "new_in_pipeline": "number",
+  "active_deals": "number",
+  "on_hold": "number",
+  "won": "number",
   "won_value": "number",
-  "order_count": "number"
+  "cash_collected": "number",
+  "pipeline_value": "number"
 }
 ```
 
@@ -1173,28 +1227,80 @@ Returns KPI metrics scoped to the current user's role and optional date range.
   "total_leads": "number",
   "open_leads": "number",
   "claimed_leads": "number",
+  "pipeline_leads": "number",
+  "quoted_leads": "number",
+  "ordered_leads": "number",
   "inbox_leads": "number",
   "routed_leads": "number",
   "won_leads": "number",
-  "total_revenue": "number",
+  "cash_collected": "number",
   "pipeline_value": "number",
-  "sdr_performance": "SdrPerformanceRow[]",
-  "rejection_reasons": "BreakdownItem[]",
-  "source_breakdown": "BreakdownItem[]"
+  "team_member_metrics": "Record<userId, TeamMemberMetrics>"
 }
 ```
 
-- `total_leads` — leads created in the selected period
-- `open_leads` — current snapshot: unclaimed `Pending/Validated` workspace leads (`locked_by_id IS NULL`)
-- `claimed_leads` — current snapshot: `Pending/Validated` workspace leads owned by an SDR
-- `inbox_leads` — current snapshot: leads still in inbox (`is_inbox = true`)
-- `routed_leads` — current snapshot: leads with `status = 'Routed to Sales'`
-- `won_leads` — leads with `sales_status = 'Won'` created in the selected period (Won set at production release)
-- `total_revenue` — sum of `quote_final_total` from tickets in `in_production` or `completed` created in the selected period
-- `pipeline_value` — sum of `quote_total` for all `Routed to Sales` leads (live snapshot)
-- `sdr_performance` — per-SDR breakdown: `{ id, full_name, handled, routed, rejected, quote_value, share_pct }`
-- `rejection_reasons` — top rejection reasons: `{ reason, count }[]` sorted by count desc
-- `source_breakdown` — lead source counts: `{ source, count }[]` sorted by count desc
+**TeamMemberMetrics:**
+```json
+{
+  "handled": "number",
+  "routed": "number",
+  "rejected": "number",
+  "sourced_cash": "number",
+  "cash_collected": "number",
+  "released_order_value": "number",
+  "awaiting_collection": "number",
+  "pipeline_value": "number"
+}
+```
+
+**Field notes (Admin):**
+- `cash_collected` — sum of `ticket_payment_recorded` amounts in period (matches Reports)
+- `pipeline_value` — sum of `quote_final_total` on draft/sent tickets (live snapshot)
+- `won_leads` — count of production releases in period (`production_released_at`)
+- `team_member_metrics` — per-user work stats for Team cards (SDR activity + sales money metrics)
+- Sub-counts on Total Leads card: `open_leads`, `claimed_leads`, `pipeline_leads`, `quoted_leads`, `ordered_leads`
+
+**Field notes (Sales):**
+- `won` / `won_value` — production releases in period for this rep
+- `cash_collected` — payments credited to this rep in period
+
+---
+
+### `GET /api/admin/team`
+
+Admin only. Active non-admin user roster for dashboard Team section.
+
+**Response `200`:**
+```json
+{
+  "members": [
+    {
+      "id": "uuid",
+      "full_name": "string | null",
+      "role_name": "sdr | sales | accountant",
+      "role_display_name": "string",
+      "claimed_leads": "number",
+      "last_sign_in_at": "ISO | null"
+    }
+  ]
+}
+```
+
+Members sorted: **SDR → Sales → Accountant**, then alphabetical by name.
+
+---
+
+### `GET /api/reports/summary`
+
+Admin only. Full reporting payload — see [`feature-specs/reports.md`](feature-specs/reports.md).
+
+**Query:** `period`, `date_from`, `date_to`, `user_id` (optional)
+
+**Key response fields:**
+- `cash_collected.total` — payments in period (2 decimal places)
+- `released_order_value.total` / `order_count` — production releases in period
+- `awaiting_collection` — live balance-due snapshot (not period-filtered)
+- `sales_scorecard`, `sdr_scorecard`, `payment_ledger`, `win_rate`, `funnel`
 
 ---
 
@@ -1227,6 +1333,36 @@ Provider-agnostic outreach endpoint. The concrete email/SMS provider is resolved
   "provider": "string"
 }
 ```
+
+---
+
+## Auth — Session & MFA trust
+
+### `POST /api/auth/session`
+
+Logs login sessions to `user_sessions` for admin reporting.
+
+**Body `{ action: "start" }`:** Requires `requireSession()` (MFA-complete). Inserts a new open session row; closes any stale open row first.
+
+**Body `{ action: "end", reason, user_id? }`:** Closes open session rows for the user. Prefers cookie identity from `requireSession({ requireMfa: false })`. If `user_id` is sent in the body, it **must match** the session cookie or the request returns `403` (anti-spoof).
+
+**Response `200`:** `{ "ok": true }`
+
+---
+
+### `POST /api/auth/mfa-trust`
+
+Issues the `bazaar_mfa_trust` httpOnly cookie (30 days) after successful 2FA. Called from client after verify when user checked "Remember this device" at login.
+
+**Auth:** Valid session with `aal2`.
+
+**Response `200`:** `{ "ok": true, "expires_in_days": 30 }`
+
+---
+
+### `DELETE /api/auth/mfa-trust`
+
+Revokes the trusted device in the DB and clears the cookie. Called on sign-out.
 
 ---
 
@@ -1584,7 +1720,9 @@ Update label, sort_order, or is_active. Admin only.
 
 ### `GET /api/lookups/products`
 
-Returns the full product catalog for the new-quote-form SKU dropdowns. Open to all authenticated users.
+Returns the full product catalog for new-quote-form SKU dropdowns.
+
+**Auth:** `requireSession()` (MFA). Returns `401`/`403` without a complete staff session.
 
 **Response `200`:**
 ```json
@@ -1609,15 +1747,33 @@ Returns the full product catalog for the new-quote-form SKU dropdowns. Open to a
 
 Products and materials with `is_active = false` are excluded. Managed via **Admin → Products** tab.
 
+### Admin catalog routes (admin mutations)
+
+**`GET /api/admin/product-types`** — any MFA-complete staff user (SDR lead form, quote forms). All other admin catalog routes (`materials`, `material-groups`, `lookups`, product-type mutations) require **`requireAdmin()`**.
+
+| Route | Auth |
+|-------|------|
+| `GET /api/admin/product-types` | `requireSession()` — all roles |
+| `POST/PATCH/DELETE /api/admin/product-types/*` | `requireAdmin()` |
+| `GET/POST/PATCH/DELETE /api/admin/materials/*` | `requireAdmin()` |
+| `POST/PATCH/DELETE /api/admin/material-groups/*` | `requireAdmin()` |
+| `POST/DELETE /api/admin/product-types/[id]/materials/[matId]` | `requireAdmin()` |
+
 ---
 
 ## Company Settings
 
 ### `GET /api/admin/company`
 
-Returns the single `company_settings` row. Accessible to all authenticated users (quote forms and public page need tax rate + threshold at runtime).
+Returns company settings for quote forms, idle timer, and admin UI.
 
-**Response `200`:**
+**Auth:** `requireSession()` (MFA).
+
+**Field scoping:**
+- **Admin:** full `company_settings` row (including bank / Zelle remittance fields)
+- **Non-admin:** safe subset only — `default_tax_rate`, `high_value_threshold`, `rush_surcharge_percent`, `session_idle_timeout_minutes`
+
+**Response `200` (admin — full row):**
 ```json
 {
   "settings": {
@@ -1635,16 +1791,25 @@ Returns the single `company_settings` row. Accessible to all authenticated users
     "default_tax_rate": "number",
     "high_value_threshold": "number",
     "rush_surcharge_percent": "number | null",
+    "session_idle_timeout_minutes": "number",
+    "bank_name": "string | null",
+    "bank_account_name": "string | null",
+    "bank_account_number": "string | null",
+    "bank_routing_number": "string | null",
+    "zelle_phone": "string | null",
+    "zelle_email": "string | null",
     "updated_at": "string"
   }
 }
 ```
 
+Non-admin responses omit bank / Zelle / branding address fields.
+
 ---
 
 ### `PATCH /api/admin/company`
 
-Update company settings. Admin only.
+Update company settings. **Admin only** (`requireAdmin()`).
 
 **Body:** Any subset of company_settings fields (except `id`).
 
@@ -1655,6 +1820,14 @@ Update company settings. Admin only.
 ---
 
 ## Admin — Integrations
+
+### `GET /api/dev/quote-email-preview`
+
+Renders sample quote email HTML for local design inspection.
+
+**Auth:** None required locally. **Returns `404` in production** (`NODE_ENV === 'production'`).
+
+---
 
 ### `POST /api/admin/integrations/twilio/test`
 
@@ -1707,7 +1880,7 @@ All endpoints return consistent error shapes:
 |-------------|------|
 | `400` | Validation error, missing required field |
 | `401` | No valid session |
-| `403` | Authenticated but wrong role |
+| `403` | Wrong role, MFA incomplete (`MFA_SETUP_REQUIRED` / `MFA_VERIFY_REQUIRED`), or out-of-scope resource |
 | `404` | Resource not found |
 | `409` | Conflict (e.g. duplicate email on invite) |
 | `500` | Unexpected server error |

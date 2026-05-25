@@ -26,12 +26,18 @@ export async function POST(request: Request) {
   if (action === "end") {
     const reason: string = body.reason ?? "unknown";
 
-    // Prefer the cookie-based identity; fall back to body.user_id
-    let userId: string | null = body.user_id ?? null;
-    if (!userId) {
-      const { userId: cookieUserId } = await requireSession();
-      userId = cookieUserId;
+    const { userId: cookieUserId } = await requireSession({ requireMfa: false });
+    const bodyUserId: string | null = body.user_id ?? null;
+
+    if (bodyUserId && cookieUserId && bodyUserId !== cookieUserId) {
+      return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
     }
+
+    if (bodyUserId && !cookieUserId) {
+      return NextResponse.json({ ok: true, warning: "user_id rejected without valid session" });
+    }
+
+    const userId = cookieUserId ?? bodyUserId;
 
     if (!userId) {
       // Cannot identify user — still return ok so sign-out proceeds

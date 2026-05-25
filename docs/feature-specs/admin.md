@@ -19,7 +19,7 @@ The page lives at `app/(app)/admin/page.tsx`. A sub-nav strip (Overview / Settin
 | Dropdown Options | `/admin/settings/dropdowns` | ✅ Built | All lead + order/quote lookup categories |
 | Company Info | `/admin/settings/company` | ✅ Built | Branding, address, tax rate, HVT, rush surcharge |
 | Products | `/admin/settings/products` | ✅ Built | Product types, materials, material–product links |
-| Integrations | `/admin/settings/integrations` | ✅ Built | Twilio SMS + Instantly AI live; Stripe + Zelle placeholder |
+| Integrations | `/admin/settings/integrations` | ✅ Built | Twilio SMS + Instantly AI live; Stripe/Zelle out of scope this stage |
 Built cards show an accent-colored icon + "Open →".
 
 ---
@@ -233,7 +233,10 @@ Two-panel: product list on the left, materials for the selected product on the r
 - `GET/POST /api/admin/product-types` · `PATCH/DELETE /api/admin/product-types/[id]`
 - `GET/POST /api/admin/materials` · `PATCH/DELETE /api/admin/materials/[id]`
 - `POST/DELETE /api/admin/product-types/[id]/materials/[matId]`
-- `GET /api/lookups/products` — anon-safe read used by quote forms and public page
+- `GET /api/lookups/products` — authenticated + MFA (quote form SKU dropdowns)
+- `GET /api/admin/product-types` — authenticated + MFA (lead form product interest list; all roles)
+
+All admin mutation routes require **`requireAdmin()`**. See **`docs/security.md`**.
 
 ---
 
@@ -257,7 +260,12 @@ Single-row `company_settings` table. Used for invoice/PDF headers and quote form
 
 **Input validation (client-side):** Email must be valid format; Website must start with `http://` or `https://`; ZIP must be digits only (max 10 chars); Phone is digits-only via `PhoneInput`. The **Save Changes** button is disabled while any validation error is active; all fields are re-validated on save attempt.
 
-**API calls:** `GET /api/admin/company` · `PATCH /api/admin/company` (admin only)
+**API calls:**
+- `GET /api/admin/company` — all authenticated staff (MFA); **admin receives full row**; other roles receive tax rate, high-value threshold, rush surcharge %, and idle timeout only (no bank/Zelle fields)
+- `PATCH /api/admin/company` — admin only
+
+Payment remittance (bank / Zelle) is edited on **Admin → Settings → Payment** and exposed to customers on `/q/[token]` via the public quotes API — not via the filtered staff `GET`.
+
 ---
 
 ## `/admin/settings/notifications` — Broadcast Notifications

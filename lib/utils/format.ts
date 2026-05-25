@@ -1,5 +1,10 @@
 /** Shared display helpers — use these instead of copying fmt/relativeTime into components. */
 
+/** Round to cents — use for all money totals in API responses. */
+export function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export function formatCurrency(value: number | null | undefined): string {
   if (value == null || Number.isNaN(value)) return "—";
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);

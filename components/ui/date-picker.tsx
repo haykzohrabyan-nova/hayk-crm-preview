@@ -14,6 +14,8 @@ interface DatePickerProps {
   disablePast?: boolean;  // when true, dates before today are not selectable
   className?: string;
   style?: React.CSSProperties;
+  /** Raise popover above modals (z-index 100). */
+  inModal?: boolean;
 }
 
 export function DatePicker({
@@ -24,6 +26,7 @@ export function DatePicker({
   disablePast = false,
   className = "",
   style,
+  inModal = false,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -85,7 +88,7 @@ export function DatePicker({
       {/* Popover */}
       {open && (
         <div
-          className="absolute z-50 mt-1 rounded-xl border p-3"
+          className={`absolute mt-1 rounded-xl border p-3 ${inModal ? "z-[100]" : "z-50"}`}
           style={{
             background: "var(--color-surface)",
             borderColor: "var(--color-border)",

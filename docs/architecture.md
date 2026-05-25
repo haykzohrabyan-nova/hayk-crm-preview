@@ -1,6 +1,6 @@
 # BazaarPrinting CRM — Architecture & Setup
 
-> Internal CRM for BazaarPrinting. Built on Next.js 16 + Supabase (Auth + Postgres) with a proof-of-concept in `sdr-crm-system` as the feature blueprint. See `docs/schema.md`, `docs/api-contract.md`, `docs/rbac.md`, `docs/navigation.md`, and `docs/feature-specs/` for the full production specification.
+> Internal CRM for BazaarPrinting. Built on Next.js 16 + Supabase (Auth + Postgres) with a proof-of-concept in `sdr-crm-system` as the feature blueprint. See `docs/security.md`, `docs/schema.md`, `docs/api-contract.md`, `docs/rbac.md`, `docs/navigation.md`, and `docs/feature-specs/` for the full production specification.
 
 ---
 
@@ -58,11 +58,13 @@ Copy `.env.local.example` → `.env.local` and fill in values from **Supabase �
 ```
 
 ### Key rules
-- `proxy.ts` enforces AAL2 on all app routes. Never add `middleware.ts` alongside it — Next.js 16 will fail the build.
-- **Public paths** (`/q/*`, `/policy/*`, `/api/public/*`): no auth required; logged-in staff visiting `/q/{token}` skip RBAC and MFA redirects so they can preview the customer portal.
+- `proxy.ts` enforces AAL2 on all **app pages**. It does **not** run auth on `/api/*` — Route Handlers call `requireSession()` / `requireAdmin()` instead.
+- **`requireSession()`** enforces MFA on API routes (matches page gate). Trusted-device cookie (`bazaar_mfa_trust`) skips verify when valid.
+- **Public paths** (`/q/*`, `/policy`, `/api/public/*`): no staff auth; logged-in staff visiting `/q/{token}` skip RBAC/MFA redirects for portal preview.
 - After `mfa.verify()`, always call `refreshSession()` then use `window.location.assign()` (not `router.push`) so the new cookies are sent before `proxy.ts` runs on the next request.
 - All redirects go through `lib/auth/safe-return-path.ts` to prevent open redirect attacks.
 - Default post-login destination via `lib/auth/resolve-default-home.ts`: SDR → `/leads`, Sales → `/sales`, Accountant → `/payments`, Admin → `/dashboard`
+- Full security reference: **`docs/security.md`**
 
 ### Supabase settings required
 | Setting | Value |
@@ -192,7 +194,7 @@ BazarCRM/
 │   │   ├── products-section.tsx          ✓ Product types + materials + link manager
 │   │   ├── company-section.tsx           ✓ Company info with validation
 │   │   ├── payment-section.tsx           ✓ Payment remittance info (Wire/ACH/Zelle)
-│   │   ├── integrations-section.tsx      ✓ Twilio + Instantly AI live; Stripe placeholder
+│   │   ├── integrations-section.tsx      ✓ Twilio SMS + Instantly AI live (Stripe/Zelle out of scope)
 │   │   ├── activity-log-section.tsx      ✓ Paginated system activity feed
 │   │   └── user-activity-section.tsx     ✓ Per-user session KPI cards + history table
 │   ├── auth/
@@ -236,7 +238,11 @@ BazarCRM/
 │   │       ├── line-items-form.tsx       ✓ SKU list + Add/Remove controls
 │   │       └── quote-form.tsx            ✓ Pricing summary + adjustments + payment config
 │   ├── reports/
-│   │   └── reports-page.tsx              ✓ Coming-soon report cards (7 planned)
+│   │   ├── reports-page.tsx              ✓ Cash collected, rep scorecards, payment ledger, awaiting collection
+│   │   ├── reports-filters-modal.tsx     ✓ Period + custom date range filters
+│   │   ├── rep-scorecard-table.tsx       ✓ Sales/SDR scorecard rows
+│   │   ├── payment-ledger-section.tsx    ✓ Payment line items in period
+│   │   └── awaiting-collection-section.tsx ✓ Live balance-due snapshot
 │   ├── sales/
 │   │   ├── sales-page.tsx                ✓ Sales pipeline (Pipeline/Hold/Rejected tabs)
 │   │   ├── sales-drawer.tsx              ✓ Sales lead work drawer
@@ -258,7 +264,11 @@ BazarCRM/
 │   ├── auth/
 │   │   ├── safe-return-path.ts           ✓ Redirect safety
 │   │   ├── resolve-default-home.ts       ✓ Post-login destination
-│   │   └── require-session.ts            ✓ Route Handler auth helper
+│   │   ├── require-session.ts            ✓ Route Handler auth + MFA (AAL2 / trust cookie)
+│   │   ├── require-admin.ts              ✓ Admin role gate (builds on requireSession)
+│   │   ├── mfa-required.ts               ✓ Per-user MFA requirement flag
+│   │   ├── mfa-trust.ts                  ✓ Trusted-device cookie (server) + sessionStorage bridge (client)
+│   │   └── remember-mfa-client.ts        ✓ "Remember this device" flag (sessionStorage only)
 │   ├── types/index.ts                    ✓ Shared TypeScript types (Lead, Customer, Activity,
 │   │                                       JobTicket, QuoteSku, LookupValue, etc.)
 │   └── utils/
@@ -279,10 +289,12 @@ BazarCRM/
 │       ├── lead-list-select.ts          ✓ Slim lead workspace column definitions (reference)
 │       ├── fetch-lead.ts                ✓ Client helper — full lead fetch for drawers
 │       ├── lead-access.ts               ✓ canReadLead() — GET /api/leads/[id] authorization
+│       ├── ticket-access.ts             ✓ canAccessTicket() / canMutateTicket() — ticket GET/PDF/print/PATCH
 │       └── email.ts                     ✓ Email utility helpers
 ├── supabase/
-│   └── migrations/                       ✓ 73 migrations (001–072 + 073 performance indexes)
-├── docs/                                 ✓ All feature specs + architecture docs
+│   ├── schema.sql                        ✓ Consolidated DDL + seeds (single file — run on fresh projects)
+│   └── README.md                         ✓ Setup notes
+├── docs/                                 ✓ Feature specs + architecture + security.md
 ├── proxy.ts                              ✓ AAL2 + RBAC session enforcement
 ├── components.json                       ✓ shadcn config — style: base-nova
 ├── vercel.json                           ✓
@@ -386,4 +398,15 @@ npm run build
 npm run reset-test-data
 ```
 
-**Auth bypass in dev:** If `NEXT_PUBLIC_SUPABASE_URL` is empty in `.env.local`, `proxy.ts` skips all auth checks so you can work on the UI without Supabase credentials.
+## Related documentation
+
+| Doc | Contents |
+|-----|----------|
+| **`docs/security.md`** | Auth model, browser storage, API vs RLS, Supabase dashboard |
+| `docs/rbac.md` | Role × endpoint matrix |
+| `docs/api-contract.md` | Full Route Handler reference |
+| `docs/schema.md` | Tables, RLS policies, `supabase/schema.sql` |
+
+**Dev note:** If `NEXT_PUBLIC_SUPABASE_URL` is empty in `.env.local`, `proxy.ts` skips page auth checks so you can work on UI without Supabase credentials. **Never deploy production without env vars set.**
+
+---

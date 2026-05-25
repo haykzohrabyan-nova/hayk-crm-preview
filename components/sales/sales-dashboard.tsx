@@ -8,6 +8,9 @@ import {
   Briefcase,
   DollarSign,
 } from "lucide-react";
+import { formatCurrency as formatMoney } from "@/lib/utils/format";
+import { KPI_HELP } from "@/lib/utils/kpi-help-text";
+import { KpiHelpLine } from "@/components/ui/kpi-help-line";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -19,6 +22,7 @@ interface SalesKpis {
   on_hold: number;
   won: number;
   won_value: number;
+  cash_collected: number;
   pipeline_value: number;
 }
 
@@ -42,12 +46,14 @@ function KpiCard({
   label,
   value,
   subtext,
+  help,
   icon,
   accent = false,
 }: {
   label: string;
   value: string | number;
   subtext: string;
+  help?: string;
   icon: React.ReactNode;
   accent?: boolean;
 }) {
@@ -98,6 +104,7 @@ function KpiCard({
         >
           {subtext}
         </p>
+        {help && <KpiHelpLine text={help} variant={accent ? "accent" : "default"} />}
       </div>
     </div>
   );
@@ -178,40 +185,53 @@ export function SalesDashboard() {
         ) : data ? (
           <>
             <KpiCard
-              label="Won Value"
-              value={formatCurrency(data.won_value)}
+              label="Cash Collected"
+              value={formatMoney(data.cash_collected)}
               subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.cash_collected}
               icon={<DollarSign className="h-4 w-4" />}
               accent
+            />
+            <KpiCard
+              label="Released Order Value"
+              value={formatCurrency(data.won_value)}
+              subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.released_order_value}
+              icon={<TrendingUp className="h-4 w-4" />}
             />
             <KpiCard
               label="New in Pipeline"
               value={data.new_in_pipeline}
               subtext="waiting to be claimed"
+              help={KPI_HELP.new_in_pipeline}
               icon={<TrendingUp className="h-4 w-4" />}
             />
             <KpiCard
               label="Active Deals"
               value={data.active_deals}
               subtext="ongoing"
+              help={KPI_HELP.active_deals}
               icon={<Briefcase className="h-4 w-4" />}
             />
             <KpiCard
               label="Won"
               value={data.won}
               subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.won}
               icon={<CheckCircle className="h-4 w-4" />}
             />
             <KpiCard
               label="On Hold"
               value={data.on_hold}
               subtext="paused deals"
+              help={KPI_HELP.on_hold_sales}
               icon={<Clock className="h-4 w-4" />}
             />
             <KpiCard
               label="Pipeline Value"
               value={formatCurrency(data.pipeline_value)}
-              subtext="current total"
+              subtext="your quotes · current total"
+              help={KPI_HELP.pipeline_value_sales}
               icon={<DollarSign className="h-4 w-4" />}
             />
           </>

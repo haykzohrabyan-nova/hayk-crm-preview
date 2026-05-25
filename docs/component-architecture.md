@@ -135,10 +135,13 @@ PDF rendering uses `@react-pdf/renderer` (server-side only — never imported in
 | `lib/pdf/invoice-pdf.tsx` | `InvoicePDF` React component — renders a `<Document>` + `<Page>` with all invoice sections. Accepts typed props (company, ticket, customer, skus, pricing). Used exclusively by the `/api/tickets/[id]/pdf` route handler. |
 
 **How it works:**
-1. `GET /api/tickets/[id]/pdf` fetches ticket + company_settings from Supabase (admin client).
-2. `renderToBuffer(<InvoicePDF .../>)` produces a PDF binary server-side.
-3. Response: `Content-Type: application/pdf` + `Content-Disposition: attachment`.
-4. In `quote-detail.tsx`, the "Save PDF" button is `<a href="/api/tickets/[id]/pdf" download>` — one click downloads the file with no new tab.
+1. `GET /api/tickets/[id]/pdf` — `requireSession()` (MFA) + `canAccessTicket()` (same scope as ticket detail).
+2. Route fetches ticket + company_settings from Supabase (admin client).
+3. `renderToBuffer(<InvoicePDF .../>)` produces a PDF binary server-side.
+4. Response: `Content-Type: application/pdf` + `Content-Disposition: attachment`.
+5. In `quote-detail.tsx`, the "Save PDF" button is `<a href="/api/tickets/[id]/pdf" download>` — one click downloads the file with no new tab.
+
+`GET /api/tickets/[id]/print` uses the same auth checks; returns HTML for browser print. See **`docs/security.md`**.
 
 **Pattern for adding new PDF types:**
 - Create a new component in `lib/pdf/` (e.g. `lib/pdf/packing-slip.tsx`)
@@ -488,20 +491,21 @@ app/(public)/q/[token]/page.tsx  [Client Component "use client"]
 
 ---
 
-### `/reports` — Reports (placeholder)
+### `/reports` — Reports (admin only)
 
 ```
 app/(app)/reports/page.tsx  [Server Component — thin wrapper]
   └── components/reports/reports-page.tsx  [Client Component "use client"]
-        ├── Navy "Coming After Payment Processing" banner
-        ├── 7 planned report cards in 2-column grid
-        │     Each card: title, description, dependency pill
-        │     Green pill: "Available now" (Win Rate — no Stripe needed)
-        │     Amber pill: "Requires Stripe payment data" (all others)
-        └── "Go to Dashboard →" CTA at bottom
+        ├── reports-filters-modal.tsx      ← Week / Month / Quarter + custom date range
+        ├── rep-scorecard-table.tsx        ← Sales + SDR scorecards (click row to filter)
+        ├── payment-ledger-section.tsx     ← Payment line items in period
+        ├── awaiting-collection-section.tsx ← Live balance-due snapshot (not period-filtered)
+        └── GET /api/reports/summary?period=…&date_from=…&date_to=…&user_id=…
 ```
 
-**Access:** Admin only (grant via Admin → Roles & Permissions after running migration 058)
+**Access:** Admin only (`requireAdmin`). Grant `/reports` via Admin → Roles & Permissions (seeded in `schema.sql` `pages` table).
+
+**Metrics:** Cash collected (offline payments), released order value, win rate, funnel, rep attribution for bonus tracking. See `docs/feature-specs/reports.md`.
 
 ---
 

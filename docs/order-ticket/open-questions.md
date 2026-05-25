@@ -145,7 +145,7 @@ Blocks: Edit button visibility logic, Cancel action, duplicate ticket API endpoi
 - [ ] **C — Lock pricing after first send** — Reps cannot change SKUs/totals once sent (admin duplicate flow for revisions).
 - [ ] **D — A + resend prompt** — Link-only email plus optional nudge to resend when material fields change.
 
-**Tracked in:** [TODO-008](../TODO.md#open--owner-question-sent-quote-email-vs-live-portal-mismatch-todo-008)
+**Tracked in:** [TODO-008](../TODO.md#open--owner-question-sent-quote-email-vs-live-portal-mismatch-todo-008) · Owner HTML: [owner-decisions-pending.html](./owner-decisions-pending.html#question-1)
 
 ---
 
@@ -162,7 +162,7 @@ Blocks: Edit button visibility logic, Cancel action, duplicate ticket API endpoi
 - [ ] **C — Complete with balance-aware email** — Admin override allowed; pickup email explicitly states balance due before pickup.
 - [ ] **D — No pickup email until paid** — Admin may complete internally but customer notification waits until balance clears.
 
-**Tracked in:** [TODO-009](../TODO.md#open--owner-question-mark-completed-with-balance-still-due-todo-009)
+**Tracked in:** [TODO-009](../TODO.md#open--owner-question-mark-completed-with-balance-still-due-todo-009) · Owner HTML: [owner-decisions-pending.html](./owner-decisions-pending.html#question-2)
 
 ---
 

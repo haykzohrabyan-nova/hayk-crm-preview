@@ -2,6 +2,8 @@
 
 Supabase Postgres. All tables are in the `public` schema unless noted. Supabase Auth handles `auth.users`; we extend it with `user_profiles`.
 
+> **Setup:** All DDL is consolidated in **`supabase/schema.sql`** (fresh projects only). Inline references to `migration NNN` below describe when columns were added historically — see [Database setup](#database-setup-supabaseschemasql) at the bottom.
+
 ---
 
 ## Entity Relationship Diagram
@@ -733,9 +735,28 @@ Single-row configuration table (always `id = 1`). Seeded in migration 045. Exten
 | `zelle_email` | `text` | Zelle email address — shown to customers if filled |
 | `updated_at` | `timestamptz` NOT NULL DEFAULT `now()` | |
 
-**RLS:** All authenticated users can SELECT (forms read tax rate, threshold, and payment remittance). Only Admin can UPDATE. No INSERT / DELETE — single seeded row.
+**RLS:** All authenticated users can SELECT at the database level (forms read tax rate, threshold, remittance). **API layer:** `GET /api/admin/company` returns bank/Zelle fields to **admin only**; non-admin roles receive `default_tax_rate`, `high_value_threshold`, `rush_surcharge_percent`, `session_idle_timeout_minutes` only. Only Admin can UPDATE. No INSERT / DELETE — single seeded row.
 
-**Payment remittance fields** (`bank_*` and `zelle_*`) are configured in **Admin → Settings → Payment** and returned by the public quotes API to display Wire/ACH/Zelle instructions on the customer-facing `/q/[token]` page.
+**Payment remittance fields** (`bank_*` and `zelle_*`) are configured in **Admin → Settings → Payment**. Shown to customers on `/q/[token]` via the public quotes API. Staff see them via **admin-only** `GET /api/admin/company` (or admin settings UI).
+
+---
+
+### `mfa_trusted_devices`
+
+Trusted-browser tokens for skipping TOTP verify (30 days). Created by `POST /api/auth/mfa-trust` after AAL2.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `uuid` PK | Embedded in cookie as device id |
+| `user_id` | `uuid` FK | `auth.users` |
+| `token_hash` | `text` | SHA-256 of cookie secret — never store raw token |
+| `expires_at` | `timestamptz` | |
+| `created_at` | `timestamptz` | |
+| `last_used_at` | `timestamptz` | Updated on successful trust validation |
+
+**RLS:** Enabled with **no user policies** — accessed only via service-role in Route Handlers and `proxy.ts`. Do not add SELECT policies in the Supabase dashboard.
+
+Defined in `supabase/schema.sql`.
 
 ---
 
@@ -748,7 +769,7 @@ Admin-managed product catalog for quote line items. Created and seeded in migrat
 - `materials` — text slug PK (e.g. `bopp-white`), 37 materials seeded
 - `product_material_links` — junction table linking materials to product types
 
-Text slug PKs are stable identifiers stored inside `job_tickets.quote_skus` JSONB without FK overhead. Full schema in `supabase/migrations/041_create_products_catalog.sql`.
+Text slug PKs are stable identifiers stored inside `job_tickets.quote_skus` JSONB without FK overhead. Defined in `supabase/schema.sql` (product catalog section).
 
 **RLS:** SELECT open to all (including anon — needed by public quote page and quote forms). INSERT / UPDATE / DELETE: admin only (migration 043 `admin_all_*` policies).
 
@@ -1111,68 +1132,14 @@ The sidebar (`components/layout/sidebar.tsx`) holds all three Supabase channel s
 
 ---
 
-## Migration File Order
+## Database setup (`supabase/schema.sql`)
 
-When creating Supabase migrations under `supabase/migrations/`:
+All DDL is consolidated in **`supabase/schema.sql`** — a single idempotent file for **fresh Supabase projects**. Run it in the SQL Editor on an empty `public` schema.
 
-```
-001_create_roles.sql
-002_create_pages.sql
-003_create_role_permissions.sql
-004_create_user_profiles.sql
-005_create_customers.sql
-006_create_leads.sql
-007_create_job_tickets.sql
-008_create_activities.sql
-009_create_notifications.sql
-010_create_lookup_values.sql
-011_create_indexes.sql
-012_enable_rls.sql
-013_rls_policies.sql
-014_triggers.sql
-015_views.sql                        ← user_profiles_with_role view
-016_functions.sql                    ← current_user_role(), user_can_access_route()
-017_seed_system_roles.sql            ← sdr, sales, admin roles
-018_seed_pages.sql                   ← all app pages
-019_seed_role_permissions.sql        ← default permissions per system role
-020_seed_lookup_values.sql           ← all lead-form dropdown options from POC
-021_seed_dev.sql                     ← dev only (test users, sample leads)
-...
-039_add_initial_interest_to_leads.sql
-040_fix_activities_by_user_fkey.sql
-041_create_products_catalog.sql      ← product_types, material_groups, materials, product_material_links (15 types, 37 materials seeded)
-042_extend_job_tickets.sql           ← 28 new columns on job_tickets + order_sequence_counters table + scoped RLS
-043_fix_admin_rls_full_access.sql    ← admin full-access on all tables; fixes over-permissive product catalog RLS; no DELETE on tickets/leads/activities
-044_seed_order_lookup_values.sql     ← 7 new lookup categories: lamination, finishing, quote_channel, follow_up_freq, ticket_priority, order_source, ticket_payment
-045_create_company_settings.sql      ← company_settings single-row table (branding, contact, address, order defaults)
-046_order_sequence_function.sql      ← increment_order_sequence(p_year int) PL/pgSQL function; atomic ORD-YYYY-NNN generation via order_sequence_counters
-047_enable_job_tickets_realtime.sql  ← REPLICA IDENTITY FULL + ALTER PUBLICATION supabase_realtime ADD TABLE job_tickets
-048_add_sku_lookup_values.sql        ← seeds color_mode, sides, roll_direction lookup categories (10 values total)
-049_remove_statistics_page.sql       ← deletes /statistics from pages table; role_permissions cascade-delete
-050_add_urgent_priority.sql          ← seeds 'Urgent' priority to ticket_priority lookup (system-set only; hidden from UI dropdowns)
-051_backfill_routed_status.sql       ← one-time backfill: finds SDR-created draft quotes whose quote_final_total > company_settings.high_value_threshold and sets ticket_status = 'routed'
-052_add_public_token_to_tickets.sql  ← adds public_token UUID column (DEFAULT gen_random_uuid()) + unique index to job_tickets
-053_add_payment_status_to_tickets.sql ← adds payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK ('unpaid','partial','paid') to job_tickets
-054_add_prepayment_status_to_tickets.sql ← adds prepayment_status TEXT NOT NULL DEFAULT 'pending' CHECK ('pending','paid') to job_tickets; Stripe webhook will update this
-055_reset_tickets_for_testing.sql    ← DEV ONLY: deletes all job_tickets + ticket activities, resets order_sequence_counters, resets Won/Quoted leads back to Ongoing/Validated. **Superseded for full resets** by `npm run reset-test-data` (see `scripts/full-test-reset.mjs` + migration 076)
-056_add_idle_timeout_to_company_settings.sql ← adds session_idle_timeout_minutes INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to company_settings
-057_create_user_sessions.sql         ← user_sessions table: one row per login session; tracks signed_in_at, signed_out_at, sign_out_reason ('manual'|'auto'|'deactivated'|'unknown'); RLS: users read/write own rows, admin reads all via service role
-058_add_reports_page.sql             ← seeds /reports page entry
-059_add_has_design_to_leads.sql      ← adds has_design jsonb column to leads for per-product design flags
-060_add_routed_by_id_to_tickets.sql  ← adds routed_by_id uuid FK → auth.users to job_tickets; set at ticket creation when ticket_status = 'routed'; never changed on claim so SDR retains read-only visibility
-061_backfill_routed_by_id.sql        ← one-time backfill: finds existing routed/claimed tickets via activities log (order_ticket_created) and sets routed_by_id to the original SDR creator
-065_payment_remittance.sql           ← company wire/ACH/Zelle remittance fields on company_settings
-066_per_ticket_payment_config.sql    ← per-ticket payment strategy, channels, deposit, recording columns on job_tickets
-068_accountant_role_and_payment_evidence.sql ← accountant system role + payment_evidence_url/submitted_at on job_tickets
-069_production_and_completed_pages.sql ← /production and /completed page seeds + role permissions (production nav removed in 079)
-079_remove_production_page.sql       ← DELETE /production from pages; in-production merged into /orders
-070_payment_status_columns.sql       ← idempotent add of payment_status/prepayment_status if missing
-071_payment_evidence_amount.sql      ← payment_evidence_amount column; backfill incorrectly auto-paid evidence tickets
-072_net_terms_auto_production.sql    ← net terms auto-release to in_production support
-073_performance_indexes.sql          ← partial indexes for orders, production, leads count queries
-074_quote_reference_codes.sql        ← quote_sequence_counters, increment_quote_sequence RPC, QUO-YYYY-NNNN on quote create
-075_won_on_production_release.sql    ← backfill leads.sales_status = Won to match tickets in in_production/completed
-076_full_test_reset.sql              ← DEV ONLY: SQL wipe of tickets, activities, evidence fields, sequence counters (no storage)
-077_quote_source.sql                 ← quote_source column on job_tickets (direct Quotes-page creates)
-078_customer_authority.sql           ← customers.authority; backfill from leads; drop quote_authority
-```
+**Includes:** final table definitions, indexes, RLS, functions (`increment_order_sequence`, `increment_quote_sequence`), triggers, views, Realtime publication, grants, and seed data (roles including `accountant`, pages, permissions, lookups, product catalog, `company_settings`).
+
+**Not included:** dev/test seed rows, one-time backfills, and reset scripts. For local test wipes use `npm run reset-test-data` (`scripts/full-test-reset.mjs`).
+
+**Existing production DBs:** do not re-run the full file. Apply targeted SQL for new columns/tables only, or patch via the Supabase dashboard.
+
+See `supabase/README.md` for setup notes.

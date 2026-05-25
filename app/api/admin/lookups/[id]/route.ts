@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 // PATCH /api/admin/lookups/[id] — update label, sort_order, or is_active
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
   const { id } = await params;
   const body = await request.json();
@@ -37,6 +41,9 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
   const { id } = await params;
 

@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: Ctx) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const { id } = await params;
   const admin = createAdminClient();
   const body = await request.json();
@@ -42,6 +46,9 @@ export async function PATCH(request: Request, { params }: Ctx) {
 }
 
 export async function DELETE(_request: Request, { params }: Ctx) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const { id } = await params;
   const admin = createAdminClient();
 

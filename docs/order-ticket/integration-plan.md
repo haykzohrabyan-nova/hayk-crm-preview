@@ -136,7 +136,7 @@ Expanded `job_tickets` definition, added `order_sequence_counters`, `company_set
 | `app/api/admin/product-types/route.ts` + `[id]/route.ts` | REST | CRUD for product types |
 | `app/api/admin/lookups/route.ts` + `[id]/route.ts` | REST | CRUD for lookup_values (with in-use safety check on delete) |
 | `app/api/admin/company/route.ts` | REST | GET + PATCH for company_settings |
-| `app/api/lookups/products/route.ts` | REST (public) | OrderDrawer product lookup (anon-safe) |
+| `app/api/lookups/products/route.ts` | REST (authenticated + MFA) | Quote form / OrderDrawer product lookup |
 
 ---
 

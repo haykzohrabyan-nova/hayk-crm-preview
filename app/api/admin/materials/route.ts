@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 export async function GET() {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
 
   const { data: groups, error: gErr } = await admin
@@ -46,6 +50,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
   const body = await request.json();
   const { id, name, group_id, sort_order, facility } = body;

@@ -1,6 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { formatCurrency as formatMoney } from "@/lib/utils/format";
+import { KPI_HELP } from "@/lib/utils/kpi-help-text";
+import type { TeamMemberMetrics } from "@/lib/utils/team-dashboard-metrics";
+import { KpiHelpLine } from "@/components/ui/kpi-help-line";
 import {
   Users,
   TrendingUp,
@@ -15,22 +20,6 @@ import {
 
 type Period = "week" | "month" | "quarter";
 
-interface SdrPerformanceRow {
-  id: string;
-  full_name: string;
-  handled: number;
-  routed: number;
-  rejected: number;
-  quote_value: number;
-  share_pct: number;
-}
-
-interface BreakdownItem {
-  reason?: string;
-  source?: string;
-  count: number;
-}
-
 interface AdminKpis {
   total_leads: number;
   open_leads: number;
@@ -41,11 +30,9 @@ interface AdminKpis {
   inbox_leads: number;
   routed_leads: number;
   won_leads: number;
-  total_revenue: number;
+  cash_collected: number;
   pipeline_value: number;
-  sdr_performance: SdrPerformanceRow[];
-  rejection_reasons: BreakdownItem[];
-  source_breakdown: BreakdownItem[];
+  team_member_metrics: Record<string, TeamMemberMetrics>;
 }
 
 interface TeamMember {
@@ -116,6 +103,7 @@ function KpiCard({
   label,
   value,
   subtext,
+  help,
   icon,
   accent = false,
   subStats,
@@ -123,6 +111,7 @@ function KpiCard({
   label: string;
   value: string | number;
   subtext: string;
+  help?: string;
   icon: React.ReactNode;
   accent?: boolean;
   subStats?: { label: string; value: number; color: string }[];
@@ -174,6 +163,7 @@ function KpiCard({
         >
           {subtext}
         </p>
+        {help && <KpiHelpLine text={help} variant={accent ? "accent" : "default"} />}
         {subStats && subStats.length > 0 && (
           <div className="mt-2.5 flex items-center gap-2 flex-wrap">
             {subStats.map((s) => (
@@ -218,7 +208,99 @@ function KpiCardSkeleton() {
 
 // ─── Team Section ─────────────────────────────────────────────────────────────
 
-function TeamSection() {
+// ─── Team member work metrics (below session row) ────────────────────────────
+
+function MetricCell({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: string | number;
+  valueColor?: string;
+}) {
+  return (
+    <div>
+      <p
+        className="text-[10px] font-medium uppercase tracking-wide mb-0.5"
+        style={{ color: "var(--color-text-muted)" }}
+      >
+        {label}
+      </p>
+      <p
+        className="text-[13px] font-semibold tabular-nums"
+        style={{ color: valueColor ?? "var(--color-text-primary)" }}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function TeamMemberWorkMetrics({
+  role,
+  metrics,
+  periodLabel,
+}: {
+  role: string;
+  metrics: TeamMemberMetrics | undefined;
+  periodLabel: string;
+}) {
+  if (!metrics) return null;
+
+  const hasSdr =
+    role === "sdr" &&
+    (metrics.handled > 0 ||
+      metrics.routed > 0 ||
+      metrics.rejected > 0 ||
+      metrics.sourced_cash > 0);
+  const hasSales =
+    role === "sales" &&
+    (metrics.cash_collected > 0 ||
+      metrics.released_order_value > 0 ||
+      metrics.awaiting_collection > 0 ||
+      metrics.pipeline_value > 0);
+
+  if (!hasSdr && !hasSales) return null;
+
+  return (
+    <div className="space-y-1.5 pt-1" style={{ borderTop: "1px solid var(--color-border)" }}>
+      {role === "sdr" && hasSdr && (
+        <div className="grid grid-cols-3 gap-2">
+          <MetricCell label="Handled" value={metrics.handled} />
+          <MetricCell label="Routed" value={metrics.routed} valueColor="var(--color-success)" />
+          <MetricCell label="Sourced" value={formatMoney(metrics.sourced_cash)} />
+        </div>
+      )}
+      {role === "sales" && hasSales && (
+        <div className="grid grid-cols-3 gap-2">
+          <MetricCell label="Collected" value={formatMoney(metrics.cash_collected)} />
+          <MetricCell label="Released" value={formatMoney(metrics.released_order_value)} />
+          <MetricCell
+            label="Balance due"
+            value={formatMoney(metrics.awaiting_collection)}
+            valueColor={
+              metrics.awaiting_collection > 0 ? "var(--color-warning)" : undefined
+            }
+          />
+        </div>
+      )}
+      <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
+        {role === "sales" && metrics.awaiting_collection > 0
+          ? `${periodLabel.toLowerCase()} · balance due is live snapshot`
+          : periodLabel.toLowerCase()}
+      </p>
+    </div>
+  );
+}
+
+function TeamSection({
+  periodLabel,
+  teamMetrics,
+}: {
+  periodLabel: string;
+  teamMetrics: Record<string, TeamMemberMetrics>;
+}) {
   const [members, setMembers] = useState<TeamMember[] | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
 
@@ -246,13 +328,16 @@ function TeamSection() {
 
   return (
     <section>
-      <div className="mb-3 flex items-center gap-2.5">
+      <div className="mb-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
         <h2
           className="text-[13px] font-semibold uppercase tracking-[0.06em]"
           style={{ color: "var(--color-text-muted)" }}
         >
           Team
         </h2>
+        <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+          Sessions · last 7 days · work metrics · {periodLabel.toLowerCase()}
+        </span>
         {activeNow > 0 && (
           <span
             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
@@ -352,7 +437,12 @@ function TeamSection() {
                 </div>
               </div>
 
-              {/* Active deals — sales only */}
+              <TeamMemberWorkMetrics
+                role={m.role_name}
+                metrics={teamMetrics[m.id]}
+                periodLabel={periodLabel}
+              />
+
               {m.role_name === "sales" && m.claimed_leads > 0 && (
                 <p className="text-[11px] font-medium" style={{ color: "var(--color-accent-dark)" }}>
                   {m.claimed_leads} active deal{m.claimed_leads !== 1 ? "s" : ""}
@@ -436,16 +526,25 @@ export function AdminDashboard() {
         ) : data ? (
           <>
             <KpiCard
-              label="Total Revenue"
-              value={formatCurrency(data.total_revenue)}
+              label="Cash Collected"
+              value={formatMoney(data.cash_collected)}
               subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.cash_collected}
               icon={<DollarSign className="h-4 w-4" />}
               accent
+            />
+            <KpiCard
+              label="Pipeline Value"
+              value={formatCurrency(data.pipeline_value)}
+              subtext="current total"
+              help={KPI_HELP.pipeline_value}
+              icon={<DollarSign className="h-4 w-4" />}
             />
             <KpiCard
               label="Total Leads"
               value={data.total_leads}
               subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.total_leads}
               icon={<Users className="h-4 w-4" />}
               subStats={[
                 { label: "Open",       value: data.open_leads,      color: "var(--color-success)" },
@@ -459,194 +558,45 @@ export function AdminDashboard() {
               label="In Inbox"
               value={data.inbox_leads}
               subtext="waiting for SDR"
+              help={KPI_HELP.inbox_leads}
               icon={<Clock className="h-4 w-4" />}
             />
             <KpiCard
               label="Routed to Sales"
               value={data.routed_leads}
               subtext="active pipeline"
+              help={KPI_HELP.routed_to_sales}
               icon={<TrendingUp className="h-4 w-4" />}
             />
             <KpiCard
               label="Won"
               value={data.won_leads}
               subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.won}
               icon={<CheckCircle className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Pipeline Value"
-              value={formatCurrency(data.pipeline_value)}
-              subtext="current total"
-              icon={<DollarSign className="h-4 w-4" />}
             />
           </>
         ) : null}
       </div>
 
-      {/* Team */}
-      <TeamSection />
-
-      {/* SDR Performance Table */}
-      {!loading && data && data.sdr_performance.length > 0 && (
-        <section>
-          <h2
-            className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em]"
-            style={{ color: "var(--color-text-muted)" }}
+      {!loading && data && (
+        <p className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
+          Cash collected matches Reports for the same period. Order value, balances due, and payment
+          ledger are on{" "}
+          <Link
+            href="/reports"
+            className="font-medium underline-offset-2 hover:underline"
+            style={{ color: "var(--color-accent-dark)" }}
           >
-            SDR Performance — {PERIOD_LABELS[period]}
-          </h2>
-          <div
-            className="rounded-[10px] border overflow-hidden"
-            style={{ borderColor: "var(--color-border)" }}
-          >
-            <table className="w-full text-[13px]">
-              <thead>
-                <tr style={{ background: "var(--color-row-alt)", borderBottom: "1px solid var(--color-border)" }}>
-                  {["Name", "Handled", "Routed", "Rejected", "Quote Value", "Share"].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-2.5 text-left font-medium uppercase tracking-[0.06em] text-[11px]"
-                      style={{ color: "var(--color-text-muted)" }}
-                    >
-                      {h}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.sdr_performance.map((row, idx) => (
-                  <tr
-                    key={row.id}
-                    style={{
-                      background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
-                      borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
-                    }}
-                  >
-                    <td className="px-4 py-3 font-medium" style={{ color: "var(--color-text-primary)" }}>
-                      {row.full_name}
-                    </td>
-                    <td className="px-4 py-3" style={{ color: "var(--color-text-primary)" }}>{row.handled}</td>
-                    <td className="px-4 py-3" style={{ color: "var(--color-success)" }}>{row.routed}</td>
-                    <td className="px-4 py-3" style={{ color: "var(--color-danger)" }}>{row.rejected}</td>
-                    <td className="px-4 py-3" style={{ color: "var(--color-text-primary)" }}>
-                      {formatCurrency(row.quote_value)}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-1.5 rounded-full"
-                          style={{
-                            width: `${row.share_pct}%`,
-                            minWidth: row.share_pct > 0 ? "4px" : "0",
-                            maxWidth: "80px",
-                            background: "var(--color-accent)",
-                          }}
-                        />
-                        <span style={{ color: "var(--color-text-muted)" }}>{row.share_pct}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+            Reports
+          </Link>
+          .
+        </p>
       )}
 
-      {/* Rejection Reasons + Source Breakdown — 2 col grid */}
-      {!loading && data && (data.rejection_reasons.length > 0 || data.source_breakdown.length > 0) && (
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-
-          {/* Rejection Reasons */}
-          {data.rejection_reasons.length > 0 && (
-            <section>
-              <h2
-                className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em]"
-                style={{ color: "var(--color-text-muted)" }}
-              >
-                Rejection Reasons
-              </h2>
-              <div
-                className="rounded-[10px] border p-4 space-y-3"
-                style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-              >
-                {(() => {
-                  const max = data.rejection_reasons[0]?.count ?? 1;
-                  return data.rejection_reasons.map((item) => (
-                    <div key={item.reason}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[12px] truncate pr-2" style={{ color: "var(--color-text-primary)" }}>
-                          {item.reason?.replace(/_/g, " ")}
-                        </span>
-                        <span className="text-[12px] font-medium shrink-0" style={{ color: "var(--color-text-muted)" }}>
-                          {item.count}
-                        </span>
-                      </div>
-                      <div
-                        className="h-1.5 w-full rounded-full overflow-hidden"
-                        style={{ background: "var(--color-border)" }}
-                      >
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.round((item.count / max) * 100)}%`,
-                            background: "var(--color-danger)",
-                            opacity: 0.7,
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </section>
-          )}
-
-          {/* Source Breakdown */}
-          {data.source_breakdown.length > 0 && (
-            <section>
-              <h2
-                className="mb-3 text-[13px] font-semibold uppercase tracking-[0.06em]"
-                style={{ color: "var(--color-text-muted)" }}
-              >
-                Lead Sources
-              </h2>
-              <div
-                className="rounded-[10px] border p-4 space-y-3"
-                style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-              >
-                {(() => {
-                  const max = data.source_breakdown[0]?.count ?? 1;
-                  return data.source_breakdown.map((item) => (
-                    <div key={item.source}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-[12px] truncate pr-2" style={{ color: "var(--color-text-primary)" }}>
-                          {item.source}
-                        </span>
-                        <span className="text-[12px] font-medium shrink-0" style={{ color: "var(--color-text-muted)" }}>
-                          {item.count}
-                        </span>
-                      </div>
-                      <div
-                        className="h-1.5 w-full rounded-full overflow-hidden"
-                        style={{ background: "var(--color-border)" }}
-                      >
-                        <div
-                          className="h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.round((item.count / max) * 100)}%`,
-                            background: "var(--color-accent)",
-                          }}
-                        />
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </section>
-          )}
-
-        </div>
+      {/* Team */}
+      {!loading && data && (
+        <TeamSection periodLabel={periodLabel} teamMetrics={data.team_member_metrics ?? {}} />
       )}
 
     </div>

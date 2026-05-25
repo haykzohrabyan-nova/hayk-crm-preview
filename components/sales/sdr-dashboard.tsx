@@ -10,6 +10,8 @@ import {
   DollarSign,
   PieChart,
 } from "lucide-react";
+import { KPI_HELP } from "@/lib/utils/kpi-help-text";
+import { KpiHelpLine } from "@/components/ui/kpi-help-line";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -22,6 +24,7 @@ interface SdrKpis {
   on_hold: number;
   rejected: number;
   quote_value: number;
+  sourced_cash: number;
   share_pct: number;
 }
 
@@ -45,12 +48,14 @@ function KpiCard({
   label,
   value,
   subtext,
+  help,
   icon,
   accent = false,
 }: {
   label: string;
   value: string | number;
   subtext: string;
+  help?: string;
   icon: React.ReactNode;
   accent?: boolean;
 }) {
@@ -101,6 +106,7 @@ function KpiCard({
         >
           {subtext}
         </p>
+        {help && <KpiHelpLine text={help} variant={accent ? "accent" : "default"} />}
       </div>
     </div>
   );
@@ -181,46 +187,60 @@ export function SdrDashboard() {
         ) : data ? (
           <>
             <KpiCard
+              label="Sourced Cash"
+              value={formatCurrency(data.sourced_cash)}
+              subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.sourced_cash}
+              icon={<DollarSign className="h-4 w-4" />}
+              accent
+            />
+            <KpiCard
               label="Inbox"
               value={data.inbox_count}
-              subtext="leads waiting to be claimed"
+              subtext="waiting to be claimed"
+              help={KPI_HELP.inbox_leads}
               icon={<Clock className="h-4 w-4" />}
-              accent
             />
             <KpiCard
               label="Handled"
               value={data.handled}
               subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.handled}
               icon={<CheckCircle className="h-4 w-4" />}
             />
             <KpiCard
               label="Routed to Sales"
               value={data.routed}
               subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.routed}
               icon={<TrendingUp className="h-4 w-4" />}
             />
             <KpiCard
               label="On Hold"
               value={data.on_hold}
               subtext="currently paused"
+              help={KPI_HELP.on_hold_sdr}
               icon={<Clock className="h-4 w-4" />}
             />
             <KpiCard
               label="Rejected"
               value={data.rejected}
               subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.rejected}
               icon={<XCircle className="h-4 w-4" />}
             />
             <KpiCard
               label="Quote Value"
               value={formatCurrency(data.quote_value)}
-              subtext={`${periodLabel.toLowerCase()}`}
+              subtext={periodLabel.toLowerCase()}
+              help={KPI_HELP.quote_value_sdr}
               icon={<DollarSign className="h-4 w-4" />}
             />
             <KpiCard
               label="My Share"
               value={`${data.share_pct}%`}
               subtext="of all SDR work this period"
+              help={KPI_HELP.share_pct}
               icon={<PieChart className="h-4 w-4" />}
             />
           </>

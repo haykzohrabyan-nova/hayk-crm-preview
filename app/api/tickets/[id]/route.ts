@@ -12,6 +12,7 @@ import {
   resolveTicketId,
 } from "@/lib/utils/reference-codes";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
+import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
 import type { PaymentConfig } from "@/lib/types";
 
 type Params = { params: Promise<{ id: string }> };
@@ -193,16 +194,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   // Scope check: reps can only view their own tickets.
   // Exception: sales/admin can view 'routed' tickets (SDR hand-offs awaiting claim).
   // Exception: accountant can view any ticket (matches scopeJobTicketsQuery on list routes).
-  const isRoutedForSales =
-    ticket.ticket_status === "routed" &&
-    (roleName === "sales" || roleName === "admin");
-
-  if (
-    roleName !== "admin" &&
-    roleName !== "accountant" &&
-    ticket.created_by_id !== userId &&
-    !isRoutedForSales
-  ) {
+  if (!canAccessTicket(ticket, userId, roleName)) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
@@ -387,7 +379,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // Normal update — enforce ownership (non-admins can only update their own tickets).
   // Accountants are allowed to record payment on any ticket (they have no created tickets).
-  if (roleName !== "admin" && roleName !== "accountant" && existing.created_by_id !== userId) {
+  if (!canMutateTicket(existing, userId, roleName)) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 

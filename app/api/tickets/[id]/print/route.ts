@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
+import { requireSession } from "@/lib/auth/require-session";
+import { canAccessTicket } from "@/lib/utils/ticket-access";
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -30,24 +30,11 @@ export async function GET(
 ) {
   const { id: rawId } = await params;
 
-  // ── Auth check ────────────────────────────────────────────────────────────
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() { return cookieStore.getAll(); },
-        setAll() {},
-      },
-    }
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return new NextResponse("Unauthorized", { status: 401 });
+  const { userId, roleName, errorResponse } = await requireSession();
+  if (errorResponse) {
+    return new NextResponse("Unauthorized", { status: errorResponse.status });
   }
 
-  // ── Fetch data ────────────────────────────────────────────────────────────
   const admin = createAdminClient();
   const ticketId = await resolveTicketId(admin, rawId);
   if (!ticketId) {
@@ -73,6 +60,10 @@ export async function GET(
 
   if (!ticket) {
     return new NextResponse("Not found", { status: 404 });
+  }
+
+  if (!canAccessTicket(ticket, userId!, roleName)) {
+    return new NextResponse("Forbidden", { status: 403 });
   }
 
   const company = rawCompany as CompanySettings | null;

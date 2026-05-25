@@ -85,6 +85,8 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 
 ## API Endpoint Access Matrix
 
+All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Admin-only routes also call **`requireAdmin()`**. See **`docs/security.md`**.
+
 | Endpoint | SDR | Sales | Admin |
 |----------|:---:|:-----:|:-----:|
 | `GET /api/leads/workspace` | ✓ | ✓ (filtered) | ✓ (all) |
@@ -101,7 +103,7 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | `GET /api/customers/companies` | ✓ | ✓ | ✓ |
 | `GET /api/customers/[id]` | ✓ | ✓ | ✓ |
 | `PATCH /api/customers/[id]` | ✓ | ✓ | ✓ |
-| `POST /api/customers/[id]/merge` | ✓ | ✗ | ✓ |
+| `POST /api/customers/[id]/merge` | ✗ | ✓ | ✓ |
 | `GET /api/tickets` | ✓ (own) | ✓ (own + all routed) | ✓ (all) |
 | `POST /api/tickets` | ✓ | ✓ | ✓ |
 | `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | Accountant: evidence review OR in_production/completed |
@@ -113,7 +115,9 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | `GET /api/payments/counts` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
 | `GET /api/production/orders` | ✗ | ✗ | ✓ | ✓ | Legacy — prefer `GET /api/orders/orders` |
 | `GET /api/completed/orders` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
-| `GET /api/tickets/[id]/evidence` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — signed URL; hidden from sales/SDR on order detail UI |
+| `GET /api/tickets/[id]/pdf` | ✓ (own scope) | ✓ (own + routed) | ✓ | Accountant: own scope via ticket access helper |
+| `GET /api/tickets/[id]/print` | ✓ (own scope) | ✓ (own + routed) | ✓ | Same as PDF |
+| `GET /api/tickets/[id]/evidence` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — signed URL |
 | `GET /api/tickets/counts` | ✓ | ✓ | ✓ |
 | `GET /api/lookups` | ✓ | ✓ | ✓ |
 | `GET /api/lookups/products` | ✓ | ✓ | ✓ |
@@ -122,16 +126,17 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | `POST /api/activity` | ✓ | ✓ | ✓ |
 | `GET /api/dashboard/kpis` | ✓ | ✓ | ✓ |
 | `POST /api/outreach/send` | ✓ | ✓ | ✓ |
-| `GET /api/admin/company` | ✓ | ✓ | ✓ |
+| `GET /api/admin/company` | ✓ (safe fields) | ✓ (safe fields) | ✓ (full row) | Non-admin: tax rate, thresholds, idle timeout only |
 | `PATCH /api/admin/company` | ✗ | ✗ | ✓ |
+| `GET /api/admin/product-types` | ✓ | ✓ | ✓ | Authenticated + MFA; inactive types included |
+| `POST /api/admin/product-types` | ✗ | ✗ | ✓ |
+| `PATCH/DELETE /api/admin/product-types/[id]` | ✗ | ✗ | ✓ |
 | `GET /api/admin/users` | ✗ | ✗ | ✓ |
 | `POST /api/admin/users/create` | ✗ | ✗ | ✓ |
 | `PATCH /api/admin/users/[id]` | ✗ | ✗ | ✓ |
 | `GET /api/admin/lookups` | ✗ | ✗ | ✓ |
 | `POST /api/admin/lookups` | ✗ | ✗ | ✓ |
 | `PATCH/DELETE /api/admin/lookups/[id]` | ✗ | ✗ | ✓ |
-| `GET/POST /api/admin/product-types` | ✗ | ✗ | ✓ |
-| `PATCH/DELETE /api/admin/product-types/[id]` | ✗ | ✗ | ✓ |
 | `GET/POST /api/admin/materials` | ✗ | ✗ | ✓ |
 | `PATCH/DELETE /api/admin/materials/[id]` | ✗ | ✗ | ✓ |
 | `GET /api/admin/activity-log` | ✗ | ✗ | ✓ |
@@ -150,16 +155,20 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 | `notifications` | Read + Update own | Read + Update own | Read + Write all (admin broadcasts) |
 | `lookup_values` | Read active | Read active | Read all + Write |
 | `product_types` / `materials` | Read all | Read all | Read + Write all |
-| `company_settings` | Read | Read | Read + Write |
+| `company_settings` | Read (DB); API filters bank for non-admin | Read (DB); API filters bank | Read + Write |
+| `mfa_trusted_devices` | No client access | No client access | No client access (service role only) |
 
 ---
 
 ## `proxy.ts` Extension
 
-The existing `proxy.ts` enforces:
+The existing `proxy.ts` enforces on **pages** (not `/api/*`):
+
 1. Unauthenticated → redirect to `/login`
 2. No TOTP enrolled → redirect to `/setup-2fa` *(skipped when `user_profiles.mfa_required = false`)*
-3. Session not AAL2 → redirect to `/verify-2fa` *(skipped when `mfa_required = false`)*
+3. Session not AAL2 → redirect to `/verify-2fa` *(skipped when trusted-device cookie valid or `mfa_required = false`)*
+
+**API routes** mirror steps 1–3 via `requireSession()` in every Route Handler. See **`docs/security.md`**.
 
 Admins can toggle **`mfa_required`** per user on **Admin → Users** (confirmation dialog). Default is `true` for all users. Admins cannot disable their own 2FA.
 
@@ -309,7 +318,7 @@ Role is read directly from Supabase (`user_profiles.roles(name)`) in each compon
 | Leads: scoped tabs show ALL leads | ✗ | ✗ | ✓ |
 | Route Lead / Reject buttons | ✓ | ✗ | ✓ |
 | Sales: Claim Lead button | ✗ | ✓ | ✓ |
-| CRM: Merge contact | ✓ | ✗ | ✓ |
+| CRM: Merge contact | ✗ | ✓ | ✓ |
 | Quotes: "Routed to Sales" tab | ✗ | ✓ | ✓ |
 | Quotes: Claim button (routed → draft + ownership transfer) | ✗ | ✓ | ✓ |
 | Quotes/New Quote: HVT blocking modal | ✓ (triggered when total > threshold) | ✗ | ✗ |

@@ -190,7 +190,9 @@ A customer is marked **Great Heat** if `heat_tag = 'hot'` OR if any of their lea
 
 ## Merge Duplicate Customers
 
-**When it appears:** "Merge" button on the customer profile page (SDR and Admin only).
+**When it appears:** "Merge" button on the customer profile page (`/crm/customers/[id]`).
+
+**Auth:** `POST /api/customers/[id]/merge` — **Admin and Sales only** (`403` for SDR, Accountant, etc.). Destructive: deletes the source customer after reassigning leads and activities.
 
 **Flow:**
 1. Search input to find the duplicate customer

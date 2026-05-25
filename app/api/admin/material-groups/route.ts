@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 export async function POST(request: Request) {
-  const admin = createAdminClient();
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
   const body = await request.json();
   const { name, facility, sort_order } = body;
 
@@ -10,6 +12,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
 
+  const admin = createAdminClient();
   const { data, error } = await admin
     .from("material_groups")
     .insert({ name: name.trim(), facility: facility ?? null, sort_order: sort_order ?? 0 })

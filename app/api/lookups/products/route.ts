@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireSession } from "@/lib/auth/require-session";
 
-// Public read for the OrderDrawer — returns active product types
-// with their linked active materials grouped by material group.
+// Authenticated read for quote/order forms — active product types with linked materials.
 export async function GET() {
+  const { errorResponse } = await requireSession();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
 
   const { data: types, error: tErr } = await admin

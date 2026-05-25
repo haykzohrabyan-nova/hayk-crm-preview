@@ -466,36 +466,53 @@ export interface AppNotification {
 
 ```typescript
 export interface SdrKpis {
-  period: string
-  leads_handled: number
-  leads_verified: number
-  leads_routed: number
-  leads_rejected: number
-  leads_on_hold: number
+  role: 'sdr'
+  inbox_count: number
+  handled: number
+  routed: number
+  on_hold: number
+  rejected: number
   quote_value: number
-  handled_share_percent: number
+  sourced_cash: number
+  share_pct: number
 }
 
 export interface SalesKpis {
-  period: string
-  leads_in_pipeline: number
-  leads_won: number
-  leads_dropped: number
-  pipeline_value: number
+  role: 'sales'
+  new_in_pipeline: number
+  active_deals: number
+  on_hold: number
+  won: number
   won_value: number
-  order_count: number
+  cash_collected: number
+  pipeline_value: number
+}
+
+export interface TeamMemberMetrics {
+  handled: number
+  routed: number
+  rejected: number
+  sourced_cash: number
+  cash_collected: number
+  released_order_value: number
+  awaiting_collection: number
+  pipeline_value: number
 }
 
 export interface AdminKpis {
-  period: string
+  role: 'admin'
   total_leads: number
+  open_leads: number
+  claimed_leads: number
+  pipeline_leads: number
+  quoted_leads: number
+  ordered_leads: number
   inbox_leads: number
   routed_leads: number
   won_leads: number
-  total_revenue: number
+  cash_collected: number
   pipeline_value: number
-  active_sdr_count: number
-  active_sales_count: number
+  team_member_metrics: Record<string, TeamMemberMetrics>
 }
 
 export type DashboardKpis = SdrKpis | SalesKpis | AdminKpis
@@ -539,6 +556,20 @@ export interface ApiError {
 
 export type ApiResponse<T> = ApiSuccess<T> | ApiError
 ```
+
+### Common Route Handler error codes (May 2026)
+
+Returned as `{ error: string, code: string }` with HTTP status:
+
+| HTTP | `code` | When |
+|------|--------|------|
+| `401` | `UNAUTHENTICATED` | No valid session (`requireSession()`) |
+| `403` | `MFA_SETUP_REQUIRED` | TOTP not enrolled (`user_profiles.mfa_required = true`) |
+| `403` | `MFA_VERIFY_REQUIRED` | Session AAL1 — must verify at `/verify-2fa` |
+| `403` | `FORBIDDEN` | Authenticated but wrong role or out-of-scope resource |
+| `404` | `NOT_FOUND` | Resource missing or no access (ticket scope) |
+
+Full auth model: **`docs/security.md`**.
 
 ---
 

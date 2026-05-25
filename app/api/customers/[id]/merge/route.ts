@@ -6,8 +6,12 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  if (roleName !== "admin" && roleName !== "sales") {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
 
   const { id } = await params;
   const body = await request.json();

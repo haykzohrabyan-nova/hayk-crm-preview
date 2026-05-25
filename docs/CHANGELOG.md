@@ -3,6 +3,208 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-24] — Pre-push doc sync
+
+### Changed
+- `docs/security.md` — RLS policy changes via `schema.sql`, not deleted migration folder
+- `docs/architecture.md`, `docs/component-architecture.md`, `docs/navigation.md`, `docs/session-summary.md` — live `/reports` and integrations wording (Stripe/Zelle out of scope)
+- `docs/feature-specs/admin.md`, `docs/email-template-guide.md` — welcome/password-reset templates; admin integrations note
+- `docs/schema.md`, `docs/order-ticket/README.md` — historical migration refs vs canonical `schema.sql`
+
+## [2026-05-24] — Owner decision review document (HTML)
+
+### Added
+- `docs/order-ticket/owner-decisions-pending.html` — printable HTML for owner sign-off on B6 (quote email vs portal) and B7 (complete with balance due)
+
+### Changed
+- `docs/TODO.md`, `docs/order-ticket/open-questions.md` — link to owner review doc
+
+## [2026-05-24] — Welcome / password-reset email design alignment
+
+### Changed
+- `lib/integrations/welcome-email-template.ts` — matches quote/order email layout: headline, reference card + badge, amber temp-password row, table-based warning, gold CTA, navy footer (welcome + admin password reset variants)
+- `app/api/dev/quote-email-preview/route.ts` — `?template=welcome` and `?template=password-reset` previews (dev only)
+
+## [2026-05-24] — Refresh TODO tracker
+
+### Changed
+- `docs/TODO.md` — rewritten: open items only at top; removed stale archived specs for completed work; Reports Phase 1+2 marked done; online payment phases marked out of scope for current stage
+
+## [2026-05-24] — Consolidate Supabase schema into single file
+
+### Changed
+- `supabase/schema.sql` — expanded to full current production state (through MFA trusted devices, payment columns, accountant role, quote sequences, etc.)
+- Removed 79 numbered files under `supabase/migrations/` — `schema.sql` is now the canonical DDL source
+- `supabase/README.md` — how to run schema on fresh projects + `npm run reset-test-data` for local wipes
+- `docs/schema.md`, `docs/architecture.md` — document single-file setup instead of migration folder
+
+## [2026-05-24] — API security hardening
+
+### Fixed
+- Unauthenticated access to admin catalog/lookup routes — all `/api/admin/{company,lookups,materials,material-groups,product-types}` handlers now require login; mutating routes require admin role
+- `GET /api/admin/company` — non-admin users receive only safe fields (tax rate, thresholds, idle timeout); bank/payment details admin-only
+- MFA bypass via direct API calls — `requireSession()` and `requireAdmin()` now enforce AAL2 (or valid trusted-device cookie), matching `proxy.ts`
+- `GET /api/lookups/products` — requires authenticated session (was open to the internet)
+- `GET /api/dev/quote-email-preview` — returns 404 in production
+- `GET /api/tickets/[id]/pdf` and `/print` — require MFA-complete session and ticket ownership (was any logged-in user + any ticket ID)
+- `POST /api/customers/[id]/merge` — restricted to admin and sales roles (was any logged-in user; deletes a customer record)
+- `POST /api/auth/session` end action — rejects spoofed `user_id` when it does not match the session cookie
+
+### Changed
+- `lib/auth/require-admin.ts` — builds on `requireSession()` instead of duplicating auth logic
+- `lib/auth/mfa-trust.ts` — shared `hasValidMfaTrustFromCookieValue()` for API + proxy
+- `lib/utils/ticket-access.ts` — shared ticket read/write access checks for ticket routes, PDF, and print
+- `.env.local.example` — removed accidentally committed Stripe key placeholders
+
+### Added
+- `docs/security.md` — auth model, browser storage, API vs RLS, Supabase dashboard notes
+
+### Changed (docs)
+- `docs/api-contract.md` — auth helpers, MFA error codes, company field scoping, merge/PDF/session/mfa-trust endpoints
+- `docs/architecture.md` — auth file tree, proxy vs API auth, link to security doc
+- `docs/rbac.md` — API MFA note, merge roles, company/product-types matrix, `mfa_trusted_devices`
+- `docs/schema.md` — `company_settings` API vs RLS, `mfa_trusted_devices` table
+- `docs/session-summary.md`, `docs/feature-specs/admin.md` — security hardening summary
+- `docs/feature-specs/crm.md`, `docs/feature-specs/tickets.md`, `docs/component-architecture.md` — merge roles, PDF/print auth, product lookup auth
+- `docs/types.md` — MFA / auth error codes
+- `docs/order-ticket/product-catalog.md`, `docs/order-ticket/integration-plan.md` — `GET /api/lookups/products` requires staff session
+
+## [2026-05-24] — Documentation sync (dashboard & reports)
+
+### Changed
+- `docs/feature-specs/dashboard.md` — Cash Collected, Team work metrics, removed obsolete SDR table / lead sources sections
+- `docs/feature-specs/reports.md` — Released Order Value, awaiting collection, metric glossary
+- `docs/api-contract.md` — current KPI shapes; `/api/admin/team` and `/api/reports/summary`
+- `docs/types.md`, `docs/session-summary.md`, `docs/feature-specs/invoice-payment.md` — aligned with May 2026 KPI work
+
+### Fixed
+- Reports **Awaiting Collection** KPI — surface background with amber border (was solid warning fill); help text uses normal muted color for readability
+
+### Changed
+- Admin **Team** roster order: SDR → Sales → Accountant (then alphabetical by name within each role)
+
+## [2026-05-24] — Team cards show per-user dashboard metrics
+
+### Added
+- `lib/utils/team-dashboard-metrics.ts` — per-user cash, released value, balance due, pipeline, and SDR activity for admin Team cards
+- **Team** cards: second row after sessions — **Sales** (Collected · Released · Balance due) · **SDR** (Handled · Routed · Sourced)
+
+### Removed
+- Admin dashboard **SDR Performance** table, **Lead Sources**, and **Rejection Reasons** sections (consolidated into Team + Reports)
+
+### Changed
+- Admin dashboard: **Pipeline Value** moved next to **Cash Collected** (top row money metrics)
+
+## [2026-05-24] — KPI help text on dashboards and Reports
+
+### Changed
+- Admin dashboard: **Pipeline Value** moved next to **Cash Collected** (top row money metrics)
+
+### Added
+- `lib/utils/kpi-help-text.ts` — shared one-line explanations for how each KPI is calculated
+- `components/ui/kpi-help-line.tsx` — help text under KPI card values
+- Admin, Sales, SDR dashboards, and Reports KPI cards show calculation hints below each number
+
+## [2026-05-24] — Money metrics consolidated on Reports
+
+### Added
+- Reports **Released Order Value** KPI — quote totals for orders released to production in the selected period (with order count)
+
+### Changed
+- Admin dashboard: removed **Released Order Value** card; cash KPI points to Reports for order value and balances
+- Reports KPI row now groups **Cash Collected**, **Released Order Value**, and **Awaiting Collection** with clearer sublabels
+
+## [2026-05-24] — Reports cash KPI shows cents
+
+### Changed
+- Reports **Total Cash Collected** (and filtered rep **Cash Collected**) use full currency format with two decimal places (e.g. `$837.00`)
+
+### Fixed
+- Reports cash totals used 1-decimal rounding (`$836.60`) while dashboard used cents (`$836.56`) — both now use shared `roundMoney()` (2 decimal places)
+
+## [2026-05-24] — Dashboard KPI alignment with Reports
+
+### Added
+- `lib/utils/dashboard-metrics.ts` — shared cash collected + production release value helpers (same logic as Reports)
+- Admin dashboard **Cash Collected** card (matches Reports)
+- Sales dashboard **Cash Collected** card (rep-attributed payments)
+- SDR dashboard **Sourced Cash** card (SDR-attributed payments)
+
+### Changed
+- `GET /api/dashboard/kpis` — money metrics use recorded payments and `production_released_at` (not ticket `created_at`)
+- Admin: **Total Revenue** renamed to **Released Order Value**; primary accent card is **Cash Collected**
+- Sales: **Won Value** renamed to **Released Order Value**; **Cash Collected** is primary money metric
+- Won counts filter by production release date in the selected period
+- Shared period bounds via `getDashboardPeriodBounds()` (start → end of today, same as Reports presets)
+
+### Fixed
+- Reports team member filter dropdown — empty `()` after names when Supabase returned `roles` as an array
+
+### Changed
+- Reports time/date filters moved into a **Report filters** modal (button in header); team member dropdown stays inline
+- `components/reports/reports-filters-modal.tsx` — extensible modal for future filter types
+
+### Changed
+- Reports filter modal uses shared `DatePicker` (react-day-picker) instead of native browser date inputs
+- `DatePicker` — optional `inModal` prop for correct z-index inside dialogs
+
+### Changed
+- Reports filter modal — preset buttons (Week / Month / Quarter) now update From/To dates immediately
+
+## [2026-05-24] — Reports custom date range + reset filters
+
+### Added
+- Custom **From / To** date pickers with **Apply range** on Reports page
+- **Reset filters** button — clears dates, member filter, returns to This Month
+- `lib/utils/reports-date-range.ts` — shared date range resolution for API + UI
+
+### Changed
+- `GET /api/reports/summary` accepts `date_from` & `date_to` (YYYY-MM-DD) in addition to week/month/quarter presets
+- All period-scoped queries now use start **and** end of range (custom ranges fully bounded)
+- Info banner shows selected range and whether filtering whole team or one member
+
+## [2026-05-24] — Orders list: Received and Balance Due columns
+
+### Changed
+- `components/orders/orders-page.tsx` — desktop table and mobile cards show Total, Received, and Balance Due (`—` when no order total or no payment recorded)
+
+## [2026-05-24] — Reports awaiting collection (outstanding balances)
+
+### Added
+- `awaiting_collection` in reports API — live snapshot of balance still due on open orders
+- `lib/utils/reports-awaiting-collection.ts`, `components/reports/awaiting-collection-section.tsx`
+- KPI card and breakdown by order status (quote sent, in production, completed, etc.)
+
+### Changed
+- Reports KPI row includes **Awaiting Collection** alongside cash collected
+- Rep filter applies to outstanding balances on their attributed orders
+
+## [2026-05-24] — Reports Phase 2 (rep scorecards + payment ledger)
+
+### Added
+- Sales rep cash scorecard — payments attributed to sales owner / quote creator
+- SDR sourced-cash scorecard — payments on routed leads + leads routed count
+- Expandable payment ledger with per-order payment line items and link to `/payments/[id]`
+- Team member filter (`user_id` query param) for bonus review
+- `lib/utils/reports-attribution.ts`, `lib/utils/reports-period-bucket.ts`
+- `components/reports/rep-scorecard-table.tsx`, `components/reports/payment-ledger-section.tsx`
+
+### Changed
+- `GET /api/reports/summary` — rep scorecards, payment ledger, team filter
+- `components/reports/reports-page.tsx` — redesigned layout with KPI cards, team tables, ledger, company overview
+- `docs/feature-specs/reports.md` — Phase 2 rep attribution documented
+
+## [2026-05-24] — Reports page Phase 1 (offline cash + funnel)
+
+### Added
+- `GET /api/reports/summary` — admin-only reports API (cash collected, win rate, quote funnel)
+- `lib/utils/get-period-start.ts` — shared period helper
+- `docs/feature-specs/reports.md` — reports spec
+
+### Changed
+- `components/reports/reports-page.tsx` — live reports with period selector; cash by method, funnel, win rate (replaces Stripe placeholder)
+- Admin-only access message for non-admin roles
+
 ## [2026-05-24] — Remove Stripe/Zelle from admin Integrations tab
 
 ### Removed

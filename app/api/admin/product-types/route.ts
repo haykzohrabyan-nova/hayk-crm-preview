@@ -1,9 +1,13 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { requireAdmin } from "@/lib/auth/require-admin";
+import { requireSession } from "@/lib/auth/require-session";
 
 export async function GET() {
-  const admin = createAdminClient();
+  const { errorResponse } = await requireSession();
+  if (errorResponse) return errorResponse;
 
+  const admin = createAdminClient();
   const { data: types, error: typesErr } = await admin
     .from("product_types")
     .select("id, name, default_print_type, sort_order, is_active, notes, facility")
@@ -32,6 +36,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const { errorResponse } = await requireAdmin();
+  if (errorResponse) return errorResponse;
+
   const admin = createAdminClient();
   const body = await request.json();
   const { id, name, default_print_type, sort_order, notes, facility } = body;

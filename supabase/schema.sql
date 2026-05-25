@@ -1,25 +1,18 @@
 -- =============================================================================
 -- BazaarPrinting CRM — Consolidated Schema
 -- =============================================================================
--- Single-file equivalent of migrations 001–049.
--- Run this on a fresh Supabase project to bring the database to the current
--- production state without executing 50 individual migration files.
+-- Single-file schema for a fresh Supabase project — current production state (May 2026).
+-- Run in the Supabase SQL Editor (or `psql`) on an empty `public` schema.
 --
--- What is included:
---   • All table definitions (final column set after all ALTERs)
---   • Indexes
---   • Row Level Security (enable + final policies)
---   • Functions, triggers, views
---   • Realtime publication + replica identity
---   • Grants
---   • Seed data: roles, pages, role_permissions, lookup_values,
---     product catalog, company_settings
+-- Includes: tables (final column set), indexes, RLS, functions, triggers, views,
+-- Realtime publication, grants, and seed data (roles, pages, permissions, lookups,
+-- product catalog, company_settings).
 --
--- What is NOT included:
---   • Dev/test seed data (021_seed_dev, 026_seed_test_leads)
---   • One-time cleanup / reset scripts (026_cleanup, 033_reset)
+-- Excludes: dev/test seed data, one-time backfills, and reset scripts
+-- (use `npm run reset-test-data` for local test wipes).
 --
--- Safe to re-run: all DDL uses IF NOT EXISTS / OR REPLACE / ON CONFLICT DO NOTHING.
+-- Safe to re-run: DDL uses IF NOT EXISTS / OR REPLACE / ON CONFLICT DO NOTHING.
+-- Realtime `ADD TABLE` may log "already member" on re-run — harmless.
 -- =============================================================================
 
 
@@ -85,6 +78,7 @@ create table if not exists public.customers (
   company     text,
   industry    text,
   website     text,
+  authority   text,
   heat_tag    text        check (heat_tag in ('hot', 'warm', 'cold')),
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
@@ -128,6 +122,7 @@ create table if not exists public.leads (
   locked_at             timestamptz,
   sales_notes           text,
   initial_interest      text,
+  has_design            jsonb       not null default '{}',
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
@@ -210,6 +205,52 @@ create table if not exists public.job_tickets (
   special_requirements               text,
   design_required                    boolean        not null default false,
   die_cut                            boolean        not null default false,
+
+  -- Public customer portal
+  public_token                       uuid           not null default gen_random_uuid(),
+
+  -- Payment lifecycle
+  payment_status                     text           not null default 'unpaid'
+                                                    check (payment_status in ('unpaid', 'partial', 'paid')),
+  prepayment_status                  text           not null default 'pending'
+                                                    check (prepayment_status in ('pending', 'paid')),
+
+  -- Routing / quote metadata
+  routed_by_id                       uuid           references auth.users(id),
+  quote_source                       text,
+
+  -- Per-ticket payment strategy (checkout / portal)
+  ticket_payment_strategy            text           check (ticket_payment_strategy in ('partial', 'full', 'net')),
+  ticket_deposit_type                text           check (ticket_deposit_type in ('percent', 'fixed')),
+  ticket_deposit_value               numeric,
+  ticket_dep_handling                text           check (ticket_dep_handling in ('cash', 'gateway')),
+  ticket_receipt_id                  text,
+  ticket_partial_channels            text[],
+  ticket_full_channels               text[],
+  ticket_require_client_confirm      boolean,
+  ticket_net_terms_label             text,
+  ticket_quote_channel               text           check (ticket_quote_channel in ('sms', 'email', 'both')),
+  ticket_dest_phone                  text,
+  ticket_dest_email                  text,
+  ticket_follow_up_enabled           boolean,
+  ticket_follow_up_count             integer,
+  ticket_follow_up_freq              text           check (ticket_follow_up_freq in ('daily', 'every-3-days', 'weekly')),
+
+  -- Payment recording
+  payment_amount_received            numeric,
+  payment_paid_at                    timestamptz,
+  payment_method_used                text,
+  deposit_amount                     numeric,
+  deposit_paid_at                    timestamptz,
+  deposit_receipt_id                 text,
+  deposit_method                     text,
+  balance_paid_at                    timestamptz,
+  production_released_at             timestamptz,
+
+  -- Customer-submitted payment evidence (accountant review queue)
+  payment_evidence_url               text,
+  payment_evidence_submitted_at      timestamptz,
+  payment_evidence_amount            numeric,
 
   notes                              text,
   created_at                         timestamptz    not null default now(),
@@ -329,10 +370,50 @@ create table if not exists public.company_settings (
   email                   text,
   website                 text,
   logo_url                text,
-  default_tax_rate        numeric     not null default 8.25,
-  high_value_threshold    numeric     not null default 5000,
-  rush_surcharge_percent  numeric,
-  updated_at              timestamptz not null default now()
+  default_tax_rate                 numeric     not null default 8.25,
+  high_value_threshold             numeric     not null default 5000,
+  rush_surcharge_percent           numeric,
+  session_idle_timeout_minutes     integer     not null default 20
+                                   check (session_idle_timeout_minutes >= 5 and session_idle_timeout_minutes <= 480),
+  bank_name                        text,
+  bank_account_name                text,
+  bank_account_number              text,
+  bank_routing_number              text,
+  zelle_phone                      text,
+  zelle_email                      text,
+  updated_at                       timestamptz not null default now()
+);
+
+-- ── user_sessions ─────────────────────────────────────────────────────────────
+-- One row per login session; populated by POST /api/auth/session.
+
+create table if not exists public.user_sessions (
+  id                uuid        primary key default gen_random_uuid(),
+  user_id           uuid        not null references auth.users(id) on delete cascade,
+  signed_in_at      timestamptz not null default now(),
+  signed_out_at     timestamptz,
+  sign_out_reason   text        check (sign_out_reason in ('manual', 'auto', 'deactivated', 'unknown')),
+  created_at        timestamptz not null default now()
+);
+
+-- ── mfa_trusted_devices ───────────────────────────────────────────────────────
+-- Trusted-device tokens (service role only — no RLS policies).
+
+create table if not exists public.mfa_trusted_devices (
+  id           uuid        primary key default gen_random_uuid(),
+  user_id      uuid        not null references auth.users(id) on delete cascade,
+  token_hash   text        not null,
+  expires_at   timestamptz not null,
+  created_at   timestamptz not null default now(),
+  last_used_at timestamptz
+);
+
+-- ── quote_sequence_counters ───────────────────────────────────────────────────
+-- One row per calendar year; atomically incremented for QUO-YYYY-NNNN codes.
+
+create table if not exists public.quote_sequence_counters (
+  year        int  primary key,
+  last_number int  not null default 0
 );
 
 
@@ -350,6 +431,7 @@ create index if not exists leads_assigned_sdr_id_idx  on public.leads(assigned_s
 create index if not exists leads_sales_owner_id_idx   on public.leads(sales_owner_id);
 create index if not exists leads_locked_by_id_idx     on public.leads(locked_by_id);
 create index if not exists leads_created_at_idx       on public.leads(created_at desc);
+create index if not exists leads_prev_status_idx      on public.leads(prev_status) where prev_status is not null;
 
 -- customers
 create index if not exists customers_phone_idx   on public.customers(phone);
@@ -366,6 +448,18 @@ create index if not exists tickets_created_by_idx     on public.job_tickets(crea
 create unique index if not exists tickets_reference_code_idx
   on public.job_tickets(reference_code)
   where reference_code is not null;
+create unique index if not exists job_tickets_public_token_idx
+  on public.job_tickets(public_token);
+
+create index if not exists job_tickets_payment_evidence_pending_idx
+  on public.job_tickets(ticket_status)
+  where payment_evidence_url is not null and payment_paid_at is null;
+create index if not exists job_tickets_in_production_released_idx
+  on public.job_tickets(production_released_at desc)
+  where ticket_status = 'in_production';
+create index if not exists job_tickets_order_status_idx
+  on public.job_tickets(created_at desc)
+  where ticket_status in ('order', 'cancelled');
 
 -- activities
 create index if not exists activities_customer_id_idx on public.activities(customer_id);
@@ -389,6 +483,14 @@ create index if not exists materials_group_idx    on public.materials(group_id);
 create index if not exists pml_prod_idx           on public.product_material_links(product_type_id);
 create index if not exists pml_mat_idx            on public.product_material_links(material_id);
 
+-- user_sessions
+create index if not exists user_sessions_user_id_idx      on public.user_sessions(user_id);
+create index if not exists user_sessions_signed_in_at_idx on public.user_sessions(signed_in_at desc);
+
+-- mfa_trusted_devices
+create index if not exists mfa_trusted_devices_user_id_idx    on public.mfa_trusted_devices(user_id);
+create index if not exists mfa_trusted_devices_expires_at_idx on public.mfa_trusted_devices(expires_at);
+
 
 -- =============================================================================
 -- 3. ENABLE ROW LEVEL SECURITY
@@ -409,7 +511,10 @@ alter table public.material_groups         enable row level security;
 alter table public.materials               enable row level security;
 alter table public.product_material_links  enable row level security;
 alter table public.order_sequence_counters enable row level security;
+alter table public.quote_sequence_counters enable row level security;
 alter table public.company_settings        enable row level security;
+alter table public.user_sessions           enable row level security;
+alter table public.mfa_trusted_devices     enable row level security;
 
 
 -- =============================================================================
@@ -729,6 +834,34 @@ do $$ begin
     with check (public.current_user_role() = 'admin');
 exception when duplicate_object then null; end $$;
 
+-- ── user_sessions ─────────────────────────────────────────────────────────────
+
+do $$ begin
+  create policy "users_read_own_sessions" on public.user_sessions
+    for select using (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "users_insert_own_sessions" on public.user_sessions
+    for insert with check (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "users_update_own_sessions" on public.user_sessions
+    for update using (auth.uid() = user_id);
+exception when duplicate_object then null; end $$;
+
+-- ── quote_sequence_counters ───────────────────────────────────────────────────
+
+do $$ begin
+  create policy "admin_all_quote_sequence_counters" on public.quote_sequence_counters
+    for all
+    using (public.current_user_role() = 'admin')
+    with check (public.current_user_role() = 'admin');
+exception when duplicate_object then null; end $$;
+
+-- mfa_trusted_devices: RLS enabled, no policies — service role only
+
 
 -- =============================================================================
 -- 6. TRIGGERS
@@ -817,6 +950,24 @@ begin
 end;
 $$;
 
+create or replace function public.increment_quote_sequence(p_year int)
+returns int
+language plpgsql
+security definer
+as $$
+declare
+  v_next int;
+begin
+  insert into public.quote_sequence_counters (year, last_number)
+  values (p_year, 1)
+  on conflict (year)
+  do update set last_number = quote_sequence_counters.last_number + 1
+  returning last_number into v_next;
+
+  return v_next;
+end;
+$$;
+
 
 -- =============================================================================
 -- 9. GRANTS
@@ -853,16 +1004,17 @@ alter publication supabase_realtime add table public.job_tickets;
 -- =============================================================================
 
 insert into public.roles (name, display_name, is_system) values
-  ('sdr',   'SDR',           true),
-  ('sales', 'Sales Rep',     true),
-  ('admin', 'Administrator', true)
+  ('sdr',        'SDR',           true),
+  ('sales',      'Sales Rep',     true),
+  ('admin',      'Administrator', true),
+  ('accountant', 'Accountant',    true)
 on conflict (name) do nothing;
 
 
 -- =============================================================================
 -- 12. SEED — PAGES (final nav state after all add/remove migrations)
 -- =============================================================================
--- Removed: /tickets (028), /statistics (049), /settings (025), /overview (031)
+-- Removed: /tickets (028), /statistics (049), /settings (025), /overview (031), /production (079)
 -- Sections: 'main' = sidebar nav, 'admin' = admin sidebar, 'admin-sub' = admin tabs
 
 insert into public.pages (route, display_name, icon, section, sort_order) values
@@ -871,9 +1023,12 @@ insert into public.pages (route, display_name, icon, section, sort_order) values
   ('/leads',                        'Leads',                'Inbox',             'main',      1),
   ('/sales',                        'Sales Pipeline',       'Briefcase',         'main',      2),
   ('/crm',                          'CRM',                  'BookUser',          'main',      3),
+  ('/payments',                     'Payments',             'CreditCard',        'main',      4),
   ('/quotes',                       'Quoted Requests',      'MessageSquareQuote','main',      5),
   ('/orders',                       'Orders',               'ClipboardList',     'main',      6),
+  ('/completed',                    'Completed',            'PackageCheck',      'main',      7),
   ('/notifications',                'Notifications',        'Bell',              'main',      8),
+  ('/reports',                      'Reports',              'BarChart3',         'main',      9),
   -- Admin sidebar entry
   ('/admin',                        'Admin Panel',          'ShieldCheck',       'admin',     0),
   -- Admin legacy sub-pages (section changed from 'admin' → 'admin-sub' in 022)
@@ -924,6 +1079,15 @@ select r.id, p.id
 from public.roles r
 cross join public.pages p
 where r.name = 'admin'
+on conflict do nothing;
+
+-- Accountant pages (payment review queue + order visibility)
+insert into public.role_permissions (role_id, page_id)
+select r.id, p.id
+from public.roles r
+cross join public.pages p
+where r.name = 'accountant'
+  and p.route in ('/dashboard', '/payments', '/orders', '/completed')
 on conflict do nothing;
 
 
@@ -1030,6 +1194,7 @@ insert into public.lookup_values (category, value, label, sort_order) values
   ('ticket_priority', 'low',    'Low',    0),
   ('ticket_priority', 'normal', 'Normal', 1),
   ('ticket_priority', 'high',   'High',   2),
+  ('ticket_priority', 'urgent', 'Urgent', 3),
 
   -- ── order source ───────────────────────────────────────────────────────────
   ('order_source', 'quoted', 'Quoted (from lead)', 0),
