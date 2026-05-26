@@ -69,7 +69,7 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 }
 ```
 
-> **Performance (2026-05-22):** List responses use a **slim select** — table columns only. Drawers call `GET /api/leads/[id]` for the full record (interests, quantities, comments, joins).
+> **Performance (2026-05-22):** List responses use a **slim select** — table columns only. Includes `interests` and `quantities` for Product Interests column formatting. Drawers call `GET /api/leads/[id]` for the full record (comments, joins, etc.).
 
 ---
 
@@ -130,6 +130,7 @@ Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id 
 
 **Business rules:**
 - Phone normalized to digits-only before save
+- **`website`** (optional): validated with `validateWebsite()`; stored via `normalizeWebsite()` (auto-prefix `https://` when protocol omitted). Returns `400` if invalid.
 - **Customer linking:** pass either `customer_id` (selected existing) OR `create_customer: true` (create new from form data) OR neither (no customer yet — can be linked later)
 - If `create_customer: true`: server creates a `customers` row from the lead's contact fields (including **`authority`**), sets `customer_id` on the new lead
 - If `customer_id` is provided and **`authority`** is set: updates `customers.authority` (not `leads.authority`)
@@ -442,6 +443,7 @@ Update a customer profile. Called when SDR chooses "Yes, update profile" on the 
 
 **Business rules:**
 - Phone normalized to digits-only
+- **`website`:** if non-empty, validated and normalized (`https://` prefixed when omitted); empty string clears to `null`
 - Logs `customer_updated` activity
 
 **Response `200`:**

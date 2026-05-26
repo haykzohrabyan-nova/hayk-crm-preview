@@ -10,7 +10,6 @@ export interface LinkedLeadInfo {
   id: string;
   urgency: string | null;
   source: string | null;
-  initial_interest: string | null;
   sdr_comment: string | null;
   is_returning_customer: boolean;
   interests: Record<string, boolean> | null;
@@ -66,8 +65,7 @@ export function LinkedLeadCard({ lead, title = "Linked Lead", productionReleased
 
   const tags: { label: string; accent?: boolean }[] = [];
   if (industryLabel) tags.push({ label: industryLabel });
-  if (lead.initial_interest) tags.push({ label: lead.initial_interest, accent: true });
-  interestItems.slice(0, 2).forEach((item) => tags.push({ label: item }));
+  interestItems.slice(0, 3).forEach((item) => tags.push({ label: item, accent: true }));
 
   return (
     <div

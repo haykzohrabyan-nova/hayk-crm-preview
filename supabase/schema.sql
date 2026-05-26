@@ -87,7 +87,7 @@ create table if not exists public.customers (
 -- ── leads ─────────────────────────────────────────────────────────────────────
 -- FKs reflect final state after migrations 029 (sales_owner_id) and
 -- 032 (locked_by_id) re-pointed those columns to user_profiles.
--- Columns sales_notes (034) and initial_interest (039) are included.
+-- Columns sales_notes (034) are included.
 
 create table if not exists public.leads (
   id                    uuid        primary key default gen_random_uuid(),
@@ -121,7 +121,6 @@ create table if not exists public.leads (
   locked_by_id          uuid        references public.user_profiles(id) on delete set null,
   locked_at             timestamptz,
   sales_notes           text,
-  initial_interest      text,
   has_design            jsonb       not null default '{}',
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()

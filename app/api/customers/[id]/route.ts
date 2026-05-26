@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
+import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 
 export async function GET(
   _request: NextRequest,
@@ -19,7 +20,7 @@ export async function GET(
     admin
       .from("leads")
       .select(
-        "id, status, sales_status, source, urgency, created_at, updated_at, sdr_id, rejection_reason, tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)",
+        "id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, sdr_id, rejection_reason, tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)",
       )
       .eq("customer_id", id)
       .order("created_at", { ascending: false }),
@@ -66,6 +67,17 @@ export async function PATCH(
         update[field] = digitsOnly(String(body[field] ?? ""));
       } else if (field === "authority") {
         update[field] = normalizeAuthority(String(body[field] ?? ""));
+      } else if (field === "website") {
+        const raw = String(body[field] ?? "").trim();
+        if (raw) {
+          const websiteErr = validateWebsite(raw);
+          if (websiteErr) {
+            return NextResponse.json({ error: websiteErr, code: "VALIDATION_ERROR" }, { status: 400 });
+          }
+          update[field] = normalizeWebsite(raw);
+        } else {
+          update[field] = null;
+        }
       } else {
         update[field] = body[field];
       }

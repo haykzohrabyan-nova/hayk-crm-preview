@@ -338,9 +338,9 @@ Where key customer-facing fields are stored (May 2026):
 | **Industry** | `customers.industry` | Add Lead, Verify, New Quote upsert, CRM Edit | Admin lookup value; UI shows label |
 | **Source (lead)** | `leads.source` | Add Lead, Verify | Per inquiry |
 | **Source (direct quote)** | `job_tickets.quote_source` | New Quote Customer tab or CRM Info tab | Requires `from_quote_page: true`; no auto-lead |
-| **Website** | `customers.website` | Lead/quote/CRM customer flows | |
+| **Website** | `customers.website` | Lead/quote/CRM customer flows | Validated via `lib/utils/website.ts`; optional; normalized with `https://` prefix when omitted |
 
-**Migrations:** `077_quote_source.sql`, `078_customer_authority.sql`
+**Migrations:** `077_quote_source.sql`, `078_customer_authority.sql`, `077_drop_initial_interest.sql` (removes deprecated `leads.initial_interest`)
 
 ---
 

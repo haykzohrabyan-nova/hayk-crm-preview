@@ -20,6 +20,7 @@ import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { URGENCY_NOT_DEFINED, urgencyDbToForm, urgencyFormToDb } from "@/lib/utils/urgency-form";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
+import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 import {
   Select,
   SelectContent,
@@ -48,7 +49,6 @@ interface DrawerForm {
   website: string;
   urgency: string;
   is_returning_customer: boolean;
-  initial_interest: string;
   sdr_comment: string;
   rejection_reason: string;
   rejection_notes: string;
@@ -100,7 +100,6 @@ function formFromLead(lead: Lead): DrawerForm {
     website: c?.website ?? "",
     urgency: urgencyDbToForm(lead.urgency),
     is_returning_customer: lead.is_returning_customer,
-    initial_interest: lead.initial_interest ?? "",
     sdr_comment: lead.sdr_comment ?? "",
     rejection_reason: "",
     rejection_notes: "",
@@ -207,6 +206,7 @@ export function VerifyDrawer({
   const [showUpdateCustomer, setShowUpdateCustomer] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [websiteError, setWebsiteError] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
 
   const isRejected = lead.status === "Rejected";
@@ -296,7 +296,7 @@ export function VerifyDrawer({
         phone: form.phone,
         company: form.company,
         industry: form.industry,
-        website: form.website,
+        website: normalizeWebsite(form.website),
       }),
     });
   }
@@ -312,21 +312,26 @@ export function VerifyDrawer({
       urgency: urgencyFormToDb(form.urgency),
       is_returning_customer: form.is_returning_customer,
       sdr_comment: form.sdr_comment || null,
-      initial_interest: form.initial_interest.trim() || null,
       interests,
       quantities,
       has_design,
     };
   }
 
+  function validateContactFields(): boolean {
+    const pErr = validatePhone(form.phone);
+    const eErr = form.email.trim() ? validateEmail(form.email) : null;
+    const wErr = validateWebsite(form.website);
+    setPhoneError(pErr);
+    setEmailError(eErr);
+    setWebsiteError(wErr);
+    return !(pErr || eErr || wErr);
+  }
+
   // ── Action: Save ──────────────────────────────────────────────────────────
 
   async function handleSave() {
-    const pErr = validatePhone(form.phone);
-    const eErr = form.email.trim() ? validateEmail(form.email) : null;
-    setPhoneError(pErr);
-    setEmailError(eErr);
-    if (pErr || eErr) return;
+    if (!validateContactFields()) return;
 
     setSaving(true);
     if (lead.customer_id && hasContactChanged(lead, form)) {
@@ -344,6 +349,7 @@ export function VerifyDrawer({
   // ── Action: Create Quote/Order — save lead silently then navigate ──────────
 
   async function handleCreateQuote() {
+    if (!validateContactFields()) return;
     setSaving(true);
     // Save any pending lead changes silently (no toast / no close)
     const updated = await patchLead(buildLeadPayload());
@@ -382,6 +388,7 @@ export function VerifyDrawer({
   // ── Action: Route to Sales ────────────────────────────────────────────────
 
   async function doRoute() {
+    if (!validateContactFields()) return;
     setSaving(true);
     const updated = await patchLead({
       ...buildLeadPayload(),
@@ -406,6 +413,7 @@ export function VerifyDrawer({
   // ── Action: Resume (from On Hold) ────────────────────────────────────────
 
   async function handleResume() {
+    if (!validateContactFields()) return;
     setSaving(true);
     // Save any edited form fields before resuming
     await patchLead(buildLeadPayload());
@@ -427,6 +435,7 @@ export function VerifyDrawer({
 
   async function doHold() {
     if (!holdForm.hold_reason) return;
+    if (!validateContactFields()) return;
     setSaving(true);
     // Save any edited form fields before setting hold status
     await patchLead(buildLeadPayload());
@@ -454,6 +463,7 @@ export function VerifyDrawer({
 
   async function doReject() {
     if (!form.rejection_reason) return;
+    if (!validateContactFields()) return;
     setSaving(true);
     const updated = await patchLead({
       ...buildLeadPayload(),
@@ -755,12 +765,43 @@ export function VerifyDrawer({
                     <label className={labelCls} style={labelStyle}>Website / Social</label>
                     <input
                       className={inputCls}
-                      style={inputStyle}
+                      style={{
+                        ...inputStyle,
+                        borderColor: websiteError ? "var(--color-danger)" : "var(--color-border)",
+                      }}
+                      type="url"
+                      inputMode="url"
+                      autoComplete="url"
                       value={form.website}
-                      onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+                      onChange={(e) => {
+                        setForm((f) => ({ ...f, website: e.target.value }));
+                        setWebsiteError(null);
+                      }}
+                      onBlur={(e) => {
+                        const wErr = validateWebsite(form.website);
+                        setWebsiteError(wErr);
+                        e.currentTarget.style.borderColor = wErr ? "var(--color-danger)" : "var(--color-border)";
+                        e.currentTarget.style.boxShadow = "none";
+                      }}
                       disabled={isReadOnly}
-                      placeholder="https://"
+                      placeholder="https://example.com"
+                      aria-invalid={!!websiteError}
+                      aria-describedby={websiteError ? "website-error" : undefined}
+                      onFocus={(e) => {
+                        e.currentTarget.style.borderColor = "var(--color-accent)";
+                        e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
+                      }}
                     />
+                    {websiteError && (
+                      <p
+                        id="website-error"
+                        className="mt-1.5 text-[12px] font-medium"
+                        style={{ color: "var(--color-danger)" }}
+                        role="alert"
+                      >
+                        {websiteError}
+                      </p>
+                    )}
                   </div>
 
                   {/* Urgency */}
@@ -785,29 +826,6 @@ export function VerifyDrawer({
                   </div>
 
                 </div>
-
-                {/* Initial Interest */}
-                <section className="mt-3">
-                  <h3 className="text-[12px] font-semibold uppercase tracking-[0.06em] mb-2" style={{ color: "var(--color-text-muted)" }}>
-                    Initial Interest
-                  </h3>
-                  <input
-                    className={inputCls}
-                    style={inputStyle}
-                    value={form.initial_interest}
-                    onChange={(e) => setForm((f) => ({ ...f, initial_interest: e.target.value }))}
-                    disabled={isReadOnly}
-                    placeholder="e.g. Labels, custom boxes for product launch…"
-                    onFocus={(e) => {
-                      e.currentTarget.style.borderColor = "var(--color-accent)";
-                      e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
-                    }}
-                    onBlur={(e) => {
-                      e.currentTarget.style.borderColor = "var(--color-border)";
-                      e.currentTarget.style.boxShadow = "none";
-                    }}
-                  />
-                </section>
 
                 {/* Returning customer */}
                 <label

@@ -113,6 +113,7 @@ Table of all leads ever created for this customer.
 |--------|-------|
 | Status | `sales_status` via `StatusPill` — not SDR inbox `status` |
 | Source | Lookup label (e.g. Phone call) |
+| Product Interests | `ProductName[quantity]` from `interests` + `quantities` |
 | Urgency | `UrgencyPill` |
 | Quote / Order | `QUO-…` / `ORD-…` from nested `job_tickets` on `GET /api/customers/[id]` — no amounts |
 | Created | Relative time |

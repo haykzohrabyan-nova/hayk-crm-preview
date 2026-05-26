@@ -3,6 +3,7 @@
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { StatusPill } from "@/components/ui/status-pill";
 import { relativeTime } from "@/lib/utils/format";
+import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-interests";
 import {
   leadSourceLabel,
   leadTicketRefsForLead,
@@ -15,12 +16,14 @@ export type LeadHistoryRow = {
   sales_status: string | null;
   source: string | null;
   urgency: string | null;
+  interests?: Record<string, boolean> | null;
+  quantities?: Record<string, string | number> | null;
   created_at: string;
   /** Won-tab API embeds tickets on each lead */
   tickets?: LeadHistoryTicket[];
 };
 
-const COLUMNS = ["Status", "Source", "Urgency", "Quote / Order", "Created"] as const;
+const COLUMNS = ["Status", "Source", "Product Interests", "Urgency", "Quote / Order", "Created"] as const;
 
 function TicketRefBadges({ quoteRef, orderRef }: { quoteRef: string | null; orderRef: string | null }) {
   if (!quoteRef && !orderRef) {
@@ -95,6 +98,16 @@ function HistoryRowCells({
       <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
         {leadSourceLabel(lead.source, sourceLabels)}
       </td>
+      <td className="px-3 py-2.5 max-w-[220px] text-xs" style={{ color: "var(--color-text-muted)" }}>
+        {(() => {
+          const products = formatLeadProductInterests(lead.interests, lead.quantities);
+          return (
+            <span className="block truncate" title={products !== "—" ? products : undefined}>
+              {products}
+            </span>
+          );
+        })()}
+      </td>
       <td className="px-3 py-2.5">
         <UrgencyPill urgency={lead.urgency} />
       </td>
@@ -140,6 +153,14 @@ function MobileCard({
           <span>Source</span>
           <span className="normal-case tracking-normal">{leadSourceLabel(lead.source, sourceLabels)}</span>
         </div>
+        {formatLeadProductInterests(lead.interests, lead.quantities) !== "—" && (
+          <div className="flex justify-between gap-2">
+            <span className="shrink-0">Product Interests</span>
+            <span className="normal-case tracking-normal text-right truncate max-w-[200px]">
+              {formatLeadProductInterests(lead.interests, lead.quantities)}
+            </span>
+          </div>
+        )}
         <div className="flex justify-between items-center gap-2">
           <span>Quote / Order</span>
           <TicketRefBadges quoteRef={quoteRef} orderRef={orderRef} />

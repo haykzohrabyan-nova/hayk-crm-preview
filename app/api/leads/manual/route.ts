@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
+import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 
 export async function POST(request: NextRequest) {
   const { userId, errorResponse } = await requireSession();
@@ -23,7 +24,6 @@ export async function POST(request: NextRequest) {
     urgency,
     is_returning_customer,
     sdr_comment,
-    initial_interest,
     interests,
     quantities,
     has_design,
@@ -56,6 +56,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (website != null && String(website).trim()) {
+    const websiteErr = validateWebsite(String(website));
+    if (websiteErr) {
+      return NextResponse.json({ error: websiteErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+  }
+
   const admin = createAdminClient();
   let resolvedCustomerId: string | null = customer_id ?? null;
 
@@ -70,7 +77,7 @@ export async function POST(request: NextRequest) {
         phone: digitsOnly(phone),
         company: company ?? null,
         industry: industry ?? null,
-        website: website ?? null,
+        website: website ? normalizeWebsite(String(website)) : null,
         authority: normalizeAuthority(authority),
       })
       .select()
@@ -104,7 +111,6 @@ export async function POST(request: NextRequest) {
       sdr_id: userId,
       is_returning_customer: is_returning_customer ?? false,
       sdr_comment: sdr_comment ?? null,
-      initial_interest: initial_interest ?? null,
       interests: interests ?? {},
       quantities: quantities ?? {},
       has_design: has_design ?? {},

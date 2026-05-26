@@ -3,6 +3,41 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-26] — Documentation sync (leads UX)
+
+### Changed
+- Docs synced for May 26 leads UX: `session-summary.md`, `feature-specs/leads-sdr.md`, `feature-specs/leads-sales.md`, `feature-specs/crm.md`, `component-architecture.md`, `navigation.md`, `api-contract.md`, `mvp-scope.md`, `architecture.md`, `order-ticket/integration-plan.md`, `types.md`, `schema.md`, `supabase/README.md`
+
+## [2026-05-26] — Website / Social URL validation on leads
+
+### Added
+- `lib/utils/website.ts` — `validateWebsite()` and `normalizeWebsite()` for optional website/social URLs
+
+### Changed
+- Add Lead modal and verify drawer — validate Website / Social on blur and save; inline error; auto-prefix `https://` when omitted
+- `POST /api/leads/manual` and `PATCH /api/customers/[id]` — server-side website validation
+
+## [2026-05-26] — Leads table: Product Interests with quantity
+
+### Changed
+- All Leads table — Product Interests column shows `ProductName[quantity]` (e.g. `Booklets[1111]`) from `interests` + `quantities`
+- Sales Pipeline (`/sales`) — Product Interests column on Pipeline, On Hold, and Rejected tabs (desktop + mobile)
+- Leads **Directed to Sales** tab — Product Interests column (desktop + mobile)
+- Leads **On Hold**, **Rejected**, and **Won** tabs — Product Interests column (desktop + mobile; Won via `LeadHistoryTable`)
+- `GET /api/leads/workspace` — includes `quantities` in list select
+- `lib/utils/format-lead-product-interests.ts` — shared formatter for lead product rows
+
+## [2026-05-26] — Remove Initial Interest field; use Product Interests only
+
+### Removed
+- `leads.initial_interest` column — redundant free-text field; product catalog interests (`interests` jsonb) is the source of truth
+- Initial Interest input from verify drawer; API accepts no longer on manual lead create
+
+### Changed
+- All Leads table — "Products" column shows selected product interests instead of Initial Interest
+- `components/ui/linked-lead-card.tsx` — product interest tags only (no initial_interest tag)
+- `supabase/migrations/077_drop_initial_interest.sql` — drops column on existing databases
+
 ## [2026-05-24] — Pre-push doc sync
 
 ### Changed
@@ -2069,12 +2104,12 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-12] — Quote detail page Linked Lead card shows full context
 
 ### Changed
-- `components/quotes/quote-detail.tsx` — `LinkedLeadCard` updated to match `new-quote-form.tsx`: now shows industry, returning customer badge, source, urgency, "What they need", product interests + quantities, and SDR notes. Updated `Lead` interface to include `source`, `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`.
+- `components/quotes/quote-detail.tsx` — `LinkedLeadCard` shows industry, returning customer badge, source, urgency, product interests + quantities, and SDR notes. Updated `Lead` interface to include `source`, `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`. *(May 2026: removed deprecated `initial_interest` / "What they need".)*
 
 ## [2026-05-12] — New quote lead info card shows full lead context
 
 ### Changed
-- `components/quotes/new-quote-form.tsx` — `LeadInfoCard` now shows all useful lead data: name + company + industry, returning customer badge, phone, email, lead source, urgency, "What they need" (initial interest), product interests + quantities (bullet list), SDR notes. Updated `LeadInfo` interface to include `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`, `customer.website`.
+- `components/quotes/new-quote-form.tsx` — `LeadInfoCard` shows lead data: name + company + industry, returning customer badge, phone, email, lead source, urgency, product interests + quantities (bullet list), SDR notes. Updated `LeadInfo` interface to include `sdr_comment`, `is_returning_customer`, `interests`, `quantities`, `customer.industry`, `customer.website`. *(May 2026: removed deprecated `initial_interest` field.)*
 
 ## [2026-05-12] — Fix: GET /api/leads/[id] was missing
 
@@ -2420,7 +2455,7 @@ All selectable options in Add Lead, Claim Lead, Verify Drawer, and Sales Drawer 
 ### Changed
 - `components/leads/verify-drawer.tsx` — replaced the right-side slide-in panel with a centered modal window (`max-w-[780px]`, `max-h-90vh`, `border-radius: 12px`); all content, tabs, actions, and lock logic unchanged
 
-## [2026-05-10] — Add Initial Interest field to leads
+## [2026-05-10] — Add Initial Interest field to leads *(removed May 2026 — see `077_drop_initial_interest`)*
 
 ### Added
 - `supabase/migrations/039_add_initial_interest_to_leads.sql` — adds `initial_interest text` column to the `leads` table (nullable, no constraints)

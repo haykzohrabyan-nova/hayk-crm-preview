@@ -497,18 +497,20 @@ export function SalesDrawer({
                   <div className="flex flex-wrap gap-2">
                     {Object.entries(lead.interests)
                       .filter(([, checked]) => checked)
-                      .map(([interest]) => (
+                      .map(([interest]) => {
+                        const qty = lead.quantities?.[interest];
+                        const qtyStr = qty != null ? String(qty).trim() : "";
+                        const label = qtyStr ? `${interest}[${qtyStr}]` : interest;
+                        return (
                         <span
                           key={interest}
                           className="inline-flex items-center rounded-full px-2.5 py-1 text-[12px] font-medium"
                           style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
                         >
-                          {interest}
-                          {lead.quantities?.[interest] && (
-                            <span className="ml-1 opacity-70">× {lead.quantities[interest]}</span>
-                          )}
+                          {label}
                         </span>
-                      ))}
+                        );
+                      })}
                   </div>
                 </section>
               )}

@@ -661,3 +661,15 @@ export interface TicketForm {
   notes: string
 }
 ```
+
+---
+
+## Client validation helpers (lead forms)
+
+| Helper | Module | Purpose |
+|--------|--------|---------|
+| `validatePhone()` | `lib/utils/phone.ts` | Required phone on lead create/edit |
+| `validateEmail()` | `lib/utils/email.ts` | Optional email format |
+| `validateWebsite()` | `lib/utils/website.ts` | Optional website/social URL; empty allowed |
+| `normalizeWebsite()` | `lib/utils/website.ts` | Prefix `https://` when protocol omitted before save |
+| `formatLeadProductInterests()` | `lib/utils/format-lead-product-interests.ts` | List display: `Booklets[1111], Labels[500]` |

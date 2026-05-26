@@ -258,7 +258,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | On Hold | `status = 'On Hold'` | count |
 | Directed to Sales | `status = 'Routed to Sales'` (just routed, not yet claimed) | count |
 | Rejected | `status = 'Rejected'` | — |
-| Won | `sales_status = 'Won'` — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. | count |
+| Won | `sales_status = 'Won'` — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. | count |
 
 ### `/sales` — Sales Pipeline
 
@@ -267,6 +267,8 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | Pipeline | `status = 'Routed to Sales'` AND `sales_status IN ('Ongoing', 'Quote Sent')` | count |
 | On Hold | `sales_status = 'On Hold'` | count |
 | Rejected | `status = 'Rejected'` and `prev_status = 'Routed to Sales'` — leads rejected from the sales pipeline. Admin sees all; Sales rep sees only their own. | count |
+
+**Sales list columns (all tabs):** Name, Company, **Product Interests** (`ProductName[quantity]`), then tab-specific fields (Phone, Sales Status, Hold Reason, etc.).
 
 ### `/quotes` — Quoted Requests
 

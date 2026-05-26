@@ -23,7 +23,7 @@ Before any Tickets code is written, the following must be done:
 ## Phase 0 — Commit Current Work ✅ DONE
 
 Committed before Phase 1:
-- `supabase/migrations/039_add_initial_interest_to_leads.sql`
+- `supabase/migrations/039_add_initial_interest_to_leads.sql` — **superseded:** column removed by `077_drop_initial_interest.sql` (May 2026)
 - `supabase/migrations/040_fix_activities_by_user_fkey.sql`
 - `lib/constants/hold-reasons.ts`
 - All modified components: `hold-sub-form.tsx`, `verify-drawer.tsx`, `sales-drawer.tsx`, `sales-page.tsx`, `leads-page.tsx`, `components/ui/*`
@@ -221,7 +221,7 @@ Client-side filtering helpers — deferred to Phase 8.
 
 **Flow:**
 1. Sales/SDR clicks **"Create Quote / Order"** in the lead drawer → lead is saved silently → browser navigates to `/quotes/new?lead_id=xxx`
-2. New quote page shows a **lead info card** (contact, company, urgency, initial interest) + the full form
+2. New quote page shows a **lead info card** (contact, company, urgency, product interests + quantities) + the full form
 3. On save → navigates to `/quotes/[id]` (the ticket's permanent page)
 4. If the quote is converted to an order → same `/quotes/[id]` page reflects the updated status (no separate `/orders/[id]` redirect needed since it is the same record)
 

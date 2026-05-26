@@ -27,12 +27,13 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 | Name | All | `first_name + last_name` from linked customer |
 | Company | All | |
 | Source | All | Lead source label |
+| Product Interests | All | From `interests` + `quantities` — e.g. `Booklets[1111], Labels[500]`; `—` when empty |
 | Phone | All | Formatted display (stored digits-only) |
 | Urgency | All | Colour-coded pill: High / Medium / Low / Not Defined |
 | Status | All | `StatusPill` — Pending / Validated |
+| Owner | All | SDR name / "You" / "Unclaimed" badge |
 | Created | All | Relative time (e.g. "2 hours ago") |
-| Working | Admin only | Name of SDR currently working the lead; "—" if unlocked; "You" if admin themselves has it open |
-| Action | All | **Verify** (SDR) / **Edit** + **Assign/Reassign** (Admin) |
+| Action | All | **Verify** / **Claim** (SDR) / **Edit** + **Assign/Reassign** (Admin) |
 
 ### Behaviors
 
@@ -63,6 +64,7 @@ Tab count reflects the filtered list — only leads the current SDR can work (un
 |--------|-------|
 | Name | |
 | Company | |
+| Product Interests | `ProductName[quantity]` from `interests` + `quantities` |
 | Hold Reason | |
 | Hold Until | Formatted date (or "—" if indefinite) |
 | Held | Relative time (`held_at`) |
@@ -104,6 +106,7 @@ Client-side filters applied to the fetched result set:
 |--------|-------|
 | Name | |
 | Company | |
+| Product Interests | `ProductName[quantity]` |
 | Phone | |
 | Lead Status | `status` field (e.g. "Routed to Sales", "Quoted", "Validated") |
 | Sales Status | Current sales pipeline stage; shows "—" if unclaimed |
@@ -148,6 +151,7 @@ A lead appears here when its linked ticket is released to **`in_production`**. `
 |--------|-------|
 | Status | `sales_status` via `StatusPill` (Won, Quote Sent, etc.) — **not** SDR inbox `status` |
 | Source | Lookup label via `leadSourceLabel()` (e.g. Phone call) |
+| Product Interests | `ProductName[quantity]` from `interests` + `quantities` |
 | Urgency | `UrgencyPill` |
 | Quote / Order | `QUO-…` / `ORD-…` badges from nested tickets — **reference codes only, no amounts** |
 | Created | Relative time |
@@ -175,6 +179,7 @@ A lead appears here when its linked ticket is released to **`in_production`**. `
 |--------|-------|
 | Name | |
 | Company | |
+| Product Interests | `ProductName[quantity]` |
 | Rejection Reason | |
 | Rejected At | Relative time |
 | Actions | **View** button |
@@ -233,7 +238,7 @@ Fields (editable when verifying, read-only when viewing):
 | Authority | Dropdown | No | Decision maker? Yes / No — stored on **`customers.authority`**, not on the lead row. Pre-filled from customer when an existing profile is linked. |
 | Company Name | Text | No | |
 | Industry | Dropdown | Yes | **Admin-managed** — loaded from `lookup_values` (`industry` category). Edit in Admin → Dropdown Options. |
-| Website / Social | Text | No | |
+| Website / Social | Text (URL) | No | Validated on blur + save via `lib/utils/website.ts`; optional; auto-prefixes `https://` when omitted (e.g. `instagram.com/page` → `https://instagram.com/page`). Stored on **`customers.website`**. |
 | Urgency | Dropdown | No | **Admin-managed** — loaded from `lookup_values` (`urgency` category). "Not Defined" is a static sentinel prepended to the list. Edit real options in Admin → Dropdown Options. Lookup values use lowercase keys (`high`, `medium`, `low`); the DB stores title case (`High`, `Medium`, `Low`). `lib/utils/urgency-form.ts` maps between them on load/save so saved urgency displays correctly when reopening the drawer. |
 | Returning Customer | Checkbox | No | "Returning Customer (Existing Client)" — blue highlight row when checked |
 

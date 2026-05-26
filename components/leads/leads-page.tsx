@@ -27,8 +27,10 @@ import { Lead, Customer, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
+import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { LeadHistoryTable, type LeadHistoryRow } from "@/components/leads/lead-history-table";
+import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-interests";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -59,6 +61,32 @@ function displayName(lead: Lead): string {
   const c = lead.customer;
   const name = [c?.first_name, c?.last_name].filter(Boolean).join(" ");
   return name || "—";
+}
+
+function productInterestsText(lead: Lead): string {
+  return formatLeadProductInterests(lead.interests, lead.quantities);
+}
+
+function ProductInterestsTableCell({ lead }: { lead: Lead }) {
+  const products = productInterestsText(lead);
+  return (
+    <td className="px-3 py-2.5 max-w-[220px]" style={{ color: "var(--color-text-muted)" }}>
+      <span className="block truncate" title={products !== "—" ? products : undefined}>
+        {products}
+      </span>
+    </td>
+  );
+}
+
+function ProductInterestsMobileRow({ lead }: { lead: Lead }) {
+  const products = productInterestsText(lead);
+  if (products === "—") return null;
+  return (
+    <div className="flex justify-between gap-2">
+      <span className="shrink-0">Product Interests</span>
+      <span className="normal-case tracking-normal text-right truncate max-w-[200px]">{products}</span>
+    </div>
+  );
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
@@ -173,6 +201,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
   const [form, setForm] = useState<AddForm>(EMPTY_FORM);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [websiteError, setWebsiteError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [productRows, setProductRows] = useState<ProductInterestRow[]>([]);
@@ -201,6 +230,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
     setForm(EMPTY_FORM);
     setPhoneError(null);
     setEmailError(null);
+    setWebsiteError(null);
     setError(null);
     setProductRows([]);
     setMatchedCustomers([]);
@@ -283,6 +313,10 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
     if (eErr) { setEmailError(eErr); return; }
     setEmailError(null);
 
+    const wErr = validateWebsite(form.website);
+    if (wErr) { setWebsiteError(wErr); return; }
+    setWebsiteError(null);
+
     if (!form.first_name.trim()) { setError("First name is required."); return; }
     if (!form.source) { setError("Source is required."); return; }
     if (!form.industry) { setError("Industry is required."); return; }
@@ -298,6 +332,7 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
+        website: normalizeWebsite(form.website),
         interests,
         quantities,
         has_design,
@@ -496,11 +531,42 @@ function AddLeadModal({ open, lookups, onClose, onCreated, showToast }: AddLeadM
               <label className={labelCls} style={labelStyle}>Website / Social</label>
               <input
                 className={inputCls}
-                style={inputStyle}
+                style={{
+                  ...inputStyle,
+                  borderColor: websiteError ? "var(--color-danger)" : "var(--color-border)",
+                }}
+                type="url"
+                inputMode="url"
+                autoComplete="url"
                 value={form.website}
-                onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
-                placeholder="https://"
+                onChange={(e) => {
+                  setForm((f) => ({ ...f, website: e.target.value }));
+                  setWebsiteError(null);
+                }}
+                onBlur={(e) => {
+                  const wErr = validateWebsite(form.website);
+                  setWebsiteError(wErr);
+                  e.currentTarget.style.borderColor = wErr ? "var(--color-danger)" : "var(--color-border)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+                placeholder="https://example.com"
+                aria-invalid={!!websiteError}
+                aria-describedby={websiteError ? "add-lead-website-error" : undefined}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "var(--color-accent)";
+                  e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
+                }}
               />
+              {websiteError && (
+                <p
+                  id="add-lead-website-error"
+                  className="mt-1.5 text-[12px] font-medium"
+                  style={{ color: "var(--color-danger)" }}
+                  role="alert"
+                >
+                  {websiteError}
+                </p>
+              )}
             </div>
 
             {/* Urgency */}
@@ -1183,7 +1249,7 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {(["Name", "Company", "Source", "Initial Interest", "Phone", "Urgency", "Status", "Owner", "Created", "Action"] as const).map((h) => {
+                  {(["Name", "Company", "Source", "Product Interests", "Phone", "Urgency", "Status", "Owner", "Created", "Action"] as const).map((h) => {
                     const isSortable = h === "Urgency" || h === "Created";
                     const field: SortField = h === "Urgency" ? "urgency" : "created";
                     const isActive = isSortable && sortField === field;
@@ -1239,9 +1305,9 @@ export function LeadsPage() {
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
                         {lead.source || "—"}
                       </td>
-                      <td className="px-3 py-2.5 max-w-[160px]" style={{ color: "var(--color-text-muted)" }}>
-                        <span className="block truncate" title={lead.initial_interest ?? undefined}>
-                          {lead.initial_interest || "—"}
+                      <td className="px-3 py-2.5 max-w-[220px]" style={{ color: "var(--color-text-muted)" }}>
+                        <span className="block truncate" title={productInterestsText(lead) !== "—" ? productInterestsText(lead) : undefined}>
+                          {productInterestsText(lead)}
                         </span>
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
@@ -1365,10 +1431,10 @@ export function LeadsPage() {
                       <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>
                     )}
                     <div className="flex justify-between"><span>Source</span><span className="normal-case tracking-normal">{lead.source || "—"}</span></div>
-                    {lead.initial_interest && (
+                    {productInterestsText(lead) !== "—" && (
                       <div className="flex justify-between gap-2">
-                        <span className="shrink-0">Initial Interest</span>
-                        <span className="normal-case tracking-normal text-right truncate max-w-[160px]">{lead.initial_interest}</span>
+                        <span className="shrink-0">Product Interests</span>
+                        <span className="normal-case tracking-normal text-right truncate max-w-[200px]">{productInterestsText(lead)}</span>
                       </div>
                     )}
                     <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{relativeTime(lead.created_at)}</span></div>
@@ -1438,17 +1504,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Hold Reason", "Hold Until", "Held", "Actions"].map((h) => (
+                  {["Name", "Company", "Product Interests", "Hold Reason", "Hold Until", "Held", "Actions"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={6} />
+                  <TableSkeleton cols={7} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads on hold.
                     </td>
                   </tr>
@@ -1466,6 +1532,7 @@ export function LeadsPage() {
                     >
                       <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
+                      <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{holdReasonLabel(lead.hold_reason)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {lead.hold_until ? new Date(lead.hold_until).toLocaleDateString() : "—"}
@@ -1516,6 +1583,7 @@ export function LeadsPage() {
                     <StatusPill status="On Hold" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <ProductInterestsMobileRow lead={lead} />
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{holdReasonLabel(lead.hold_reason)}</span></div>
                     <div className="flex justify-between"><span>Until</span><span className="normal-case tracking-normal">{lead.hold_until ? new Date(lead.hold_until).toLocaleDateString() : "—"}</span></div>
                   </div>
@@ -1579,17 +1647,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Phone", "Lead Status", "Sales Status", "Sales Rep", "Updated"].map((h) => (
+                  {["Name", "Company", "Product Interests", "Phone", "Lead Status", "Sales Status", "Sales Rep", "Updated"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={7} />
+                  <TableSkeleton cols={8} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No leads directed to sales.</td>
+                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No leads directed to sales.</td>
                   </tr>
                 ) : (
                   filtered.map((lead, idx) => (
@@ -1606,6 +1674,11 @@ export function LeadsPage() {
                     >
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
+                      <td className="px-3 py-2.5 max-w-[220px]" style={{ color: "var(--color-text-muted)" }}>
+                        <span className="block truncate" title={productInterestsText(lead) !== "—" ? productInterestsText(lead) : undefined}>
+                          {productInterestsText(lead)}
+                        </span>
+                      </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {lead.customer?.phone ? formatPhone(lead.customer.phone) : "—"}
                       </td>
@@ -1671,6 +1744,12 @@ export function LeadsPage() {
                     {lead.customer?.phone && (
                       <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>
                     )}
+                    {productInterestsText(lead) !== "—" && (
+                      <div className="flex justify-between gap-2">
+                        <span className="shrink-0">Product Interests</span>
+                        <span className="normal-case tracking-normal text-right truncate max-w-[200px]">{productInterestsText(lead)}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center">
                       <span>Sales Rep</span>
                       {(lead.sales_owner as { full_name?: string | null } | undefined)?.full_name ? (
@@ -1702,17 +1781,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Rejection Reason", "Rejected", "Action"].map((h) => (
+                  {["Name", "Company", "Product Interests", "Rejection Reason", "Rejected", "Action"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={5} />
+                  <TableSkeleton cols={6} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No rejected leads.</td>
+                    <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No rejected leads.</td>
                   </tr>
                 ) : (
                   filtered.map((lead, idx) => (
@@ -1729,6 +1808,7 @@ export function LeadsPage() {
                     >
                       <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
+                      <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.rejection_reason || "—"}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
                       <td className="px-3 py-2.5">
@@ -1759,6 +1839,7 @@ export function LeadsPage() {
                     <StatusPill status="Rejected" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <ProductInterestsMobileRow lead={lead} />
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{lead.rejection_reason || "—"}</span></div>
                   </div>
                   <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>View</button>

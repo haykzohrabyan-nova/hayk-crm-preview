@@ -201,7 +201,7 @@ Customers whose leads are still Pending/On Hold/Rejected and who have no tickets
 | `phone` | `text` | **Digits only** (e.g. `8585552277`). **No unique constraint** — multiple profiles may share a phone |
 | `company` | `text` | |
 | `industry` | `text` | |
-| `website` | `text` | |
+| `website` | `text` | Optional URL; validated/normalized via `lib/utils/website.ts` on lead create and customer PATCH |
 | `authority` | `text` | Decision maker for this customer (`'yes'` \| `'no'` \| `null`) |
 | `heat_tag` | `text` | `'hot'` \| `'warm'` \| `'cold'` \| `null` |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
@@ -273,7 +273,6 @@ Core lead record. A lead starts in the inbox (`is_inbox = true`) and moves to th
 | `urgency` | `text` | `'High'` \| `'Medium'` \| `'Low'` \| `null` — how urgently the client needs the product |
 | `is_returning_customer` | `boolean` DEFAULT `false` | Existing / returning client flag |
 | `sdr_comment` | `text` | SDR verification notes ("Verify Lead Comment") — internal, not visible to client |
-| `initial_interest` | `text` | Free-text capturing what the customer initially expressed interest in (e.g. "custom boxes, labels") — optional, added during manual lead creation |
 | `rejection_notes` | `text` | Free-text |
 | `sales_notes` | `text` | Internal notes entered by Sales reps (not visible to SDRs) |
 | `locked_by_id` | `uuid` FK → `auth.users` | User currently working this lead (drawer open) |

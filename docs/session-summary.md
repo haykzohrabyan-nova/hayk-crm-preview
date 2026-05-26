@@ -1,6 +1,29 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 24, 2026
-**Status:** MVP complete + quote-until-payment + dashboard/reports KPI alignment + API security hardening (May 24).
+**Last updated:** May 26, 2026
+**Status:** MVP complete + quote-until-payment + dashboard/reports KPI alignment + API security hardening + leads UX polish (May 26).
+
+---
+
+## May 26, 2026 — Leads UX: Product Interests, no Initial Interest, website validation
+
+### Removed Initial Interest
+- Dropped `leads.initial_interest` — product catalog **`interests` / `quantities` / `has_design`** is the single source of truth
+- Migration `077_drop_initial_interest.sql` (run on existing DBs); consolidated `supabase/schema.sql` updated
+
+### Product Interests in list tables
+- Display format **`ProductName[quantity]`** (e.g. `Booklets[1111]`) via `lib/utils/format-lead-product-interests.ts`
+- **Leads** (`/leads`): All Leads, On Hold, Directed to Sales, Rejected, Won tabs — desktop table + mobile cards
+- **Sales** (`/sales`): Pipeline, On Hold, Rejected tabs
+- **LeadHistoryTable** (Won tab + CRM customer profile Lead History): Product Interests column
+- `GET /api/leads/workspace` list select includes `interests` + `quantities`; Won tab + `GET /api/customers/[id]` leads nested select same
+
+### Website / Social validation
+- `lib/utils/website.ts` — `validateWebsite()` + `normalizeWebsite()` (optional field; auto-prefix `https://` when omitted)
+- Add Lead modal + Verify Drawer — blur + save validation, inline error
+- Server: `POST /api/leads/manual`, `PATCH /api/customers/[id]`
+
+### Docs
+- `feature-specs/leads-sdr.md`, `feature-specs/leads-sales.md`, `component-architecture.md`, `navigation.md`, `api-contract.md`, `feature-specs/crm.md`, `mvp-scope.md`, `architecture.md`, `order-ticket/integration-plan.md`, `types.md`, `supabase/README.md`, `schema.md` (column already dropped)
 
 ---
 
@@ -492,7 +515,7 @@ See `docs/schema.md` → Migration File Order for the full list (001–054). Key
 | 022–033 | Nav + workflow fixes | Admin sub-pages, notifications page, lead reset, Realtime |
 | 034 | `add_sales_notes_to_leads` | sales_notes field |
 | 035–038 | Realtime | leads + activities realtime; RLS fix for realtime |
-| 039 | `add_initial_interest_to_leads` | initial_interest field |
+| 039 | `add_initial_interest_to_leads` | ~~initial_interest field~~ — **removed** by `077_drop_initial_interest` (May 2026) |
 | 040 | `fix_activities_by_user_fkey` | activities FK → user_profiles |
 | 041 | `create_products_catalog` | product_types, materials, material_groups, links (15 types, 37 materials) |
 | 042 | `extend_job_tickets` | 28 new columns on job_tickets + order_sequence_counters |
@@ -509,6 +532,7 @@ See `docs/schema.md` → Migration File Order for the full list (001–054). Key
 | 053 | `add_payment_status_to_tickets` | `payment_status` column (`unpaid`\|`partial`\|`paid`, default `unpaid`) |
 | 054 | `add_prepayment_status_to_tickets` | `prepayment_status` column (`pending`\|`paid`, default `pending`) — Stripe-ready |
 | 076 | `full_test_reset` | **DEV ONLY** — SQL wipe for clean testing; use with `npm run reset-test-data` for storage + DB |
+| 077 | `drop_initial_interest` | Removes redundant `leads.initial_interest`; use product `interests` jsonb only |
 | 056 | `add_idle_timeout_to_company_settings` | adds `session_idle_timeout_minutes` INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to `company_settings` |
 | 057 | `create_user_sessions` | `user_sessions` table: one row per login session; tracks `signed_in_at`, `signed_out_at`, `sign_out_reason`; RLS: users read/write own rows, admin reads all via service role |
 | 058 | `add_reports_page` | adds `/reports` to `pages` table (section: main, sort_order: 9); access granted per-role via Admin panel |

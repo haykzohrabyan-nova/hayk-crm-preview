@@ -97,13 +97,12 @@ from public.roles r where r.name = 'admin';
 | Authority | No | Decision Maker? Yes / No — stored on **customer** (`customers.authority`) |
 | Company Name | No | |
 | Industry | Yes | |
-| Website / Social | No | |
+| Website / Social | No | Validated URL when provided (`lib/utils/website.ts`); optional |
 | **Urgency** | No | Not Defined (stored as null) / High / Medium / Low |
 | Returning Customer | No | Checkbox — flags existing client |
 | Verify Lead Comment | No | SDR internal notes |
 | Brand | No | (in drawer, not add modal) |
-| Product Interests | No | (in drawer only, not add modal) |
-| Quantities | No | (in drawer only, per checked interest) |
+| Product Interests | No | Row-based UI in **both** Add Lead modal and Verify Drawer (product + quantity + has design) |
 
 ### SDR Workflow Fields (DB only, set by actions)
 - `status` — set by SDR actions (Pending → Validated → Routed/Hold/Rejected)

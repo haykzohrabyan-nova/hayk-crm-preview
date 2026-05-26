@@ -62,7 +62,6 @@ interface Lead {
   status: string | null;
   sales_status: string | null;
   urgency: string | null;
-  initial_interest: string | null;
   source: string | null;
   sdr_comment: string | null;
   is_returning_customer: boolean;

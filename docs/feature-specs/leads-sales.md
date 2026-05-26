@@ -24,6 +24,7 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 |--------|-------|
 | Name | |
 | Company | |
+| Product Interests | `ProductName[quantity]` from `interests` + `quantities` |
 | Phone | Formatted display |
 | Sales Status | Pill: Ongoing / Quote Sent (or "—" if null) |
 | Urgency | `UrgencyPill` |
@@ -50,6 +51,7 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 |--------|-------|
 | Name | |
 | Company | |
+| Product Interests | `ProductName[quantity]` |
 | Hold Reason | |
 | Hold Until | |
 | Held At | |
@@ -71,6 +73,7 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 |--------|-------|
 | Name | |
 | Company | |
+| Product Interests | `ProductName[quantity]` |
 | Phone | Formatted display |
 | Rejection Reason | |
 | Rejected | `updated_at` relative time |
@@ -98,7 +101,7 @@ A **centered modal** (not a side drawer) for a Sales rep to work a routed lead. 
 
 ### Lead Info Tab
 
-Read-only view of contact fields (set by SDR). **Sales status** appears as a pill in the modal header (not repeated in the body).
+Read-only view of contact fields (set by SDR). **Product Interests** shown as badge pills (`ProductName[quantity]`). **Sales status** appears as a pill in the modal header (not repeated in the body).
 
 **Sales Notes** section — only editable field. Empty quote-related fields are hidden until a quote exists on the lead (`quote_total > 0`).
 
@@ -158,12 +161,13 @@ Same pattern as SDR pipeline:
 
 ---
 
-## Build Status & Gaps (as of 2026-05-09)
+## Build Status & Gaps (as of 2026-05-26)
 
 ### ✅ Built and working
 | Feature | Notes |
 |---------|-------|
 | Pipeline / On Hold / Rejected tabs | All three tabs with counts visible before clicking; Rejected shows only sales-pipeline rejections () |
+| Product Interests column | All tabs — `ProductName[quantity]` via `format-lead-product-interests.ts`; drawer pills same format |
 | Claim unclaimed lead | `POST /api/leads/[id]/claim` → **modal opens immediately** so Sales rep can start working; row persists assigned even after modal close or page refresh; logs `lead_sales_claimed` activity |
 | Open owned lead (with locking) | Lock acquired on open, released on close (temporary lock — different from SDR soft lock) |
 | Admin View (no lock) | Admin opens any lead read-only without acquiring a lock — Sales rep's edit session undisturbed |

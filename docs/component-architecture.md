@@ -113,7 +113,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | Component | File | Used in |
 |-----------|------|---------|
 | `StatusPill` | `components/ui/status-pill.tsx` | Tables, drawers |
-| `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Customer profile Lead History + Leads Won tab (desktop + mobile) |
+| `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Customer profile Lead History + Leads Won tab — Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created |
 | `UrgencyPill` | `components/ui/urgency-pill.tsx` | Tables, drawers |
 | `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail (SMS & WhatsApp destination) |
 | `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail (Email destination) |
@@ -194,7 +194,9 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
 | Rejected | `status=Rejected&scope=mine` | SDR sees own (leads they rejected); Admin sees all SDR-rejected leads |
 | Won | `won=true` | Shared `LeadHistoryTable`; SDR row click → `/crm/customers/[id]`; Admin → read-only Verify Drawer |
 
-**All Leads table columns:** Name, Company, Source, Phone, Urgency, Status, **Owner**, Created, Action
+**All Leads table columns:** Name, Company, Source, **Product Interests**, Phone, Urgency, Status, **Owner**, Created, Action
+
+**Product Interests column:** formatted as `ProductName[quantity]` (e.g. `Booklets[1111]`) from `interests` + `quantities` via `lib/utils/format-lead-product-interests.ts`. Same column on **On Hold**, **Directed to Sales**, and **Rejected** tabs (desktop + mobile).
 
 **Owner column:** shows SDR name / "You" for owned leads, "Unclaimed" badge for unowned — visible to all roles.
 
@@ -226,6 +228,8 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 | Rejected | `status=Rejected&prev_status=Routed+to+Sales` | Only leads rejected *from* the sales pipeline; lazy-fetched on first tab open |
 
 **Count badge:** `GET /api/leads/sales-counts` — `rejected` count uses same `prev_status = 'Routed to Sales'` filter so badge matches list.
+
+**Pipeline / On Hold / Rejected table columns:** Name, Company, **Product Interests** (`ProductName[quantity]`), then tab-specific columns (Phone, Sales Status, Hold Reason, etc.).
 
 **Sales Drawer tabs:** Lead Info | Order / Quote | **History** (fetches `GET /api/leads/[id]/activities` lazily on first open — vertical timeline of all events)
 

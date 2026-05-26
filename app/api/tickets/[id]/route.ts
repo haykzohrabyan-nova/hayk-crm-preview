@@ -179,7 +179,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       `*,
        customer:customers(id, first_name, last_name, company, phone, email, industry, website),
        lead:leads(
-         id, status, sales_status, urgency, initial_interest, source,
+         id, status, sales_status, urgency, source,
          sdr_comment, hold_reason, rejection_reason, is_returning_customer, interests,
          customer:customers(id, first_name, last_name, company, phone, email, industry)
        )`
