@@ -60,7 +60,7 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 | `prev_status` | `string` | Filter by `prev_status` value — used by Sales Rejected tab to restrict to `Routed to Sales` |
 | `scope` | `string` | `mine` — restrict to leads where `sdr_id = current user` |
 | `search` | `string` | Full-text search on name, email, phone, company |
-| `won` | `"true"` | Return leads where `sales_status = 'Won'` (set when linked ticket enters production). SDR sees own won leads; admin sees all. Response uses slim lead fields plus nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` only — **no order totals or closer names** (Won tab matches customer Lead History). |
+| `won` | `"true"` | SDR **Won** tab: `sales_status = 'Won'` **and** lead was routed to Sales (`lead_routed_to_sales` activity). Production release still sets Won globally; this tab excludes SDR self-quoted wins without routing. SDR sees own leads; admin sees all. Response uses slim lead fields plus nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` only — **no order totals or closer names** (Won tab matches customer Lead History). |
 
 **Response `200`:**
 ```json
@@ -603,7 +603,7 @@ Create a new ticket.
 - If `linked_lead_id` is provided, updates the linked lead's `status` to `'Quoted'` or `'Validated'`
 - Sets `routed_by_id = userId` when `ticket_status = 'routed'`
 - Logs `order_ticket_created` activity
-- May auto-record cash deposit/full payment when configured — **does not** set `client_confirmed` when `ticket_require_client_confirm = true`
+- May auto-record cash deposit/full payment when configured — logs `ticket_payment_recorded` via `lib/utils/log-ticket-payment-recorded.ts` (counts in Reports/dashboard cash); **does not** set `client_confirmed` when `ticket_require_client_confirm = true`
 
 **Response `201`:**
 ```json
@@ -687,7 +687,7 @@ Partial ticket update. Six distinct operation modes:
 - Sets `payment_status` to `partial` or `paid`; clears `payment_evidence_*` fields when confirming submitted proof
 - Runs `maybeConvertQuoteToOrder()` then `maybeAutoReleaseProduction()` when gates pass
 - When confirming customer-submitted evidence: sends **payment confirmed** email/SMS (balance on in-production orders: **paid in full** messaging); logs `ticket_payment_confirmed_sent`
-- Logs `ticket_payment_recorded` activity
+- Logs `ticket_payment_recorded` activity via `lib/utils/log-ticket-payment-recorded.ts`
 
 **Mode 4 — Claim (Sales/Admin only):**
 ```json
@@ -1295,6 +1295,8 @@ Members sorted: **SDR → Sales → Accountant**, then alphabetical by name.
 ### `GET /api/reports/summary`
 
 Admin only. Full reporting payload — see [`feature-specs/reports.md`](feature-specs/reports.md).
+
+**Cash collected contract:** Only `ticket_payment_recorded` activities count toward `cash_collected` (staff cash auto-record, accountant confirm, immediate public cash). `ticket_payment_evidence_submitted` is pending review and excluded until confirmed.
 
 **Query:** `period`, `date_from`, `date_to`, `user_id` (optional)
 

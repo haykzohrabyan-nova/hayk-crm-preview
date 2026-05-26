@@ -1,6 +1,29 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 26, 2026
-**Status:** MVP complete + quote-until-payment + dashboard/reports KPI alignment + API security hardening + leads UX polish (May 26).
+**Status:** MVP complete + quote-until-payment + dashboard/reports KPI alignment + API security hardening + leads/reports/CRM polish (May 26).
+
+---
+
+## May 26, 2026 — Reports accuracy + CRM list UX
+
+### Reports — cash collected fix
+- Staff **Cash / offline** auto-recorded deposits now log `ticket_payment_recorded` (was wrongly `ticket_payment_evidence_submitted`) — scorecards, Payment Ledger, and dashboard match order `deposit_paid_at`
+- `lib/utils/log-ticket-payment-recorded.ts`, `lib/utils/maybe-auto-record-cash-payment.ts`
+- Backfill: `supabase/migrations/078_backfill_staff_cash_payment_recorded.sql`
+
+### Reports — navigation & UX
+- **Sales / SDR scorecards** — display-only (no row click-to-filter); use team member dropdown to drill down
+- **Awaiting Collection + Payment Ledger** — ticket links use lifecycle routes (`/orders/`, `/quotes/`, `/completed/`) not `/payments/` (accountant queue only)
+- **`?from=/reports`** on those links — `QuoteDetail` Back returns to Reports (`lib/utils/ticket-detail-href.ts`)
+
+### CRM list (`/crm`)
+- **Industry** column replaces Heat badge (lookup label, e.g. Food & Beverage)
+- **Company** (or **—**) → customer profile; **phone** `tel:` / **email** `mailto:` when present
+- Row click removed — **View** / **Add Quote** + targeted links only
+- Hot / Warm / Cold filter pills unchanged (`heat_tag`)
+
+### Docs
+- `feature-specs/reports.md`, `feature-specs/crm.md`, `component-architecture.md`, `navigation.md`, `types.md`, `TODO.md`, `api-contract.md`, `feature-specs/activity.md`, `feature-specs/dashboard.md`, `feature-specs/invoice-payment.md`, `architecture.md`
 
 ---
 
@@ -23,7 +46,7 @@
 - Server: `POST /api/leads/manual`, `PATCH /api/customers/[id]`
 
 ### Docs
-- `feature-specs/leads-sdr.md`, `feature-specs/leads-sales.md`, `component-architecture.md`, `navigation.md`, `api-contract.md`, `feature-specs/crm.md`, `mvp-scope.md`, `architecture.md`, `order-ticket/integration-plan.md`, `types.md`, `supabase/README.md`, `schema.md` (column already dropped)
+- `feature-specs/leads-sdr.md`, `feature-specs/leads-sales.md`, `component-architecture.md`, `navigation.md`, `api-contract.md`, `feature-specs/crm.md`, `mvp-scope.md`, `architecture.md`, `order-ticket/integration-plan.md`, `types.md`, `supabase/README.md`, `schema.md`, `TODO.md`
 
 ---
 
@@ -533,6 +556,7 @@ See `docs/schema.md` → Migration File Order for the full list (001–054). Key
 | 054 | `add_prepayment_status_to_tickets` | `prepayment_status` column (`pending`\|`paid`, default `pending`) — Stripe-ready |
 | 076 | `full_test_reset` | **DEV ONLY** — SQL wipe for clean testing; use with `npm run reset-test-data` for storage + DB |
 | 077 | `drop_initial_interest` | Removes redundant `leads.initial_interest`; use product `interests` jsonb only |
+| 078 | `backfill_staff_cash_payment_recorded` | Backfills `ticket_payment_recorded` for past staff cash/offline auto-deposits (Reports cash totals) |
 | 056 | `add_idle_timeout_to_company_settings` | adds `session_idle_timeout_minutes` INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to `company_settings` |
 | 057 | `create_user_sessions` | `user_sessions` table: one row per login session; tracks `signed_in_at`, `signed_out_at`, `sign_out_reason`; RLS: users read/write own rows, admin reads all via service role |
 | 058 | `add_reports_page` | adds `/reports` to `pages` table (section: main, sort_order: 9); access granted per-role via Admin panel |

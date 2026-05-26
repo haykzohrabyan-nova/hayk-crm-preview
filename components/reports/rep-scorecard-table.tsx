@@ -49,16 +49,12 @@ export function RepScorecardTable({
   subtitle,
   rows,
   variant,
-  selectedUserId,
-  onSelectUser,
   showRouted,
 }: {
   title: string;
   subtitle: string;
   rows: RepScorecardRow[];
   variant: "sales" | "sdr";
-  selectedUserId: string | null;
-  onSelectUser: (id: string | null) => void;
   showRouted?: boolean;
 }) {
   const accent =
@@ -123,19 +119,13 @@ export function RepScorecardTable({
               </thead>
               <tbody>
                 {rows.map((row, idx) => {
-                  const isSelected = selectedUserId === row.id;
                   const isTop = idx === 0 && row.cash_collected > 0;
                   return (
                     <tr
                       key={row.id}
-                      onClick={() => onSelectUser(isSelected ? null : row.id)}
-                      className="cursor-pointer transition-colors"
                       style={{
-                        background: isSelected
-                          ? "color-mix(in srgb, var(--color-accent) 10%, var(--color-surface))"
-                          : idx % 2 === 0
-                            ? "var(--color-surface)"
-                            : "var(--color-row-alt)",
+                        background:
+                          idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
                         borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
                       }}
                     >
@@ -144,12 +134,7 @@ export function RepScorecardTable({
                           {isTop && (
                             <Trophy className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--color-accent)" }} />
                           )}
-                          <span
-                            className="font-medium"
-                            style={{
-                              color: isSelected ? "var(--color-tab-active)" : "var(--color-text-primary)",
-                            }}
-                          >
+                          <span className="font-medium" style={{ color: "var(--color-text-primary)" }}>
                             {row.full_name}
                           </span>
                         </div>
@@ -188,7 +173,7 @@ export function RepScorecardTable({
           className="border-t px-4 py-2 text-[11px]"
           style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
         >
-          Click a row to filter the page to that rep. Cash = payments recorded in the selected period.
+          Cash = payments recorded in the selected period. Use the team member filter above to drill down.
         </p>
       </div>
     </section>

@@ -1,6 +1,6 @@
 # BazarCRM — TODO Tracker
 
-**Last updated:** 2026-05-24
+**Last updated:** 2026-05-26
 
 This file tracks **what is still open** vs **what is already built**. Detailed specs live in `docs/feature-specs/` and `docs/CHANGELOG.md`.
 
@@ -114,6 +114,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Sales pipeline, claim flow, HVT routing
 - CRM list + customer profile, merge (admin/sales API), dedup lookup
 - Admin override on terminal leads (TODO-001)
+- **May 26:** Product Interests column (`ProductName[quantity]`); removed Initial Interest; website URL validation; CRM list Industry column (Heat badge on profile only); company/phone/email targeted links
 
 ### Quotes & orders
 - New quote form, quote detail, send/resend quote (email/SMS/WhatsApp)
@@ -133,6 +134,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Role dashboards (SDR / Sales / Admin / Accountant) with KPI help text
 - Cash collected, released order value, pipeline, team session + work metrics
 - Reports Phase 1 + 2: funnel, win rate, rep scorecards, payment ledger, awaiting collection, custom date range
+- **May 26:** Staff cash deposits log `ticket_payment_recorded` (Reports + dashboard alignment); scorecards display-only; Reports links use lifecycle routes + `?from=/reports` Back
 
 ### Admin & auth
 - User/role management, MFA (TOTP), per-user `mfa_required`, remember device 30 days

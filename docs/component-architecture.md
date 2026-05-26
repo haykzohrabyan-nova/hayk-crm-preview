@@ -501,9 +501,9 @@ app/(public)/q/[token]/page.tsx  [Client Component "use client"]
 app/(app)/reports/page.tsx  [Server Component — thin wrapper]
   └── components/reports/reports-page.tsx  [Client Component "use client"]
         ├── reports-filters-modal.tsx      ← Week / Month / Quarter + custom date range
-        ├── rep-scorecard-table.tsx        ← Sales + SDR scorecards (click row to filter)
-        ├── payment-ledger-section.tsx     ← Payment line items in period
-        ├── awaiting-collection-section.tsx ← Live balance-due snapshot (not period-filtered)
+        ├── rep-scorecard-table.tsx        ← Sales + SDR scorecards (display-only)
+        ├── payment-ledger-section.tsx     ← Payment line items; lifecycle links + ?from=/reports
+        ├── awaiting-collection-section.tsx ← Live balance-due; lifecycle links + ?from=/reports
         └── GET /api/reports/summary?period=…&date_from=…&date_to=…&user_id=…
 ```
 
@@ -518,8 +518,9 @@ app/(app)/reports/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/crm/page.tsx  [Server Component — thin wrapper]
   └── components/crm/crm-page.tsx  [Client Component "use client"]
-        ├── Search, sort, filter
-        └── Customer profile expand → components/crm/customer-profile.tsx
+        ├── Search, status + heat filter pills
+        ├── Industry column (lookup labels); company → profile; tel:/mailto: links
+        └── View / Add Quote actions (row not clickable)
 
 app/(app)/crm/customers/[id]/page.tsx  [Server Component — thin wrapper]
   └── components/crm/customer-profile.tsx  [Client Component]

@@ -18,56 +18,57 @@ components/admin/dashboard-page.tsx        ← role router
   components/admin/accountant-dashboard.tsx  ← Accountant dashboard (payments KPIs)
 ```
 
-**Data:** `GET /api/dashboard/kpis?period=week|month|quarter`
-
-Period boundaries match Reports presets: start of period → end of today (`getDashboardPeriodBounds`).
+**Data:** Sales/Admin/Accountant: `GET /api/dashboard/kpis?period=week|month|quarter`. **SDR:** `?sdr_preset=…`. **Sales:** `?sales_preset=…` (see role sections below).
 
 The API returns role-scoped data — SDR and Sales see only their own numbers; Admin sees company totals.
 
 Each KPI card shows a **help line** below the value explaining how the number is calculated (`lib/utils/kpi-help-text.ts`).
 
-**Money detail:** Admin/Sales **Cash Collected** on the dashboard matches **Reports → Total Cash Collected** for the same period. Order value, balance due, rep scorecards, and payment ledger live on **Reports** (`/reports`).
+**Money detail:** Admin/Sales **Cash Collected** on the dashboard matches **Reports → Total Cash Collected** for the same period. Both sum **`ticket_payment_recorded`** activities only — customer-submitted evidence awaiting accountant review (`ticket_payment_evidence_submitted`) is excluded until confirmed. Order value, balance due, rep scorecards, and payment ledger live on **Reports** (`/reports`).
 
 ---
 
 ## SDR Dashboard — `components/sales/sdr-dashboard.tsx`
 
-KPIs scoped to the current SDR. Inbox count is global (unclaimed workspace leads).
+KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last Week, Last Month, Custom. Trend metrics show **% change vs the prior equivalent period** (e.g. today vs yesterday).
 
-### KPI Cards
+**API:** `GET /api/dashboard/kpis?sdr_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to` (`YYYY-MM-DD`).
 
-| Card | Value | Period? | Accent |
-|------|-------|---------|--------|
-| **Sourced Cash** | Sum of payments on leads they sourced (SDR credit) | ✓ | ✓ |
-| Inbox | Unclaimed workspace leads | snapshot | |
-| Handled | Distinct leads acted on (claim/route/hold/reject activities) | ✓ | |
-| Routed to Sales | Distinct leads routed in period | ✓ | |
-| On Hold | Leads they parked on hold | snapshot | |
-| Rejected | Distinct leads rejected in period | ✓ | |
-| Quote Value | Sum of `quote_total` on handled leads | ✓ | |
-| My Share | Their handled ÷ all SDR handled × 100 | ✓ | |
+| Card | Meaning | Period? | % trend |
+|------|---------|---------|---------|
+| **Lead Claimed** | Distinct leads you locked/claimed | ✓ | ✓ |
+| **Lead Created** | Leads created with you as `sdr_id` | ✓ | ✓ |
+| **Order Value** | Released order totals on **routed** leads you sourced | ✓ | ✓ |
+| **Order Created** | Quote → order conversions on routed leads | ✓ | ✓ |
+| **Inbox** | Unclaimed workspace leads (live snapshot) | snapshot | — |
+| **Rejected** | Leads you rejected | ✓ | ✓ |
+| **On Hold** | Times you put a lead on hold | ✓ | ✓ |
+| **Routed to Sales** | Leads you routed to Sales | ✓ | ✓ |
+| **Sales Win** | Routed leads whose order entered production | ✓ | ✓ |
 
-Activity-based counts (not `leads.updated_at`) — see `app/api/dashboard/kpis/route.ts` SDR branch.
+Order Value / Order Created / Sales Win only credit leads with a **`lead_routed_to_sales`** activity (same rule as Leads **Won** tab).
+
+Activity-based counts — see `lib/utils/sdr-dashboard-metrics.ts`.
 
 ---
 
 ## Sales Dashboard — `components/sales/sales-dashboard.tsx`
 
-KPIs scoped to the current sales rep (payment/production attribution via `reports-attribution`).
+KPIs scoped to the current sales rep with **date filters**: Today, Yesterday, Last Week, Last Month, Custom. Trend metrics show **% change vs the prior equivalent period**.
 
-### KPI Cards
+**API:** `GET /api/dashboard/kpis?sales_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to`.
 
-| Card | Value | Period? | Accent |
-|------|-------|---------|--------|
-| **Cash Collected** | Payments credited to this rep | ✓ | ✓ |
-| **Released Order Value** | Sum of `quote_final_total` when their orders hit production | ✓ | |
-| New in Pipeline | Unclaimed Routed to Sales leads | snapshot | |
-| Active Deals | `sales_status` Ongoing or Quote Sent | snapshot | |
-| Won | Count of production releases in period | ✓ | |
-| On Hold | Paused deals | snapshot | |
-| Pipeline Value | Sum of draft/sent quote totals (their tickets) | snapshot | |
+| Card | Meaning | Period? | % trend |
+|------|---------|---------|---------|
+| **Order Value** | Released order totals credited to you | ✓ | ✓ |
+| **Lead Claimed** | Routed leads you claimed | ✓ | ✓ |
+| **Lead Created** | Quotes you created | ✓ | ✓ |
+| **Order Created** | Quote → order conversions (your credit) | ✓ | ✓ |
+| **Inbox** | Unclaimed routed leads (live snapshot) | snapshot | — |
+| **Rejected** | Pipeline rejections you logged | ✓ | ✓ |
+| **On Hold** | Times you put a deal on hold | ✓ | ✓ |
 
-**Won** count and **Released Order Value** use the same production-release query (`production_released_at` in period).
+Activity-based counts — see `lib/utils/sales-dashboard-metrics.ts`.
 
 ---
 

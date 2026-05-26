@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Phone, Mail, Tag } from "lucide-react";
 import { formatPhone } from "@/lib/utils/phone";
 import { formatDate } from "@/lib/utils/format";
+import { listLeadProductInterestLabels } from "@/lib/utils/format-lead-product-interests";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 
 export interface LinkedLeadInfo {
@@ -13,6 +14,7 @@ export interface LinkedLeadInfo {
   sdr_comment: string | null;
   is_returning_customer: boolean;
   interests: Record<string, boolean> | null;
+  quantities?: Record<string, string | number> | null;
   customer: {
     first_name: string | null;
     last_name: string | null;
@@ -43,9 +45,7 @@ export function LinkedLeadCard({ lead, title = "Linked Lead", productionReleased
     ? `${customer.first_name ?? ""} ${customer.last_name ?? ""}`.trim()
     : "";
 
-  const interestItems = Object.entries(lead.interests ?? {})
-    .filter(([, v]) => v)
-    .map(([key]) => key);
+  const interestLabels = listLeadProductInterestLabels(lead.interests, lead.quantities);
 
   const [sourceLookups, setSourceLookups] = useState<LookupOption[]>([]);
   const [industryLookups, setIndustryLookups] = useState<LookupOption[]>([]);
@@ -65,7 +65,6 @@ export function LinkedLeadCard({ lead, title = "Linked Lead", productionReleased
 
   const tags: { label: string; accent?: boolean }[] = [];
   if (industryLabel) tags.push({ label: industryLabel });
-  interestItems.slice(0, 3).forEach((item) => tags.push({ label: item, accent: true }));
 
   return (
     <div
@@ -146,6 +145,29 @@ export function LinkedLeadCard({ lead, title = "Linked Lead", productionReleased
               SDR Notes
             </p>
             <p className="text-xs leading-relaxed" style={{ color: "var(--color-text-muted)" }}>{lead.sdr_comment}</p>
+          </div>
+        )}
+
+        {interestLabels.length > 0 && (
+          <div className="mt-4 pt-3 border-t" style={{ borderColor: "var(--color-border)" }}>
+            <p className="text-[10px] font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+              Product Interests
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              {interestLabels.map((label) => (
+                <span
+                  key={label}
+                  className="inline-flex items-center px-2.5 py-1 rounded-full text-[11.5px] font-medium border"
+                  style={{
+                    background: "var(--color-badge-bg)",
+                    borderColor: "var(--color-accent)",
+                    color: "var(--color-accent-dark)",
+                  }}
+                >
+                  {label}
+                </span>
+              ))}
+            </div>
           </div>
         )}
       </div>

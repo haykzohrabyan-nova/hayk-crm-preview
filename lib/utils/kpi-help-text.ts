@@ -33,4 +33,21 @@ export const KPI_HELP = {
   rejected: "Leads you rejected this period.",
   quote_value_sdr: "Sum of quote_total on leads you handled this period.",
   share_pct: "Your handled leads as a share of all SDR activity this period.",
+  lead_claimed_sdr: "Distinct leads you claimed (locked) in the selected period.",
+  lead_created_sdr: "Leads added to the workspace with you as SDR in the selected period.",
+  order_value_sdr:
+    "Sum of order totals when routed leads you sourced entered production in the period.",
+  order_created_sdr:
+    "Orders converted from quotes on leads you routed to Sales in the period.",
+  on_hold_sdr_period: "Times you put a lead on hold in the selected period.",
+  sales_win_sdr:
+    "Routed-to-Sales leads whose linked order entered production in the period.",
+  lead_claimed_sales: "Distinct routed leads you claimed in the selected period.",
+  lead_created_sales: "Quotes you created in the selected period.",
+  order_value_sales:
+    "Sum of order totals when your deals entered production in the period.",
+  order_created_sales: "Quotes you converted to orders in the period.",
+  inbox_sales: "Routed leads waiting to be claimed (live snapshot).",
+  rejected_sales: "Leads you rejected from the sales pipeline in the period.",
+  on_hold_sales_period: "Times you put a deal on hold in the selected period.",
 } as const;

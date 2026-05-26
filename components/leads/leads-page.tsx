@@ -1855,7 +1855,7 @@ export function LeadsPage() {
         <LeadHistoryTable
           leads={filtered as LeadHistoryRow[]}
           sourceLabels={Object.fromEntries((lookups.source ?? []).map((s) => [s.value, s.label]))}
-          emptyMessage="No won leads yet. Won leads appear here when a linked order is released to production."
+          emptyMessage="No won leads yet. Leads appear here when you route them to Sales and the linked order enters production."
           loading={loading}
           showTitle={false}
           borderRadius="12px"

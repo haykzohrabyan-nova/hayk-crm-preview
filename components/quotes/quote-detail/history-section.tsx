@@ -135,6 +135,7 @@ function activityDetail(a: ActivityRow): string | null {
     const method = p.method ? (METHOD_LABELS[String(p.method)] ?? String(p.method)) : null;
     const via = p.via === "public_payment" ? "Customer payment"
       : p.via === "accountant_evidence_confirm" ? "Accountant confirmed proof"
+      : p.via === "staff_cash_auto" || p.via === "staff_cash_auto_backfill" ? "Cash / offline (staff)"
       : "Staff recorded";
     return [amount, method, via].filter(Boolean).join(" · ");
   }

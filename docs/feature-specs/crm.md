@@ -81,9 +81,10 @@ Sarah Lee — Beta LLC
 ## Customer Profile Page (`/crm/customers/[id]`)
 
 A dedicated full page for a single customer. Accessible from:
-- Clicking a customer row in the CRM list
-- Clicking customer name in the Verify Drawer or Sales Drawer
-- Clicking customer name in the dedup banner
+- **Company** link (or **—**) in the CRM list
+- **View** on the CRM list
+- Customer name in the Verify Drawer or Sales Drawer
+- Dedup banner on New Quote
 
 ### Header
 - Customer name (large), company subtitle, phone, email
@@ -146,15 +147,20 @@ Table of all `job_tickets` linked to this customer.
 | Column | Notes |
 |--------|-------|
 | Name | `first_name + last_name` |
-| Company | |
-| Phone | Formatted |
-| Email | |
+| Company | Click company name (or **—**) → customer profile |
+| Phone | `tel:` link when present |
+| Email | `mailto:` link when present |
 | Status | New / Known / Returning badge |
-| Heat Tag | `heat_tag` badge |
-| Leads | Count of all leads |
-| Orders | Count of completed tickets |
+| Industry | Lookup label via `GET /api/lookups?categories=industry` (not raw value) |
+| Leads | Count of qualifying leads |
 | Last Activity | Relative time from most recent lead or ticket |
-| Actions | **View** → customer profile page · **Add Quote** → `/quotes/new` pre-filled with customer params |
+| Actions | **View** → customer profile · **Add Quote** → `/quotes/new` pre-filled |
+
+**Row interaction:** The table row itself is not clickable. Use **Company**, **View**, or action buttons.
+
+### Mobile cards
+- Company link opens profile; phone/email use `tel:` / `mailto:` when present
+- Industry shown as lookup label when set
 
 ### Filters & Controls
 

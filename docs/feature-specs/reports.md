@@ -63,13 +63,26 @@ All money totals use `roundMoney()` (2 decimal places) — matches dashboard **C
 
 Payment `by_user_id` is the **staff member who recorded** the payment — not used for rep credit.
 
+### Cash collected activity contract
+
+All **confirmed** payments must log `ticket_payment_recorded` (payload: `amount`, `method`, `mode`, `via`).
+
+| Activity type | When | Counts in Reports cash? |
+|---------------|------|-------------------------|
+| `ticket_payment_recorded` | Accountant confirm, staff cash/offline auto-record, public payment (no review queue) | **Yes** |
+| `ticket_payment_evidence_submitted` | Customer submitted proof **awaiting accountant review** | **No** (until accountant confirms → new `ticket_payment_recorded`) |
+
+Shared helper: `lib/utils/log-ticket-payment-recorded.ts`. Staff cash auto-record: `lib/utils/maybe-auto-record-cash-payment.ts`.
+
+**Cross-section navigation:** Reports ticket links append `?from=/reports` so `QuoteDetail` Back returns to Reports. Other entry points use list fallbacks until CRM/customer links add their own `from` later. Helper: `lib/utils/ticket-detail-href.ts` (`appendReturnPath`, `resolveTicketDetailBackPath`).
+
 ---
 
 ## UI
 
 ### Filters
 - **Report filters** modal — Week / Month / Quarter presets (update From/To immediately), custom date range, Apply
-- Team member dropdown inline (or click scorecard row)
+- Team member dropdown inline (scorecard tables are display-only)
 - **Reset** — This Month, whole team
 
 Info banner explains period scope; notes that **Awaiting Collection** is a live snapshot (not period-filtered).
@@ -87,11 +100,13 @@ Info banner explains period scope; notes that **Awaiting Collection** is a live 
 When filtering by a **sales** rep, their **Released Order Value** card appears in the filtered KPI row.
 
 ### Sections (below KPIs)
-1. **Sales scorecard** — click row to filter
-2. **SDR scorecard** — sourced cash + routed leads
-3. **Awaiting collection** — outstanding balances table
-4. **Payment ledger** — expandable payment lines
+1. **Sales scorecard** — display-only team summary (not clickable; filter via team member dropdown)
+2. **SDR scorecard** — sourced cash + routed leads (display-only)
+3. **Awaiting collection** — outstanding balances; link icon → lifecycle detail (`/orders/[id]?from=/reports`, etc.)
+4. **Payment ledger** — expandable payment lines; **Open order** → same lifecycle + `from` pattern
 5. **Charts** — cash by method, timeline, funnel, win rate
+
+**Detail Back from Reports:** `QuoteDetail` reads `?from=/reports` and Back returns to Reports. Sidebar still highlights Orders/Quotes (URL-based). CRM customer `from` deferred.
 
 ### Metric glossary (dashboard alignment)
 
@@ -113,6 +128,8 @@ Admin dashboard **Cash Collected** matches Reports **Total Cash Collected** for 
 | `lib/utils/reports-attribution.ts` | Sales/SDR credit resolution |
 | `lib/utils/reports-date-range.ts` | Preset + custom date resolution |
 | `lib/utils/reports-awaiting-collection.ts` | Outstanding balance builder |
+| `lib/utils/log-ticket-payment-recorded.ts` | Canonical `ticket_payment_recorded` activity insert |
+| `lib/utils/ticket-detail-href.ts` | Lifecycle detail URLs + `?from=` Back resolution |
 | `lib/utils/format.ts` | `roundMoney`, `formatCurrency` |
 
 ---

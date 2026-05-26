@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { leadIdsRoutedToSales } from "@/lib/utils/lead-sdr-won-filter";
 
 const LEAD_WORKSPACE_LIST_SELECT =
   "id, customer_id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, locked_by_id, sales_owner_id, sdr_id, hold_reason, hold_until, held_at, rejection_reason, prev_status, customer:customers(id, first_name, last_name, company, phone, email, industry, website, authority), sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name), locked_by:user_profiles!leads_locked_by_id_fkey(id, full_name)";
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
 
   const admin = createAdminClient();
 
-  // Won tab: leads where sales_status = "Won" (released to production), scoped to this SDR
+  // Won tab: sales_status Won + SDR routed lead to Sales first (not SDR self-quoted wins)
   if (won) {
     let wonQuery = admin
       .from("leads")
@@ -54,7 +55,9 @@ export async function GET(request: NextRequest) {
     const { data, error } = await wonQuery;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    let leads = data ?? [];
+    const wonIds = (data ?? []).map((lead) => lead.id as string);
+    const routedIds = await leadIdsRoutedToSales(admin, wonIds);
+    let leads = (data ?? []).filter((lead) => routedIds.has(lead.id as string));
 
     if (search) {
       leads = leads.filter((lead) => {

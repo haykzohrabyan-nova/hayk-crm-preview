@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils/format";
+import { ticketLifecycleHrefWithReturn, REPORTS_RETURN_PATH } from "@/lib/utils/ticket-detail-href";
 
 export interface LedgerRow {
   ticket_id: string;
@@ -197,11 +198,11 @@ export function PaymentLedgerSection({
                         </table>
                       </div>
                       <Link
-                        href={`/payments/${row.ticket_id}`}
+                        href={ticketLifecycleHrefWithReturn(row.ticket_id, row.ticket_status, REPORTS_RETURN_PATH)}
                         className="inline-flex items-center gap-1.5 text-[12px] font-medium transition-opacity hover:opacity-80"
                         style={{ color: "var(--color-tab-active)" }}
                       >
-                        Open payment detail
+                        Open order
                         <ExternalLink className="h-3 w-3" />
                       </Link>
                     </div>

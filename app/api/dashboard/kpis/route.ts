@@ -7,10 +7,89 @@ import {
   sumProductionReleasedValue,
 } from "@/lib/utils/dashboard-metrics";
 import { buildTeamMemberMetrics } from "@/lib/utils/team-dashboard-metrics";
+import { resolveSdrDashboardDateRange } from "@/lib/utils/sdr-dashboard-date-range";
+import { buildSdrDashboardMetrics } from "@/lib/utils/sdr-dashboard-metrics";
+import { buildSalesDashboardMetrics } from "@/lib/utils/sales-dashboard-metrics";
 
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const admin = createAdminClient();
+
+  // ── SDR ──────────────────────────────────────────────────────────────────
+  if (roleName === "sdr") {
+    const sdrPreset = request.nextUrl.searchParams.get("sdr_preset") ?? "today";
+    const dateFrom = request.nextUrl.searchParams.get("date_from");
+    const dateTo = request.nextUrl.searchParams.get("date_to");
+
+    const useCustom = sdrPreset === "custom" || Boolean(dateFrom && dateTo);
+    const range = resolveSdrDashboardDateRange(
+      useCustom ? "custom" : sdrPreset,
+      dateFrom,
+      dateTo,
+    );
+
+    if ("error" in range) {
+      return NextResponse.json({ error: range.error }, { status: 400 });
+    }
+
+    const metrics = await buildSdrDashboardMetrics(
+      admin,
+      userId!,
+      { startIso: range.startIso, endIso: range.endIso },
+      { startIso: range.priorStartIso, endIso: range.priorEndIso },
+    );
+
+    return NextResponse.json({
+      role: "sdr",
+      range: {
+        preset: range.preset,
+        label: range.label,
+        prior_label: range.priorLabel,
+        start_iso: range.startIso,
+        end_iso: range.endIso,
+      },
+      ...metrics,
+    });
+  }
+
+  // ── Sales ─────────────────────────────────────────────────────────────────
+  if (roleName === "sales") {
+    const salesPreset = request.nextUrl.searchParams.get("sales_preset") ?? "today";
+    const dateFrom = request.nextUrl.searchParams.get("date_from");
+    const dateTo = request.nextUrl.searchParams.get("date_to");
+
+    const useCustom = salesPreset === "custom" || Boolean(dateFrom && dateTo);
+    const range = resolveSdrDashboardDateRange(
+      useCustom ? "custom" : salesPreset,
+      dateFrom,
+      dateTo,
+    );
+
+    if ("error" in range) {
+      return NextResponse.json({ error: range.error }, { status: 400 });
+    }
+
+    const metrics = await buildSalesDashboardMetrics(
+      admin,
+      userId!,
+      { startIso: range.startIso, endIso: range.endIso },
+      { startIso: range.priorStartIso, endIso: range.priorEndIso },
+    );
+
+    return NextResponse.json({
+      role: "sales",
+      range: {
+        preset: range.preset,
+        label: range.label,
+        prior_label: range.priorLabel,
+        start_iso: range.startIso,
+        end_iso: range.endIso,
+      },
+      ...metrics,
+    });
+  }
 
   const period = request.nextUrl.searchParams.get("period") ?? "month";
   if (!["week", "month", "quarter"].includes(period)) {
@@ -18,148 +97,6 @@ export async function GET(request: NextRequest) {
   }
 
   const { periodStartIso, periodEndIso } = getDashboardPeriodBounds(period);
-  const admin = createAdminClient();
-
-  // ── SDR ──────────────────────────────────────────────────────────────────
-  if (roleName === "sdr") {
-    const SDR_ACTION_TYPES = [
-      "lead_claimed",
-      "lead_routed_to_sales",
-      "lead_rejected",
-      "lead_held",
-    ];
-
-    const [inbox, onHold, myActivities, allSdrActivities, sourcedCash] = await Promise.all([
-      admin
-        .from("leads")
-        .select("id", { count: "exact", head: true })
-        .eq("is_inbox", false)
-        .in("status", ["Pending", "Validated"])
-        .is("locked_by_id", null),
-
-      admin
-        .from("leads")
-        .select("id", { count: "exact", head: true })
-        .eq("is_inbox", false)
-        .eq("sdr_id", userId)
-        .eq("status", "On Hold"),
-
-      admin
-        .from("activities")
-        .select("lead_id, type")
-        .eq("by_user_id", userId)
-        .in("type", SDR_ACTION_TYPES)
-        .gte("created_at", periodStartIso)
-        .lte("created_at", periodEndIso)
-        .not("lead_id", "is", null),
-
-      admin
-        .from("activities")
-        .select("lead_id")
-        .in("type", SDR_ACTION_TYPES)
-        .gte("created_at", periodStartIso)
-        .lte("created_at", periodEndIso)
-        .not("lead_id", "is", null),
-
-      sumCashCollectedInPeriod(admin, periodStartIso, periodEndIso, {
-        userId,
-        role: "sdr",
-      }),
-    ]);
-
-    const myActs = myActivities.data ?? [];
-    const allActs = allSdrActivities.data ?? [];
-
-    const handledLeadIds = [...new Set(myActs.map((a) => a.lead_id as string))];
-    const routedCount = new Set(
-      myActs.filter((a) => a.type === "lead_routed_to_sales").map((a) => a.lead_id as string),
-    ).size;
-    const rejectedCount = new Set(
-      myActs.filter((a) => a.type === "lead_rejected").map((a) => a.lead_id as string),
-    ).size;
-    const allHandledCount = new Set(allActs.map((a) => a.lead_id as string)).size;
-
-    let quote_value = 0;
-    if (handledLeadIds.length > 0) {
-      const { data: handledLeads } = await admin
-        .from("leads")
-        .select("quote_total")
-        .in("id", handledLeadIds);
-      quote_value = (handledLeads ?? []).reduce(
-        (s, l) => s + ((l.quote_total as number) ?? 0),
-        0,
-      );
-    }
-
-    const share_pct =
-      allHandledCount > 0
-        ? Math.round((handledLeadIds.length / allHandledCount) * 100)
-        : 0;
-
-    return NextResponse.json({
-      role: "sdr",
-      inbox_count: inbox.count ?? 0,
-      handled: handledLeadIds.length,
-      routed: routedCount,
-      on_hold: onHold.count ?? 0,
-      rejected: rejectedCount,
-      quote_value,
-      sourced_cash: sourcedCash.total,
-      share_pct,
-    });
-  }
-
-  // ── Sales ─────────────────────────────────────────────────────────────────
-  if (roleName === "sales") {
-    const [unclaimed, myLeads, released, pipelineTickets, cashCollected] =
-      await Promise.all([
-        admin
-          .from("leads")
-          .select("id", { count: "exact", head: true })
-          .eq("status", "Routed to Sales")
-          .is("sales_owner_id", null),
-
-        admin
-          .from("leads")
-          .select("id, status, sales_status")
-          .eq("sales_owner_id", userId),
-
-        sumProductionReleasedValue(admin, periodStartIso, periodEndIso, userId),
-
-        admin
-          .from("job_tickets")
-          .select("quote_final_total")
-          .eq("created_by_id", userId)
-          .in("ticket_status", ["draft", "sent"]),
-
-        sumCashCollectedInPeriod(admin, periodStartIso, periodEndIso, {
-          userId,
-          role: "sales",
-        }),
-      ]);
-
-    const all = myLeads.data ?? [];
-
-    const activeDeals = all.filter(
-      (l) => l.sales_status === "Ongoing" || l.sales_status === "Quote Sent",
-    );
-
-    const pipelineValue = (pipelineTickets.data ?? []).reduce(
-      (s, t) => s + (t.quote_final_total ?? 0),
-      0,
-    );
-
-    return NextResponse.json({
-      role: "sales",
-      new_in_pipeline: unclaimed.count ?? 0,
-      active_deals: activeDeals.length,
-      on_hold: all.filter((l) => l.sales_status === "On Hold").length,
-      won: released.count,
-      won_value: released.value,
-      cash_collected: cashCollected.total,
-      pipeline_value: pipelineValue,
-    });
-  }
 
   // ── Admin ─────────────────────────────────────────────────────────────────
   const [

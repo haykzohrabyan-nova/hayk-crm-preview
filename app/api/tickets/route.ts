@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
-import { computeCheckout } from "@/lib/utils/compute-checkout";
+import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-payment";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
-import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
-import type { PaymentConfig } from "@/lib/types";
 import {
   QUOTE_LIST_STATUSES,
   TICKET_QUOTE_LIST_SELECT,
@@ -15,7 +13,6 @@ import {
   formatQuoteReference,
   nextOrderNumber,
   nextQuoteNumber,
-  assignOrderReferenceCode,
 } from "@/lib/utils/reference-codes";
 
 
@@ -27,150 +24,6 @@ function slugify(text: string): string {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "");
-}
-
-/**
- * After a ticket is created or updated, check whether a Cash/Offline payment
- * should be auto-recorded (mirrors shadow app applyFullCashCheckoutState /
- * hasConfigDepositReceipt logic). If conditions are met, updates the ticket
- * with deposit/payment fields and optionally releases to production.
- *
- * Scenarios:
- *  - Partial + depHandling=cash + receiptId set → auto-record deposit
- *  - Full + channelsFull=["cash"] + receiptId set → auto-record full payment
- */
-async function maybeAutoRecordCashPayment(
-  admin: ReturnType<typeof createAdminClient>,
-  ticket: {
-    id: string;
-    reference_code?: string | null;
-    ticket_payment_strategy: string | null;
-    ticket_dep_handling: string | null;
-    ticket_receipt_id: string | null;
-    ticket_full_channels: string[] | null;
-    ticket_partial_channels: string[] | null;
-    ticket_deposit_type: string | null;
-    ticket_deposit_value: number | null;
-    ticket_require_client_confirm: boolean | null;
-    quote_final_total: number | null;
-    deposit_paid_at: string | null;
-    payment_paid_at: string | null;
-    linked_lead_id: string | null;
-    customer_id: string | null;
-  },
-  now: string,
-): Promise<{ autoReleased: boolean } | null> {
-  const strategy     = ticket.ticket_payment_strategy;
-  const depHandling  = ticket.ticket_dep_handling;
-  const receiptId    = String(ticket.ticket_receipt_id ?? "").trim();
-  const fullChannels = ticket.ticket_full_channels ?? [];
-
-  const isPartialCash = strategy === "partial" && depHandling === "cash";
-  const isCashFull    = strategy === "full" && fullChannels.length === 1 && fullChannels[0] === "cash";
-
-  if (!receiptId) return null;
-  if (!isPartialCash && !isCashFull) return null;
-
-  // Skip if already recorded
-  if (isPartialCash && ticket.deposit_paid_at) return null;
-  if (isCashFull && ticket.payment_paid_at) return null;
-
-  const total = Number(ticket.quote_final_total ?? 0);
-  if (total <= 0) return null;
-
-  let depositAmt = total;
-  if (isPartialCash) {
-    const depType  = ticket.ticket_deposit_type ?? "percent";
-    const depValue = Number(ticket.ticket_deposit_value ?? 0);
-    depositAmt = depType === "percent"
-      ? Math.round(total * (depValue / 100) * 100) / 100
-      : Math.min(depValue, total);
-  }
-
-  const payPatch: Record<string, unknown> = {
-    updated_at:              now,
-    deposit_amount:          depositAmt,
-    deposit_paid_at:         now,
-    deposit_receipt_id:      receiptId,
-    deposit_method:          "cash",
-    payment_amount_received: depositAmt,
-  };
-
-  if (isPartialCash) {
-    payPatch.payment_status    = "partial";
-    payPatch.prepayment_status = "paid";
-  }
-
-  if (isCashFull) {
-    payPatch.payment_paid_at     = now;
-    payPatch.payment_status      = "paid";
-    payPatch.payment_method_used = "cash";
-    payPatch.balance_paid_at     = now;
-  }
-
-  // Check if production can auto-release (same logic as submit-payment route)
-  const cfg = {
-    paymentStrategy:      (strategy as "full" | "partial" | "net"),
-    depositType:          (ticket.ticket_deposit_type as "percent" | "fixed") ?? "percent",
-    depositValue:         Number(ticket.ticket_deposit_value ?? 0),
-    depHandling:          (ticket.ticket_dep_handling as "cash" | "gateway") ?? "gateway",
-    paymentChannels:      fullChannels.length ? fullChannels : (ticket.ticket_partial_channels ?? []),
-    requireClientConfirm: ticket.ticket_require_client_confirm ?? true,
-  } as PaymentConfig;
-
-  const simulated = {
-    quote_final_total:       total,
-    client_confirmed:        false,
-    payment_amount_received: depositAmt,
-    payment_paid_at:         isCashFull ? now : null,
-    deposit_amount:          depositAmt,
-    deposit_paid_at:         now,
-    balance_paid_at:         null,
-    production_released_at:  null,
-    ticket_payment_strategy: (strategy as "full" | "partial" | "net" | null),
-    ticket_deposit_type:     (ticket.ticket_deposit_type as "percent" | "fixed" | null),
-    ticket_deposit_value:    ticket.ticket_deposit_value ?? null,
-  };
-
-  const checkout = computeCheckout(cfg, simulated);
-  let autoReleased = false;
-
-  if (checkout.canReleaseProduction) {
-    try {
-      payPatch.reference_code = await assignOrderReferenceCode(admin, ticket.reference_code ?? null);
-    } catch {
-      // proceed without ORD if sequence fails
-    }
-    payPatch.production_released_at = now;
-    payPatch.ticket_status          = "in_production";
-    payPatch.ticket_kind            = "order";
-    autoReleased = true;
-  }
-
-  await admin.from("job_tickets").update(payPatch).eq("id", ticket.id);
-
-  if (autoReleased) {
-    await markLinkedLeadWonOnProduction(admin, ticket.linked_lead_id, now);
-  }
-
-  // Activity log
-  await admin.from("activities").insert({
-    type:        "ticket_payment_evidence_submitted",
-    lead_id:     ticket.linked_lead_id ?? null,
-    customer_id: ticket.customer_id ?? null,
-    ticket_id:   ticket.id,
-    by_user_id:  null,
-    payload: {
-      method:        "cash",
-      amount:        depositAmt,
-      has_file:      false,
-      receipt_id:    receiptId,
-      auto_released: autoReleased,
-    },
-    created_at: now,
-  }); // fire-and-forget activity log
-
-  return { autoReleased };
 }
 
 // ─── GET /api/tickets ─────────────────────────────────────────────────────────
@@ -603,7 +456,7 @@ export async function POST(request: NextRequest) {
     payment_paid_at:             null,
     linked_lead_id:              linked_lead_id ?? null,
     customer_id:                 ticket.customer_id ?? null,
-  }, now);
+  }, now, { byUserId: userId });
 
   // Net terms (no confirm) and other gate-satisfied tickets → production immediately
   const { data: releaseRow } = await admin

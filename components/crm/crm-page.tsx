@@ -6,6 +6,9 @@ import { Search, RefreshCw, X, User, FilePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPhone } from "@/lib/utils/phone";
+import { lookupLabel } from "@/lib/utils/lookups";
+
+type LookupOption = { value: string; label: string };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -49,6 +52,47 @@ function fullName(c: CrmCustomer): string {
   return [c.first_name, c.last_name].filter(Boolean).join(" ") || "—";
 }
 
+const CRM_LINK_CLASS =
+  "hover:opacity-70 transition-opacity bg-transparent border-0 p-0 cursor-pointer text-left text-inherit font-inherit";
+
+function CompanyCell({ customer, onOpen }: { customer: CrmCustomer; onOpen: () => void }) {
+  return (
+    <button type="button" onClick={onOpen} className={CRM_LINK_CLASS} style={{ color: "var(--color-tab-active)" }}>
+      {customer.company || "—"}
+    </button>
+  );
+}
+
+function PhoneCell({ phone }: { phone: string | null }) {
+  if (!phone) {
+    return <span style={{ color: "var(--color-text-muted)" }}>—</span>;
+  }
+  return (
+    <a
+      href={`tel:${phone}`}
+      className="hover:opacity-70 transition-opacity"
+      style={{ color: "var(--color-tab-active)" }}
+    >
+      {formatPhone(phone)}
+    </a>
+  );
+}
+
+function EmailCell({ email }: { email: string | null }) {
+  if (!email) {
+    return <span style={{ color: "var(--color-text-muted)" }}>—</span>;
+  }
+  return (
+    <a
+      href={`mailto:${email}`}
+      className="hover:opacity-70 transition-opacity break-all"
+      style={{ color: "var(--color-tab-active)" }}
+    >
+      {email}
+    </a>
+  );
+}
+
 import { newQuoteUrlFromCustomer } from "@/lib/utils/new-quote-from-customer";
 
 const STATUS_STYLE: Record<CustomerStatus, { bg: string; text: string; label: string }> = {
@@ -65,27 +109,6 @@ function StatusBadge({ status }: { status: CustomerStatus }) {
       style={{ background: s.bg, color: s.text }}
     >
       {s.label}
-    </span>
-  );
-}
-
-// ─── Heat Badge ──────────────────────────────────────────────────────────────
-
-const HEAT_STYLE: Record<string, { bg: string; text: string }> = {
-  hot: { bg: "var(--color-danger-bg)", text: "var(--color-danger)" },
-  warm: { bg: "var(--color-warning-bg)", text: "var(--color-warning)" },
-  cold: { bg: "var(--color-info-bg)", text: "var(--color-info-text)" },
-};
-
-function HeatBadge({ tag }: { tag: HeatTag }) {
-  if (!tag) return <span style={{ color: "var(--color-text-muted)" }}>—</span>;
-  const s = HEAT_STYLE[tag];
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium capitalize"
-      style={{ background: s.bg, color: s.text }}
-    >
-      {tag}
     </span>
   );
 }
@@ -150,6 +173,7 @@ export function CRMPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [heatFilter, setHeatFilter] = useState<HeatFilter>("all");
+  const [industryLookups, setIndustryLookups] = useState<LookupOption[]>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const fetchCustomers = useCallback(async (silent = false) => {
@@ -161,6 +185,13 @@ export function CRMPage() {
   }, []);
 
   useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
+
+  useEffect(() => {
+    fetch("/api/lookups?categories=industry")
+      .then((r) => r.json())
+      .then((d) => setIndustryLookups(d.industry ?? []))
+      .catch(() => {});
+  }, []);
 
   // Re-fetch silently whenever any lead changes (e.g. SDR routes a lead →
   // that customer becomes visible in the CRM for the first time).
@@ -281,10 +312,10 @@ export function CRMPage() {
         <table className="w-full text-sm">
           <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
             <tr>
-              {["Name", "Company", "Phone", "Email", "Status", "Heat", "Leads", "Last Activity", ""].map((h) => (
+              {["Name", "Company", "Phone", "Email", "Status", "Industry", "Leads", "Last Activity", ""].map((h) => (
                 <th
                   key={h}
-                  className={`px-3 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] whitespace-nowrap ${["Status", "Heat", "Leads", ""].includes(h) ? "text-center" : "text-left"}`}
+                  className={`px-3 py-2.5 text-[11px] font-medium uppercase tracking-[0.06em] whitespace-nowrap ${["Status", "Leads", ""].includes(h) ? "text-center" : "text-left"}`}
                   style={{ color: "var(--color-text-muted)" }}
                 >
                   {h}
@@ -305,32 +336,31 @@ export function CRMPage() {
               filtered.map((c, idx) => (
                 <tr
                   key={c.id}
-                  className="cursor-pointer transition-colors"
+                  className="transition-colors"
                   style={{
                     background: idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
                     borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
                   }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
-                  onClick={() => router.push(`/crm/customers/${c.id}`)}
                 >
                   <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
                     {fullName(c)}
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
-                    {c.company || "—"}
+                  <td className="px-3 py-2.5 whitespace-nowrap text-sm">
+                    <CompanyCell customer={c} onOpen={() => router.push(`/crm/customers/${c.id}`)} />
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                    {c.phone ? formatPhone(c.phone) : "—"}
+                  <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                    <PhoneCell phone={c.phone} />
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                    {c.email || "—"}
+                  <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+                    <EmailCell email={c.email} />
                   </td>
                   <td className="px-3 py-2.5 text-center">
                     <StatusBadge status={c.customer_status} />
                   </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <HeatBadge tag={c.heat_tag} />
+                  <td className="px-3 py-2.5 whitespace-nowrap text-xs max-w-[140px] truncate" style={{ color: "var(--color-text-muted)" }} title={lookupLabel(industryLookups, c.industry, "")}>
+                    {lookupLabel(industryLookups, c.industry)}
                   </td>
                   <td className="px-3 py-2.5 text-center font-medium" style={{ color: "var(--color-text-primary)" }}>
                     {c.lead_count}
@@ -341,14 +371,14 @@ export function CRMPage() {
                   <td className="px-3 py-2.5 text-center">
                     <div className="flex items-center justify-center gap-1.5">
                       <button
-                        onClick={(e) => { e.stopPropagation(); router.push(`/crm/customers/${c.id}`); }}
+                        onClick={() => router.push(`/crm/customers/${c.id}`)}
                         className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
                         style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                       >
                         View
                       </button>
                       <button
-                        onClick={(e) => { e.stopPropagation(); router.push(newQuoteUrlFromCustomer(c)); }}
+                        onClick={() => router.push(newQuoteUrlFromCustomer(c))}
                         className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] flex items-center gap-1"
                         style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
                         title="New quote for this customer"
@@ -382,36 +412,48 @@ export function CRMPage() {
           filtered.map((c) => (
             <div
               key={c.id}
-              className="rounded-[10px] border p-4 space-y-3 cursor-pointer"
+              className="rounded-[10px] border p-4 space-y-3"
               style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-              onClick={() => router.push(`/crm/customers/${c.id}`)}
             >
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{fullName(c)}</p>
-                  {c.company && <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{c.company}</p>}
+                  <p className="text-xs mt-0.5">
+                    <CompanyCell customer={c} onOpen={() => router.push(`/crm/customers/${c.id}`)} />
+                  </p>
                 </div>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  <HeatBadge tag={c.heat_tag} />
                   <StatusBadge status={c.customer_status} />
                 </div>
               </div>
               <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
-                {c.phone && <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(c.phone)}</span></div>}
-                {c.email && <div className="flex justify-between"><span>Email</span><span className="normal-case tracking-normal">{c.email}</span></div>}
+                {c.industry && (
+                  <div className="flex justify-between">
+                    <span>Industry</span>
+                    <span className="normal-case tracking-normal">{lookupLabel(industryLookups, c.industry)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center gap-2">
+                  <span>Phone</span>
+                  <span className="normal-case tracking-normal"><PhoneCell phone={c.phone} /></span>
+                </div>
+                <div className="flex justify-between items-center gap-2">
+                  <span>Email</span>
+                  <span className="normal-case tracking-normal truncate max-w-[60%] text-right"><EmailCell email={c.email} /></span>
+                </div>
                 <div className="flex justify-between"><span>Leads</span><span className="normal-case tracking-normal">{c.lead_count}</span></div>
                 <div className="flex justify-between"><span>Last activity</span><span className="normal-case tracking-normal">{relativeTime(c.last_activity)}</span></div>
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={(e) => { e.stopPropagation(); router.push(`/crm/customers/${c.id}`); }}
+                  onClick={() => router.push(`/crm/customers/${c.id}`)}
                   className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium"
                   style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                 >
                   View Profile
                 </button>
                 <button
-                  onClick={(e) => { e.stopPropagation(); router.push(newQuoteUrlFromCustomer(c)); }}
+                  onClick={() => router.push(newQuoteUrlFromCustomer(c))}
                   className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium flex items-center justify-center gap-1.5"
                   style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
                 >

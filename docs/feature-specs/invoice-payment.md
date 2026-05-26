@@ -161,7 +161,8 @@ Additional UX:
 3. Ticket appears on **`/payments`** for accountant confirm — queue includes **`sent`** quotes and **`in_production`** orders with pending evidence. Ticket **owner** (sales/SDR) also sees evidence-pending rows on **`/orders`** with status **Awaiting payment confirmation** (read-only payment review card; no evidence file link for sales/SDR).
 4. Accountant opens `/payments/[id]` or order detail, reviews evidence (`GET /api/tickets/[id]/evidence` — accountant/admin only), clicks **Confirm**
 5. `PATCH /api/tickets/[id]` with `{ record_payment: true, … }` — **accountant + admin only**; runs `maybeConvertQuoteToOrder()` then `maybeAutoReleaseProduction()`; clears evidence fields; sends **payment confirmed** email/SMS (balance on in-production orders emphasizes **paid in full**)
-6. Cash / in-person channels without evidence file may still auto-record and auto-release when gates pass (respecting `ticket_require_client_confirm`)
+6. **Staff cash / offline auto-record** (receipt ID on ticket create/update): records payment immediately via `lib/utils/maybe-auto-record-cash-payment.ts` and logs **`ticket_payment_recorded`** (not `ticket_payment_evidence_submitted`) — counts toward Reports/dashboard **Cash Collected**. May auto-release when gates pass (respecting `ticket_require_client_confirm`).
+7. **Public cash** without evidence file may still auto-record and auto-release when gates pass (same activity type as staff cash when payment is immediate)
 
 ### Net terms auto-production
 

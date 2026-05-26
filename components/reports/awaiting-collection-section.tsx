@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AlertCircle, ExternalLink, Hourglass } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/format";
+import { ticketLifecycleHrefWithReturn, REPORTS_RETURN_PATH } from "@/lib/utils/ticket-detail-href";
 import type { OutstandingOrderRow } from "@/lib/utils/reports-awaiting-collection";
 
 function statusLabel(status: string): string {
@@ -210,13 +211,13 @@ export function AwaitingCollectionSection({
                         </p>
                       </div>
                       <Link
-                        href={`/payments/${row.ticket_id}`}
+                        href={ticketLifecycleHrefWithReturn(row.ticket_id, row.ticket_status, REPORTS_RETURN_PATH)}
                         className="flex h-8 w-8 items-center justify-center rounded-[6px] transition-opacity hover:opacity-80"
                         style={{
                           background: "color-mix(in srgb, var(--color-tab-active) 10%, transparent)",
                           color: "var(--color-tab-active)",
                         }}
-                        title="Open payment detail"
+                        title="Open order"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                       </Link>

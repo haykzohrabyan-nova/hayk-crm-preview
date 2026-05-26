@@ -673,3 +673,15 @@ export interface TicketForm {
 | `validateWebsite()` | `lib/utils/website.ts` | Optional website/social URL; empty allowed |
 | `normalizeWebsite()` | `lib/utils/website.ts` | Prefix `https://` when protocol omitted before save |
 | `formatLeadProductInterests()` | `lib/utils/format-lead-product-interests.ts` | List display: `Booklets[1111], Labels[500]` |
+
+---
+
+## Navigation helpers (detail Back)
+
+| Helper | Module | Purpose |
+|--------|--------|---------|
+| `ticketLifecycleHref()` | `lib/utils/ticket-detail-href.ts` | `/orders/` / `/quotes/` / `/completed/` by ticket status |
+| `ticketLifecycleHrefWithReturn()` | `lib/utils/ticket-detail-href.ts` | Lifecycle URL + `?from=` (Reports uses `REPORTS_RETURN_PATH`) |
+| `resolveTicketDetailBackPath()` | `lib/utils/ticket-detail-href.ts` | Back target: validated `from`, else list fallback |
+| `appendReturnPath()` | `lib/utils/ticket-detail-href.ts` | Safe internal return query param |
+| `logTicketPaymentRecorded()` | `lib/utils/log-ticket-payment-recorded.ts` | Inserts canonical payment activity for Reports cash |

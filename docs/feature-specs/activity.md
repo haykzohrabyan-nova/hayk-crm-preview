@@ -95,8 +95,8 @@ Each activity entry is rendered as a timeline row with:
 | `lead_reassigned` | "From [name] → [name]" or "Unassigned from [name]" |
 | `contact_edited` | List of changed fields |
 | `order_ticket_updated` | List of changed field names (`payload.fields`) |
-| `ticket_payment_evidence_submitted` | Method, amount claimed, channel (`payload.method`, `payload.amount`) |
-| `ticket_payment_recorded` | Mode, method, amount (`payload.payment_mode`, `payload.payment_method`, `payload.payment_amount`) |
+| `ticket_payment_evidence_submitted` | Method, amount claimed, channel (`payload.method`, `payload.amount`) — **does not** count in Reports/dashboard cash until accountant confirms |
+| `ticket_payment_recorded` | Mode, method, amount (`payload.payment_mode`, `payload.payment_method`, `payload.payment_amount`) — **counts** in Reports/dashboard **Cash Collected** |
 | `ticket_payment_confirmed_sent` | Channel + destination |
 | `ticket_invoice_resent` | Channel + destination |
 | `ticket_order_ready_sent` / `ticket_order_ready_failed` | Channel; failure includes error message |
@@ -148,3 +148,12 @@ The following Route Handlers automatically insert activity rows when they run:
 | `POST /api/public/quotes/[token]/confirm` | `ticket_client_confirmed` only (customer, `by_user_id = null`); `ticket_converted` / production activities when gates pass on same request |
 | `POST /api/public/quotes/[token]/submit-payment` | `ticket_payment_evidence_submitted` / status transitions / production release |
 | `POST /api/outreach/send` | `outreach_sent` |
+
+### Payment activity types (Reports cash)
+
+| Type | When logged | Counts in cash collected? |
+|------|-------------|---------------------------|
+| `ticket_payment_recorded` | Accountant `record_payment`; staff cash auto-record (`maybe-auto-record-cash-payment.ts`); immediate public cash | **Yes** |
+| `ticket_payment_evidence_submitted` | Customer uploaded proof (wire/ACH/Zelle/check/card) awaiting review | **No** — until confirm creates `ticket_payment_recorded` |
+
+Shared helper for confirmed payments: `lib/utils/log-ticket-payment-recorded.ts`.

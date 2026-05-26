@@ -708,30 +708,24 @@ export function ReportsPage() {
             )}
           </div>
 
-          {/* Team performance — bonus core */}
-          {!userId && (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          {/* Team performance — bonus core (display only; filter via team member dropdown) */}
+          <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+            <RepScorecardTable
+              title="Sales — Cash by Rep"
+              subtitle={`Payments recorded ${periodLabel.toLowerCase()} · sales owner or quote creator`}
+              rows={data.sales_scorecard}
+              variant="sales"
+            />
+            {data.sdr_scorecard.length > 0 && (
               <RepScorecardTable
-                title="Sales — Cash by Rep"
-                subtitle={`Payments recorded ${periodLabel.toLowerCase()} · sales owner or quote creator`}
-                rows={data.sales_scorecard}
-                variant="sales"
-                selectedUserId={userId}
-                onSelectUser={setUserId}
+                title="SDR — Sourced Cash"
+                subtitle={`Payments on sourced leads ${periodLabel.toLowerCase()} · plus leads routed in period`}
+                rows={data.sdr_scorecard}
+                variant="sdr"
+                showRouted
               />
-              {data.sdr_scorecard.length > 0 && (
-                <RepScorecardTable
-                  title="SDR — Sourced Cash"
-                  subtitle={`Payments on sourced leads ${periodLabel.toLowerCase()} · plus leads routed in period`}
-                  rows={data.sdr_scorecard}
-                  variant="sdr"
-                  selectedUserId={userId}
-                  onSelectUser={setUserId}
-                  showRouted
-                />
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Payment ledger */}
           <PaymentLedgerSection rows={data.payment_ledger} periodLabel={periodLabel} />

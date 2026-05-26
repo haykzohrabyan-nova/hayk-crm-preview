@@ -61,7 +61,7 @@ app/
     │
     ├── notifications/page.tsx        ✓ EXISTS — Activity Log
     │
-    ├── reports/page.tsx              ✓ EXISTS — Admin reports (cash collected, scorecards, ledger; see feature-specs/reports.md)
+    ├── reports/page.tsx              ✓ EXISTS — Admin reports (cash, scorecards, ledger, awaiting collection; see feature-specs/reports.md)
     │
     ├── settings/page.tsx             → TO BUILD (currently stub — personal profile)
     │
@@ -258,7 +258,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | On Hold | `status = 'On Hold'` | count |
 | Directed to Sales | `status = 'Routed to Sales'` (just routed, not yet claimed) | count |
 | Rejected | `status = 'Rejected'` | — |
-| Won | `sales_status = 'Won'` — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. | count |
+| Won | `sales_status = 'Won'` **and** SDR routed lead to Sales first — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. | count |
 
 ### `/sales` — Sales Pipeline
 
@@ -311,6 +311,35 @@ Row click → `/payments/[id]`. Counts: `GET /api/payments/counts`.
 
 Row click → `/completed/[id]`. Counts: `GET /api/completed/counts`.
 
+### `/crm` — Customer registry
+
+| Column | Notes |
+|--------|-------|
+| Name | `first_name + last_name` |
+| Company | Link (or **—**) → `/crm/customers/[id]` |
+| Phone | `tel:` when present |
+| Email | `mailto:` when present |
+| Status | New / Known / Returning badge |
+| Industry | Lookup label (not raw value) |
+| Leads | Count |
+| Last Activity | Relative time |
+| Actions | **View** · **Add Quote** |
+
+**Row interaction:** Row itself is not clickable — use Company, View, or action buttons. Heat filter pills (Hot / Warm / Cold) remain; heat badge is on profile/edit only, not list column.
+
+### `/reports` — Admin reports
+
+No tabs. Single page with period filters + optional team member dropdown.
+
+| Section | Notes |
+|---------|-------|
+| KPI row | Cash collected, released order value, awaiting collection (live snapshot) |
+| Sales / SDR scorecards | Display-only — filter via team member dropdown (rows not clickable) |
+| Awaiting collection | Balance due on open orders; link → lifecycle detail (`/orders/[id]?from=/reports`, etc.) |
+| Payment ledger | Period-filtered payments; **Open order** → same lifecycle + `?from=/reports` |
+
+Counts API: none (all metrics from `GET /api/reports/summary`). **Back from detail:** `QuoteDetail` reads `?from=/reports`.
+
 ### `/admin/settings/users`
 
 No sub-tabs. Single table view with filters (search, role filter, show inactive toggle).
@@ -336,6 +365,8 @@ No sub-tabs. Single table view with filters (search, role filter, show inactive 
 
 Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallow route structure.
 
+**Cross-section detail Back:** Opening a ticket from **Reports** uses `?from=/reports` so Back returns to Reports (sidebar still reflects the detail URL, e.g. Orders). CRM `from` deferred. See `lib/utils/ticket-detail-href.ts`.
+
 | Route | Page Title |
 |-------|-----------|
 | `/dashboard` | Dashboard |
@@ -351,6 +382,8 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/payments/[id]` | Payment Review |
 | `/completed` | Completed Orders |
 | `/completed/[id]` | Completed Order |
+| `/reports` | Reports |
+| `/crm/customers/[id]` | Customer Profile |
 | `/q/[token]` | Customer portal (public) |
 | `/settings` | Account Settings |
 | `/admin` | Admin (Overview) |

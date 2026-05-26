@@ -141,7 +141,12 @@ Client-side filters applied to the fetched result set:
 - **SDR:** only their own won leads (`sdr_id = currentUserId`)
 - **Admin:** all won leads across every SDR
 
-A lead appears here when its linked ticket is released to **`in_production`**. `markLeadWonOnProduction()` sets `sales_status = 'Won'` on all production-release paths (payment gates, accountant confirm, net terms auto-release, manual release).
+A lead appears here when:
+
+1. The SDR **routed it to Sales** (`lead_routed_to_sales` activity — Route to Sales in the verify drawer), **and**
+2. The linked ticket later entered **`in_production`** (`sales_status = 'Won'` via `markLeadWonOnProduction()`).
+
+**Not included:** SDR quotes/orders the lead directly without routing to Sales — those may still get `sales_status = Won` globally, but they do not appear on this tab.
 
 **Component:** `components/leads/lead-history-table.tsx` — same table as customer profile **Lead History** (`lib/utils/lead-history-display.ts` for refs and source labels).
 
@@ -160,7 +165,7 @@ A lead appears here when its linked ticket is released to **`in_production`**. `
 
 - **Rows are clickable (SDR)** — navigates to **`/crm/customers/[customer_id]`** (`redirectSdrWonToCustomer()`), not the Verify Drawer
 - **Admin** — row click still opens Verify Drawer in read-only mode
-- Empty state copy explains that Won credit applies when the order enters production
+- Empty state copy explains routing-to-Sales + production release
 - Count badge from `GET /api/leads/workspace/counts` → `counts.won`
 - API returns nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` only — **no `quote_final_total` or closer name** in the browser
 

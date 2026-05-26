@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { countExact } from "@/lib/utils/db-counts";
+import { countLeadsWonViaSalesRoute } from "@/lib/utils/lead-sdr-won-filter";
 
 export async function GET() {
   const { userId, roleName, errorResponse } = await requireSession();
@@ -42,13 +43,7 @@ export async function GET() {
         }
         return query;
       }),
-      countExact(admin, "leads", (q) => {
-        let query = q.eq("is_inbox", false).eq("sales_status", "Won");
-        if (roleName !== "admin" && userId) {
-          query = query.eq("sdr_id", userId);
-        }
-        return query;
-      }),
+      countLeadsWonViaSalesRoute(admin, { userId, roleName }),
     ]);
 
     return NextResponse.json({

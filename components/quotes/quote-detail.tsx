@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ChevronLeft,
   Trash2,
@@ -30,6 +30,7 @@ import { buildAdminConvertPreview } from "@/lib/utils/admin-convert-preview";
 import type { ManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { isPaymentEvidencePending, isTicketPaidInFull, computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { formatPhone, digitsOnly } from "@/lib/utils/phone";
+import { resolveTicketDetailBackPath } from "@/lib/utils/ticket-detail-href";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
@@ -207,6 +208,8 @@ const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
 
 export default function QuoteDetail({ ticketId, context = "order" }: { ticketId: string; context?: "quote" | "order" | "production" | "payment" | "completed" }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnFrom = searchParams.get("from");
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [products, setProducts] = useState<ProductType[]>([]);
   const [skuLookups, setSkuLookups] = useState<SkuLookups>({
@@ -869,13 +872,13 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         <div className="flex items-center gap-2 px-3 py-2.5 md:px-6 md:py-4">
         <button
           onClick={() => {
-            if (context === "production" || ticket.ticket_status === "in_production") {
-              router.push("/orders?tab=in_production");
-            } else if (context === "completed") router.push("/completed");
-            else if (context === "payment") router.push("/payments");
-            else if (context === "order") router.push("/orders");
-            else if (context === "quote") router.push("/quotes");
-            else router.back();
+            router.push(
+              resolveTicketDetailBackPath(
+                context,
+                ticket.ticket_status,
+                returnFrom,
+              ),
+            );
           }}
           className="flex items-center gap-1 text-sm font-medium hover:opacity-70 transition-opacity shrink-0"
           style={{ color: "var(--color-text-muted)" }}

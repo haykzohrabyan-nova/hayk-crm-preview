@@ -3,6 +3,106 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-26] — Sales dashboard: date filters + expanded KPIs
+
+### Added
+- Sales dashboard — same date presets as SDR (Today, Yesterday, Last Week, Last Month, Custom) with period-over-period %
+- KPIs: Order Value (first), Lead Claimed, Lead Created (quotes), Order Created, Inbox, Rejected, On Hold
+- `lib/utils/sales-dashboard-metrics.ts`
+
+### Changed
+- `GET /api/dashboard/kpis` — Sales branch uses `sales_preset` / custom dates (replaces week/month/quarter for Sales)
+- `components/sales/sales-dashboard.tsx` — new filter bar + KPI grid
+
+### Removed
+- Sales dashboard cards: Cash Collected, New in Pipeline, Active Deals, Won, Pipeline Value (Admin dashboard unchanged)
+
+## [2026-05-26] — SDR dashboard: Order Value first
+
+### Changed
+- SDR dashboard KPI grid — **Order Value** is the first (accent) card
+
+## [2026-05-26] — SDR dashboard: date filters + expanded KPIs
+
+### Added
+- SDR dashboard presets: **Today**, **Yesterday**, **Last Week**, **Last Month**, **Custom** (with period-over-period % on trend metrics)
+- KPIs: Lead Claimed, Lead Created, Order Value, Order Created, Inbox (live), Rejected, On Hold, Routed to Sales, Sales Win
+- `lib/utils/sdr-dashboard-date-range.ts`, `lib/utils/sdr-dashboard-metrics.ts` — SDR-only dashboard metrics (routed-to-Sales attribution for orders/wins)
+
+### Changed
+- `GET /api/dashboard/kpis` — SDR branch uses `sdr_preset` / `date_from` + `date_to` (replaces week/month/quarter for SDR)
+- `components/sales/sdr-dashboard.tsx` — new filter bar + KPI grid
+
+### Removed
+- SDR dashboard cards: Sourced Cash, Handled, Quote Value, My Share (Sales/Admin dashboards unchanged)
+
+## [2026-05-26] — Leads Won tab: routed to Sales + production Won
+
+### Changed
+- SDR **Won** tab (`GET /api/leads/workspace?won=true`) — only leads with `lead_routed_to_sales` activity **and** `sales_status = Won` (global Won on production release unchanged)
+- `lib/utils/lead-sdr-won-filter.ts` — shared filter for list + tab count
+- Empty state copy on Won tab updated
+
+## [2026-05-26] — Quote/order overview: Product Interests from linked lead
+
+### Changed
+- `LinkedLeadCard` (quote + order overview sidebar) — **Product Interests** section with `ProductName[quantity]` pills when the ticket has a linked lead
+- `GET /api/tickets/[id]` — lead join includes `quantities` for interest formatting
+- `lib/utils/format-lead-product-interests.ts` — `listLeadProductInterestLabels()` helper
+
+## [2026-05-26] — Documentation sync (full pass)
+
+### Changed
+- `navigation.md` — `/crm` list columns + `/reports` section; cross-section Back note
+- `session-summary.md` — migration `078_backfill_staff_cash_payment_recorded`
+- `TODO.md` — May 26 completed items (leads UX, Reports, CRM)
+- `api-contract.md`, `feature-specs/activity.md`, `feature-specs/invoice-payment.md`, `feature-specs/dashboard.md` — `ticket_payment_recorded` vs evidence-submitted contract for cash collected
+- `architecture.md` — migration list includes cash backfill
+
+## [2026-05-26] — Documentation sync (Reports + CRM)
+
+### Changed
+- `session-summary.md`, `feature-specs/reports.md`, `feature-specs/crm.md`, `component-architecture.md`, `navigation.md`, `types.md` — Reports (cash logging, scorecards display-only, lifecycle links, `?from=/reports` Back) and CRM list (Industry column, company/phone/email actions)
+
+## [2026-05-26] — CRM list: Industry column replaces Heat
+
+### Changed
+- CRM customer table — **Industry** column shows lookup label; company name (or **—**) opens profile; phone `tel:` / email `mailto:` links; row click does not navigate
+
+## [2026-05-26] — Reports → order detail: Back returns to Reports
+
+### Added
+- `?from=/reports` on Awaiting Collection + Payment Ledger ticket links
+- `resolveTicketDetailBackPath()` — Back uses validated `from` param, else lifecycle list fallback
+
+### Changed
+- `QuoteDetail` Back button — returns to Reports when opened from Reports; unchanged when opened from Orders/Quotes lists
+
+## [2026-05-26] — Reports: order links use lifecycle routes
+
+### Fixed
+- Awaiting Collection + Payment Ledger on `/reports` — external link now opens `/orders/[id]` (or `/quotes/` / `/completed/` by status) instead of `/payments/[id]` (accountant review queue only)
+- `lib/utils/ticket-detail-href.ts` — shared lifecycle route helper
+
+## [2026-05-26] — Reports scorecards display-only
+
+### Changed
+- Sales / SDR rep scorecard tables on `/reports` — rows no longer click-to-filter (informational only); use the team member dropdown to drill down
+
+## [2026-05-26] — Reports: staff cash deposits count toward cash collected
+
+### Fixed
+- Staff **Cash / offline** auto-recorded deposits (receipt ID on save) now log `ticket_payment_recorded` instead of `ticket_payment_evidence_submitted` — Reports scorecards, Payment Ledger, and dashboard **Cash Collected** include these payments (e.g. ORD-2026-002 partial deposits)
+- `supabase/migrations/078_backfill_staff_cash_payment_recorded.sql` — backfills missing `ticket_payment_recorded` rows for existing auto-cash deposits (run on live DB)
+
+### Added
+- `lib/utils/log-ticket-payment-recorded.ts` — single helper for confirmed payment activities
+- `lib/utils/maybe-auto-record-cash-payment.ts` — shared cash auto-record (was duplicated in ticket routes)
+
+### Changed
+- `app/api/tickets/route.ts`, `app/api/tickets/[id]/route.ts` — use shared payment logging; accountant `record_payment` uses same helper
+- `docs/feature-specs/reports.md` — documents activity-type contract for cash collected
+
 ## [2026-05-26] — Documentation sync (leads UX)
 
 ### Changed

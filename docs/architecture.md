@@ -340,7 +340,7 @@ Where key customer-facing fields are stored (May 2026):
 | **Source (direct quote)** | `job_tickets.quote_source` | New Quote Customer tab or CRM Info tab | Requires `from_quote_page: true`; no auto-lead |
 | **Website** | `customers.website` | Lead/quote/CRM customer flows | Validated via `lib/utils/website.ts`; optional; normalized with `https://` prefix when omitted |
 
-**Migrations:** `077_quote_source.sql`, `078_customer_authority.sql`, `077_drop_initial_interest.sql` (removes deprecated `leads.initial_interest`)
+**Migrations:** `077_quote_source.sql`, `078_customer_authority.sql`, `077_drop_initial_interest.sql`, `078_backfill_staff_cash_payment_recorded.sql` (Reports cash backfill)
 
 ---
 
