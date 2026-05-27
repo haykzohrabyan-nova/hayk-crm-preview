@@ -315,16 +315,16 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 
 | Component | Fetches |
 |-----------|---------|
-| `sdr-dashboard.tsx` | `GET /api/dashboard/kpis?period=` |
-| `sales-dashboard.tsx` | Same |
-| `admin-dashboard.tsx` | KPIs + `GET /api/admin/team` + Realtime silent refresh |
+| `sdr-dashboard.tsx` | `GET /api/dashboard/kpis?sdr_preset=…` (+ `date_from`/`date_to` for custom) |
+| `sales-dashboard.tsx` | `GET /api/dashboard/kpis?sales_preset=…` |
+| `admin-dashboard.tsx` | `GET /api/dashboard/kpis?admin_preset=…` (default `last_week`) + `GET /api/admin/team` + sessions + Realtime silent refresh |
 | `accountant-dashboard.tsx` | `GET /api/payments/counts` |
 
 **Any-doer tasks:**
 
 - [ ] **P2** Audit KPI handler — ensure activity-scoped queries use indexes, not full table scans
 - [ ] **P2** Combine accountant dashboard into single endpoint if more widgets added
-- [ ] **P1** Cache KPI response client-side per `period` for 60 s
+- [ ] **P1** Cache KPI response client-side per preset + date range for 60 s
 
 ---
 

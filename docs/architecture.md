@@ -188,7 +188,7 @@ BazarCRM/
 │   │   │   └── counts/route.ts           ✓ GET — completed tab badge counts
 │   │   ├── activities/route.ts           ✓ GET — unified activity feed (ticket + lead)
 │   │   ├── activity/route.ts             ✓ GET/POST — per-contact activity log
-│   │   ├── dashboard/kpis/route.ts       ✓ GET — role-scoped KPI data
+│   │   ├── dashboard/kpis/route.ts       ✓ GET — role-scoped KPIs (sdr_preset / sales_preset / admin_preset + custom dates)
 │   │   ├── lookups/
 │   │   │   ├── route.ts                  ✓ GET — active dropdown options by category
 │   │   │   └── products/route.ts         ✓ GET — product catalog (types + materials)

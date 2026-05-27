@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
-import { getDashboardPeriodBounds } from "@/lib/utils/get-period-start";
 import {
   sumCashCollectedInPeriod,
   sumProductionReleasedValue,
@@ -91,14 +90,24 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const period = request.nextUrl.searchParams.get("period") ?? "month";
-  if (!["week", "month", "quarter"].includes(period)) {
-    return NextResponse.json({ error: "Invalid period." }, { status: 400 });
+  // ── Admin ─────────────────────────────────────────────────────────────────
+  const adminPreset = request.nextUrl.searchParams.get("admin_preset") ?? "last_week";
+  const dateFrom = request.nextUrl.searchParams.get("date_from");
+  const dateTo = request.nextUrl.searchParams.get("date_to");
+
+  const useCustom = adminPreset === "custom" || Boolean(dateFrom && dateTo);
+  const range = resolveSdrDashboardDateRange(
+    useCustom ? "custom" : adminPreset,
+    dateFrom,
+    dateTo,
+  );
+
+  if ("error" in range) {
+    return NextResponse.json({ error: range.error }, { status: 400 });
   }
 
-  const { periodStartIso, periodEndIso } = getDashboardPeriodBounds(period);
-
-  // ── Admin ─────────────────────────────────────────────────────────────────
+  const periodStartIso = range.startIso;
+  const periodEndIso = range.endIso;
   const [
     totalLeads,
     openLeads,
@@ -184,6 +193,12 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json({
     role: "admin",
+    range: {
+      preset: range.preset,
+      label: range.label,
+      start_iso: range.startIso,
+      end_iso: range.endIso,
+    },
     total_leads: totalLeads.count ?? 0,
     open_leads: openLeads.count ?? 0,
     claimed_leads: claimedLeads.count ?? 0,

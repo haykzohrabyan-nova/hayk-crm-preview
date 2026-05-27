@@ -104,6 +104,8 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 **Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — default **Last 7 Days**; filters by `created_at` client-side. **Tab badges follow the selected date range**; sidebar `/orders` badge stays all-time scoped total.
 
+**Due today highlight (May 2026):** Rows with due date **today** and not cancelled use a full-row danger background on all table cells (desktop) and matching fill on mobile cards (`isDueToday()` in `lib/utils/format.ts`). Past-due rows still show **· Overdue** on the due date column.
+
 **Mobile (< `lg`):** same card pattern as Quotes (`MobileListCard` + `TicketListToolbar`).
 
 ### Tabs (count badge on all tabs; URL `?tab=`)

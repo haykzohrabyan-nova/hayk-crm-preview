@@ -146,6 +146,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 ### Dashboard & reports
 - Role dashboards (SDR / Sales / Admin / Accountant) with KPI help text
 - SDR/Sales dashboards: separate **Total**, **Received**, **Balance** KPI cards + shared date filter component
+- **May 27:** Admin dashboard — same `DashboardDateRangeFilter` as list pages; default **Last 7 Days**; `GET /api/dashboard/kpis?admin_preset=…`
 - Cash collected, released order value, pipeline, team session + work metrics
 - Reports Phase 1 + 2: funnel, win rate, rep scorecards, payment ledger, awaiting collection, custom date range
 - **May 26:** Staff cash deposits log `ticket_payment_recorded` (Reports + dashboard alignment); scorecards display-only; Reports links use lifecycle routes + `?from=/reports` Back

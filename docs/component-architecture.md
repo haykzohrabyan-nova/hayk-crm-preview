@@ -123,7 +123,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `TableDivSkeleton` | `components/ui/table-skeleton.tsx` | Standalone div-based table shimmer on orders-page, production-page, completed-page, quotes-page, all `loading.tsx` files. Props: `rows` (default 5), `cols`. |
 | `ErrorBoundary` | `components/layout/error-boundary.tsx` | Wraps `{children}` in `app/(app)/layout.tsx`. Catches unhandled runtime errors and shows a "Try again" button instead of a blank page. |
 | `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Leads **Won** tab only (not customer profile) |
-| `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | SDR/Sales dashboards, Orders page, Quotes page |
+| `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | SDR/Sales/Admin dashboards, Orders, Quotes, Completed list pages |
 | `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail |
 | `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail |
 | `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar) |
@@ -182,10 +182,14 @@ app/(app)/dashboard/page.tsx  [Server Component — thin wrapper]
               components/sales/sdr-dashboard.tsx   (role === "sdr")
               components/sales/sales-dashboard.tsx (role === "sales")
               components/admin/admin-dashboard.tsx (role === "admin")
-        SDR / Sales dashboards:
-              ├── components/ui/dashboard-date-range-filter.tsx — Today … Custom period selector
-              ├── KPI cards: Total, Received, Balance (separate cards) + lead funnel metrics
-              └── GET /api/dashboard/kpis?sdr_preset=… | sales_preset=…
+              components/admin/accountant-dashboard.tsx (role === "accountant")
+        SDR / Sales / Admin dashboards:
+              ├── components/ui/dashboard-date-range-filter.tsx — Today / Yesterday / Last 7 Days / Last 30 Days / Custom
+              ├── SDR & Sales: KPI cards with % trend vs prior period; default preset Today
+              ├── Admin: company KPI cards + Team section; default preset Last 7 Days
+              └── GET /api/dashboard/kpis?sdr_preset=… | sales_preset=… | admin_preset=…
+        Accountant dashboard:
+              └── GET /api/payments/counts (not KPIs route)
 ```
 
 ---

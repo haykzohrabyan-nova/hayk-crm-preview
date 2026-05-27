@@ -18,7 +18,7 @@ components/admin/dashboard-page.tsx        ← role router
   components/admin/accountant-dashboard.tsx  ← Accountant dashboard (payments KPIs)
 ```
 
-**Data:** Sales/Admin/Accountant: `GET /api/dashboard/kpis?period=week|month|quarter`. **SDR:** `?sdr_preset=…`. **Sales:** `?sales_preset=…` (see role sections below).
+**Data:** **Admin:** `GET /api/dashboard/kpis?admin_preset=…` (default `last_week`). **SDR:** `?sdr_preset=…`. **Sales:** `?sales_preset=…`. **Accountant:** `GET /api/payments/counts` (not KPIs route). Custom ranges use `date_from` + `date_to` on all preset-based dashboards.
 
 The API returns role-scoped data — SDR and Sales see only their own numbers; Admin sees company totals.
 
@@ -84,7 +84,9 @@ Activity-based counts — see `lib/utils/sales-dashboard-metrics.ts`.
 
 ## Admin Dashboard — `components/admin/admin-dashboard.tsx`
 
-KPIs are **company-wide**.
+KPIs are **company-wide**. **Date filter:** same presets as Orders/Quotes/Completed (`DashboardDateRangeFilter`); default **Last 7 Days** (`last_week`).
+
+**API:** `GET /api/dashboard/kpis?admin_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to`. Response includes `range.label` for period-scoped card subtexts.
 
 ### KPI Cards
 
@@ -139,7 +141,10 @@ Payment queue KPIs from `GET /api/payments/counts` — `pending_evidence` counts
 | `lib/utils/dashboard-metrics.ts` | `sumCashCollectedInPeriod`, `sumProductionReleasedValue` |
 | `lib/utils/team-dashboard-metrics.ts` | Per-user metrics for admin Team cards |
 | `lib/utils/kpi-help-text.ts` | KPI calculation hints |
-| `lib/utils/get-period-start.ts` | `getDashboardPeriodBounds` (aligned with Reports) |
+| `lib/utils/sdr-dashboard-date-range.ts` | `resolveSdrDashboardDateRange` — preset bounds for SDR/Sales/Admin KPIs |
+| `lib/utils/dashboard-date-range-filter.ts` | Client filter value + `isoTimestampInDashboardRange()` for list pages |
+| `components/ui/dashboard-date-range-filter.tsx` | Shared period picker UI |
+| `lib/utils/get-period-start.ts` | `getDashboardPeriodBounds` — Reports presets only (not dashboard KPIs) |
 | `components/ui/kpi-help-line.tsx` | Help text under card values |
 
 ---

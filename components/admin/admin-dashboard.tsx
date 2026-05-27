@@ -15,12 +15,22 @@ import {
   AlertTriangle,
   Circle,
 } from "lucide-react";
+import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
+import {
+  defaultDashboardDateRangeFilterValue,
+  type DashboardDateRangeFilterValue,
+} from "@/lib/utils/dashboard-date-range-filter";
+import type { SdrDashboardPreset } from "@/lib/utils/sdr-dashboard-date-range";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Period = "week" | "month" | "quarter";
-
 interface AdminKpis {
+  range?: {
+    preset: SdrDashboardPreset;
+    label: string;
+    start_iso: string;
+    end_iso: string;
+  };
   total_leads: number;
   open_leads: number;
   claimed_leads: number;
@@ -54,12 +64,6 @@ interface SessionSummary {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-const PERIOD_LABELS: Record<Period, string> = {
-  week: "This Week",
-  month: "This Month",
-  quarter: "This Quarter",
-};
 
 function formatCurrency(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -459,37 +463,51 @@ function TeamSection({
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 
 export function AdminDashboard() {
-  const [period, setPeriod] = useState<Period>("month");
+  const [filter, setFilter] = useState<DashboardDateRangeFilterValue>(() =>
+    defaultDashboardDateRangeFilterValue("last_week"),
+  );
   const [data, setData] = useState<AdminKpis | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const buildQuery = useCallback((f: DashboardDateRangeFilterValue) => {
+    const params = new URLSearchParams();
+    if (f.preset === "custom") {
+      params.set("admin_preset", "custom");
+      params.set("date_from", f.dateFrom);
+      params.set("date_to", f.dateTo);
+    } else {
+      params.set("admin_preset", f.preset);
+    }
+    return params.toString();
+  }, []);
+
   const fetchKpis = useCallback(async () => {
     setLoading(true);
     const [res] = await Promise.all([
-      fetch(`/api/dashboard/kpis?period=${period}`),
+      fetch(`/api/dashboard/kpis?${buildQuery(filter)}`),
       new Promise((r) => setTimeout(r, 300)),
     ]);
     const json = await res.json();
-    setData(json);
+    if (res.ok) setData(json as AdminKpis);
     setLoading(false);
-  }, [period]);
+  }, [filter, buildQuery]);
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
-
 
   // Silent re-fetch when any lead changes (Realtime → sidebar → bazaar:leads-changed).
   // Does NOT set loading=true so the cards don't flash skeleton.
   useEffect(() => {
     function onLeadsChanged() {
-      fetch(`/api/dashboard/kpis?period=${period}`)
+      fetch(`/api/dashboard/kpis?${buildQuery(filter)}`)
         .then((r) => r.json())
-        .then((json) => setData(json))
+        .then((json) => setData(json as AdminKpis))
         .catch(() => {});
     }
     window.addEventListener("bazaar:leads-changed", onLeadsChanged);
     return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
-  }, [period]);
+  }, [filter, buildQuery]);
 
-  const periodLabel = PERIOD_LABELS[period];
+  const periodLabel = data?.range?.label ?? "Last 7 Days";
 
   return (
     <div className="space-y-8">
@@ -499,24 +517,7 @@ export function AdminDashboard() {
         <h1 className="text-[20px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
           Dashboard
         </h1>
-        <div
-          className="flex rounded-[8px] border p-0.5 text-[13px] font-medium"
-          style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-        >
-          {(["week", "month", "quarter"] as Period[]).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className="rounded-[6px] px-3 py-1.5 transition-all"
-              style={{
-                background: period === p ? "var(--color-btn-verify-bg)" : "transparent",
-                color: period === p ? "var(--color-btn-verify-text)" : "var(--color-text-muted)",
-              }}
-            >
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
-        </div>
+        <DashboardDateRangeFilter value={filter} onChange={setFilter} />
       </div>
 
       {/* KPI Cards */}

@@ -1262,26 +1262,41 @@ See `docs/realtime-live-updates.md` for the full architecture and pattern guide.
 
 ### `GET /api/dashboard/kpis`
 
-Returns KPI metrics scoped to the current user's role and period.
+Returns KPI metrics scoped to the current user's role and date range. **SDR**, **Sales**, and **Admin** each use a role-specific preset query param; **Accountant** does not call this route (uses `GET /api/payments/counts`).
 
-**Query params:**
+**Shared preset semantics** (`resolveSdrDashboardDateRange`):
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `period` | `'week' \| 'month' \| 'quarter'` | `'month'` | Start of period → end of today (same as Reports presets) |
+| UI label | API key | Range |
+|----------|---------|--------|
+| Today | `today` | Today 00:00 – end of today |
+| Yesterday | `yesterday` | Prior calendar day |
+| Last 7 Days | `last_week` | Rolling 7 days including today |
+| Last 30 Days | `last_month` | Rolling 30 days including today |
+| Custom | `custom` | Requires `date_from` + `date_to` (`YYYY-MM-DD`) |
 
-**Response for SDR `200`:**
+**Query params by role:**
+
+| Role | Preset param | Default | Custom dates |
+|------|--------------|---------|--------------|
+| SDR | `sdr_preset` | `today` | `date_from`, `date_to` |
+| Sales | `sales_preset` | `today` | `date_from`, `date_to` |
+| Admin | `admin_preset` | `last_week` | `date_from`, `date_to` |
+
+**Response for SDR `200`** (trend metrics include `value`, `prior`, `pct_change` vs prior equivalent period):
 ```json
 {
   "role": "sdr",
-  "inbox_count": "number",
-  "handled": "number",
-  "routed": "number",
-  "on_hold": "number",
-  "rejected": "number",
-  "quote_value": "number",
-  "sourced_cash": "number",
-  "share_pct": "number"
+  "range": { "preset": "string", "label": "string", "prior_label": "string", "start_iso": "ISO", "end_iso": "ISO" },
+  "lead_claimed": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "lead_created": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "order_value": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "order_value_breakdown": { "total": "number", "received": "number", "balance": "number" },
+  "order_created": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "inbox": { "value": "number" },
+  "rejected": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "on_hold": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "routed_to_sales": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "sales_win": { "value": "number", "prior": "number", "pct_change": "number | null" }
 }
 ```
 
@@ -1289,13 +1304,15 @@ Returns KPI metrics scoped to the current user's role and period.
 ```json
 {
   "role": "sales",
-  "new_in_pipeline": "number",
-  "active_deals": "number",
-  "on_hold": "number",
-  "won": "number",
-  "won_value": "number",
-  "cash_collected": "number",
-  "pipeline_value": "number"
+  "range": { "preset": "string", "label": "string", "prior_label": "string", "start_iso": "ISO", "end_iso": "ISO" },
+  "lead_claimed": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "lead_created": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "order_value": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "order_value_breakdown": { "total": "number", "received": "number", "balance": "number" },
+  "order_created": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "inbox": { "value": "number" },
+  "rejected": { "value": "number", "prior": "number", "pct_change": "number | null" },
+  "on_hold": { "value": "number", "prior": "number", "pct_change": "number | null" }
 }
 ```
 
@@ -1303,6 +1320,7 @@ Returns KPI metrics scoped to the current user's role and period.
 ```json
 {
   "role": "admin",
+  "range": { "preset": "string", "label": "string", "start_iso": "ISO", "end_iso": "ISO" },
   "total_leads": "number",
   "open_leads": "number",
   "claimed_leads": "number",
@@ -1333,15 +1351,19 @@ Returns KPI metrics scoped to the current user's role and period.
 ```
 
 **Field notes (Admin):**
+- `range.label` — human-readable period for KPI card subtexts (e.g. "Last 7 Days")
 - `cash_collected` — sum of `ticket_payment_recorded` amounts in period (matches Reports)
-- `pipeline_value` — sum of `quote_final_total` on draft/sent tickets (live snapshot)
+- `pipeline_value` — sum of `quote_final_total` on draft/sent tickets (live snapshot, not date-filtered)
 - `won_leads` — count of production releases in period (`production_released_at`)
+- `inbox_leads`, `routed_leads`, `open_leads`, `claimed_leads` — live snapshots (not date-filtered)
+- `total_leads`, `pipeline_leads`, `quoted_leads`, `ordered_leads` — filtered by `created_at` in period
 - `team_member_metrics` — per-user work stats for Team cards (SDR activity + sales money metrics)
 - Sub-counts on Total Leads card: `open_leads`, `claimed_leads`, `pipeline_leads`, `quoted_leads`, `ordered_leads`
 
-**Field notes (Sales):**
-- `won` / `won_value` — production releases in period for this rep
-- `cash_collected` — payments credited to this rep in period
+**Field notes (SDR / Sales):**
+- Period-scoped metrics use `range.start_iso` / `range.end_iso`; trend cards compare to `prior_label` period
+- `order_value_breakdown` — total / received / balance for orders in period (Sales/SDR)
+- `inbox` — workspace leads awaiting claim (SDR: unclaimed Pending/Validated; Sales: routed inbox semantics per role)
 
 ---
 

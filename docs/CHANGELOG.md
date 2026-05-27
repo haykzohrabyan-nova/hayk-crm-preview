@@ -3,6 +3,15 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-27] — Admin dashboard date range filter
+
+### Changed
+- Admin dashboard — same **Today / Yesterday / Last 7 Days / Last 30 Days / Custom** filter as Orders, Quotes, and Completed; default **Last 7 Days**
+- `GET /api/dashboard/kpis` (admin) — `admin_preset`, `date_from`, `date_to` via `resolveSdrDashboardDateRange`; response includes `range.label` for KPI subtexts; replaces `period=week|month|quarter`
+
+### Changed (docs)
+- `docs/api-contract.md`, `docs/component-architecture.md`, `docs/session-summary.md`, `docs/TODO.md`, `docs/navigation.md`, `docs/feature-specs/dashboard.md`, `docs/feature-specs/tickets.md` — aligned with admin dashboard date filter and orders due-today highlight
+
 ## [2026-05-27] — Orders: highlight due today
 
 ### Changed

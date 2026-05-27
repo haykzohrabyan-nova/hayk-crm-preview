@@ -28,7 +28,7 @@ app/
 └── (app)/
     ├── layout.tsx                    ✓ EXISTS (sidebar + mobile nav shell)
     │
-    ├── dashboard/page.tsx            ✓ EXISTS — role router (SDR / Sales / Admin / Accountant dashboards)
+    ├── dashboard/page.tsx            ✓ EXISTS — role router (SDR / Sales / Admin / Accountant dashboards); SDR/Sales/Admin use DashboardDateRangeFilter (Admin default Last 7 Days)
     ├── tickets/page.tsx              ✓ EXISTS — redirect stub → `/quotes` (legacy; hub removed in migration 028)
     ├── overview/page.tsx             ✓ EXISTS — admin overview alias (renders DashboardPage)
     │

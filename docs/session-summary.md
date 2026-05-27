@@ -1,6 +1,29 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 26, 2026
-**Status:** MVP complete + performance Phase 3 (page-data, session cache) + form validation UX + follow-up cron code (May 26; auto-schedule pending Vercel Pro) + **security & code quality audit (May 26)** + **SDR Completed page access (May 26)** + **list date filters, CRM Add Customer, CRM Realtime, public payment lock (May 26)**.
+**Last updated:** May 27, 2026
+**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **payments evidence retention, SMS templates, admin dashboard date filter, orders due-today highlight (May 27)**.
+
+---
+
+## May 27, 2026 — Admin dashboard filter, payments evidence, SMS, orders UX
+
+### Admin dashboard date filter
+- `components/admin/admin-dashboard.tsx` — `DashboardDateRangeFilter` (same as Orders/Quotes/Completed); default **Last 7 Days** (`last_week`)
+- `GET /api/dashboard/kpis` — Admin branch: `admin_preset`, `date_from`, `date_to`; response `range.label` for period-scoped KPI subtexts; replaces `period=week|month|quarter`
+
+### Payments evidence (migration 085)
+- `payment_evidence_reviewed_at` on `job_tickets` — evidence **retained** after accountant confirm
+- `/payments` — **Pending approval** + **Approved** tabs with badge counts (`GET /api/payments/page-data`)
+- `isPaymentEvidencePending()` — unreviewed evidence only (`payment_evidence_reviewed_at` null)
+
+### Admin SMS templates (migration 084)
+- `sms_templates` table + **Admin → Settings → SMS Templates**
+- Customer quote/payment/pickup SMS/WhatsApp bodies loaded from DB (`load-sms-templates.ts`)
+
+### Orders list UX
+- Rows due **today** (not cancelled) — full-width danger background highlight (`isDueToday()` in `lib/utils/format.ts`)
+
+### Docs synced
+- `api-contract.md`, `feature-specs/dashboard.md`, `component-architecture.md`, `session-summary.md`, `TODO.md`, `navigation.md`, `feature-specs/tickets.md`, `CHANGELOG.md`
 
 ---
 

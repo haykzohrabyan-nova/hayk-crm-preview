@@ -698,7 +698,7 @@ Markup pattern: wrap each validatable field in `<div data-field-anchor="source">
 | Helper | Module | Purpose |
 |--------|--------|---------|
 | `useCoalescedRefresh()` | `hooks/use-coalesced-refresh.ts` | Debounce mount + `bazaar:*-changed` refetch; `enabled` pause for editable modals; **silent resume** when re-enabled; read-only drawers on leads page use `enabled: !drawerLead \|\| drawerReadOnly` |
-| `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | Shared period picker; `lib/utils/dashboard-date-range-filter.ts` resolves presets + `isoTimestampInDashboardRange()` |
+| `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | SDR/Sales/Admin dashboards + Quotes/Orders/Completed lists; `lib/utils/dashboard-date-range-filter.ts` resolves presets + `isoTimestampInDashboardRange()` |
 | `getCachedSession()` / `setCachedSession()` | `lib/auth/session-cache.ts` | In-process ~3 s memoization inside `requireSession()` |
 | `fetchProductionOrders()` / `fetchProductionTabCounts()` | `lib/utils/fetch-production-data.ts` | Production list + counts (page-data route) |
 | `fetchOrdersList()` / `fetchOrdersTabCounts()` | `lib/utils/fetch-orders-data.ts` | Orders list + tab counts |
