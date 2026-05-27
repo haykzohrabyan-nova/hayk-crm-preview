@@ -1046,7 +1046,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
       {isOverviewLayout ? (
         <div className="w-full px-3 py-3 md:px-6 md:py-6 flex flex-col">
-          <div className="flex flex-col min-h-0 xl:h-[calc(100svh-6.5rem)] xl:max-h-[calc(100svh-6.5rem)]">
+          <div className="flex flex-col">
             {showStatsRow && (
               <div className="shrink-0">
                 <TicketStatsRow
@@ -1070,8 +1070,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
               </div>
             )}
 
-            <div className="grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-4 md:gap-5 flex-1 min-h-0 xl:overflow-hidden">
-              <aside className="w-full shrink-0 self-start">
+            <div className="grid grid-cols-1 xl:grid-cols-[300px_minmax(0,1fr)] gap-4 md:gap-5 items-start">
+              <aside className="w-full shrink-0">
                 {ticket.lead ? (
                   <LinkedLeadCard
                     lead={ticket.lead}
@@ -1084,7 +1084,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
               </aside>
 
               <div
-                className="flex flex-col min-w-0 rounded-[14px] border xl:min-h-0 xl:h-full xl:overflow-hidden"
+                className="flex flex-col min-w-0 rounded-[14px] border"
                 style={{
                   background: "var(--color-surface)",
                   borderColor: "var(--color-border)",
@@ -1092,7 +1092,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                 }}
               >
                 <div
-                  className="flex shrink-0 overflow-x-auto touch-pan-x border-b px-1 xl:sticky xl:top-0 z-[1]"
+                  className="flex shrink-0 overflow-x-auto touch-pan-x border-b px-1"
                   style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
                 >
                   {viewTabs.map((t) => (
@@ -1111,8 +1111,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   ))}
                 </div>
 
-                {/* Inner scroll only on xl+ — mobile/tablet use single page scroll (main) */}
-                <div className="xl:flex-1 xl:min-h-0 xl:overflow-y-auto">
+                {/* Single page scroll — sidebar actions stay reachable below timeline */}
+                <div>
                   {tab === "info" && (
                     <>
                       <div className="px-4 pt-4 pb-2 md:px-7 md:pt-6">

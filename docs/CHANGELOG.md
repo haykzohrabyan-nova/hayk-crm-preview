@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-26] — Order detail sidebar actions reachable after timeline
+
+### Fixed
+- Quote/order detail overview layout — removed fixed viewport height that clipped sidebar actions (Customer Link, Copy Link, Resend Link) below Mark Completed after the lifecycle timeline was added; page scrolls normally on desktop
+
 ## [2026-05-26] — Public payment amount locked to amount due
 
 ### Changed
