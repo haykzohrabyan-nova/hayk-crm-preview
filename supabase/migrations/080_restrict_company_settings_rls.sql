@@ -13,12 +13,12 @@ drop policy if exists "authenticated_read_company_settings" on public.company_se
 
 -- 2. Create a safe public policy that exposes only non-sensitive display fields.
 --    All authenticated users (sales, SDR, accountant) can read logo, name, address, etc.
+--    SELECT policies only use USING — WITH CHECK is for INSERT/UPDATE only.
 create policy "authenticated_read_company_settings_public"
   on public.company_settings
   for select
   to authenticated
-  using (true)
-  with check (true);
+  using (true);
 
 -- NOTE: Supabase's RLS does not natively support column-level SELECT restrictions in a
 -- single policy. The server-side admin client (used by all API routes) bypasses RLS
