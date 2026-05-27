@@ -89,23 +89,41 @@ export async function sumProductionReleasedValue(
   periodStartIso: string,
   periodEndIso: string,
   filterUserId?: string | null,
-): Promise<{ value: number; count: number }> {
+): Promise<{ value: number; received: number; balance: number; count: number }> {
   const { data: tickets } = await admin
     .from("job_tickets")
-    .select("id, quote_final_total, linked_lead_id, created_by_id, routed_by_id")
+    .select(
+      "id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id, created_by_id, routed_by_id",
+    )
     .in("ticket_status", ["in_production", "completed"])
     .not("production_released_at", "is", null)
     .gte("production_released_at", periodStartIso)
     .lte("production_released_at", periodEndIso);
 
-  if (!tickets?.length) return { value: 0, count: 0 };
+  if (!tickets?.length) return { value: 0, received: 0, balance: 0, count: 0 };
+
+  type Row = (typeof tickets)[number];
+
+  function sums(rows: Row[]) {
+    let value = 0;
+    let received = 0;
+    for (const t of rows) {
+      const total = Number(t.quote_final_total ?? 0);
+      const paid = Number(t.payment_amount_received ?? t.deposit_amount ?? 0);
+      value += total;
+      received += paid;
+    }
+    const balance = Math.max(0, value - received);
+    return {
+      value: roundMoney(value),
+      received: roundMoney(received),
+      balance: roundMoney(balance),
+      count: rows.length,
+    };
+  }
 
   if (!filterUserId) {
-    let value = 0;
-    for (const t of tickets) {
-      value += Number(t.quote_final_total ?? 0);
-    }
-    return { value: roundMoney(value), count: tickets.length };
+    return sums(tickets);
   }
 
   const leadIds = [
@@ -122,8 +140,7 @@ export async function sumProductionReleasedValue(
 
   const leadMap = new Map((leads ?? []).map((l) => [l.id, l]));
 
-  let value = 0;
-  let count = 0;
+  const matched: Row[] = [];
   for (const t of tickets) {
     const lead = t.linked_lead_id ? leadMap.get(t.linked_lead_id as string) : null;
     const salesId = resolveSalesRepId(
@@ -136,9 +153,8 @@ export async function sumProductionReleasedValue(
       lead,
     );
     if (salesId !== filterUserId) continue;
-    value += Number(t.quote_final_total ?? 0);
-    count += 1;
+    matched.push(t);
   }
 
-  return { value: roundMoney(value), count };
+  return sums(matched);
 }

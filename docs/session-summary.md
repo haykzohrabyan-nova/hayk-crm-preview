@@ -1,6 +1,16 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 26, 2026
-**Status:** MVP complete + performance Phase 3 (page-data, session cache) + form validation UX + follow-up cron code (May 26; auto-schedule pending Vercel Pro) + **security & code quality audit (May 26)**.
+**Status:** MVP complete + performance Phase 3 (page-data, session cache) + form validation UX + follow-up cron code (May 26; auto-schedule pending Vercel Pro) + **security & code quality audit (May 26)** + **SDR Completed page access (May 26)**.
+
+---
+
+## May 26, 2026 — SDR Completed orders access
+
+- **Nav:** Migration `081_grant_sdr_completed_page.sql` grants SDR `/completed` (plus aligns `/quotes`, `/orders`, `/settings` in seed).
+- **List scope:** `scopeCompletedTicketsQuery()` — SDR sees completed tickets where **`created_by_id` = session user only**. Routed-to-Sales hand-offs that Sales completed are **excluded** (even though `routed_by_id` may still point at the SDR).
+- **Detail access:** `canAccessTicket()` — SDR `routed_by_id` read access applies **until** `ticket_status = 'completed'`; completed detail requires creator ownership.
+- **API:** `GET /api/completed/page-data`, `/orders`, `/counts` + sidebar badge use the completed-specific scope (not `scopeJobTicketsQuery()`).
+- **Docs:** `rbac.md`, `navigation.md`, `api-contract.md`, `security.md`, `architecture.md`, `types.md`, `component-architecture.md`, `feature-specs/tickets.md`, `feature-specs/invoice-payment.md`, `feature-specs/leads-sdr.md`, `schema.md`, `CHANGELOG.md`.
 
 ---
 
@@ -304,6 +314,7 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 ### Production & completed pages
 - In-production orders on **`/orders?tab=in_production`** and **`/orders/[id]`** (legacy `/production` redirects)
 - `/completed` + `/completed/[id]` — finished orders and detail (`context="completed"`)
+- **SDR (May 26):** `/completed` nav + list scoped to self-created completed orders (`created_by_id` only); routed-to-Sales completions excluded
 - `/orders` tabs: All / Pending Payment / In Production / Cancelled
 - Admin **Mark Completed** on in-production order detail; accountant when **paid in full** (`isTicketPaidInFull()`)
 - **Resend invoice link** on in-production/completed detail — emails/SMS permanent `/q/{token}` link
@@ -319,8 +330,8 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 
 ### CRM detail UX
 - Unified **Overview + History** on `/quotes/[id]`, `/orders/[id]`, `/payments/[id]`, `/completed/[id]`
-- Shared **LeadHistoryTable** on customer profile + Leads Won tab (Quote/Order refs, no SDR Status column)
-- SDR Won row click → customer profile (`/crm/customers/[id]`)
+- Shared **LeadHistoryTable** on Leads **Won** tab only (Quote/Order refs, no SDR Status column). Customer profile shows **Quotes & Orders** only (Lead History removed May 2026).
+- SDR Won / Directed to Sales row click → read-only **Verify Drawer**
 - Quote stage overview: **Customer link** + **Copy** (with Copied! feedback)
 - Quotes **All** tab badge = draft + sent + approved only (excludes in-production)
 
@@ -426,7 +437,7 @@ Full business-rule enforcement and payment workflow built:
 - **"Convert to Order" (was "Mark Won")**: The "Mark Won" button was replaced with **"Convert to Order"**. Clicking it sets `ticket_status = "order"`, auto-generates `ORD-YYYY-NNN` reference code, sets `ticket_kind = "order"`, and logs `ticket_converted` activity. Mirrors the customer confirmation flow exactly.
 - **`approved` status phased out**: The intermediate `approved` state is no longer used. Tickets go directly `sent → order` (either by customer or by rep clicking "Convert to Order"). The `approved` status is kept in the `TicketStatus` type for backwards compatibility only.
 - **SDR/Sales Won tracking**: When a linked ticket enters **`in_production`**, the lead's `sales_status` is automatically updated to `"Won"`. Handled by `markLeadWonOnProduction()` on all production-release paths (not at order conversion).
-- **SDR workspace "Won" tab**: `LeadHistoryTable` shared with customer profile — Status (`sales_status`), Source, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. API: `GET /api/leads/workspace?won=true` (nested tickets, no totals). Count: `counts.won`.
+- **SDR workspace "Won" tab**: `LeadHistoryTable` — Status (`sales_status`), Source, Urgency, Quote/Order refs, Created. SDR row click → read-only **Verify Drawer**. API: `GET /api/leads/workspace?won=true` (nested tickets, no totals). Count: `counts.won`.
 - **Payment Link Bar**: New `PaymentLinkBar` component visible on confirmed, unpaid orders. Shows: copyable public URL `/q/[token]` + channel selector (Email/SMS/WhatsApp) + pre-filled destination (switches to email or phone on channel change, user can override) + "Send Payment Link" button. Triggers `PATCH /api/tickets/[id]` with `{ send_payment_reminder: true, reminder_channel, reminder_destination }`.
 - **Payment reminder email template**: New `lib/integrations/payment-reminder-template.ts` — dedicated "Pay Now" focused email. Shows order reference, amount due, payment methods, large "Pay Now" CTA. No line items.
 - **Payment reminder SMS**: `sendPaymentReminder()` in `lib/integrations/send-quote.ts` handles Email/SMS/WhatsApp. SMS uses `toE164()` phone normalizer to ensure E.164 format (`+13233413620`) required by Twilio.
@@ -716,7 +727,7 @@ SALES PIPELINE (Routed to Sales)
 
 - **Dashboard revenue** — `GET /api/dashboard/kpis` now sums `job_tickets.quote_final_total` for all revenue/won-value/pipeline-value KPIs. Previously used `leads.quote_total` (stale snapshot never updated after quote edits). Applies to both Sales and Admin dashboard variants.
 - **Admin override for terminal leads** — `SalesDrawer` and `VerifyDrawer` accept an `isAdmin` prop. When admin opens a Won/Dropped/Rejected lead: amber "Admin override" banner shown, drawer fully editable. Won leads show a caution note to handle the linked order manually in Tickets. Non-admins still see the red lock banner.
-- **Order lifecycle** — In-production on `/orders?tab=in_production` + `/orders/[id]` (legacy `/production` redirects). `/completed` for finished orders. Mark Completed on order detail when in production. Pickup notification on complete. Auto-release via `maybe-auto-release-production.ts`. Won credit via `markLeadWonOnProduction()` on production release.
+- **Order lifecycle** — In-production on `/orders?tab=in_production` + `/orders/[id]` (legacy `/production` redirects). `/completed` for finished orders (SDR: own created only). Mark Completed on order detail when in production. Pickup notification on complete. Auto-release via `maybe-auto-release-production.ts`. Won credit via `markLeadWonOnProduction()` on production release.
 - **Dashboard session KPI cards** — Two new cards on admin dashboard: "Active Users" (users with an open session right now) and "Idle Sign-outs" (auto sign-outs in the last 7 days). Data sourced from `GET /api/admin/sessions`.
 
 ### 7. Count Badges Pattern

@@ -155,15 +155,26 @@ Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in
 
 ---
 
-## `/completed` — Completed orders (Accountant + Admin)
+## `/completed` — Completed orders (SDR own created; Accountant + Admin all)
 
 **Component:** `components/orders/completed-page.tsx`
+
+**Who sees what:**
+
+| Role | Completed list scope |
+|------|---------------------|
+| **SDR** | `ticket_status = 'completed'` **and** `created_by_id = session user` — self-created quote/order through completion only |
+| **Accountant / Admin** | All completed tickets |
+
+**Excluded from SDR Completed:** leads/quotes the SDR **routed to Sales** where Sales claimed and completed the order (`created_by_id` becomes Sales). SDR may still view those hand-offs read-only on Quotes/Orders while in progress (`routed_by_id`), but not once `completed`.
 
 **Mobile (< `lg`):** `MobileListCard` list + full-width search.
 
 **Row click** → `/completed/[id]` (`QuoteDetail` with `context="completed"`)
 
-**Actions:** Resend invoice link (customer portal access)
+**Actions:** Resend invoice link (Admin + Accountant only on detail)
+
+**API:** `GET /api/completed/page-data` (mount), `GET /api/completed/counts` (counts-only refresh). Scoped via `scopeCompletedTicketsQuery()` in `lib/utils/db-counts.ts`.
 
 ---
 
@@ -351,6 +362,7 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
 **Overview layout** (default for sent quotes, orders, payments review, production, completed — not draft edit mode):
 
 - **Top:** `TicketStatsRow` — Order/Quote Total, Received, Balance Due, Due Date, Payment (mobile: full-width total + 2×2 grid for the other four)
+- **Below stats:** `TicketLifecycleTimeline` — linear timeline from **created** through **payments** (amount, method, staff or Customer) to **due date**; exact date/time on each node
 - **Two-column grid:**
   - **Left sidebar** (always shown): `LinkedLeadCard` or `CustomerInfoCard`, then **`DetailQuickActions`** (all action buttons)
   - **Right panel:** Overview | History tabs; on desktop (`xl+`) only this panel scrolls
@@ -513,8 +525,9 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `GET /api/payments/counts` | GET | Payments page badge counts |
 | `GET /api/production/orders` | GET | Legacy in-production list (UI uses `/orders` tab) |
 | `GET /api/production/counts` | GET | Legacy production tab counts |
-| `GET /api/completed/orders` | GET | Completed orders list |
-| `GET /api/completed/counts` | GET | Completed page badge counts |
+| `GET /api/completed/orders` | GET | Completed orders list — SDR: `created_by_id` only; Admin/Accountant: all |
+| `GET /api/completed/counts` | GET | Completed page + sidebar badge — same scope as list |
+| `GET /api/completed/page-data` | GET | List + counts in one auth pass — same scope as list |
 | `GET /api/activities` | GET | `?ticket_id=xxx` (UUID or `QUO-*` / `ORD-*`) + optional `include_linked_lead=true` → full lifetime merged |
 | `GET /api/tickets/[id]/pdf` | GET | PDF download — MFA + `canAccessTicket()` |
 | `GET /api/tickets/[id]/print` | GET | HTML print view — same auth as PDF |
@@ -551,7 +564,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `/quotes` | draft + sent (own) | + all `routed` | — | all |
 | `/orders` | scoped orders (own) | scoped orders | pending + in_production | pending + in_production |
 | `/payments` | — | — | pending evidence count | pending evidence count |
-| `/completed` | — | — | completed count | completed count |
+| `/completed` | own created (`created_by_id`) | — | completed count (all) | completed count (all) |
 
 Counts from `GET /api/tickets/counts`, `/api/payments/counts`, `/api/completed/counts`, `/api/sidebar-counts`. Refresh via `bazaar:refresh-counts`.
 

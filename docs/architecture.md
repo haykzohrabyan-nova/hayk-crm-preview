@@ -328,7 +328,7 @@ BazarCRM/
 │       ├── website.ts                   ✓ validateWebsite / normalizeWebsite (scheme optional)
 │       ├── scroll-field-into-view.ts    ✓ Scroll invalid form fields into view on validation
 │       ├── copy-to-clipboard.ts         ✓ Clipboard helper (Customer Link copy button)
-│       ├── db-counts.ts                 ✓ countExact(), scopeJobTicketsQuery(), payment filter constants
+│       ├── db-counts.ts                 ✓ countExact(), scopeJobTicketsQuery(), scopeCompletedTicketsQuery(), payment filter constants
 │       ├── ticket-list-select.ts        ✓ Slim quote/orders list column definitions
 │       ├── lead-list-select.ts          ✓ Slim lead workspace column definitions (reference)
 │       ├── fetch-lead.ts                ✓ Client helper — full lead fetch for drawers
@@ -339,7 +339,7 @@ BazarCRM/
 │   └── use-coalesced-refresh.ts          ✓ Debounced mount + realtime refetch for list pages
 ├── supabase/
 │   ├── schema.sql                        ✓ Consolidated DDL + seeds (single file — run on fresh projects)
-│   ├── migrations/                       ✓ Incremental deltas (001–080)
+│   ├── migrations/                       ✓ Incremental deltas (001–081)
 │   └── README.md                         ✓ Setup notes
 ├── docs/                                 ✓ Feature specs + architecture + security.md
 ├── proxy.ts                              ✓ AAL2 + RBAC session enforcement (returns 503 when SUPABASE_URL missing)
@@ -368,7 +368,7 @@ List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table vi
 | `/leads`, `/sales` | `GET /api/leads/workspace/page-data` or `/api/leads/sales/page-data` | workspace list + counts routes |
 | `/crm` | `GET /api/customers` | Slim customer + lead/ticket aggregates |
 
-**Tab/sidebar counts** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts` and shared `fetch-*-data.ts` helpers.
+**Tab/sidebar counts** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts` and shared `fetch-*-data.ts` helpers. **Completed** uses `scopeCompletedTicketsQuery()` — SDR counts only self-created completed tickets (`created_by_id`), not routed hand-offs.
 
 **Session cache:** `lib/auth/session-cache.ts` memoizes `requireSession()` for ~3 s during burst loads.
 

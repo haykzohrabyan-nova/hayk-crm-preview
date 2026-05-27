@@ -26,6 +26,8 @@ interface InfoFormProps {
   priorityOpts: LookupOption[];
   titleError?: string;
   dueDateError?: string;
+  /** Earliest selectable due date (YYYY-MM-DD), e.g. ticket creation day. */
+  minDueDate?: string;
 }
 
 export function InfoForm(p: InfoFormProps) {
@@ -117,6 +119,7 @@ export function InfoForm(p: InfoFormProps) {
               onChange={p.setDueDate}
               placeholder="Select due date"
               disablePast
+              minDate={p.minDueDate}
               className="flex-1"
             />
             {[

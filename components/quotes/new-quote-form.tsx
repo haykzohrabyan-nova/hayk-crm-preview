@@ -28,6 +28,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
+import { minDueDateForNewTicket, validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { InfoForm } from "@/components/quotes/shared/info-form";
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { emptySkuRow } from "@/components/quotes/shared/utils";
@@ -365,6 +366,9 @@ export default function NewQuoteForm() {
       }
       if (!dueDate) {
         errors.dueDate = "A due date is required.";
+      } else {
+        const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
+        if (dueErr) errors.dueDate = dueErr;
       }
       if (skipCustomerTab && !leadId && !contactSource.trim()) {
         errors.customerSource = "Source is required.";
@@ -433,6 +437,20 @@ export default function NewQuoteForm() {
       setFieldErrors({ title: "A title is required." });
       setTab("info");
       scrollToFormField(tabContentRef, "title");
+      return;
+    }
+
+    if (!dueDate) {
+      setFieldErrors({ dueDate: "A due date is required." });
+      setTab("info");
+      scrollToFormField(tabContentRef, "dueDate");
+      return;
+    }
+    const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
+    if (dueErr) {
+      setFieldErrors({ dueDate: dueErr });
+      setTab("info");
+      scrollToFormField(tabContentRef, "dueDate");
       return;
     }
 
@@ -802,6 +820,7 @@ export default function NewQuoteForm() {
                   priorityOpts={quoteLookups.ticket_priority}
                   titleError={fieldErrors.title}
                   dueDateError={fieldErrors.dueDate}
+                  minDueDate={minDueDateForNewTicket()}
                 />
               </div>
             )}

@@ -131,7 +131,7 @@ create table public.role_permissions (
 
 | Role | Allowed pages |
 |------|--------------|
-| `sdr` | /dashboard, /leads, /crm, /quotes, /orders, /settings |
+| `sdr` | /dashboard, /leads, /crm, /quotes, /orders, /completed |
 | `sales` | /dashboard, /sales, /crm, /quotes, /orders, /settings |
 | `admin` | All pages |
 
@@ -411,7 +411,7 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `quote_approval_last_requested_at` | `timestamptz` | Last time approval was requested |
 | `public_token` | `uuid` NOT NULL DEFAULT `gen_random_uuid()` UNIQUE | Unguessable token for public `/q/[token]` page |
 | `payment_status` | `text` NOT NULL DEFAULT `'unpaid'` | `'unpaid'` \| `'partial'` \| `'paid'` — overall order payment state |
-| `routed_by_id` | `uuid` FK → `auth.users` | Preserves original SDR identity after Sales claims the ticket |
+| `routed_by_id` | `uuid` FK → `auth.users` | Set when SDR routes quote to Sales; preserved after Sales claim. Used for SDR read-only access on in-progress hand-offs — **not** for Completed list (SDR Completed uses `created_by_id` only) |
 | `notes` | `text` | Internal notes |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |

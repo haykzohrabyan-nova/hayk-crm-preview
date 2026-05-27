@@ -592,6 +592,20 @@ export function VerifyDrawer({
             This lead was rejected and cannot be modified.
           </div>
         )}
+        {isReadOnly &&
+          !lockedByName &&
+          !isRejected &&
+          (lead.status === "Routed to Sales" || lead.sales_status === "Won") && (
+          <div
+            className="flex items-center gap-2 px-5 py-2 text-[13px] font-medium"
+            style={{ background: "var(--color-info-bg)", color: "var(--color-info-text-deep)", borderBottom: "1px solid var(--color-info-border)" }}
+          >
+            <Lock className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--color-info-text)" }} />
+            {lead.sales_status === "Won"
+              ? "This lead is Won — details are view-only."
+              : "This lead is directed to Sales — details are view-only."}
+          </div>
+        )}
 
         {/* Tab bar — hidden while putting on hold */}
         {footerMode !== "hold" && (

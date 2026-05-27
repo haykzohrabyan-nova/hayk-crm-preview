@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
@@ -167,6 +168,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "title is required.", code: "VALIDATION_ERROR" }, { status: 400 });
   }
 
+  const now = new Date().toISOString();
+  if (due_date) {
+    const dueErr = validateDueDateAgainstCreated(String(due_date), now);
+    if (dueErr) {
+      return NextResponse.json({ error: dueErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+  }
+
   let normalizedWebsite: string | null = null;
   if (website != null && String(website).trim()) {
     const websiteErr = validateWebsite(String(website));
@@ -177,7 +186,6 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient();
-  const now = new Date().toISOString();
 
   // ── Upsert customer so they appear in CRM ──────────────────────────────────
   // Only when contact info is provided and no existing customer_id is given.
@@ -374,6 +382,23 @@ export async function POST(request: NextRequest) {
     payload: { ticket_kind, title: ticket.title, reference_code },
     created_at: now,
   });
+
+  if (ticket_status === "sent") {
+    await admin.from("activities").insert({
+      type: "ticket_sent",
+      lead_id: resolvedLeadId,
+      customer_id: resolvedCustomerId,
+      ticket_id: ticket.id,
+      by_user_id: userId,
+      payload: {
+        channel: quote_channel ?? ticket_quote_channel ?? "unknown",
+        destination: quote_destination ?? ticket_dest_email ?? ticket_dest_phone ?? null,
+        recipient: contact_name ?? contact_email ?? null,
+        resend: false,
+      },
+      created_at: now,
+    });
+  }
 
   // TODO-002: update linked lead status when ticket is created
   if (resolvedLeadId) {

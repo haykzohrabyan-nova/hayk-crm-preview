@@ -13,7 +13,6 @@ import { quoteDetailPath } from "@/lib/utils/reference-codes";
 import { newQuoteUrlFromCustomer } from "@/lib/utils/new-quote-from-customer";
 import { authorityLabel } from "@/lib/utils/authority";
 import { lookupLabel } from "@/lib/utils/lookups";
-import { LeadHistoryTable } from "@/components/leads/lead-history-table";
 import { AddLeadModal } from "@/components/leads/add-lead-modal";
 import { resolveCustomerProfileBack } from "@/lib/utils/customer-profile-href";
 import { createClient } from "@/lib/supabase/client";
@@ -43,21 +42,10 @@ interface Customer {
   updated_at: string;
 }
 
-interface LeadSummary {
-  id: string;
-  status: string;
-  sales_status: string | null;
-  source: string | null;
-  urgency: string | null;
-  rejection_reason: string | null;
-  created_at: string;
-  updated_at: string;
-  tickets?: {
-    id: string;
-    reference_code: string | null;
-    ticket_kind: string | null;
-    ticket_status: string | null;
-  }[];
+interface ProfileData {
+  customer: Customer;
+  lead_count: number;
+  customer_status: "new" | "known" | "returning";
 }
 
 interface TicketSummary {
@@ -77,13 +65,6 @@ interface TicketSummary {
 interface LookupOption {
   value: string;
   label: string;
-}
-
-interface ProfileData {
-  customer: Customer;
-  leads: LeadSummary[];
-  lead_count: number;
-  customer_status: "new" | "known" | "returning";
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -690,7 +671,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
     </div>
   );
 
-  const { customer: c, leads, lead_count, customer_status } = data;
+  const { customer: c, lead_count, customer_status } = data;
   const statusStyle = CUSTOMER_STATUS_STYLE[customer_status];
 
   return (
@@ -817,11 +798,6 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
           </div>
         </div>
       </div>
-
-      <LeadHistoryTable
-        leads={leads}
-        sourceLabels={sourceLabels}
-      />
 
       {/* Quotes & Orders */}
       <section>

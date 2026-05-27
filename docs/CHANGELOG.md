@@ -3,6 +3,65 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-26] — Quote send activity on create-and-send
+
+### Fixed
+- `POST /api/tickets` with `ticket_status: "sent"` (Save & Send) now logs `ticket_sent` in History/timeline — previously only `order_ticket_created` was recorded
+- `supabase/migrations/082_backfill_ticket_sent_on_create.sql` — backfills `ticket_sent` for existing sent quotes missing it (e.g. create-and-send before this fix)
+
+## [2026-05-26] — SDR completed orders access
+
+### Added
+- `supabase/migrations/081_grant_sdr_completed_page.sql` — idempotent grant of SDR nav access to `/quotes`, `/orders`, `/completed` (no-op if already present; excludes `/settings` — not in `pages` table)
+
+### Changed
+- Completed page (`/completed`) — SDR can access and sees only completed orders **they created** (`created_by_id`); routed-to-Sales hand-offs that Sales completed are excluded
+- `GET /api/completed/*` — passes role + user into scoped queries via `scopeCompletedTicketsQuery` / `scopedCompletedTicketCount`
+- Sidebar completed badge — scoped count for SDR
+- `canAccessTicket()` — SDR may read routed hand-offs via `routed_by_id` until status is `completed`; completed detail requires `created_by_id`
+
+### Changed (docs)
+- `docs/rbac.md`, `docs/navigation.md`, `docs/api-contract.md`, `docs/security.md`, `docs/architecture.md`, `docs/types.md`, `docs/component-architecture.md`, `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, `docs/feature-specs/leads-sdr.md`, `docs/session-summary.md`, `docs/TODO.md`, `docs/schema.md` — SDR Completed page access and `created_by_id`-only scoping
+
+## [2026-05-26] — SDR UX, list date filters, dashboard KPIs
+
+### Added
+- `components/ui/dashboard-date-range-filter.tsx` — shared Today / Yesterday / Last Week / Last Month / Custom filter (SDR & Sales dashboards, Orders, Quotes)
+- `lib/utils/dashboard-date-range-filter.ts` — range resolution and `created_at` matching helpers
+
+### Changed
+- Sales and SDR dashboards — **Total**, **Received**, and **Balance** are separate KPI cards for production-released orders in the selected period
+- Sales and SDR dashboard KPI cards — non-accent icons use main brand color (`--color-tab-active`) on badge background
+- **Orders** and **Quotes** list pages — date filter in page header; filters by `created_at`; tab badge counts follow the selected range; status tabs handle All / Draft / etc.
+- SDR and Sales dashboards — use shared `DashboardDateRangeFilter` component
+- Customer profile — **Lead History** section removed; **Quotes & Orders** remains
+- Leads page (SDR) — **Directed to Sales** and **Won** tabs open read-only **Verify Drawer** instead of redirecting to customer profile
+- Verify drawer — view-only banner when a routed or won lead is opened read-only
+
+### Fixed
+- Orders and Quotes date filter — preset buttons were ignored because stored custom draft dates always forced a custom range
+- Closing read-only lead modal no longer reloads the list — `useCoalescedRefresh` resumes silently; read-only drawers keep refresh enabled (`enabled: !drawerLead || drawerReadOnly`)
+
+## [2026-05-26] — Timeline typography
+
+### Changed
+- Timeline pairs **Payment proof submitted** with **Payment proof approved** when accountant confirmed or deposit was already recorded (staff cash / public payment)
+- Staff cash auto-record clears stale payment evidence queue fields; public payment page rejects duplicate deposit proof uploads
+
+## [2026-05-26] — Due date end-of-day rules and validation
+
+### Added
+- `lib/utils/due-date.ts` — shared helpers: local creation date, end-of-day overdue check, validation against creation date
+
+### Changed
+- Due dates are **end of calendar day** (11:59:59 PM local) — not overdue until that day ends; fixes same-day quotes showing overdue at 8:59 PM
+- `isOverdue()` in `lib/utils/format.ts` — uses end-of-day comparison
+- Quote lifecycle timeline — creation always first; due date and completion sort **chronologically**; **Lead created** node (with source) prepended when ticket has a linked lead, then **Quote created** / **Order created**
+- Completed order detail (`/completed/[id]`) — stats row shows **Completed** date instead of Due Date
+- `DatePicker` — optional `minDate` prop; Info form passes creation day when editing
+- New quote + quote detail forms — block due date before creation date
+- `POST /api/tickets` and `PATCH /api/tickets/[id]` — server-side due date validation
+
 ## [2026-05-26] — Security, performance, and code quality audit fixes
 
 ### Added
@@ -34,6 +93,13 @@ Format: `## [version or date] — description`, newest first.
 - `app/api/leads/[id]/hold/route.ts`, `resume/route.ts`, `reassign/route.ts`, `route.ts` — Same JSON parse safety fix
 - `app/api/admin/material-groups/[id]/route.ts`, `admin/materials/[id]/route.ts`, `admin/product-types/[id]/route.ts`, `admin/lookups/[id]/route.ts`, `customers/[id]/route.ts`, `customers/[id]/merge/route.ts`, `admin/roles/[id]/permissions/route.ts` — Same fix
 - `.env.local.example` — Commented out Stripe env vars and marked as future enhancement
+
+## [2026-05-26] — Quote/order detail: lifecycle timeline under stats row
+
+### Added
+- `TicketLifecycleTimeline` — horizontal timeline (desktop) / vertical list (mobile) under Quote/Order Total stats
+- Shows **created → payments & milestones → due date** with exact timestamps, actor (staff or Customer), amount, and payment method
+- `lib/utils/ticket-lifecycle-timeline.ts` — builds nodes from ticket activities + `created_at` / `due_date`
 
 ## [2026-05-26] — Route: Activity Log moves to `/activity-log`
 

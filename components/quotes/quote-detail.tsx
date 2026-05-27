@@ -37,6 +37,7 @@ import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 
 import { createClient } from "@/lib/supabase/client";
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
+import { localDateStringFromIso, validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { InfoForm } from "@/components/quotes/shared/info-form";
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
@@ -49,6 +50,7 @@ import { OrderPaymentSummary } from "@/components/quotes/quote-detail/order-paym
 import { TicketDetailOverview } from "@/components/quotes/quote-detail/ticket-detail-overview";
 import { TicketOverviewSections } from "@/components/quotes/quote-detail/ticket-overview-sections";
 import { TicketStatsRow } from "@/components/quotes/quote-detail/ticket-stats-row";
+import { TicketLifecycleTimeline } from "@/components/quotes/quote-detail/ticket-lifecycle-timeline";
 import { DetailQuickActions } from "@/components/quotes/quote-detail/detail-quick-actions";
 import { DetailStatusDotBadge } from "@/components/quotes/quote-detail/detail-layout-primitives";
 import {
@@ -60,6 +62,7 @@ import {
 
 interface Lead {
   id: string;
+  created_at?: string | null;
   status: string | null;
   sales_status: string | null;
   urgency: string | null;
@@ -285,6 +288,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [salesPermitError, setSalesPermitError] = useState<string | undefined>();
   const [titleError, setTitleError] = useState<string | undefined>();
   const [dueDateError, setDueDateError] = useState<string | undefined>();
+  const [completionAt, setCompletionAt] = useState<string | null>(null);
 
   // ─── Load ─────────────────────────────────────────────────────────────────
 
@@ -483,6 +487,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     if (!dueDate) {
       setDueDateError("A due date is required.");
       hasValidationError = true;
+    } else if (ticket?.created_at) {
+      const dueErr = validateDueDateAgainstCreated(dueDate, ticket.created_at);
+      if (dueErr) {
+        setDueDateError(dueErr);
+        hasValidationError = true;
+      } else {
+        setDueDateError(undefined);
+      }
     } else {
       setDueDateError(undefined);
     }
@@ -1037,7 +1049,24 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           <div className="flex flex-col min-h-0 xl:h-[calc(100svh-6.5rem)] xl:max-h-[calc(100svh-6.5rem)]">
             {showStatsRow && (
               <div className="shrink-0">
-                <TicketStatsRow ticket={ticket} totalLabel={statsTotalLabel} />
+                <TicketStatsRow
+                  ticket={ticket}
+                  totalLabel={statsTotalLabel}
+                  completedAt={context === "completed" ? completionAt ?? ticket.updated_at : undefined}
+                />
+                <TicketLifecycleTimeline
+                  ticketId={ticket.id}
+                  createdAt={ticket.created_at}
+                  dueDate={ticket.due_date}
+                  createdByName={ticket.created_by?.full_name}
+                  isQuote={statsTotalLabel === "Quote Total"}
+                  referenceCode={ticket.reference_code}
+                  ticketStatus={ticket.ticket_status}
+                  completedAtFallback={ticket.updated_at}
+                  onCompletedAt={context === "completed" ? setCompletionAt : undefined}
+                  leadCreatedAt={ticket.lead?.created_at}
+                  leadSource={ticket.lead?.source}
+                />
               </div>
             )}
 
@@ -1243,6 +1272,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   priorityOpts={quoteLookups.ticket_priority}
                   titleError={titleError}
                   dueDateError={dueDateError}
+                  minDueDate={ticket.created_at ? localDateStringFromIso(ticket.created_at) : undefined}
                 />
 
                 {/* ── Divider: Line Items ── */}

@@ -12,6 +12,8 @@ interface DatePickerProps {
   placeholder?: string;
   disabled?: boolean;
   disablePast?: boolean;  // when true, dates before today are not selectable
+  /** Earliest YYYY-MM-DD allowed (e.g. ticket creation day). */
+  minDate?: string;
   className?: string;
   style?: React.CSSProperties;
   /** Raise popover above modals (z-index 100). */
@@ -24,6 +26,7 @@ export function DatePicker({
   placeholder = "Pick a date",
   disabled,
   disablePast = false,
+  minDate,
   className = "",
   style,
   inModal = false,
@@ -36,6 +39,17 @@ export function DatePicker({
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  const minCandidates: Date[] = [];
+  if (disablePast) minCandidates.push(today);
+  if (minDate) {
+    const parsed = parse(minDate, "yyyy-MM-dd", new Date());
+    if (isValid(parsed)) minCandidates.push(parsed);
+  }
+  const minSelectable =
+    minCandidates.length > 0
+      ? minCandidates.reduce((latest, d) => (d > latest ? d : latest))
+      : undefined;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -189,7 +203,7 @@ export function DatePicker({
             onSelect={handleSelect}
             defaultMonth={selected ?? new Date()}
             navLayout="around"
-            disabled={disablePast ? { before: today } : undefined}
+            disabled={minSelectable ? { before: minSelectable } : undefined}
           />
         </div>
       )}

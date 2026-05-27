@@ -130,6 +130,18 @@ export async function POST(request: NextRequest, { params }: Params) {
   const fullyPaid   = newTotal >= quoteTotal - 0.01;
   const needsAccountantReview = EVIDENCE_REQUIRED_CHANNELS.has(method);
   const strategy = row.ticket_payment_strategy ?? "full";
+  const depositAlreadyRecorded =
+    !!row.deposit_paid_at &&
+    strategy === "partial" &&
+    amount <= Number(row.deposit_amount ?? row.payment_amount_received ?? 0) + 0.02;
+
+  if (needsAccountantReview && depositAlreadyRecorded) {
+    return NextResponse.json({
+      ok: true,
+      message: "Deposit already recorded — no additional review needed.",
+      duplicate_deposit_proof: true,
+    });
+  }
 
   const patch: Record<string, unknown> = {
     updated_at:                    now,

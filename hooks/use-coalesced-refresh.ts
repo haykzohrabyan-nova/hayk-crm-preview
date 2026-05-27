@@ -31,8 +31,17 @@ export function useCoalescedRefresh(
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
+  const prevEnabledRef = useRef<boolean | null>(null);
+
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      prevEnabledRef.current = false;
+      return;
+    }
+
+    /** After pausing (e.g. modal open), resume with silent refetch — not a full loading cycle. */
+    const resumeSilent = prevEnabledRef.current === false;
+    prevEnabledRef.current = true;
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -44,7 +53,7 @@ export function useCoalescedRefresh(
       );
     }
 
-    scheduleRefresh(false);
+    scheduleRefresh(resumeSilent);
 
     function onEvent() {
       scheduleRefresh(true);

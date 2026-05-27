@@ -1,6 +1,10 @@
 /** Whether the session user may read a ticket (GET, PDF, print). Matches GET /api/tickets/[id]. */
 export function canAccessTicket(
-  ticket: { created_by_id: string | null; ticket_status: string },
+  ticket: {
+    created_by_id: string | null;
+    ticket_status: string;
+    routed_by_id?: string | null;
+  },
   userId: string,
   roleName: string,
 ): boolean {
@@ -11,6 +15,13 @@ export function canAccessTicket(
     (roleName === "sales" || roleName === "admin");
 
   if (ticket.created_by_id === userId) return true;
+  if (
+    roleName === "sdr" &&
+    ticket.routed_by_id === userId &&
+    ticket.ticket_status !== "completed"
+  ) {
+    return true;
+  }
   if (isRoutedForSales) return true;
 
   return false;

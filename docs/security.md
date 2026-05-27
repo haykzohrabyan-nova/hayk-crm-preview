@@ -25,7 +25,7 @@ Most CRM writes use the **service-role admin client** in Route Handlers (RLS byp
 |--------|------|----------|
 | `requireSession()` | `lib/auth/require-session.ts` | Valid session + **MFA complete** (AAL2 or valid `bazaar_mfa_trust` cookie). Option `{ requireMfa: false }` for sign-out flows only. |
 | `requireAdmin()` | `lib/auth/require-admin.ts` | Calls `requireSession()` then checks `roleName === 'admin'`. Used on **all** admin-only Route Handlers — never use `requireSession()` + manual role check as a substitute. |
-| `canAccessTicket()` | `lib/utils/ticket-access.ts` | Ticket read scope — owner, admin, accountant, or sales on `routed` tickets. |
+| `canAccessTicket()` | `lib/utils/ticket-access.ts` | Ticket read scope — owner (`created_by_id`), SDR routed hand-off (`routed_by_id`, not when `completed`), admin, accountant, or sales on `routed` tickets. |
 | `canMutateTicket()` | `lib/utils/ticket-access.ts` | Ticket PATCH scope — owner, admin, or accountant. |
 | `canReadLead()` | `lib/utils/lead-access.ts` | Lead GET scope by role and ownership. Also used in `GET /api/leads/[id]/activities` and `GET /api/activities?lead_id=` to prevent IDOR. |
 
@@ -120,6 +120,9 @@ These endpoints verify the caller has access to the specific object before retur
 | `GET /api/tickets/[id]` | `canAccessTicket()` |
 | `GET /api/tickets/[id]/pdf` | `canAccessTicket()` |
 | `GET /api/tickets/[id]/print` | `canAccessTicket()` |
+| `GET /api/completed/orders` | Role-scoped list — SDR: `created_by_id` only via `scopeCompletedTicketsQuery()` |
+| `GET /api/completed/page-data` | Same scope as completed list |
+| `GET /api/completed/counts` | Same scope as completed list |
 
 ---
 

@@ -52,8 +52,7 @@ import {
   routedLeadTicketDisplay,
   type RoutedLeadTicket,
 } from "@/lib/utils/lead-routed-ticket-status";
-import { customerProfileHref } from "@/lib/utils/customer-profile-href";
-import { leadsReturnPath, parseLeadsTabParam, type LeadsTabParam } from "@/lib/utils/leads-return-path";
+import { parseLeadsTabParam } from "@/lib/utils/leads-return-path";
 import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -369,28 +368,30 @@ export function LeadsPage() {
     if (!silent) setLoading(false);
   }, [activeTab, search]);
 
-  useCoalescedRefresh(fetchPageData, [activeTab, search, drawerLead], {
+  useCoalescedRefresh(fetchPageData, [activeTab, search], {
     events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
-    enabled: !drawerLead,
+    enabled: !drawerLead || drawerReadOnly,
   });
 
   // ── Open drawer ───────────────────────────────────────────────────────────
 
-  /** Won + Directed-to-Sales leads are view-only for SDR — open customer profile instead of the verify drawer. */
-  function redirectSdrWonToCustomer(lead: Lead): boolean {
-    if (userRole !== "sdr" || lead.sales_status !== "Won") return false;
-    if (lead.customer_id) {
-      router.push(
-        customerProfileHref(lead.customer_id, leadsReturnPath(activeTab as LeadsTabParam)),
-      );
-    } else {
-      showToast("No customer linked to this lead.", "error");
-    }
-    return true;
+  /** Routed + Won tabs: SDR can view lead details only (already handed off or won). */
+  function isSdrReadOnlyLeadTab(): boolean {
+    return userRole === "sdr" && (activeTab === "routed" || activeTab === "won");
+  }
+
+  async function openReadOnlyLead(lead: Lead) {
+    const full = (await fetchLeadById(lead.id)) ?? lead;
+    setDrawerLead(full);
+    setDrawerReadOnly(true);
+    setDrawerLockedBy(null);
   }
 
   async function handleWorkLead(lead: Lead) {
-    if (redirectSdrWonToCustomer(lead)) return;
+    if (isSdrReadOnlyLeadTab()) {
+      await openReadOnlyLead(lead);
+      return;
+    }
     const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
     const data = await res.json();
     const full = (await fetchLeadById(lead.id)) ?? lead;
@@ -407,7 +408,10 @@ export function LeadsPage() {
   }
 
   async function handleViewLead(lead: Lead) {
-    if (redirectSdrWonToCustomer(lead)) return;
+    if (isSdrReadOnlyLeadTab()) {
+      await openReadOnlyLead(lead);
+      return;
+    }
     const full = (await fetchLeadById(lead.id)) ?? lead;
     setDrawerLead(full);
     setDrawerReadOnly(!isAdmin);
@@ -1248,7 +1252,10 @@ export function LeadsPage() {
           readOnly={drawerReadOnly}
           lockedByName={drawerLockedBy}
           isAdmin={isAdmin}
-          onClose={() => setDrawerLead(null)}
+          onClose={() => {
+            setDrawerLead(null);
+            setDrawerReadOnly(false);
+          }}
           onLeadUpdated={(updated) => {
             if (activeTab === "routed") {
               setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));

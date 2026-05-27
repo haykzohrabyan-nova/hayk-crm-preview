@@ -500,6 +500,8 @@ useCoalescedRefresh({
 
 **Important:** Do not pass an inline refresh function that changes every render into effect dependencies — that caused an infinite reload loop on `/leads` (fixed May 2026). The hook stores the latest callback in a ref; page components should pass a stable `fetchPageData` from `useCallback`.
 
+**Pause / resume (May 2026):** Pass `enabled: false` while an **editable** modal/drawer is open (e.g. sales pipeline). When `enabled` flips back to `true`, the hook refetches **silently** (no loading skeleton). On `/leads`, read-only Verify Drawer uses `enabled: !drawerLead || drawerReadOnly` so closing a routed/won lead view does not trigger any refetch flash.
+
 Legacy inline timer pattern (pre-hook) remains documented below for reference:
 
 ```typescript

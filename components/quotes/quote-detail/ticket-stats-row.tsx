@@ -3,7 +3,7 @@
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { computeCheckout, getChannelLabel } from "@/lib/utils/compute-checkout";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
-import { formatDate, isOverdue } from "@/lib/utils/format";
+import { formatDate, formatDateTime, isOverdue } from "@/lib/utils/format";
 import type { PaymentConfig } from "@/lib/types";
 import type { QuoteSku } from "@/lib/utils/ticket-math";
 import { DetailStatCard } from "@/components/quotes/quote-detail/detail-layout-primitives";
@@ -59,9 +59,12 @@ function primaryProductLabel(t: StatsTicket): string | undefined {
 export function TicketStatsRow({
   ticket,
   totalLabel = "Order Total",
+  completedAt,
 }: {
   ticket: StatsTicket;
   totalLabel?: "Order Total" | "Quote Total";
+  /** When set (Completed page), replaces Due Date with this completion timestamp. */
+  completedAt?: string | null;
 }) {
   const total = Number(ticket.quote_final_total ?? 0);
   const cfg = buildConfig(ticket);
@@ -122,6 +125,9 @@ export function TicketStatsRow({
     ? new Date(ticket.due_date + "T00:00:00").getFullYear()
     : null;
 
+  const completedFormatted = completedAt ? formatDateTime(completedAt) : "—";
+  const completedYear = completedAt ? new Date(completedAt).getFullYear() : null;
+
   const cards = [
     {
       key: "total",
@@ -144,13 +150,21 @@ export function TicketStatsRow({
       subValue: balanceDue > 0.01 ? "Outstanding" : "Paid in full",
       valueColor: balanceDue > 0.01 ? "var(--color-danger)" : "var(--color-success)",
     },
-    {
-      key: "due",
-      label: "Due Date",
-      value: dueDateFormatted,
-      subValue: overdue ? `Overdue · ${dueYear ?? ""}` : dueYear ? String(dueYear) : undefined,
-      valueColor: overdue ? "var(--color-danger)" : undefined,
-    },
+    completedAt
+      ? {
+          key: "completed",
+          label: "Completed",
+          value: completedFormatted,
+          subValue: completedYear ? String(completedYear) : "Ready for pickup",
+          valueColor: "var(--color-success)" as string | undefined,
+        }
+      : {
+          key: "due",
+          label: "Due Date",
+          value: dueDateFormatted,
+          subValue: overdue ? `Overdue · ${dueYear ?? ""}` : dueYear ? String(dueYear) : undefined,
+          valueColor: overdue ? "var(--color-danger)" : undefined,
+        },
     {
       key: "payment",
       label: "Payment",

@@ -33,6 +33,31 @@ export function scopeJobTicketsQuery<T extends CountQuery>(
   return query;
 }
 
+/** Completed list: SDR sees only tickets they created — not orders Sales completed after a routed hand-off. */
+export function scopeCompletedTicketsQuery<T extends CountQuery>(
+  query: T,
+  roleName: string | null,
+  userId: string | null,
+): T {
+  if (roleName === "admin" || roleName === "accountant") return query;
+  if (userId) {
+    return query.eq("created_by_id", userId) as T;
+  }
+  return query;
+}
+
+/** Build a scoped completed-ticket count query. */
+export function scopedCompletedTicketCount(
+  admin: AdminClient,
+  roleName: string | null,
+  userId: string | null,
+  configure: (q: CountQuery) => CountQuery,
+): Promise<number> {
+  return countExact(admin, "job_tickets", (q) =>
+    configure(scopeCompletedTicketsQuery(q, roleName, userId)),
+  );
+}
+
 /** Orders-page exclusion: evidence submitted but payment not confirmed. */
 export const ORDERS_VISIBLE_PAYMENT_FILTER =
   "payment_evidence_submitted_at.is.null,payment_evidence_url.is.null,payment_paid_at.not.is.null";

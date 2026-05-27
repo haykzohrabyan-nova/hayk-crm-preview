@@ -1,3 +1,5 @@
+import { dueDateEndOfDayMs } from "@/lib/utils/due-date";
+
 /** Shared display helpers — use these instead of copying fmt/relativeTime into components. */
 
 /** Round to cents — use for all money totals in API responses. */
@@ -55,9 +57,10 @@ export function isDueSoon(dateStr: string | null | undefined): boolean {
   return diffDays <= 2 && diffDays >= 0;
 }
 
+/** Due date is end-of-day local — not overdue until that calendar day ends. */
 export function isOverdue(dateStr: string | null | undefined): boolean {
   if (!dateStr) return false;
-  return parseLocalDate(dateStr) < new Date();
+  return dueDateEndOfDayMs(dateStr) < Date.now();
 }
 
 export interface ContactLike {

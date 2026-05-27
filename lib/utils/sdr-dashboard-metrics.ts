@@ -14,6 +14,7 @@ export interface SdrDashboardMetrics {
   lead_claimed: SdrMetricTrend;
   lead_created: SdrMetricTrend;
   order_value: SdrMetricTrend;
+  order_value_breakdown: { total: number; received: number; balance: number };
   order_created: SdrMetricTrend;
   inbox: { value: number };
   rejected: SdrMetricTrend;
@@ -145,10 +146,10 @@ async function productionReleasedRouted(
   userId: string,
   startIso: string,
   endIso: string,
-): Promise<{ count: number; value: number }> {
+): Promise<{ count: number; value: number; received: number; balance: number }> {
   const { data: tickets, error } = await admin
     .from("job_tickets")
-    .select("id, quote_final_total, linked_lead_id")
+    .select("id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id")
     .in("ticket_status", ["in_production", "completed"])
     .not("production_released_at", "is", null)
     .gte("production_released_at", startIso)
@@ -156,23 +157,30 @@ async function productionReleasedRouted(
     .not("linked_lead_id", "is", null);
 
   if (error) throw error;
-  if (!tickets?.length) return { count: 0, value: 0 };
+  if (!tickets?.length) return { count: 0, value: 0, received: 0, balance: 0 };
 
   const leadIds = [
     ...new Set(tickets.map((t) => t.linked_lead_id as string)),
   ];
   const eligible = await filterSdrRoutedLeadIds(admin, userId, leadIds);
-  if (eligible.size === 0) return { count: 0, value: 0 };
+  if (eligible.size === 0) return { count: 0, value: 0, received: 0, balance: 0 };
 
   let value = 0;
+  let received = 0;
   let count = 0;
   for (const t of tickets) {
     const leadId = t.linked_lead_id as string;
     if (!eligible.has(leadId)) continue;
     value += Number(t.quote_final_total ?? 0);
+    received += Number(t.payment_amount_received ?? t.deposit_amount ?? 0);
     count += 1;
   }
-  return { count, value: roundMoney(value) };
+  return {
+    count,
+    value: roundMoney(value),
+    received: roundMoney(received),
+    balance: roundMoney(Math.max(0, value - received)),
+  };
 }
 
 async function snapshotInbox(admin: AdminClient): Promise<number> {
@@ -219,6 +227,8 @@ async function metricsForWindow(
     routed_to_sales,
     order_created,
     order_value: production.value,
+    order_received: production.received,
+    order_balance: production.balance,
     sales_win: production.count,
   };
 }
@@ -239,6 +249,11 @@ export async function buildSdrDashboardMetrics(
     lead_claimed: trend(cur.lead_claimed, prev.lead_claimed),
     lead_created: trend(cur.lead_created, prev.lead_created),
     order_value: trend(cur.order_value, prev.order_value),
+    order_value_breakdown: {
+      total: cur.order_value,
+      received: cur.order_received,
+      balance: cur.order_balance,
+    },
     order_created: trend(cur.order_created, prev.order_created),
     inbox: { value: inbox },
     rejected: trend(cur.rejected, prev.rejected),

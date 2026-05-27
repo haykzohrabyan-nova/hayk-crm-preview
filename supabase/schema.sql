@@ -1060,7 +1060,7 @@ select r.id, p.id
 from public.roles r
 cross join public.pages p
 where r.name = 'sdr'
-  and p.route in ('/dashboard', '/leads', '/crm')
+  and p.route in ('/dashboard', '/leads', '/crm', '/quotes', '/orders', '/completed')
 on conflict do nothing;
 
 -- Sales pages

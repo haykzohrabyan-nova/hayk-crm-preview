@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import {
@@ -11,6 +11,13 @@ import {
   MobileListCardEmpty,
   TicketListToolbar,
 } from "@/components/ui/mobile-list-card";
+import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
+import {
+  defaultDashboardDateRangeFilterValue,
+  isoTimestampInDashboardRange,
+  resolveDashboardDateRangeFilter,
+  type DashboardDateRangeFilterValue,
+} from "@/lib/utils/dashboard-date-range-filter";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import { Zap, ExternalLink } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
@@ -409,6 +416,11 @@ export default function OrdersPage() {
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+  const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
+    defaultDashboardDateRangeFilterValue("today"),
+  );
+
+  const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -445,7 +457,30 @@ export default function OrdersPage() {
 
   const activeTabDef = TABS.find((t) => t.id === tab)!;
 
-  const filtered = orders.filter((o) => {
+  const dateFilteredOrders = useMemo(() => {
+    if (!dateRange) return orders;
+    return orders.filter((o) => isoTimestampInDashboardRange(o.created_at, dateRange));
+  }, [orders, dateRange]);
+
+  const displayTabCounts = useMemo(() => {
+    if (!dateRange) return tabCounts;
+    let pending = 0;
+    let inProduction = 0;
+    let cancelled = 0;
+    for (const o of dateFilteredOrders) {
+      if (o.ticket_status === "order") pending++;
+      else if (o.ticket_status === "in_production") inProduction++;
+      else if (o.ticket_status === "cancelled") cancelled++;
+    }
+    return {
+      all: pending + inProduction + cancelled,
+      pending,
+      in_production: inProduction,
+      cancelled,
+    };
+  }, [dateFilteredOrders, dateRange, tabCounts]);
+
+  const filtered = dateFilteredOrders.filter((o) => {
     if (activeTabDef.statuses && !activeTabDef.statuses.includes(o.ticket_status)) return false;
     if (search) {
       const s = search.toLowerCase();
@@ -464,7 +499,7 @@ export default function OrdersPage() {
     <div className="space-y-5" style={{ color: "var(--color-text-primary)" }}>
 
       {/* Page header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Orders
@@ -473,13 +508,14 @@ export default function OrdersPage() {
             Active orders and in-production jobs — payment proof awaiting accountant review stays visible here for the rep who owns the order
           </p>
         </div>
+        <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
       </div>
 
       <TicketListToolbar
         tabs={TABS.map((t) => ({ id: t.id, label: t.label }))}
         activeTab={tab}
         onTabChange={(id) => selectTab(id as Tab)}
-        tabCounts={tabCounts}
+        tabCounts={displayTabCounts}
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search orders…"

@@ -5,15 +5,16 @@ import {
   UserCheck,
   UserPlus,
   DollarSign,
+  Banknote,
+  Scale,
   ShoppingCart,
   Inbox,
   XCircle,
   Clock,
   TrendingUp,
   Trophy,
-  CalendarRange,
 } from "lucide-react";
-import { DatePicker } from "@/components/ui/date-picker";
+import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
 import { formatCurrency as formatMoneyFull } from "@/lib/utils/format";
 import { KPI_HELP } from "@/lib/utils/kpi-help-text";
 import { KpiHelpLine } from "@/components/ui/kpi-help-line";
@@ -21,14 +22,9 @@ import {
   SDR_DASHBOARD_PRESET_LABELS,
   type SdrDashboardPreset,
 } from "@/lib/utils/sdr-dashboard-date-range";
-import {
-  defaultCustomFromDate,
-  defaultCustomToDate,
-} from "@/lib/utils/reports-date-range";
+import { defaultDashboardDateRangeFilterValue } from "@/lib/utils/dashboard-date-range-filter";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
-
-type Preset = Exclude<SdrDashboardPreset, "custom">;
 
 interface MetricTrend {
   value: number;
@@ -48,6 +44,7 @@ interface SdrKpis {
   lead_claimed: MetricTrend;
   lead_created: MetricTrend;
   order_value: MetricTrend;
+  order_value_breakdown: { total: number; received: number; balance: number };
   order_created: MetricTrend;
   inbox: { value: number };
   rejected: MetricTrend;
@@ -123,10 +120,10 @@ function KpiCard({
           style={{
             background: accent
               ? "color-mix(in srgb, var(--color-btn-verify-text) 15%, transparent)"
-              : "color-mix(in srgb, var(--color-accent) 12%, transparent)",
+              : "var(--color-badge-bg)",
           }}
         >
-          <span style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-accent)" }}>
+          <span style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-tab-active)" }}>
             {icon}
           </span>
         </div>
@@ -197,20 +194,13 @@ function KpiCardSkeleton() {
   );
 }
 
-const PRESETS: Preset[] = ["today", "yesterday", "last_week", "last_month"];
 
 // ─── SDR Dashboard ───────────────────────────────────────────────────────────
 
 export function SdrDashboard() {
-  const [filter, setFilter] = useState<SdrTimeFilter>({
-    preset: "today",
-    dateFrom: defaultCustomFromDate(),
-    dateTo: defaultCustomToDate(),
-  });
-  const [customOpen, setCustomOpen] = useState(false);
-  const [draftFrom, setDraftFrom] = useState(filter.dateFrom);
-  const [draftTo, setDraftTo] = useState(filter.dateTo);
-  const [customError, setCustomError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<SdrTimeFilter>(() =>
+    defaultDashboardDateRangeFilterValue("today") as SdrTimeFilter,
+  );
   const [data, setData] = useState<SdrKpis | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -241,26 +231,6 @@ export function SdrDashboard() {
     fetchKpis();
   }, [fetchKpis]);
 
-  function selectPreset(p: Preset) {
-    setCustomOpen(false);
-    setCustomError(null);
-    setFilter({ preset: p, dateFrom: draftFrom, dateTo: draftTo });
-  }
-
-  function applyCustom() {
-    if (!draftFrom || !draftTo) {
-      setCustomError("Choose both a start and end date.");
-      return;
-    }
-    if (draftFrom > draftTo) {
-      setCustomError("Start date must be on or before end date.");
-      return;
-    }
-    setCustomError(null);
-    setFilter({ preset: "custom", dateFrom: draftFrom, dateTo: draftTo });
-    setCustomOpen(false);
-  }
-
   const priorLabel = data?.range.prior_label ?? "vs prior period";
   const rangeLabel = data?.range.label ?? SDR_DASHBOARD_PRESET_LABELS.today;
 
@@ -280,114 +250,40 @@ export function SdrDashboard() {
           )}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 max-w-full">
-          <div
-            className="flex flex-wrap items-center justify-end gap-0.5 rounded-[8px] border p-0.5 text-[13px] font-medium"
-            style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-          >
-            {PRESETS.map((p) => (
-              <button
-                key={p}
-                type="button"
-                onClick={() => selectPreset(p)}
-                className="rounded-[6px] px-3 py-1.5 transition-all shrink-0"
-                style={{
-                  background:
-                    filter.preset === p && !customOpen
-                      ? "var(--color-btn-verify-bg)"
-                      : "transparent",
-                  color:
-                    filter.preset === p && !customOpen
-                      ? "var(--color-btn-verify-text)"
-                      : "var(--color-text-muted)",
-                }}
-              >
-                {SDR_DASHBOARD_PRESET_LABELS[p]}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => {
-                setCustomOpen((o) => !o);
-                setCustomError(null);
-              }}
-              className="inline-flex items-center gap-1 rounded-[6px] px-3 py-1.5 transition-all shrink-0"
-              style={{
-                background:
-                  filter.preset === "custom" || customOpen
-                    ? "var(--color-btn-verify-bg)"
-                    : "transparent",
-                color:
-                  filter.preset === "custom" || customOpen
-                    ? "var(--color-btn-verify-text)"
-                    : "var(--color-text-muted)",
-              }}
-            >
-              <CalendarRange className="h-3.5 w-3.5" />
-              Custom
-            </button>
-
-            {customOpen && (
-              <>
-                <span
-                  className="hidden sm:block w-px h-7 mx-0.5 shrink-0"
-                  style={{ background: "var(--color-border)" }}
-                  aria-hidden
-                />
-                <div className="flex items-center gap-1.5 px-1 shrink-0">
-                  <span
-                    className="text-[10px] font-medium uppercase tracking-[0.06em] shrink-0"
-                    style={{ color: "var(--color-text-muted)" }}
-                  >
-                    From
-                  </span>
-                  <DatePicker value={draftFrom} onChange={setDraftFrom} className="w-[130px]" />
-                </div>
-                <div className="flex items-center gap-1.5 px-1 shrink-0">
-                  <span
-                    className="text-[10px] font-medium uppercase tracking-[0.06em] shrink-0"
-                    style={{ color: "var(--color-text-muted)" }}
-                  >
-                    To
-                  </span>
-                  <DatePicker value={draftTo} onChange={setDraftTo} className="w-[130px]" />
-                </div>
-                <button
-                  type="button"
-                  onClick={applyCustom}
-                  className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium shrink-0"
-                  style={{
-                    background: "var(--color-btn-primary-bg)",
-                    color: "var(--color-btn-primary-text)",
-                  }}
-                >
-                  Apply
-                </button>
-              </>
-            )}
-          </div>
-          {customError && (
-            <p className="text-[12px] w-full text-right sm:w-auto" style={{ color: "var(--color-danger)" }}>
-              {customError}
-            </p>
-          )}
-        </div>
+        <DashboardDateRangeFilter
+          value={filter}
+          onChange={(next) => setFilter(next as SdrTimeFilter)}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         {loading ? (
-          Array.from({ length: 9 }).map((_, i) => <KpiCardSkeleton key={i} />)
+          Array.from({ length: 11 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : data ? (
           <>
             <KpiCard
-              label="Order Value"
-              value={formatCurrency(data.order_value.value)}
+              label="Total"
+              value={formatCurrency(data.order_value_breakdown.total)}
               pctChange={data.order_value.pct_change}
               priorLabel={priorLabel}
               subtext="routed leads → production"
-              help={KPI_HELP.order_value_sdr}
+              help={KPI_HELP.order_total_sdr}
               icon={<DollarSign className="h-4 w-4" />}
               accent
+            />
+            <KpiCard
+              label="Received"
+              value={formatCurrency(data.order_value_breakdown.received)}
+              subtext="routed leads → production"
+              help={KPI_HELP.order_received_sdr}
+              icon={<Banknote className="h-4 w-4" />}
+            />
+            <KpiCard
+              label="Balance"
+              value={formatCurrency(data.order_value_breakdown.balance)}
+              subtext="routed leads → production"
+              help={KPI_HELP.order_balance_sdr}
+              icon={<Scale className="h-4 w-4" />}
             />
             <KpiCard
               label="Lead Claimed"

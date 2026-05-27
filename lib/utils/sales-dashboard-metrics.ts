@@ -16,6 +16,7 @@ export interface SalesDashboardMetrics {
   lead_claimed: DashboardMetricTrend;
   lead_created: DashboardMetricTrend;
   order_value: DashboardMetricTrend;
+  order_value_breakdown: { total: number; received: number; balance: number };
   order_created: DashboardMetricTrend;
   inbox: { value: number };
   rejected: DashboardMetricTrend;
@@ -185,6 +186,8 @@ async function metricsForWindow(
     on_hold,
     order_created,
     order_value: released.value,
+    order_received: released.received,
+    order_balance: released.balance,
   };
 }
 
@@ -204,6 +207,11 @@ export async function buildSalesDashboardMetrics(
     lead_claimed: trend(cur.lead_claimed, prev.lead_claimed),
     lead_created: trend(cur.lead_created, prev.lead_created),
     order_value: trend(cur.order_value, prev.order_value),
+    order_value_breakdown: {
+      total: cur.order_value,
+      received: cur.order_received,
+      balance: cur.order_balance,
+    },
     order_created: trend(cur.order_created, prev.order_created),
     inbox: { value: inbox },
     rejected: trend(cur.rejected, prev.rejected),

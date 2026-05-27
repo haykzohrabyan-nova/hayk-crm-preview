@@ -159,7 +159,7 @@ flowchart TD
 | Payment under review | `sent` or `order` + evidence | QUO-* or ORD-* | `/payments` (accountant) + `/orders` (owner: Awaiting payment confirmation) | `/q/{token}` — under review |
 | Order | `order` | ORD-* | `/orders` · Pending Payment | `/q/{token}` |
 | In production | `in_production` | ORD-* | `/orders` · In Production | `/q/{token}` — pay balance if partial |
-| Completed | `completed` | ORD-* | `/completed` | `/q/{token}` — ready for pickup |
+| Completed | `completed` | ORD-* | `/completed` (SDR: own `created_by_id` only; Admin/Accountant: all) | `/q/{token}` — ready for pickup |
 
 ---
 

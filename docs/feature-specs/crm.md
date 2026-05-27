@@ -6,7 +6,7 @@ Route: `/crm` (all roles)
 
 ## Overview
 
-The CRM is the master customer registry. Every contact who has ever been a lead is tracked here. The CRM shows all customers, their status (New / Known / Returning), their full lead history, order history, and activity timeline.
+The CRM is the master customer registry. Every contact who has ever been a lead is tracked here. The CRM shows all customers, their status (New / Known / Returning), quotes & orders, and activity timeline.
 
 **List API:** `GET /api/customers` — slim customer fields plus lightweight `lead_count` / `ticket_count` aggregates (2026-05-22). Silent refresh on `bazaar:leads-changed` without skeleton flash.
 
@@ -104,24 +104,7 @@ A dedicated full page for a single customer. Accessible from:
 ### Section: Quotes & Orders
 List of all `job_tickets` for this customer. Each row shows reference, date, **source** (quote or lead), total, and status. Click → quote/order detail.
 
-### Section: Lead History
-
-Table of all leads ever created for this customer.
-
-**Component:** `components/leads/lead-history-table.tsx` (shared with Leads **Won** tab).
-
-| Column | Notes |
-|--------|-------|
-| Status | `sales_status` via `StatusPill` — not SDR inbox `status` |
-| Source | Lookup label (e.g. Phone call) |
-| Product Interests | `ProductName[quantity]` from `interests` + `quantities` |
-| Urgency | `UrgencyPill` |
-| Quote / Order | `QUO-…` / `ORD-…` from nested `job_tickets` on `GET /api/customers/[id]` — no amounts |
-| Created | Relative time |
-
-**Data:** Lead rows from `GET /api/customers/[id]` include nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` so refs are visible to SDRs without scoped ticket list access.
-
-**Row click (SDR on Won-equivalent rows):** navigates to customer profile when opened from Leads Won tab; on customer profile, rows are display-only (no drawer).
+> **Lead History** was removed from the customer profile (May 2026). SDRs view routed/won lead details from the **Leads** workspace (Directed to Sales / Won tabs → read-only Verify Drawer).
 
 ### Section: Order History
 Table of all `job_tickets` linked to this customer.

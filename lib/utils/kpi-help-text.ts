@@ -35,8 +35,12 @@ export const KPI_HELP = {
   share_pct: "Your handled leads as a share of all SDR activity this period.",
   lead_claimed_sdr: "Distinct leads you claimed (locked) in the selected period.",
   lead_created_sdr: "Leads added to the workspace with you as SDR in the selected period.",
-  order_value_sdr:
-    "Sum of order totals when routed leads you sourced entered production in the period.",
+  order_total_sdr:
+    "Sum of quote totals on orders from routed leads that entered production in this period.",
+  order_received_sdr:
+    "Payments recorded on those production-released orders from your routed leads.",
+  order_balance_sdr:
+    "Quote total minus received on those production-released orders.",
   order_created_sdr:
     "Orders converted from quotes on leads you routed to Sales in the period.",
   on_hold_sdr_period: "Times you put a lead on hold in the selected period.",
@@ -44,8 +48,12 @@ export const KPI_HELP = {
     "Routed-to-Sales leads whose linked order entered production in the period.",
   lead_claimed_sales: "Distinct routed leads you claimed in the selected period.",
   lead_created_sales: "Quotes you created in the selected period.",
-  order_value_sales:
-    "Sum of order totals when your deals entered production in the period.",
+  order_total_sales:
+    "Sum of quote totals on your orders that entered production in this period.",
+  order_received_sales:
+    "Payments recorded on your orders that entered production in this period.",
+  order_balance_sales:
+    "Quote total minus received on your production-released orders.",
   order_created_sales: "Quotes you converted to orders in the period.",
   inbox_sales: "Routed leads waiting to be claimed (live snapshot).",
   rejected_sales: "Leads you rejected from the sales pipeline in the period.",

@@ -121,6 +121,7 @@ Pills always visible; count badge when that stage has leads. **Stage** badge and
 
 - **Rows are clickable** — clicking any row opens the Verify Drawer in **read-only mode** (no lock acquired). SDR can view all lead details and history but cannot save, route, hold, or reject.
 - **No action buttons in the drawer** — footer shows only "Close".
+- **Closing the drawer** does not reload the list (read-only path keeps `useCoalescedRefresh` enabled).
 - **Sub-filter pills** persist until the SDR navigates away; pills reset to "All" when switching tabs.
 - **Search** applies (client-side filter on name, email, phone, company).
 
@@ -150,9 +151,9 @@ A lead appears here when:
 1. The SDR **routed it to Sales** (`lead_routed_to_sales` activity — Route to Sales in the verify drawer), **and**
 2. The linked ticket later entered **`in_production`** (`sales_status = 'Won'` via `markLeadWonOnProduction()`).
 
-**Not included:** SDR quotes/orders the lead directly without routing to Sales — those may still get `sales_status = Won` globally, but they do not appear on this tab.
+**Not included:** SDR quotes/orders the lead directly without routing to Sales — those may still get `sales_status = Won` globally, but they do not appear on this tab. Self-created completed orders appear on **`/completed`** for the SDR (scoped by `created_by_id`).
 
-**Component:** `components/leads/lead-history-table.tsx` — same table as customer profile **Lead History** (`lib/utils/lead-history-display.ts` for refs and source labels).
+**Component:** `components/leads/lead-history-table.tsx` — shared table component (`lib/utils/lead-history-display.ts` for refs and source labels). **Not shown on customer profile** (removed May 2026).
 
 ### Table Columns
 
@@ -167,8 +168,8 @@ A lead appears here when:
 
 ### Behaviors
 
-- **Rows are clickable (SDR)** — navigates to **`/crm/customers/[customer_id]`** (`redirectSdrWonToCustomer()`), not the Verify Drawer
-- **Admin** — row click still opens Verify Drawer in read-only mode
+- **Rows are clickable (SDR)** — opens **read-only Verify Drawer** (same as Directed to Sales tab)
+- **Admin** — row click opens Verify Drawer in read-only mode
 - Empty state copy explains routing-to-Sales + production release
 - Count badge from page-data `counts.won` (or `GET /api/leads/workspace/counts` on counts-only refresh)
 - API returns nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` only — **no `quote_final_total` or closer name** in the browser

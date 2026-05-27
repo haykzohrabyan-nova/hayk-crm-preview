@@ -210,8 +210,9 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 | `GET /api/payments/counts` | Accountant + Admin | Tab badge counts |
 | `GET /api/production/orders` | Authenticated | Legacy — prefer `GET /api/orders/orders` |
 | `GET /api/production/counts` | Authenticated | Legacy production tab counts |
-| `GET /api/completed/orders` | Authenticated | Completed list |
-| `GET /api/completed/counts` | Authenticated | Completed tab counts |
+| `GET /api/completed/orders` | SDR (created only) / Admin / Accountant | Completed list — SDR: `created_by_id` only |
+| `GET /api/completed/counts` | SDR (created only) / Admin / Accountant | Completed badge — same scope |
+| `GET /api/completed/page-data` | SDR (created only) / Admin / Accountant | List + counts — same scope |
 | `GET /api/tickets/[id]/evidence` | Staff with ticket access | Signed URL for evidence file |
 
 ---

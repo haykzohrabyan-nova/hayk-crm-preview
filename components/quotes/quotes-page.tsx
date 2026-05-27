@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
@@ -13,6 +13,13 @@ import {
   MobileListCardEmpty,
   TicketListToolbar,
 } from "@/components/ui/mobile-list-card";
+import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
+import {
+  defaultDashboardDateRangeFilterValue,
+  isoTimestampInDashboardRange,
+  resolveDashboardDateRangeFilter,
+  type DashboardDateRangeFilterValue,
+} from "@/lib/utils/dashboard-date-range-filter";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { formatQuoteListDueNow, getQuoteListDueNowAmount } from "@/lib/utils/quote-list-due-now";
 import { quoteListStatus } from "@/lib/utils/quote-list-status";
@@ -259,6 +266,11 @@ export default function QuotesPage() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
+    defaultDashboardDateRangeFilterValue("today"),
+  );
+
+  const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
 
   // ─── Fetch current user role ─────────────────────────────────────────────
 
@@ -323,7 +335,36 @@ export default function QuotesPage() {
 
   const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
 
-  const filtered = quotes.filter((q) => {
+  const dateFilteredQuotes = useMemo(() => {
+    if (!dateRange) return quotes;
+    return quotes.filter((q) => isoTimestampInDashboardRange(q.created_at, dateRange));
+  }, [quotes, dateRange]);
+
+  const displayTabCounts = useMemo(() => {
+    if (!dateRange) return tabCounts;
+    let draft = 0;
+    let sent = 0;
+    let approved = 0;
+    let routed = 0;
+    for (const q of dateFilteredQuotes) {
+      if (q.ticket_status === "order" || q.ticket_status === "in_production" || q.ticket_status === "completed") {
+        continue;
+      }
+      if (q.ticket_status === "draft") draft++;
+      else if (q.ticket_status === "sent") sent++;
+      else if (q.ticket_status === "approved") approved++;
+      else if (q.ticket_status === "routed") routed++;
+    }
+    return {
+      all: draft + sent + approved,
+      draft,
+      sent,
+      approved,
+      routed,
+    };
+  }, [dateFilteredQuotes, dateRange, tabCounts]);
+
+  const filtered = dateFilteredQuotes.filter((q) => {
     // Orders / production have moved off Quotes — never show here
     if (q.ticket_status === "order" || q.ticket_status === "in_production" || q.ticket_status === "completed") return false;
     // Routed tickets only appear in the dedicated "routed" tab
@@ -358,13 +399,16 @@ export default function QuotesPage() {
             All formal quotes sent or drafted for clients
           </p>
         </div>
-        <button
-          onClick={() => router.push("/quotes/new")}
-          className="flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-md text-sm font-medium transition-opacity hover:opacity-80 shrink-0"
-          style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-        >
-          <Plus size={15} /> New Quote
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 shrink-0">
+          <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          <button
+            onClick={() => router.push("/quotes/new")}
+            className="flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-md text-sm font-medium transition-opacity hover:opacity-80 shrink-0"
+            style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+          >
+            <Plus size={15} /> New Quote
+          </button>
+        </div>
       </div>
 
       {/* Routed tab banner */}
@@ -386,7 +430,7 @@ export default function QuotesPage() {
         tabs={TABS.map((t) => ({ id: t.id, label: t.label }))}
         activeTab={tab}
         onTabChange={(id) => setTab(id as Tab)}
-        tabCounts={tabCounts}
+        tabCounts={displayTabCounts}
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search quotes…"

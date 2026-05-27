@@ -103,7 +103,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `OrdersPage` | `components/orders/orders-page.tsx` | All roles |
 | `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin |
 | `ProductionPage` | `components/orders/production-page.tsx` | Legacy — UI redirects to `/orders?tab=in_production` |
-| `CompletedPage` | `components/orders/completed-page.tsx` | Accountant + Admin |
+| `CompletedPage` | `components/orders/completed-page.tsx` | SDR (own created only), Accountant + Admin (all) |
 | `AccountantDashboard` | `components/admin/accountant-dashboard.tsx` | Accountant only |
 | `NewQuoteForm` | `components/quotes/new-quote-form.tsx` | Sales + SDR (create), Admin |
 | `QuoteDetail` | `components/quotes/quote-detail.tsx` | All roles; `context` prop selects overview card (quote/order/payment/production/completed) |
@@ -121,7 +121,8 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `TableRowsSkeleton` | `components/ui/table-skeleton.tsx` | Inside `<tbody>` on leads-page, sales-page, payments-page — renders `<tr>` rows. Props: `rows` (default 5), `cols`. |
 | `TableDivSkeleton` | `components/ui/table-skeleton.tsx` | Standalone div-based table shimmer on orders-page, production-page, completed-page, quotes-page, all `loading.tsx` files. Props: `rows` (default 5), `cols`. |
 | `ErrorBoundary` | `components/layout/error-boundary.tsx` | Wraps `{children}` in `app/(app)/layout.tsx`. Catches unhandled runtime errors and shows a "Try again" button instead of a blank page. |
-| `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Customer profile Lead History + Leads Won tab |
+| `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Leads **Won** tab only (not customer profile) |
+| `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | SDR/Sales dashboards, Orders page, Quotes page |
 | `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail |
 | `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail |
 | `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar) |
@@ -180,6 +181,10 @@ app/(app)/dashboard/page.tsx  [Server Component — thin wrapper]
               components/sales/sdr-dashboard.tsx   (role === "sdr")
               components/sales/sales-dashboard.tsx (role === "sales")
               components/admin/admin-dashboard.tsx (role === "admin")
+        SDR / Sales dashboards:
+              ├── components/ui/dashboard-date-range-filter.tsx — Today … Custom period selector
+              ├── KPI cards: Total, Received, Balance (separate cards) + lead funnel metrics
+              └── GET /api/dashboard/kpis?sdr_preset=… | sales_preset=…
 ```
 
 ---
@@ -212,7 +217,7 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
 | On Hold | `status=On Hold&scope=mine` | SDR sees own; Admin sees all |
 | Directed to Sales | `status=Routed to Sales&scope=mine` | SDR sees own; Admin sees all |
 | Rejected | `status=Rejected&scope=mine` | SDR sees own (leads they rejected); Admin sees all SDR-rejected leads |
-| Won | `won=true` | Shared `LeadHistoryTable`; SDR row click → `/crm/customers/[id]`; Admin → read-only Verify Drawer |
+| Won | `won=true` | Shared `LeadHistoryTable`; **SDR row click → read-only Verify Drawer**; Admin → read-only Verify Drawer |
 
 **All Leads table columns:** Name, Company, Source, **Product Interests**, Phone, Urgency, Status, **Owner**, Created, Action
 
@@ -267,6 +272,7 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
   └── components/quotes/quotes-page.tsx  [Client Component "use client"]
+        ├── Date filter: components/ui/dashboard-date-range-filter.tsx (default Today; filters created_at client-side)
         ├── Tabs: All | Draft | Sent | Won | Routed to Sales* (count badge on all)
         │         * "Routed to Sales" only visible to Sales + Admin roles
         ├── Mount: GET /api/quotes/page-data → { tickets, counts }
@@ -286,6 +292,7 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/orders/page.tsx  [Server Component — thin wrapper]
   └── components/orders/orders-page.tsx  [Client Component "use client"]
+        ├── Date filter: components/ui/dashboard-date-range-filter.tsx (default Today; filters created_at client-side)
         ├── Tabs: All | Pending Payment | In Production | Cancelled (count badge on all; default tab = All; URL `?tab=`)
         ├── Mount: GET /api/orders/page-data → { orders, counts }
         ├── Slim list from page-data — status_label / status_tone from API
@@ -302,6 +309,29 @@ app/(app)/orders/[id]/page.tsx  [Server Component — thin wrapper]
         ├── components/quotes/quote-detail/history-section.tsx     ← History tab
         └── components/quotes/quote-detail/ticket-skeleton.tsx     ← loading state
         └── Deposit status bar shown when order has partial prepayment set
+```
+
+---
+
+### `/completed` — Completed orders
+
+```
+app/(app)/completed/page.tsx  [Server Component — thin wrapper]
+  └── components/orders/completed-page.tsx  [Client Component "use client"]
+        ├── Mount: GET /api/completed/page-data → { orders, counts }
+        ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed + bazaar:refresh-counts
+        ├── Search: client-side filter
+        ├── Mobile (< lg): MobileListCard per row; desktop: table
+        ├── Row click → /completed/[id]
+        └── Role scope (API layer):
+              SDR — ticket_status = completed AND created_by_id = session user
+                    (excludes Sales-completed orders from SDR routed hand-offs)
+              Accountant / Admin — all completed tickets
+
+app/(app)/completed/[id]/page.tsx  [Server Component — thin wrapper]
+  └── components/quotes/quote-detail.tsx  [context="completed"]
+        ├── Resend invoice link (Admin + Accountant only)
+        └── SDR read-only when they created the ticket; 403 on routed-to-Sales completed orders
 ```
 
 ---
@@ -546,9 +576,9 @@ app/(app)/crm/page.tsx  [Server Component — thin wrapper]
 
 app/(app)/crm/customers/[id]/page.tsx  [Server Component — thin wrapper]
   └── components/crm/customer-profile.tsx  [Client Component]
-        ├── GET /api/customers/[id] — customer + leads with nested job_tickets (quote/order refs)
-        ├── Lead History: components/leads/lead-history-table.tsx (Status = sales_status, Quote/Order refs)
-        └── Quotes & Orders, Order History, Activity Timeline sections
+        ├── GET /api/customers/[id] — customer + lead_count + customer_status
+        ├── GET /api/tickets?customer_id=… — Quotes & Orders list
+        └── Quotes & Orders section (click → quote/order detail). **Lead History removed (May 2026).**
 ```
 
 ---
@@ -566,9 +596,10 @@ When an SDR clicks **Claim**, `POST /api/leads/[id]/lock` is called:
 
 | Scenario | Drawer mode |
 |----------|-------------|
-| SDR opens their own lead | Edit mode |
+| SDR opens their own lead (All Leads / On Hold) | Edit mode |
+| SDR opens lead on **Directed to Sales** or **Won** tab | Read-only Verify Drawer + routed/won banner (no customer redirect) |
 | SDR opens lead locked by someone else (race condition on stale page) | Read-only + "currently working" banner |
-| Admin opens any lead via View | Read-only (no lock acquired) |
+| Admin opens any lead via View | Read-only (no lock acquired) on scoped tabs; editable on All Leads with override banner when terminal |
 
 ### Releasing ownership
 
@@ -603,7 +634,7 @@ Components that listen to `bazaar:leads-changed` (dispatched by `components/layo
 
 | Component | Behavior |
 |-----------|---------|
-| `components/leads/leads-page.tsx` | Silent re-fetch of current tab's leads; skips if drawer is open; full lead on drawer open via `fetchLeadById()` |
+| `components/leads/leads-page.tsx` | Silent re-fetch; `enabled: !drawerLead \|\| drawerReadOnly` (read-only drawer does not pause refresh); editable drawer close resumes silently |
 | `components/sales/sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open; full lead on drawer open |
 | `components/crm/crm-page.tsx` | Silent re-fetch on `bazaar:leads-changed` (no skeleton flash) |
 | `components/admin/admin-dashboard.tsx` | Silent re-fetch of all KPIs (no skeleton flash) |

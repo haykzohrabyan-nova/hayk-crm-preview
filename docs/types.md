@@ -696,13 +696,15 @@ Markup pattern: wrap each validatable field in `<div data-field-anchor="source">
 
 | Helper | Module | Purpose |
 |--------|--------|---------|
-| `useCoalescedRefresh()` | `hooks/use-coalesced-refresh.ts` | Debounce mount + `bazaar:*-changed` refetch; pass stable refresh callback |
+| `useCoalescedRefresh()` | `hooks/use-coalesced-refresh.ts` | Debounce mount + `bazaar:*-changed` refetch; `enabled` pause for editable modals; **silent resume** when re-enabled; read-only drawers on leads page use `enabled: !drawerLead \|\| drawerReadOnly` |
+| `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | Shared period picker; `lib/utils/dashboard-date-range-filter.ts` resolves presets + `isoTimestampInDashboardRange()` |
 | `getCachedSession()` / `setCachedSession()` | `lib/auth/session-cache.ts` | In-process ~3 s memoization inside `requireSession()` |
 | `fetchProductionOrders()` / `fetchProductionTabCounts()` | `lib/utils/fetch-production-data.ts` | Production list + counts (page-data route) |
 | `fetchOrdersList()` / `fetchOrdersTabCounts()` | `lib/utils/fetch-orders-data.ts` | Orders list + tab counts |
 | `fetchQuotesList()` / `fetchQuotesTabCounts()` | `lib/utils/fetch-quotes-data.ts` | Quotes list + quote-stage counts |
 | `fetchPendingPaymentOrders()` | `lib/utils/fetch-payments-data.ts` | Payments pending evidence list |
-| `fetchCompletedOrders()` / `fetchCompletedTabCounts()` | `lib/utils/fetch-completed-data.ts` | Completed list + counts |
+| `fetchCompletedOrders()` / `fetchCompletedTabCounts()` | `lib/utils/fetch-completed-data.ts` | Completed list + counts — SDR scoped by `created_by_id` via `scopeCompletedTicketsQuery()` |
+| `scopeCompletedTicketsQuery()` / `scopedCompletedTicketCount()` | `lib/utils/db-counts.ts` | Completed-only scope — SDR `created_by_id` only; Admin/Accountant unscoped |
 | `fetchLeadsWorkspace()` / `fetchLeadsWorkspaceTabCounts()` / `fetchLeadsSalesTabCounts()` | `lib/utils/leads-workspace-query.ts` | Leads/sales workspace list + tab counts |
 | `fetchSidebarCounts()` | `lib/utils/sidebar-counts-query.ts` | Role-scoped sidebar badges (`?routes=`) |
 | `copyTextToClipboard()` / `publicQuoteUrl()` | `lib/utils/copy-to-clipboard.ts` | **Copy Link** button + public portal URL on quote/order detail |

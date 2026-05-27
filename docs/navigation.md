@@ -56,7 +56,7 @@ app/
     │   └── [id]/page.tsx             → redirect /orders/[id]
     │
     ├── completed/
-    │   ├── page.tsx                  ✓ EXISTS — Completed orders list (accountant + admin)
+    │   ├── page.tsx                  ✓ EXISTS — Completed orders list (SDR own scope; accountant + admin all)
     │   └── [id]/page.tsx             ✓ EXISTS — Completed detail (context="completed")
     │
     ├── activity-log/page.tsx           ✓ EXISTS — Activity Log (Order / Lead + User Activity tabs)
@@ -97,6 +97,7 @@ BAZAARPRINTING                      ← brand logo text (accent color)
 ✓ CRM                              /crm
 ✓ Quoted Requests                  /quotes         (badge: active quotes)
 ✓ Orders                           /orders         (badge: pending payment + in production)
+✓ Completed                        /completed      (badge: own completed count)
 
 ─── Bottom ─────────────────────
 ✓ Settings                         /settings
@@ -262,7 +263,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | On Hold | `status = 'On Hold'` | count |
 | Directed to Sales | `routed=true` — all leads SDR routed to Sales (`lead_routed_to_sales` activity) | count |
 | Rejected | `status = 'Rejected'` | — |
-| Won | `sales_status = 'Won'` **and** SDR routed lead to Sales first — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. | count |
+| Won | `sales_status = 'Won'` **and** SDR routed lead to Sales first — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created. **SDR row click → read-only Verify Drawer.** | count |
 
 ### `/sales` — Sales Pipeline
 
@@ -276,6 +277,8 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 ### `/quotes` — Quoted Requests
 
+**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — Today / Yesterday / Last Week / Last Month / Custom. Filters rows by `created_at` (client-side after `GET /api/quotes/page-data`). Tab badges recalculate for the selected range.
+
 | Tab | Content | Badge | Visible to |
 |-----|---------|-------|-----------|
 | All | `draft` + `sent` + `approved` only (excludes in-production, completed, order) | count | All roles |
@@ -285,6 +288,8 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | Routed to Sales | `ticket_status = 'routed'` | count | Sales + Admin only |
 
 ### `/orders` — Orders
+
+**Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — filters by `created_at` client-side; tab badge counts follow the range.
 
 Includes **`order`**, **`in_production`**, and **`cancelled`** tickets (scoped per role). Evidence-pending orders are **included** for the ticket owner with status **Awaiting payment confirmation**; accountants also see them on **`/payments`**.
 
@@ -307,11 +312,11 @@ Row click → `/orders/[id]`.
 
 Row click → `/payments/[id]`. Counts: `GET /api/payments/counts`.
 
-### `/completed` — Completed (Accountant + Admin)
+### `/completed` — Completed (SDR own scope; Accountant + Admin all)
 
 | Content | Filter |
 |---------|--------|
-| All completed | `ticket_status = 'completed'` |
+| All completed | `ticket_status = 'completed'` — SDR: `created_by_id` matches session user only |
 
 Row click → `/completed/[id]`. Counts: `GET /api/completed/counts`.
 

@@ -61,7 +61,7 @@ export async function GET(request: NextRequest) {
     }
     const { data: ticket } = await admin
       .from("job_tickets")
-      .select("created_by_id, ticket_status")
+      .select("created_by_id, routed_by_id, ticket_status")
       .eq("id", resolvedTicketId)
       .single();
     if (!ticket || !canAccessTicket(ticket, userId!, roleName)) {

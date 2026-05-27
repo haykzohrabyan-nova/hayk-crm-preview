@@ -12,11 +12,13 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 ## Role Definitions
 
 ### SDR (Sales Development Representative)
-- Default pages: `/dashboard`, `/leads`, `/crm`, `/quotes`, `/orders`, `/settings`
+- Default pages: `/dashboard`, `/leads`, `/crm`, `/quotes`, `/orders`, `/completed`, `/settings`
 - Triage the AI inbox: validate, quote, route, reject, hold leads
 - Add leads manually
 - View and manage CRM contacts
 - Create new quotes and orders
+- View **Completed** orders they personally created (`created_by_id` = SDR through full lifecycle)
+- **Completed scope rule:** SDR does **not** see completed orders from leads/quotes they **routed to Sales** and Sales finished — those belong to Sales on Completed; SDR may still view in-progress routed hand-offs read-only on Quotes/Orders
 - **Hard-blocked when a quote total exceeds `company_settings.high_value_threshold`** — a non-dismissible modal forces the quote to be saved as `routed` (status) and handed to Sales. SDR cannot bypass this.
 
 ### Sales
@@ -70,8 +72,8 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment review detail — Confirm payment, view evidence |
 | `/production` | — | — | — | — | **Removed from nav** — redirects to `/orders?tab=in_production` |
 | `/production/[id]` | — | — | — | — | Redirects to `/orders/[id]` |
-| `/completed` | ✗ | ✗ | ✓ | ✓ | Completed orders |
-| `/completed/[id]` | ✗ | ✗ | ✓ | ✓ | Resend invoice link |
+| `/completed` | ✓ (created) | ✗ | ✓ | ✓ | SDR: only tickets they created — not Sales-completed routed hand-offs |
+| `/completed/[id]` | ✓ (created) | ✗ | ✓ | ✓ | Resend invoice link (admin/accountant only) |
 | `/q/[token]` | ✓ | ✓ | ✓ | ✓ | Public — staff preview while logged in |
 | `/settings` | ✓ | ✓ | ✓ | ✓ | Personal profile only |
 | `/admin` | ✗ | ✗ | ✓ | ✗ | |
@@ -114,7 +116,9 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET /api/payments/pending` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
 | `GET /api/payments/counts` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
 | `GET /api/production/orders` | ✗ | ✗ | ✓ | ✓ | Legacy — prefer `GET /api/orders/orders` |
-| `GET /api/completed/orders` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
+| `GET /api/completed/orders` | ✓ (created) | ✗ | ✓ | ✓ | SDR: `created_by_id` only — excludes Sales-completed routed hand-offs |
+| `GET /api/completed/counts` | ✓ (created) | ✗ | ✓ | ✓ | Same scope as completed list |
+| `GET /api/completed/page-data` | ✓ (created) | ✗ | ✓ | ✓ | List + counts in one request |
 | `GET /api/tickets/[id]/pdf` | ✓ (own scope) | ✓ (own + routed) | ✓ | Accountant: own scope via ticket access helper |
 | `GET /api/tickets/[id]/print` | ✓ (own scope) | ✓ (own + routed) | ✓ | Same as PDF |
 | `GET /api/tickets/[id]/evidence` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — signed URL |

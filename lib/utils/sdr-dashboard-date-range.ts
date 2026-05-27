@@ -93,7 +93,7 @@ export function resolveSdrDashboardDateRange(
   let priorEnd: Date;
   let priorLabel: string;
 
-  if (preset === "custom" || (dateFrom && dateTo)) {
+  if (preset === "custom") {
     const from = parseReportDateInput(dateFrom);
     const to = parseReportDateInput(dateTo);
     if (!from || !to) {

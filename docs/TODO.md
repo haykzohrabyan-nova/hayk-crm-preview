@@ -1,6 +1,6 @@
 # BazarCRM — TODO Tracker
 
-**Last updated:** 2026-05-26
+**Last updated:** 2026-05-26 (docs sync — deploy-ready)
 
 This file tracks **what is still open** vs **what is already built**. Detailed specs live in `docs/feature-specs/` and `docs/CHANGELOG.md`.
 
@@ -119,6 +119,8 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - SDR workspace (All / Hold / Routed / Rejected / Won), lead locking, verify drawer
 - Sales pipeline, claim flow, HVT routing
 - CRM list + customer profile, merge (admin/sales API), dedup lookup
+- **May 26:** Customer profile — Lead History removed; Quotes & Orders only
+- **May 26:** SDR Directed to Sales / Won tabs — read-only Verify Drawer (not customer profile redirect)
 - Admin override on terminal leads (TODO-001)
 - **May 26:** Product Interests column (`ProductName[quantity]`); removed Initial Interest; website URL validation (scheme optional); **inline field errors + scroll-to-invalid-field** on Add Lead / Verify / Edit Customer / New Quote; CRM list Industry column (Heat badge on profile only); company/phone/email targeted links
 
@@ -127,6 +129,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Public portal `/q/{token}` — confirm, payment proof upload, balance while in production
 - Quote-until-payment, convert to order, ORD-/QUO- reference codes
 - Orders page (Pending / In Production / Cancelled tabs), completed queue
+- **May 26:** SDR Completed page — nav access + list scoped to self-created completed orders (`created_by_id`); routed-to-Sales hand-offs excluded
 - Order lifecycle: release to production, mark completed, pickup notifications
 - Record locking after customer confirm; payment link bar
 
@@ -138,9 +141,11 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 
 ### Dashboard & reports
 - Role dashboards (SDR / Sales / Admin / Accountant) with KPI help text
+- SDR/Sales dashboards: separate **Total**, **Received**, **Balance** KPI cards + shared date filter component
 - Cash collected, released order value, pipeline, team session + work metrics
 - Reports Phase 1 + 2: funnel, win rate, rep scorecards, payment ledger, awaiting collection, custom date range
 - **May 26:** Staff cash deposits log `ticket_payment_recorded` (Reports + dashboard alignment); scorecards display-only; Reports links use lifecycle routes + `?from=/reports` Back
+- **May 26:** Orders + Quotes list pages — `DashboardDateRangeFilter` (client-side `created_at` filter)
 
 ### Admin & auth
 - User/role management, MFA (TOTP), per-user `mfa_required`, remember device 30 days
@@ -152,6 +157,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Performance Phase 1–2: slim list APIs, SQL head counts, partial indexes (TODO-007)
 - **May 26:** Performance Phase 3 — combined `page-data` endpoints, session memoization, coalesced refetch, role-scoped sidebar counts, lazy modal bootstrap on Leads/Sales
 - **May 26:** Fix leads page infinite reload — stable callback in `useCoalescedRefresh`
+- **May 26:** Read-only lead drawer close — no list reload; `useCoalescedRefresh` silent resume when editable drawer closes
 - **May 26:** Quote/order detail — Customer Link + Copy Link on `in_production` / `completed`; two 50/50 buttons on own row
 - Mobile list cards (quotes, orders, payments, completed)
 - Quote/order detail overview layout, global loading overlay

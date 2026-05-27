@@ -1,5 +1,10 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { countExact } from "@/lib/utils/db-counts";
+import {
+  countExact,
+  scopeCompletedTicketsQuery,
+  scopedCompletedTicketCount,
+  type TicketSelectQuery,
+} from "@/lib/utils/db-counts";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -15,10 +20,18 @@ const COMPLETED_ORDER_SELECT = `
   customer:customers(id, first_name, last_name, company)
 `.trim();
 
-export async function fetchCompletedOrders(admin: AdminClient) {
-  const { data, error } = await admin
-    .from("job_tickets")
-    .select(COMPLETED_ORDER_SELECT)
+export async function fetchCompletedOrders(
+  admin: AdminClient,
+  roleName: string,
+  userId: string,
+) {
+  const query = scopeCompletedTicketsQuery(
+    admin.from("job_tickets").select(COMPLETED_ORDER_SELECT) as TicketSelectQuery,
+    roleName,
+    userId,
+  );
+
+  const { data, error } = await query
     .eq("ticket_status", "completed")
     .order("updated_at", { ascending: false });
 
@@ -26,9 +39,16 @@ export async function fetchCompletedOrders(admin: AdminClient) {
   return data ?? [];
 }
 
-export async function fetchCompletedTabCounts(admin: AdminClient) {
-  const completed = await countExact(admin, "job_tickets", (q) =>
-    q.eq("ticket_status", "completed"),
-  );
+export async function fetchCompletedTabCounts(
+  admin: AdminClient,
+  roleName: string,
+  userId: string,
+) {
+  const completed =
+    roleName === "admin" || roleName === "accountant"
+      ? await countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "completed"))
+      : await scopedCompletedTicketCount(admin, roleName, userId, (q) =>
+          q.eq("ticket_status", "completed"),
+        );
   return { completed };
 }

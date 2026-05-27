@@ -13,6 +13,7 @@ import {
   assignOrderReferenceCode,
   resolveTicketId,
 } from "@/lib/utils/reference-codes";
+import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
 type Params = { params: Promise<{ id: string }> };
@@ -36,7 +37,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
       `*,
        customer:customers(id, first_name, last_name, company, phone, email, industry, website),
        lead:leads(
-         id, status, sales_status, urgency, source,
+         id, created_at, status, sales_status, urgency, source,
          sdr_comment, hold_reason, rejection_reason, is_returning_customer, interests, quantities,
          customer:customers(id, first_name, last_name, company, phone, email, industry)
        )`
@@ -92,7 +93,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at")
+    .select("id, created_at, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at")
     .eq("id", ticketId)
     .single();
 
@@ -601,6 +602,13 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const patch: Record<string, unknown> = { updated_at: now };
   for (const key of ALLOWED_FIELDS) {
     if (key in body) patch[key] = body[key];
+  }
+
+  if ("due_date" in body && body.due_date) {
+    const dueErr = validateDueDateAgainstCreated(String(body.due_date), existing.created_at);
+    if (dueErr) {
+      return NextResponse.json({ error: dueErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
   }
 
   // When manually converting a quote to an order (not via customer public link),

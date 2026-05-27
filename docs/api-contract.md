@@ -47,13 +47,13 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 | `GET /api/orders/page-data` | `{ orders, counts }` | Orders page |
 | `GET /api/quotes/page-data` | `{ tickets, counts }` | Quotes page |
 | `GET /api/payments/page-data` | `{ orders }` | Payments page |
-| `GET /api/completed/page-data` | `{ orders, counts }` | Completed page |
+| `GET /api/completed/page-data` | `{ orders, counts }` | Completed page — SDR: `created_by_id` only; Admin/Accountant: all |
 | `GET /api/leads/workspace/page-data?…` | `{ leads, counts }` | Leads page (same query params as workspace list) |
 | `GET /api/leads/sales/page-data?tab=…` | `{ leads, counts }` | Sales page |
 
 **Slim count-only routes** (realtime refresh without full list): `GET /api/orders/counts`, `GET /api/quotes/counts`, plus existing `*/counts` routes.
 
-**Sidebar:** `GET /api/sidebar-counts?routes=/quotes,/orders,…` — optional comma-separated nav routes; only computes badges for visible pages.
+**Sidebar:** `GET /api/sidebar-counts?routes=/quotes,/orders,…` — optional comma-separated nav routes; only computes badges for visible pages. SDR `/completed` badge uses `scopedCompletedTicketCount()` (`created_by_id` only).
 
 Legacy list + count routes remain for compatibility. Shared query logic lives in `lib/utils/fetch-*-data.ts` and `lib/utils/leads-workspace-query.ts`.
 
@@ -425,7 +425,7 @@ Create a new customer profile from the Add Lead form (when SDR enters new info a
 
 ### `GET /api/customers/[id]`
 
-Full customer profile for `/crm/customers/[id]`. Powers **Lead History** on the customer page.
+Full customer profile for `/crm/customers/[id]`. Returns customer row, `lead_count`, and `customer_status`. Lead array still returned for status computation but **Lead History UI removed** from customer profile (May 2026). Quotes & Orders loaded separately via `GET /api/tickets?customer_id=…`.
 
 **Response `200`:**
 ```json
@@ -632,6 +632,7 @@ Create a new ticket.
 - If `linked_lead_id` is provided, updates the linked lead's `status` to `'Quoted'` or `'Validated'`
 - Sets `routed_by_id = userId` when `ticket_status = 'routed'`
 - Logs `order_ticket_created` activity
+- If `ticket_status = 'sent'` on create (Save & Send): logs `ticket_sent` and triggers `sendQuoteToCustomer()` — same activity shape as PATCH send
 - May auto-record cash deposit/full payment when configured — logs `ticket_payment_recorded` via `lib/utils/log-ticket-payment-recorded.ts` (counts in Reports/dashboard cash); **does not** set `client_confirmed` when `ticket_require_client_confirm = true`
 
 **Response `201`:**
@@ -982,7 +983,7 @@ Legacy production tab badge counts. Orders page tab counts now come from `GET /a
 
 ### `GET /api/completed/orders`
 
-Returns all tickets with `ticket_status = 'completed'`.
+Returns tickets with `ticket_status = 'completed'`. **SDR:** only tickets where `created_by_id` matches the session user (self-created quote/order through completion). Routed hand-offs that Sales completed are excluded. **Admin / Accountant:** all completed tickets.
 
 **Response `200`:**
 ```json
@@ -993,14 +994,28 @@ Returns all tickets with `ticket_status = 'completed'`.
 
 ### `GET /api/completed/counts`
 
-Returns tab badge counts for the Completed page.
+Returns tab badge counts for the Completed page and sidebar. **Same role scope as** `GET /api/completed/orders`.
 
 **Response `200`:**
 ```json
 {
   "counts": {
-    "all": 0
+    "completed": 0
   }
+}
+```
+
+---
+
+### `GET /api/completed/page-data`
+
+Combined list + counts in one auth pass. **Same role scope as** `GET /api/completed/orders`.
+
+**Response `200`:**
+```json
+{
+  "orders": [Ticket],
+  "counts": { "completed": 0 }
 }
 ```
 

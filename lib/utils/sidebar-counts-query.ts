@@ -1,6 +1,7 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import {
   countExact,
+  scopedCompletedTicketCount,
   scopedTicketCount,
 } from "@/lib/utils/db-counts";
 
@@ -117,13 +118,16 @@ export async function fetchSidebarCounts(
         })
       : Promise.resolve(),
 
-    (roleName === "accountant" || roleName === "admin") &&
+    (roleName === "accountant" || roleName === "admin" || roleName === "sdr") &&
     shouldCount("/completed", visibleRoutes)
-      ? countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "completed")).then(
-          (n) => {
-            counts["/completed"] = n;
-          },
-        )
+      ? (roleName === "admin" || roleName === "accountant"
+          ? countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "completed"))
+          : scopedCompletedTicketCount(admin, roleName, userId, (q) =>
+              q.eq("ticket_status", "completed"),
+            )
+        ).then((n) => {
+          counts["/completed"] = n;
+        })
       : Promise.resolve(),
 
     shouldCount("/production", visibleRoutes)

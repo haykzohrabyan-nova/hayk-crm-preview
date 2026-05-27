@@ -169,7 +169,7 @@ export function SalesPage() {
     if (!silent) setLoading(false);
   }, [activeTab, search]);
 
-  useCoalescedRefresh(fetchPageData, [activeTab, search, drawerLead], {
+  useCoalescedRefresh(fetchPageData, [activeTab, search], {
     events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
     enabled: !drawerLead,
   });
