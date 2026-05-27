@@ -89,6 +89,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | Component | File | Role |
 |-----------|------|------|
 | `VerifyDrawer` | `components/leads/verify-drawer.tsx` | SDR (edit), Admin (full edit with amber override banner on rejected leads) |
+| `AddLeadModal` | `components/leads/add-lead-modal.tsx` | SDR + Admin — `/leads` header and CRM profile **Add Lead**; dedup lookup, field validation, scroll-to-error |
 | `HoldSubForm` | `components/leads/hold-sub-form.tsx` | Used inside VerifyDrawer |
 | `SalesDrawer` | `components/sales/sales-drawer.tsx` | Sales (edit), Admin (full edit with amber override banner on Won/Dropped/Rejected leads) |
 | `SdrDashboard` | `components/sales/sdr-dashboard.tsx` | SDR only |
@@ -118,6 +119,16 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail (SMS & WhatsApp destination) |
 | `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail (Email destination) |
 | `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar); industry/source lookup labels |
+
+### Form validation utilities
+
+| Helper | File | Purpose |
+|--------|------|---------|
+| `validateWebsite()` / `normalizeWebsite()` | `lib/utils/website.ts` | Optional website/social URL; scheme not required in UI |
+| `scrollToFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll `[data-field-anchor]` into view + focus on validation failure |
+| `scrollToFirstFormField()` | `lib/utils/scroll-field-into-view.ts` | First error in priority order (New Quote tabs) |
+
+> **Rule:** Validatable fields in scrollable modals/drawers use `data-field-anchor="…"` on a wrapper `div` and call `scrollToFormField(containerRef, anchor)` when setting an error — so off-screen fields (e.g. Source) are visible after failed submit.
 | `MobileListCard` / `TicketListToolbar` | `components/ui/mobile-list-card.tsx` | Quotes, Orders, In Production, Completed, Payments list pages (mobile card fallback at `< lg`) |
 | `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), Customer Link, Mark Completed, Resend invoice |
 | `DatePicker` | `components/ui/date-picker.tsx` | New Quote form (Due Date field), Quote Detail (Due Date edit), Quote tab (First Reminder date) |

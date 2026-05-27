@@ -80,12 +80,12 @@ Tab count reflects the filtered list — only leads the current SDR can work (un
 
 ## Tab: Directed to Sales
 
-**Data:** `GET /api/leads/workspace?statuses=Routed+to+Sales,Quoted,Validated&scope=mine`
+**Data:** `GET /api/leads/workspace?routed=true&scope=mine`
 
-- **SDR:** only leads they personally routed (`sdr_id = currentUserId`). SDRs cannot see other SDRs' routed leads.
-- **Admin:** all leads in those three statuses across every SDR (scope filter is skipped server-side).
+- **SDR:** every lead they personally routed to Sales (`lead_routed_to_sales` activity + `sdr_id = currentUserId`), **regardless of current outcome** (awaiting claim, in progress, won, rejected, dropped, etc.)
+- **Admin:** all activity-routed leads across every SDR (scope filter is skipped server-side)
 
-This tab covers the **full Sales pipeline** for leads the SDR originated. It is read-only for SDRs — they cannot edit or take actions on these leads. The tab includes sub-filter pills to slice the list by pipeline stage.
+This tab is read-only for SDRs. Sub-filter pills slice the list by **pipeline stage**; each row shows a **Stage** badge.
 
 ### Sub-filter Pills
 
@@ -93,12 +93,14 @@ Client-side filters applied to the fetched result set:
 
 | Pill | Filter logic |
 |------|-------------|
-| **All** | All leads returned by the API (Routed to Sales + Quoted + Validated, excluding Won) |
-| **Awaiting Claim** | `status = "Routed to Sales"` AND `sales_owner_id IS NULL` |
-| **In Progress** | `sales_owner_id IS NOT NULL` AND `sales_status IN ("Ongoing", null)` |
-| **Quote Sent** | `sales_status = "Quote Sent"` |
+| **All** | All routed leads returned by the API (includes Won / Rejected) |
+| **Awaiting Claim** | No sales rep claimed yet (`sales_owner_id IS NULL`) |
+| **In Progress** | Claimed — sales working the lead (`Ongoing`, draft quote, order not won, etc.) |
+| **Quote Sent** | `sales_status = "Quote Sent"` **or** linked quote ticket is `sent` / awaiting customer confirm |
 | **On Hold** | `sales_status = "On Hold"` |
 | **Dropped** | `sales_status = "Dropped"` |
+
+Pills always visible; count badge when that stage has leads. **Stage** badge and filter use the same rules (ticket-aware when linked tickets are loaded).
 
 ### Table Columns
 
@@ -108,9 +110,9 @@ Client-side filters applied to the fetched result set:
 | Company | |
 | Product Interests | `ProductName[quantity]` |
 | Phone | |
-| Lead Status | `status` field (e.g. "Routed to Sales", "Quoted", "Validated") |
-| Sales Status | Current sales pipeline stage; shows "—" if unclaimed |
-| Sales Rep | Name of the Sales rep who claimed the lead, or "—" if unclaimed |
+| **Stage** | Pipeline stage badge (Awaiting Claim, In Progress, Quote Sent, On Hold, Dropped, Won, Rejected) |
+| Lead Status | SDR `status` field (e.g. Routed to Sales, Quoted, Validated, Rejected) |
+| Sales Rep | Name of the Sales rep who claimed the lead, or **Unclaimed** |
 | Updated | `updated_at` relative time |
 
 ### Behaviors
@@ -243,7 +245,7 @@ Fields (editable when verifying, read-only when viewing):
 | Authority | Dropdown | No | Decision maker? Yes / No — stored on **`customers.authority`**, not on the lead row. Pre-filled from customer when an existing profile is linked. |
 | Company Name | Text | No | |
 | Industry | Dropdown | Yes | **Admin-managed** — loaded from `lookup_values` (`industry` category). Edit in Admin → Dropdown Options. |
-| Website / Social | Text (URL) | No | Validated on blur + save via `lib/utils/website.ts`; optional; auto-prefixes `https://` when omitted (e.g. `instagram.com/page` → `https://instagram.com/page`). Stored on **`customers.website`**. |
+| Website / Social | Text | No | Validated on blur + save via `lib/utils/website.ts`; optional; **scheme optional** (`example.com`, `instagram.com/page` — auto-prefixes `https://` on save). Placeholder: `example.com or instagram.com/page`. Stored on **`customers.website`**. |
 | Urgency | Dropdown | No | **Admin-managed** — loaded from `lookup_values` (`urgency` category). "Not Defined" is a static sentinel prepended to the list. Edit real options in Admin → Dropdown Options. Lookup values use lowercase keys (`high`, `medium`, `low`); the DB stores title case (`High`, `Medium`, `Low`). `lib/utils/urgency-form.ts` maps between them on load/save so saved urgency displays correctly when reopening the drawer. |
 | Returning Customer | Checkbox | No | "Returning Customer (Existing Client)" — blue highlight row when checked |
 
@@ -392,6 +394,23 @@ Footer:
 
 Required fields (*): Phone, First Name, Source, Industry.
 
+### Client-side validation (May 2026)
+
+On **Save Lead**, each field is validated in order. Failures show **inline error + red border on that field** (not a generic banner). If the field is scrolled out of view (common when Product Interests are below the fold), the modal **scrolls to and focuses** the invalid field via `lib/utils/scroll-field-into-view.ts` and `data-field-anchor` wrappers.
+
+| Anchor id | Fields |
+|-----------|--------|
+| `phone` | Phone |
+| `email` | Email |
+| `firstName` | First Name |
+| `source` | Source |
+| `industry` | Industry |
+| `website` | Website / Social |
+
+Same website rules as Verify Drawer: `type="text"` (not HTML5 `type="url"`), `noValidate` on the form, optional `http://` / `https://`.
+
+**Also opened from:** CRM customer profile (**Add Lead**, SDR only) — customer pre-filled and link locked; same validation behaviour.
+
 ---
 
 ### On Submit — What Happens to the Customer
@@ -435,6 +454,7 @@ This allows you to recognize them on future leads.
 
 - **Table skeleton:** rows with shimmer placeholders while data loads
 - **Drawer skeleton:** field skeletons while lead data re-fetches
+- **Inline field errors:** phone, email, website, and required fields show red border + message under the control; invalid fields scroll into view in the drawer body
 - **Toast on success:** "Lead verified", "Lead held", etc. (bottom-right, 4s auto-dismiss)
 - **Toast on error:** "Something went wrong — please try again"
 
@@ -457,14 +477,14 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Admin "Working" column | All Leads table shows which SDR owns each lead; mobile cards too |
 | Admin Assign / Reassign action | "Assign" on unclaimed leads; "Reassign" on owned leads. Modal with active SDR dropdown + Unassign; logs `lead_reassigned` |
 | Race condition safety net | If SDR clicks Verify on a stale lead, 409 → read-only drawer with locker banner |
-| Manual Add Lead modal | Phone lookup + deduplication banner + customer auto-fill |
+| Manual Add Lead modal | Phone lookup + dedup banner + customer auto-fill; per-field validation; scroll-to-invalid-field; shared component also on CRM profile (SDR Add Lead) |
 | Verify Drawer (soft lock, lock banner) | Lock acquired on Verify; ownership persists across close/save/validate/hold until Route or Reject |
 | Product Interests — select + quantity + has-design rows | Row-based UI in both Add Lead modal and Verify Drawer; each row has product select, quantity input, and Has Design toggle; present in both Add Lead modal and Verify Drawer |
 | Hold action (with reason, notes, hold-until date) | Full-screen hold sub-form hides lead form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
 | Reject (terminal) | Reason + notes; read-only after; ownership released |
 | Route to Sales | Available from any status (Pending, Validated, On Hold). Sets status + sales_status = Ongoing; ownership released |
-| Directed to Sales — expanded pipeline visibility | API queries `?statuses=Routed+to+Sales,Quoted,Validated&scope=mine`; rows clickable (read-only drawer); sub-filter pills: All / Awaiting Claim / In Progress / Quote Sent / On Hold / Dropped; Won excluded |
+| Directed to Sales — full routed history | API `?routed=true&scope=mine`; stage badges + sub-filters (All / Awaiting Claim / In Progress / Quote Sent / On Hold / Dropped); includes Won & Rejected under All |
 | Save without status change | PATCH lead fields; logs `lead_edited` for tracked field changes |
 | Context-aware action buttons | On Hold → Resume shown; Routed leads → read-only drawer |
 | Counts refresh after every action | bazaar:refresh-counts event fired |

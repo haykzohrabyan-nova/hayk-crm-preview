@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   X,
@@ -20,7 +20,8 @@ import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { URGENCY_NOT_DEFINED, urgencyDbToForm, urgencyFormToDb } from "@/lib/utils/urgency-form";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
-import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
+import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
+import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
 import {
   Select,
   SelectContent,
@@ -207,6 +208,7 @@ export function VerifyDrawer({
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [websiteError, setWebsiteError] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [pendingAction, setPendingAction] = useState<(() => Promise<void>) | null>(null);
 
   const isRejected = lead.status === "Rejected";
@@ -325,6 +327,9 @@ export function VerifyDrawer({
     setPhoneError(pErr);
     setEmailError(eErr);
     setWebsiteError(wErr);
+    if (pErr) scrollToFormField(scrollContainerRef, "phone");
+    else if (eErr) scrollToFormField(scrollContainerRef, "email");
+    else if (wErr) scrollToFormField(scrollContainerRef, "website");
     return !(pErr || eErr || wErr);
   }
 
@@ -611,7 +616,7 @@ export function VerifyDrawer({
         )}
 
         {/* Scrollable content */}
-        <div className={`flex-1 min-h-0 overflow-y-auto px-5 py-5 ${footerMode === "hold" ? "flex flex-col" : "space-y-6"}`}>
+        <div ref={scrollContainerRef} className={`flex-1 min-h-0 overflow-y-auto px-5 py-5 ${footerMode === "hold" ? "flex flex-col" : "space-y-6"}`}>
 
           {footerMode === "hold" ? (
             <HoldSubForm
@@ -635,7 +640,7 @@ export function VerifyDrawer({
                 <div className="grid grid-cols-2 gap-3">
 
                   {/* Phone */}
-                  <div>
+                  <div data-field-anchor="phone">
                     <label className={labelCls} style={labelStyle}>Phone *</label>
                     <PhoneInput
                       value={form.phone}
@@ -647,7 +652,7 @@ export function VerifyDrawer({
                   </div>
 
                   {/* Email */}
-                  <div>
+                  <div data-field-anchor="email">
                     <label className={labelCls} style={labelStyle}>Email</label>
                     <EmailInput
                       value={form.email}
@@ -761,7 +766,7 @@ export function VerifyDrawer({
                   </div>
 
                   {/* Website */}
-                  <div>
+                  <div data-field-anchor="website">
                     <label className={labelCls} style={labelStyle}>Website / Social</label>
                     <input
                       className={inputCls}
@@ -769,7 +774,7 @@ export function VerifyDrawer({
                         ...inputStyle,
                         borderColor: websiteError ? "var(--color-danger)" : "var(--color-border)",
                       }}
-                      type="url"
+                      type="text"
                       inputMode="url"
                       autoComplete="url"
                       value={form.website}
@@ -778,13 +783,13 @@ export function VerifyDrawer({
                         setWebsiteError(null);
                       }}
                       onBlur={(e) => {
-                        const wErr = validateWebsite(form.website);
+                        const wErr = validateWebsite(e.target.value);
                         setWebsiteError(wErr);
                         e.currentTarget.style.borderColor = wErr ? "var(--color-danger)" : "var(--color-border)";
                         e.currentTarget.style.boxShadow = "none";
                       }}
                       disabled={isReadOnly}
-                      placeholder="https://example.com"
+                      placeholder={WEBSITE_FIELD_PLACEHOLDER}
                       aria-invalid={!!websiteError}
                       aria-describedby={websiteError ? "website-error" : undefined}
                       onFocus={(e) => {

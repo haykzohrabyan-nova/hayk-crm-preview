@@ -52,20 +52,6 @@ When a rep edits a `sent` quote and saves, `/q/{token}` shows the new price but 
 
 ## Open — ready to build (no owner decision)
 
-### TODO-006 — Follow-up reminder cron
-
-**Status:** Fields saved on `job_tickets`; **no sending logic**
-
-| Field | Purpose |
-|-------|---------|
-| `follow_up_at`, `follow_up_frequency`, `follow_up_cycles`, `follow_up_completed` | Schedule repeat reminders on sent quotes |
-
-**Fix:** Vercel Cron → `GET /api/cron/follow-ups` → query due tickets → send via Instantly/Twilio → advance schedule.
-
-**Rough effort:** ~1–2 weeks
-
----
-
 ### TODO-007 — Performance Phase 3+ *(optional)*
 
 **Status:** Not started — only if list pages feel slow at scale
@@ -114,7 +100,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Sales pipeline, claim flow, HVT routing
 - CRM list + customer profile, merge (admin/sales API), dedup lookup
 - Admin override on terminal leads (TODO-001)
-- **May 26:** Product Interests column (`ProductName[quantity]`); removed Initial Interest; website URL validation; CRM list Industry column (Heat badge on profile only); company/phone/email targeted links
+- **May 26:** Product Interests column (`ProductName[quantity]`); removed Initial Interest; website URL validation (scheme optional); **inline field errors + scroll-to-invalid-field** on Add Lead / Verify / Edit Customer / New Quote; CRM list Industry column (Heat badge on profile only); company/phone/email targeted links
 
 ### Quotes & orders
 - New quote form, quote detail, send/resend quote (email/SMS/WhatsApp)
@@ -151,5 +137,6 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 ### Infrastructure
 - Consolidated `supabase/schema.sql` (replaces numbered migration files)
 - Dev test reset: `npm run reset-test-data`
+- **May 26:** Quote follow-up reminder cron (`GET /api/cron/follow-ups`) — Vercel Cron + Twilio/Instantly; see `docs/cron-follow-ups.md`
 
 For dates and file-level detail, see **`docs/CHANGELOG.md`**.

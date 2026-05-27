@@ -186,8 +186,10 @@ A customer is marked **Great Heat** if `heat_tag = 'hot'` OR if any of their lea
 - Company (autocomplete from existing company names)
 - **Industry** — admin-managed lookup select (label shown, value stored)
 - **Decision Maker?** — Yes / No (`customers.authority`)
-- Website
+- **Website / Social** — optional; validated client-side via `validateWebsite()`; normalized with `https://` prefix on save; scheme optional in the input
 - Heat Tag (Hot / Warm / Cold / None)
+
+**Validation:** Phone, email, and website validated on save. Invalid fields show inline error + red border and **scroll into view** if off-screen (`data-field-anchor` + `scrollToFormField()`).
 
 **Save** → `PATCH /api/customers/[id]` + logs `contact_edited` activity.
 

@@ -1,17 +1,23 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package, FilePlus } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package, FilePlus, UserPlus } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
+import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
+import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
 import { quoteDetailPath } from "@/lib/utils/reference-codes";
 import { newQuoteUrlFromCustomer } from "@/lib/utils/new-quote-from-customer";
 import { authorityLabel } from "@/lib/utils/authority";
 import { lookupLabel } from "@/lib/utils/lookups";
 import { LeadHistoryTable } from "@/components/leads/lead-history-table";
+import { AddLeadModal } from "@/components/leads/add-lead-modal";
+import { resolveCustomerProfileBack } from "@/lib/utils/customer-profile-href";
+import { createClient } from "@/lib/supabase/client";
+import { Customer as AppCustomer, Lead, LookupMap } from "@/lib/types";
 import {
   Select,
   SelectContent,
@@ -205,13 +211,28 @@ function EditCustomerModal({
   const [error, setError] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [websiteError, setWebsiteError] = useState<string | null>(null);
+  const editFormRef = useRef<HTMLDivElement>(null);
+
+  function failField(
+    anchor: string,
+    setFieldError: (msg: string | null) => void,
+    message: string,
+  ) {
+    setFieldError(message);
+    scrollToFormField(editFormRef, anchor);
+  }
 
   async function handleSave() {
     const pErr = form.phone.trim() ? validatePhone(form.phone) : null;
     const eErr = form.email.trim() ? validateEmail(form.email) : null;
-    setPhoneError(pErr);
-    setEmailError(eErr);
-    if (pErr || eErr) return;
+    const wErr = validateWebsite(form.website);
+    setPhoneError(null);
+    setEmailError(null);
+    setWebsiteError(null);
+    if (pErr) { failField("phone", setPhoneError, pErr); return; }
+    if (eErr) { failField("email", setEmailError, eErr); return; }
+    if (wErr) { failField("website", setWebsiteError, wErr); return; }
 
     setSaving(true);
     setError("");
@@ -225,7 +246,7 @@ function EditCustomerModal({
         phone: form.phone || null,
         company: form.company || null,
         industry: form.industry || null,
-        website: form.website || null,
+        website: normalizeWebsite(form.website),
         authority: form.authority || null,
         heat_tag: form.heat_tag || null,
       }),
@@ -241,7 +262,7 @@ function EditCustomerModal({
     <>
       <div className="fixed inset-0 z-40 bg-black/45" onClick={onClose} aria-hidden="true" />
       <div
-        className="fixed left-1/2 top-1/2 z-50 w-full max-w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-[12px] p-6 shadow-2xl"
+        className="fixed left-1/2 top-1/2 z-50 w-full max-w-[520px] max-h-[90vh] -translate-x-1/2 -translate-y-1/2 rounded-[12px] p-6 shadow-2xl overflow-y-auto"
         style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
       >
         <div className="flex items-center justify-between mb-5">
@@ -249,7 +270,7 @@ function EditCustomerModal({
           <button onClick={onClose} style={{ color: "var(--color-text-muted)" }}><X className="h-4 w-4" /></button>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div ref={editFormRef} className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls} style={labelStyle}>First Name</label>
             <input className={inputCls} style={inputStyle} value={form.first_name} onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))} placeholder="First name" />
@@ -258,11 +279,11 @@ function EditCustomerModal({
             <label className={labelCls} style={labelStyle}>Last Name</label>
             <input className={inputCls} style={inputStyle} value={form.last_name} onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))} placeholder="Last name" />
           </div>
-          <div>
+          <div data-field-anchor="phone">
             <label className={labelCls} style={labelStyle}>Phone</label>
             <PhoneInput value={form.phone} onChange={(v) => { setForm((f) => ({ ...f, phone: v })); setPhoneError(null); }} error={phoneError} />
           </div>
-          <div>
+          <div data-field-anchor="email">
             <label className={labelCls} style={labelStyle}>Email</label>
             <EmailInput value={form.email} onChange={(e) => { setForm((f) => ({ ...f, email: e.target.value })); setEmailError(null); }} error={emailError} />
           </div>
@@ -298,9 +319,31 @@ function EditCustomerModal({
               </SelectContent>
             </Select>
           </div>
-          <div className="col-span-2">
+          <div className="col-span-2" data-field-anchor="website">
             <label className={labelCls} style={labelStyle}>Website / Social</label>
-            <input className={inputCls} style={inputStyle} value={form.website} onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))} placeholder="https://" />
+            <input
+              className={inputCls}
+              style={{
+                ...inputStyle,
+                borderColor: websiteError ? "var(--color-danger)" : "var(--color-border)",
+              }}
+              type="text"
+              inputMode="url"
+              autoComplete="url"
+              value={form.website}
+              onChange={(e) => {
+                setForm((f) => ({ ...f, website: e.target.value }));
+                setWebsiteError(null);
+              }}
+              onBlur={(e) => setWebsiteError(validateWebsite(e.target.value))}
+              placeholder={WEBSITE_FIELD_PLACEHOLDER}
+              aria-invalid={!!websiteError}
+            />
+            {websiteError && (
+              <p className="mt-1.5 text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">
+                {websiteError}
+              </p>
+            )}
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>Heat Tag</label>
@@ -557,6 +600,9 @@ function ProfileSkeleton() {
 
 export function CustomerProfile({ customerId }: { customerId: string }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnFrom = searchParams.get("from");
+  const back = resolveCustomerProfileBack(returnFrom);
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
@@ -564,7 +610,33 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
   const [industries, setIndustries] = useState<LookupOption[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [addLeadOpen, setAddLeadOpen] = useState(false);
+  const [isSdr, setIsSdr] = useState(false);
+  const [leadLookups, setLeadLookups] = useState<LookupMap>({});
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id;
+      if (!uid) return;
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("roles(name)")
+        .eq("id", uid)
+        .single();
+      const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
+      setIsSdr(roleName === "sdr");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isSdr) return;
+    fetch("/api/lookups?categories=source,industry,urgency,hold_reason,reject_reason,route_reason,sales_drop_reason")
+      .then((r) => r.json())
+      .then((d) => setLeadLookups(d))
+      .catch(() => {});
+  }, [isSdr]);
 
   useEffect(() => {
     Promise.all([
@@ -599,6 +671,18 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
     setTimeout(() => router.push(`/crm/customers/${survivingId}`), 1200);
   }
 
+  async function refreshProfile() {
+    const customerData = await fetch(`/api/customers/${customerId}`).then((r) => r.json());
+    if (customerData?.customer) setData(customerData);
+  }
+
+  function handleLeadCreated(_lead: Lead) {
+    setAddLeadOpen(false);
+    showToast("Lead created.");
+    void refreshProfile();
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
+  }
+
   if (loading) return <ProfileSkeleton />;
   if (!data) return (
     <div className="py-24 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -614,12 +698,12 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
 
       {/* Back button */}
       <button
-        onClick={() => router.push("/crm")}
+        onClick={() => router.push(back.href)}
         className="flex items-center gap-1.5 text-[13px] font-medium transition-opacity hover:opacity-70"
         style={{ color: "var(--color-text-muted)" }}
       >
         <ArrowLeft className="h-3.5 w-3.5" />
-        Back to CRM
+        {back.label}
       </button>
 
       {/* Customer Header */}
@@ -662,6 +746,16 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
               <Merge className="h-3.5 w-3.5" />
               Merge Duplicate
             </button>
+            {isSdr && (
+              <button
+                onClick={() => setAddLeadOpen(true)}
+                className="flex items-center gap-1.5 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80 active:scale-[0.97]"
+                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                Add Lead
+              </button>
+            )}
             <button
               onClick={() => router.push(newQuoteUrlFromCustomer(c))}
               className="flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80 active:scale-[0.97]"
@@ -822,6 +916,17 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
           source={c}
           onClose={() => setMergeOpen(false)}
           onMerged={handleMerged}
+        />
+      )}
+
+      {isSdr && (
+        <AddLeadModal
+          open={addLeadOpen}
+          lookups={leadLookups}
+          linkedCustomer={c as AppCustomer}
+          onClose={() => setAddLeadOpen(false)}
+          onCreated={handleLeadCreated}
+          showToast={showToast}
         />
       )}
 

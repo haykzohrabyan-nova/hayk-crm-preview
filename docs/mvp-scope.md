@@ -97,7 +97,7 @@ from public.roles r where r.name = 'admin';
 | Authority | No | Decision Maker? Yes / No — stored on **customer** (`customers.authority`) |
 | Company Name | No | |
 | Industry | Yes | |
-| Website / Social | No | Validated URL when provided (`lib/utils/website.ts`); optional |
+| Website / Social | No | Validated URL when provided (`lib/utils/website.ts`); optional; **scheme not required** in UI (`example.com` → stored as `https://example.com`) |
 | **Urgency** | No | Not Defined (stored as null) / High / Medium / Low |
 | Returning Customer | No | Checkbox — flags existing client |
 | Verify Lead Comment | No | SDR internal notes |

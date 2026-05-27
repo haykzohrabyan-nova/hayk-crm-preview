@@ -56,7 +56,8 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 | Param | Type | Description |
 |-------|------|-------------|
 | `status` | `string` | Filter by a single `status` value (e.g. `?status=On+Hold`) |
-| `statuses` | `string` | Comma-separated list of status values — server applies `status IN (...)` filter. Used by SDR "Directed to Sales" tab: `?statuses=Routed+to+Sales,Quoted,Validated`. Takes precedence over `status` when present. |
+| `statuses` | `string` | Comma-separated list of status values — server applies `status IN (...)` filter. Takes precedence over `status` when present. |
+| `routed` | `"true"` | SDR **Directed to Sales** tab: all leads with a `lead_routed_to_sales` activity (scoped by `sdr_id` when `scope=mine`). Includes Won, Rejected, and Dropped — not limited to unclaimed pipeline statuses. |
 | `prev_status` | `string` | Filter by `prev_status` value — used by Sales Rejected tab to restrict to `Routed to Sales` |
 | `scope` | `string` | `mine` — restrict to leads where `sdr_id = current user` |
 | `search` | `string` | Full-text search on name, email, phone, company |
@@ -130,7 +131,7 @@ Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id 
 
 **Business rules:**
 - Phone normalized to digits-only before save
-- **`website`** (optional): validated with `validateWebsite()`; stored via `normalizeWebsite()` (auto-prefix `https://` when protocol omitted). Returns `400` if invalid.
+- **`website`** (optional): validated with `validateWebsite()`; stored via `normalizeWebsite()` (auto-prefix `https://` when protocol omitted; user may type `example.com` without scheme). Returns `400` if invalid.
 - **Customer linking:** pass either `customer_id` (selected existing) OR `create_customer: true` (create new from form data) OR neither (no customer yet — can be linked later)
 - If `create_customer: true`: server creates a `customers` row from the lead's contact fields (including **`authority`**), sets `customer_id` on the new lead
 - If `customer_id` is provided and **`authority`** is set: updates `customers.authority` (not `leads.authority`)
@@ -384,6 +385,7 @@ Create a new customer profile from the Add Lead form (when SDR enters new info a
 
 **Business rules:**
 - Phone normalized to digits-only before save
+- **`website`** (optional): if non-empty, validated with `validateWebsite()` and stored via `normalizeWebsite()` (`https://` prefixed when omitted); `400` if invalid
 - No duplicate check on save — duplicates are handled at lookup time (UI decision)
 
 **Response `201`:**
@@ -443,7 +445,7 @@ Update a customer profile. Called when SDR chooses "Yes, update profile" on the 
 
 **Business rules:**
 - Phone normalized to digits-only
-- **`website`:** if non-empty, validated and normalized (`https://` prefixed when omitted); empty string clears to `null`
+- **`website`:** if non-empty, validated and normalized (`https://` prefixed when protocol omitted; user may submit `example.com` without scheme); empty string clears to `null`
 - Logs `customer_updated` activity
 
 **Response `200`:**
@@ -593,6 +595,7 @@ Create a new ticket.
 **Business rules:**
 - `created_by_id = current_user`
 - `ticket_status` defaults to `'draft'` if not provided; `'routed'` is accepted for HVT saves from SDRs
+- **`website`** (optional on customer upsert): if non-empty, validated with `validateWebsite()` and stored via `normalizeWebsite()`; `400` if invalid
 - **Customer upsert:** when contact fields are provided and `customer_id` is null, the server matches on email/phone, creates or updates the `customers` row (industry/website), and sets `customer_id`. When `customer_id` is passed (existing customer from lookup), industry/website are updated on that row if provided.
 - **Source handling:**
   - **`from_quote_page: true`** (Quotes page, no linked lead): requires `quote_source` + `industry`; stores `quote_source` on `job_tickets`; **does not** auto-create a linked lead
@@ -1337,6 +1340,42 @@ Provider-agnostic outreach endpoint. The concrete email/SMS provider is resolved
   "provider": "string"
 }
 ```
+
+---
+
+## Cron (scheduled jobs)
+
+### `GET /api/cron/follow-ups`
+
+**Auth:** `Authorization: Bearer ${CRON_SECRET}` — not a user session. Called by **Vercel Cron** (see `vercel.json`) or manually for testing.
+
+**Schedule:** `0 14 * * *` (daily 2pm UTC) unless changed in `vercel.json`.
+
+**Behavior:**
+- Finds sent quotes with follow-up enabled, not client-confirmed, due (`follow_up_at <= now`)
+- Backfills `follow_up_at` from `quote_reminder_date` when missing (legacy sent quotes)
+- Sends reminder via Instantly (email) or Twilio (SMS) using ticket delivery fields
+- Decrements `follow_up_cycles`, advances `follow_up_at` by `ticket_follow_up_freq`
+- Sets `follow_up_completed = true` when cycles exhausted
+- Logs `quote_approval_requested` activity with `via: "cron"`
+
+**Response `200`:**
+```json
+{
+  "ok": true,
+  "scanned": 3,
+  "sent": 2,
+  "failed": 0,
+  "completed": 1,
+  "initialized": 1,
+  "errors": [],
+  "ran_at": "ISO timestamp"
+}
+```
+
+**Errors:** `401` bad/missing bearer token · `500` missing `CRON_SECRET` or processing error
+
+**Setup:** `docs/cron-follow-ups.md`
 
 ---
 

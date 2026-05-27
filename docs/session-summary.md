@@ -1,6 +1,36 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 26, 2026
-**Status:** MVP complete + quote-until-payment + dashboard/reports KPI alignment + API security hardening + leads/reports/CRM polish (May 26).
+**Status:** MVP complete + quote-until-payment + dashboard/reports KPI alignment + API security hardening + leads/reports/CRM polish + form validation UX (May 26).
+
+---
+
+## May 26, 2026 — Quote follow-up cron (TODO-006)
+
+- `GET /api/cron/follow-ups` — daily Vercel Cron; due sent quotes get email/SMS reminder
+- Schedule seeded when quote is sent (`follow_up_at`, `follow_up_cycles` from Quote tab settings)
+- Setup guide: **`docs/cron-follow-ups.md`**
+
+---
+
+## May 26, 2026 — Form validation UX (inline errors + scroll into view)
+
+### Per-field validation
+- **Add Lead modal** — Source, Industry, First Name (and phone/email/website) show **inline error + red border** instead of a generic message at the bottom
+- **Verify drawer** — phone/email/website errors scroll into view in the drawer body
+- **Edit Customer modal** — phone, email, website validated on save with scroll-to-field
+- **New Quote form** — tab advance and save scroll to first invalid field (Customer, Info, Lines, Quote tabs)
+
+### Shared helpers
+- `lib/utils/scroll-field-into-view.ts` — `scrollToFormField()`, `scrollToFirstFormField()`; fields marked with `data-field-anchor="…"` inside the scroll container
+- Documented in `types.md`, `component-architecture.md`, `feature-specs/leads-sdr.md`, `feature-specs/crm.md`, `feature-specs/tickets.md`
+
+### Website / Social — scheme optional everywhere
+- `lib/utils/website.ts` — `WEBSITE_FIELD_PLACEHOLDER`; user may type `example.com` without `http://` or `https://`
+- Inputs use `type="text"` (not HTML5 `type="url"`); Add Lead form uses `noValidate`
+- Server: `POST /api/leads/manual`, `PATCH /api/customers/[id]`, **`POST /api/customers`**, **`POST /api/tickets`** validate + normalize website
+
+### Docs
+- `types.md`, `api-contract.md`, `architecture.md`, `schema.md`, `mvp-scope.md`, `TODO.md`, `component-architecture.md`, `feature-specs/leads-sdr.md`, `feature-specs/crm.md`, `feature-specs/tickets.md`, `CHANGELOG.md`
 
 ---
 
@@ -41,9 +71,9 @@
 - `GET /api/leads/workspace` list select includes `interests` + `quantities`; Won tab + `GET /api/customers/[id]` leads nested select same
 
 ### Website / Social validation
-- `lib/utils/website.ts` — `validateWebsite()` + `normalizeWebsite()` (optional field; auto-prefix `https://` when omitted)
-- Add Lead modal + Verify Drawer — blur + save validation, inline error
-- Server: `POST /api/leads/manual`, `PATCH /api/customers/[id]`
+- `lib/utils/website.ts` — `validateWebsite()` + `normalizeWebsite()` + `WEBSITE_FIELD_PLACEHOLDER` (optional field; auto-prefix `https://` when omitted; **scheme not required in UI**)
+- Add Lead modal + Verify Drawer + Edit Customer + New Quote — blur + save validation, inline error; scroll invalid field into view (May 26)
+- Server: `POST /api/leads/manual`, `PATCH /api/customers/[id]`, `POST /api/customers`, `POST /api/tickets`
 
 ### Docs
 - `feature-specs/leads-sdr.md`, `feature-specs/leads-sales.md`, `component-architecture.md`, `navigation.md`, `api-contract.md`, `feature-specs/crm.md`, `mvp-scope.md`, `architecture.md`, `order-ticket/integration-plan.md`, `types.md`, `supabase/README.md`, `schema.md`, `TODO.md`
@@ -671,7 +701,7 @@ SALES PIPELINE (Routed to Sales)
 | ~~Dashboard session KPI cards~~ | ✅ Done (2026-05-17) | "Active Users" + "Idle Sign-outs (7d)" cards on admin dashboard. |
 | ~~Integrations — Twilio + Instantly~~ | ✅ Done | Live in Integrations tab |
 | Online payments (Stripe / Zelle auto-match) | ⏸ Out of scope | Current stage — offline payment recording only; see `docs/TODO.md` |
-| Follow-up reminders cron | ⏳ Open (TODO-006) | Data saved; no sending logic |
+| Follow-up reminders cron | ✅ Built (2026-05-26) | Data saved; **Vercel Cron sends reminders** — see `docs/cron-follow-ups.md` |
 | ~~Reports~~ | ✅ Done (2026-05-24) | Phase 1 + 2 — cash, scorecards, ledger, awaiting collection |
 | Notification bell | ⏳ Next | Per-user notification feed; bell icon in header/sidebar. |
 | AI / webhook lead ingestion | ⏳ Future | Auto-create leads from web form or external webhook. |

@@ -8,6 +8,7 @@
 
 import twilio from "twilio";
 import { buildQuoteEmail } from "./quote-email-template";
+import { buildQuoteFollowUpEmail } from "./quote-follow-up-template";
 import { buildPaymentReminderEmail } from "./payment-reminder-template";
 import { buildPaymentConfirmedEmail } from "./payment-confirmed-template";
 import { buildInvoiceLinkEmail } from "./invoice-link-template";
@@ -604,4 +605,77 @@ export async function sendPaymentConfirmed(
   }
 
   return { ok: true, channel: channel || "in-person" };
+}
+
+// ─── Automated quote follow-up (cron) ──────────────────────────────────────
+
+/**
+ * Sends a short reminder for a quote that was already delivered but not yet confirmed.
+ * Uses per-ticket outreach fields when present (`ticket_quote_channel`, etc.).
+ */
+export async function sendQuoteFollowUpReminder(
+  ticket: TicketForSend & { reference_code: string | null },
+  company: CompanyForSend,
+): Promise<SendResult> {
+  const { channel, destination } = resolveTicketOutreach(ticket);
+  const link = publicUrl(ticket.public_token);
+  const customerName = customerDisplayName(ticket);
+  const companyName = company.company_name ?? "BazaarPrinting";
+  const ref = ticketDisplayReference(ticket);
+  const total = ticket.quote_final_total ?? 0;
+
+  if (!destination) {
+    return { ok: false, channel, error: "No customer email or phone on file." };
+  }
+
+  if (channel === "email") {
+    const { subject, html } = buildQuoteFollowUpEmail({
+      customerName,
+      referenceCode: ref,
+      finalTotal: total,
+      confirmUrl: link,
+      company,
+    });
+    return instantlySend(destination, subject, html);
+  }
+
+  if (channel === "sms" || channel === "whatsapp") {
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const whatsappFrom = process.env.TWILIO_WHATSAPP_FROM;
+    if (!accountSid || !authToken) {
+      return { ok: false, channel, error: "Twilio credentials not configured." };
+    }
+
+    const from = channel === "whatsapp" ? whatsappFrom : phoneNumber;
+    if (!from) {
+      return {
+        ok: false,
+        channel,
+        error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.`,
+      };
+    }
+
+    const firstName = customerName.split(" ")[0] || "there";
+    const totalFmt = total
+      ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(total)
+      : "";
+    const body = totalFmt
+      ? `Hi ${firstName}, friendly reminder about your quote ${ref} from ${companyName} (${totalFmt}). View & confirm: ${link}`
+      : `Hi ${firstName}, friendly reminder about your quote ${ref} from ${companyName}. View & confirm: ${link}`;
+
+    const normalised = toE164(destination);
+    const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
+
+    try {
+      const client = twilio(accountSid, authToken);
+      await client.messages.create({ from, to: toFormatted, body });
+      return { ok: true, channel };
+    } catch (err) {
+      return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  return { ok: false, channel: channel || "unknown", error: "Unsupported delivery channel." };
 }

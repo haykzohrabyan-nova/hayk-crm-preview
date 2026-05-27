@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
+import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 
 const CUSTOMER_LIST_SELECT =
   "id, first_name, last_name, email, phone, company, industry, heat_tag, created_at, updated_at";
@@ -125,6 +126,13 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (website != null && String(website).trim()) {
+    const websiteErr = validateWebsite(String(website));
+    if (websiteErr) {
+      return NextResponse.json({ error: websiteErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+  }
+
   const admin = createAdminClient();
   const { data, error } = await admin
     .from("customers")
@@ -135,7 +143,7 @@ export async function POST(request: NextRequest) {
       phone: digitsOnly(phone),
       company: company ?? null,
       industry: industry ?? null,
-      website: website ?? null,
+      website: website ? normalizeWebsite(String(website)) : null,
       authority: normalizeAuthority(authority),
     })
     .select()

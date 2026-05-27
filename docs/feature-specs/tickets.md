@@ -304,7 +304,7 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 | Button | Condition | Effect |
 |--------|-----------|--------|
 | Back | Any tab (hidden on first tab if Customer tab is first) | Previous tab |
-| Next | Any tab before Quote | Validate + advance |
+| Next | Any tab before Quote | Validate + advance; **inline errors on invalid fields**; scrolls first invalid field into view |
 | Save Draft | Line Items tab onwards | `POST /api/tickets` with `status = 'draft'` |
 | Save & Send Quote | Quote tab | `POST /api/tickets` with `status = 'sent'`; blocked until `validateQuoteSend()` passes; global loading overlay; redirects to `/quotes` or quote detail |
 | Cancel | Any | Navigate back |
@@ -314,6 +314,12 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 Draft saves (`Save Draft`, `Save Changes`) allow incomplete fields. **Send Quote**, **Save & Send Quote**, and **Convert to Order** are disabled until all required send fields pass `lib/utils/validate-quote-send.ts`.
 
 When blocked, an amber banner lists missing fields (e.g. Title, Due date, line items, Sales Permit # when tax exempt, delivery destination, **Receipt ID** when cash/offline deposit or full cash-only payment).
+
+**Tab / field validation (May 2026):** On **Next** or save when a tab field fails (Source, Industry, title, due date, website, etc.), the form shows a **red border + inline message** on that field and **scrolls it into view** via `data-field-anchor` markers and `lib/utils/scroll-field-into-view.ts`.
+
+### Automated quote follow-ups (cron)
+
+When **Quote follow-up schedule** is enabled on the Quote tab and the quote is **sent**, the server seeds `follow_up_at` and `follow_up_cycles`. A **Vercel Cron** job (`GET /api/cron/follow-ups`, daily) sends short email/SMS reminders until the customer confirms or cycles are exhausted. Setup: **`docs/cron-follow-ups.md`**.
 
 **Receipt ID:** digits only — `inputMode="numeric"`, non-digit characters stripped on input; validation rejects non-numeric values.
 

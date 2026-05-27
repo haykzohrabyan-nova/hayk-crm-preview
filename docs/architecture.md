@@ -338,7 +338,9 @@ Where key customer-facing fields are stored (May 2026):
 | **Industry** | `customers.industry` | Add Lead, Verify, New Quote upsert, CRM Edit | Admin lookup value; UI shows label |
 | **Source (lead)** | `leads.source` | Add Lead, Verify | Per inquiry |
 | **Source (direct quote)** | `job_tickets.quote_source` | New Quote Customer tab or CRM Info tab | Requires `from_quote_page: true`; no auto-lead |
-| **Website** | `customers.website` | Lead/quote/CRM customer flows | Validated via `lib/utils/website.ts`; optional; normalized with `https://` prefix when omitted |
+| **Website** | `customers.website` | Lead/quote/CRM customer flows | Validated via `lib/utils/website.ts`; optional; user may omit `http(s)://`; stored normalized with `https://` prefix |
+
+**Form validation UX (May 2026):** Add Lead, Verify drawer, Edit Customer, and New Quote scroll invalid fields into view (`lib/utils/scroll-field-into-view.ts`) and show per-field inline errors instead of generic form-level messages.
 
 **Migrations:** `077_quote_source.sql`, `078_customer_authority.sql`, `077_drop_initial_interest.sql`, `078_backfill_staff_cash_payment_recorded.sql` (Reports cash backfill)
 

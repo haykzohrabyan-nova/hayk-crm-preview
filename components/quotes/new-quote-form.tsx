@@ -13,6 +13,8 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
+import { validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
+import { scrollToFirstFormField, scrollToFormField } from "@/lib/utils/scroll-field-into-view";
 import {
   formatQuoteSendMissingMessage,
   getQuoteSendMissingFields,
@@ -140,6 +142,18 @@ export default function NewQuoteForm() {
   const hvTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Keep a stable ref to handleSave so the interval always calls the latest version
   const handleSaveRef = useRef<((status: "draft" | "sent" | "routed") => Promise<void>) | null>(null);
+  const tabContentRef = useRef<HTMLDivElement>(null);
+
+  const TAB_FIELD_PRIORITY: Record<Tab, string[]> = {
+    customer: ["customerName", "customerContact", "customerSource", "customerIndustry", "customerWebsite"],
+    info: ["customerSource", "title", "dueDate"],
+    lines: ["lineItems"],
+    quote: ["salesPermit"],
+  };
+
+  function scrollToValidationError(errors: Record<string, string>, activeTab: Tab) {
+    scrollToFirstFormField(tabContentRef, errors, TAB_FIELD_PRIORITY[activeTab]);
+  }
 
   // ── Customer step fields (pre-fill from CRM query params if present) ────────
   const [contactFirstName, setContactFirstName] = useState(searchParams.get("first_name") ?? "");
@@ -371,11 +385,15 @@ export default function NewQuoteForm() {
     }
 
     setFieldErrors(errors);
-    if (Object.keys(errors).length === 0) {
-      setFieldErrors({});
+    if (Object.keys(errors).length > 0) {
+      scrollToValidationError(errors, tab);
+      return;
+    }
 
-      // High-value threshold check: block SDR from entering the Quote tab
-      if (
+    setFieldErrors({});
+
+    // High-value threshold check: block SDR from entering the Quote tab
+    if (
         nextTab === "quote" &&
         userRole === "sdr" &&
         companyCfg.high_value_threshold != null &&
@@ -403,7 +421,6 @@ export default function NewQuoteForm() {
       }
 
       setTab(nextTab);
-    }
   }
 
   async function handleSave(status: "draft" | "sent" | "routed") {
@@ -411,15 +428,17 @@ export default function NewQuoteForm() {
     handleSaveRef.current = handleSave;
 
     if (!title.trim()) {
-      setError("Please add a title before saving.");
+      setFieldErrors({ title: "A title is required." });
       setTab("info");
+      scrollToFormField(tabContentRef, "title");
       return;
     }
 
     const hasFilledItem = skus.some((s) => s.product_type?.trim());
     if (!hasFilledItem) {
-      setError("Please add at least one line item before saving.");
+      setFieldErrors({ lineItems: "Please add at least one line item before saving." });
       setTab("lines");
+      scrollToFormField(tabContentRef, "lineItems");
       return;
     }
 
@@ -442,12 +461,23 @@ export default function NewQuoteForm() {
     if (taxExempt && !salesPermit.trim()) {
       setFieldErrors({ salesPermit: "Sales Permit # is required when Tax Exempt is selected." });
       setTab("quote");
+      scrollToFormField(tabContentRef, "salesPermit");
       return;
     }
 
     if (skipCustomerTab && !leadId && !contactSource.trim()) {
       setFieldErrors({ customerSource: "Source is required." });
       setTab("info");
+      scrollToFormField(tabContentRef, "customerSource");
+      return;
+    }
+
+    const websiteToValidate = contactWebsite || lead?.customer?.website || "";
+    const websiteErr = validateWebsite(websiteToValidate);
+    if (websiteErr) {
+      setFieldErrors({ customerWebsite: websiteErr });
+      setTab("info");
+      scrollToFormField(tabContentRef, "customerWebsite");
       return;
     }
 
@@ -717,6 +747,7 @@ export default function NewQuoteForm() {
 
           {/* Tab content */}
           <div
+            ref={tabContentRef}
             className="rounded-xl p-6"
             style={{
               background: "var(--color-surface)",
@@ -774,19 +805,21 @@ export default function NewQuoteForm() {
             )}
 
             {tab === "lines" && (
-              <LineItemsForm
-                skus={skus}
-                products={products}
-                skuLookups={skuLookups}
-                onUpdate={updateSku}
-                onRemove={removeSku}
-                onAdd={addSku}
-                error={fieldErrors.lineItems}
-              />
+              <div data-field-anchor="lineItems">
+                <LineItemsForm
+                  skus={skus}
+                  products={products}
+                  skuLookups={skuLookups}
+                  onUpdate={updateSku}
+                  onRemove={removeSku}
+                  onAdd={addSku}
+                  error={fieldErrors.lineItems}
+                />
+              </div>
             )}
 
             {tab === "quote" && (
-              <>
+              <div data-field-anchor="salesPermit">
                 {sendMissingFields.length > 0 && (
                   <div
                     className="mb-4 flex items-start gap-2 rounded-lg px-4 py-3 text-sm"
@@ -813,7 +846,7 @@ export default function NewQuoteForm() {
                   customerPhone={contactPhone || lead?.customer?.phone || ""}
                   customerEmail={contactEmail || lead?.customer?.email || ""}
                 />
-              </>
+              </div>
             )}
           </div>
 
@@ -1042,7 +1075,7 @@ function QuoteSourceFields({
           Where did this quote opportunity come from? Stored on the quote record.
         </p>
       </div>
-      <div>
+      <div data-field-anchor="customerSource">
         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
           Source <span style={{ color: "var(--color-danger)" }}>*</span>
         </label>
@@ -1302,7 +1335,7 @@ function CustomerTab(p: CustomerTabProps) {
       )}
 
       {/* Row 1: Phone | Email */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4" data-field-anchor="customerContact">
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
             Phone <span style={{ color: "var(--color-danger)" }}>*</span>
@@ -1334,7 +1367,7 @@ function CustomerTab(p: CustomerTabProps) {
       )}
 
       {/* Row 2: First Name | Last Name */}
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-2 gap-4" data-field-anchor="customerName">
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
             First Name <span style={{ color: "var(--color-danger)" }}>*</span>
@@ -1380,7 +1413,7 @@ function CustomerTab(p: CustomerTabProps) {
       </div>
 
       {/* Row 4: Source */}
-      <div>
+      <div data-field-anchor="customerSource">
         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
           Source <span style={{ color: "var(--color-danger)" }}>*</span>
         </label>
@@ -1406,7 +1439,7 @@ function CustomerTab(p: CustomerTabProps) {
 
       {/* Row 5: Industry | Website */}
       <div className="grid grid-cols-2 gap-4">
-        <div>
+        <div data-field-anchor="customerIndustry">
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
             Industry <span style={{ color: "var(--color-danger)" }}>*</span>
           </label>
@@ -1429,17 +1462,20 @@ function CustomerTab(p: CustomerTabProps) {
             <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.errors.customerIndustry}</p>
           )}
         </div>
-        <div>
+        <div data-field-anchor="customerWebsite">
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
             Website / Social
           </label>
           <input
             value={p.website}
             onChange={(e) => p.setWebsite(e.target.value)}
-            placeholder="https://"
+            placeholder={WEBSITE_FIELD_PLACEHOLDER}
             className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-            style={fieldStyle}
+            style={{ ...fieldStyle, ...errStyle("customerWebsite") }}
           />
+          {p.errors?.customerWebsite && (
+            <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.errors.customerWebsite}</p>
+          )}
         </div>
       </div>
     </div>

@@ -3,6 +3,98 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-26] — Quote follow-up reminder cron (TODO-006)
+
+### Added
+- `GET /api/cron/follow-ups` — Vercel Cron job; sends due quote reminders via Instantly/Twilio
+- `lib/utils/follow-up-schedule.ts`, `lib/utils/process-due-follow-ups.ts`, `lib/utils/initialize-ticket-follow-up.ts`
+- `lib/integrations/quote-follow-up-template.ts`, `sendQuoteFollowUpReminder()` in `send-quote.ts`
+- `docs/cron-follow-ups.md` — setup guide for Vercel + local testing
+- `vercel.json` — daily schedule `0 14 * * *` (2pm UTC)
+- `CRON_SECRET` in `.env.local.example`
+
+### Changed
+- `POST /api/tickets` and `PATCH /api/tickets/[id]` — when quote is sent with follow-ups enabled, seed `follow_up_at` + cycle count
+
+## [2026-05-26] — Docs: form validation UX + scheme-less website URLs
+
+### Changed
+- `docs/types.md`, `docs/api-contract.md`, `docs/architecture.md`, `docs/schema.md`, `docs/mvp-scope.md`, `docs/TODO.md`, `docs/session-summary.md`, `docs/component-architecture.md` — website validation (scheme optional), scroll-to-field helpers, API coverage for `POST /api/customers` and `POST /api/tickets`
+- `docs/feature-specs/leads-sdr.md` — Add Lead per-field validation + scroll behaviour; `AddLeadModal` build status
+- `docs/feature-specs/crm.md` — Edit Customer validation UX
+- `docs/feature-specs/tickets.md` — New Quote tab validation scroll behaviour
+
+## [2026-05-26] — Validation: scroll invalid fields into view
+
+### Added
+- `lib/utils/scroll-field-into-view.ts` — scroll `[data-field-anchor]` wrappers into view and focus the control on validation failure
+
+### Changed
+- Add Lead modal, Verify drawer, Edit Customer, New Quote — invalid fields are highlighted and scrolled into view when off-screen
+
+## [2026-05-26] — Add Lead: highlight missing required fields
+
+### Changed
+- Add Lead modal — Source, Industry, and First Name show inline error + red border on the missing field instead of a generic message at the bottom
+
+## [2026-05-26] — Website / Social: scheme-less URLs allowed everywhere
+
+### Changed
+- `lib/utils/website.ts` — shared `WEBSITE_FIELD_PLACEHOLDER`; error copy no longer implies `https://` is required
+- Add Lead, Verify drawer, Edit Customer, New Quote — `type="text"` inputs; placeholders show `example.com or instagram.com/page`
+- Edit Customer modal — client-side `validateWebsite()` + `normalizeWebsite()` on save
+- `POST /api/customers`, `POST /api/tickets` — validate and normalize optional website before save
+
+### Fixed
+- Add Lead modal — removed HTML5 `type="url"` / browser validation that rejected URLs without `http://` or `https://`
+
+## [2026-05-26] — Directed to Sales: working stage sub-filters
+
+### Changed
+- Sub-filter pills (Awaiting Claim, In Progress, Quote Sent, On Hold, Dropped) use ticket-aware stage logic aligned with **Stage** badges; all pills always visible
+- **Quote Sent** includes sent quotes and waiting-for-customer confirm (linked ticket `sent`)
+
+## [2026-05-26] — Directed to Sales: ticket-aware Lead Status column
+
+### Added
+- `lib/utils/lead-routed-ticket-status.ts` — order ref / quote ref / Waiting for Customer / lead status fallback
+
+### Changed
+- Directed to Sales **Lead Status** column — shows `ORD-…` when an order exists, `QUO-…` for quotes, **Waiting for Customer** when quote is sent and unconfirmed, else lead status pill
+- `GET /api/leads/workspace?routed=true` — embeds linked `job_tickets` on each lead
+
+## [2026-05-26] — Customer profile: SDR Add Lead with prefill
+
+### Added
+- `components/leads/add-lead-modal.tsx` — shared Add Lead modal (extracted from leads page)
+- Customer profile **Add Lead** button (SDR only) — opens modal with customer name, phone, email, company, industry, website, and authority pre-filled; **Returning Customer** checked; customer link locked
+
+### Changed
+- `components/leads/leads-page.tsx` — imports shared `AddLeadModal`
+
+## [2026-05-26] — Leads → customer profile Back navigation
+
+### Added
+- `lib/utils/leads-return-path.ts` — `/leads?tab=…` return paths + URL tab parsing
+- `lib/utils/customer-profile-href.ts` — `?from=` on customer links; Back label resolves to Leads / Reports / CRM
+
+### Changed
+- SDR Won lead click → `/crm/customers/[id]?from=/leads?tab=won` (preserves originating tab)
+- Customer profile Back → **Back to Leads** when opened from Leads; returns to the same tab
+- Leads page reads `?tab=` from URL and syncs tab selection (Suspense wrapper on `/leads`)
+
+## [2026-05-26] — Leads Directed to Sales: full routed history + stage filters
+
+### Added
+- `lib/utils/lead-routed-to-sales-query.ts` — resolve leads by `lead_routed_to_sales` activity
+- `lib/utils/lead-routed-pipeline-stage.ts` — stage badges + sub-filter matching (Awaiting Claim, In Progress, Quote Sent, On Hold, Dropped, Won, Rejected)
+
+### Changed
+- **Directed to Sales** tab — shows **all** leads the SDR routed to Sales (including Won, Rejected, Dropped), not only unclaimed / in-flight statuses
+- `GET /api/leads/workspace?routed=true` — activity-based list; replaces `statuses=Routed+to+Sales,Quoted,Validated`
+- `GET /api/leads/workspace/counts` — routed count uses same activity rule
+- Sub-filter pills on Directed to Sales tab filter by pipeline **stage**; table adds **Stage** badge column
+
 ## [2026-05-26] — Sales dashboard: date filters + expanded KPIs
 
 ### Added

@@ -201,9 +201,10 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 ```
 /leads              → defaults to ?tab=all
 /leads?tab=all      → All Leads
-/leads?tab=on-hold  → On Hold
-/leads?tab=directed → Directed to Sales
+/leads?tab=hold     → On Hold
+/leads?tab=routed   → Directed to Sales
 /leads?tab=rejected → Rejected
+/leads?tab=won      → Won
 
 /sales              → defaults to ?tab=pipeline
 /sales?tab=pipeline → Pipeline
@@ -256,7 +257,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 |-----|---------|-------|
 | Inbox | `status = 'Pending'`, `is_inbox = true` | count |
 | On Hold | `status = 'On Hold'` | count |
-| Directed to Sales | `status = 'Routed to Sales'` (just routed, not yet claimed) | count |
+| Directed to Sales | `routed=true` — all leads SDR routed to Sales (`lead_routed_to_sales` activity) | count |
 | Rejected | `status = 'Rejected'` | — |
 | Won | `sales_status = 'Won'` **and** SDR routed lead to Sales first — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created. SDR row click → `/crm/customers/[id]`. | count |
 

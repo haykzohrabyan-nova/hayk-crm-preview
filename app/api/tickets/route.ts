@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
+import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-payment";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
 import {
@@ -14,6 +15,7 @@ import {
   nextOrderNumber,
   nextQuoteNumber,
 } from "@/lib/utils/reference-codes";
+import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -215,6 +217,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "title is required.", code: "VALIDATION_ERROR" }, { status: 400 });
   }
 
+  let normalizedWebsite: string | null = null;
+  if (website != null && String(website).trim()) {
+    const websiteErr = validateWebsite(String(website));
+    if (websiteErr) {
+      return NextResponse.json({ error: websiteErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+    normalizedWebsite = normalizeWebsite(String(website));
+  }
+
   const admin = createAdminClient();
   const now = new Date().toISOString();
 
@@ -239,12 +250,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (resolvedCustomerId && !isNewCustomerFromContact && (industry || website)) {
+  if (resolvedCustomerId && !isNewCustomerFromContact && (industry || normalizedWebsite)) {
     await admin
       .from("customers")
       .update({
         ...(industry ? { industry } : {}),
-        ...(website ? { website } : {}),
+        ...(normalizedWebsite ? { website: normalizedWebsite } : {}),
         updated_at: now,
       })
       .eq("id", resolvedCustomerId);
@@ -271,7 +282,7 @@ export async function POST(request: NextRequest) {
         .from("customers")
         .update({
           ...(industry ? { industry } : {}),
-          ...(website ? { website } : {}),
+          ...(normalizedWebsite ? { website: normalizedWebsite } : {}),
           updated_at: now,
         })
         .eq("id", existing.id);
@@ -285,7 +296,7 @@ export async function POST(request: NextRequest) {
         phone: phoneDigits ?? null,
         company: contact_company ?? null,
         industry: industry ?? null,
-        website: website ?? null,
+        website: normalizedWebsite,
         created_at: now,
         updated_at: now,
       }).select("id").single();
@@ -490,6 +501,9 @@ export async function POST(request: NextRequest) {
       .eq("id", 1)
       .single();
     if (fullTicket && companyRow) {
+      if (fullTicket.ticket_follow_up_enabled) {
+        await initializeTicketFollowUpSchedule(admin, ticket.id, fullTicket);
+      }
       sendQuoteToCustomer(fullTicket, companyRow).then((result) => {
         if (!result.ok) {
           console.error("[send-quote] POST delivery failed:", result.error, { ticketId: ticket.id });

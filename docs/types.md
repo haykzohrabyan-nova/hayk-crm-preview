@@ -664,15 +664,31 @@ export interface TicketForm {
 
 ---
 
-## Client validation helpers (lead forms)
+## Client validation helpers (lead & quote forms)
 
 | Helper | Module | Purpose |
 |--------|--------|---------|
 | `validatePhone()` | `lib/utils/phone.ts` | Required phone on lead create/edit |
 | `validateEmail()` | `lib/utils/email.ts` | Optional email format |
-| `validateWebsite()` | `lib/utils/website.ts` | Optional website/social URL; empty allowed |
+| `validateWebsite()` | `lib/utils/website.ts` | Optional website/social URL; empty allowed; **`http://` / `https://` not required** (e.g. `example.com`, `www.10x.am`, `instagram.com/page`) |
 | `normalizeWebsite()` | `lib/utils/website.ts` | Prefix `https://` when protocol omitted before save |
+| `WEBSITE_FIELD_PLACEHOLDER` | `lib/utils/website.ts` | Shared placeholder: `example.com or instagram.com/page` |
+| `scrollToFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll a `[data-field-anchor="…"]` wrapper into view and focus its control |
+| `scrollToFirstFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll to the first error in a priority-ordered list (New Quote tab validation) |
+| `buildInitialFollowUpSchedule()` | `lib/utils/follow-up-schedule.ts` | Seed `follow_up_at` when a quote is sent |
+| `processDueQuoteFollowUps()` | `lib/utils/process-due-follow-ups.ts` | Cron job — send due quote follow-up reminders |
 | `formatLeadProductInterests()` | `lib/utils/format-lead-product-interests.ts` | List display: `Booklets[1111], Labels[500]` |
+
+### Field validation UX (May 2026)
+
+When a required or invalid field fails validation:
+
+1. **Inline error** under the field + **red border** on the input/select (not a generic message at the bottom of the form)
+2. **Scroll into view** — if the field is off-screen (e.g. Source at top while user scrolled to Product Interests), the scroll container smooth-scrolls to the field and focuses it
+
+Applies to: **Add Lead modal**, **Verify drawer**, **Edit Customer modal**, **New Quote form** (all tabs).
+
+Markup pattern: wrap each validatable field in `<div data-field-anchor="source">` (or `phone`, `firstName`, `customerSource`, `title`, etc.) inside the scrollable form container.
 
 ---
 

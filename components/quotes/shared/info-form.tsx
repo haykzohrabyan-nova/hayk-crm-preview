@@ -61,7 +61,7 @@ export function InfoForm(p: InfoFormProps) {
     <div className="space-y-5">
       {/* Title + Priority — 50/50 row */}
       <div className="grid grid-cols-2 gap-4">
-        <div>
+        <div data-field-anchor="title">
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
             Title <span style={{ color: "var(--color-danger)" }}>*</span>
           </label>
@@ -107,7 +107,7 @@ export function InfoForm(p: InfoFormProps) {
 
       {/* Due Date + Rush Order — 50/50 row */}
       <div className="grid grid-cols-2 gap-4 items-start">
-        <div>
+        <div data-field-anchor="dueDate">
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
             Due Date <span style={{ color: "var(--color-danger)" }}>*</span>
           </label>

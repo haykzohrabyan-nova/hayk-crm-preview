@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { sendQuoteToCustomer, sendPaymentReminder, sendPaymentConfirmed, sendInvoiceLinkToCustomer, sendOrderReadyToCustomer, resolveTicketOutreach } from "@/lib/integrations/send-quote";
+import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { logTicketPaymentRecorded } from "@/lib/utils/log-ticket-payment-recorded";
 import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-payment";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
@@ -735,6 +736,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         admin.from("company_settings").select("*").eq("id", 1).single(),
       ]);
       if (fullTicket && companyRow) {
+        if (fullTicket.ticket_follow_up_enabled) {
+          await initializeTicketFollowUpSchedule(admin, ticketId, fullTicket);
+        }
         // Non-blocking: log the result but don't surface errors to the rep
         sendQuoteToCustomer(fullTicket, companyRow).then((result) => {
           if (!result.ok) {
