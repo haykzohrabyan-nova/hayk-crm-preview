@@ -454,11 +454,10 @@ export async function POST(request: NextRequest) {
       if (fullTicket.ticket_follow_up_enabled) {
         await initializeTicketFollowUpSchedule(admin, ticket.id, fullTicket);
       }
-      sendQuoteToCustomer(fullTicket, companyRow).then((result) => {
-        if (!result.ok) {
-          console.error("[send-quote] POST delivery failed:", result.error, { ticketId: ticket.id });
-        }
-      });
+      const sendResult = await sendQuoteToCustomer(fullTicket, companyRow);
+      if (!sendResult.ok) {
+        console.error("[send-quote] POST delivery failed:", sendResult.error, { ticketId: ticket.id });
+      }
     }
   }
 

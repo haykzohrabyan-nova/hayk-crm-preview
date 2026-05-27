@@ -93,32 +93,54 @@ BazarCRM/
 │   │   ├── verify-2fa/page.tsx           ✓ TOTP challenge — 6-box OTP, auto-submits on 6th digit
 │   │   └── change-password/page.tsx      ✓ Forced on first login with temp password
 │   ├── (app)/
-│   │   ├── layout.tsx                    ✓ App shell — sidebar + mobile nav
-│   │   ├── dashboard/page.tsx            ✓ Role router → sdr/sales/admin dashboard
-│   │   ├── leads/page.tsx                ✓ SDR + Admin lead pipeline (4 tabs)
-│   │   ├── sales/page.tsx                ✓ Sales pipeline (3 tabs)
-│   │   ├── crm/page.tsx                  ✓ Customer registry + profile expand
-│   │   ├── crm/customers/[id]/page.tsx   ✓ Full customer profile page
-│   │   ├── quotes/page.tsx               ✓ Quoted Requests list (4 tabs)
-│   │   ├── quotes/new/page.tsx           ✓ New Quote / Order form
-│   │   ├── quotes/[id]/page.tsx          ✓ Quote detail (Overview + History)
-│   │   ├── orders/page.tsx               ✓ Active orders list
-│   │   ├── orders/[id]/page.tsx          ✓ Order detail
-│   │   ├── payments/page.tsx             ✓ Accountant payment evidence queue
-│   │   ├── payments/[id]/page.tsx        ✓ Payment review detail
-│   │   ├── production/page.tsx           ✓ In-production queue
-│   │   ├── production/[id]/page.tsx      ✓ Production detail + Mark Completed
-│   │   ├── completed/page.tsx            ✓ Completed orders list
-│   │   ├── completed/[id]/page.tsx       ✓ Completed order detail
-│   │   ├── activity-log/page.tsx         ✓ Activity Log (Order / Lead + User Activity tabs)
+│   │   ├── layout.tsx                    ✓ App shell — sidebar + mobile nav + ErrorBoundary wrapper
+│   │   ├── error.tsx                     ✓ Next.js global client error page for the app route group
+│   │   ├── dashboard/
+│   │   │   ├── page.tsx                  ✓ Role router → sdr/sales/admin dashboard
+│   │   │   └── loading.tsx               ✓ Route-level skeleton (TableDivSkeleton)
+│   │   ├── leads/
+│   │   │   ├── page.tsx                  ✓ SDR + Admin lead pipeline (4 tabs)
+│   │   │   └── loading.tsx               ✓ Route-level skeleton
+│   │   ├── sales/
+│   │   │   ├── page.tsx                  ✓ Sales pipeline (3 tabs)
+│   │   │   └── loading.tsx               ✓ Route-level skeleton
+│   │   ├── crm/
+│   │   │   ├── page.tsx                  ✓ Customer registry + profile expand
+│   │   │   ├── loading.tsx               ✓ Route-level skeleton
+│   │   │   └── customers/[id]/page.tsx   ✓ Full customer profile page
+│   │   ├── quotes/
+│   │   │   ├── page.tsx                  ✓ Quoted Requests list (4 tabs)
+│   │   │   ├── loading.tsx               ✓ Route-level skeleton
+│   │   │   ├── new/page.tsx              ✓ New Quote / Order form
+│   │   │   └── [id]/page.tsx             ✓ Quote detail (Overview + History)
+│   │   ├── orders/
+│   │   │   ├── page.tsx                  ✓ Active orders list
+│   │   │   ├── loading.tsx               ✓ Route-level skeleton
+│   │   │   └── [id]/page.tsx             ✓ Order detail
+│   │   ├── payments/
+│   │   │   ├── page.tsx                  ✓ Accountant payment evidence queue
+│   │   │   ├── loading.tsx               ✓ Route-level skeleton
+│   │   │   └── [id]/page.tsx             ✓ Payment review detail
+│   │   ├── production/
+│   │   │   ├── page.tsx                  ✓ In-production queue
+│   │   │   └── [id]/page.tsx             ✓ Production detail + Mark Completed
+│   │   ├── completed/
+│   │   │   ├── page.tsx                  ✓ Completed orders list
+│   │   │   ├── loading.tsx               ✓ Route-level skeleton
+│   │   │   └── [id]/page.tsx             ✓ Completed order detail
+│   │   ├── activity-log/
+│   │   │   ├── page.tsx                  ✓ Activity Log (Order / Lead + User Activity tabs)
+│   │   │   └── loading.tsx               ✓ Route-level skeleton
 │   │   ├── notifications/page.tsx        ✓ Redirect → /activity-log (legacy; route reserved for future bell)
+│   │   ├── reports/
+│   │   │   ├── page.tsx                  ✓ Reports page (admin only)
+│   │   │   └── loading.tsx               ✓ Route-level skeleton
+│   │   ├── admin/
+│   │   │   ├── page.tsx                  ✓ Overview card grid
+│   │   │   ├── loading.tsx               ✓ Route-level skeleton
+│   │   │   └── settings/[tab]/page.tsx   ✓ users | roles | dropdowns | products | company | notifications | integrations
 │   │   ├── settings/page.tsx             ✓ Personal profile settings
-│   │   └── admin/
-│   │       ├── layout.tsx                ✓ Admin-only shell with sub-nav
-│   │       ├── page.tsx                  ✓ Overview card grid (Users, Roles, Dropdowns,
-│   │       │                               Notifications, Products, Company, Integrations)
-│   │       └── settings/[tab]/page.tsx   ✓ users | roles | dropdowns | products |
-│   │                                       company | notifications | integrations
+│   │   └── profile/page.tsx              ✓ Personal profile settings (alias)
 │   ├── api/
 │   │   ├── auth/change-password/         ✓ POST — password update
 │   │   ├── leads/
@@ -217,9 +239,10 @@ BazarCRM/
 │   │   ├── theme-provider.tsx            ✓ Light/dark theme + useTheme hook
 │   │   ├── global-loading-provider.tsx   ✓ App-wide loading overlay + useGlobalLoading hook
 │   │   ├── idle-timer.tsx                ✓ Idle detection → warning modal → auto sign-out
+│   │   ├── error-boundary.tsx            ✓ React ErrorBoundary — wraps page content in app layout; "Try again" button
 │   │   └── global-event-handlers.tsx     ✓ App-wide window event wiring
 │   ├── leads/
-│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Hold/Routed/Rejected/Won)
+│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Hold/Routed/Rejected/Won) — VerifyDrawer + AddLeadModal loaded via next/dynamic
 │   │   ├── verify-drawer.tsx             ✓ SDR lead work drawer (edit + read-only modes)
 │   │   └── hold-sub-form.tsx             ✓ Hold reason sub-form (used inside VerifyDrawer)
 │   ├── orders/
@@ -238,7 +261,7 @@ BazarCRM/
 │   │   │   ├── detail-layout-primitives.tsx ✓ Stat cards, section titles, spec pills
 │   │   │   ├── ticket-stats-row.tsx      ✓ Top stats row on overview layout
 │   │   │   ├── history-section.tsx       ✓ Activity timeline tab
-│   │   │   └── ticket-skeleton.tsx       ✓ Loading skeleton
+│   │   │   └── ticket-skeleton.tsx       ✓ Detail page loading skeleton (quote/order/payment/production/completed)
 │   │   └── shared/                       ← shared between new-quote-form + quote-detail
 │   │       ├── types.ts                  ✓ ProductType, LookupOption, SkuLookups
 │   │       ├── utils.ts                  ✓ emptySkuRow, renderLookupOptions, priorityStyle, quickDate
@@ -253,7 +276,7 @@ BazarCRM/
 │   │   ├── payment-ledger-section.tsx    ✓ Payment line items in period
 │   │   └── awaiting-collection-section.tsx ✓ Live balance-due snapshot
 │   ├── sales/
-│   │   ├── sales-page.tsx                ✓ Sales pipeline (Pipeline/Hold/Rejected tabs)
+│   │   ├── sales-page.tsx                ✓ Sales pipeline (Pipeline/Hold/Rejected tabs) — SalesDrawer loaded via next/dynamic
 │   │   ├── sales-drawer.tsx              ✓ Sales lead work drawer
 │   │   ├── sales-dashboard.tsx           ✓ Sales-specific dashboard (self-contained)
 │   │   └── sdr-dashboard.tsx             ✓ SDR-specific dashboard (self-contained)
@@ -261,6 +284,7 @@ BazarCRM/
 │   └── ui/
 │       ├── status-pill.tsx               ✓ Lead/sales status pill
 │       ├── urgency-pill.tsx              ✓ High/Medium/Low/Not Defined pill
+│       ├── table-skeleton.tsx            ✓ Shared table shimmer — TableRowsSkeleton (<tr>-based) + TableDivSkeleton (div-based)
 │       ├── phone-input.tsx               ✓ Validated phone field with call-action icon
 │       ├── email-input.tsx               ✓ Validated email field with mailto-action icon
 │       ├── back-button.tsx               ✓ Reusable back navigation button
@@ -269,7 +293,7 @@ BazarCRM/
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts                     ✓ createBrowserClient (PUBLISHABLE_KEY)
-│   │   └── admin.ts                      ✓ Service-role client — Route Handlers only
+│   │   └── admin.ts                      ✓ Service-role client — Route Handlers only. `import "server-only"` prevents accidental client import.
 │   ├── auth/
 │   │   ├── safe-return-path.ts           ✓ Redirect safety
 │   │   ├── resolve-default-home.ts       ✓ Post-login destination
@@ -315,12 +339,15 @@ BazarCRM/
 │   └── use-coalesced-refresh.ts          ✓ Debounced mount + realtime refetch for list pages
 ├── supabase/
 │   ├── schema.sql                        ✓ Consolidated DDL + seeds (single file — run on fresh projects)
+│   ├── migrations/                       ✓ Incremental deltas (001–080)
 │   └── README.md                         ✓ Setup notes
 ├── docs/                                 ✓ Feature specs + architecture + security.md
-├── proxy.ts                              ✓ AAL2 + RBAC session enforcement
+├── proxy.ts                              ✓ AAL2 + RBAC session enforcement (returns 503 when SUPABASE_URL missing)
+├── next.config.ts                        ✓ compress: true, WebP/AVIF images, HTTP security headers (CSP, X-Frame-Options, etc.)
 ├── components.json                       ✓ shadcn config — style: base-nova
 ├── vercel.json                           ✓
-└── .env.local.example                    ✓ Key names template
+├── README.md                             ✓ Local setup, env vars, migrations, dev server
+└── .env.local.example                    ✓ Key names template (Stripe vars commented — future)
 ```
 
 ---
@@ -350,6 +377,8 @@ List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table vi
 **Realtime:** Single sidebar subscription per table → `bazaar:*-changed` window events. Sidebar badge refetch debounced ~300 ms; optional `?routes=` limits count queries to visible nav items.
 
 **Lazy bootstrap (Leads/Sales):** Lookups, product types, and admin user lists load when Add Lead / Reassign / drawer opens — not on page mount.
+
+**Dynamic imports:** Heavy modals and drawers (`VerifyDrawer`, `AddLeadModal`, `SalesDrawer`) are loaded via `next/dynamic` — deferred from the initial page bundle until first interaction.
 
 **Indexes:** `073_performance_indexes.sql` — partial indexes on orders, production, leads.
 
@@ -440,6 +469,6 @@ npm run reset-test-data
 | `docs/api-contract.md` | Full Route Handler reference |
 | `docs/schema.md` | Tables, RLS policies, `supabase/schema.sql` |
 
-**Dev note:** If `NEXT_PUBLIC_SUPABASE_URL` is empty in `.env.local`, `proxy.ts` skips page auth checks so you can work on UI without Supabase credentials. **Never deploy production without env vars set.**
+**Dev note:** If `NEXT_PUBLIC_SUPABASE_URL` is missing in `.env.local`, `proxy.ts` returns a **503** response (fail closed). Previously it skipped auth entirely — that behavior has been removed. Set the variable before running the dev server.
 
 ---

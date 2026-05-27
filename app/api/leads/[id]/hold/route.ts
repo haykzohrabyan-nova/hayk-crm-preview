@@ -10,7 +10,7 @@ export async function POST(
   if (errorResponse) return errorResponse;
 
   const { id } = await params;
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const { hold_reason, hold_notes, hold_until, role } = body;
 
   if (!hold_reason) {

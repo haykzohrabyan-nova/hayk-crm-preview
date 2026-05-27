@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { Search, Zap, ExternalLink } from "lucide-react";
+import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import {
   MobileListCard,
   MobileListCardRow,
@@ -200,7 +201,7 @@ export function CompletedPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableSkeleton cols={8} />
+          <TableDivSkeleton cols={8} />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -344,18 +345,4 @@ export function CompletedPage() {
   );
 }
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function TableSkeleton({ cols }: { cols: number }) {
-  return (
-    <div className="animate-pulse">
-      {[...Array(5)].map((_, i) => (
-        <div key={i} className="flex gap-4 px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-          {[...Array(cols)].map((__, j) => (
-            <div key={j} className="h-4 rounded flex-1" style={{ background: "var(--color-border)" }} />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
+// ─── Skeleton — see components/ui/table-skeleton.tsx ─────────────────────────

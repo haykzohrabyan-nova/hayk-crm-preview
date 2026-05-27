@@ -14,7 +14,7 @@ export async function POST(
   }
 
   const { id } = await params;
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const target_id: string | undefined = body.target_id;
 
   if (!target_id) {

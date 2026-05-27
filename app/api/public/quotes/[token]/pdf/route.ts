@@ -167,7 +167,13 @@ export async function GET(
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pdfBuffer = await renderToBuffer(docElement as any);
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await renderToBuffer(docElement as any);
+  } catch (err) {
+    console.error("[pdf/public] renderToBuffer failed:", err);
+    return new NextResponse("PDF generation failed.", { status: 500 });
+  }
 
   const refCode = (ticket.reference_code as string | null) ?? token.slice(0, 8).toUpperCase();
   const filename = `${isOrder ? "Invoice" : "Quote"}-${refCode}.pdf`;

@@ -65,7 +65,7 @@ export async function PATCH(
   if (errorResponse) return errorResponse;
 
   const { id } = await params;
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   // Strip immutable fields
   for (const f of IMMUTABLE) delete body[f];

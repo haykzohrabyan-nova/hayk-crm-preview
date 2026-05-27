@@ -48,13 +48,13 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 
 | Layer | Location | Rule |
 |-------|----------|------|
-| Routes | `app/(app)/{feature}/` | Thin Server Components only |
+| Routes | `app/(app)/{feature}/` | Thin Server Components only; paired with `loading.tsx` for route-level skeletons |
 | List pages | `components/{feature}/{feature}-page.tsx` | One client page per route |
 | Ticket detail | `components/quotes/quote-detail.tsx` | Single component; `context` prop for quote/order/payment/production/completed |
 | Detail sections | `components/quotes/quote-detail/*`, `components/orders/*-detail-overview.tsx` | Extract shared blocks here |
 | Shared form blocks | `components/quotes/shared/` | Used by new-quote-form + quote-detail edit mode |
 | Pure helpers | `lib/utils/format.ts`, `ticket-math.ts`, etc. | **Never copy** `relativeTime` / date formatters into components |
-| Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider, **global-loading-provider** |
+| Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider, global-loading-provider, **error-boundary** |
 | Public customer UI | `components/public/` | `/q/[token]` only |
 
 **Anti-patterns to avoid:**
@@ -62,6 +62,8 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 - ❌ Separate detail page component per lifecycle stage (use `QuoteDetail` + `context`)
 - ❌ Duplicating format/date helpers in list pages
 - ❌ Business logic in client components that belongs in `lib/utils/` + Route Handlers
+- ❌ Inline `TableSkeleton` / `DesktopTableSkeleton` functions in list pages — use `TableRowsSkeleton` or `TableDivSkeleton` from `components/ui/table-skeleton.tsx`
+- ❌ Heavy modals/drawers imported statically — use `next/dynamic` with `{ ssr: false }` so their bundles are deferred
 
 ---
 
@@ -79,7 +81,8 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
         ├── Inline table (per tab)                         ├── Inline table (per tab)
         │     Columns vary per tab                         │     Columns vary per tab
         │                                                  │
-        └── components/leads/verify-drawer.tsx             └── components/sales/sales-drawer.tsx
+        └── VerifyDrawer (next/dynamic — deferred)          └── SalesDrawer (next/dynamic — deferred)
+              └── components/leads/hold-sub-form.tsx
 ```
 
 ---
@@ -114,11 +117,14 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | Component | File | Used in |
 |-----------|------|---------|
 | `StatusPill` | `components/ui/status-pill.tsx` | Tables, drawers |
-| `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Customer profile Lead History + Leads Won tab — Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created |
 | `UrgencyPill` | `components/ui/urgency-pill.tsx` | Tables, drawers |
-| `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail (SMS & WhatsApp destination) |
-| `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail (Email destination) |
-| `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar); industry/source lookup labels |
+| `TableRowsSkeleton` | `components/ui/table-skeleton.tsx` | Inside `<tbody>` on leads-page, sales-page, payments-page — renders `<tr>` rows. Props: `rows` (default 5), `cols`. |
+| `TableDivSkeleton` | `components/ui/table-skeleton.tsx` | Standalone div-based table shimmer on orders-page, production-page, completed-page, quotes-page, all `loading.tsx` files. Props: `rows` (default 5), `cols`. |
+| `ErrorBoundary` | `components/layout/error-boundary.tsx` | Wraps `{children}` in `app/(app)/layout.tsx`. Catches unhandled runtime errors and shows a "Try again" button instead of a blank page. |
+| `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Customer profile Lead History + Leads Won tab |
+| `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail |
+| `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail |
+| `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar) |
 
 ### Form validation utilities
 
@@ -148,7 +154,7 @@ PDF rendering uses `@react-pdf/renderer` (server-side only — never imported in
 **How it works:**
 1. `GET /api/tickets/[id]/pdf` — `requireSession()` (MFA) + `canAccessTicket()` (same scope as ticket detail).
 2. Route fetches ticket + company_settings from Supabase (admin client).
-3. `renderToBuffer(<InvoicePDF .../>)` produces a PDF binary server-side.
+3. `renderToBuffer(<InvoicePDF .../>)` produces a PDF binary server-side — wrapped in `try/catch`; failures return a clean 500 instead of an unhandled exception.
 4. Response: `Content-Type: application/pdf` + `Content-Disposition: attachment`.
 5. In `quote-detail.tsx`, the "Save PDF" button is `<a href="/api/tickets/[id]/pdf" download>` — one click downloads the file with no new tab.
 

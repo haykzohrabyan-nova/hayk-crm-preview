@@ -1,4 +1,7 @@
-import { REMEMBER_MFA_STORAGE_KEY } from "@/lib/auth/mfa-trust";
+// Client-only module — no server imports allowed.
+// REMEMBER_MFA_STORAGE_KEY is duplicated here (not imported from mfa-trust.ts)
+// to keep this module free of server-only transitive imports.
+const REMEMBER_MFA_STORAGE_KEY = "bazaar_remember_mfa";
 
 export function setRememberMfaPreference(remember: boolean) {
   if (typeof window === "undefined") return;

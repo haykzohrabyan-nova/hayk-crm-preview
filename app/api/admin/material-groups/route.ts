@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 export async function POST(request: Request) {
   const { errorResponse } = await requireAdmin();
   if (errorResponse) return errorResponse;
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const { name, facility, sort_order } = body;
 
   if (!name?.trim()) {

@@ -10,7 +10,7 @@ export async function POST(
   if (errorResponse) return errorResponse;
 
   const { id } = await params;
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const role = body?.role ?? "sdr";
 
   const admin = createAdminClient();

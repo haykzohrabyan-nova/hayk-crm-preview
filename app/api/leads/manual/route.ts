@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
   const { userId, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const {
     first_name,
     last_name,

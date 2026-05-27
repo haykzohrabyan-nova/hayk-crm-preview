@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireSession } from "@/lib/auth/require-session";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 export interface TeamMember {
   id: string;
@@ -12,11 +12,8 @@ export interface TeamMember {
 }
 
 export async function GET() {
-  const { roleName, errorResponse } = await requireSession();
+  const { errorResponse } = await requireAdmin();
   if (errorResponse) return errorResponse;
-  if (roleName !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
   const admin = createAdminClient();
 

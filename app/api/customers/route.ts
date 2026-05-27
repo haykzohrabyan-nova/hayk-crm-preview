@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
   const { errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const { first_name, last_name, email, phone, company, industry, website, authority } = body;
 
   if (!phone) {

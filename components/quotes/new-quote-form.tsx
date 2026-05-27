@@ -140,6 +140,8 @@ export default function NewQuoteForm() {
   const [hvModal, setHvModal] = useState(false);
   const [hvCountdown, setHvCountdown] = useState(30);
   const hvTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Clear countdown timer on unmount to prevent state updates on an unmounted component.
+  useEffect(() => () => { if (hvTimerRef.current) clearInterval(hvTimerRef.current); }, []);
   // Keep a stable ref to handleSave so the interval always calls the latest version
   const handleSaveRef = useRef<((status: "draft" | "sent" | "routed") => Promise<void>) | null>(null);
   const tabContentRef = useRef<HTMLDivElement>(null);

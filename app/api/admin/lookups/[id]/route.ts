@@ -12,7 +12,7 @@ export async function PATCH(
 
   const admin = createAdminClient();
   const { id } = await params;
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   // Only allow safe fields — value (slug) is immutable after creation
   const patch: Record<string, unknown> = {};

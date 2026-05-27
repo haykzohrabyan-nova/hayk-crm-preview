@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
+import { canReadLead } from "@/lib/utils/lead-access";
+import { canAccessTicket } from "@/lib/utils/ticket-access";
 
 /**
  * GET /api/activities
@@ -18,7 +20,7 @@ import { resolveTicketId } from "@/lib/utils/reference-codes";
  * order so the full journey reads top-to-bottom, oldest first).
  */
 export async function GET(request: NextRequest) {
-  const { errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   const { searchParams } = request.nextUrl;
@@ -36,11 +38,34 @@ export async function GET(request: NextRequest) {
   const admin = createAdminClient();
   const SELECT = "*, by_user:user_profiles!activities_by_user_id_fkey(id, full_name)";
 
+  // ── Access control ────────────────────────────────────────────────────────
+  if (leadId) {
+    const { data: lead } = await admin
+      .from("leads")
+      .select("status, sales_status, sdr_id, sales_owner_id, locked_by_id, prev_status")
+      .eq("id", leadId)
+      .single();
+    if (!lead) {
+      return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
+    }
+    if (!canReadLead(lead, userId, roleName)) {
+      return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+    }
+  }
+
   let resolvedTicketId: string | null = null;
   if (ticketId) {
     resolvedTicketId = await resolveTicketId(admin, ticketId);
     if (!resolvedTicketId) {
       return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
+    }
+    const { data: ticket } = await admin
+      .from("job_tickets")
+      .select("created_by_id, ticket_status")
+      .eq("id", resolvedTicketId)
+      .single();
+    if (!ticket || !canAccessTicket(ticket, userId!, roleName)) {
+      return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
     }
   }
 

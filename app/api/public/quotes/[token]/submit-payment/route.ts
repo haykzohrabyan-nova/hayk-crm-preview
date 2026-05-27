@@ -89,6 +89,21 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Payment evidence file is required for this payment method." }, { status: 400 });
   }
 
+  const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+  const ALLOWED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "application/pdf"]);
+
+  if (file) {
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: "File too large. Maximum size is 10 MB." }, { status: 413 });
+    }
+    if (!ALLOWED_MIME_TYPES.has(file.type)) {
+      return NextResponse.json(
+        { error: "Invalid file type. Accepted: JPEG, PNG, WebP, PDF." },
+        { status: 415 },
+      );
+    }
+  }
+
   let evidenceStoragePath: string | null = null;
   if (file) {
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");

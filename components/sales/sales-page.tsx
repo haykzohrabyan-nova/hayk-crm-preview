@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import dynamic from "next/dynamic";
+import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { Search, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -9,7 +11,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
-import { SalesDrawer } from "@/components/sales/sales-drawer";
+
+const SalesDrawer = dynamic(
+  () => import("@/components/sales/sales-drawer").then((m) => ({ default: m.SalesDrawer })),
+  { ssr: false, loading: () => null },
+);
 import { Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
@@ -86,32 +92,7 @@ function ToastBanner({ message, type, onDismiss }: Toast & { onDismiss: () => vo
   );
 }
 
-// ─── Table skeleton ───────────────────────────────────────────────────────────
-
-function TableSkeleton({ cols }: { cols: number }) {
-  return (
-    <>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <tr
-          key={i}
-          style={{
-            background: i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
-            borderTop: i > 0 ? "1px solid var(--color-border)" : undefined,
-          }}
-        >
-          {Array.from({ length: cols }).map((_, j) => (
-            <td key={j} className="px-3 py-3">
-              <div
-                className="h-3.5 animate-pulse rounded"
-                style={{ background: "var(--color-border)", width: j === 0 ? "60%" : j === cols - 1 ? "40%" : "80%" }}
-              />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  );
-}
+// ─── Table skeleton — see components/ui/table-skeleton.tsx ───────────────────
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
@@ -389,7 +370,7 @@ export function SalesPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={9} />
+                  <TableRowsSkeleton cols={9} />
                 ) : activeLeads.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -577,7 +558,7 @@ export function SalesPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={7} />
+                  <TableRowsSkeleton cols={7} />
                 ) : activeLeads.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -709,7 +690,7 @@ export function SalesPage() {
               </thead>
               <tbody>
                 {isLoading ? (
-                  <TableSkeleton cols={7} />
+                  <TableRowsSkeleton cols={7} />
                 ) : activeLeads.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>

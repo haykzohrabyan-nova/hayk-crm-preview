@@ -30,7 +30,7 @@ export async function PATCH(request: Request) {
   if (errorResponse) return errorResponse;
 
   const admin = createAdminClient();
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   const allowed = [
     "company_name",

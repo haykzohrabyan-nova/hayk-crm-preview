@@ -1,6 +1,7 @@
 import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { IdleTimer } from "@/components/layout/idle-timer";
+import { ErrorBoundary } from "@/components/layout/error-boundary";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -18,7 +19,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Scrollable page content */}
         <main className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1980px] px-4 py-6 lg:px-6">
-            {children}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </div>
         </main>
       </div>

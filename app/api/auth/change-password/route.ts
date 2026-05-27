@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { createClient } from "@supabase/supabase-js";
+import { createAdminClient } from "@/lib/supabase/admin";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
@@ -61,10 +61,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Clear the must_change_password flag (admin client required for service-role write)
-  const adminClient = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SECRET_KEY!
-  );
+  const adminClient = createAdminClient();
 
   const { error: profileError } = await adminClient
     .from("user_profiles")

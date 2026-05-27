@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
 import { FileText, CheckCircle2, Clock, Loader2, CreditCard } from "lucide-react";
 import {
   GLOBAL_LOADING_MESSAGES,
@@ -78,15 +79,7 @@ function claimedAmount(order: PendingOrder): number {
 function TableSkeleton() {
   return (
     <tbody>
-      {Array.from({ length: 3 }).map((_, i) => (
-        <tr key={i} style={{ borderBottom: "1px solid var(--color-border)" }}>
-          {Array.from({ length: 6 }).map((__, j) => (
-            <td key={j} className="px-5 py-4">
-              <div className="h-4 rounded animate-pulse" style={{ background: "var(--color-border)", width: j === 5 ? "80%" : "65%" }} />
-            </td>
-          ))}
-        </tr>
-      ))}
+      <TableRowsSkeleton rows={3} cols={6} />
     </tbody>
   );
 }

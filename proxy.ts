@@ -23,7 +23,8 @@ function continueTargetFromRequest(request: NextRequest): string | null {
 
 export async function proxy(request: NextRequest) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-    return NextResponse.next({ request });
+    // Fail closed — never bypass auth due to a missing env var.
+    return new NextResponse("Service unavailable: auth is not configured.", { status: 503 });
   }
 
   let supabaseResponse = NextResponse.next({ request });

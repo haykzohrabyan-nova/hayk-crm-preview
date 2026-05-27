@@ -11,6 +11,7 @@ import {
   MobileListCardEmpty,
   TicketListToolbar,
 } from "@/components/ui/mobile-list-card";
+import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import { Zap, ExternalLink } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import {
@@ -490,7 +491,7 @@ export default function OrdersPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <DesktopTableSkeleton cols={11} />
+          <TableDivSkeleton rows={6} cols={11} />
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -524,18 +525,4 @@ export default function OrdersPage() {
   );
 }
 
-// ─── Skeleton ─────────────────────────────────────────────────────────────────
-
-function DesktopTableSkeleton({ cols }: { cols: number }) {
-  return (
-    <div className="animate-pulse">
-      {[...Array(6)].map((_, i) => (
-        <div key={i} className="flex gap-4 px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
-          {[...Array(cols)].map((__, j) => (
-            <div key={j} className="h-4 rounded flex-1" style={{ background: "var(--color-border)" }} />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
+// ─── Skeleton — see components/ui/table-skeleton.tsx ─────────────────────────

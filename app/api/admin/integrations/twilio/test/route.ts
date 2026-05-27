@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
 
   let body: { to: string; channel: "sms" | "whatsapp" };
   try {
-    body = await request.json();
+    body = await request.json().catch(() => ({}));
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }

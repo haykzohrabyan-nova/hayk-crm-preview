@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   const { errorResponse } = await requireAdmin();
   if (errorResponse) return errorResponse;
 
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const { name, display_name } = body;
 
   if (!name || !display_name) {

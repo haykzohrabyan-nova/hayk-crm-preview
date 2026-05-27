@@ -1,6 +1,41 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 26, 2026
-**Status:** MVP complete + performance Phase 3 (page-data, session cache) + form validation UX + follow-up cron code (May 26; auto-schedule pending Vercel Pro).
+**Status:** MVP complete + performance Phase 3 (page-data, session cache) + form validation UX + follow-up cron code (May 26; auto-schedule pending Vercel Pro) + **security & code quality audit (May 26)**.
+
+---
+
+## May 26, 2026 — Security & Code Quality Audit (full codebase)
+
+All fixes are zero-logic-change — behavior is preserved; only security posture, reliability, and code structure improved.
+
+### Security fixes
+- **`proxy.ts`** — fails closed with 503 when `NEXT_PUBLIC_SUPABASE_URL` is missing (was silently bypassing auth)
+- **`lib/supabase/admin.ts`** — `import "server-only"` added; accidental client import now fails at build time
+- **`next.config.ts`** — HTTP security headers added: CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy`, `Permissions-Policy`; also `compress: true` and WebP/AVIF image formats
+- **IDOR fix** — `GET /api/leads/[id]/activities` and `GET /api/activities?lead_id=` / `?ticket_id=` now call `canReadLead()` / `canAccessTicket()` before returning data
+- **Public payment upload** — 10 MB size cap + MIME allowlist (JPEG, PNG, WebP, PDF) checked before `arrayBuffer()` (prevents memory DoS)
+- **`auth/change-password`** — replaced inline `createClient()` with `createAdminClient()` factory
+- **Admin route standardization** — `admin/sessions`, `admin/sessions/health`, `admin/team` switched from `requireSession()` + manual role check to `requireAdmin()` helper
+- **`supabase/migrations/080_restrict_company_settings_rls.sql`** — drops permissive `authenticated_read_company_settings` policy; replaces with public-safe policy + `get_company_remittance_settings()` security-definer function so bank/remittance fields are only accessible via service-role client
+
+### Reliability fixes
+- **PDF routes** — both `GET /api/tickets/[id]/pdf` and `GET /api/public/quotes/[token]/pdf` wrap `renderToBuffer` in try/catch; return clean 500 instead of unhandled crash
+- **`sendQuoteToCustomer`** — now awaited in `POST /api/tickets` (was fire-and-forget; could silently drop on Vercel serverless)
+- **`request.json()`** — added `.catch(() => ({}))` to 21 POST/PATCH route handlers that had bare `await request.json()` calls; malformed JSON now returns 400 instead of unhandled 500
+- **`hvTimerRef` setInterval** — cleanup added to `useEffect` in `quote-detail.tsx` and `new-quote-form.tsx`; prevents state updates on unmounted component
+
+### Performance / loading
+- **`VerifyDrawer`, `AddLeadModal`, `SalesDrawer`** — converted to `next/dynamic` with `{ ssr: false }`, deferring their bundles until first user interaction
+- **`loading.tsx`** skeleton files added for 11 list pages: sales, reports, crm, leads, orders, quotes, payments, completed, activity-log, dashboard, admin
+- **`components/ui/table-skeleton.tsx`** — new shared component with `TableRowsSkeleton` (`<tr>`-based) and `TableDivSkeleton` (div-based); replaces identical inline `TableSkeleton`/`DesktopTableSkeleton` functions that were duplicated across 7 list pages
+- **`app/(app)/error.tsx`** + **`components/layout/error-boundary.tsx`** — React ErrorBoundary wraps page content; runtime JS errors show a "Try again" screen instead of a blank page
+
+### Docs
+- `docs/security.md` — updated to reflect all fixes; removed items from "optional future hardening" that are now done
+- `docs/architecture.md` — updated file tree (new components, `loading.tsx`, `error.tsx`, `next.config.ts`), proxy.ts behavior, dynamic imports, `server-only`
+- `docs/component-architecture.md` — new shared components, anti-pattern rules updated
+- `README.md` — created at project root with local setup instructions
+- `.env.local.example` — Stripe env vars commented out and marked as future enhancement
 
 ---
 

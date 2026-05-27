@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import dynamic from "next/dynamic";
+import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, RefreshCw, X, Clock, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
@@ -21,8 +23,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { StatusPill } from "@/components/ui/status-pill";
-import { VerifyDrawer } from "@/components/leads/verify-drawer";
-import { AddLeadModal } from "@/components/leads/add-lead-modal";
+
+const VerifyDrawer = dynamic(
+  () => import("@/components/leads/verify-drawer").then((m) => ({ default: m.VerifyDrawer })),
+  { ssr: false, loading: () => null },
+);
+const AddLeadModal = dynamic(
+  () => import("@/components/leads/add-lead-modal").then((m) => ({ default: m.AddLeadModal })),
+  { ssr: false, loading: () => null },
+);
 import { Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { formatPhone } from "@/lib/utils/phone";
@@ -189,32 +198,7 @@ function ToastBanner({ message, type, onDismiss }: Toast & { onDismiss: () => vo
   );
 }
 
-// ─── Table skeleton ───────────────────────────────────────────────────────────
-
-function TableSkeleton({ cols }: { cols: number }) {
-  return (
-    <>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <tr
-          key={i}
-          style={{
-            background: i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
-            borderTop: i > 0 ? "1px solid var(--color-border)" : undefined,
-          }}
-        >
-          {Array.from({ length: cols }).map((_, j) => (
-            <td key={j} className="px-3 py-3">
-              <div
-                className="h-4 animate-pulse rounded"
-                style={{ width: j === 0 ? 120 : 80, background: "var(--color-border)" }}
-              />
-            </td>
-          ))}
-        </tr>
-      ))}
-    </>
-  );
-}
+// ─── Table skeleton — see components/ui/table-skeleton.tsx ───────────────────
 
 // ─── Main LeadsPage component ─────────────────────────────────────────────────
 
@@ -653,7 +637,7 @@ export function LeadsPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={10} />
+                  <TableRowsSkeleton cols={10} />
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -887,7 +871,7 @@ export function LeadsPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={7} />
+                  <TableRowsSkeleton cols={7} />
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -1025,7 +1009,7 @@ export function LeadsPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={8} />
+                  <TableRowsSkeleton cols={8} />
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -1167,7 +1151,7 @@ export function LeadsPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableSkeleton cols={6} />
+                  <TableRowsSkeleton cols={6} />
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No rejected leads.</td>

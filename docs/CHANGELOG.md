@@ -3,6 +3,38 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-26] — Security, performance, and code quality audit fixes
+
+### Added
+- `components/layout/error-boundary.tsx` — React ErrorBoundary class component with "Try again" button
+- `app/(app)/error.tsx` — Next.js global client error page for the app route group
+- `components/ui/page-skeleton.tsx` — Shared list-page shimmer skeleton
+- `app/(app)/*/loading.tsx` — loading.tsx skeleton files for sales, reports, crm, leads, orders, quotes, payments, completed, activity-log, dashboard, admin
+- `supabase/migrations/080_restrict_company_settings_rls.sql` — Drop permissive `authenticated_read_company_settings` policy; add public-safe replacement + `get_company_remittance_settings()` security-definer function for bank/remittance fields
+- `README.md` — Project setup, stack overview, and links to key docs
+
+### Changed
+- `proxy.ts` — Fail closed (503) when `NEXT_PUBLIC_SUPABASE_URL` is missing instead of silently passing all requests through unauthenticated
+- `next.config.ts` — Added `compress: true`, `images.formats` (AVIF/WebP), and HTTP security headers (CSP, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy)
+- `lib/supabase/admin.ts` — Added `import "server-only"` to prevent accidental client-side imports
+- `app/api/auth/change-password/route.ts` — Replace inline `createClient()` with `createAdminClient()` factory
+- `app/api/public/quotes/[token]/submit-payment/route.ts` — Added 10 MB file size cap and MIME type allowlist (JPEG, PNG, WebP, PDF) before `arrayBuffer()` call
+- `app/api/leads/[id]/activities/route.ts` — Added `canReadLead()` ownership check (IDOR fix)
+- `app/api/activities/route.ts` — Added `canReadLead()` and `canAccessTicket()` checks for lead_id and ticket_id params (IDOR fix)
+- `app/api/tickets/[id]/pdf/route.ts` — Wrapped `renderToBuffer` in try/catch; returns 500 JSON on failure
+- `app/api/public/quotes/[token]/pdf/route.ts` — Same try/catch for `renderToBuffer`
+- `app/api/tickets/route.ts` — Awaited `sendQuoteToCustomer` (was fire-and-forget, risked silent drop on Vercel)
+- `app/api/admin/team/route.ts`, `admin/sessions/route.ts`, `admin/sessions/health/route.ts` — Replaced `requireSession()` + manual role check with `requireAdmin()` helper
+- `app/(app)/layout.tsx` — Wrapped page content in `<ErrorBoundary>`
+- `components/leads/leads-page.tsx` — `VerifyDrawer` and `AddLeadModal` converted to `next/dynamic` (deferred bundle)
+- `components/sales/sales-page.tsx` — `SalesDrawer` converted to `next/dynamic`
+- `components/quotes/quote-detail.tsx` — Added `useEffect` cleanup for `hvTimerRef` setInterval on unmount
+- `components/quotes/new-quote-form.tsx` — Same `hvTimerRef` cleanup on unmount
+- `app/api/admin/material-groups/route.ts`, `admin/company/route.ts`, `admin/lookups/route.ts`, `admin/materials/route.ts`, `admin/integrations/*/test/route.ts`, `admin/roles/route.ts`, `admin/product-types/route.ts`, `customers/route.ts`, `leads/manual/route.ts` — Added `.catch(() => ({}))` to all bare `request.json()` calls
+- `app/api/leads/[id]/hold/route.ts`, `resume/route.ts`, `reassign/route.ts`, `route.ts` — Same JSON parse safety fix
+- `app/api/admin/material-groups/[id]/route.ts`, `admin/materials/[id]/route.ts`, `admin/product-types/[id]/route.ts`, `admin/lookups/[id]/route.ts`, `customers/[id]/route.ts`, `customers/[id]/merge/route.ts`, `admin/roles/[id]/permissions/route.ts` — Same fix
+- `.env.local.example` — Commented out Stripe env vars and marked as future enhancement
+
 ## [2026-05-26] — Route: Activity Log moves to `/activity-log`
 
 ### Changed

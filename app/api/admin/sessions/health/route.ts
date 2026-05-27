@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { requireSession } from "@/lib/auth/require-session";
+import { requireAdmin } from "@/lib/auth/require-admin";
 
 // GET /api/admin/sessions/health
 // Quick diagnostic — checks that both DB changes from migrations 056 + 057 exist.
 // Admin only.
 
 export async function GET() {
-  const { roleName, errorResponse } = await requireSession();
+  const { errorResponse } = await requireAdmin();
   if (errorResponse) return errorResponse;
-  if (roleName !== "admin") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
 
   const admin = createAdminClient();
   const results: Record<string, { ok: boolean; detail: string }> = {};

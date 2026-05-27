@@ -10,7 +10,7 @@ export async function POST(
   if (errorResponse) return errorResponse;
 
   const { id } = await params;
-  const body = await request.json() as { user_id: string | null; role?: "sdr" | "sales" };
+  const body = await request.json().catch(() => ({})) as { user_id: string | null; role?: "sdr" | "sales" };
   const newUserId = body.user_id ?? null;
   const role = body.role ?? "sdr";
 

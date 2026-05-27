@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
 
   let body: { to_email: string };
   try {
-    body = await request.json();
+    body = await request.json().catch(() => ({}));
   } catch {
     return NextResponse.json({ ok: false, error: "Invalid JSON body." }, { status: 400 });
   }

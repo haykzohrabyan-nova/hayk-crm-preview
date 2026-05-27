@@ -259,6 +259,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [hvModal, setHvModal] = useState(false);
   const [hvCountdown, setHvCountdown] = useState(30);
   const hvTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Clear countdown timer on unmount to prevent state updates on an unmounted component.
+  useEffect(() => () => { if (hvTimerRef.current) clearInterval(hvTimerRef.current); }, []);
   const [convertModal, setConvertModal] = useState<ReturnType<typeof buildAdminConvertPreview> | null>(null);
   const [completeModalBalance, setCompleteModalBalance] = useState<number | null>(null);
   const handleSaveRef = useRef<((newStatus?: string, extraFields?: Record<string, unknown>, opts?: { skipSendValidation?: boolean }) => Promise<void>) | null>(null);

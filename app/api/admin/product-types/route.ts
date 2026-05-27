@@ -40,7 +40,7 @@ export async function POST(request: Request) {
   if (errorResponse) return errorResponse;
 
   const admin = createAdminClient();
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
   const { id, name, default_print_type, sort_order, notes, facility } = body;
 
   if (!id?.trim()) return NextResponse.json({ error: "ID (slug) is required" }, { status: 400 });

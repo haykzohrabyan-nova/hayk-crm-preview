@@ -10,7 +10,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
 
   const { id } = await params;
   const admin = createAdminClient();
-  const body = await request.json();
+  const body = await request.json().catch(() => ({}));
 
   const allowed = ["name", "group_id", "sort_order", "is_active", "facility", "default_unit"];
   const patch: Record<string, unknown> = {};

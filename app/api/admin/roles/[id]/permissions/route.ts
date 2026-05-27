@@ -10,7 +10,7 @@ export async function POST(
   if (errorResponse) return errorResponse;
 
   const { id: role_id } = await params;
-  const { page_id } = await request.json();
+  const { page_id } = await request.json().catch(() => ({}));
 
   if (!page_id) {
     return NextResponse.json({ error: "page_id is required.", code: "VALIDATION_ERROR" }, { status: 400 });
