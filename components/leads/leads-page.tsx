@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, RefreshCw, X, Clock, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
@@ -230,6 +231,7 @@ export function LeadsPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [lookups, setLookups] = useState<LookupMap>({});
+  const lookupsLoadedRef = useRef(false);
 
   // Drawer state
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
@@ -244,6 +246,7 @@ export function LeadsPage() {
   const [reassignLead, setReassignLead] = useState<Lead | null>(null);
   const [reassignUserId, setReassignUserId] = useState<string>("unassign");
   const [reassigning, setReassigning] = useState(false);
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
 
   // Owner filter (SDR users only): "all" = unclaimed + mine, "mine" = only my leads
   const [ownerFilter, setOwnerFilter] = useState<"all" | "mine">("all");
@@ -296,24 +299,31 @@ export function LeadsPage() {
     });
   }, []);
 
-  // Fetch active SDR list (admin only — used by reassign modal)
+  // Fetch active SDR list when admin opens reassign modal
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin || !reassignLead) return;
+    if (sdrList.length > 0) return;
     fetch("/api/admin/users?role=sdr")
       .then((r) => r.json())
       .then((d) => setSdrList(d.users ?? []));
-  }, [isAdmin]);
+  }, [isAdmin, reassignLead, sdrList.length]);
 
   function showToast(message: string, type: "success" | "error" = "success") {
     setToast({ message, type });
   }
 
-  // Load lookups once
+  // Load lookups when Add Lead modal or verify drawer opens (once)
   useEffect(() => {
+    if (!addOpen && !drawerLead) return;
+    if (lookupsLoadedRef.current) return;
+    lookupsLoadedRef.current = true;
     fetch("/api/lookups?categories=source,industry,urgency,hold_reason,reject_reason,route_reason,sales_drop_reason")
       .then((r) => r.json())
-      .then((d) => setLookups(d));
-  }, []);
+      .then((d) => setLookups(d))
+      .catch(() => {
+        lookupsLoadedRef.current = false;
+      });
+  }, [addOpen, drawerLead]);
 
   function selectTab(next: Tab) {
     setActiveTab(next);
@@ -349,9 +359,9 @@ export function LeadsPage() {
 
   // ── Fetch leads ───────────────────────────────────────────────────────────
 
-  const fetchLeads = useCallback(async () => {
+  const fetchPageData = useCallback(async (silent = false) => {
     const generation = ++fetchGenerationRef.current;
-    setLoading(true);
+    if (!silent) setLoading(true);
     const tabConf = TAB_CONFIG.find((t) => t.id === activeTab)!;
     const params = new URLSearchParams();
     if (tabConf.status) params.set("status", tabConf.status);
@@ -361,22 +371,24 @@ export function LeadsPage() {
     if (search) params.set("search", search);
     if (activeTab === "won") params.set("won", "true");
 
-    const res = await fetch(`/api/leads/workspace?${params}`);
+    const res = await fetch(`/api/leads/workspace/page-data?${params}`);
     const data = await res.json();
     if (generation !== fetchGenerationRef.current) return;
 
     let fetched: Lead[] = data.leads ?? [];
-
-    // For "all" tab, filter to active statuses client-side
     if (activeTab === "all" && tabConf.statuses) {
       fetched = fetched.filter((l) => tabConf.statuses!.includes(l.status));
     }
 
     setLeads(fetched);
-    setLoading(false);
+    if (data.counts) setTabCounts(data.counts);
+    if (!silent) setLoading(false);
   }, [activeTab, search]);
 
-  useEffect(() => { fetchLeads(); }, [fetchLeads]);
+  useCoalescedRefresh(fetchPageData, [activeTab, search, drawerLead], {
+    events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
+    enabled: !drawerLead,
+  });
 
   // ── Open drawer ───────────────────────────────────────────────────────────
 
@@ -449,57 +461,7 @@ export function LeadsPage() {
     showToast(newUser ? "Lead reassigned." : "Lead unassigned.");
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-
-  // Tab counts (fetched independently so all tabs show their number upfront)
-  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
-
-  function fetchCounts() {
-    fetch("/api/leads/workspace/counts")
-      .then((r) => r.json())
-      .then((d) => { if (d.counts) setTabCounts(d.counts); });
-  }
-
-  useEffect(() => { fetchCounts(); }, []);
-
-  // Refresh counts whenever the active tab's data reloads or a lead changes
-  useEffect(() => {
-    if (!loading) fetchCounts();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading]);
-
-  // Realtime-driven silent table refresh.
-  // When the sidebar's leads subscription detects any change, this fires and
-  // silently re-fetches the current tab's data without showing the loading skeleton.
-  // If a drawer is open, we skip the refresh to avoid interrupting the user.
-  useEffect(() => {
-    function onLeadsChanged() {
-      if (drawerLead) return;
-      const tabConf = TAB_CONFIG.find((t) => t.id === activeTab);
-      if (!tabConf) return;
-      const params = new URLSearchParams();
-      if (tabConf.status) params.set("status", tabConf.status);
-      if (tabConf.serverStatuses) params.set("statuses", tabConf.serverStatuses.join(","));
-      if (tabConf.routed) params.set("routed", "true");
-      if (tabConf.scope) params.set("scope", tabConf.scope);
-      if (search) params.set("search", search);
-      fetch(`/api/leads/workspace?${params}`)
-        .then((r) => r.json())
-        .then((d) => {
-          let fetched: Lead[] = d.leads ?? [];
-          if (activeTab === "all" && tabConf.statuses) {
-            fetched = fetched.filter((l) => tabConf.statuses!.includes(l.status));
-          }
-          setLeads(fetched);
-        })
-        .catch(() => {});
-      fetchCounts();
-    }
-    window.addEventListener("bazaar:leads-changed", onLeadsChanged);
-    return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
-  }, [drawerLead, activeTab, search]);
-
-  // Tabs
+  // ── Open drawer ───────────────────────────────────────────────────────────
   const TABS: { id: Tab; label: string }[] = [
     { id: "all",      label: "All Leads" },
     { id: "hold",     label: "On Hold" },
@@ -650,7 +612,7 @@ export function LeadsPage() {
           </div>
         )}
 
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={fetchLeads} title="Refresh">
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void fetchPageData(false)} title="Refresh">
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>

@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
-
-// GET /api/completed/counts
-// Returns total count of completed orders for sidebar badge.
+import { fetchCompletedTabCounts } from "@/lib/utils/fetch-completed-data";
 
 export async function GET() {
   const { errorResponse } = await requireSession();
@@ -11,14 +9,11 @@ export async function GET() {
 
   const admin = createAdminClient();
 
-  const { count, error } = await admin
-    .from("job_tickets")
-    .select("id", { count: "exact", head: true })
-    .eq("ticket_status", "completed");
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  try {
+    const counts = await fetchCompletedTabCounts(admin);
+    return NextResponse.json({ counts });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Count query failed.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json({ counts: { completed: count ?? 0 } });
 }

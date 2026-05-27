@@ -130,7 +130,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 
 > **Rule:** Validatable fields in scrollable modals/drawers use `data-field-anchor="…"` on a wrapper `div` and call `scrollToFormField(containerRef, anchor)` when setting an error — so off-screen fields (e.g. Source) are visible after failed submit.
 | `MobileListCard` / `TicketListToolbar` | `components/ui/mobile-list-card.tsx` | Quotes, Orders, In Production, Completed, Payments list pages (mobile card fallback at `< lg`) |
-| `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), Customer Link, Mark Completed, Resend invoice |
+| `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), **Customer Link** + **Copy Link** (two 50/50 buttons; `sent` / `order` / `in_production` / `completed`), Mark Completed, Resend invoice |
 | `DatePicker` | `components/ui/date-picker.tsx` | New Quote form (Due Date field), Quote Detail (Due Date edit), Quote tab (First Reminder date) |
 
 > **Rule:** Every phone or email input in the app **must** use `PhoneInput` or `EmailInput`. Never add a raw `<input type="tel">` or `<input type="email">` in a component.
@@ -185,8 +185,11 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
   └── components/leads/leads-page.tsx  [Client Component "use client"]
         ├── Tabs: All Leads | On Hold | Directed to Sales | Rejected | Won
         ├── Tab state: local useState (not synced to URL)
-        ├── Per-tab API: GET /api/leads/workspace?status=...&scope=... (slim list)
+        ├── Mount: GET /api/leads/workspace/page-data?… → { leads, counts } (one auth pass)
+        ├── Tab switch / lazy tabs: GET /api/leads/workspace?status=...&scope=... (slim list)
+        ├── Lookups / product-types / SDR users: lazy on Add Lead or Reassign open
         ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
+        ├── Refetch: useCoalescedRefresh + bazaar:refresh-counts (counts-only or full page-data)
         ├── Search: client-side filter on fetched data
         ├── Sort: client-side sort by Created or Urgency (column headers on desktop,
         │         cycling pill button on mobile)
@@ -225,8 +228,11 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
   └── components/sales/sales-page.tsx  [Client Component "use client"]
         ├── Tabs: Pipeline | On Hold | Rejected
         ├── Tab state: local useState
-        ├── Per-tab API: GET /api/leads/workspace?status=... (slim list)
+        ├── Mount: GET /api/leads/sales/page-data?tab=… → { leads, counts }
+        ├── Tab switch / lazy tabs: GET /api/leads/workspace?status=... (slim list)
+        ├── Lookups / sales users: lazy on drawer/modal open
         ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
+        ├── Refetch: useCoalescedRefresh + bazaar:refresh-counts
         └── components/sales/sales-drawer.tsx (opens on Claim / Open / View click)
 ```
 
@@ -238,7 +244,7 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 | On Hold | `status=Routed to Sales` | Client-filtered by `sales_status = On Hold` |
 | Rejected | `status=Rejected&prev_status=Routed+to+Sales` | Only leads rejected *from* the sales pipeline; lazy-fetched on first tab open |
 
-**Count badge:** `GET /api/leads/sales-counts` — `rejected` count uses same `prev_status = 'Routed to Sales'` filter so badge matches list.
+**Count badge:** From page-data `counts` on mount; `GET /api/leads/sales-counts` still used for counts-only refresh. `rejected` count uses same `prev_status = 'Routed to Sales'` filter so badge matches list.
 
 **Pipeline / On Hold / Rejected table columns:** Name, Company, **Product Interests** (`ProductName[quantity]`), then tab-specific columns (Phone, Sales Status, Hold Reason, etc.).
 
@@ -257,10 +263,9 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
   └── components/quotes/quotes-page.tsx  [Client Component "use client"]
         ├── Tabs: All | Draft | Sent | Won | Routed to Sales* (count badge on all)
         │         * "Routed to Sales" only visible to Sales + Admin roles
-        ├── Counts: GET /api/tickets/counts
-        ├── Data: GET /api/tickets?kind=quote (slim list — no quote_skus)
-        │         Routed tickets enriched with created_by_name
-        ├── Realtime: bazaar:tickets-changed + bazaar:refresh-counts (sidebar only — no page-level channel)
+        ├── Mount: GET /api/quotes/page-data → { tickets, counts }
+        ├── Realtime: bazaar:tickets-changed + bazaar:refresh-counts (sidebar → useCoalescedRefresh)
+        ├── Slim list — no quote_skus on table rows
         ├── Columns: Contact, Title, Channel, Total, Due Now, Status pill, Follow-up, Created
         ├── Search: client-side filter
         ├── Mobile (< lg): `MobileListCard` per row + `TicketListToolbar`; desktop: table
@@ -276,9 +281,9 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
 app/(app)/orders/page.tsx  [Server Component — thin wrapper]
   └── components/orders/orders-page.tsx  [Client Component "use client"]
         ├── Tabs: All | Pending Payment | In Production | Cancelled (count badge on all; default tab = All; URL `?tab=`)
-        ├── Data: `order` + `in_production` + `cancelled` (includes evidence-pending for ticket owner)
-        ├── Counts: GET /api/tickets/counts (orders, in_production, cancelled)
-        ├── Data: GET /api/orders/orders (scoped slim list — status_label / status_tone from API)
+        ├── Mount: GET /api/orders/page-data → { orders, counts }
+        ├── Slim list from page-data — status_label / status_tone from API
+        ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed
         ├── Columns: Order #, Contact, Title (⚡ Rush), Total, Status pill (from status_label), Payment status pill, Priority, Due Date, Created
         ├── No "New Order" button — orders created only through Quotes flow
         ├── Search: client-side filter
@@ -416,7 +421,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    CustomerInfoCard — if customer/contact exists (lookup labels for industry + quote_source)
         │    DetailQuickActions — all lifecycle actions stacked below card:
         │      Quote: Cancel, Send/Resend Quote, Convert to Order (admin)
-        │      Order: Cancel (admin), Customer Link, Mark Completed, Resend invoice link
+        │      Order+: row 1 Mark Completed | Resend Link; row 2 Customer Link | Copy Link (public `/q/{token}`)
         │
         ├── 2-tab view: Overview | History  (draft edit mode may show full form instead)
         │    Overview tab: context-specific snapshot + read-only line items / pricing / payment config
@@ -650,12 +655,12 @@ On mount:
 
 ---
 
-## Notifications Page — 2 Tabs
+## Notifications Page — Activity Log
 
-`app/(app)/notifications/page.tsx` — client component with tab state.
+`app/(app)/activity-log/page.tsx` — client component with tab state.
 
 ```
-/notifications
+/activity-log
   ├── Tab 1: Order / Lead Activity  → <ActivityLogSection />   (columns: Who | Action | Lead/Customer | Quote/Order | When)
   └── Tab 2: User Activity          → <UserActivitySection />  (session KPIs per user)
 ```

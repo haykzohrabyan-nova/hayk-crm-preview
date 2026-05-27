@@ -5,10 +5,7 @@ import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
 import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-payment";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
-import {
-  QUOTE_LIST_STATUSES,
-  TICKET_QUOTE_LIST_SELECT,
-} from "@/lib/utils/ticket-list-select";
+import { applyTicketScope, fetchQuotesList } from "@/lib/utils/fetch-quotes-data";
 import {
   formatOrderReference,
   formatQuoteReference,
@@ -46,91 +43,44 @@ export async function GET(request: NextRequest) {
   const isQuoteList =
     kind === "quote" && !linkedLeadId && !customerId && !period;
 
-  type ScopeFn = <T extends { or: (filter: string) => T }>(q: T) => T;
-  const applyScope: ScopeFn = (q) => {
-    if (roleName === "admin") return q;
-    if (roleName === "sales" && userId) {
-      return q.or(`created_by_id.eq.${userId},ticket_status.eq.routed`);
-    }
-    if (userId) {
-      return q.or(`created_by_id.eq.${userId},routed_by_id.eq.${userId}`);
-    }
-    return q;
-  };
-
-  let data: Record<string, unknown>[] | null = null;
-  let error: { message: string } | null = null;
-
   if (isQuoteList) {
-    const result = await applyScope(
-      admin
-        .from("job_tickets")
-        .select(TICKET_QUOTE_LIST_SELECT)
-        .eq("ticket_kind", "quote")
-        .in("ticket_status", [...QUOTE_LIST_STATUSES])
-        .order("created_at", { ascending: false }),
-    );
-    data = (result.data as Record<string, unknown>[] | null) ?? null;
-    error = result.error;
-  } else {
-    let q = admin
-      .from("job_tickets")
-      .select(
-        `*,
-         customer:customers(id, first_name, last_name, company, phone, email),
-         lead:leads(id, status, sales_status, urgency, source)`,
-      )
-      .order("created_at", { ascending: false });
-
-    if (kind) q = q.eq("ticket_kind", kind);
-    if (linkedLeadId) q = q.eq("linked_lead_id", linkedLeadId);
-    if (customerId) q = q.eq("customer_id", customerId);
-    if (period) {
-      const days = parseInt(period.replace("d", "")) || 30;
-      const since = new Date(Date.now() - days * 86400_000).toISOString();
-      q = q.gte("created_at", since);
+    try {
+      const tickets = await fetchQuotesList(admin, roleName, userId!, search);
+      return NextResponse.json({ tickets });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Query failed.";
+      return NextResponse.json({ error: message, code: "DB_ERROR" }, { status: 500 });
     }
-
-    const result = await applyScope(q);
-    data = (result.data as Record<string, unknown>[] | null) ?? null;
-    error = result.error;
   }
+
+  type ScopeFn = <T extends { or: (filter: string) => T }>(q: T) => T;
+  const applyScope: ScopeFn = (q) => applyTicketScope(q, roleName, userId);
+
+  let q = admin
+    .from("job_tickets")
+    .select(
+      `*,
+       customer:customers(id, first_name, last_name, company, phone, email),
+       lead:leads(id, status, sales_status, urgency, source)`,
+    )
+    .order("created_at", { ascending: false });
+
+  if (kind) q = q.eq("ticket_kind", kind);
+  if (linkedLeadId) q = q.eq("linked_lead_id", linkedLeadId);
+  if (customerId) q = q.eq("customer_id", customerId);
+  if (period) {
+    const days = parseInt(period.replace("d", "")) || 30;
+    const since = new Date(Date.now() - days * 86400_000).toISOString();
+    q = q.gte("created_at", since);
+  }
+
+  const { data, error } = await applyScope(q);
 
   if (error) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  let tickets = (data ?? []) as Array<Record<string, unknown> & { ticket_status?: string; created_by_id?: string | null; customer?: { first_name?: string | null; last_name?: string | null; company?: string | null } | { first_name?: string | null; last_name?: string | null; company?: string | null }[] | null }>;
-
-  // Enrich routed tickets with the SDR's display name so the UI can show "Routed by <name>"
-  const routedTickets = tickets.filter((t) => t.ticket_status === "routed");
-  if (routedTickets.length > 0) {
-    const creatorIds = [...new Set(routedTickets.map((t) => t.created_by_id).filter(Boolean))];
-    const { data: profiles } = await admin
-      .from("user_profiles")
-      .select("id, full_name")
-      .in("id", creatorIds);
-    const nameMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name ?? "SDR"]));
-    tickets = tickets.map((t) =>
-      t.ticket_status === "routed" && t.created_by_id
-        ? { ...t, created_by_name: nameMap[t.created_by_id] ?? "SDR" }
-        : t
-    );
-  }
-
-  if (search) {
-    tickets = tickets.filter((t) => {
-      const raw = t.customer;
-      const customer = Array.isArray(raw) ? raw[0] : raw;
-      const name = `${customer?.first_name ?? ""} ${customer?.last_name ?? ""}`.toLowerCase();
-      const company = (customer?.company ?? "").toLowerCase();
-      const ref = String(t.reference_code ?? "").toLowerCase();
-      const title = String(t.title ?? "").toLowerCase();
-      return name.includes(search) || company.includes(search) || ref.includes(search) || title.includes(search);
-    });
-  }
-
-  return NextResponse.json({ tickets });
+  return NextResponse.json({ tickets: data ?? [] });
 }
 
 // ─── POST /api/tickets ────────────────────────────────────────────────────────

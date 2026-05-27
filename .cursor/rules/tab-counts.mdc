@@ -11,32 +11,38 @@ Users need to know at a glance how many items are in each section without clicki
 
 ## Pattern Requirements
 
-### 1. API counts endpoint (not derived from loaded data)
-Every page with tabs must have a dedicated counts route that returns all tab counts in one request.
+### 1. API counts (not derived from loaded list rows alone)
+Every tabbed page must expose **all tab counts in one response**. Prefer combined **page-data** on mount (May 2026):
+
+```
+GET /api/leads/sales/page-data?tab=pipeline  → { leads, counts: { pipeline, hold, rejected } }
+GET /api/leads/workspace/page-data?…         → { leads, counts: { all, hold, routed, rejected, won } }
+GET /api/orders/page-data                    → { orders, counts: { … } }
+```
+
+Dedicated counts-only routes remain for lightweight realtime refresh:
 
 ```
 GET /api/leads/sales-counts   → { counts: { pipeline, hold, rejected } }
-GET /api/leads/workspace/counts → { counts: { all, hold, routed, rejected } }
+GET /api/leads/workspace/counts → { counts: { all, hold, routed, rejected, won } }
 ```
 
-The endpoint should use lightweight DB queries (`.select("field", { count: "exact", head: true })` or `.select("status")` with client-side grouping) so it's fast.
+Use lightweight DB queries (`.select("field", { count: "exact", head: true })` or grouped head counts).
 
 ### 2. Fetch counts on mount, not lazily
 ```tsx
-// ✅ GOOD — fetch upfront, show on all tabs
-const [tabCounts, setTabCounts] = useState<Record<string, number> | null>(null);
+// ✅ GOOD — one page-data request returns list + all tab counts
+async function fetchPageData() {
+  const r = await fetch("/api/leads/sales/page-data?tab=" + activeTab);
+  const d = await r.json();
+  if (d.counts) setTabCounts(d.counts);
+  if (d.leads) setLeads(d.leads);
+}
 
-useEffect(() => {
-  function fetchCounts() {
-    fetch("/api/leads/sales-counts")
-      .then(r => r.json())
-      .then(d => { if (d.counts) setTabCounts(d.counts); })
-      .catch(() => {});
-  }
-  fetchCounts();
-  window.addEventListener("bazaar:refresh-counts", fetchCounts);
-  return () => window.removeEventListener("bazaar:refresh-counts", fetchCounts);
-}, []);
+useCoalescedRefresh({
+  onRefresh: fetchPageData, // stable useCallback
+  events: ["bazaar:refresh-counts", "bazaar:leads-changed"],
+});
 
 // ❌ BAD — count only known after clicking the tab
 useEffect(() => {
@@ -78,7 +84,9 @@ window.dispatchEvent(new Event("bazaar:refresh-counts"));
 The sidebar, tab counts, and all pages listen to this event and update immediately.
 
 ## Existing implementations to follow
-- `components/leads/leads-page.tsx` + `app/api/leads/workspace/counts/route.ts`
-- `components/sales/sales-page.tsx` + `app/api/leads/sales-counts/route.ts`
-- `components/orders/production-page.tsx` + `app/api/production/counts/route.ts`
-- `components/orders/payments-page.tsx` + `app/api/payments/counts/route.ts`
+- `components/leads/leads-page.tsx` + `app/api/leads/workspace/page-data/route.ts`
+- `components/sales/sales-page.tsx` + `app/api/leads/sales/page-data/route.ts`
+- `components/orders/orders-page.tsx` + `app/api/orders/page-data/route.ts`
+- `components/quotes/quotes-page.tsx` + `app/api/quotes/page-data/route.ts`
+- `components/orders/payments-page.tsx` + `app/api/payments/page-data/route.ts`
+- `hooks/use-coalesced-refresh.ts` — debounced mount + realtime refetch

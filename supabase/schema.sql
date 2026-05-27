@@ -1026,7 +1026,7 @@ insert into public.pages (route, display_name, icon, section, sort_order) values
   ('/quotes',                       'Quoted Requests',      'MessageSquareQuote','main',      5),
   ('/orders',                       'Orders',               'ClipboardList',     'main',      6),
   ('/completed',                    'Completed',            'PackageCheck',      'main',      7),
-  ('/notifications',                'Notifications',        'Bell',              'main',      8),
+  ('/activity-log',                 'Activity Log',         'ClipboardList',     'main',      8),
   ('/reports',                      'Reports',              'BarChart3',         'main',      9),
   -- Admin sidebar entry
   ('/admin',                        'Admin Panel',          'ShieldCheck',       'admin',     0),
@@ -1050,7 +1050,7 @@ on conflict (route) do nothing;
 -- =============================================================================
 -- 13. SEED — ROLE PERMISSIONS
 -- =============================================================================
--- Note: /quotes, /orders, /notifications were added to nav after initial
+-- Note: /quotes, /orders, /activity-log were added to nav after initial
 -- permissions seeding and were never explicitly granted to SDR/Sales.
 -- Admin gets all pages automatically.
 

@@ -3,10 +3,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { processDueQuoteFollowUps } from "@/lib/utils/process-due-follow-ups";
 
 /**
- * Vercel Cron — automated quote follow-up reminders.
+ * Quote follow-up processor — manual trigger or Vercel Cron (Pro).
  *
- * Schedule: see `vercel.json` (default daily 2pm UTC).
+ * Schedule: see `vercel.json` (daily 2pm UTC when Pro is enabled).
  * Auth: `Authorization: Bearer ${CRON_SECRET}` (set in Vercel env vars).
+ *
+ * On Vercel Hobby: cron does not auto-run — call this URL manually or via external scheduler.
+ * See `docs/cron-follow-ups.md`.
  *
  * Manual test (local):
  *   curl -H "Authorization: Bearer $CRON_SECRET" http://localhost:3000/api/cron/follow-ups

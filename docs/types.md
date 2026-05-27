@@ -676,7 +676,7 @@ export interface TicketForm {
 | `scrollToFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll a `[data-field-anchor="…"]` wrapper into view and focus its control |
 | `scrollToFirstFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll to the first error in a priority-ordered list (New Quote tab validation) |
 | `buildInitialFollowUpSchedule()` | `lib/utils/follow-up-schedule.ts` | Seed `follow_up_at` when a quote is sent |
-| `processDueQuoteFollowUps()` | `lib/utils/process-due-follow-ups.ts` | Cron job — send due quote follow-up reminders |
+| `processDueQuoteFollowUps()` | `lib/utils/process-due-follow-ups.ts` | Process due quote follow-ups (manual `GET /api/cron/follow-ups` or Vercel Cron on Pro) |
 | `formatLeadProductInterests()` | `lib/utils/format-lead-product-interests.ts` | List display: `Booklets[1111], Labels[500]` |
 
 ### Field validation UX (May 2026)
@@ -689,6 +689,23 @@ When a required or invalid field fails validation:
 Applies to: **Add Lead modal**, **Verify drawer**, **Edit Customer modal**, **New Quote form** (all tabs).
 
 Markup pattern: wrap each validatable field in `<div data-field-anchor="source">` (or `phone`, `firstName`, `customerSource`, `title`, etc.) inside the scrollable form container.
+
+---
+
+## Performance helpers (list pages — May 2026)
+
+| Helper | Module | Purpose |
+|--------|--------|---------|
+| `useCoalescedRefresh()` | `hooks/use-coalesced-refresh.ts` | Debounce mount + `bazaar:*-changed` refetch; pass stable refresh callback |
+| `getCachedSession()` / `setCachedSession()` | `lib/auth/session-cache.ts` | In-process ~3 s memoization inside `requireSession()` |
+| `fetchProductionOrders()` / `fetchProductionTabCounts()` | `lib/utils/fetch-production-data.ts` | Production list + counts (page-data route) |
+| `fetchOrdersList()` / `fetchOrdersTabCounts()` | `lib/utils/fetch-orders-data.ts` | Orders list + tab counts |
+| `fetchQuotesList()` / `fetchQuotesTabCounts()` | `lib/utils/fetch-quotes-data.ts` | Quotes list + quote-stage counts |
+| `fetchPendingPaymentOrders()` | `lib/utils/fetch-payments-data.ts` | Payments pending evidence list |
+| `fetchCompletedOrders()` / `fetchCompletedTabCounts()` | `lib/utils/fetch-completed-data.ts` | Completed list + counts |
+| `fetchLeadsWorkspace()` / `fetchLeadsWorkspaceTabCounts()` / `fetchLeadsSalesTabCounts()` | `lib/utils/leads-workspace-query.ts` | Leads/sales workspace list + tab counts |
+| `fetchSidebarCounts()` | `lib/utils/sidebar-counts-query.ts` | Role-scoped sidebar badges (`?routes=`) |
+| `copyTextToClipboard()` / `publicQuoteUrl()` | `lib/utils/copy-to-clipboard.ts` | **Copy Link** button + public portal URL on quote/order detail |
 
 ---
 

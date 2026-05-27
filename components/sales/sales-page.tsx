@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { Search, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -116,11 +117,8 @@ function TableSkeleton({ cols }: { cols: number }) {
 
 export function SalesPage() {
   const [activeTab, setActiveTab] = useState<Tab>("pipeline");
-  const [routedLeads, setRoutedLeads] = useState<Lead[]>([]);
-  const [rejectedLeads, setRejectedLeads] = useState<Lead[]>([]);
-  const [rejectedFetched, setRejectedFetched] = useState(false);
+  const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [rejLoading, setRejLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [toast, setToast] = useState<Toast | null>(null);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
@@ -136,13 +134,20 @@ export function SalesPage() {
   const [reassignSalesUserId, setReassignSalesUserId] = useState<string>("unassign");
   const [reassigning, setReassigning] = useState(false);
   const [lookups, setLookups] = useState<LookupMap>({});
+  const lookupsLoadedRef = useRef(false);
 
-  // Load dropdown options from DB once on mount
+  // Load dropdown options when drawer or reassign modal opens (once)
   useEffect(() => {
+    if (!drawerLead && !reassignLead) return;
+    if (lookupsLoadedRef.current) return;
+    lookupsLoadedRef.current = true;
     fetch("/api/lookups?categories=source,industry,urgency,hold_reason,reject_reason,route_reason,sales_drop_reason")
       .then((r) => r.json())
-      .then((d) => setLookups(d));
-  }, []);
+      .then((d) => setLookups(d))
+      .catch(() => {
+        lookupsLoadedRef.current = false;
+      });
+  }, [drawerLead, reassignLead]);
 
   // Get current userId and role for ownership display and admin view access
   useEffect(() => {
@@ -162,50 +167,45 @@ export function SalesPage() {
     });
   }, []);
 
-  // Fetch active Sales user list (admin only — used by reassign modal)
+  // Fetch active Sales user list when admin opens reassign modal
   useEffect(() => {
-    if (!isAdmin) return;
+    if (!isAdmin || !reassignLead) return;
+    if (salesUserList.length > 0) return;
     fetch("/api/admin/users?role=sales")
       .then((r) => r.json())
       .then((d) => setSalesUserList(d.users ?? []));
-  }, [isAdmin]);
+  }, [isAdmin, reassignLead, salesUserList.length]);
 
-  // Fetch tab counts upfront so all badges are visible before clicking
-  function fetchTabCounts() {
-    fetch("/api/leads/sales-counts")
-      .then((r) => r.json())
-      .then((d) => { if (d.counts) setTabCounts(d.counts); })
-      .catch(() => {});
-  }
+  const fetchPageData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
+    const params = new URLSearchParams({ tab: activeTab });
+    if (search) params.set("search", search);
 
-  useEffect(() => {
-    fetchTabCounts();
-    window.addEventListener("bazaar:refresh-counts", fetchTabCounts);
-    return () => window.removeEventListener("bazaar:refresh-counts", fetchTabCounts);
-  }, []);
+    const res = await fetch(`/api/leads/sales/page-data?${params}`);
+    const data = await res.json();
+    if (data.leads) setLeads(data.leads);
+    if (data.counts) setTabCounts(data.counts);
+    if (!silent) setLoading(false);
+  }, [activeTab, search]);
 
-  // Realtime-driven table refresh — triggered by sidebar's leads subscription.
-  // If the sales drawer is open (user is actively working a lead), the refresh is
-  // deferred until the drawer closes to avoid interrupting their session.
+  useCoalescedRefresh(fetchPageData, [activeTab, search, drawerLead], {
+    events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
+    enabled: !drawerLead,
+  });
+
+  // Defer refresh while drawer is open; run when drawer closes
   const pendingLeadsRefresh = useRef(false);
 
   useEffect(() => {
-    function onLeadsChanged() {
-      if (drawerLead) {
-        // Drawer is open — defer refresh until it closes
-        pendingLeadsRefresh.current = true;
-      } else {
-        // Silent re-fetch: update table without showing the loading skeleton
-        fetch("/api/leads/workspace?status=Routed+to+Sales")
-          .then((r) => r.json())
-          .then((d) => { setRoutedLeads(d.leads ?? []); })
-          .catch(() => {});
-        fetchTabCounts();
-      }
+    if (drawerLead) {
+      pendingLeadsRefresh.current = true;
+      return;
     }
-    window.addEventListener("bazaar:leads-changed", onLeadsChanged);
-    return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
-  }, [drawerLead]);
+    if (pendingLeadsRefresh.current) {
+      pendingLeadsRefresh.current = false;
+      void fetchPageData(true);
+    }
+  }, [drawerLead, fetchPageData]);
 
   function showToast(message: string, type: "success" | "error" = "success") {
     setToast({ message, type });
@@ -223,56 +223,15 @@ export function SalesPage() {
     const data = await res.json();
     setReassigning(false);
     if (!res.ok) { showToast(data.error ?? "Failed to reassign.", "error"); return; }
-    setRoutedLeads((prev) => prev.map((l) => l.id === data.lead.id ? data.lead : l));
+    setLeads((prev) => prev.map((l) => l.id === data.lead.id ? data.lead : l));
     window.dispatchEvent(new Event("bazaar:refresh-counts"));
     setReassignLead(null);
     showToast(newUser ? "Sales rep reassigned." : "Sales rep unassigned.");
   }
 
-  const fetchRoutedLeads = useCallback(async () => {
-    setLoading(true);
-    const res = await fetch("/api/leads/workspace?status=Routed+to+Sales");
-    const data = await res.json();
-    setRoutedLeads(data.leads ?? []);
-    setLoading(false);
-  }, []);
-
-  const fetchRejectedLeads = useCallback(async () => {
-    setRejLoading(true);
-    const res = await fetch("/api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales");
-    const data = await res.json();
-    setRejectedLeads(data.leads ?? []);
-    setRejLoading(false);
-    setRejectedFetched(true);
-  }, []);
-
-  useEffect(() => {
-    fetchRoutedLeads();
-  }, [fetchRoutedLeads]);
-
-  // Lazy-fetch rejected leads when that tab is first opened
-  useEffect(() => {
-    if (activeTab === "rejected" && !rejectedFetched) {
-      fetchRejectedLeads();
-    }
-  }, [activeTab, rejectedFetched, fetchRejectedLeads]);
-
-  // ── Derived lists per tab ─────────────────────────────────────────────────
-
   const q = search.toLowerCase();
-
-  const pipelineLeads = routedLeads
-    .filter((l) => l.sales_status === "Ongoing" || l.sales_status === "Quote Sent" || l.sales_status === null)
-    .filter((l) => !q || matchesSearch(l, q));
-
-  const holdLeads = routedLeads
-    .filter((l) => l.sales_status === "On Hold")
-    .filter((l) => !q || matchesSearch(l, q));
-
-  const rejLeads = rejectedLeads.filter((l) => !q || matchesSearch(l, q));
-
-  const activeLeads = activeTab === "pipeline" ? pipelineLeads : activeTab === "hold" ? holdLeads : rejLeads;
-  const isLoading = activeTab === "rejected" ? rejLoading : loading;
+  const activeLeads = leads.filter((l) => !q || matchesSearch(l, q));
+  const isLoading = loading;
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -285,7 +244,7 @@ export function SalesPage() {
       showToast(data.error ?? "Failed to claim.", "error");
       return;
     }
-    setRoutedLeads((prev) => prev.map((l) => (l.id === lead.id ? data.lead : l)));
+    setLeads((prev) => prev.map((l) => (l.id === lead.id ? data.lead : l)));
     showToast("Lead claimed.");
     // Open the modal immediately after claiming — assignment is already persisted in DB
     await handleOpenLead(data.lead);
@@ -324,29 +283,23 @@ export function SalesPage() {
     const data = await res.json();
     setResumingId(null);
     if (!res.ok) { showToast(data.error ?? "Failed to resume.", "error"); return; }
-    setRoutedLeads((prev) => prev.map((l) => (l.id === lead.id ? data.lead : l)));
+    setLeads((prev) => prev.map((l) => (l.id === lead.id ? data.lead : l)));
     showToast("Lead resumed.");
   }
 
   function handleRefresh() {
-    fetchRoutedLeads();
-    fetchTabCounts();
-    if (activeTab === "rejected") {
-      setRejectedFetched(false);
-      fetchRejectedLeads();
-    }
+    void fetchPageData(false);
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
   }
 
   // ── Drawer callbacks ──────────────────────────────────────────────────────
 
   function handleLeadUpdated(updated: Lead) {
-    setRoutedLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
-    setRejectedLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
+    setLeads((prev) => prev.map((l) => (l.id === updated.id ? updated : l)));
   }
 
   function handleLeadRemoved(leadId: string) {
-    setRoutedLeads((prev) => prev.filter((l) => l.id !== leadId));
-    setRejectedLeads((prev) => prev.filter((l) => l.id !== leadId));
+    setLeads((prev) => prev.filter((l) => l.id !== leadId));
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -354,9 +307,9 @@ export function SalesPage() {
   // ─────────────────────────────────────────────────────────────────────────
 
   const TABS: { id: Tab; label: string; count: number }[] = [
-    { id: "pipeline", label: "Pipeline", count: tabCounts?.pipeline ?? pipelineLeads.length },
-    { id: "hold", label: "On Hold", count: tabCounts?.hold ?? holdLeads.length },
-    { id: "rejected", label: "Rejected", count: tabCounts?.rejected ?? rejLeads.length },
+    { id: "pipeline", label: "Pipeline", count: tabCounts?.pipeline ?? 0 },
+    { id: "hold", label: "On Hold", count: tabCounts?.hold ?? 0 },
+    { id: "rejected", label: "Rejected", count: tabCounts?.rejected ?? 0 },
   ];
 
   function ownerLabel(lead: Lead): string {
@@ -437,14 +390,14 @@ export function SalesPage() {
               <tbody>
                 {loading ? (
                   <TableSkeleton cols={9} />
-                ) : pipelineLeads.length === 0 ? (
+                ) : activeLeads.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads in pipeline.
                     </td>
                   </tr>
                 ) : (
-                  pipelineLeads.map((lead, idx) => (
+                  activeLeads.map((lead, idx) => (
                     <tr
                       key={lead.id}
                       className="transition-colors"
@@ -539,12 +492,12 @@ export function SalesPage() {
                   <div className="h-3 w-24 rounded" style={{ background: "var(--color-border)" }} />
                 </div>
               ))
-            ) : pipelineLeads.length === 0 ? (
+            ) : activeLeads.length === 0 ? (
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
                 No leads in pipeline.
               </div>
             ) : (
-              pipelineLeads.map((lead) => (
+              activeLeads.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -625,14 +578,14 @@ export function SalesPage() {
               <tbody>
                 {loading ? (
                   <TableSkeleton cols={7} />
-                ) : holdLeads.length === 0 ? (
+                ) : activeLeads.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads on hold.
                     </td>
                   </tr>
                 ) : (
-                  holdLeads.map((lead, idx) => (
+                  activeLeads.map((lead, idx) => (
                     <tr
                       key={lead.id}
                       className="transition-colors"
@@ -696,12 +649,12 @@ export function SalesPage() {
                   <div className="h-4 w-32 rounded" style={{ background: "var(--color-border)" }} />
                 </div>
               ))
-            ) : holdLeads.length === 0 ? (
+            ) : activeLeads.length === 0 ? (
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
                 No leads on hold.
               </div>
             ) : (
-              holdLeads.map((lead) => (
+              activeLeads.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{leadName(lead)}</p>
@@ -755,16 +708,16 @@ export function SalesPage() {
                 </tr>
               </thead>
               <tbody>
-                {rejLoading ? (
+                {isLoading ? (
                   <TableSkeleton cols={7} />
-                ) : rejLeads.length === 0 ? (
+                ) : activeLeads.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No rejected leads.
                     </td>
                   </tr>
                 ) : (
-                  rejLeads.map((lead, idx) => (
+                  activeLeads.map((lead, idx) => (
                     <tr
                       key={lead.id}
                       className="transition-colors"
@@ -814,18 +767,18 @@ export function SalesPage() {
 
           {/* Mobile: rejected cards */}
           <div className="flex flex-col gap-3 lg:hidden">
-            {rejLoading ? (
+            {isLoading ? (
               Array.from({ length: 3 }).map((_, i) => (
                 <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="h-4 w-32 rounded" style={{ background: "var(--color-border)" }} />
                 </div>
               ))
-            ) : rejLeads.length === 0 ? (
+            ) : activeLeads.length === 0 ? (
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
                 No rejected leads.
               </div>
             ) : (
-              rejLeads.map((lead) => (
+              activeLeads.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{leadName(lead)}</p>
@@ -915,12 +868,6 @@ export function SalesPage() {
             setDrawerLead(null);
             setDrawerReadOnly(false);
             setDrawerLockedBy(null);
-            // Flush any Realtime-triggered refresh that was deferred while drawer was open
-            if (pendingLeadsRefresh.current) {
-              pendingLeadsRefresh.current = false;
-              fetchRoutedLeads();
-              fetchTabCounts();
-            }
           }}
           onLeadUpdated={handleLeadUpdated}
           onLeadRemoved={handleLeadRemoved}

@@ -3,6 +3,11 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { isMfaRequired } from "@/lib/auth/mfa-required";
 import {
+  buildSessionCacheKey,
+  getCachedSession,
+  setCachedSession,
+} from "@/lib/auth/session-cache";
+import {
   hasValidMfaTrustFromCookieValue,
   MFA_TRUST_COOKIE,
 } from "@/lib/auth/mfa-trust";
@@ -21,6 +26,13 @@ export async function requireSession(
 ): Promise<SessionResult> {
   const requireMfa = options?.requireMfa !== false;
   const cookieStore = await cookies();
+  const allCookies = cookieStore.getAll();
+  const cacheKey = buildSessionCacheKey(allCookies);
+
+  const cached = getCachedSession(cacheKey);
+  if (cached) {
+    return cached;
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -88,5 +100,7 @@ export async function requireSession(
     }
   }
 
-  return { userId: user.id, roleName, errorResponse: null };
+  const success = { userId: user.id, roleName, errorResponse: null } as const;
+  setCachedSession(cacheKey, success);
+  return success;
 }

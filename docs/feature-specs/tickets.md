@@ -180,7 +180,7 @@ All post-draft detail routes share the **overview layout** (`isOverviewLayout`):
 | `ticket-overview-sections.tsx` | Line items, pricing, payment config (read-only) |
 | `history-section.tsx` | Full activity trail |
 
-**Customer link** (sent quotes / orders with `public_token`): **Customer Link** + **Copy Link** in `DetailQuickActions` — opens `/q/{token}` in new tab; copy with **Copied!** feedback.
+**Customer link** (when `public_token` is set): **Customer Link** + **Copy Link** as two 50/50 buttons on their own row in `DetailQuickActions` — opens `/q/{token}` in new tab; copy with **Copied!** feedback. Shown for `sent`, `order`, `in_production`, and `completed` (balance payments on public portal).
 
 **Global loading:** slow PATCH/POST actions use `useGlobalLoading()` full-screen overlay (send quote, convert, confirm payment, etc.).
 
@@ -319,7 +319,12 @@ When blocked, an amber banner lists missing fields (e.g. Title, Due date, line i
 
 ### Automated quote follow-ups (cron)
 
-When **Quote follow-up schedule** is enabled on the Quote tab and the quote is **sent**, the server seeds `follow_up_at` and `follow_up_cycles`. A **Vercel Cron** job (`GET /api/cron/follow-ups`, daily) sends short email/SMS reminders until the customer confirms or cycles are exhausted. Setup: **`docs/cron-follow-ups.md`**.
+When **Quote follow-up schedule** is enabled on the Quote tab and the quote is **sent**, the server seeds `follow_up_at` and `follow_up_cycles`.
+
+**Sending reminders:**
+- **Code:** `GET /api/cron/follow-ups` processes due quotes and sends short email/SMS reminders until the customer confirms or cycles are exhausted.
+- **Automatic (daily):** requires **Vercel Pro** — `vercel.json` cron schedule.
+- **Hobby / free (current):** cron does not auto-run; trigger manually or use an external scheduler — **`docs/cron-follow-ups.md`**.
 
 **Receipt ID:** digits only — `inputMode="numeric"`, non-digit characters stripped on input; validation rejects non-numeric values.
 
@@ -411,14 +416,17 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 | Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead Won until production |
 | Cancel Ticket | non-locked only | `PATCH → ticket_status = 'cancelled'` |
 
-**Order / production stage (same sidebar block):**
+**Order / production / completed stage (same sidebar block):**
 
 | Action | Condition |
 |--------|-----------|
-| Customer Link + Copy Link | `public_token` set; sent quote or order |
+| Customer Link | `public_token` set; status `sent`, `order`, `in_production`, or `completed` — opens `/q/{token}` in new tab |
+| Copy Link | Same conditions — copies public URL to clipboard |
 | Mark Completed | `in_production`; admin always; accountant only if paid in full |
 | Resend invoice link | `in_production` or `completed`; sends via ticket outreach channel |
 | Cancel Ticket | Admin only; `ticket_status = 'order'` |
+
+Layout: row 1 — **Mark Completed** | **Resend Link** (when applicable); row 2 — **Customer Link** | **Copy Link** (50/50 width on mobile).
 
 Long-running actions (send, convert, complete, confirm payment) show the **global loading overlay** (`useGlobalLoading()` — see `components/layout/global-loading-provider.tsx`).
 

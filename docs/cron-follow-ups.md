@@ -2,7 +2,19 @@
 
 Automated reminders for **sent quotes** where the customer has not confirmed yet.
 
-**Status:** Built (TODO-006)
+**Status:** **Code built** — **automatic schedule not live yet**
+
+| Layer | Status |
+|-------|--------|
+| Quote tab settings + DB fields | ✅ Live |
+| Schedule seeded when quote is sent | ✅ Live |
+| `GET /api/cron/follow-ups` + send logic | ✅ Deployed |
+| **`CRON_SECRET` in Vercel** | ✅ Can add now (safe on Hobby — does not break the app) |
+| **Vercel Cron auto-runs daily** | ⏳ **Requires Vercel Pro** — production is currently on **Hobby (free)** |
+
+Until you upgrade to Pro, reminders are **not sent automatically**. Use **manual trigger** (below) or an external scheduler. The rest of the CRM is unaffected.
+
+**Tracking:** TODO-006 in `docs/TODO.md`
 
 ---
 
@@ -60,11 +72,20 @@ Already configured in `vercel.json`:
 }
 ```
 
-Vercel automatically calls `GET /api/cron/follow-ups` with:
+Vercel **would** automatically call `GET /api/cron/follow-ups` with:
 
 `Authorization: Bearer <CRON_SECRET>`
 
-**Note:** Cron jobs require a **Vercel Pro** plan (or higher) on the production deployment. On Hobby, use manual curl (below) or an external scheduler.
+### Hobby (free) vs Pro
+
+| Plan | What happens |
+|------|----------------|
+| **Hobby (free)** — *current production* | Cron schedule in `vercel.json` is **ignored**. No automatic runs. App works normally. |
+| **Pro (or higher)** | Vercel runs the job daily on production. |
+
+**On Hobby today:** set `CRON_SECRET` anyway (for manual tests), then trigger reminders yourself — see **Manual trigger (production)** below.
+
+Adding `CRON_SECRET` and deploying **does not error** the application. Only the cron URL uses that variable.
 
 ### 4. Messaging credentials
 
@@ -72,6 +93,19 @@ Same as quote send — must be set in Vercel env:
 
 - **Email:** `INSTANTLY_API_KEY`, `INSTANTLY_SENDING_ACCOUNT`
 - **SMS:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER`
+
+---
+
+## Manual trigger (production on Hobby)
+
+After deploy, with `CRON_SECRET` set in Vercel:
+
+```bash
+curl -s -H "Authorization: Bearer YOUR_CRON_SECRET" \
+  https://YOUR-PRODUCTION-DOMAIN.vercel.app/api/cron/follow-ups
+```
+
+Run this when you want due follow-ups processed (e.g. once each morning). Optional: use [cron-job.org](https://cron-job.org) or similar to hit the same URL on a schedule without Vercel Pro.
 
 ---
 
@@ -136,7 +170,8 @@ Disabled automatically for **Full payment upfront** strategy (no reminders neede
 
 | Symptom | Check |
 |---------|--------|
-| Cron never runs | Vercel plan supports crons; `vercel.json` deployed; Production deployment |
+| Cron never runs automatically | **Expected on Hobby** — upgrade to Vercel Pro or use manual curl / external scheduler |
+| Cron never runs on Pro | `vercel.json` deployed; Production deployment; Cron tab in Vercel dashboard |
 | `401 Unauthorized` | `CRON_SECRET` matches in Vercel env |
 | `500 CRON_SECRET is not configured` | Env var missing on that deployment |
 | `sent: 0`, tickets expected | Quote must be `sent`, follow-up enabled, not confirmed; `follow_up_at` due or `quote_reminder_date` set |

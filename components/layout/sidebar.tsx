@@ -220,13 +220,14 @@ export function Sidebar() {
     loadNav();
   }, []);
 
-  // Fetch sidebar badge counts — initial load + Realtime-driven refresh.
-  // Channels are created AFTER getSession() resolves so the JWT is guaranteed
-  // to be present when the WebSocket handshake happens. createBrowserClient is a
-  // singleton, so the same auth state is shared across all createClient() calls.
+  // Fetch sidebar badge counts — scoped to visible nav routes only.
   useEffect(() => {
+    const visibleRoutes = sections.flatMap((s) => s.pages.map((p) => p.route));
+    if (visibleRoutes.length === 0) return;
+
     function fetchBadges() {
-      fetch("/api/sidebar-counts")
+      const routes = encodeURIComponent(visibleRoutes.join(","));
+      fetch(`/api/sidebar-counts?routes=${routes}`)
         .then((r) => r.json())
         .then((d) => { if (d.counts) setBadgeCounts(d.counts); })
         .catch(() => {});
@@ -242,6 +243,14 @@ export function Sidebar() {
     fetchBadges();
     window.addEventListener("bazaar:refresh-counts", debouncedFetchBadges);
 
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      window.removeEventListener("bazaar:refresh-counts", debouncedFetchBadges);
+    };
+  }, [sections]);
+
+  // Realtime subscriptions — badge refresh via bazaar:refresh-counts event.
+  useEffect(() => {
     const supabase = createClient();
     let cancelled = false;
 
@@ -255,7 +264,6 @@ export function Sidebar() {
 
       console.log("[Realtime] session ready, opening channels uid=", session.user.id);
 
-      // Leads: any INSERT/UPDATE/DELETE triggers badge refresh + silent table re-fetch
       const leadsChannel = supabase
         .channel("leads-realtime")
         .on(
@@ -263,7 +271,7 @@ export function Sidebar() {
           { event: "*", schema: "public", table: "leads" },
           (payload) => {
             console.log("[Realtime] leads event:", payload.eventType, payload);
-            debouncedFetchBadges();
+            window.dispatchEvent(new Event("bazaar:refresh-counts"));
             window.dispatchEvent(new Event("bazaar:leads-changed"));
           }
         )
@@ -271,8 +279,6 @@ export function Sidebar() {
           console.log("[Realtime] leads-realtime status:", status, err ?? "");
         });
 
-      // Tickets (Quotes + Orders): any change triggers badge refresh + silent re-fetch
-      // on both /quotes and /orders pages via the "bazaar:tickets-changed" event.
       const ticketsChannel = supabase
         .channel("tickets-realtime")
         .on(
@@ -280,7 +286,7 @@ export function Sidebar() {
           { event: "*", schema: "public", table: "job_tickets" },
           (payload) => {
             console.log("[Realtime] tickets event:", payload.eventType, payload);
-            debouncedFetchBadges();
+            window.dispatchEvent(new Event("bazaar:refresh-counts"));
             window.dispatchEvent(new Event("bazaar:tickets-changed"));
           }
         )
@@ -288,7 +294,6 @@ export function Sidebar() {
           console.log("[Realtime] tickets-realtime status:", status, err ?? "");
         });
 
-      // Activities: new rows signal the admin activity log to refresh
       const activitiesChannel = supabase
         .channel("activities-realtime")
         .on(
@@ -303,7 +308,6 @@ export function Sidebar() {
           console.log("[Realtime] activities-realtime status:", status, err ?? "");
         });
 
-      // Store refs on the supabase instance for cleanup
       (supabase as unknown as Record<string, unknown>)["_sidebarLeadsCh"] = leadsChannel;
       (supabase as unknown as Record<string, unknown>)["_sidebarTicketsCh"] = ticketsChannel;
       (supabase as unknown as Record<string, unknown>)["_sidebarActivitiesCh"] = activitiesChannel;
@@ -311,9 +315,6 @@ export function Sidebar() {
 
     return () => {
       cancelled = true;
-      if (debounceTimer) clearTimeout(debounceTimer);
-      window.removeEventListener("bazaar:refresh-counts", debouncedFetchBadges);
-      // Clean up channels if they were created
       const refs = supabase as unknown as Record<string, unknown>;
       if (refs["_sidebarLeadsCh"]) {
         supabase.removeChannel(refs["_sidebarLeadsCh"] as Parameters<typeof supabase.removeChannel>[0]);

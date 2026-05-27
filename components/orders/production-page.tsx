@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Zap, ExternalLink } from "lucide-react";
+import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import {
   MobileListCard,
   MobileListCardRow,
@@ -184,49 +185,21 @@ export function ProductionPage() {
   const [tab, setTab]           = useState<Tab>("all");
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
 
-  const fetchCounts = useCallback(() => {
-    fetch("/api/production/counts")
-      .then((r) => r.json())
-      .then((d) => { if (d.counts) setTabCounts(d.counts); })
-      .catch(() => {});
-  }, []);
-
-  const fetchOrders = useCallback((silent = false) => {
+  const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    fetch("/api/production/orders")
+    fetch("/api/production/page-data")
       .then((r) => r.json())
-      .then((d) => { if (d.orders) setOrders(d.orders); })
+      .then((d) => {
+        if (d.orders) setOrders(d.orders);
+        if (d.counts) setTabCounts(d.counts);
+      })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
   }, []);
 
-  // Coalesce mount + realtime refetches (React Strict Mode fires effects twice in dev).
-  useEffect(() => {
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function scheduleRefresh(silent: boolean) {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        fetchOrders(silent);
-        fetchCounts();
-      }, silent ? 300 : 50);
-    }
-
-    scheduleRefresh(false);
-
-    function onChanged() {
-      scheduleRefresh(true);
-    }
-
-    window.addEventListener("bazaar:tickets-changed", onChanged);
-    window.addEventListener("bazaar:refresh-counts", onChanged);
-
-    return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      window.removeEventListener("bazaar:tickets-changed", onChanged);
-      window.removeEventListener("bazaar:refresh-counts", onChanged);
-    };
-  }, [fetchOrders, fetchCounts]);
+  useCoalescedRefresh(fetchPageData, [], {
+    events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
+  });
 
   // ─── Filter ─────────────────────────────────────────────────────────────
 

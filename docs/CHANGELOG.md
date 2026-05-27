@@ -3,18 +3,72 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
-## [2026-05-26] — Quote follow-up reminder cron (TODO-006)
+## [2026-05-26] — Route: Activity Log moves to `/activity-log`
+
+### Changed
+- Activity Log page → **`/activity-log`** (was `/notifications`); **`/notifications`** redirects and stays free for future notification bell
+- Nav label **Activity Log** + `ClipboardList` icon (replacing "Notifications" + bell)
+- `supabase/migrations/079_rename_notifications_nav_activity_log.sql` — updates `pages.route`, display name, and icon
+- `app/(app)/activity-log/page.tsx` — main page; `app/(app)/notifications/page.tsx` — legacy redirect
+- `docs/navigation.md`, `docs/feature-specs/notifications.md`, and related docs
+
+## [2026-05-26] — Docs: performance Phase 3, customer link, leads loop fix
+
+### Changed
+- `docs/architecture.md`, `docs/session-summary.md`, `docs/types.md`, `docs/component-architecture.md`, `docs/feature-specs/tickets.md`, `docs/feature-specs/leads-sdr.md`, `docs/feature-specs/leads-sales.md`, `docs/realtime-live-updates.md`, `docs/FuturePlan/Performance/*`, `.cursor/rules/tab-counts.mdc` — reflect page-data bundling, session cache, coalesced refetch, customer link on in-production/completed, two-button link row layout
+
+## [2026-05-26] — Quote/order detail: customer portal link buttons
+
+### Changed
+- `DetailQuickActions` — **Customer Link** (open `/q/{token}`) + **Copy Link** (clipboard) as two 50/50 buttons on their own row below Mark Completed / Resend Link
+
+### Fixed
+- Customer Link + Copy Link now visible for `in_production` and `completed` (not only `sent` / `order`)
+
+## [2026-05-26] — Fix: Leads page infinite reload loop
+
+### Fixed
+- `hooks/use-coalesced-refresh.ts` — refresh callback stored in ref so effect does not re-fire every render
+- `components/leads/leads-page.tsx`, `components/sales/sales-page.tsx` — pass stable `fetchPageData` to coalesced refresh; lookups lazy-load uses loaded ref
+
+## [2026-05-26] — Performance Phase 3: page-data bundling + session cache (TODO-007)
 
 ### Added
-- `GET /api/cron/follow-ups` — Vercel Cron job; sends due quote reminders via Instantly/Twilio
+- Combined **`GET /api/{feature}/page-data`** routes — one auth pass returns list + tab counts in parallel:
+  - `/api/production/page-data`, `/api/orders/page-data`, `/api/quotes/page-data`, `/api/payments/page-data`, `/api/completed/page-data`, `/api/leads/workspace/page-data`, `/api/leads/sales/page-data`
+- Dedicated slim count routes: `GET /api/orders/counts`, `GET /api/quotes/counts`
+- Shared query helpers: `lib/utils/fetch-*-data.ts`, `lib/utils/leads-workspace-query.ts`, `lib/utils/sidebar-counts-query.ts`
+- `lib/auth/session-cache.ts` — 3 s in-process memoization for `requireSession()` during burst loads
+- `hooks/use-coalesced-refresh.ts` — debounced mount + realtime refetch (Strict Mode safe)
+
+### Changed
+- All tabbed list pages use **one `page-data` request** on load instead of separate list + counts calls
+- Coalesced refetch on Production, Orders, Quotes, Payments, Completed, Leads, Sales
+- Leads/Sales: lookups + admin user lists **lazy-load** when modal/drawer opens (not on page mount)
+- `GET /api/sidebar-counts?routes=…` — counts only for visible nav routes; existing list/count routes kept for compatibility
+- Existing list/count route handlers delegate to shared query helpers (DRY)
+
+## [2026-05-26] — Docs: follow-up cron status (Hobby / pending Pro)
+
+### Changed
+- `docs/cron-follow-ups.md`, `docs/TODO.md`, `docs/session-summary.md`, `docs/api-contract.md`, `docs/feature-specs/tickets.md`, `docs/types.md` — cron **code is built**; **automatic schedule not active** on Vercel Hobby (free); manual `curl` workaround documented
+- `.env.local.example`, `app/api/cron/follow-ups/route.ts` — comments clarify Hobby vs Pro behaviour
+
+## [2026-05-26] — Quote follow-up reminder cron (TODO-006) — code only
+
+### Added
+- `GET /api/cron/follow-ups` — endpoint to process due quote reminders via Instantly/Twilio (manual or Vercel Cron)
 - `lib/utils/follow-up-schedule.ts`, `lib/utils/process-due-follow-ups.ts`, `lib/utils/initialize-ticket-follow-up.ts`
 - `lib/integrations/quote-follow-up-template.ts`, `sendQuoteFollowUpReminder()` in `send-quote.ts`
 - `docs/cron-follow-ups.md` — setup guide for Vercel + local testing
-- `vercel.json` — daily schedule `0 14 * * *` (2pm UTC)
+- `vercel.json` — daily schedule `0 14 * * *` (2pm UTC) — **runs only on Vercel Pro**
 - `CRON_SECRET` in `.env.local.example`
 
 ### Changed
 - `POST /api/tickets` and `PATCH /api/tickets/[id]` — when quote is sent with follow-ups enabled, seed `follow_up_at` + cycle count
+
+### Note
+- Production on **Vercel Hobby**: cron does not auto-fire; use manual trigger until Pro upgrade (see `docs/cron-follow-ups.md`)
 
 ## [2026-05-26] — Docs: form validation UX + scheme-less website URLs
 

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { Search, Zap, ExternalLink } from "lucide-react";
 import {
   MobileListCard,
@@ -137,24 +138,20 @@ export function CompletedPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
 
-  const fetchOrders = useCallback((silent = false) => {
+  const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    fetch("/api/completed/orders")
+    fetch("/api/completed/page-data")
       .then((r) => r.json())
-      .then((d) => { if (d.orders) setOrders(d.orders); })
+      .then((d) => {
+        if (d.orders) setOrders(d.orders);
+      })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
   }, []);
 
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
-
-  useEffect(() => {
-    function onChanged() { fetchOrders(true); }
-    window.addEventListener("bazaar:tickets-changed", onChanged);
-    return () => window.removeEventListener("bazaar:tickets-changed", onChanged);
-  }, [fetchOrders]);
+  useCoalescedRefresh(fetchPageData, [], {
+    events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
+  });
 
   const filtered = orders.filter((o) => {
     if (!search) return true;

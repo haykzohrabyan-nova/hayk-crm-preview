@@ -10,6 +10,8 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Verify Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
+> **Page load (2026-05-26):** On mount, `leads-page.tsx` calls **`GET /api/leads/workspace/page-data?…`** — one auth pass returns the active tab's slim list **and** all tab badge counts. Realtime / `bazaar:refresh-counts` may refetch counts-only or full page-data. Lookups, product types, and SDR user list **lazy-load** when Add Lead or Reassign opens.
+
 ---
 
 ## Tab: All Leads (Inbox)
@@ -168,7 +170,7 @@ A lead appears here when:
 - **Rows are clickable (SDR)** — navigates to **`/crm/customers/[customer_id]`** (`redirectSdrWonToCustomer()`), not the Verify Drawer
 - **Admin** — row click still opens Verify Drawer in read-only mode
 - Empty state copy explains routing-to-Sales + production release
-- Count badge from `GET /api/leads/workspace/counts` → `counts.won`
+- Count badge from page-data `counts.won` (or `GET /api/leads/workspace/counts` on counts-only refresh)
 - API returns nested `tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)` only — **no `quote_final_total` or closer name** in the browser
 
 ---

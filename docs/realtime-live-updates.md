@@ -484,23 +484,38 @@ useEffect(() => {
 
 ## Coalesced refetch (mount + realtime)
 
-When mount fetch and a realtime handler fire close together (common in **React Strict Mode** during `npm run dev`), schedule a single refetch instead of two parallel calls:
+When mount fetch and a realtime handler fire close together (common in **React Strict Mode** during `npm run dev`), schedule a single refetch instead of two parallel calls.
+
+**Shared hook (May 2026):** `hooks/use-coalesced-refresh.ts` — used on Production, Orders, Quotes, Payments, Completed, Leads, and Sales list pages.
 
 ```typescript
-// Pattern used in production-page.tsx (2026-05-22)
+// Typical usage in a list page
+useCoalescedRefresh({
+  onRefresh: fetchPageData, // MUST be stable (useCallback) or the hook's ref pattern
+  events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
+  mountDelayMs: 50,
+  eventDelayMs: 300,
+});
+```
+
+**Important:** Do not pass an inline refresh function that changes every render into effect dependencies — that caused an infinite reload loop on `/leads` (fixed May 2026). The hook stores the latest callback in a ref; page components should pass a stable `fetchPageData` from `useCallback`.
+
+Legacy inline timer pattern (pre-hook) remains documented below for reference:
+
+```typescript
+// Pattern used in production-page.tsx (2026-05-22, superseded by useCoalescedRefresh)
 const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 function scheduleRefetch(delayMs: number) {
   if (refetchTimer.current) clearTimeout(refetchTimer.current);
   refetchTimer.current = setTimeout(() => {
     refetchTimer.current = null;
-    void fetchOrders(true);
-    void fetchCounts();
+    void fetchPageData(true);
   }, delayMs);
 }
 ```
 
-Use `scheduleRefetch(50)` on mount and `scheduleRefetch(300)` on `bazaar:tickets-changed`. Legacy pattern on `production-page.tsx`; `/orders` uses standard list refetch.
+Prefer **`GET /api/{feature}/page-data`** on mount so coalesced refetch updates list + counts in one request. Counts-only routes remain for lightweight realtime refresh when the list payload is unchanged.
 
 ---
 

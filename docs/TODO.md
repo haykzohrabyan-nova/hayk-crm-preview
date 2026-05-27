@@ -52,15 +52,35 @@ When a rep edits a `sent` quote and saves, `/q/{token}` shows the new price but 
 
 ## Open — ready to build (no owner decision)
 
-### TODO-007 — Performance Phase 3+ *(optional)*
+### TODO-006 — Follow-up reminder cron (automatic schedule)
 
-**Status:** Not started — only if list pages feel slow at scale
+**Status:** **Code shipped (May 2026)** — **not fully live on production**
+
+Production is on **Vercel Hobby (free)**. Automatic daily cron requires **Vercel Pro**.
+
+| Done ✅ | Blocked on Pro ⏳ |
+|---------|-------------------|
+| Follow-up fields on quotes; schedule seeded when quote is sent | Vercel Cron firing daily in production |
+| `GET /api/cron/follow-ups` — query due tickets, send via Instantly/Twilio, advance schedule | |
+| `CRON_SECRET` can be set in Vercel (safe — no app impact on Hobby) | |
+| Manual trigger via `curl` (or external cron service) | |
+
+**Workaround (Hobby):** run manually — **`docs/cron-follow-ups.md`** → *Manual trigger (production on Hobby)*
+
+**When Pro is enabled:** no code changes needed — redeploy is enough if `CRON_SECRET` is already set.
+
+---
+
+### TODO-007 — Performance Phase 3 *(optional remainder)*
+
+**Status:** **Phase 3 core complete (May 2026)** — page-data bundling, session cache, coalesced refetch, role-scoped sidebar counts, lazy modal bootstrap
+
+**Still optional at scale:**
+- SWR / React Query for back-navigation cache
+- List pagination when any tab exceeds ~500 rows
+- CRM server-side search + pagination
 
 **Spec:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md)
-
-**Suggested first task:** combined `page-data` endpoints (list + counts in one request).
-
-**Rough effort:** ~2–4 weeks for high-impact items
 
 ---
 
@@ -130,6 +150,9 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 
 ### Performance & UX
 - Performance Phase 1–2: slim list APIs, SQL head counts, partial indexes (TODO-007)
+- **May 26:** Performance Phase 3 — combined `page-data` endpoints, session memoization, coalesced refetch, role-scoped sidebar counts, lazy modal bootstrap on Leads/Sales
+- **May 26:** Fix leads page infinite reload — stable callback in `useCoalescedRefresh`
+- **May 26:** Quote/order detail — Customer Link + Copy Link on `in_production` / `completed`; two 50/50 buttons on own row
 - Mobile list cards (quotes, orders, payments, completed)
 - Quote/order detail overview layout, global loading overlay
 - PDF download (staff + public), print view
@@ -137,6 +160,5 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 ### Infrastructure
 - Consolidated `supabase/schema.sql` (replaces numbered migration files)
 - Dev test reset: `npm run reset-test-data`
-- **May 26:** Quote follow-up reminder cron (`GET /api/cron/follow-ups`) — Vercel Cron + Twilio/Instantly; see `docs/cron-follow-ups.md`
 
 For dates and file-level detail, see **`docs/CHANGELOG.md`**.

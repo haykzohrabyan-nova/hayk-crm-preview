@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import {
   MobileListCard,
   MobileListCardRow,
@@ -423,53 +424,21 @@ export default function OrdersPage() {
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }
 
-  // ─── Fetch counts ───────────────────────────────────────────────────────
-
-  const fetchCounts = useCallback(() => {
-    fetch("/api/tickets/counts")
+  const fetchPageData = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    fetch("/api/orders/page-data")
       .then((r) => r.json())
       .then((d) => {
-        if (d.counts) {
-          const pending = d.counts.orders ?? 0;
-          const inProduction = d.counts.in_production ?? 0;
-          const cancelled = d.counts.cancelled ?? 0;
-          setTabCounts({
-            all: pending + inProduction + cancelled,
-            pending,
-            in_production: inProduction,
-            cancelled,
-          });
-        }
+        if (d.orders) setOrders(d.orders);
+        if (d.counts) setTabCounts(d.counts);
       })
-      .catch(() => {});
-  }, []);
-
-  // ─── Fetch orders ───────────────────────────────────────────────────────
-
-  const fetchOrders = useCallback((silent = false) => {
-    if (!silent) setLoading(true);
-    fetch("/api/orders/orders")
-      .then((r) => r.json())
-      .then((d) => { if (d.orders) setOrders(d.orders); })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
   }, []);
 
-  useEffect(() => {
-    fetchOrders();
-    fetchCounts();
-  }, [fetchOrders, fetchCounts]);
-
-  // Realtime: refresh on ticket changes
-  useEffect(() => {
-    function onChanged() { fetchOrders(true); fetchCounts(); }
-    window.addEventListener("bazaar:tickets-changed", onChanged);
-    window.addEventListener("bazaar:refresh-counts",  onChanged);
-    return () => {
-      window.removeEventListener("bazaar:tickets-changed", onChanged);
-      window.removeEventListener("bazaar:refresh-counts",  onChanged);
-    };
-  }, [fetchOrders, fetchCounts]);
+  useCoalescedRefresh(fetchPageData, [], {
+    events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
+  });
 
   // ─── Filter ─────────────────────────────────────────────────────────────
 

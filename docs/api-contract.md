@@ -33,6 +33,32 @@ Implemented in `lib/auth/require-session.ts` and `lib/auth/require-admin.ts`. Ti
 
 Full security model: **`docs/security.md`**.
 
+**Session cache (May 2026):** Successful `requireSession()` results are memoized in-process for ~3 s (`lib/auth/session-cache.ts`) to avoid duplicate auth + profile lookups during page load bursts.
+
+---
+
+## Performance — combined page-data (May 2026)
+
+Tabbed list pages should prefer **one** request on mount instead of separate list + counts calls. Each handler runs `requireSession()` once, then `Promise.all([listQuery, countsQuery])`.
+
+| Route | Response | Used by |
+|-------|----------|---------|
+| `GET /api/production/page-data` | `{ orders, counts }` | Production page |
+| `GET /api/orders/page-data` | `{ orders, counts }` | Orders page |
+| `GET /api/quotes/page-data` | `{ tickets, counts }` | Quotes page |
+| `GET /api/payments/page-data` | `{ orders }` | Payments page |
+| `GET /api/completed/page-data` | `{ orders, counts }` | Completed page |
+| `GET /api/leads/workspace/page-data?…` | `{ leads, counts }` | Leads page (same query params as workspace list) |
+| `GET /api/leads/sales/page-data?tab=…` | `{ leads, counts }` | Sales page |
+
+**Slim count-only routes** (realtime refresh without full list): `GET /api/orders/counts`, `GET /api/quotes/counts`, plus existing `*/counts` routes.
+
+**Sidebar:** `GET /api/sidebar-counts?routes=/quotes,/orders,…` — optional comma-separated nav routes; only computes badges for visible pages.
+
+Legacy list + count routes remain for compatibility. Shared query logic lives in `lib/utils/fetch-*-data.ts` and `lib/utils/leads-workspace-query.ts`.
+
+---
+
 ### Public routes (no staff session)
 
 - `/api/public/quotes/[token]/*` — customer quote portal (token-gated UUID)
@@ -1175,10 +1201,9 @@ Notifications in BazaarCRM are delivered via **Supabase Realtime**, not HTTP pol
   - **`leads-realtime`** — watches any INSERT/UPDATE/DELETE on `public.leads` → refreshes sidebar badge counts + dispatches `bazaar:leads-changed` browser event
   - **`activities-realtime`** — watches any INSERT on `public.activities` → dispatches `bazaar:activities-changed` browser event
   - **`tickets-realtime`** — watches any INSERT/UPDATE/DELETE on `public.job_tickets` → refreshes sidebar badge counts + dispatches `bazaar:tickets-changed` browser event
-- **Sidebar badge counts** are fetched via `GET /api/sidebar-counts` (on mount and on Realtime events, **debounced ~300 ms** in `sidebar.tsx` to coalesce bursts). Count queries use SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`.
-- **Activity log** (admin `/notifications` page) is fetched via `GET /api/admin/activity-log` and auto-refreshes when `bazaar:activities-changed` fires
-
-There are **no** REST notification endpoints (`/api/notifications`, `/api/notifications/read`, etc.) — those are planned for a future V2 bell-based notification system.
+- **Sidebar badge counts** are fetched via `GET /api/sidebar-counts?routes=…` (scoped to visible nav items; debounced ~300 ms on Realtime). Count queries use SQL `{ count: "exact", head: true }` via `lib/utils/sidebar-counts-query.ts`.
+- **Activity log** (admin `/activity-log` page) is fetched via `GET /api/admin/activity-log` and auto-refreshes when `bazaar:activities-changed` fires
+- **`/notifications`** — legacy redirect to `/activity-log`; reserved for future V2 bell (no REST endpoints yet)
 
 See `docs/realtime-live-updates.md` for the full architecture and pattern guide.
 
@@ -1347,9 +1372,11 @@ Provider-agnostic outreach endpoint. The concrete email/SMS provider is resolved
 
 ### `GET /api/cron/follow-ups`
 
-**Auth:** `Authorization: Bearer ${CRON_SECRET}` — not a user session. Called by **Vercel Cron** (see `vercel.json`) or manually for testing.
+**Auth:** `Authorization: Bearer ${CRON_SECRET}` — not a user session. Intended for **Vercel Cron** (see `vercel.json`) or **manual / external** HTTP trigger.
 
-**Schedule:** `0 14 * * *` (daily 2pm UTC) unless changed in `vercel.json`.
+**Deployment status (May 2026):** Code is live. **Automatic schedule requires Vercel Pro.** On **Hobby (free)**, the schedule in `vercel.json` does not run — trigger this endpoint manually or via an external cron service. Setting `CRON_SECRET` on Hobby does **not** break the rest of the app.
+
+**Schedule (when Pro is enabled):** `0 14 * * *` (daily 2pm UTC) unless changed in `vercel.json`.
 
 **Behavior:**
 - Finds sent quotes with follow-up enabled, not client-confirmed, due (`follow_up_at <= now`)
@@ -1640,7 +1667,7 @@ When Instantly is not configured or delivery fails, `email_delivery.ok` is `fals
 
 ### `GET /api/admin/activity-log`
 
-Paginated activity log across all users. Admin only. Powers the `/notifications` page.
+Paginated activity log across all users. Admin only. Powers the `/activity-log` page.
 
 **Query params:**
 
@@ -1663,7 +1690,7 @@ Each activity is enriched with:
 - `customer` — `{ first_name, last_name, company }`
 - `ticket_ref` — display ref from `lib/utils/activity-ticket-ref.ts` (`activityDisplayRef`): payload `reference_code` → linked ticket `reference_code` → last 8 chars of ticket UUID → last 8 chars of lead UUID (lead-only events)
 
-Powers the **Quote / Order** column on `/notifications`.
+Powers the **Quote / Order** column on `/activity-log`.
 
 ---
 

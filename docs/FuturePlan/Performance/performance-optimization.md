@@ -1,7 +1,7 @@
 # Performance Optimization — Scoped Lists & Faster Queries
 
-> **Status: Phase 1–2 complete (2026-05-22) — Phase 3 optional**
-> **Implemented:** 2026-05-22 (ahead of original TODO-006 deferral — shipped during active testing)
+> **Status: Phase 1–3 core complete (2026-05-26)**
+> **Phase 1–2:** 2026-05-22 · **Phase 3:** 2026-05-26 (page-data bundling, session cache)
 > **Goal:** Same UI (columns, tabs, badges, drawers) — faster loads and fewer redundant API calls
 
 ---
@@ -20,6 +20,12 @@
 | **2C** | Slim leads workspace list + full lead fetch on drawer open (`lib/utils/fetch-lead.ts`) |
 | **2D** | Slim CRM customer list with lightweight lead/ticket aggregates; silent CRM refresh |
 | **Extra** | `production-page.tsx` coalesced refetch (fixes duplicate `orders` + `counts` in dev Strict Mode) |
+| **3A** | Combined `GET /api/{feature}/page-data` — list + counts in one auth pass |
+| **3B** | `lib/auth/session-cache.ts` — 3 s `requireSession()` memoization |
+| **3C** | `hooks/use-coalesced-refresh.ts` on all tabbed list pages |
+| **3D** | `GET /api/orders/counts`, `GET /api/quotes/counts` — slim per-page count routes |
+| **3E** | Role-scoped `GET /api/sidebar-counts?routes=…` |
+| **3F** | Leads/Sales lazy-load lookups + admin user lists on modal/drawer open |
 
 ---
 
@@ -139,12 +145,21 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 
 ---
 
+## Phase 3 — ✅ Core complete (2026-05-26)
+
+- **Page-data routes:** `/api/production/page-data`, `/api/orders/page-data`, `/api/quotes/page-data`, `/api/payments/page-data`, `/api/completed/page-data`, `/api/leads/workspace/page-data`, `/api/leads/sales/page-data`
+- **Session cache:** `requireSession()` hits in-memory cache for ~3 s (same warm serverless instance)
+- **Coalesced refetch:** all ticket + lead list pages
+- **Optional remainder:** pagination, SWR/React Query, CRM server search — defer until lists exceed ~500 rows
+
+---
+
 ## Phase 3 — Optional (defer unless lists exceed ~500 rows)
 
 - Pagination (`limit` + cursor) on orders/quotes/leads
-- SWR / React Query for deduped fetches
-- Session memoization in `lib/auth/require-session.ts` during burst refetches
-- Apply production-page **coalesced refetch** pattern to Orders / Quotes / Completed list pages (dev Strict Mode only today)
+- SWR / React Query for deduped fetches and back-navigation cache
+- CRM server-side `?search=` + pagination on `GET /api/customers`
+- Bundle ticket + company into a detail bootstrap endpoint for first paint
 
 ---
 
@@ -152,9 +167,10 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 
 | Observation | Cause |
 |-------------|--------|
-| Duplicate `orders` + `counts` on page open in `npm run dev` | React Strict Mode double-mounts effects (fixed on `/production`; other list pages may still show pairs in dev) |
-| ~400–600 ms per API call on Supabase free tier | Normal — auth + serverless + shared DB CPU; indexes help DB slice only |
+| Duplicate API calls on page open in `npm run dev` | React Strict Mode double-mounts effects — **mitigated** by `useCoalescedRefresh` on all tabbed list pages |
+| ~400–600 ms per API call on Supabase free tier | Normal — auth + serverless + shared DB CPU; indexes + page-data bundling help |
 | Production build (`npm run build && npm start`) | Mount effects run once; generally faster than dev |
+| `/leads` infinite reload loop (fixed May 2026) | Unstable inline callback in coalesced-refresh effect deps — use stable `fetchPageData` + hook ref pattern |
 
 ---
 
@@ -165,7 +181,7 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 - [ ] Realtime: change in tab A → list updates in tab B
 - [ ] Order with pending payment evidence appears on `/payments`, not `/orders`
 - [ ] `npm run build` passes
-- [ ] Network tab: list payloads smaller vs pre-optimization baseline
+- [ ] Network tab: list pages use ≤2 API calls on cold load (ideally 1 `page-data` + scoped sidebar-counts)
 - [ ] Migration `073` applied in Supabase
 
 ---
@@ -180,7 +196,9 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 | Debounced sidebar | Fewer concurrent `/api/sidebar-counts` |
 | Slim quotes/leads/CRM | 50–70% smaller list JSON |
 | Indexes (073) | Faster filtered queries as tables grow |
-| Production coalesced refetch | 1× orders + 1× counts on `/production` in dev |
+| Production + all list pages coalesced refetch | 1× page-data per mount in dev |
+| Page-data bundling | ~40% fewer auth round-trips on tabbed pages |
+| Session cache | Dedupes `requireSession()` during burst loads |
 
 ---
 
@@ -188,17 +206,16 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 
 - [x] **Phase 1A–E**
 - [x] **Phase 2A–D**
-- [x] **Production page coalesced refetch**
+- [x] **Phase 3 core** — page-data routes, session cache, coalesced refetch on all tabbed list pages
 - [x] **Build passes**
-- [ ] **Phase 3** — pagination / SWR (only if needed)
-- [ ] **Optional** — coalesce refetch on Orders / Quotes / Completed pages
+- [ ] **Phase 3 optional** — pagination / SWR (only if needed at scale)
 
 ---
 
 ## Related docs
 
-- `docs/TODO.md` — [TODO-007](../TODO.md) Phase 1–2 done; Phase 3+ in any-doer roadmap
-- [performance-anydoer-roadmap.md](./performance-anydoer-roadmap.md) — **future work**: combined page-data APIs, coalesce all pages, SWR, pagination, infra
+- `docs/TODO.md` — [TODO-007](../TODO.md) Phase 3 core done; optional remainder in any-doer roadmap
+- [performance-anydoer-roadmap.md](./performance-anydoer-roadmap.md) — SWR, pagination, CRM search, infra
 - `docs/architecture.md` — scoped-list API pattern + new utils
 - `docs/api-contract.md` — `GET /api/orders/orders`, updated tickets/leads/customers contracts
 - `docs/realtime-live-updates.md` — event bus + dedup conventions

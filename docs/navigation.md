@@ -59,7 +59,8 @@ app/
     │   ├── page.tsx                  ✓ EXISTS — Completed orders list (accountant + admin)
     │   └── [id]/page.tsx             ✓ EXISTS — Completed detail (context="completed")
     │
-    ├── notifications/page.tsx        ✓ EXISTS — Activity Log
+    ├── activity-log/page.tsx           ✓ EXISTS — Activity Log (Order / Lead + User Activity tabs)
+    ├── notifications/page.tsx          ✓ EXISTS — redirect → /activity-log (legacy bookmarks)
     │
     ├── reports/page.tsx              ✓ EXISTS — Admin reports (cash, scorecards, ledger, awaiting collection; see feature-specs/reports.md)
     │
@@ -156,6 +157,7 @@ BAZAARPRINTING
 ✓ Payments                         /payments       (admin only — optional queue access)
 ✓ Completed                        /completed
 ✓ Reports                          /reports        (admin only — grant via Roles & Permissions)
+✓ Activity Log                     /activity-log   (system activity feed)
 
 ─── Admin ──────────────────────
 ✓ Admin Panel                      /admin
@@ -183,14 +185,15 @@ BAZAARPRINTING
 | Orders (`/orders`) | `Package` |
 | Payments (`/payments`) | `CreditCard` |
 | Completed (`/completed`) | `PackageCheck` |
+| Activity Log (`/activity-log`) | `ClipboardList` |
 | Settings (personal) | `Settings` |
 | Admin Panel | `ShieldCheck` |
 | Users (admin section) | `Users` |
 | Roles & Permissions | `KeyRound` |
 | Dropdown Options | `ListFilter` |
-| Notifications Broadcast | `Megaphone` |
+| Notifications Broadcast (deferred) | `Megaphone` |
 | Audit Log | `ClipboardList` |
-| Notification Bell | `Bell` |
+| Per-user Notifications (V2 — not built, route `/notifications`) | `Bell` |
 
 ---
 
@@ -347,9 +350,11 @@ No sub-tabs. Single table view with filters (search, role filter, show inactive 
 
 ---
 
-## Activity Log / Notifications Page
+## Activity Log — `/activity-log`
 
-`/notifications` — built, accessible to all roles via DB-driven page permissions.
+Built, accessible to roles granted `/activity-log` in the permission matrix (admin has it by default).
+
+- **`/notifications`** redirects here (legacy URL). Route **`/notifications`** is reserved for a future per-user notification bell.
 
 - Shows the system `activities` table — all lead actions, customer merges, etc.
 - Columns: Who (name + role pill) | Action (human-readable label) | Lead / Customer | **Quote / Order** (`ticket_ref`) | When (relative, hover for absolute)
@@ -391,9 +396,8 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/admin/settings/users` | Users |
 | `/admin/settings/roles` | Roles & Permissions |
 | `/admin/settings/dropdowns` | Dropdown Options |
-| `/notifications` | Activity Log |
+| `/activity-log` | Activity Log |
 | `/admin/settings/integrations` | Integrations |
-| `/notifications` | Activity Log |
 
 ---
 

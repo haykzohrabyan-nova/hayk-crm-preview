@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
 import {
   MobileListCard,
@@ -280,52 +281,21 @@ export default function QuotesPage() {
   const canSeeRouted = userRole === "sales" || userRole === "admin" || userRole === "sdr";
   const TABS = canSeeRouted ? [...BASE_TABS, ROUTED_TAB] : BASE_TABS;
 
-  // ─── Fetch counts ────────────────────────────────────────────────────────
-
-  const fetchCounts = useCallback(() => {
-    fetch("/api/tickets/counts")
+  const fetchPageData = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    fetch("/api/quotes/page-data")
       .then((r) => r.json())
       .then((d) => {
-        if (d.counts) {
-          // Active quote-stage only — exclude order / in_production / completed (those live on other pages)
-          setTabCounts({
-            all:      d.counts.drafts + d.counts.sent + d.counts.approved,
-            draft:    d.counts.drafts,
-            sent:     d.counts.sent,
-            approved: d.counts.approved,
-            routed:   d.counts.routed ?? 0,
-          });
-        }
+        if (d.tickets) setQuotes(d.tickets);
+        if (d.counts) setTabCounts(d.counts);
       })
-      .catch(() => {});
-  }, []);
-
-  // ─── Fetch quotes ────────────────────────────────────────────────────────
-
-  const fetchQuotes = useCallback((silent = false) => {
-    if (!silent) setLoading(true);
-    fetch("/api/tickets?kind=quote")
-      .then((r) => r.json())
-      .then((d) => { if (d.tickets) setQuotes(d.tickets); })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
   }, []);
 
-  useEffect(() => {
-    fetchQuotes();
-    fetchCounts();
-  }, [fetchQuotes, fetchCounts]);
-
-  // Realtime: refresh on ticket changes (same-tab window events)
-  useEffect(() => {
-    function onChanged() { fetchQuotes(true); fetchCounts(); }
-    window.addEventListener("bazaar:tickets-changed", onChanged);
-    window.addEventListener("bazaar:refresh-counts",  onChanged);
-    return () => {
-      window.removeEventListener("bazaar:tickets-changed", onChanged);
-      window.removeEventListener("bazaar:refresh-counts",  onChanged);
-    };
-  }, [fetchQuotes, fetchCounts]);
+  useCoalescedRefresh(fetchPageData, [], {
+    events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
+  });
 
   // ─── Claim action ────────────────────────────────────────────────────────
 

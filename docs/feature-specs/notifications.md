@@ -1,4 +1,6 @@
-# Feature Spec — Notifications & Activity Log
+# Feature Spec — Activity Log & Live Updates
+
+The **`/activity-log`** route is the **Activity Log** in navigation (clipboard icon). It shows system-wide lead/order activity — not a per-user notification bell. **`/notifications`** redirects here today and is reserved for a future bell/inbox.
 
 Component: Activity Log page + Sidebar badge counts | Backend: Supabase Realtime on `leads` + `activities` tables
 
@@ -10,7 +12,7 @@ Component: Activity Log page + Sidebar badge counts | Backend: Supabase Realtime
 |---------|--------|
 | Sidebar lead/sales badge counts | ✅ Built |
 | Supabase Realtime live table refresh | ✅ Built |
-| `/notifications` — Activity Log page | ✅ Built |
+| `/activity-log` — Activity Log page | ✅ Built |
 | `GET /api/admin/activity-log` | ✅ Built |
 | Admin: Broadcast Notifications | ❌ Removed from scope — not needed |
 | Per-user notification bell (V2) | ⏳ Not built — future |
@@ -38,10 +40,12 @@ No loading skeleton appears during Realtime-triggered refreshes — data swaps i
 
 ---
 
-## Activity Log — `/notifications` ✅ Built
+## Activity Log — `/activity-log` ✅ Built
 
-**Component:** `components/admin/activity-log-section.tsx`
-**Page:** `app/(app)/notifications/page.tsx`
+**Nav label:** Activity Log (`ClipboardList` icon)  
+**Component:** `components/admin/activity-log-section.tsx`  
+**Page:** `app/(app)/activity-log/page.tsx`  
+**Legacy:** `/notifications` → redirect  
 **API:** `GET /api/admin/activity-log?limit=50&offset=0`
 
 Shows all system activity from the `activities` table, newest first.
@@ -100,7 +104,7 @@ Shows all system activity from the `activities` table, newest first.
 
 - Bell icon in sidebar with unread count badge (red pill, max `99+`)
 - Click → popover with notification feed (last 20, paginated)
-- Full history at `/notifications` (already built, currently shows admin activity log)
+- Full history at `/activity-log` (legacy `/notifications` redirects)
 - Supabase Realtime subscription keeps count live without polling
 - `lead_assigned` type (Admin assigns inbox lead directly to SDR)
 - `follow_up_due` lazy check

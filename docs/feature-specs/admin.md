@@ -302,4 +302,4 @@ Behind the scenes:
 
 ## `/admin/settings/notifications` — Not Needed
 
-Broadcast Notifications was removed from scope. The `/notifications` page (Activity Log) covers all current notification needs. No tab for this route will be built.
+Broadcast Notifications was removed from scope. The `/activity-log` page covers all current audit/history needs. No tab for this route will be built.

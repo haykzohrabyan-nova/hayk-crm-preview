@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { FileText, CheckCircle2, Clock, Loader2, CreditCard } from "lucide-react";
 import {
   GLOBAL_LOADING_MESSAGES,
@@ -98,23 +99,20 @@ export function PaymentsPage() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmErr, setConfirmErr]     = useState<string | null>(null);
 
-  const fetchOrders = useCallback(() => {
-    setLoading(true);
-    fetch("/api/payments/pending")
+  const fetchPageData = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    fetch("/api/payments/page-data")
       .then((r) => r.json())
       .then((d) => {
         if (d.orders) setOrders(d.orders);
-        setLoading(false);
       })
-      .catch(() => setLoading(false));
+      .catch(() => {})
+      .finally(() => { if (!silent) setLoading(false); });
   }, []);
 
-  useEffect(() => {
-    fetchOrders();
-    const handler = () => fetchOrders();
-    window.addEventListener("bazaar:tickets-changed", handler);
-    return () => window.removeEventListener("bazaar:tickets-changed", handler);
-  }, [fetchOrders]);
+  useCoalescedRefresh(fetchPageData, [], {
+    events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
+  });
 
   async function handleConfirm(order: PendingOrder) {
     const amount = claimedAmount(order);
@@ -145,7 +143,7 @@ export function PaymentsPage() {
       }
       window.dispatchEvent(new Event("bazaar:tickets-changed"));
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
-      fetchOrders();
+      fetchPageData(true);
     } catch {
       setConfirmErr("Network error — please try again.");
     } finally {

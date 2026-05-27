@@ -12,6 +12,8 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Sales Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
+> **Page load (2026-05-26):** On mount, `sales-page.tsx` calls **`GET /api/leads/sales/page-data?tab=…`** — one auth pass returns the active tab's slim list **and** all tab badge counts (`pipeline`, `hold`, `rejected`). Lookups and sales user list **lazy-load** when drawer/modal opens.
+
 ---
 
 ## Tab: Pipeline
@@ -65,7 +67,7 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 
 ## Tab: Rejected
 
-**Data:** `GET /api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales` — only leads that were **rejected from the sales pipeline** (i.e. their previous status was `Routed to Sales`). SDR-rejected leads that never reached sales are excluded. **Lazy-fetched** — only loaded when the tab is first opened (not on page mount). Count badge comes from `/api/leads/sales-counts` upfront (which applies the same `prev_status` filter).
+**Data:** `GET /api/leads/workspace?status=Rejected&prev_status=Routed+to+Sales` — only leads that were **rejected from the sales pipeline** (i.e. their previous status was `Routed to Sales`). SDR-rejected leads that never reached sales are excluded. **Lazy-fetched** — only loaded when the tab is first opened (not on page mount). Count badge comes from page-data `counts.rejected` on mount (same `prev_status` filter as `/api/leads/sales-counts`).
 
 ### Table Columns
 

@@ -1,0 +1,34 @@
+import type { createAdminClient } from "@/lib/supabase/admin";
+import { countExact } from "@/lib/utils/db-counts";
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+const COMPLETED_ORDER_SELECT = `
+  id, reference_code, title,
+  ticket_status,
+  payment_status,
+  quote_final_total,
+  payment_amount_received,
+  ticket_payment_strategy,
+  priority, due_date, rush,
+  updated_at, created_at,
+  customer:customers(id, first_name, last_name, company)
+`.trim();
+
+export async function fetchCompletedOrders(admin: AdminClient) {
+  const { data, error } = await admin
+    .from("job_tickets")
+    .select(COMPLETED_ORDER_SELECT)
+    .eq("ticket_status", "completed")
+    .order("updated_at", { ascending: false });
+
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function fetchCompletedTabCounts(admin: AdminClient) {
+  const completed = await countExact(admin, "job_tickets", (q) =>
+    q.eq("ticket_status", "completed"),
+  );
+  return { completed };
+}

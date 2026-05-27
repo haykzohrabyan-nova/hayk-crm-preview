@@ -75,7 +75,13 @@ export function DetailQuickActions({
     ticket.ticket_status === "in_production" &&
     (userRole === "admin" || (userRole === "accountant" && paidInFull));
 
-  const showQuoteLink = !!publicUrl && (ticket.ticket_status === "sent" || ticket.ticket_status === "order");
+  /** Customer portal (/q/{token}) — available once quote has been sent through lifecycle. */
+  const showQuoteLink =
+    !!publicUrl &&
+    (ticket.ticket_status === "sent" ||
+      ticket.ticket_status === "order" ||
+      ticket.ticket_status === "in_production" ||
+      ticket.ticket_status === "completed");
 
   const showQuoteLifecycle =
     !isLocked &&
@@ -136,7 +142,7 @@ export function DetailQuickActions({
     showQuoteLink;
   if (!hasActions) return null;
 
-  const primaryCount = (canMarkComplete ? 1 : 0) + (canResendInvoice ? 1 : 0);
+  const primaryActionCount = (canMarkComplete ? 1 : 0) + (canResendInvoice ? 1 : 0);
 
   return (
     <div className="mt-3 md:mt-4 flex flex-col gap-2">
@@ -219,8 +225,10 @@ export function DetailQuickActions({
         </p>
       )}
 
-      {primaryCount > 0 && (
-        <div className={`grid gap-2 ${primaryCount > 1 ? "grid-cols-2" : "grid-cols-1"} md:grid-cols-1`}>
+      {primaryActionCount > 0 && (
+        <div
+          className={`grid gap-2 ${primaryActionCount > 1 ? "grid-cols-2" : "grid-cols-1"} md:grid-cols-1`}
+        >
           {canMarkComplete && (
             <button
               type="button"
@@ -274,15 +282,33 @@ export function DetailQuickActions({
           <button
             type="button"
             onClick={copyPublicLink}
+            title={publicUrl ?? "Copy customer portal link"}
             className={`${btnBase} border hover:opacity-80`}
             style={{
-              borderColor: copyState === "copied" ? "var(--color-success-border)" : copyState === "error" ? "var(--color-danger-border)" : "var(--color-border)",
-              color: copyState === "copied" ? "var(--color-success)" : copyState === "error" ? "var(--color-danger)" : "var(--color-text-muted)",
-              background: copyState === "copied" ? "var(--color-success-bg)" : copyState === "error" ? "var(--color-danger-bg)" : "var(--color-surface)",
+              borderColor:
+                copyState === "copied"
+                  ? "var(--color-success-border)"
+                  : copyState === "error"
+                    ? "var(--color-danger-border)"
+                    : "var(--color-border)",
+              color:
+                copyState === "copied"
+                  ? "var(--color-success)"
+                  : copyState === "error"
+                    ? "var(--color-danger)"
+                    : "var(--color-text-muted)",
+              background:
+                copyState === "copied"
+                  ? "var(--color-success-bg)"
+                  : copyState === "error"
+                    ? "var(--color-danger-bg)"
+                    : "var(--color-surface)",
             }}
           >
             {copyState === "copied" ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
-            <span className="truncate">{copyState === "copied" ? "Copied!" : copyState === "error" ? "Failed" : "Copy Link"}</span>
+            <span className="truncate">
+              {copyState === "copied" ? "Copied!" : copyState === "error" ? "Failed" : "Copy Link"}
+            </span>
           </button>
         </div>
       )}

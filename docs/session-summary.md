@@ -1,14 +1,34 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 26, 2026
-**Status:** MVP complete + quote-until-payment + dashboard/reports KPI alignment + API security hardening + leads/reports/CRM polish + form validation UX (May 26).
+**Status:** MVP complete + performance Phase 3 (page-data, session cache) + form validation UX + follow-up cron code (May 26; auto-schedule pending Vercel Pro).
 
 ---
 
-## May 26, 2026 — Quote follow-up cron (TODO-006)
+## May 26, 2026 — Performance Phase 3 (TODO-007 core)
 
-- `GET /api/cron/follow-ups` — daily Vercel Cron; due sent quotes get email/SMS reminder
+- Combined **`GET /api/{feature}/page-data`** — one auth pass returns list + tab counts (Production, Orders, Quotes, Payments, Completed, Leads, Sales)
+- `lib/auth/session-cache.ts` — 3 s `requireSession()` memoization during burst loads
+- `hooks/use-coalesced-refresh.ts` — debounced mount + realtime refetch on all tabbed list pages
+- `GET /api/sidebar-counts?routes=…` — badge counts scoped to visible nav items only
+- Leads/Sales: lookups + admin user lists lazy-load when modal/drawer opens
+- Spec: **`docs/FuturePlan/Performance/performance-optimization.md`**
+
+---
+
+## May 26, 2026 — Quote/order detail: Customer Link + Copy Link
+
+- **`DetailQuickActions`** sidebar — two buttons on one row (50/50 mobile): **Customer Link** opens `/q/{public_token}`; **Copy Link** copies URL with **Copied!** feedback
+- Shown for `sent`, `order`, `in_production`, and `completed` when `public_token` is set (balance payments on public portal)
+
+---
+
+## May 26, 2026 — Quote follow-up cron (TODO-006) — code shipped, auto-run pending Pro
+
+- `GET /api/cron/follow-ups` — processes due sent quotes; sends email/SMS reminder
 - Schedule seeded when quote is sent (`follow_up_at`, `follow_up_cycles` from Quote tab settings)
-- Setup guide: **`docs/cron-follow-ups.md`**
+- **Production on Vercel Hobby (free):** cron does **not** run automatically — no app errors; use manual `curl` or external scheduler
+- **Vercel Pro:** daily cron from `vercel.json` works without code changes
+- Setup: **`docs/cron-follow-ups.md`**
 
 ---
 
@@ -139,7 +159,7 @@
 - `CustomerInfoCard` — industry + quote source resolved via `/api/lookups` labels (not raw `retail_apparel` / `walk_in`)
 
 ### Quote lifecycle actions — sidebar
-- **Cancel Ticket**, **Send/Resend Quote**, **Convert to Order** moved from bottom action bar into `DetailQuickActions` under the customer/lead card (with Customer Link, Mark Completed, Resend Link)
+- **Cancel Ticket**, **Send/Resend Quote**, **Convert to Order** moved from bottom action bar into `DetailQuickActions` under the customer/lead card (with Customer Link + Copy Link, Mark Completed, Resend Link)
 - Bottom duplicate action bar removed on overview layout
 
 ### Global loading overlay
@@ -300,8 +320,8 @@ Starting point: BazarCRM had only an auth scaffold (login, 2FA, session gate). N
 - CRM filter bar: removed duplicate "All" button, heat pills toggle correctly
 - Verify drawer: context-aware footer (Resume replaces On Hold when lead is already on hold)
 - Hold timestamp bug fix (`hold_until || null` — empty string was crashing Supabase)
-- Leads tab badges: all tabs show counts before clicking via `/api/leads/workspace/counts`
-- Sales tab badges: all tabs show counts before clicking via `/api/leads/sales-counts`
+- Leads tab badges: all tabs show counts before clicking via page-data (`/api/leads/workspace/page-data`) or counts-only refresh
+- Sales tab badges: all tabs show counts before clicking via page-data (`/api/leads/sales/page-data`) or counts-only refresh
 - Sidebar badges: role-aware red count pills on Leads and Sales nav items
 - Counts refresh immediately after any action via `bazaar:refresh-counts` custom event
 - SDR lead scoping: On Hold / Directed to Sales / Rejected tabs scoped to current SDR's own leads
@@ -539,14 +559,14 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/crm/customers/[id]` | main | ✅ Built — full customer profile page |
 | `/quotes` | main | ✅ Built — Quoted Requests list; mobile cards at `< lg`; `TicketListToolbar` |
 | `/quotes/new` | main | ✅ Built — New Quote form; global loading on Save & Send |
-| `/quotes/[id]` | main | ✅ Built — overview layout; sidebar actions (Send/Resend, Convert, Cancel, Customer Link); stats row; lookup labels on customer card |
+| `/quotes/[id]` | main | ✅ Built — overview layout; sidebar actions (Send/Resend, Convert, Cancel, Customer Link + Copy Link on sent/order/in_production/completed); stats row; lookup labels on customer card |
 | `/orders` | main | ✅ Built — Orders list (All / Pending Payment / In Production / Cancelled); mobile cards at `< lg` |
 | `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; Mark Completed + Resend Link in sidebar; overview layout |
 | `/payments` | main | ✅ Built — evidence queue; mobile cards; Confirm shows global loading |
 | `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
 | `/reports` | main | ✅ Built — cash collected, rep scorecards, payment ledger, awaiting collection (admin only) |
-| `/notifications` | main | ✅ Built — 2-tab layout: "Order / Lead Activity" (`ActivityLogSection`) + "User Activity" (`UserActivitySection` — session KPIs per user, admin only) |
+| `/activity-log` | main | ✅ Built — 2-tab layout: "Order / Lead Activity" + "User Activity" (admin) |
 | `/admin` | admin | ✅ Built — card grid overview (all 7 cards correct, 6 built + 1 planned) |
 | `/admin/settings/users` | admin-sub | ✅ Built |
 | `/admin/settings/roles` | admin-sub | ✅ Built |
@@ -701,7 +721,8 @@ SALES PIPELINE (Routed to Sales)
 | ~~Dashboard session KPI cards~~ | ✅ Done (2026-05-17) | "Active Users" + "Idle Sign-outs (7d)" cards on admin dashboard. |
 | ~~Integrations — Twilio + Instantly~~ | ✅ Done | Live in Integrations tab |
 | Online payments (Stripe / Zelle auto-match) | ⏸ Out of scope | Current stage — offline payment recording only; see `docs/TODO.md` |
-| Follow-up reminders cron | ✅ Built (2026-05-26) | Data saved; **Vercel Cron sends reminders** — see `docs/cron-follow-ups.md` |
+| Follow-up reminders cron | ⏳ Partial (2026-05-26) | **Code built**; schedule saved on send; **auto-run needs Vercel Pro** — Hobby uses manual trigger — `docs/cron-follow-ups.md` |
+| Performance Phase 3 (page-data) | ✅ Done (2026-05-26) | Combined list+counts endpoints, session cache, coalesced refetch — `docs/FuturePlan/Performance/performance-optimization.md` |
 | ~~Reports~~ | ✅ Done (2026-05-24) | Phase 1 + 2 — cash, scorecards, ledger, awaiting collection |
 | Notification bell | ⏳ Next | Per-user notification feed; bell icon in header/sidebar. |
 | AI / webhook lead ingestion | ⏳ Future | Auto-create leads from web form or external webhook. |
@@ -729,3 +750,5 @@ SALES PIPELINE (Routed to Sales)
 | Admin panel spec | `docs/feature-specs/admin.md` |
 | Dashboard spec | `docs/feature-specs/dashboard.md` |
 | All changes | `docs/CHANGELOG.md` |
+| Quote follow-up cron (Hobby vs Pro) | `docs/cron-follow-ups.md` |
+| Performance optimization | `docs/FuturePlan/Performance/performance-optimization.md` |
