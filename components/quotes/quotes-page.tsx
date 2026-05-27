@@ -340,29 +340,8 @@ export default function QuotesPage() {
     return quotes.filter((q) => isoTimestampInDashboardRange(q.created_at, dateRange));
   }, [quotes, dateRange]);
 
-  const displayTabCounts = useMemo(() => {
-    if (!dateRange) return tabCounts;
-    let draft = 0;
-    let sent = 0;
-    let approved = 0;
-    let routed = 0;
-    for (const q of dateFilteredQuotes) {
-      if (q.ticket_status === "order" || q.ticket_status === "in_production" || q.ticket_status === "completed") {
-        continue;
-      }
-      if (q.ticket_status === "draft") draft++;
-      else if (q.ticket_status === "sent") sent++;
-      else if (q.ticket_status === "approved") approved++;
-      else if (q.ticket_status === "routed") routed++;
-    }
-    return {
-      all: draft + sent + approved,
-      draft,
-      sent,
-      approved,
-      routed,
-    };
-  }, [dateFilteredQuotes, dateRange, tabCounts]);
+  // Tab badges + sidebar use full scoped API counts; date filter narrows the list only.
+  const displayTabCounts = tabCounts;
 
   const filtered = dateFilteredQuotes.filter((q) => {
     // Orders / production have moved off Quotes — never show here

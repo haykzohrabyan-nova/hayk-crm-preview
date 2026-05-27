@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-26] — Orders nav badge vs page list alignment
+
+### Fixed
+- Orders page — tab badges now match sidebar `/orders` count (full scoped total); date filter only narrows the table/list, with “Showing X of Y” when filtered
+- Quotes page — same tab badge vs date filter behavior for consistency
+
 ## [2026-05-26] — Quote send activity on create-and-send
 
 ### Fixed
@@ -32,7 +38,7 @@ Format: `## [version or date] — description`, newest first.
 ### Changed
 - Sales and SDR dashboards — **Total**, **Received**, and **Balance** are separate KPI cards for production-released orders in the selected period
 - Sales and SDR dashboard KPI cards — non-accent icons use main brand color (`--color-tab-active`) on badge background
-- **Orders** and **Quotes** list pages — date filter in page header; filters by `created_at`; tab badge counts follow the selected range; status tabs handle All / Draft / etc.
+- **Orders** and **Quotes** list pages — date filter in page header; filters **list rows** by `created_at`; tab badges and sidebar counts stay on full scoped totals
 - SDR and Sales dashboards — use shared `DashboardDateRangeFilter` component
 - Customer profile — **Lead History** section removed; **Quotes & Orders** remains
 - Leads page (SDR) — **Directed to Sales** and **Won** tabs open read-only **Verify Drawer** instead of redirecting to customer profile

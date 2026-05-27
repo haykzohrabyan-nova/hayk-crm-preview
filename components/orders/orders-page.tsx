@@ -462,23 +462,8 @@ export default function OrdersPage() {
     return orders.filter((o) => isoTimestampInDashboardRange(o.created_at, dateRange));
   }, [orders, dateRange]);
 
-  const displayTabCounts = useMemo(() => {
-    if (!dateRange) return tabCounts;
-    let pending = 0;
-    let inProduction = 0;
-    let cancelled = 0;
-    for (const o of dateFilteredOrders) {
-      if (o.ticket_status === "order") pending++;
-      else if (o.ticket_status === "in_production") inProduction++;
-      else if (o.ticket_status === "cancelled") cancelled++;
-    }
-    return {
-      all: pending + inProduction + cancelled,
-      pending,
-      in_production: inProduction,
-      cancelled,
-    };
-  }, [dateFilteredOrders, dateRange, tabCounts]);
+  // Tab badges + sidebar use full scoped API counts; date filter narrows the list only.
+  const displayTabCounts = tabCounts;
 
   const filtered = dateFilteredOrders.filter((o) => {
     if (activeTabDef.statuses && !activeTabDef.statuses.includes(o.ticket_status)) return false;
@@ -531,7 +516,11 @@ export default function OrdersPage() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              {search ? "No orders match your search." : "No orders yet."}
+              {search
+                ? "No orders match your search."
+                : orders.length > 0 && dateFilteredOrders.length === 0
+                  ? "No orders in this date range."
+                  : "No orders yet."}
             </p>
           </div>
         ) : (
@@ -544,7 +533,15 @@ export default function OrdersPage() {
         {loading ? (
           <MobileListCardSkeleton />
         ) : filtered.length === 0 ? (
-          <MobileListCardEmpty message={search ? "No orders match your search." : "No orders yet."} />
+          <MobileListCardEmpty
+            message={
+              search
+                ? "No orders match your search."
+                : orders.length > 0 && dateFilteredOrders.length === 0
+                  ? "No orders in this date range."
+                  : "No orders yet."
+            }
+          />
         ) : (
           filtered.map((o) => (
             <OrderMobileCard key={o.id} order={o} onOpen={() => router.push(`/orders/${o.id}`)} />
@@ -554,7 +551,9 @@ export default function OrdersPage() {
 
       {!loading && filtered.length > 0 && (
         <p className="text-xs mt-3 text-right" style={{ color: "var(--color-text-muted)" }}>
-          {filtered.length} order{filtered.length !== 1 ? "s" : ""}
+          {dateRange && filtered.length < orders.length
+            ? `Showing ${filtered.length} of ${orders.length} orders in selected period`
+            : `${filtered.length} order${filtered.length !== 1 ? "s" : ""}`}
         </p>
       )}
     </div>
