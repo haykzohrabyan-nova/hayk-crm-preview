@@ -13,6 +13,8 @@ interface EmailInputProps {
   disabled?: boolean;
   id?: string;
   showAction?: boolean;
+  autoComplete?: string;
+  name?: string;
 }
 
 export const EmailInput = forwardRef<HTMLInputElement, EmailInputProps>(
@@ -27,6 +29,8 @@ export const EmailInput = forwardRef<HTMLInputElement, EmailInputProps>(
       disabled,
       id,
       showAction = false,
+      autoComplete = "email",
+      name,
     },
     ref
   ) {
@@ -41,7 +45,8 @@ export const EmailInput = forwardRef<HTMLInputElement, EmailInputProps>(
             id={id}
             type="email"
             inputMode="email"
-            autoComplete="email"
+            name={name}
+            autoComplete={autoComplete}
             required={required}
             disabled={disabled}
             value={value}

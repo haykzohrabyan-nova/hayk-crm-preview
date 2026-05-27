@@ -13,6 +13,8 @@ interface PhoneInputProps {
   disabled?: boolean;
   id?: string;
   showAction?: boolean;
+  autoComplete?: string;
+  name?: string;
 }
 
 export const PhoneInput = forwardRef<HTMLInputElement, PhoneInputProps>(
@@ -26,6 +28,8 @@ export const PhoneInput = forwardRef<HTMLInputElement, PhoneInputProps>(
       disabled,
       id,
       showAction = false,
+      autoComplete = "tel",
+      name,
     },
     ref
   ) {
@@ -45,7 +49,8 @@ export const PhoneInput = forwardRef<HTMLInputElement, PhoneInputProps>(
             id={id}
             type="tel"
             inputMode="numeric"
-            autoComplete="tel"
+            name={name}
+            autoComplete={autoComplete}
             required={required}
             disabled={disabled}
             value={formatPhone(value)}

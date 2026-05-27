@@ -24,6 +24,15 @@ function leadQualifiesForCrm(l: LeadAggRow): boolean {
   return l.sales_status != null || l.status === "Routed to Sales";
 }
 
+function defaultCustomerAgg(updatedAt: string) {
+  return {
+    lead_count: 0,
+    ticket_count: 0,
+    last_activity: updatedAt,
+    qualifies: true,
+  };
+}
+
 export async function GET(request: NextRequest) {
   const { errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
@@ -86,7 +95,7 @@ export async function GET(request: NextRequest) {
       return !agg || agg.qualifies;
     })
     .map((c) => {
-      const agg = aggByCustomer.get(c.id)!;
+      const agg = aggByCustomer.get(c.id) ?? defaultCustomerAgg(c.updated_at as string);
       const customer_status =
         agg.lead_count === 0 && agg.ticket_count === 0 ? "new" : "known";
       return {

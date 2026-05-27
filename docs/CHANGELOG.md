@@ -3,6 +3,19 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-27] — CRM list 500 for standalone customers
+
+### Fixed
+- `GET /api/customers` — customers added via **Add Customer** (no leads/tickets yet) no longer crash the list API when building aggregates (`agg` was undefined after filter)
+- CRM page — shows an error toast when the customers fetch fails instead of silently showing an empty table
+
+## [2026-05-27] — CRM: stop Chrome autofill on list search
+
+### Fixed
+- CRM list search — `autoComplete="off"`, `type="search"`, non-profile `name` so Chrome saved contacts do not fill the filter when adding a customer
+- Add Customer modal — `section-bazaar-add-customer` autocomplete tokens + scoped field `name`s; modal wrapped in `<form autoComplete="off">`
+- `PhoneInput` / `EmailInput` — optional `autoComplete` and `name` props for form isolation
+
 ## [2026-05-27] — Admin dashboard date range filter
 
 ### Changed

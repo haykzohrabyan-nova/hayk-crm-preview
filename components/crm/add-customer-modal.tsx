@@ -23,6 +23,9 @@ const AUTHORITY_OPTIONS = [
   { value: "no", label: "No" },
 ];
 
+/** Isolates modal fields from list search so Chrome autofill does not cross-fill. */
+const AC = "section-bazaar-add-customer";
+
 const labelCls = "block text-[11px] font-medium uppercase tracking-[0.06em] mb-1";
 const labelStyle = { color: "var(--color-text-muted)" };
 const inputCls = "w-full h-9 rounded-[6px] border px-3 text-sm outline-none transition-all";
@@ -71,7 +74,7 @@ export function AddCustomerModal({
   const [websiteError, setWebsiteError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const formRef = useRef<HTMLDivElement>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -158,12 +161,23 @@ export function AddCustomerModal({
           </button>
         </div>
 
-        <div ref={formRef} className="grid grid-cols-2 gap-3">
+        <form
+          id="add-customer-form"
+          ref={formRef}
+          className="grid grid-cols-2 gap-3"
+          autoComplete="off"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleSave();
+          }}
+        >
           <div>
             <label className={labelCls} style={labelStyle}>First Name</label>
             <input
               className={inputCls}
               style={inputStyle}
+              name="bazaar-add-customer-given-name"
+              autoComplete={`${AC} given-name`}
               value={form.first_name}
               onChange={(e) => setForm((f) => ({ ...f, first_name: e.target.value }))}
               placeholder="First name"
@@ -174,6 +188,8 @@ export function AddCustomerModal({
             <input
               className={inputCls}
               style={inputStyle}
+              name="bazaar-add-customer-family-name"
+              autoComplete={`${AC} family-name`}
               value={form.last_name}
               onChange={(e) => setForm((f) => ({ ...f, last_name: e.target.value }))}
               placeholder="Last name"
@@ -182,6 +198,8 @@ export function AddCustomerModal({
           <div data-field-anchor="phone">
             <label className={labelCls} style={labelStyle}>Phone *</label>
             <PhoneInput
+              name="bazaar-add-customer-tel"
+              autoComplete={`${AC} tel`}
               value={form.phone}
               onChange={(v) => { setForm((f) => ({ ...f, phone: v })); setPhoneError(null); }}
               error={phoneError}
@@ -190,6 +208,8 @@ export function AddCustomerModal({
           <div data-field-anchor="email">
             <label className={labelCls} style={labelStyle}>Email</label>
             <EmailInput
+              name="bazaar-add-customer-email"
+              autoComplete={`${AC} email`}
               value={form.email}
               onChange={(e) => { setForm((f) => ({ ...f, email: e.target.value })); setEmailError(null); }}
               error={emailError}
@@ -200,6 +220,8 @@ export function AddCustomerModal({
             <input
               className={inputCls}
               style={inputStyle}
+              name="bazaar-add-customer-organization"
+              autoComplete={`${AC} organization`}
               value={form.company}
               onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
               placeholder="Company name"
@@ -245,7 +267,8 @@ export function AddCustomerModal({
               }}
               type="text"
               inputMode="url"
-              autoComplete="url"
+              name="bazaar-add-customer-url"
+              autoComplete={`${AC} url`}
               value={form.website}
               onChange={(e) => {
                 setForm((f) => ({ ...f, website: e.target.value }));
@@ -261,7 +284,7 @@ export function AddCustomerModal({
               </p>
             )}
           </div>
-        </div>
+        </form>
 
         {error && (
           <p className="mt-3 text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">
@@ -279,8 +302,8 @@ export function AddCustomerModal({
             Cancel
           </button>
           <button
-            type="button"
-            onClick={handleSave}
+            type="submit"
+            form="add-customer-form"
             disabled={saving}
             className="rounded-[6px] px-4 py-1.5 text-[13px] font-medium disabled:opacity-50"
             style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
