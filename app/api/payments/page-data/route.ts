@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
-import { fetchPendingPaymentOrders } from "@/lib/utils/fetch-payments-data";
+import { fetchPaymentsPageData } from "@/lib/utils/fetch-payments-data";
 
-/** GET /api/payments/page-data — pending payment review list (single tab page). */
+/** GET /api/payments/page-data — pending + approved payment evidence lists and tab counts. */
 export async function GET() {
   const { roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
@@ -15,8 +15,8 @@ export async function GET() {
   const admin = createAdminClient();
 
   try {
-    const orders = await fetchPendingPaymentOrders(admin);
-    return NextResponse.json({ orders });
+    const pageData = await fetchPaymentsPageData(admin);
+    return NextResponse.json(pageData);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load payments data.";
     return NextResponse.json({ error: message }, { status: 500 });

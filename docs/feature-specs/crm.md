@@ -6,35 +6,29 @@ Route: `/crm` (all roles)
 
 ## Overview
 
-The CRM is the master customer registry. Every contact who has ever been a lead is tracked here. The CRM shows all customers, their status (New / Known / Returning), quotes & orders, and activity timeline.
+The CRM is the master customer registry. Every contact who has ever been a lead — or was added directly via **Add Customer** — is tracked here. The CRM shows customers, their status (New / Known), quotes & orders, and activity timeline.
 
-**List API:** `GET /api/customers` — slim customer fields plus lightweight `lead_count` / `ticket_count` aggregates (2026-05-22). Silent refresh on `bazaar:leads-changed` without skeleton flash.
+**List API:** `GET /api/customers` — slim customer fields plus lightweight `lead_count` / `ticket_count` aggregates (2026-05-22). Silent refresh via `useCoalescedRefresh` on `bazaar:customers-changed`, `bazaar:leads-changed`, and `bazaar:tickets-changed` (sidebar Supabase Realtime on `customers`, `leads`, `job_tickets`).
 
 ---
 
-## Customer Status — Three Tiers
+## Customer Status (list & profile)
 
-This replaces the manual "Returning Customer" checkbox on leads.
+Computed on `GET /api/customers` from lead/ticket aggregates:
 
-| Status | Definition | Badge colour |
-|--------|-----------|--------------|
-| **New Contact** | Phone/email exists in system but no leads yet (e.g. added manually) | Grey |
-| **Known Customer** | Has 1+ leads but zero completed orders | Blue |
-| **Returning Customer** | Has 1+ completed orders (ticket_status = 'completed' or 'approved') | Gold/Green |
+| Status | API value | Definition | Badge |
+|--------|-----------|------------|-------|
+| **New Contact** | `new` | No qualifying leads and no tickets yet (e.g. standalone Add Customer) | Grey |
+| **Known Customer** | `known` | Has at least one qualifying lead **or** any ticket | Blue |
 
-### Where this status is computed
+> **Note:** A separate three-tier model (New / Known / **Returning**) appears in older specs and dedup banner mockups. **Current list API uses two tiers only** (`new` | `known`). Completed-order history is visible on the customer profile under Quotes & Orders, not as a separate list status.
 
-- **Dedup lookup** (`GET /api/customers/lookup`) → server counts the customer's completed orders and returns `{ customer, order_count, lead_count, customer_status: 'new' | 'known' | 'returning' }`.
-- **Customer profile page** → displays the badge prominently at the top.
-- **Add Lead modal** → dedup banner shows status automatically (see Enriched Dedup Banner below).
-- **Verify Drawer** → shows customer status badge next to their name.
+### Where status appears
 
-### Impact on `is_returning_customer` field on leads
-
-Once the CRM is built:
-- The field is **auto-set** when a lead is created: `is_returning_customer = (order_count > 0)`.
-- The manual checkbox is removed from the Add Lead form and Verify Drawer.
-- Historical leads with the checkbox manually set are left as-is.
+- **CRM list** — Status column badge
+- **Dedup lookup** (`GET /api/customers/lookup`) — may include `customer_status`, `order_count`, `lead_count` for Add Lead / New Quote banners
+- **Customer profile** — badge in header
+- **Verify Drawer** — badge next to customer name when linked
 
 ---
 
@@ -88,7 +82,7 @@ A dedicated full page for a single customer. Accessible from:
 
 ### Header
 - Customer name (large), company subtitle, phone, email
-- **Status badge**: New Contact / Known Customer / Returning Customer
+- **Status badge**: New Contact / Known Customer
 - Heat tag badge (Hot / Warm / Cold)
 - **Add Quote** button → `/quotes/new` with customer params pre-filled (same as CRM list)
 - **Edit** button → opens Edit Customer modal
@@ -133,7 +127,7 @@ Table of all `job_tickets` linked to this customer.
 | Company | Click company name (or **—**) → customer profile |
 | Phone | `tel:` link when present |
 | Email | `mailto:` link when present |
-| Status | New / Known / Returning badge |
+| Status | New / Known badge (`customer_status` — New = no leads/tickets yet) |
 | Industry | Lookup label via `GET /api/lookups?categories=industry` (not raw value) |
 | Leads | Count of qualifying leads |
 | Last Activity | Relative time from most recent lead or ticket |
@@ -149,14 +143,19 @@ Table of all `job_tickets` linked to this customer.
 
 | Control | Behaviour |
 |---------|---------|
+| **Add Customer** | Header button — modal to create a customer record only (no lead/quote); opens profile after save |
 | Search | Client-side filter on name, email, phone, company |
 | Sort | By name, company, last activity, order count |
-| Status filter | New / Known / Returning |
-| Heat Tag filter | Hot / Warm / Cold |
+| Status filter | **All** / **New Contact** / **Known Customer** — `customer_status` from API (`new` = no leads/tickets; `known` = has activity) |
+| Heat Tag filter | **Hot** / **Warm** / **Cold** — optional toggle; filters `customers.heat_tag` (see below). Not shown as a table column. |
 
-### Great Heat Definition
+### Heat Tag (`heat_tag`)
 
-A customer is marked **Great Heat** if `heat_tag = 'hot'` OR if any of their leads has `status IN ('Validated', 'Quoted', 'Routed to Sales')`.
+**Source:** Manual only — set on customer profile → **Edit Customer** → **Heat Tag** (Hot / Warm / Cold / None). Saved to `customers.heat_tag` via `PATCH /api/customers/[id]`.
+
+**Not auto-set from:** lead urgency, lead status, or Add Lead / Add Customer flows (Add Customer does not set a heat tag).
+
+**CRM list filters:** Hot/Warm/Cold pills show only customers with that tag; click again to clear. Most customers have `heat_tag = null` until someone sets it on the profile.
 
 ---
 

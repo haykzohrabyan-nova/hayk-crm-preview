@@ -1,6 +1,30 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 26, 2026
-**Status:** MVP complete + performance Phase 3 (page-data, session cache) + form validation UX + follow-up cron code (May 26; auto-schedule pending Vercel Pro) + **security & code quality audit (May 26)** + **SDR Completed page access (May 26)**.
+**Status:** MVP complete + performance Phase 3 (page-data, session cache) + form validation UX + follow-up cron code (May 26; auto-schedule pending Vercel Pro) + **security & code quality audit (May 26)** + **SDR Completed page access (May 26)** + **list date filters, CRM Add Customer, CRM Realtime, public payment lock (May 26)**.
+
+---
+
+## May 26, 2026 — List date filters, tab badges, CRM & payments
+
+### Date filters (Quotes / Orders / Completed)
+- Shared `DashboardDateRangeFilter` — presets: Today, Yesterday, **Last 7 Days**, **Last 30 Days**, Custom (API keys `last_week` / `last_month` unchanged)
+- Default on first visit: **Last 7 Days** on Quotes, Orders, Completed
+- Quotes & Orders filter list by `created_at`; Completed filters by `updated_at` (completion date)
+- **Tab badges on Quotes/Orders** match the selected date range (`lib/utils/list-page-tab-counts.ts`)
+- **Sidebar nav badges** stay all-time scoped totals (unchanged)
+
+### CRM
+- **Add Customer** header button + modal (`POST /api/customers`) — standalone customers appear in list (no leads/tickets required)
+- **Realtime** on `customers` table (migration `083`) — sidebar `customers-realtime` → `bazaar:customers-changed`; CRM page coalesced refresh; manual Refresh button removed
+- **Heat tag** documented as manual-only (`customers.heat_tag` via Edit Customer on profile)
+
+### Public payment
+- Public pay modal — amount fixed to deposit/balance shown at top; no editable amount field
+- `POST /api/public/quotes/[token]/submit-payment` — server computes amount via `computePublicPaymentDueAmount()`
+
+### Other May 26 fixes
+- Quote **Save & Send** logs `ticket_sent` in History (migration `082` backfill)
+- Order detail sidebar — removed fixed viewport height that clipped actions below timeline after lifecycle timeline was added
 
 ---
 
@@ -308,7 +332,8 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 - `payment_evidence_amount` column (migration 071) — correct amount shown while pending
 - Orders with pending evidence visible on **`/orders`** for ticket owner (Awaiting payment confirmation); accountants confirm on **`/payments`**
 - `/payments/[id]` — dedicated payment review detail; list rows open here (not `/orders/[id]`)
-- `record_payment` — **accountant + admin only**; clears evidence and sends **payment confirmed** email when applicable
+- `record_payment` — **accountant + admin only**; sets `payment_evidence_reviewed_at`, **keeps** evidence file for audit; sends **payment confirmed** email/SMS when applicable
+- **Payments tabs (May 27):** Pending approval + Approved; `GET /api/payments/page-data` returns both lists + counts
 - Accountant role: default home `/payments`, can confirm payment, view orders (in-production tab), completed, **Mark Completed** when paid in full
 
 ### Production & completed pages
@@ -608,18 +633,20 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/quotes/[id]` | main | ✅ Built — overview layout; sidebar actions (Send/Resend, Convert, Cancel, Customer Link + Copy Link on sent/order/in_production/completed); stats row; lookup labels on customer card |
 | `/orders` | main | ✅ Built — Orders list (All / Pending Payment / In Production / Cancelled); mobile cards at `< lg` |
 | `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; Mark Completed + Resend Link in sidebar; overview layout |
-| `/payments` | main | ✅ Built — evidence queue; mobile cards; Confirm shows global loading |
+| `/payments` | main | ✅ Built — Pending approval + Approved tabs; evidence retained after confirm; mobile cards |
 | `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
 | `/reports` | main | ✅ Built — cash collected, rep scorecards, payment ledger, awaiting collection (admin only) |
 | `/activity-log` | main | ✅ Built — 2-tab layout: "Order / Lead Activity" + "User Activity" (admin) |
-| `/admin` | admin | ✅ Built — card grid overview (all 7 cards correct, 6 built + 1 planned) |
+| `/admin` | admin | ✅ Built — card grid overview (Users, Roles, Dropdowns, Company, Products, Integrations, SMS Templates, Payment) |
 | `/admin/settings/users` | admin-sub | ✅ Built |
 | `/admin/settings/roles` | admin-sub | ✅ Built |
 | `/admin/settings/dropdowns` | admin-sub | ✅ Built — all lead + order/quote categories |
 | `/admin/settings/products` | admin-sub | ✅ Built — product types, materials, links |
 | `/admin/settings/company` | admin-sub | ✅ Built — with EmailInput + PhoneInput validation |
 | `/admin/settings/integrations` | admin-sub | ✅ Built — Twilio SMS + Instantly AI live (no Stripe/Zelle — out of scope this stage) |
+| `/admin/settings/sms-templates` | admin-sub | ✅ Built — editable SMS/WhatsApp bodies (`sms_templates` + `/api/admin/sms-templates`) |
+| `/admin/settings/payment` | admin-sub | ✅ Built — bank / Zelle remittance |
 | `/admin/settings/notifications` | admin-sub | ⏳ Not built — broadcast form to send system messages to users/roles |
 
 ---
@@ -653,6 +680,8 @@ See `docs/schema.md` → Migration File Order for the full list (001–054). Key
 | 076 | `full_test_reset` | **DEV ONLY** — SQL wipe for clean testing; use with `npm run reset-test-data` for storage + DB |
 | 077 | `drop_initial_interest` | Removes redundant `leads.initial_interest`; use product `interests` jsonb only |
 | 078 | `backfill_staff_cash_payment_recorded` | Backfills `ticket_payment_recorded` for past staff cash/offline auto-deposits (Reports cash totals) |
+| 084 | `sms_templates` | Admin-editable SMS/WhatsApp bodies |
+| 085 | `payment_evidence_reviewed_at` | Evidence retained after accountant confirm; Payments Approved tab |
 | 056 | `add_idle_timeout_to_company_settings` | adds `session_idle_timeout_minutes` INTEGER NOT NULL DEFAULT 20 CHECK (>= 5 AND <= 480) to `company_settings` |
 | 057 | `create_user_sessions` | `user_sessions` table: one row per login session; tracks `signed_in_at`, `signed_out_at`, `sign_out_reason`; RLS: users read/write own rows, admin reads all via service role |
 | 058 | `add_reports_page` | adds `/reports` to `pages` table (section: main, sort_order: 9); access granted per-role via Admin panel |

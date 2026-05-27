@@ -119,6 +119,8 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - SDR workspace (All / Hold / Routed / Rejected / Won), lead locking, verify drawer
 - Sales pipeline, claim flow, HVT routing
 - CRM list + customer profile, merge (admin/sales API), dedup lookup
+- **May 26:** **Add Customer** modal on CRM list (`POST /api/customers`); standalone customers in list
+- **May 26:** CRM **Realtime** live updates (`customers` table, migration 083); manual Refresh removed
 - **May 26:** Customer profile — Lead History removed; Quotes & Orders only
 - **May 26:** SDR Directed to Sales / Won tabs — read-only Verify Drawer (not customer profile redirect)
 - Admin override on terminal leads (TODO-001)
@@ -135,7 +137,9 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 
 ### Payments *(offline — no online processor)*
 - Per-ticket payment config, deposit/partial/full/net terms
-- Payment evidence queue (`/payments`), accountant role, `record_payment`
+- Payment evidence (`/payments` Pending + Approved tabs), evidence retained after `record_payment`, accountant role
+- Admin SMS templates (`/admin/settings/sms-templates`, `sms_templates` table)
+- **May 26:** Public payment modal — fixed amount due (server-computed); client cannot override on submit
 - Admin remittance settings (wire/ACH/Zelle on company + public page)
 - Auto-release to production (net terms / payment gates)
 
@@ -145,7 +149,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Cash collected, released order value, pipeline, team session + work metrics
 - Reports Phase 1 + 2: funnel, win rate, rep scorecards, payment ledger, awaiting collection, custom date range
 - **May 26:** Staff cash deposits log `ticket_payment_recorded` (Reports + dashboard alignment); scorecards display-only; Reports links use lifecycle routes + `?from=/reports` Back
-- **May 26:** Orders + Quotes list pages — `DashboardDateRangeFilter` (client-side `created_at` filter)
+- **May 26:** Orders + Quotes + Completed list pages — `DashboardDateRangeFilter` (default Last 7 Days); tab badges on Quotes/Orders follow selected range; sidebar badges all-time
 
 ### Admin & auth
 - User/role management, MFA (TOTP), per-user `mfa_required`, remember device 30 days

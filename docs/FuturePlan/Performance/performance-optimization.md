@@ -97,7 +97,7 @@ Refactored to parallel `{ count: "exact", head: true }` via `lib/utils/db-counts
 ```sql
 CREATE INDEX IF NOT EXISTS job_tickets_payment_evidence_pending_idx
   ON job_tickets (ticket_status)
-  WHERE payment_evidence_url IS NOT NULL AND payment_paid_at IS NULL;
+  WHERE payment_evidence_url IS NOT NULL AND payment_evidence_reviewed_at IS NULL;
 
 CREATE INDEX IF NOT EXISTS job_tickets_in_production_released_idx
   ON job_tickets (production_released_at DESC)

@@ -23,12 +23,12 @@ export async function GET() {
     { count: orders_in_production },
     { count: completed_this_month },
   ] = await Promise.all([
-    // Orders with evidence submitted but payment not yet confirmed (payment_paid_at is null)
+    // Orders with evidence submitted but not yet reviewed by accountant
     admin
       .from("job_tickets")
       .select("id", { count: "exact", head: true })
       .not("payment_evidence_url", "is", null)
-      .is("payment_paid_at", null)
+      .is("payment_evidence_reviewed_at", null)
       .in("ticket_status", ["sent", "order", "in_production", "completed"]),
 
     // Orders currently in production

@@ -149,7 +149,10 @@ export async function POST(request: NextRequest, { params }: Params) {
     payment_evidence_submitted_at: now,
   };
 
-  if (evidenceStoragePath) patch.payment_evidence_url = evidenceStoragePath;
+  if (evidenceStoragePath) {
+    patch.payment_evidence_url = evidenceStoragePath;
+    patch.payment_evidence_reviewed_at = null;
+  }
   if (receiptId) patch.ticket_receipt_id = receiptId;
 
   if (needsAccountantReview) {

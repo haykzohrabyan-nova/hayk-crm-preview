@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Search, RefreshCw, X, User, FilePlus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { Search, X, FilePlus, UserPlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { AddCustomerModal } from "@/components/crm/add-customer-modal";
 import { formatPhone } from "@/lib/utils/phone";
 import { lookupLabel } from "@/lib/utils/lookups";
 
@@ -175,16 +176,24 @@ export function CRMPage() {
   const [heatFilter, setHeatFilter] = useState<HeatFilter>("all");
   const [industryLookups, setIndustryLookups] = useState<LookupOption[]>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [addCustomerOpen, setAddCustomerOpen] = useState(false);
 
   const fetchCustomers = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
-    const res = await fetch("/api/customers");
-    const data = await res.json();
-    setCustomers(data.customers ?? []);
-    if (!silent) setLoading(false);
+    try {
+      const res = await fetch("/api/customers");
+      const data = await res.json();
+      setCustomers(data.customers ?? []);
+    } catch {
+      if (!silent) setCustomers([]);
+    } finally {
+      if (!silent) setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { fetchCustomers(); }, [fetchCustomers]);
+  useCoalescedRefresh(fetchCustomers, [], {
+    events: ["bazaar:customers-changed", "bazaar:leads-changed", "bazaar:tickets-changed"],
+  });
 
   useEffect(() => {
     fetch("/api/lookups?categories=industry")
@@ -192,16 +201,6 @@ export function CRMPage() {
       .then((d) => setIndustryLookups(d.industry ?? []))
       .catch(() => {});
   }, []);
-
-  // Re-fetch silently whenever any lead changes (e.g. SDR routes a lead →
-  // that customer becomes visible in the CRM for the first time).
-  useEffect(() => {
-    function onLeadsChanged() {
-      void fetchCustomers(true);
-    }
-    window.addEventListener("bazaar:leads-changed", onLeadsChanged);
-    return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
-  }, [fetchCustomers]);
 
   // ── Client-side filters ───────────────────────────────────────────────────
 
@@ -242,9 +241,15 @@ export function CRMPage() {
         <h1 className="text-[20px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
           CRM
         </h1>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void fetchCustomers()} title="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+        <button
+          type="button"
+          onClick={() => setAddCustomerOpen(true)}
+          className="flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium transition-opacity hover:opacity-90"
+          style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+        >
+          <UserPlus size={15} />
+          Add Customer
+        </button>
       </div>
 
       {/* Search + Filters */}
@@ -469,6 +474,18 @@ export function CRMPage() {
       {toast && (
         <ToastBanner message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
       )}
+
+      <AddCustomerModal
+        open={addCustomerOpen}
+        industries={industryLookups}
+        onClose={() => setAddCustomerOpen(false)}
+        onCreated={(customerId) => {
+          window.dispatchEvent(new Event("bazaar:customers-changed"));
+          void fetchCustomers(true);
+          setToast({ message: "Customer added.", type: "success" });
+          router.push(`/crm/customers/${customerId}`);
+        }}
+      />
     </div>
   );
 }

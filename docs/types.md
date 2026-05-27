@@ -334,9 +334,10 @@ export interface JobTicket {
   deposit_paid_at?: string | null
   balance_paid_at?: string | null
   production_released_at?: string | null
-  // Payment evidence (migration 068, 071)
+  // Payment evidence (migration 068, 071, 085)
   payment_evidence_url?: string | null
   payment_evidence_submitted_at?: string | null
+  payment_evidence_reviewed_at?: string | null
   payment_evidence_amount?: number | null
   created_at: string
   updated_at: string

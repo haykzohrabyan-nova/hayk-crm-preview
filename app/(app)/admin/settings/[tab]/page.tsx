@@ -6,6 +6,7 @@ import { DropdownsSection } from "@/components/admin/dropdowns-section";
 import { CompanySection } from "@/components/admin/company-section";
 import { IntegrationsSection } from "@/components/admin/integrations-section";
 import { PaymentSection } from "@/components/admin/payment-section";
+import { SmsTemplatesSection } from "@/components/admin/sms-templates-section";
 // ─── Supported tabs ───────────────────────────────────────────────────────────
 
 const SUPPORTED_TABS = [
@@ -15,6 +16,7 @@ const SUPPORTED_TABS = [
   "company",
   "products",
   "integrations",
+  "sms-templates",
   "payment",
 ] as const;
 type AdminTab = (typeof SUPPORTED_TABS)[number];
@@ -52,6 +54,9 @@ export default async function AdminSettingsTabPage({
 
     case "integrations":
       return <IntegrationsSection />;
+
+    case "sms-templates":
+      return <SmsTemplatesSection />;
 
     case "payment":
       return <PaymentSection />;

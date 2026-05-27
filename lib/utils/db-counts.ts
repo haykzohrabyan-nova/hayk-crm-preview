@@ -58,13 +58,13 @@ export function scopedCompletedTicketCount(
   );
 }
 
-/** Orders-page exclusion: evidence submitted but payment not confirmed. */
+/** Orders-page exclusion: evidence submitted but not yet reviewed by accountant. */
 export const ORDERS_VISIBLE_PAYMENT_FILTER =
-  "payment_evidence_submitted_at.is.null,payment_evidence_url.is.null,payment_paid_at.not.is.null";
+  "payment_evidence_submitted_at.is.null,payment_evidence_url.is.null,payment_evidence_reviewed_at.not.is.null";
 
-/** Tab/count badge exclusion (legacy — url set but not paid). */
+/** Tab/count badge exclusion (evidence awaiting review). */
 export const ORDERS_COUNT_PAYMENT_FILTER =
-  "payment_evidence_url.is.null,payment_paid_at.not.is.null";
+  "payment_evidence_url.is.null,payment_evidence_reviewed_at.not.is.null";
 
 /** Build a scoped job_tickets count query. */
 export function scopedTicketCount(

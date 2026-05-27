@@ -20,6 +20,9 @@ The page lives at `app/(app)/admin/page.tsx`. A sub-nav strip (Overview / Settin
 | Company Info | `/admin/settings/company` | ✅ Built | Branding, address, tax rate, HVT, rush surcharge |
 | Products | `/admin/settings/products` | ✅ Built | Product types, materials, material–product links |
 | Integrations | `/admin/settings/integrations` | ✅ Built | Twilio SMS + Instantly AI live; Stripe/Zelle out of scope this stage |
+| SMS Templates | `/admin/settings/sms-templates` | ✅ Built | Editable SMS/WhatsApp bodies for quote send, reminders, payment confirmed, etc. |
+| Payment | `/admin/settings/payment` | ✅ Built | Bank / Wire / ACH and Zelle remittance shown on public quote page |
+
 Built cards show an accent-colored icon + "Open →".
 
 ---
@@ -265,6 +268,28 @@ Single-row `company_settings` table. Used for invoice/PDF headers and quote form
 - `PATCH /api/admin/company` — admin only
 
 Payment remittance (bank / Zelle) is edited on **Admin → Settings → Payment** and exposed to customers on `/q/[token]` via the public quotes API — not via the filtered staff `GET`.
+
+---
+
+## `/admin/settings/sms-templates` — SMS Templates ✅ Built
+
+Admin-editable text for all customer **SMS** and **WhatsApp** messages sent via Twilio (`lib/integrations/send-quote.ts`).
+
+**Component:** `components/admin/sms-templates-section.tsx`
+
+**Groups:** Quote & order delivery · Payment reminders & confirmations · Invoice / portal links · Ready for pickup · Quote follow-up
+
+**Placeholders:** `{firstName}`, `{companyName}`, `{ref}`, `{total}`, `{link}`, `{amount}`, `{pickupBlock}`, `{phoneBlock}` — must remain in template text unless wording is intentionally changed.
+
+**Actions:** Edit bodies → **Save all templates**; per-template **Reset default** (coded defaults in `lib/integrations/sms-template-catalog.ts`).
+
+**API:**
+- `GET /api/admin/sms-templates` — list with metadata + current body
+- `PATCH /api/admin/sms-templates` — `{ templates: { "quote_sent": "…", … } }` (admin only)
+
+**Database:** `sms_templates` table (migration `084_sms_templates.sql`). Seeded on migrate; server falls back to catalog defaults if a row is missing.
+
+**Integrations tab** remains for Twilio/Instantly **test sends** only — message copy is not edited there.
 
 ---
 

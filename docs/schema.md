@@ -450,15 +450,16 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `balance_paid_at` | `timestamptz` | When the remaining balance was collected |
 | `production_released_at` | `timestamptz` | When the order was released to production |
 
-**Payment evidence** *(added migration 068, amount column migration 071)*
+**Payment evidence** *(migration 068; amount 071; reviewed_at 085)*
 
 | Column | Type | Notes |
 |--------|------|-------|
 | `payment_evidence_url` | `text` | Storage path in `payment-evidence` bucket |
 | `payment_evidence_submitted_at` | `timestamptz` | When customer uploaded proof |
 | `payment_evidence_amount` | `numeric` | Amount customer claimed while awaiting accountant review |
+| `payment_evidence_reviewed_at` | `timestamptz` | When accountant confirmed evidence via `record_payment`; evidence URL is retained for audit |
 
-When evidence is pending (`payment_evidence_url` set, not yet confirmed via `record_payment`), the ticket appears on `/payments` only — excluded from `/orders` list counts.
+When evidence is pending (`payment_evidence_url` set, `payment_evidence_reviewed_at` null), the ticket appears on `/payments` → Pending approval — excluded from `/orders` list counts. After review, it appears on `/payments` → Approved with evidence still viewable.
 
 **Legacy columns** *(preserved as nullable for backwards compatibility — do not use in new code)*
 
@@ -740,6 +741,20 @@ Single-row configuration table (always `id = 1`). Seeded in migration 045. Exten
 
 ---
 
+### `sms_templates`
+
+Admin-editable SMS / WhatsApp message bodies (migration `084_sms_templates.sql`). Keys match `lib/integrations/sms-template-catalog.ts`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `template_key` | `text` PK | e.g. `quote_sent`, `payment_reminder`, `order_ready_pickup` |
+| `body` | `text` NOT NULL | Plain text with `{placeholder}` tokens |
+| `updated_at` | `timestamptz` NOT NULL DEFAULT `now()` | |
+
+**RLS:** Enabled; no authenticated policies — staff UI uses `GET`/`PATCH` `/api/admin/sms-templates` (service role). Outbound send path loads via `load-sms-templates.ts` with catalog defaults as fallback.
+
+---
+
 ### `mfa_trusted_devices`
 
 Trusted-browser tokens for skipping TOTP verify (30 days). Created by `POST /api/auth/mfa-trust` after AAL2.
@@ -806,7 +821,7 @@ create index tickets_created_by_idx    on public.job_tickets(created_by_id);
 
 -- added migration 073 (performance — partial indexes for list/count queries)
 create index job_tickets_payment_evidence_pending_idx on public.job_tickets(ticket_status)
-  where payment_evidence_url is not null and payment_paid_at is null;
+  where payment_evidence_url is not null and payment_evidence_reviewed_at is null;
 create index job_tickets_in_production_released_idx on public.job_tickets(production_released_at desc)
   where ticket_status = 'in_production';
 create index job_tickets_order_status_idx on public.job_tickets(created_at desc)
@@ -1124,6 +1139,7 @@ Tables opted into the `supabase_realtime` publication. Any INSERT/UPDATE/DELETE 
 | `leads` | `035_enable_leads_realtime.sql` | `bazaar:leads-changed` |
 | `activities` | `036_enable_activities_realtime.sql` | `bazaar:activities-changed` |
 | `job_tickets` | `047_enable_job_tickets_realtime.sql` | `bazaar:tickets-changed` |
+| `customers` | `083_enable_customers_realtime.sql` | `bazaar:customers-changed` |
 
 All three use `REPLICA IDENTITY FULL` so UPDATE/DELETE events include the full old row in the payload.
 

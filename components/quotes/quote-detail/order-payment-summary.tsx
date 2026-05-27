@@ -47,6 +47,7 @@ export interface SummaryTicket {
   production_released_at: string | null;
   payment_evidence_url: string | null;
   payment_evidence_submitted_at: string | null;
+  payment_evidence_reviewed_at?: string | null;
   payment_evidence_amount?: number | null;
 }
 

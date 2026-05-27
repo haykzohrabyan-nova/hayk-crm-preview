@@ -138,7 +138,7 @@ BazarCRM/
 │   │   ├── admin/
 │   │   │   ├── page.tsx                  ✓ Overview card grid
 │   │   │   ├── loading.tsx               ✓ Route-level skeleton
-│   │   │   └── settings/[tab]/page.tsx   ✓ users | roles | dropdowns | products | company | notifications | integrations
+│   │   │   └── settings/[tab]/page.tsx   ✓ users | roles | dropdowns | products | company | integrations | sms-templates | payment
 │   │   ├── settings/page.tsx             ✓ Personal profile settings
 │   │   └── profile/page.tsx              ✓ Personal profile settings (alias)
 │   ├── api/
@@ -160,7 +160,7 @@ BazarCRM/
 │   │   │       ├── activities/route.ts   ✓ GET — lead activity timeline
 │   │   │       └── reassign/route.ts     ✓ POST — Admin reassign/unassign lead
 │   │   ├── customers/
-│   │   │   ├── route.ts                  ✓ GET — slim customer list + lightweight aggregates
+│   │   │   ├── route.ts                  ✓ GET list + POST create (CRM Add Customer, Add Lead)
 │   │   │   ├── lookup/route.ts           ✓ GET — phone/email dedup lookup
 │   │   │   ├── companies/route.ts        ✓ GET — company name autocomplete
 │   │   │   ├── [id]/route.ts             ✓ GET/PATCH — customer profile
@@ -226,6 +226,7 @@ BazarCRM/
 │   │   ├── company-section.tsx           ✓ Company info with validation
 │   │   ├── payment-section.tsx           ✓ Payment remittance info (Wire/ACH/Zelle)
 │   │   ├── integrations-section.tsx      ✓ Twilio SMS + Instantly AI live (Stripe/Zelle out of scope)
+│   │   ├── sms-templates-section.tsx       ✓ Admin-editable SMS/WhatsApp bodies
 │   │   ├── activity-log-section.tsx      ✓ Paginated system activity feed
 │   │   └── user-activity-section.tsx     ✓ Per-user session KPI cards + history table
 │   ├── auth/
@@ -362,13 +363,13 @@ List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table vi
 |------|----------------|----------------------------------|
 | `/quotes` | `GET /api/quotes/page-data` | `GET /api/tickets?kind=quote` + `/api/quotes/counts` |
 | `/orders` | `GET /api/orders/page-data` | `GET /api/orders/orders` + `/api/orders/counts` |
-| `/payments` | `GET /api/payments/page-data` | `GET /api/payments/pending` |
+| `/payments` | `GET /api/payments/page-data` (`orders`, `approvedOrders`, `counts`) | `GET /api/payments/pending` (pending only) |
 | `/production` | `GET /api/production/page-data` | `GET /api/production/orders` + `/api/production/counts` |
 | `/completed` | `GET /api/completed/page-data` | `GET /api/completed/orders` + `/api/completed/counts` |
 | `/leads`, `/sales` | `GET /api/leads/workspace/page-data` or `/api/leads/sales/page-data` | workspace list + counts routes |
 | `/crm` | `GET /api/customers` | Slim customer + lead/ticket aggregates |
 
-**Tab/sidebar counts** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts` and shared `fetch-*-data.ts` helpers. **Completed** uses `scopeCompletedTicketsQuery()` — SDR counts only self-created completed tickets (`created_by_id`), not routed hand-offs.
+**Tab/sidebar counts:** Leads, Sales, Payments, Completed, and **sidebar nav** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`. **Quotes & Orders tab badges** on list pages are computed **client-side** from the date-filtered list (`lib/utils/list-page-tab-counts.ts`). **Completed** uses `scopeCompletedTicketsQuery()` — SDR counts only self-created completed tickets (`created_by_id`), not routed hand-offs.
 
 **Session cache:** `lib/auth/session-cache.ts` memoizes `requireSession()` for ~3 s during burst loads.
 

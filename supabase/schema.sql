@@ -250,6 +250,7 @@ create table if not exists public.job_tickets (
   payment_evidence_url               text,
   payment_evidence_submitted_at      timestamptz,
   payment_evidence_amount            numeric,
+  payment_evidence_reviewed_at       timestamptz,
 
   notes                              text,
   created_at                         timestamptz    not null default now(),
@@ -383,6 +384,15 @@ create table if not exists public.company_settings (
   updated_at                       timestamptz not null default now()
 );
 
+-- ── sms_templates ─────────────────────────────────────────────────────────────
+-- Admin-editable SMS / WhatsApp bodies (Twilio). Keys match lib/integrations/sms-template-catalog.ts.
+
+create table if not exists public.sms_templates (
+  template_key text        primary key,
+  body         text        not null,
+  updated_at   timestamptz not null default now()
+);
+
 -- ── user_sessions ─────────────────────────────────────────────────────────────
 -- One row per login session; populated by POST /api/auth/session.
 
@@ -452,7 +462,7 @@ create unique index if not exists job_tickets_public_token_idx
 
 create index if not exists job_tickets_payment_evidence_pending_idx
   on public.job_tickets(ticket_status)
-  where payment_evidence_url is not null and payment_paid_at is null;
+  where payment_evidence_url is not null and payment_evidence_reviewed_at is null;
 create index if not exists job_tickets_in_production_released_idx
   on public.job_tickets(production_released_at desc)
   where ticket_status = 'in_production';
@@ -512,6 +522,7 @@ alter table public.product_material_links  enable row level security;
 alter table public.order_sequence_counters enable row level security;
 alter table public.quote_sequence_counters enable row level security;
 alter table public.company_settings        enable row level security;
+alter table public.sms_templates           enable row level security;
 alter table public.user_sessions           enable row level security;
 alter table public.mfa_trusted_devices     enable row level security;
 
@@ -901,6 +912,11 @@ create trigger set_company_settings_updated_at
   before update on public.company_settings
   for each row execute function public.set_updated_at();
 
+drop trigger if exists set_sms_templates_updated_at on public.sms_templates;
+create trigger set_sms_templates_updated_at
+  before update on public.sms_templates
+  for each row execute function public.set_updated_at();
+
 
 -- =============================================================================
 -- 7. VIEWS
@@ -996,6 +1012,10 @@ alter publication supabase_realtime add table public.activities;
 -- job_tickets
 alter table public.job_tickets  replica identity full;
 alter publication supabase_realtime add table public.job_tickets;
+
+-- customers (CRM list live updates)
+alter table public.customers    replica identity full;
+alter publication supabase_realtime add table public.customers;
 
 
 -- =============================================================================

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
@@ -23,16 +23,20 @@ import {
   relativeTime,
 } from "@/lib/utils/format";
 
-interface PendingOrder {
+type PaymentTab = "pending" | "approved";
+
+interface PaymentOrder {
   id: string;
   reference_code: string | null;
   title: string | null;
   quote_final_total: number | null;
   payment_method_used: string | null;
   payment_evidence_submitted_at: string | null;
+  payment_evidence_reviewed_at: string | null;
   payment_evidence_url: string | null;
   payment_evidence_amount: number | null;
   payment_amount_received: number | null;
+  payment_status: string | null;
   deposit_paid_at: string | null;
   ticket_payment_strategy: string | null;
   ticket_status: string;
@@ -42,6 +46,11 @@ interface PendingOrder {
     company: string | null;
   } | null;
 }
+
+const TABS: { id: PaymentTab; label: string }[] = [
+  { id: "pending", label: "Pending approval" },
+  { id: "approved", label: "Approved" },
+];
 
 const CHANNEL_LABELS: Record<string, string> = {
   wire:    "Wire Transfer",
@@ -58,46 +67,104 @@ function fmt(n: number | null | undefined): string {
   return formatCurrency(n);
 }
 
-function customerLabel(order: PendingOrder): string {
+function customerLabel(order: PaymentOrder): string {
   return displayContactName(order.customer);
 }
 
-function inferPaymentMode(order: PendingOrder): "deposit" | "balance" | "full" {
+function inferPaymentMode(order: PaymentOrder): "deposit" | "balance" | "full" {
   const strategy = order.ticket_payment_strategy ?? "full";
   if (strategy === "full") return "full";
   if (order.deposit_paid_at) return "balance";
   return "deposit";
 }
 
-function claimedAmount(order: PendingOrder): number {
+function claimedAmount(order: PaymentOrder): number {
   if (order.payment_evidence_amount != null) return Number(order.payment_evidence_amount);
   const total = Number(order.quote_final_total ?? 0);
   const paid  = Number(order.payment_amount_received ?? 0);
   return Math.max(0, total - paid);
 }
 
-function TableSkeleton() {
+function TableSkeleton({ cols }: { cols: number }) {
   return (
     <tbody>
-      <TableRowsSkeleton rows={3} cols={6} />
+      <TableRowsSkeleton rows={3} cols={cols} />
     </tbody>
+  );
+}
+
+function PaymentTabs({
+  activeTab,
+  onTabChange,
+  tabCounts,
+}: {
+  activeTab: PaymentTab;
+  onTabChange: (tab: PaymentTab) => void;
+  tabCounts: { pending: number; approved: number };
+}) {
+  return (
+    <div
+      className="flex overflow-x-auto border-b -mx-1 px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+      style={{ borderColor: "var(--color-border)" }}
+    >
+      {TABS.map((t) => {
+        const count = tabCounts[t.id];
+        const active = activeTab === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => onTabChange(t.id)}
+            className="px-3 py-2.5 sm:px-4 text-sm relative transition-colors whitespace-nowrap shrink-0"
+            style={{
+              color: active ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
+              fontWeight: active ? 500 : 400,
+            }}
+          >
+            {t.label}
+            {count > 0 && (
+              <span
+                className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+                style={{
+                  background: active ? "var(--color-badge-bg)" : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
+                  color: "var(--color-badge-text)",
+                }}
+              >
+                {count}
+              </span>
+            )}
+            {active && (
+              <span
+                className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t"
+                style={{ background: "var(--color-tab-underline)" }}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 export function PaymentsPage() {
   const router = useRouter();
   const { showLoading, hideLoading } = useGlobalLoading();
-  const [orders, setOrders]           = useState<PendingOrder[]>([]);
-  const [loading, setLoading]         = useState(true);
+  const [activeTab, setActiveTab] = useState<PaymentTab>("pending");
+  const [pendingOrders, setPendingOrders] = useState<PaymentOrder[]>([]);
+  const [approvedOrders, setApprovedOrders] = useState<PaymentOrder[]>([]);
+  const [tabCounts, setTabCounts] = useState({ pending: 0, approved: 0 });
+  const [loading, setLoading] = useState(true);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [confirmErr, setConfirmErr]     = useState<string | null>(null);
+  const [confirmErr, setConfirmErr] = useState<string | null>(null);
 
   const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
     fetch("/api/payments/page-data")
       .then((r) => r.json())
       .then((d) => {
-        if (d.orders) setOrders(d.orders);
+        if (d.orders) setPendingOrders(d.orders);
+        if (d.approvedOrders) setApprovedOrders(d.approvedOrders);
+        if (d.counts) setTabCounts(d.counts);
       })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
@@ -107,7 +174,14 @@ export function PaymentsPage() {
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
 
-  async function handleConfirm(order: PendingOrder) {
+  const orders = activeTab === "pending" ? pendingOrders : approvedOrders;
+  const isPendingTab = activeTab === "pending";
+  const desktopCols = isPendingTab ? 6 : 6;
+  const headers = isPendingTab
+    ? ["Order", "Customer", "Claimed", "Method", "Submitted", "Actions"]
+    : ["Order", "Customer", "Claimed", "Method", "Submitted", "Approved"];
+
+  async function handleConfirm(order: PaymentOrder) {
     const amount = claimedAmount(order);
     if (amount <= 0) {
       setConfirmErr("No payment amount to confirm.");
@@ -145,29 +219,23 @@ export function PaymentsPage() {
     }
   }
 
+  const emptyTitle = isPendingTab ? "All caught up" : "No approved evidence yet";
+  const emptySubtitle = isPendingTab
+    ? "No orders pending payment review."
+    : "Orders appear here after an accountant confirms payment evidence.";
+
   return (
     <div className="space-y-5">
-      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
-              Payment Evidence Review
-            </h1>
-            {!loading && orders.length > 0 && (
-              <span
-                className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-2 text-[11px] font-semibold"
-                style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)" }}
-              >
-                {orders.length} pending
-              </span>
-            )}
-          </div>
+          <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
+            Payment Evidence
+          </h1>
           <p className="text-sm mt-1 max-w-xl" style={{ color: "var(--color-text-muted)" }}>
-            Review uploaded payment proof, confirm the amount, and release orders to production.
+            Review uploaded payment proof on Pending approval, then find past confirmations and evidence files on Approved.
           </p>
         </div>
-        {!loading && orders.length > 0 && (
+        {isPendingTab && !loading && tabCounts.pending > 0 && (
           <div
             className="flex items-center gap-2 rounded-[10px] border px-4 py-2.5 text-sm"
             style={{
@@ -177,10 +245,12 @@ export function PaymentsPage() {
             }}
           >
             <Clock size={15} style={{ flexShrink: 0 }} />
-            <span>View evidence before confirming — customer is notified by email after approval.</span>
+            <span>View evidence before confirming — customer is notified after approval.</span>
           </div>
         )}
       </div>
+
+      <PaymentTabs activeTab={activeTab} onTabChange={setActiveTab} tabCounts={tabCounts} />
 
       {confirmErr && (
         <div
@@ -203,11 +273,11 @@ export function PaymentsPage() {
         <table className="w-full border-collapse">
           <thead>
             <tr style={{ borderBottom: "1px solid var(--color-border)", background: "var(--color-row-alt)" }}>
-              {["Order", "Customer", "Claimed", "Method", "Submitted", "Actions"].map((h) => (
+              {headers.map((h) => (
                 <th
                   key={h}
                   className={`px-5 py-3 text-left text-[11px] font-medium uppercase tracking-wider whitespace-nowrap ${
-                    h === "Claimed" ? "text-right" : h === "Actions" ? "text-right" : ""
+                    h === "Claimed" ? "text-right" : h === "Actions" || h === "Approved" ? "text-right" : ""
                   }`}
                   style={{ color: "var(--color-text-muted)", letterSpacing: "0.06em" }}
                 >
@@ -218,18 +288,18 @@ export function PaymentsPage() {
           </thead>
 
           {loading ? (
-            <TableSkeleton />
+            <TableSkeleton cols={desktopCols} />
           ) : orders.length === 0 ? (
             <tbody>
               <tr>
-                <td colSpan={6}>
+                <td colSpan={desktopCols}>
                   <div className="flex flex-col items-center justify-center py-20 gap-3">
                     <CheckCircle2 size={40} style={{ color: "var(--color-text-muted)" }} />
                     <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-                      All caught up
+                      {emptyTitle}
                     </p>
                     <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-                      No orders pending payment review.
+                      {emptySubtitle}
                     </p>
                   </div>
                 </td>
@@ -256,7 +326,6 @@ export function PaymentsPage() {
                       e.currentTarget.style.background = i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
                     }}
                   >
-                    {/* Order */}
                     <td className="px-5 py-4 align-middle">
                       <span
                         className="text-sm font-semibold whitespace-nowrap"
@@ -271,17 +340,17 @@ export function PaymentsPage() {
                       )}
                     </td>
 
-                    {/* Customer */}
                     <td className="px-5 py-4 align-middle">
                       <div className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
                         {customerLabel(order)}
                       </div>
                       <div className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
                         Total {fmt(order.quote_final_total)}
+                        {order.payment_status === "partial" && " · Partial"}
+                        {order.payment_status === "paid" && " · Paid"}
                       </div>
                     </td>
 
-                    {/* Claimed */}
                     <td className="px-5 py-4 align-middle text-right whitespace-nowrap">
                       <div className="text-sm font-semibold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
                         {fmt(claimed)}
@@ -293,7 +362,6 @@ export function PaymentsPage() {
                       )}
                     </td>
 
-                    {/* Method */}
                     <td className="px-5 py-4 align-middle whitespace-nowrap">
                       {order.payment_method_used ? (
                         <span
@@ -308,7 +376,6 @@ export function PaymentsPage() {
                       )}
                     </td>
 
-                    {/* Submitted */}
                     <td className="px-5 py-4 align-middle whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <Clock size={13} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
@@ -325,7 +392,6 @@ export function PaymentsPage() {
                       </div>
                     </td>
 
-                    {/* Actions */}
                     <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-end gap-2 flex-nowrap">
                         {order.payment_evidence_url && (
@@ -346,23 +412,29 @@ export function PaymentsPage() {
                             Evidence
                           </a>
                         )}
-                        <button
-                          type="button"
-                          disabled={isConfirming}
-                          onClick={() => handleConfirm(order)}
-                          className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
-                          style={{
-                            background: "var(--color-btn-primary-bg)",
-                            color: "var(--color-btn-primary-text)",
-                          }}
-                        >
-                          {isConfirming ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={14} />
-                          )}
-                          Confirm
-                        </button>
+                        {isPendingTab ? (
+                          <button
+                            type="button"
+                            disabled={isConfirming}
+                            onClick={() => handleConfirm(order)}
+                            className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
+                            style={{
+                              background: "var(--color-btn-primary-bg)",
+                              color: "var(--color-btn-primary-text)",
+                            }}
+                          >
+                            {isConfirming ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <CheckCircle2 size={14} />
+                            )}
+                            Confirm
+                          </button>
+                        ) : (
+                          <span className="text-sm whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
+                            {formatDateTime(order.payment_evidence_reviewed_at)}
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -378,7 +450,7 @@ export function PaymentsPage() {
         {loading ? (
           <MobileListCardSkeleton count={2} />
         ) : orders.length === 0 ? (
-          <MobileListCardEmpty message="No orders pending payment review." />
+          <MobileListCardEmpty message={emptySubtitle} />
         ) : (
           orders.map((order) => {
             const claimed = claimedAmount(order);
@@ -430,6 +502,12 @@ export function PaymentsPage() {
                       </>
                     }
                   />
+                  {!isPendingTab && (
+                    <MobileListCardRow
+                      label="Approved"
+                      value={formatDateTime(order.payment_evidence_reviewed_at)}
+                    />
+                  )}
                 </MobileListCardFields>
 
                 <div className="flex flex-col gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
@@ -450,23 +528,25 @@ export function PaymentsPage() {
                       View Evidence
                     </a>
                   )}
-                  <button
-                    type="button"
-                    disabled={isConfirming}
-                    onClick={() => handleConfirm(order)}
-                    className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-4 py-2.5 text-[13px] font-medium disabled:opacity-60"
-                    style={{
-                      background: "var(--color-btn-primary-bg)",
-                      color: "var(--color-btn-primary-text)",
-                    }}
-                  >
-                    {isConfirming ? (
-                      <Loader2 size={14} className="animate-spin" />
-                    ) : (
-                      <CheckCircle2 size={14} />
-                    )}
-                    Confirm Payment
-                  </button>
+                  {isPendingTab && (
+                    <button
+                      type="button"
+                      disabled={isConfirming}
+                      onClick={() => handleConfirm(order)}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-4 py-2.5 text-[13px] font-medium disabled:opacity-60"
+                      style={{
+                        background: "var(--color-btn-primary-bg)",
+                        color: "var(--color-btn-primary-text)",
+                      }}
+                    >
+                      {isConfirming ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <CheckCircle2 size={14} />
+                      )}
+                      Confirm Payment
+                    </button>
+                  )}
                 </div>
               </MobileListCard>
             );

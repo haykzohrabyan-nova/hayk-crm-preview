@@ -28,34 +28,13 @@ function shiftDays(date: Date, days: number): Date {
   return d;
 }
 
-/** Previous calendar week Mon 00:00 – Sun 23:59 (relative to today). */
-function lastCalendarWeekBounds(): { start: Date; end: Date } {
+/** Rolling N-day window ending today (inclusive). e.g. 7 → today + prior 6 days. */
+function rollingDaysThroughToday(inclusiveDays: number): { start: Date; end: Date } {
   const now = new Date();
-  const day = now.getDay();
-  const thisMonday = startOfLocalDay(now);
-  thisMonday.setDate(now.getDate() - (day === 0 ? 6 : day - 1));
-  const lastSunday = endOfLocalDay(shiftDays(thisMonday, -1));
-  const lastMonday = startOfLocalDay(shiftDays(lastSunday, -6));
-  return { start: lastMonday, end: lastSunday };
-}
-
-function priorCalendarWeekBounds(currentStart: Date): { start: Date; end: Date } {
-  const priorSunday = endOfLocalDay(shiftDays(currentStart, -1));
-  const priorMonday = startOfLocalDay(shiftDays(priorSunday, -6));
-  return { start: priorMonday, end: priorSunday };
-}
-
-function lastCalendarMonthBounds(): { start: Date; end: Date } {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-  const end = endOfLocalDay(new Date(now.getFullYear(), now.getMonth(), 0));
-  return { start, end };
-}
-
-function priorCalendarMonthBounds(currentStart: Date): { start: Date; end: Date } {
-  const start = new Date(currentStart.getFullYear(), currentStart.getMonth() - 1, 1);
-  const end = endOfLocalDay(new Date(currentStart.getFullYear(), currentStart.getMonth(), 0));
-  return { start, end };
+  return {
+    start: startOfLocalDay(shiftDays(now, -(inclusiveDays - 1))),
+    end: endOfLocalDay(now),
+  };
 }
 
 function priorEquivalentRange(start: Date, end: Date): { start: Date; end: Date } {
@@ -68,15 +47,15 @@ function priorEquivalentRange(start: Date, end: Date): { start: Date; end: Date 
 export const SDR_DASHBOARD_PRESET_LABELS: Record<Exclude<SdrDashboardPreset, "custom">, string> = {
   today: "Today",
   yesterday: "Yesterday",
-  last_week: "Last Week",
-  last_month: "Last Month",
+  last_week: "Last 7 Days",
+  last_month: "Last 30 Days",
 };
 
 const PRIOR_LABELS: Record<Exclude<SdrDashboardPreset, "custom">, string> = {
   today: "vs yesterday",
   yesterday: "vs prior day",
-  last_week: "vs prior week",
-  last_month: "vs prior month",
+  last_week: "vs prior 7 days",
+  last_month: "vs prior 30 days",
 };
 
 export function resolveSdrDashboardDateRange(
@@ -130,16 +109,16 @@ export function resolveSdrDashboardDateRange(
     priorEnd = endOfLocalDay(py);
     priorLabel = PRIOR_LABELS.yesterday;
   } else if (preset === "last_week") {
-    ({ start, end } = lastCalendarWeekBounds());
+    ({ start, end } = rollingDaysThroughToday(7));
     label = SDR_DASHBOARD_PRESET_LABELS.last_week;
     resolvedPreset = "last_week";
-    ({ start: priorStart, end: priorEnd } = priorCalendarWeekBounds(start));
+    ({ start: priorStart, end: priorEnd } = priorEquivalentRange(start, end));
     priorLabel = PRIOR_LABELS.last_week;
   } else if (preset === "last_month") {
-    ({ start, end } = lastCalendarMonthBounds());
+    ({ start, end } = rollingDaysThroughToday(30));
     label = SDR_DASHBOARD_PRESET_LABELS.last_month;
     resolvedPreset = "last_month";
-    ({ start: priorStart, end: priorEnd } = priorCalendarMonthBounds(start));
+    ({ start: priorStart, end: priorEnd } = priorEquivalentRange(start, end));
     priorLabel = PRIOR_LABELS.last_month;
   } else {
     return { error: "Invalid SDR dashboard preset." };

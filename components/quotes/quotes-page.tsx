@@ -20,6 +20,7 @@ import {
   resolveDashboardDateRangeFilter,
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
+import { countQuotesTabBadges } from "@/lib/utils/list-page-tab-counts";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { formatQuoteListDueNow, getQuoteListDueNowAmount } from "@/lib/utils/quote-list-due-now";
 import { quoteListStatus } from "@/lib/utils/quote-list-status";
@@ -262,12 +263,11 @@ export default function QuotesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
-  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
-    defaultDashboardDateRangeFilterValue("today"),
+    defaultDashboardDateRangeFilterValue("last_week"),
   );
 
   const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
@@ -300,7 +300,6 @@ export default function QuotesPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.tickets) setQuotes(d.tickets);
-        if (d.counts) setTabCounts(d.counts);
       })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
@@ -340,8 +339,10 @@ export default function QuotesPage() {
     return quotes.filter((q) => isoTimestampInDashboardRange(q.created_at, dateRange));
   }, [quotes, dateRange]);
 
-  // Tab badges + sidebar use full scoped API counts; date filter narrows the list only.
-  const displayTabCounts = tabCounts;
+  const displayTabCounts = useMemo(
+    () => countQuotesTabBadges(dateFilteredQuotes),
+    [dateFilteredQuotes],
+  );
 
   const filtered = dateFilteredQuotes.filter((q) => {
     // Orders / production have moved off Quotes — never show here
@@ -427,9 +428,11 @@ export default function QuotesPage() {
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
               {search
                 ? "No quotes match your search."
-                : isRoutedTab
-                ? "No routed quotes — all clear!"
-                : "No quotes yet."}
+                : quotes.length > 0 && dateFilteredQuotes.length === 0
+                  ? "No quotes in this date range."
+                  : isRoutedTab
+                    ? "No routed quotes — all clear!"
+                    : "No quotes yet."}
             </p>
           </div>
         ) : isRoutedTab ? (
@@ -648,9 +651,11 @@ export default function QuotesPage() {
             message={
               search
                 ? "No quotes match your search."
-                : isRoutedTab
-                ? "No routed quotes — all clear!"
-                : "No quotes yet."
+                : quotes.length > 0 && dateFilteredQuotes.length === 0
+                  ? "No quotes in this date range."
+                  : isRoutedTab
+                    ? "No routed quotes — all clear!"
+                    : "No quotes yet."
             }
           />
         ) : isRoutedTab ? (
@@ -675,9 +680,11 @@ export default function QuotesPage() {
         )}
       </div>
 
-      {!loading && filtered.length > 0 && (
+      {!loading && quotes.length > 0 && (
         <p className="text-xs mt-3 text-right" style={{ color: "var(--color-text-muted)" }}>
-          {filtered.length} quote{filtered.length !== 1 ? "s" : ""}
+          {dateRange && dateFilteredQuotes.length < quotes.length
+            ? `Showing ${filtered.length} of ${quotes.length} quotes in selected period`
+            : `${filtered.length} quote${filtered.length !== 1 ? "s" : ""}`}
         </p>
       )}
     </div>

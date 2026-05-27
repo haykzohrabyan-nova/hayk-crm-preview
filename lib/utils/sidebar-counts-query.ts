@@ -111,7 +111,7 @@ export async function fetchSidebarCounts(
       ? countExact(admin, "job_tickets", (q) =>
           q
             .not("payment_evidence_url", "is", null)
-            .is("payment_paid_at", null)
+            .is("payment_evidence_reviewed_at", null)
             .in("ticket_status", ["sent", "order", "in_production", "completed"]),
         ).then((n) => {
           counts["/payments"] = n;

@@ -44,10 +44,10 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 | Route | Response | Used by |
 |-------|----------|---------|
 | `GET /api/production/page-data` | `{ orders, counts }` | Production page |
-| `GET /api/orders/page-data` | `{ orders, counts }` | Orders page |
-| `GET /api/quotes/page-data` | `{ tickets, counts }` | Quotes page |
-| `GET /api/payments/page-data` | `{ orders }` | Payments page |
-| `GET /api/completed/page-data` | `{ orders, counts }` | Completed page — SDR: `created_by_id` only; Admin/Accountant: all |
+| `GET /api/orders/page-data` | `{ orders, counts }` | Orders page — tab badges from **date-filtered** list client-side |
+| `GET /api/quotes/page-data` | `{ tickets, counts }` | Quotes page — tab badges from **date-filtered** list client-side |
+| `GET /api/payments/page-data` | `{ orders, approvedOrders, counts: { pending, approved } }` | Payments page (Pending + Approved tabs) |
+| `GET /api/completed/page-data` | `{ orders, counts }` | Completed page — date filter on `updated_at`; SDR: `created_by_id` only |
 | `GET /api/leads/workspace/page-data?…` | `{ leads, counts }` | Leads page (same query params as workspace list) |
 | `GET /api/leads/sales/page-data?tab=…` | `{ leads, counts }` | Sales page |
 
@@ -356,7 +356,15 @@ Returns the CRM customer registry with lightweight per-customer aggregates. Used
 }
 ```
 
-> **Performance (2026-05-22):** Slim customer fields plus separate lead/ticket aggregate queries — no nested `customers(*)` on leads. Rows with `qualifies=false` are filtered out (customer must have a qualifying lead or any ticket).
+> **Performance (2026-05-22):** Slim customer fields plus separate lead/ticket aggregate queries — no nested `customers(*)` on leads.
+
+**Inclusion rules (2026-05-26):**
+- Includes customers with **any qualifying lead** (`sales_status` set or status `Routed to Sales`) **or any ticket**
+- Also includes **standalone customers** with no leads/tickets yet (e.g. created via CRM **Add Customer**)
+
+**Computed fields:**
+- `customer_status`: `"new"` when `lead_count === 0 && ticket_count === 0`, else `"known"`
+- `last_activity`: max of linked lead/ticket timestamps vs `customers.updated_at`
 
 ---
 
@@ -394,7 +402,9 @@ Smart deduplication — used by the Manual Add Lead form, Verify Drawer, and **N
 
 ### `POST /api/customers`
 
-Create a new customer profile from the Add Lead form (when SDR enters new info and no existing customer is selected).
+Create a new customer profile. Used by:
+- **CRM → Add Customer** modal (`components/crm/add-customer-modal.tsx`) — customer only, no lead
+- Add Lead form (when SDR enters new info and no existing customer is selected)
 
 **Body:**
 ```json
@@ -714,7 +724,7 @@ Partial ticket update. Six distinct operation modes:
 }
 ```
 - Records deposit / balance / full payment; updates running `payment_amount_received`
-- Sets `payment_status` to `partial` or `paid`; clears `payment_evidence_*` fields when confirming submitted proof
+- Sets `payment_status` to `partial` or `paid`; when confirming customer-submitted proof, sets `payment_evidence_reviewed_at` and **retains** `payment_evidence_url`, `payment_evidence_submitted_at`, and `payment_evidence_amount` for audit
 - Runs `maybeConvertQuoteToOrder()` then `maybeAutoReleaseProduction()` when gates pass
 - When confirming customer-submitted evidence: sends **payment confirmed** email/SMS (balance on in-production orders: **paid in full** messaging); logs `ticket_payment_confirmed_sent`
 - Logs `ticket_payment_recorded` activity via `lib/utils/log-ticket-payment-recorded.ts`
@@ -825,6 +835,8 @@ Returns a short-lived signed URL for the customer-uploaded payment evidence file
 
 Returns lightweight tab badge counts. Scoped per role. Uses parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts` (no row fetch into Node.js).
 
+> **Quotes & Orders pages (May 2026):** Tab badges on `/quotes` and `/orders` are **not** driven by this endpoint for display — they are computed client-side from the date-filtered list via `lib/utils/list-page-tab-counts.ts`. This endpoint remains for sidebar counts and legacy callers.
+
 **Response `200`:**
 ```json
 {
@@ -843,43 +855,58 @@ Returns lightweight tab badge counts. Scoped per role. Uses parallel SQL `{ coun
 - **SDR:** `routed` = count of their own routed tickets (subtracted from `all` on the Quotes page)
 - **Sales/Admin:** `routed` = count of ALL routed tickets from any SDR
 - `cancelled` = count of cancelled tickets (used by Orders page "Cancelled" tab badge)
-- Orders tab counts exclude tickets with pending payment evidence (`payment_evidence_url` set, `payment_paid_at` null)
+- Orders tab counts exclude tickets with pending payment evidence (`payment_evidence_url` set, `payment_evidence_reviewed_at` null)
 
 ---
 
 ## Payments (Accountant + Admin)
 
-### `GET /api/payments/pending`
+### `GET /api/payments/page-data`
 
-Returns orders with customer-submitted payment evidence awaiting accountant confirmation.
+Preferred mount endpoint for `/payments`. Returns both tabs in one request.
 
 **Auth:** Accountant or Admin only.
 
-**Filter:** `payment_evidence_url IS NOT NULL`, evidence not yet cleared, `ticket_status IN ('sent', 'order', 'in_production', 'completed')`
+**Pending filter:** `payment_evidence_url IS NOT NULL`, `payment_evidence_reviewed_at IS NULL`, `ticket_status IN ('sent', 'order', 'in_production', 'completed')` — ordered by `payment_evidence_submitted_at` asc.
+
+**Approved filter:** `payment_evidence_url IS NOT NULL`, `payment_evidence_reviewed_at IS NOT NULL` — same statuses — ordered by `payment_evidence_reviewed_at` desc.
 
 **Response `200`:**
 ```json
 {
-  "orders": [
+  "orders": [ /* pending approval — same shape as legacy pending list */ ],
+  "approvedOrders": [
     {
       "id": "uuid",
       "reference_code": "ORD-2026-042",
-      "title": "string",
-      "quote_final_total": 1234.56,
       "payment_evidence_url": "path/in/storage",
       "payment_evidence_submitted_at": "ISO",
+      "payment_evidence_reviewed_at": "ISO",
       "payment_evidence_amount": 500.00,
+      "payment_amount_received": 500.00,
+      "payment_status": "partial",
       "customer": { "first_name": "string", "last_name": "string", "company": "string" }
     }
-  ]
+  ],
+  "counts": { "pending": 2, "approved": 15 }
 }
 ```
 
 ---
 
+### `GET /api/payments/pending`
+
+Legacy — returns **pending approval** queue only (same rows as `page-data.orders`).
+
+**Auth:** Accountant or Admin only.
+
+**Filter:** `payment_evidence_url IS NOT NULL`, `payment_evidence_reviewed_at IS NULL`, `ticket_status IN ('sent', 'order', 'in_production', 'completed')`
+
+---
+
 ### `GET /api/payments/counts`
 
-Returns tab badge counts for the Payments page.
+Accountant dashboard KPIs (sidebar `/payments` badge uses `sidebar-counts` with the same pending filter).
 
 **Auth:** Accountant or Admin only.
 
@@ -887,10 +914,14 @@ Returns tab badge counts for the Payments page.
 ```json
 {
   "counts": {
-    "pending": 0
+    "pending_evidence": 2,
+    "orders_in_production": 5,
+    "completed_this_month": 12
   }
 }
 ```
+
+`pending_evidence` = unreviewed evidence only (`payment_evidence_reviewed_at` null). Approved history is not included in this KPI.
 
 ---
 
@@ -965,7 +996,7 @@ Returns all tickets with `ticket_status = 'in_production'`.
 
 ### `GET /api/production/counts`
 
-Legacy production tab badge counts. Orders page tab counts now come from `GET /api/tickets/counts` (`orders`, `in_production`, `cancelled`).
+Legacy production tab badge counts. Orders page tab badges are computed **client-side** from the date-filtered list (`lib/utils/list-page-tab-counts.ts`); sidebar uses all-time scoped totals.
 
 **Response `200`:**
 ```json
@@ -1031,7 +1062,7 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
 
 **Auth:** None — public route.
 
-**Response `200`:** Returns safe public ticket fields including payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_amount`), and `production_released_at`. Draft tickets return `404`.
+**Response `200`:** Returns safe public ticket fields including payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_reviewed_at`, `payment_evidence_amount`), and `production_released_at`. Draft tickets return `404`.
 
 ```json
 {
@@ -1044,6 +1075,7 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
     "payment_amount_received": "number | null",
     "payment_evidence_url": "string | null",
     "payment_evidence_submitted_at": "ISO | null",
+    "payment_evidence_reviewed_at": "ISO | null",
     "payment_evidence_amount": "number | null",
     "production_released_at": "ISO | null",
     "ticket_payment_strategy": "full | partial | net",
@@ -1093,14 +1125,15 @@ Customer submits payment proof or records an in-person payment from the public p
 | Field | Required | Description |
 |-------|----------|-------------|
 | `method` | Yes | `wire` \| `ach` \| `zelle` \| `check` \| `card` \| `cash` |
-| `amount` | Yes | Payment amount (numeric string) |
 | `file` | Conditional | Evidence file — required for wire/ACH/zelle/check/card |
 | `receiptId` | Conditional | Receipt reference for cash-in-person — **digits only**; required when quote send validation requires it |
+
+> **`amount` is not accepted from the client (2026-05-26).** Server computes the due amount via `computePublicPaymentDueAmount()` (deposit or balance from ticket state). Public UI shows the fixed amount at the top only.
 
 **Business rules:**
 - Allowed when `ticket_status IN ('sent', 'order', 'in_production', 'completed')`
 - When `ticket_require_client_confirm = true`: returns `409 CONFIRM_REQUIRED` if not yet `client_confirmed`
-- Wire/ACH/Zelle/check/card: stores file in `payment-evidence` bucket; sets evidence fields + `payment_evidence_amount`; **does not** update `payment_amount_received` — queues for accountant on `/payments`
+- Wire/ACH/Zelle/check/card: stores file in `payment-evidence` bucket; sets evidence fields + `payment_evidence_amount`; clears `payment_evidence_reviewed_at` on new upload; **does not** update `payment_amount_received` — queues on `/payments` → **Pending approval**
 - Cash: records payment immediately; may convert + auto-release via `maybeConvertQuoteToOrder` / `maybeAutoReleaseProduction` when gates pass
 - Balance/follow-up payments: allowed when partially paid or `in_production`; cash balance does **not** overwrite `deposit_amount`
 - `sent` → `order` conversion on first payment only when approval gate satisfied (`maybeConvertQuoteToOrder`)
@@ -1212,10 +1245,11 @@ Notifications in BazaarCRM are delivered via **Supabase Realtime**, not HTTP pol
 
 ### How it works
 
-- `components/layout/sidebar.tsx` maintains three persistent Supabase Realtime subscriptions:
+- `components/layout/sidebar.tsx` maintains four persistent Supabase Realtime subscriptions:
   - **`leads-realtime`** — watches any INSERT/UPDATE/DELETE on `public.leads` → refreshes sidebar badge counts + dispatches `bazaar:leads-changed` browser event
   - **`activities-realtime`** — watches any INSERT on `public.activities` → dispatches `bazaar:activities-changed` browser event
   - **`tickets-realtime`** — watches any INSERT/UPDATE/DELETE on `public.job_tickets` → refreshes sidebar badge counts + dispatches `bazaar:tickets-changed` browser event
+  - **`customers-realtime`** — watches any INSERT/UPDATE/DELETE on `public.customers` → dispatches `bazaar:customers-changed` browser event (migration `083_enable_customers_realtime.sql`)
 - **Sidebar badge counts** are fetched via `GET /api/sidebar-counts?routes=…` (scoped to visible nav items; debounced ~300 ms on Realtime). Count queries use SQL `{ count: "exact", head: true }` via `lib/utils/sidebar-counts-query.ts`.
 - **Activity log** (admin `/activity-log` page) is fetched via `GET /api/admin/activity-log` and auto-refreshes when `bazaar:activities-changed` fires
 - **`/notifications`** — legacy redirect to `/activity-log`; reserved for future V2 bell (no REST endpoints yet)
@@ -1901,6 +1935,32 @@ Update company settings. **Admin only** (`requireAdmin()`).
 **Response `200`:** `{ "settings": CompanySettings }`
 
 ---
+
+---
+
+## Admin — SMS templates
+
+### `GET /api/admin/sms-templates`
+
+Returns all template definitions with current `body`, metadata (label, description, placeholders), and `isCustom` flag. **Admin only.**
+
+### `PATCH /api/admin/sms-templates`
+
+Upsert one or more template bodies. **Admin only.**
+
+**Body:**
+```json
+{
+  "templates": {
+    "quote_sent": "Hi {firstName}, your quote from {companyName}…",
+    "payment_reminder": "…"
+  }
+}
+```
+
+**Validation:** Unknown keys rejected; empty bodies rejected; max 1600 characters per body.
+
+**Response `200`:** `{ "ok": true }`
 
 ---
 

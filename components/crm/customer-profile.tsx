@@ -643,11 +643,13 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
   function handleCustomerSaved(updated: Customer) {
     setData((prev) => prev ? { ...prev, customer: updated } : prev);
     showToast("Customer updated.");
+    window.dispatchEvent(new Event("bazaar:customers-changed"));
   }
 
   function handleMerged(survivingId: string) {
     setMergeOpen(false);
     showToast("Customers merged successfully.");
+    window.dispatchEvent(new Event("bazaar:customers-changed"));
     // Navigate to the surviving customer profile after a short delay
     setTimeout(() => router.push(`/crm/customers/${survivingId}`), 1200);
   }

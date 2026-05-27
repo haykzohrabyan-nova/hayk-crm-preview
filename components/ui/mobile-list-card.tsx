@@ -8,16 +8,22 @@ export function MobileListCard({
   children,
   onClick,
   className = "",
+  style,
 }: {
   children: ReactNode;
   onClick?: () => void;
   className?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <div
       onClick={onClick}
       className={`rounded-[10px] border p-4 space-y-3 text-left w-full ${onClick ? "cursor-pointer transition-opacity hover:opacity-95" : ""} ${className}`}
-      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+      style={{
+        background: "var(--color-surface)",
+        borderColor: "var(--color-border)",
+        ...style,
+      }}
     >
       {children}
     </div>

@@ -25,6 +25,7 @@ export interface TicketPaymentFields {
   payment_evidence_url?: string | null;
   payment_evidence_submitted_at?: string | null;
   payment_evidence_amount?: number | null;
+  payment_evidence_reviewed_at?: string | null;
 }
 
 export function isTicketPaidInFull(
@@ -39,7 +40,7 @@ export function isPaymentEvidencePending(ticket: TicketPaymentFields): boolean {
   return (
     !!ticket.payment_evidence_submitted_at &&
     !!ticket.payment_evidence_url &&
-    !ticket.payment_paid_at
+    !ticket.payment_evidence_reviewed_at
   );
 }
 

@@ -82,7 +82,8 @@ export async function GET(request: NextRequest) {
   let result = (customers ?? [])
     .filter((c) => {
       const agg = aggByCustomer.get(c.id);
-      return agg?.qualifies ?? false;
+      // Include customers with no leads/tickets yet (e.g. added from CRM) and qualifying CRM rows.
+      return !agg || agg.qualifies;
     })
     .map((c) => {
       const agg = aggByCustomer.get(c.id)!;

@@ -44,6 +44,7 @@ interface PublicTicket {
   order_source: string | null;
   payment_evidence_url: string | null;
   payment_evidence_submitted_at: string | null;
+  payment_evidence_reviewed_at: string | null;
   payment_evidence_amount: number | null;
   payment_amount_received: number | null;
   payment_paid_at: string | null;
@@ -212,7 +213,7 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
   const evidencePending =
     !!ticket.payment_evidence_submitted_at &&
     !!ticket.payment_evidence_url &&
-    !ticket.payment_paid_at &&
+    !ticket.payment_evidence_reviewed_at &&
     strategy !== "net";
 
   const fullyPaid =

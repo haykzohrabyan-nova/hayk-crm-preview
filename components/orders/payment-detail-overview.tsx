@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, CheckCircle2, Loader2, CreditCard } from "lucide-react";
+import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { formatDateTime } from "@/lib/utils/format";
 import {
   PricingPaymentSummary,
   type SummaryTicket,
@@ -45,6 +47,8 @@ export function PaymentDetailOverview({
   const [confirming, setConfirming] = useState(false);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
 
+  const evidencePending = isPaymentEvidencePending(ticket);
+  const canConfirm = !readOnly && evidencePending;
   const claimed = submittedAmount(ticket);
 
   async function handleConfirm() {
@@ -90,7 +94,7 @@ export function PaymentDetailOverview({
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
-            Payment review
+            {evidencePending ? "Payment review" : "Payment evidence"}
           </p>
           {ticket.payment_method_used && (
             <span
@@ -101,10 +105,15 @@ export function PaymentDetailOverview({
               {CHANNEL_LABELS[ticket.payment_method_used] ?? ticket.payment_method_used}
             </span>
           )}
+          {!evidencePending && ticket.payment_evidence_reviewed_at && (
+            <p className="text-sm mt-2" style={{ color: "var(--color-success)" }}>
+              Approved {formatDateTime(ticket.payment_evidence_reviewed_at)}
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap ml-auto">
-          {!readOnly && ticket.payment_evidence_url && (
+          {ticket.payment_evidence_url && (
             <a
               href={`/api/tickets/${ticket.id}/evidence`}
               target="_blank"
@@ -121,7 +130,7 @@ export function PaymentDetailOverview({
               View evidence
             </a>
           )}
-          {!readOnly && (
+          {canConfirm && (
             <button
               type="button"
               disabled={confirming}
@@ -152,12 +161,14 @@ export function PaymentDetailOverview({
         </div>
       )}
 
-      <PricingPaymentSummary ticket={ticket} reviewPending />
+      <PricingPaymentSummary ticket={ticket} reviewPending={evidencePending} />
 
       <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-        {readOnly
-          ? "An accountant must confirm this payment before production can start. Contact your accountant if this order is urgent."
-          : "Confirming records the submitted amount and releases the order to production when payment gates are met."}
+        {evidencePending
+          ? readOnly
+            ? "An accountant must confirm this payment before production can start. Contact your accountant if this order is urgent."
+            : "Confirming records the submitted amount and releases the order to production when payment gates are met."
+          : "Payment evidence was reviewed and recorded. The file remains available for audit."}
       </p>
     </div>
   );

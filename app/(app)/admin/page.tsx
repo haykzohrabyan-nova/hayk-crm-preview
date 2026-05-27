@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare } from "lucide-react";
 
 const CARDS = [
   {
@@ -42,6 +42,13 @@ const CARDS = [
     description: "Twilio SMS and Instantly AI email are live. Stripe and Zelle payment integrations — coming soon.",
     href: "/admin/settings/integrations",
     icon: Plug,
+    built: true,
+  },
+  {
+    title: "SMS Templates",
+    description: "Edit SMS and WhatsApp message text for quotes, payments, invoice links, pickup, and follow-ups.",
+    href: "/admin/settings/sms-templates",
+    icon: MessageSquare,
     built: true,
   },
   {

@@ -132,7 +132,7 @@ BAZAARPRINTING
 
 ─── Main ───────────────────────
 ✓ Dashboard                        /dashboard
-✓ Payments                         /payments         (badge: pending evidence)
+✓ Payments                         /payments         (badge: unreviewed evidence)
 ✓ Orders                           /orders           (badge: pending payment + in production)
 ✓ Completed                        /completed        (badge: completed count)
 
@@ -227,9 +227,11 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 /orders?tab=in_production  → In Production
 /orders?tab=cancelled       → Cancelled
 
-/payments             → Accountant payment review queue (no tabs)
+/payments             → Payment evidence (Pending approval | Approved tabs)
+/payments?tab=pending   → default — unreviewed evidence
+/payments?tab=approved  → reviewed evidence (file still viewable)
 
-/completed            → Completed orders (search only, no tabs)
+/completed            → Completed orders (date filter + search, no tabs)
 ```
 
 > **Legacy redirects:** `/production` → `/orders?tab=in_production`; `/production/[id]` → `/orders/[id]` (`proxy.ts`).
@@ -277,7 +279,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 ### `/quotes` — Quoted Requests
 
-**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — Today / Yesterday / Last Week / Last Month / Custom. Filters rows by `created_at` (client-side after `GET /api/quotes/page-data`). Tab badges recalculate for the selected range.
+**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 7 Days**; Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters rows by `created_at` (client-side after `GET /api/quotes/page-data`). **Tab badges follow the selected date range**; sidebar nav badge stays all-time total.
 
 | Tab | Content | Badge | Visible to |
 |-----|---------|-------|-----------|
@@ -289,7 +291,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 ### `/orders` — Orders
 
-**Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — filters by `created_at` client-side; tab badge counts follow the range.
+**Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — default **Last 7 Days**; filters by `created_at` client-side. **Tab badges follow the selected date range**; sidebar nav badge stays all-time total.
 
 Includes **`order`**, **`in_production`**, and **`cancelled`** tickets (scoped per role). Evidence-pending orders are **included** for the ticket owner with status **Awaiting payment confirmation**; accountants also see them on **`/payments`**.
 
@@ -300,17 +302,20 @@ Includes **`order`**, **`in_production`**, and **`cancelled`** tickets (scoped p
 | In Production | `ticket_status = 'in_production'` | count |
 | Cancelled | `ticket_status = 'cancelled'` | count |
 
-List API: `GET /api/orders/orders`. Tab counts: `GET /api/tickets/counts` (`orders`, `in_production`, `cancelled`). Status column uses API `status_label` / `status_tone`.
+List API: `GET /api/orders/page-data`. Tab badge counts are **derived client-side** from the loaded list after the date filter (`lib/utils/list-page-tab-counts.ts`). Sidebar `/orders` badge stays all-time scoped total.
 
 Row click → `/orders/[id]`.
 
-### `/payments` — Payment review (Accountant + Admin)
+### `/payments` — Payment evidence (Accountant + Admin)
 
-| Content | Filter |
-|---------|--------|
-| Pending evidence | `payment_evidence_url IS NOT NULL` — includes **`sent`** quotes, **`order`**, **`in_production`**, **`completed`** |
+**Mount:** `GET /api/payments/page-data` — returns pending list, approved list, and tab counts in one response.
 
-Row click → `/payments/[id]`. Counts: `GET /api/payments/counts`.
+| Tab | Content | Badge | Filter |
+|-----|---------|-------|--------|
+| Pending approval | Customer proof awaiting accountant confirm | `counts.pending` | `payment_evidence_url` set, `payment_evidence_reviewed_at` null |
+| Approved | Evidence already reviewed — **View evidence** only (no Confirm) | `counts.approved` | `payment_evidence_url` set, `payment_evidence_reviewed_at` set |
+
+Both tabs include **`sent`**, **`order`**, **`in_production`**, and **`completed`** tickets. Row click → `/payments/[id]`. Sidebar badge = pending count only (`GET /api/sidebar-counts`). Accountant dashboard KPI: `GET /api/payments/counts` → `pending_evidence`.
 
 ### `/completed` — Completed (SDR own scope; Accountant + Admin all)
 
@@ -318,9 +323,13 @@ Row click → `/payments/[id]`. Counts: `GET /api/payments/counts`.
 |---------|--------|
 | All completed | `ticket_status = 'completed'` — SDR: `created_by_id` matches session user only |
 
+**Date filter:** `DashboardDateRangeFilter` in page header — default **Last 7 Days**; Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters **list rows** by completion date (`updated_at`); sidebar completed badge stays all-time total.
+
 Row click → `/completed/[id]`. Counts: `GET /api/completed/counts`.
 
 ### `/crm` — Customer registry
+
+**Header:** **Add Customer** button (modal → `POST /api/customers`, no lead). Live updates via Realtime — no manual Refresh button.
 
 | Column | Notes |
 |--------|-------|
@@ -328,13 +337,13 @@ Row click → `/completed/[id]`. Counts: `GET /api/completed/counts`.
 | Company | Link (or **—**) → `/crm/customers/[id]` |
 | Phone | `tel:` when present |
 | Email | `mailto:` when present |
-| Status | New / Known / Returning badge |
+| Status | New / Known badge (`customer_status` from API — New = no leads/tickets yet) |
 | Industry | Lookup label (not raw value) |
 | Leads | Count |
 | Last Activity | Relative time |
 | Actions | **View** · **Add Quote** |
 
-**Row interaction:** Row itself is not clickable — use Company, View, or action buttons. Heat filter pills (Hot / Warm / Cold) remain; heat badge is on profile/edit only, not list column.
+**Row interaction:** Row itself is not clickable — use Company, View, or action buttons. Heat filter pills (Hot / Warm / Cold) filter manual `heat_tag` only; heat badge is on profile/edit only, not list column.
 
 ### `/reports` — Admin reports
 
@@ -389,7 +398,7 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/quotes/[id]` | Quote / Order |
 | `/orders` | Orders |
 | `/orders/[id]` | Order |
-| `/payments` | Payments |
+| `/payments` | Payment Evidence |
 | `/payments/[id]` | Payment Review |
 | `/completed` | Completed Orders |
 | `/completed/[id]` | Completed Order |
@@ -401,8 +410,12 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/admin/settings/users` | Users |
 | `/admin/settings/roles` | Roles & Permissions |
 | `/admin/settings/dropdowns` | Dropdown Options |
-| `/activity-log` | Activity Log |
+| `/admin/settings/company` | Company Info |
+| `/admin/settings/products` | Products |
 | `/admin/settings/integrations` | Integrations |
+| `/admin/settings/sms-templates` | SMS Templates |
+| `/admin/settings/payment` | Payment (bank / Zelle) |
+| `/activity-log` | Activity Log |
 
 ---
 

@@ -17,6 +17,7 @@ export const TICKET_QUOTE_LIST_SELECT = `
   ticket_deposit_value,
   payment_evidence_url,
   payment_evidence_submitted_at,
+  payment_evidence_reviewed_at,
   payment_paid_at,
   deposit_paid_at,
   payment_amount_received,
@@ -31,4 +32,4 @@ export const TICKET_QUOTE_LIST_SELECT = `
 `.trim();
 
 export const ORDERS_PAYMENT_EVIDENCE_PENDING_FILTER =
-  "payment_evidence_submitted_at.not.is.null,payment_evidence_url.not.is.null,payment_paid_at.is.null";
+  "payment_evidence_submitted_at.not.is.null,payment_evidence_url.not.is.null,payment_evidence_reviewed_at.is.null";

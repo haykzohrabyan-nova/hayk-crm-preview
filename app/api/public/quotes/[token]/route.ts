@@ -64,6 +64,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
        ticket_net_terms_label,
        payment_evidence_url,
        payment_evidence_submitted_at,
+       payment_evidence_reviewed_at,
        payment_evidence_amount,
        payment_amount_received,
        payment_paid_at,

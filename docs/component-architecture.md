@@ -101,7 +101,8 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `DashboardPage` | `components/admin/dashboard-page.tsx` | Role router — all roles |
 | `QuotesPage` | `components/quotes/quotes-page.tsx` | All roles |
 | `OrdersPage` | `components/orders/orders-page.tsx` | All roles |
-| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin |
+| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending approval / Approved tabs |
+| `SmsTemplatesSection` | `components/admin/sms-templates-section.tsx` | Admin — SMS/WhatsApp template editor |
 | `ProductionPage` | `components/orders/production-page.tsx` | Legacy — UI redirects to `/orders?tab=in_production` |
 | `CompletedPage` | `components/orders/completed-page.tsx` | SDR (own created only), Accountant + Admin (all) |
 | `AccountantDashboard` | `components/admin/accountant-dashboard.tsx` | Accountant only |
@@ -448,7 +449,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │
         ├── Context prop routes overview card:
         │    context="quote" | "order" | "payment" | "production" | "completed"
-        │    Payment context → PaymentDetailOverview (evidence review + Confirm)
+        │    Payment context → PaymentDetailOverview (evidence review + Confirm, or read-only when reviewed)
         │    Production context → ProductionDetailOverview (contextual notices)
         │    Quote sent stage → quote link actions in DetailQuickActions (not separate bar)
         │
@@ -570,7 +571,9 @@ app/(app)/reports/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/crm/page.tsx  [Server Component — thin wrapper]
   └── components/crm/crm-page.tsx  [Client Component "use client"]
-        ├── Search, status + heat filter pills
+        ├── Header: Add Customer + search/status/heat filters (no manual Refresh — Realtime)
+        ├── AddCustomerModal → POST /api/customers
+        ├── useCoalescedRefresh: bazaar:customers-changed, leads-changed, tickets-changed
         ├── Industry column (lookup labels); company → profile; tel:/mailto: links
         └── View / Add Quote actions (row not clickable)
 
@@ -622,7 +625,7 @@ Ownership is only released by a terminal action:
 | Drawer open | Client Component | `fetch('/api/leads/[id]')` for full lead record (`lib/utils/fetch-lead.ts`) |
 | After mutation | Client Component | Optimistic update or re-fetch |
 | Count refresh | Client Component | `window.dispatchEvent(new Event("bazaar:refresh-counts"))` |
-| Realtime DB change | `sidebar.tsx` subscription | `window.dispatchEvent(new Event("bazaar:leads-changed"))` |
+| Realtime DB change | `sidebar.tsx` subscription | `bazaar:leads-changed`, `bazaar:tickets-changed`, `bazaar:customers-changed`, `bazaar:activities-changed` |
 
 **No global state library.** Data lives in local `useState` / `useReducer` in Client Components.
 
@@ -630,13 +633,13 @@ Ownership is only released by a terminal action:
 
 ## Realtime Listeners
 
-Components that listen to `bazaar:leads-changed` (dispatched by `components/layout/sidebar.tsx` on any leads table change):
+Browser events dispatched by `components/layout/sidebar.tsx` on Supabase Realtime changes (`bazaar:leads-changed`, `bazaar:tickets-changed`, `bazaar:customers-changed`, `bazaar:activities-changed`):
 
 | Component | Behavior |
 |-----------|---------|
 | `components/leads/leads-page.tsx` | Silent re-fetch; `enabled: !drawerLead \|\| drawerReadOnly` (read-only drawer does not pause refresh); editable drawer close resumes silently |
 | `components/sales/sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open; full lead on drawer open |
-| `components/crm/crm-page.tsx` | Silent re-fetch on `bazaar:leads-changed` (no skeleton flash) |
+| `components/crm/crm-page.tsx` | Coalesced refetch on `bazaar:customers-changed`, `bazaar:leads-changed`, `bazaar:tickets-changed` |
 | `components/admin/admin-dashboard.tsx` | Silent re-fetch of all KPIs (no skeleton flash) |
 | `components/orders/production-page.tsx` | Coalesced refetch on mount + `bazaar:tickets-changed` |
 

@@ -170,6 +170,7 @@ interface Ticket {
   // Payment evidence (migration 068)
   payment_evidence_url:           string | null;
   payment_evidence_submitted_at:  string | null;
+  payment_evidence_reviewed_at:   string | null;
   payment_evidence_amount:        number | null;
   convert_meta?: ManualConvertMeta | null;
 }

@@ -30,9 +30,19 @@ Each KPI card shows a **help line** below the value explaining how the number is
 
 ## SDR Dashboard — `components/sales/sdr-dashboard.tsx`
 
-KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last Week, Last Month, Custom. Trend metrics show **% change vs the prior equivalent period** (e.g. today vs yesterday).
+KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last 7 Days, Last 30 Days, Custom. Trend metrics show **% change vs the prior equivalent period** (e.g. today vs yesterday; last 7 days vs prior 7 days).
 
 **API:** `GET /api/dashboard/kpis?sdr_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to` (`YYYY-MM-DD`).
+
+**Preset semantics (UI labels vs API keys):**
+
+| UI label | API key | Range |
+|----------|---------|--------|
+| Today | `today` | Today 00:00 – end of today |
+| Yesterday | `yesterday` | Prior calendar day |
+| Last 7 Days | `last_week` | Rolling 7 days including today |
+| Last 30 Days | `last_month` | Rolling 30 days including today |
+| Custom | `custom` | User-selected `date_from` / `date_to` |
 
 | Card | Meaning | Period? | % trend |
 |------|---------|---------|---------|
@@ -54,9 +64,9 @@ Activity-based counts — see `lib/utils/sdr-dashboard-metrics.ts`.
 
 ## Sales Dashboard — `components/sales/sales-dashboard.tsx`
 
-KPIs scoped to the current sales rep with **date filters**: Today, Yesterday, Last Week, Last Month, Custom. Trend metrics show **% change vs the prior equivalent period**.
+KPIs scoped to the current sales rep with **date filters**: Today, Yesterday, Last 7 Days, Last 30 Days, Custom. Trend metrics show **% change vs the prior equivalent period**.
 
-**API:** `GET /api/dashboard/kpis?sales_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to`.
+**API:** `GET /api/dashboard/kpis?sales_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to`. Same preset semantics as SDR dashboard (`last_week` = Last 7 Days rolling, `last_month` = Last 30 Days rolling).
 
 | Card | Meaning | Period? | % trend |
 |------|---------|---------|---------|
@@ -118,7 +128,7 @@ Hidden when all work metrics are zero for that user.
 
 ## Accountant Dashboard — `components/admin/accountant-dashboard.tsx`
 
-Payment queue KPIs from `GET /api/payments/counts` — see [`invoice-payment.md`](./invoice-payment.md).
+Payment queue KPIs from `GET /api/payments/counts` — `pending_evidence` counts **unreviewed** proof only (`payment_evidence_reviewed_at` null). Approved evidence history lives on `/payments` → Approved tab (`GET /api/payments/page-data`). See [`invoice-payment.md`](./invoice-payment.md).
 
 ---
 

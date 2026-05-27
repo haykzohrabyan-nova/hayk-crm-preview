@@ -18,12 +18,14 @@ import {
   resolveDashboardDateRangeFilter,
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
+import { countOrdersTabBadges } from "@/lib/utils/list-page-tab-counts";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import { Zap, ExternalLink } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import {
   displayContactName,
   isDueSoon,
+  isDueToday,
   isOverdue,
   relativeTime,
 } from "@/lib/utils/format";
@@ -106,6 +108,33 @@ function displayName(o: OrderTicket): string {
   return displayContactName(o.customer, { preferPerson: true });
 }
 
+/** Due today and still open on Orders (not cancelled). */
+function isDueTodayAlert(o: OrderTicket): boolean {
+  if (!o.due_date || o.ticket_status === "cancelled") return false;
+  return isDueToday(o.due_date);
+}
+
+/** Full-row alert fill — applied on every `<td>` so the entire row reads red. */
+const DUE_TODAY_ROW_BG =
+  "color-mix(in srgb, var(--color-danger) 14%, var(--color-danger-bg))";
+const DUE_TODAY_ROW_BG_HOVER =
+  "color-mix(in srgb, var(--color-danger) 22%, var(--color-danger-bg))";
+
+function orderRowCellStyle(o: OrderTicket, idx: number): React.CSSProperties | undefined {
+  if (isDueTodayAlert(o)) {
+    return { background: DUE_TODAY_ROW_BG };
+  }
+  return {
+    background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
+  };
+}
+
+function setDueTodayRowCellsBg(row: HTMLTableRowElement, bg: string) {
+  row.querySelectorAll("td").forEach((cell) => {
+    cell.style.background = bg;
+  });
+}
+
 function orderPaymentAmounts(o: OrderTicket): {
   total: string;
   received: string;
@@ -144,12 +173,23 @@ function OrderMobileCard({
   const statusStyle = STATUS_TONE_STYLE[o.status_tone] ?? STATUS_TONE_STYLE.converted;
   const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
   const overdue = isOverdue(o.due_date);
-  const dueSoon = isDueSoon(o.due_date);
+  const dueToday = isDueTodayAlert(o);
+  const dueSoon = !dueToday && isDueSoon(o.due_date);
   const ps = paymentDisplay(o);
   const amounts = orderPaymentAmounts(o);
 
   return (
-    <MobileListCard onClick={onOpen}>
+    <MobileListCard
+      onClick={onOpen}
+      style={
+        dueToday
+          ? {
+              background: DUE_TODAY_ROW_BG,
+              borderColor: "var(--color-danger-border)",
+            }
+          : undefined
+      }
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           {o.reference_code ? (
@@ -221,10 +261,10 @@ function OrderMobileCard({
           label="Due Date"
           value={
             o.due_date
-              ? `${new Date(o.due_date + "T00:00:00").toLocaleDateString()}${overdue ? " ⚠" : ""}`
+              ? `${new Date(o.due_date + "T00:00:00").toLocaleDateString()}${overdue ? " · Overdue" : ""}`
               : "—"
           }
-          valueColor={overdue ? "var(--color-danger)" : dueSoon ? "var(--color-warning)" : undefined}
+          valueColor={dueToday || overdue ? "var(--color-danger)" : dueSoon ? "var(--color-warning)" : undefined}
         />
         <MobileListCardRow label="Created" value={relativeTime(o.created_at)} />
       </MobileListCardFields>
@@ -269,19 +309,38 @@ function OrdersTableDesktop({
           const statusStyle = STATUS_TONE_STYLE[o.status_tone] ?? STATUS_TONE_STYLE.converted;
           const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
           const overdue = isOverdue(o.due_date);
-          const dueSoon = isDueSoon(o.due_date);
+          const dueToday = isDueTodayAlert(o);
+          const dueSoon = !dueToday && isDueSoon(o.due_date);
           const amounts = orderPaymentAmounts(o);
+          const cellStyle = orderRowCellStyle(o, idx);
+          const dueTodayRow = isDueTodayAlert(o);
 
           return (
             <tr
               key={o.id}
               className="cursor-pointer transition-colors"
-              style={{ background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)" }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)")}
+              onMouseEnter={(e) => {
+                if (dueTodayRow) {
+                  setDueTodayRowCellsBg(e.currentTarget, DUE_TODAY_ROW_BG_HOVER);
+                  return;
+                }
+                e.currentTarget.querySelectorAll("td").forEach((cell) => {
+                  cell.style.background = "var(--color-row-hover)";
+                });
+              }}
+              onMouseLeave={(e) => {
+                const bg = dueTodayRow
+                  ? DUE_TODAY_ROW_BG
+                  : idx % 2 === 0
+                    ? "var(--color-surface)"
+                    : "var(--color-row-alt)";
+                e.currentTarget.querySelectorAll("td").forEach((cell) => {
+                  cell.style.background = bg;
+                });
+              }}
               onClick={() => onOpen(o.id)}
             >
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={{ ...cellStyle, ...(dueTodayRow ? { boxShadow: "inset 3px 0 0 var(--color-danger)" } : {}) }}>
                 {o.reference_code ? (
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
                     {o.reference_code}
@@ -290,13 +349,13 @@ function OrdersTableDesktop({
                   <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Draft</span>
                 )}
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(o)}</p>
                 {o.customer?.company && (
                   <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
                 )}
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <div className="flex items-center gap-1.5">
                   {o.rush && (
                     <span title="Rush" style={{ color: "var(--color-danger)" }}>
@@ -308,12 +367,12 @@ function OrdersTableDesktop({
                   </span>
                 </div>
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <span className="text-sm font-medium tabular-nums" style={{ color: "var(--color-text-primary)" }}>
                   {amounts.total}
                 </span>
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <span
                   className="text-sm font-medium tabular-nums"
                   style={{
@@ -326,7 +385,7 @@ function OrdersTableDesktop({
                   {amounts.received}
                 </span>
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <span
                   className="text-sm font-medium tabular-nums"
                   style={{
@@ -339,29 +398,29 @@ function OrdersTableDesktop({
                   {amounts.balanceDue}
                 </span>
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <span className="text-sm font-medium" style={{ color: priorityStyle.color }}>
                   {o.priority ?? "—"}
                 </span>
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 {o.due_date ? (
                   <span
                     className="text-xs font-medium"
                     style={{
-                      color: overdue ? "var(--color-danger)" :
+                      color: dueToday || overdue ? "var(--color-danger)" :
                              dueSoon ? "var(--color-warning)" :
                              "var(--color-text-muted)",
                     }}
                   >
                     {new Date(o.due_date + "T00:00:00").toLocaleDateString()}
-                    {overdue && " ⚠"}
+                    {overdue ? " · Overdue" : ""}
                   </span>
                 ) : (
                   <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>
                 )}
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <span
                   className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium max-w-[180px] truncate"
                   title={o.status_label}
@@ -370,7 +429,7 @@ function OrdersTableDesktop({
                   {o.status_label}
                 </span>
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 {(() => {
                   const ps = paymentDisplay(o);
                   return (
@@ -383,12 +442,12 @@ function OrdersTableDesktop({
                   );
                 })()}
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                   {relativeTime(o.created_at)}
                 </span>
               </td>
-              <td className="px-4 py-3">
+              <td className="px-4 py-3" style={cellStyle}>
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); onOpen(o.id); }}
@@ -415,9 +474,8 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
-  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
-    defaultDashboardDateRangeFilterValue("today"),
+    defaultDashboardDateRangeFilterValue("last_week"),
   );
 
   const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
@@ -443,7 +501,6 @@ export default function OrdersPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.orders) setOrders(d.orders);
-        if (d.counts) setTabCounts(d.counts);
       })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
@@ -462,8 +519,10 @@ export default function OrdersPage() {
     return orders.filter((o) => isoTimestampInDashboardRange(o.created_at, dateRange));
   }, [orders, dateRange]);
 
-  // Tab badges + sidebar use full scoped API counts; date filter narrows the list only.
-  const displayTabCounts = tabCounts;
+  const displayTabCounts = useMemo(
+    () => countOrdersTabBadges(dateFilteredOrders),
+    [dateFilteredOrders],
+  );
 
   const filtered = dateFilteredOrders.filter((o) => {
     if (activeTabDef.statuses && !activeTabDef.statuses.includes(o.ticket_status)) return false;

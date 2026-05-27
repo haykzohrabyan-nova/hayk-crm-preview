@@ -448,6 +448,7 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 | `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx`, `crm-page.tsx` (silent refresh) |
 | `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` | `bazaar:activities-changed` | `activity-log-section.tsx` |
 | `job_tickets` | `047_enable_job_tickets_realtime.sql` | `tickets-realtime` (sidebar only) | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx`, `orders-page.tsx`, `payments-page.tsx`, `production-page.tsx`, `completed-page.tsx`, `quote-detail.tsx` |
+| `customers` | `083_enable_customers_realtime.sql` | `customers-realtime` (sidebar only) | `bazaar:customers-changed` | `crm-page.tsx` |
 
 ---
 

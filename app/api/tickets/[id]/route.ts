@@ -93,7 +93,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_at, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at")
+    .select("id, created_at, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at")
     .eq("id", ticketId)
     .single();
 
@@ -338,7 +338,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .from("job_tickets")
       .select(`id, ticket_status, quote_final_total, payment_amount_received, deposit_amount, deposit_paid_at,
                balance_paid_at, payment_paid_at, client_confirmed, production_released_at,
-               payment_evidence_url, payment_evidence_submitted_at,
+               payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at,
                public_token, reference_code, quote_channel, quote_destination, title,
                ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
                ticket_dep_handling, ticket_full_channels, ticket_partial_channels,
@@ -355,7 +355,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const payPatch: Record<string, unknown> = {
       updated_at: now,
       payment_amount_received: newTotal,
-      payment_evidence_amount: null,
     };
 
     if (mode === "deposit" && !cur?.deposit_paid_at) {
@@ -375,10 +374,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       payPatch.payment_status = "partial";
     }
 
-    // Clear evidence queue fields once accountant confirms
-    if (cur?.payment_evidence_url) {
-      payPatch.payment_evidence_url = null;
-      payPatch.payment_evidence_submitted_at = null;
+    // Mark evidence reviewed — keep URL and submitted_at for accountant/admin audit
+    if (cur?.payment_evidence_url && !cur?.payment_evidence_reviewed_at) {
+      payPatch.payment_evidence_reviewed_at = now;
     }
 
     const { data: payUpdated, error: payErr } = await admin

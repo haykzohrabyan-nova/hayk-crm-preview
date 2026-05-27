@@ -60,7 +60,9 @@ A new quote can be started from three places. The entry point controls the UI sh
 ## `/quotes` — Quoted Requests page
 
 **Component:** `components/quotes/quotes-page.tsx`  
-**List API:** `GET /api/tickets?kind=quote` — slim payload (no `quote_skus` on list). Full record on `/quotes/[id]`.
+**List API:** `GET /api/quotes/page-data` — slim ticket list (no `quote_skus` on list). Full record on `/quotes/[id]`.
+
+**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 7 Days**; Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters rows by `created_at` client-side after page-data load. **Tab badges follow the selected date range** (`lib/utils/list-page-tab-counts.ts`); sidebar `/quotes` badge stays all-time total.
 
 **Mobile (< `lg`):** `TicketListToolbar` (scrollable tabs + full-width search) + `MobileListCard` per row. Desktop: full table. See `components/ui/mobile-list-card.tsx` and `.cursor/rules/mobile-table-cards.mdc`.
 
@@ -98,7 +100,9 @@ A new quote can be started from three places. The entry point controls the UI sh
 ## `/orders` — Orders page
 
 **Component:** `components/orders/orders-page.tsx`  
-**List API:** `GET /api/orders/orders` — scoped to `order` + `in_production` + `cancelled`. Includes evidence-pending rows for the ticket owner.
+**List API:** `GET /api/orders/page-data` — scoped to `order` + `in_production` + `cancelled`. Includes evidence-pending rows for the ticket owner.
+
+**Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — default **Last 7 Days**; filters by `created_at` client-side. **Tab badges follow the selected date range**; sidebar `/orders` badge stays all-time scoped total.
 
 **Mobile (< `lg`):** same card pattern as Quotes (`MobileListCard` + `TicketListToolbar`).
 
@@ -126,17 +130,22 @@ When customer submitted payment evidence:
 
 ---
 
-## `/payments` — Payment review (Accountant + Admin)
+## `/payments` — Payment evidence (Accountant + Admin)
 
 **Component:** `components/orders/payments-page.tsx`
 
-Queue of orders where customer uploaded payment evidence and accountant has not yet confirmed.
+Two tabs — **Pending approval** and **Approved** — with badge counts on both (`GET /api/payments/page-data`).
 
-**Mobile (< `lg`):** card list with Evidence + Confirm buttons per row (no horizontal table scroll).
+| Tab | UX |
+|-----|-----|
+| Pending approval | Evidence + **Confirm** (`PATCH { record_payment: true }`); global loading overlay on confirm |
+| Approved | **View evidence** only; shows `payment_evidence_reviewed_at`; no Confirm |
 
-**Row click** → `/payments/[id]` (`QuoteDetail` with `context="payment"`)
+Evidence files are **retained** after accountant confirm (`payment_evidence_reviewed_at` set; URL not cleared). `isPaymentEvidencePending()` uses reviewed timestamp, not `payment_paid_at` (partial deposit approvals no longer show "Awaiting review" on `/orders`).
 
-**Actions:** Confirm payment (`PATCH { record_payment: true }` — accountant/admin only; shows global loading overlay), view evidence file
+**Mobile (< `lg`):** card list per tab (no horizontal table scroll).
+
+**Row click** → `/payments/[id]` (`QuoteDetail` with `context="payment"`). Approved detail: read-only review card + evidence link.
 
 ---
 
@@ -172,9 +181,11 @@ Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in
 
 **Row click** → `/completed/[id]` (`QuoteDetail` with `context="completed"`)
 
+**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 7 Days**; filters list by completion date (`updated_at`). Sidebar completed badge stays all-time total.
+
 **Actions:** Resend invoice link (Admin + Accountant only on detail)
 
-**API:** `GET /api/completed/page-data` (mount), `GET /api/completed/counts` (counts-only refresh). Scoped via `scopeCompletedTicketsQuery()` in `lib/utils/db-counts.ts`.
+**API:** `GET /api/completed/page-data` (mount), `GET /api/completed/counts` (sidebar badge — all-time scoped). Scoped via `scopeCompletedTicketsQuery()` in `lib/utils/db-counts.ts`.
 
 ---
 
@@ -521,8 +532,9 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |
 | `GET /api/tickets/[id]/evidence` | GET | Signed URL for payment evidence file (Accountant + Admin) |
 | `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, in_production, completed, routed, cancelled, total }`. `orders` includes evidence-pending `order` rows. |
-| `GET /api/payments/pending` | GET | Evidence-pending queue (Accountant + Admin) |
-| `GET /api/payments/counts` | GET | Payments page badge counts |
+| `GET /api/payments/page-data` | GET | Pending + approved lists + tab counts (Accountant + Admin) |
+| `GET /api/payments/pending` | GET | Legacy — pending queue only |
+| `GET /api/payments/counts` | GET | Accountant dashboard KPIs (`pending_evidence`, in production, completed this month) |
 | `GET /api/production/orders` | GET | Legacy in-production list (UI uses `/orders` tab) |
 | `GET /api/production/counts` | GET | Legacy production tab counts |
 | `GET /api/completed/orders` | GET | Completed orders list — SDR: `created_by_id` only; Admin/Accountant: all |
@@ -563,7 +575,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 |-------|-----|-------|------------|-------|
 | `/quotes` | draft + sent (own) | + all `routed` | — | all |
 | `/orders` | scoped orders (own) | scoped orders | pending + in_production | pending + in_production |
-| `/payments` | — | — | pending evidence count | pending evidence count |
+| `/payments` | — | — | unreviewed evidence (sidebar) | unreviewed evidence (sidebar) |
 | `/completed` | own created (`created_by_id`) | — | completed count (all) | completed count (all) |
 
 Counts from `GET /api/tickets/counts`, `/api/payments/counts`, `/api/completed/counts`, `/api/sidebar-counts`. Refresh via `bazaar:refresh-counts`.

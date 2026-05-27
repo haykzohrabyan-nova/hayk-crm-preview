@@ -3,6 +3,81 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-27] — Orders: highlight due today
+
+### Changed
+- Orders list — rows with **due date today** (not cancelled) use full-width red danger background on every table cell; Due Date shows “Today” label (desktop + mobile)
+- `lib/utils/format.ts` — `isDueToday()` helper
+
+## [2026-05-27] — Documentation sync (payments evidence + SMS templates)
+
+### Changed
+- `docs/api-contract.md`, `docs/navigation.md`, `docs/schema.md`, `docs/types.md`, `docs/architecture.md`, `docs/component-architecture.md`, `docs/session-summary.md`, `docs/TODO.md`, `docs/email-template-guide.md`, `docs/feature-specs/admin.md`, `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, `docs/FuturePlan/Performance/performance-optimization.md` — aligned with `payment_evidence_reviewed_at`, Payments Pending/Approved tabs, and admin SMS template editor
+
+## [2026-05-27] — Payments evidence retained + Approved tab
+
+### Added
+- `supabase/migrations/085_payment_evidence_reviewed_at.sql` — `payment_evidence_reviewed_at` on `job_tickets`; pending queue index uses reviewed state
+- Payments page — **Pending approval** and **Approved** tabs with badge counts; approved rows keep **View evidence**
+
+### Changed
+- `record_payment` — no longer clears `payment_evidence_url` / `payment_evidence_submitted_at` / `payment_evidence_amount`; sets `payment_evidence_reviewed_at` on confirm
+- `isPaymentEvidencePending()` — uses `payment_evidence_reviewed_at` instead of `payment_paid_at`
+- `GET /api/payments/page-data` — returns `orders`, `approvedOrders`, and `counts: { pending, approved }`
+- Public submit-payment — resets `payment_evidence_reviewed_at` when customer uploads new proof
+- Sidebar `/payments` badge and accountant dashboard pending count — unreviewed evidence only
+
+## [2026-05-27] — Admin SMS templates
+
+### Added
+- `supabase/migrations/084_sms_templates.sql` — `sms_templates` table with seeded default bodies
+- `lib/integrations/sms-template-catalog.ts`, `render-sms-template.ts`, `load-sms-templates.ts` — template keys, placeholders, render helpers
+- `GET` / `PATCH` `/api/admin/sms-templates` — admin CRUD for template text
+- `components/admin/sms-templates-section.tsx` — Admin → Settings → **SMS Templates** editor
+- Admin overview card and settings tab for SMS Templates
+
+### Changed
+- `lib/integrations/send-quote.ts` — Twilio SMS/WhatsApp bodies loaded from DB (fallback to coded defaults)
+- Admin settings tab nav and `/admin` overview grid — new SMS Templates entry
+
+## [2026-05-26] — Documentation sync (May 26 changes)
+
+### Changed
+- `docs/api-contract.md`, `docs/navigation.md`, `docs/feature-specs/tickets.md`, `docs/feature-specs/crm.md`, `docs/feature-specs/dashboard.md`, `docs/feature-specs/invoice-payment.md`, `docs/session-summary.md`, `docs/TODO.md`, `docs/architecture.md`, `docs/component-architecture.md` — aligned with date filters (Last 7/30 Days), client-side tab badges, CRM Add Customer + Realtime, manual `heat_tag`, public payment amount lock, SDR Completed scoping
+
+## [2026-05-26] — CRM live updates (Realtime)
+
+### Added
+- `supabase/migrations/083_enable_customers_realtime.sql` — Realtime on `customers` table
+- Sidebar `customers-realtime` channel → `bazaar:customers-changed` event
+
+### Changed
+- CRM page — uses `useCoalescedRefresh` on `bazaar:customers-changed`, `bazaar:leads-changed`, and `bazaar:tickets-changed` (same pattern as Orders/Leads); removed manual Refresh button
+
+## [2026-05-26] — CRM Add Customer button
+
+### Added
+- CRM page — **Add Customer** button opens modal (contact fields only, no lead/quote); `POST /api/customers`
+- `components/crm/add-customer-modal.tsx` — shared add-customer form
+- `GET /api/customers` — includes customers with no leads/tickets yet (standalone CRM adds)
+
+## [2026-05-26] — List page tab badges follow date filter
+
+### Changed
+- Quotes, Orders, Completed — default date filter **Last 7 Days** on first visit
+- Quotes & Orders — tab badge counts derived from date-filtered list rows (match visible data); sidebar nav badges unchanged (all-time)
+- `lib/utils/list-page-tab-counts.ts` — shared client-side tab count helpers
+
+## [2026-05-26] — Date filter rolling windows (Last 7 / Last 30 days)
+
+### Changed
+- `DashboardDateRangeFilter` / `resolveSdrDashboardDateRange()` — **Last Week** → **Last 7 Days** (today + prior 6 days, inclusive); **Last Month** → **Last 30 Days** (today + prior 29 days, inclusive). Applies to Quotes, Orders, Completed, SDR & Sales dashboards. API preset keys unchanged (`last_week`, `last_month`).
+
+## [2026-05-26] — Completed page date filter
+
+### Added
+- Completed page (`/completed`) — `DashboardDateRangeFilter` (default **Last 7 Days**); list filtered by completion date (`updated_at`); sidebar badge stays all-time total
+
 ## [2026-05-26] — Order detail sidebar actions reachable after timeline
 
 ### Fixed
@@ -17,8 +92,8 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-26] — Orders nav badge vs page list alignment
 
 ### Fixed
-- Orders page — tab badges now match sidebar `/orders` count (full scoped total); date filter only narrows the table/list, with “Showing X of Y” when filtered
-- Quotes page — same tab badge vs date filter behavior for consistency
+- Orders page — tab badges initially aligned with sidebar using full scoped totals; **superseded same day** by “List page tab badges follow date filter” (badges now match selected date range; sidebar stays all-time)
+- Quotes page — same interim fix, then same superseding behaviour
 
 ## [2026-05-26] — Quote send activity on create-and-send
 
@@ -43,13 +118,13 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-26] — SDR UX, list date filters, dashboard KPIs
 
 ### Added
-- `components/ui/dashboard-date-range-filter.tsx` — shared Today / Yesterday / Last Week / Last Month / Custom filter (SDR & Sales dashboards, Orders, Quotes)
+- `components/ui/dashboard-date-range-filter.tsx` — shared Today / Yesterday / Last 7 Days / Last 30 Days / Custom filter (SDR & Sales dashboards, Orders, Quotes, Completed)
 - `lib/utils/dashboard-date-range-filter.ts` — range resolution and `created_at` matching helpers
 
 ### Changed
 - Sales and SDR dashboards — **Total**, **Received**, and **Balance** are separate KPI cards for production-released orders in the selected period
 - Sales and SDR dashboard KPI cards — non-accent icons use main brand color (`--color-tab-active`) on badge background
-- **Orders** and **Quotes** list pages — date filter in page header; filters **list rows** by `created_at`; tab badges and sidebar counts stay on full scoped totals
+- **Orders**, **Quotes**, and **Completed** list pages — date filter in page header (default **Last 7 Days**); filters **list rows** by `created_at` (quotes/orders) or `updated_at` (completed). **Tab badges on Quotes/Orders follow the selected range**; sidebar nav badges stay all-time scoped totals
 - SDR and Sales dashboards — use shared `DashboardDateRangeFilter` component
 - Customer profile — **Lead History** section removed; **Quotes & Orders** remains
 - Leads page (SDR) — **Directed to Sales** and **Won** tabs open read-only **Verify Drawer** instead of redirecting to customer profile

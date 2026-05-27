@@ -7,6 +7,10 @@
  */
 
 import twilio from "twilio";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { loadSmsTemplatesMap, pickSmsBody } from "./load-sms-templates";
+import { renderSmsTemplate, type SmsTemplateVars } from "./render-sms-template";
+import type { SmsTemplateKey } from "./sms-template-catalog";
 import { buildQuoteEmail } from "./quote-email-template";
 import { buildQuoteFollowUpEmail } from "./quote-follow-up-template";
 import { buildPaymentReminderEmail } from "./payment-reminder-template";
@@ -150,36 +154,41 @@ function invoiceStatusLine(ticket: TicketForSend): string {
   return `Here is your link to view order ${ref}, see your invoice, and complete payment if needed.`;
 }
 
-function buildInvoiceSmsBody(ticket: TicketForSend, company: CompanyForSend): string {
-  const name = customerDisplayName(ticket).split(" ")[0];
-  const companyName = company.company_name ?? "BazaarPrinting";
-  const ref = ticketDisplayReference(ticket);
-  const link = publicUrl(ticket.public_token);
-  const paid = ticket.payment_status === "paid";
-  const inProd = ticket.ticket_status === "in_production";
-
-  if (inProd && paid) {
-    return `Hi ${name}, your order ${ref} from ${companyName} is in production. View your invoice & status: ${link}`;
-  }
-  if (inProd) {
-    return `Hi ${name}, your order ${ref} from ${companyName} is in production. View invoice & pay online: ${link}`;
-  }
-  return `Hi ${name}, here is your order link for ${ref} from ${companyName}. View invoice & details: ${link}`;
+function fmtUsd(amount: number | null | undefined): string {
+  if (amount == null) return "";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
 }
 
-function buildSmsBody(ticket: TicketForSend, company: CompanyForSend): string {
-  const name = customerDisplayName(ticket).split(" ")[0];
-  const companyName = company.company_name ?? "BazaarPrinting";
-  const total = ticket.quote_final_total
-    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ticket.quote_final_total)
-    : "";
-  const link = publicUrl(ticket.public_token);
+function firstNameFromTicket(ticket: {
+  customer?: TicketForSend["customer"];
+  contact_name?: string | null;
+}): string {
+  return customerDisplayName(ticket).split(" ")[0] || "there";
+}
 
-  const isOrder = ticket.order_source === "direct";
-  if (isOrder) {
-    return `Hi ${name}, your order from ${companyName} is ready! Total: ${total}. View details & payment: ${link}`;
-  }
-  return `Hi ${name}, your quote from ${companyName} is ready. Total: ${total}. View & confirm: ${link}`;
+function baseSmsVars(
+  ticket: TicketForSend,
+  company: CompanyForSend,
+): SmsTemplateVars {
+  return {
+    firstName: firstNameFromTicket(ticket),
+    companyName: company.company_name ?? "BazaarPrinting",
+    ref: ticketDisplayReference(ticket),
+    link: publicUrl(ticket.public_token),
+    total: fmtUsd(ticket.quote_final_total),
+  };
+}
+
+function renderStoredSms(
+  templates: Record<SmsTemplateKey, string>,
+  key: SmsTemplateKey,
+  vars: SmsTemplateVars,
+): string {
+  return renderSmsTemplate(pickSmsBody(templates, key), vars);
+}
+
+async function loadTemplatesForSend(): Promise<Record<SmsTemplateKey, string>> {
+  return loadSmsTemplatesMap(createAdminClient());
 }
 
 // ─── Email via Instantly AI ───────────────────────────────────────────────────
@@ -277,7 +286,12 @@ function toE164(phone: string): string {
 
 // ─── SMS via Twilio ───────────────────────────────────────────────────────────
 
-async function sendSms(ticket: TicketForSend, company: CompanyForSend, channel: "sms" | "whatsapp"): Promise<SendResult> {
+async function sendSms(
+  ticket: TicketForSend,
+  company: CompanyForSend,
+  channel: "sms" | "whatsapp",
+  templates: Record<SmsTemplateKey, string>,
+): Promise<SendResult> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -299,7 +313,12 @@ async function sendSms(ticket: TicketForSend, company: CompanyForSend, channel: 
 
   const normalised = toE164(destination);
   const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
-  const body = buildSmsBody(ticket, company);
+  const isOrder = ticket.order_source === "direct";
+  const body = renderStoredSms(
+    templates,
+    isOrder ? "order_sent" : "quote_sent",
+    baseSmsVars(ticket, company),
+  );
 
   try {
     const client = twilio(accountSid, authToken);
@@ -326,12 +345,14 @@ export async function sendQuoteToCustomer(
     return sendEmail(ticket, company);
   }
 
+  const templates = await loadTemplatesForSend();
+
   if (channel === "sms") {
-    return sendSms(ticket, company, "sms");
+    return sendSms(ticket, company, "sms", templates);
   }
 
   if (channel === "whatsapp") {
-    return sendSms(ticket, company, "whatsapp");
+    return sendSms(ticket, company, "whatsapp", templates);
   }
 
   // In-person or unknown — no outreach needed
@@ -373,6 +394,7 @@ export async function sendPaymentReminder(
   }
 
   if (channel === "sms" || channel === "whatsapp") {
+    const templates = await loadTemplatesForSend();
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -383,11 +405,13 @@ export async function sendPaymentReminder(
     const from = channel === "whatsapp" ? whatsappFrom : phoneNumber;
     if (!from) return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
 
-    const firstName = customerName.split(" ")[0];
-    const total = ticket.quote_final_total
-      ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(ticket.quote_final_total)
-      : "";
-    const body = `Hi ${firstName}, your order ${ticket.reference_code} from ${companyName} is confirmed. Please pay ${total} here: ${paymentUrl}`;
+    const body = renderStoredSms(templates, "payment_reminder", {
+      firstName: customerName.split(" ")[0] || "there",
+      ref: ticket.reference_code,
+      companyName,
+      total: fmtUsd(ticket.quote_final_total),
+      link: paymentUrl,
+    });
     const normalised = toE164(destination);
     const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
 
@@ -435,6 +459,7 @@ export async function sendInvoiceLinkToCustomer(
   }
 
   if (channel === "sms" || channel === "whatsapp") {
+    const templates = await loadTemplatesForSend();
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -446,7 +471,14 @@ export async function sendInvoiceLinkToCustomer(
       return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
     }
 
-    const body = buildInvoiceSmsBody(ticket, company);
+    const paid = ticket.payment_status === "paid";
+    const inProd = ticket.ticket_status === "in_production";
+    const templateKey: SmsTemplateKey = inProd && paid
+      ? "invoice_link_in_production_paid"
+      : inProd
+        ? "invoice_link_in_production_unpaid"
+        : "invoice_link";
+    const body = renderStoredSms(templates, templateKey, baseSmsVars(ticket, company));
     const normalised = toE164(destination);
     const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
 
@@ -493,6 +525,7 @@ export async function sendOrderReadyToCustomer(
   }
 
   if (channel === "sms" || channel === "whatsapp") {
+    const templates = await loadTemplatesForSend();
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -504,10 +537,14 @@ export async function sendOrderReadyToCustomer(
       return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
     }
 
-    const firstName = customerName.split(" ")[0];
-    const addressPart = pickupAddress ? ` Pick up at: ${pickupAddress}.` : "";
-    const phonePart = company.phone ? ` Questions? Call ${company.phone}.` : "";
-    const body = `Hi ${firstName}, your order ${ticket.reference_code} from ${companyName} is ready for pickup!${addressPart}${phonePart} Details: ${orderUrl}`;
+    const body = renderStoredSms(templates, "order_ready_pickup", {
+      firstName: firstNameFromTicket(ticket),
+      ref: ticket.reference_code,
+      companyName,
+      link: orderUrl,
+      pickupBlock: pickupAddress ? ` Pick up at: ${pickupAddress}.` : "",
+      phoneBlock: company.phone ? ` Questions? Call ${company.phone}.` : "",
+    });
 
     const normalised = toE164(destination);
     const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
@@ -572,6 +609,7 @@ export async function sendPaymentConfirmed(
   }
 
   if (channel === "sms" || channel === "whatsapp") {
+    const templates = await loadTemplatesForSend();
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
     const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
@@ -582,16 +620,21 @@ export async function sendPaymentConfirmed(
     const from = channel === "whatsapp" ? whatsappFrom : phoneNumber;
     if (!from) return { ok: false, channel, error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.` };
 
-    const firstName = customerName.split(" ")[0];
-    const total = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(opts.amountConfirmed);
-    const body =
+    const templateKey: SmsTemplateKey =
       opts.fullyPaid && opts.inProduction
-        ? `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed — your order is paid in full. Track it here: ${orderUrl}`
+        ? "payment_confirmed_full_in_production"
         : opts.inProduction
-          ? `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed — your order is now in production. Track it here: ${orderUrl}`
+          ? "payment_confirmed_in_production"
           : opts.fullyPaid
-            ? `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed — paid in full. View your order: ${orderUrl}`
-            : `Hi ${firstName}, your payment of ${total} for order ${ticket.reference_code} from ${companyName} is confirmed. View your order: ${orderUrl}`;
+            ? "payment_confirmed_full"
+            : "payment_confirmed";
+    const body = renderStoredSms(templates, templateKey, {
+      firstName: firstNameFromTicket(ticket),
+      amount: fmtUsd(opts.amountConfirmed),
+      ref: ticket.reference_code,
+      companyName,
+      link: orderUrl,
+    });
     const normalised = toE164(destination);
     const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
 
@@ -657,13 +700,19 @@ export async function sendQuoteFollowUpReminder(
       };
     }
 
-    const firstName = customerName.split(" ")[0] || "there";
-    const totalFmt = total
-      ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(total)
-      : "";
-    const body = totalFmt
-      ? `Hi ${firstName}, friendly reminder about your quote ${ref} from ${companyName} (${totalFmt}). View & confirm: ${link}`
-      : `Hi ${firstName}, friendly reminder about your quote ${ref} from ${companyName}. View & confirm: ${link}`;
+    const templates = await loadTemplatesForSend();
+    const totalFmt = fmtUsd(total);
+    const body = renderStoredSms(
+      templates,
+      totalFmt ? "quote_follow_up" : "quote_follow_up_no_total",
+      {
+        firstName: firstNameFromTicket(ticket),
+        ref,
+        companyName,
+        total: totalFmt,
+        link,
+      },
+    );
 
     const normalised = toE164(destination);
     const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;

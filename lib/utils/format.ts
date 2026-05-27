@@ -51,6 +51,18 @@ export function relativeTime(iso: string | null | undefined): string {
   return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`;
 }
 
+/** Calendar due date is today (local timezone). */
+export function isDueToday(dateStr: string | null | undefined): boolean {
+  if (!dateStr) return false;
+  const due = parseLocalDate(dateStr);
+  const now = new Date();
+  return (
+    due.getFullYear() === now.getFullYear() &&
+    due.getMonth() === now.getMonth() &&
+    due.getDate() === now.getDate()
+  );
+}
+
 export function isDueSoon(dateStr: string | null | undefined): boolean {
   if (!dateStr) return false;
   const diffDays = (parseLocalDate(dateStr).getTime() - Date.now()) / 86400000;

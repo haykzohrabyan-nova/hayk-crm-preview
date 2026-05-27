@@ -1,10 +1,17 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { Search, Zap, ExternalLink } from "lucide-react";
+import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
+import {
+  defaultDashboardDateRangeFilterValue,
+  isoTimestampInDashboardRange,
+  resolveDashboardDateRangeFilter,
+  type DashboardDateRangeFilterValue,
+} from "@/lib/utils/dashboard-date-range-filter";
 import {
   MobileListCard,
   MobileListCardRow,
@@ -138,6 +145,11 @@ export function CompletedPage() {
   const [orders, setOrders]   = useState<CompletedOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
+  const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
+    defaultDashboardDateRangeFilterValue("last_week"),
+  );
+
+  const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
 
   const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
@@ -154,7 +166,13 @@ export function CompletedPage() {
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
 
-  const filtered = orders.filter((o) => {
+  // Filter by completion date (updated_at); sidebar count stays all-time total.
+  const dateFilteredOrders = useMemo(() => {
+    if (!dateRange) return orders;
+    return orders.filter((o) => isoTimestampInDashboardRange(o.updated_at, dateRange));
+  }, [orders, dateRange]);
+
+  const filtered = dateFilteredOrders.filter((o) => {
     if (!search) return true;
     const s       = search.toLowerCase();
     const name    = displayName(o).toLowerCase();
@@ -168,30 +186,33 @@ export function CompletedPage() {
     <div className="space-y-5" style={{ color: "var(--color-text-primary)" }}>
 
       {/* Page header */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-4 lg:mb-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-4 lg:mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Completed Orders
           </h1>
           <p className="text-sm mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-            All finished orders
+            Finished orders — filter by completion date
           </p>
         </div>
 
-        {/* Search — full width on mobile */}
-        <div className="relative w-full lg:w-52 shrink-0">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search orders…"
-            className="w-full pl-8 pr-3 py-2 lg:py-1.5 text-sm rounded-md border outline-none"
-            style={{
-              background: "var(--color-bg)",
-              border:     "1px solid var(--color-border)",
-              color:      "var(--color-text-primary)",
-            }}
-          />
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 shrink-0">
+          <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
+
+          <div className="relative w-full sm:w-52 shrink-0">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search orders…"
+              className="w-full pl-8 pr-3 py-2 lg:py-1.5 text-sm rounded-md border outline-none"
+              style={{
+                background: "var(--color-bg)",
+                border:     "1px solid var(--color-border)",
+                color:      "var(--color-text-primary)",
+              }}
+            />
+          </div>
         </div>
       </div>
 
@@ -205,7 +226,11 @@ export function CompletedPage() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              {search ? "No orders match your search." : "No completed orders yet."}
+              {search
+                ? "No orders match your search."
+                : orders.length > 0 && dateFilteredOrders.length === 0
+                  ? "No completed orders in this date range."
+                  : "No completed orders yet."}
             </p>
           </div>
         ) : (
@@ -328,7 +353,15 @@ export function CompletedPage() {
         {loading ? (
           <MobileListCardSkeleton />
         ) : filtered.length === 0 ? (
-          <MobileListCardEmpty message={search ? "No orders match your search." : "No completed orders yet."} />
+          <MobileListCardEmpty
+            message={
+              search
+                ? "No orders match your search."
+                : orders.length > 0 && dateFilteredOrders.length === 0
+                  ? "No completed orders in this date range."
+                  : "No completed orders yet."
+            }
+          />
         ) : (
           filtered.map((o) => (
             <CompletedMobileCard key={o.id} order={o} onOpen={() => router.push(`/completed/${o.id}`)} />
@@ -336,9 +369,11 @@ export function CompletedPage() {
         )}
       </div>
 
-      {!loading && filtered.length > 0 && (
+      {!loading && orders.length > 0 && (
         <p className="text-xs mt-3 text-right" style={{ color: "var(--color-text-muted)" }}>
-          {filtered.length} order{filtered.length !== 1 ? "s" : ""}
+          {dateRange && dateFilteredOrders.length < orders.length
+            ? `Showing ${filtered.length} of ${orders.length} completed orders in selected period`
+            : `${filtered.length} order${filtered.length !== 1 ? "s" : ""}`}
         </p>
       )}
     </div>

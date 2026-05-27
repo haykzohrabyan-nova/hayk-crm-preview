@@ -308,9 +308,24 @@ export function Sidebar() {
           console.log("[Realtime] activities-realtime status:", status, err ?? "");
         });
 
+      const customersChannel = supabase
+        .channel("customers-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "customers" },
+          (payload) => {
+            console.log("[Realtime] customers event:", payload.eventType, payload);
+            window.dispatchEvent(new Event("bazaar:customers-changed"));
+          }
+        )
+        .subscribe((status, err) => {
+          console.log("[Realtime] customers-realtime status:", status, err ?? "");
+        });
+
       (supabase as unknown as Record<string, unknown>)["_sidebarLeadsCh"] = leadsChannel;
       (supabase as unknown as Record<string, unknown>)["_sidebarTicketsCh"] = ticketsChannel;
       (supabase as unknown as Record<string, unknown>)["_sidebarActivitiesCh"] = activitiesChannel;
+      (supabase as unknown as Record<string, unknown>)["_sidebarCustomersCh"] = customersChannel;
     });
 
     return () => {
@@ -327,6 +342,10 @@ export function Sidebar() {
       if (refs["_sidebarActivitiesCh"]) {
         supabase.removeChannel(refs["_sidebarActivitiesCh"] as Parameters<typeof supabase.removeChannel>[0]);
         delete refs["_sidebarActivitiesCh"];
+      }
+      if (refs["_sidebarCustomersCh"]) {
+        supabase.removeChannel(refs["_sidebarCustomersCh"] as Parameters<typeof supabase.removeChannel>[0]);
+        delete refs["_sidebarCustomersCh"];
       }
     };
   }, []);

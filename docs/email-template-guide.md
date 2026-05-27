@@ -372,6 +372,23 @@ All outbound customer messages are routed through `lib/integrations/send-quote.t
 
 ---
 
+## SMS / WhatsApp templates (editable)
+
+Unlike HTML emails, SMS and WhatsApp bodies are **plain text** stored in `sms_templates` (migration `084`) and edited at **Admin → Settings → SMS Templates**.
+
+| Source | Purpose |
+|--------|---------|
+| `lib/integrations/sms-template-catalog.ts` | Template keys, labels, default bodies, allowed placeholders |
+| `lib/integrations/load-sms-templates.ts` | Loads DB rows; falls back to catalog defaults |
+| `lib/integrations/render-sms-template.ts` | Replaces `{placeholder}` at send time |
+| `GET` / `PATCH` `/api/admin/sms-templates` | Admin CRUD |
+
+**Template keys (examples):** `quote_sent`, `order_sent`, `payment_reminder`, `payment_confirmed`, `order_ready_pickup`, `quote_follow_up`, …
+
+**Do not** edit SMS copy in `send-quote.ts` for production changes — use the admin UI so ops can tune wording without deploys.
+
+---
+
 ## Testing Checklist Before Sending
 
 - [ ] Preview at `localhost:3000/api/dev/quote-email-preview` (add `?template=welcome` or `?template=password-reset` for auth emails)
