@@ -654,7 +654,6 @@ function PublicPayModal({
   const depositAmt  = Number(ticket.deposit_amount ?? amountPaid);
 
   const [selectedChannel, setSelectedChannel] = useState(channels[0] ?? "");
-  const [amount, setAmount]                   = useState(dueAmount > 0 ? String(dueAmount) : "");
   const [receiptId, setReceiptId]             = useState("");
   const [evidenceFile, setEvidenceFile]       = useState<File | null>(null);
   const [submitting, setSubmitting]           = useState(false);
@@ -662,7 +661,6 @@ function PublicPayModal({
 
   useEffect(() => {
     if (!open) return;
-    setAmount(dueAmount > 0 ? String(dueAmount) : "");
     setSelectedChannel(channels[0] ?? "");
     setReceiptId("");
     setEvidenceFile(null);
@@ -673,7 +671,7 @@ function PublicPayModal({
   const needsEvidence = EVIDENCE_CHANNELS.has(selectedChannel);
   const canSubmit =
     !!selectedChannel && selectedChannel !== "card" &&
-    !!amount && parseFloat(amount) > 0 &&
+    dueAmount > 0 &&
     (!needsEvidence || !!evidenceFile);
 
   async function handleSubmitPayment() {
@@ -683,7 +681,6 @@ function PublicPayModal({
     try {
       const form = new FormData();
       form.set("method", selectedChannel);
-      form.set("amount",  amount);
       if (receiptId)    form.set("receiptId", receiptId);
       if (evidenceFile) form.set("file",      evidenceFile);
       const res  = await fetch(`/api/public/quotes/${token}/submit-payment`, { method: "POST", body: form });
@@ -773,21 +770,6 @@ function PublicPayModal({
             {(selectedChannel === "cash" || selectedChannel === "offline") && (
               <CashPanel refCode={refCode} receiptId={receiptId} onReceiptChange={setReceiptId} />
             )}
-          </div>
-        )}
-
-        {selectedChannel && selectedChannel !== "card" && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Payment Amount ($)
-            </label>
-            <input
-              type="number" step="0.01" min="0"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              placeholder="0.00"
-              style={{ width: "100%", padding: "10px 14px", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 14, color: TEXT, background: SURFACE, outline: "none" }}
-            />
           </div>
         )}
 

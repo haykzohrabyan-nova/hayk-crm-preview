@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-26] — Public payment amount locked to amount due
+
+### Changed
+- Public payment modal (`/q/[token]`) — removed editable “Payment Amount” field; customers pay exactly the amount shown at the top (deposit or balance)
+- `POST /api/public/quotes/[token]/submit-payment` — amount computed server-side via `computePublicPaymentDueAmount()` (client cannot override)
+
 ## [2026-05-26] — Orders nav badge vs page list alignment
 
 ### Fixed

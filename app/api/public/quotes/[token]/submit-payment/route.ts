@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket } from "@/lib/utils/maybe-auto-release-production";
 import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
+import { computePublicPaymentDueAmount } from "@/lib/utils/invoice-payment-summary";
 import { randomUUID } from "crypto";
 
 // POST /api/public/quotes/[token]/submit-payment
@@ -72,7 +73,6 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const method    = String(formData.get("method") ?? "").trim();
-  const amountRaw = String(formData.get("amount") ?? "").trim();
   const receiptId = String(formData.get("receiptId") ?? "").trim() || null;
   const file      = formData.get("file") as File | null;
 
@@ -80,9 +80,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Payment method is required." }, { status: 400 });
   }
 
-  const amount = parseFloat(amountRaw);
-  if (!Number.isFinite(amount) || amount <= 0) {
-    return NextResponse.json({ error: "A valid payment amount is required." }, { status: 400 });
+  const amount = computePublicPaymentDueAmount(row);
+  if (amount <= 0.01) {
+    return NextResponse.json({ error: "No payment is due at this time." }, { status: 400 });
   }
 
   if (EVIDENCE_REQUIRED_CHANNELS.has(method) && !file) {

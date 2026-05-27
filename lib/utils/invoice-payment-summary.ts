@@ -93,3 +93,15 @@ export function computeInvoicePaymentSummary(ticket: TicketPaymentFields): Invoi
     showSchedule: strategy === "partial" && !fullyPaid && !evidencePending,
   };
 }
+
+/** Next amount due on the public payment link (deposit first, then balance). */
+export function computePublicPaymentDueAmount(ticket: TicketPaymentFields): number {
+  const summary = computeInvoicePaymentSummary(ticket);
+  if (summary.strategy === "net" || summary.fullyPaid || summary.evidencePending) return 0;
+
+  const { depositDue, amountPaid, depositPaid, balanceDue, strategy } = summary;
+  if (!depositPaid && strategy === "partial") {
+    return Math.max(0, Math.round((depositDue - amountPaid) * 100) / 100);
+  }
+  return balanceDue;
+}
