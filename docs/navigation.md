@@ -28,7 +28,7 @@ app/
 └── (app)/
     ├── layout.tsx                    ✓ EXISTS (sidebar + mobile nav shell)
     │
-    ├── dashboard/page.tsx            ✓ EXISTS — role router (SDR / Sales / Admin / Accountant dashboards); SDR/Sales/Admin use DashboardDateRangeFilter (Admin default Last 7 Days)
+    ├── dashboard/page.tsx            ✓ EXISTS — role router (SDR / Sales / Admin / Accountant dashboards); SDR/Sales/Admin use DashboardDateRangeFilter (default Last 30 Days)
     ├── tickets/page.tsx              ✓ EXISTS — redirect stub → `/quotes` (legacy; hub removed in migration 028)
     ├── overview/page.tsx             ✓ EXISTS — admin overview alias (renders DashboardPage)
     │
@@ -204,7 +204,7 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 
 ```
 /leads              → defaults to ?tab=all
-/leads?tab=all      → All Leads
+/leads?tab=all      → All Leads (SDR: All Leads / My Leads toggle via ?owner_scope=all|mine)
 /leads?tab=hold     → On Hold
 /leads?tab=routed   → Directed to Sales
 /leads?tab=rejected → Rejected
@@ -251,7 +251,7 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 
 In-production orders use **`/orders/[id]`** with `context="order"` (header badge **In Production**). Legacy `/production/[id]` redirects here.
 
-All non-draft detail views use **Overview + History** tabs and shared overview sections (`ticket-detail-overview.tsx`).
+All non-draft detail views use **Overview + History** tabs and shared overview sections. On overview layout, **Timeline**, **Pricing**, and **Payment & order settings** are **collapsible** (default collapsed); Line Items stays expanded.
 
 ---
 
@@ -267,6 +267,8 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | Rejected | `status = 'Rejected'` | — |
 | Won | `sales_status = 'Won'` **and** SDR routed lead to Sales first — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created. **SDR row click → read-only Verify Drawer.** | count |
 
+**List API:** `GET /api/leads/workspace/page-data` — paginated (default 25 rows); server-side search, SDR owner scope, routed sub-filters, sort. Tab badges from `counts` (not limited by page). Routed tab stage pills use `routedSubCounts` from API.
+
 ### `/sales` — Sales Pipeline
 
 | Tab | Content | Badge |
@@ -279,7 +281,9 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 ### `/quotes` — Quoted Requests
 
-**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 7 Days**; Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters rows by `created_at` (client-side after `GET /api/quotes/page-data`). **Tab badges follow the selected date range**; sidebar nav badge stays all-time total.
+**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 30 Days**; filters `created_at` **server-side** via `date_from` / `date_to` on page-data. **Tab badges** from page-data `counts` under the same filters; sidebar nav badge stays all-time total.
+
+**Pagination (May 2026):** Default 25 rows; `ListPagination` (25 / 50 / 100). Search and admin team filter are server-side.
 
 | Tab | Content | Badge | Visible to |
 |-----|---------|-------|-----------|
@@ -287,13 +291,19 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | Draft | `ticket_status = 'draft'` | count | All roles |
 | Sent | `ticket_status = 'sent'` | count | All roles |
 | Won | `ticket_status = 'approved'` (legacy — `approved` status retired; tab remains for historical records) | count | All roles |
-| Routed to Sales | `ticket_status = 'routed'` | count | Sales + Admin only |
+| Routed to Sales | `ticket_status = 'routed'` | count | Sales + Admin (all) · SDR (own HVT only) |
+
+**List scope:** SDR — `created_by_id = session user` on all tabs. Sales — own quotes + company-wide **Routed to Sales** queue. **Admin** — all records; optional **team member filter** (`?user_id=`) on Leads, Quotes, Orders, and Completed narrows to that user's work.
 
 ### `/orders` — Orders
 
-**Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — default **Last 7 Days**; filters by `created_at` client-side. **Tab badges follow the selected date range**; sidebar nav badge stays all-time total.
+**Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — default **Last 30 Days**; filters by `created_at` **server-side**. **Tab badges** from page-data `counts`; sidebar nav badge stays all-time scoped total.
 
-Includes **`order`**, **`in_production`**, and **`cancelled`** tickets (scoped per role). Evidence-pending orders are **included** for the ticket owner with status **Awaiting payment confirmation**; accountants also see them on **`/payments`**.
+**Column sort (May 2026):** Created by, Balance Due, Due Date, Status, Payment — server-side via `?sort=`.
+
+**Pagination (May 2026):** Default 25 rows; `ListPagination` (25 / 50 / 100).
+
+Includes **`order`**, **`in_production`**, and **`cancelled`** tickets. **SDR / Sales list scope:** `created_by_id = session user` (via `scopeJobTicketsQuery()`). Evidence-pending orders are **included** for the ticket owner with status **Awaiting payment confirmation**; accountants also see them on **`/payments`**.
 
 | Tab | Content | Badge |
 |-----|---------|-------|
@@ -302,7 +312,7 @@ Includes **`order`**, **`in_production`**, and **`cancelled`** tickets (scoped p
 | In Production | `ticket_status = 'in_production'` | count |
 | Cancelled | `ticket_status = 'cancelled'` | count |
 
-List API: `GET /api/orders/page-data`. Tab badge counts are **derived client-side** from the loaded list after the date filter (`lib/utils/list-page-tab-counts.ts`). Sidebar `/orders` badge stays all-time scoped total.
+List API: `GET /api/orders/page-data` → `{ orders, counts, pagination }`. Tab badge counts from API `counts` (same filters as list, excluding `limit`/`offset`). Sidebar `/orders` badge stays all-time scoped total.
 
 Row click → `/orders/[id]`.
 
@@ -321,15 +331,19 @@ Both tabs include **`sent`**, **`order`**, **`in_production`**, and **`completed
 
 | Content | Filter |
 |---------|--------|
-| All completed | `ticket_status = 'completed'` — SDR: `created_by_id` matches session user only |
+| All completed | `ticket_status = 'completed'` — SDR / Sales: `created_by_id` matches session user only |
 
-**Date filter:** `DashboardDateRangeFilter` in page header — default **Last 7 Days**; Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters **list rows** by completion date (`updated_at`); sidebar completed badge stays all-time total.
+**Date filter:** `DashboardDateRangeFilter` — default **Last 30 Days**; filters list **server-side** by completion date (`updated_at`); sidebar completed badge stays all-time total.
 
-Row click → `/completed/[id]`. Counts: `GET /api/completed/counts`.
+**Pagination (May 2026):** Default 25 rows; server-side search, date, admin team filter.
+
+Row click → `/completed/[id]`. Mount: `GET /api/completed/page-data`; counts-only: `GET /api/completed/counts`.
 
 ### `/crm` — Customer registry
 
-**Header:** **Add Customer** button (modal → `POST /api/customers`, no lead). Live updates via Realtime — no manual Refresh button.
+**List API:** `GET /api/crm/page-data` — paginated (default 25 rows); server-side search, status, heat filters. **`GET /api/customers`** used only for merge search and Add Customer (not the list page).
+
+**Header:** **Add Customer** button (modal → `POST /api/customers`, no lead). Live updates via Realtime — no manual Refresh button. **Pagination:** `ListPagination` at bottom (25 / 50 / 100).
 
 | Column | Notes |
 |--------|-------|

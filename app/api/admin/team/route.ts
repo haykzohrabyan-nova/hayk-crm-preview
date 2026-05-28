@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import {
+  getDashboardValuesHidden,
+  redactSessionSummary,
+} from "@/lib/utils/dashboard-privacy";
 
 export interface TeamMember {
   id: string;
@@ -12,10 +16,11 @@ export interface TeamMember {
 }
 
 export async function GET() {
-  const { errorResponse } = await requireAdmin();
+  const { userId, errorResponse } = await requireAdmin();
   if (errorResponse) return errorResponse;
 
   const admin = createAdminClient();
+  const valuesHidden = await getDashboardValuesHidden(admin, userId!);
 
   // Resolve admin role_id so we can exclude admins from the team list
   const { data: adminRole } = await admin
@@ -80,5 +85,8 @@ export async function GET() {
     return (a.full_name ?? "").localeCompare(b.full_name ?? "", undefined, { sensitivity: "base" });
   });
 
-  return NextResponse.json({ members });
+  return NextResponse.json({
+    values_hidden: valuesHidden,
+    members: valuesHidden ? redactSessionSummary(members) : members,
+  });
 }

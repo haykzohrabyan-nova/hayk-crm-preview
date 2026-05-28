@@ -102,11 +102,11 @@ from public.roles r where r.name = 'admin';
 | Returning Customer | No | Checkbox — flags existing client |
 | Verify Lead Comment | No | SDR internal notes |
 | Brand | No | (in drawer, not add modal) |
-| Product Interests | No | Row-based UI in **both** Add Lead modal and Verify Drawer (product + quantity + has design) |
+| Product Interests | No | Row-based UI in **both** Add Lead modal and Verify Drawer (`components/leads/product-interest-rows.tsx`): product + quantity (> 0 when product selected) + has design; labels above inputs |
 
 ### SDR Workflow Fields (DB only, set by actions)
 - `status` — set by SDR actions (Pending → Validated → Routed/Hold/Rejected)
-- `sdr_id` — set to current user on create/verify
+- `sdr_id` — set to current user on create (attribution); **not** ownership — claim sets `locked_by_id`
 - `is_returning_customer` — from checkbox
 
 ### Sales Workflow Fields (DB ready, Sales drawer)

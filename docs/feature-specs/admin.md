@@ -64,7 +64,7 @@ Built cards show an accent-colored icon + "Open →".
 
 Behind the scenes:
 1. `supabase.auth.admin.createUser({ email, password: tempPassword, email_confirm: true })` — creates user without sending any email
-2. A `user_profiles` row is created with `role_id`, `must_change_password: true`, `is_active: true`
+2. A `user_profiles` row is created with `role_id`, `must_change_password: true`, `is_active: true`, `dashboard_values_hidden: false`
 3. Success toast: "User [name] created — share their temporary password with them"
 
 **First-login flow for the new user:**

@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
       full_name: full_name ?? null,
       is_active: true,
       must_change_password: true,
+      dashboard_values_hidden: false,
     })
     .select("*, roles(name, display_name, is_system)")
     .single();

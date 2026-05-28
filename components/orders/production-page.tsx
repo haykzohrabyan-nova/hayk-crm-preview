@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Zap, ExternalLink } from "lucide-react";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
@@ -13,6 +13,13 @@ import {
   MobileListCardEmpty,
   TicketListToolbar,
 } from "@/components/ui/mobile-list-card";
+import { ListPagination } from "@/components/ui/list-pagination";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+  type PaginationMeta,
+} from "@/lib/utils/pagination";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import {
   displayContactName,
@@ -180,44 +187,69 @@ function ProductionMobileCard({
 
 export function ProductionPage() {
   const router = useRouter();
-  const [orders, setOrders]     = useState<ProductionOrder[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState("");
-  const [tab, setTab]           = useState<Tab>("all");
+  const [orders, setOrders] = useState<ProductionOrder[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    limit: 25,
+    offset: 0,
+    total: 0,
+    hasMore: false,
+  });
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [tab, setTab] = useState<Tab>("all");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [tab, debouncedSearch, pageSize]);
 
   const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    fetch("/api/production/page-data")
+    const params = new URLSearchParams();
+    if (tab !== "all") params.set("tab", tab);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    params.set("limit", String(pageSize));
+    params.set("offset", String(offset));
+    const qs = params.toString();
+    fetch(`/api/production/page-data${qs ? `?${qs}` : ""}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.orders) setOrders(d.orders);
         if (d.counts) setTabCounts(d.counts);
+        if (d.pagination) setPagination(d.pagination);
       })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
-  }, []);
+  }, [tab, debouncedSearch, offset, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [], {
+  useCoalescedRefresh(fetchPageData, [tab, debouncedSearch, offset, pageSize], {
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
 
-  // ─── Filter ─────────────────────────────────────────────────────────────
+  function handlePageSizeChange(size: ListPageSize) {
+    writeStoredListPageSize(size);
+    setPageSize(size);
+    setOffset(0);
+  }
 
-  const filtered = orders.filter((o) => {
-    if (tab === "balance_due") {
-      if (o.payment_status === "paid" || o.ticket_payment_strategy === "net") return false;
-    }
-    if (search) {
-      const s = search.toLowerCase();
-      const name    = displayName(o).toLowerCase();
-      const company = (o.customer?.company ?? "").toLowerCase();
-      const title   = (o.title ?? "").toLowerCase();
-      const ref     = (o.reference_code ?? "").toLowerCase();
-      if (!name.includes(s) && !company.includes(s) && !title.includes(s) && !ref.includes(s)) return false;
-    }
-    return true;
-  });
+  function selectTab(next: Tab) {
+    setTab(next);
+    setOffset(0);
+  }
+
+  const emptyMessage = debouncedSearch
+    ? "No orders match your search."
+    : tab === "balance_due"
+      ? "No production orders with balance due."
+      : "No orders in production.";
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
@@ -239,7 +271,7 @@ export function ProductionPage() {
       <TicketListToolbar
         tabs={TABS.map((t) => ({ id: t.id, label: t.label }))}
         activeTab={tab}
-        onTabChange={(id) => setTab(id as Tab)}
+        onTabChange={(id) => selectTab(id as Tab)}
         tabCounts={tabCounts}
         search={search}
         onSearchChange={setSearch}
@@ -253,10 +285,10 @@ export function ProductionPage() {
       >
         {loading ? (
           <TableDivSkeleton cols={8} />
-        ) : filtered.length === 0 ? (
+        ) : orders.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              {search ? "No orders match your search." : "No orders in production."}
+              {emptyMessage}
             </p>
           </div>
         ) : (
@@ -276,7 +308,7 @@ export function ProductionPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((o, idx) => {
+              {orders.map((o, idx) => {
                 const pay          = paymentIndicator(o);
                 const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
                 const overdue      = isOverdue(o.due_date);
@@ -392,20 +424,23 @@ export function ProductionPage() {
       <div className="flex flex-col gap-3 lg:hidden">
         {loading ? (
           <MobileListCardSkeleton />
-        ) : filtered.length === 0 ? (
-          <MobileListCardEmpty message={search ? "No orders match your search." : "No orders in production."} />
+        ) : orders.length === 0 ? (
+          <MobileListCardEmpty message={emptyMessage} />
         ) : (
-          filtered.map((o) => (
+          orders.map((o) => (
             <ProductionMobileCard key={o.id} order={o} onOpen={() => router.push(`/production/${o.id}`)} />
           ))
         )}
       </div>
 
-      {!loading && filtered.length > 0 && (
-        <p className="text-xs mt-3 text-right" style={{ color: "var(--color-text-muted)" }}>
-          {filtered.length} order{filtered.length !== 1 ? "s" : ""}
-        </p>
-      )}
+      <ListPagination
+        total={pagination.total}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
     </div>
   );
 }

@@ -302,6 +302,13 @@ export function Sidebar() {
           (payload) => {
             console.log("[Realtime] activities event:", payload);
             window.dispatchEvent(new Event("bazaar:activities-changed"));
+            // Ticket/lead activity (e.g. routed quote claimed) — other Sales users
+            // often cannot receive job_tickets Realtime (RLS hides row after claim).
+            const row = payload.new as { ticket_id?: string | null; lead_id?: string | null };
+            if (row.ticket_id || row.lead_id) {
+              window.dispatchEvent(new Event("bazaar:refresh-counts"));
+              window.dispatchEvent(new Event("bazaar:tickets-changed"));
+            }
           }
         )
         .subscribe((status, err) => {

@@ -1,13 +1,14 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { getDashboardValuesHidden } from "@/lib/utils/dashboard-privacy";
 
 // GET /api/payments/counts
 // Returns KPI counts for the Accountant dashboard.
 // Restricted to accountant and admin roles.
 
 export async function GET() {
-  const { roleName, errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   if (roleName !== "accountant" && roleName !== "admin") {
@@ -15,6 +16,12 @@ export async function GET() {
   }
 
   const admin = createAdminClient();
+  const valuesHidden = await getDashboardValuesHidden(admin, userId!);
+
+  if (valuesHidden) {
+    return NextResponse.json({ values_hidden: true, counts: null });
+  }
+
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
@@ -46,6 +53,7 @@ export async function GET() {
   ]);
 
   return NextResponse.json({
+    values_hidden: false,
     counts: {
       pending_evidence:      pending_evidence ?? 0,
       orders_in_production:  orders_in_production ?? 0,

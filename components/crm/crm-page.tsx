@@ -6,14 +6,21 @@ import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { Search, X, FilePlus, UserPlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AddCustomerModal } from "@/components/crm/add-customer-modal";
+import { ListPagination } from "@/components/ui/list-pagination";
 import { formatPhone } from "@/lib/utils/phone";
 import { lookupLabel } from "@/lib/utils/lookups";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+  type PaginationMeta,
+} from "@/lib/utils/pagination";
 
 type LookupOption = { value: string; label: string };
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type CustomerStatus = "new" | "known" | "returning";
+type CustomerStatus = "new" | "known";
 type HeatTag = "hot" | "warm" | "cold" | null;
 type StatusFilter = "all" | CustomerStatus;
 type HeatFilter = "all" | "hot" | "warm" | "cold";
@@ -99,7 +106,6 @@ import { newQuoteUrlFromCustomer } from "@/lib/utils/new-quote-from-customer";
 const STATUS_STYLE: Record<CustomerStatus, { bg: string; text: string; label: string }> = {
   new: { bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", label: "New Contact" },
   known: { bg: "var(--color-info-bg)", text: "var(--color-info-text)", label: "Known Customer" },
-  returning: { bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)", label: "Returning" },
 };
 
 function StatusBadge({ status }: { status: CustomerStatus }) {
@@ -170,18 +176,43 @@ function TableSkeleton() {
 export function CRMPage() {
   const router = useRouter();
   const [customers, setCustomers] = useState<CrmCustomer[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    limit: 25,
+    offset: 0,
+    total: 0,
+    hasMore: false,
+  });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [heatFilter, setHeatFilter] = useState<HeatFilter>("all");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
   const [industryLookups, setIndustryLookups] = useState<LookupOption[]>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
 
-  const fetchCustomers = useCallback(async (silent = false) => {
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [debouncedSearch, statusFilter, heatFilter, pageSize]);
+
+  const fetchPageData = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const res = await fetch("/api/customers");
+      const params = new URLSearchParams();
+      if (debouncedSearch) params.set("search", debouncedSearch);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      if (heatFilter !== "all") params.set("heat", heatFilter);
+      params.set("limit", String(pageSize));
+      params.set("offset", String(offset));
+      const qs = params.toString();
+      const res = await fetch(`/api/crm/page-data${qs ? `?${qs}` : ""}`);
       const data = await res.json();
       if (!res.ok) {
         if (!silent) {
@@ -191,6 +222,7 @@ export function CRMPage() {
         return;
       }
       setCustomers(data.customers ?? []);
+      if (data.pagination) setPagination(data.pagination);
     } catch {
       if (!silent) {
         setToast({ message: "Failed to load customers.", type: "error" });
@@ -199,9 +231,9 @@ export function CRMPage() {
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [debouncedSearch, statusFilter, heatFilter, offset, pageSize]);
 
-  useCoalescedRefresh(fetchCustomers, [], {
+  useCoalescedRefresh(fetchPageData, [debouncedSearch, statusFilter, heatFilter, offset, pageSize], {
     events: ["bazaar:customers-changed", "bazaar:leads-changed", "bazaar:tickets-changed"],
   });
 
@@ -212,20 +244,21 @@ export function CRMPage() {
       .catch(() => {});
   }, []);
 
-  // ── Client-side filters ───────────────────────────────────────────────────
+  function handlePageSizeChange(size: ListPageSize) {
+    writeStoredListPageSize(size);
+    setPageSize(size);
+    setOffset(0);
+  }
 
-  const filtered = customers.filter((c) => {
-    const q = search.toLowerCase();
-    const matchesSearch = !q ||
-      c.first_name?.toLowerCase().includes(q) ||
-      c.last_name?.toLowerCase().includes(q) ||
-      c.email?.toLowerCase().includes(q) ||
-      c.phone?.includes(q) ||
-      c.company?.toLowerCase().includes(q);
-    const matchesStatus = statusFilter === "all" || c.customer_status === statusFilter;
-    const matchesHeat = heatFilter === "all" || c.heat_tag === heatFilter;
-    return matchesSearch && matchesStatus && matchesHeat;
-  });
+  function selectStatusFilter(next: StatusFilter) {
+    setStatusFilter(next);
+    setOffset(0);
+  }
+
+  function selectHeatFilter(next: HeatFilter) {
+    setHeatFilter(next);
+    setOffset(0);
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -282,7 +315,7 @@ export function CRMPage() {
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.id}
-              onClick={() => setStatusFilter(f.id)}
+              onClick={() => selectStatusFilter(f.id)}
               className="rounded-full px-3 py-1 text-[12px] font-medium transition-all"
               style={{
                 background: statusFilter === f.id ? "var(--color-btn-verify-bg)" : "var(--color-surface)",
@@ -304,7 +337,7 @@ export function CRMPage() {
           {HEAT_FILTERS.map((f) => (
             <button
               key={f.id}
-              onClick={() => setHeatFilter((prev) => prev === f.id ? "all" : f.id)}
+              onClick={() => selectHeatFilter(heatFilter === f.id ? "all" : f.id)}
               className="rounded-full px-3 py-1 text-[12px] font-medium transition-all capitalize"
               style={{
                 background: heatFilter === f.id ? "var(--color-btn-primary-bg)" : "var(--color-surface)",
@@ -318,9 +351,9 @@ export function CRMPage() {
           ))}
         </div>
 
-        {!loading && (
+        {!loading && pagination.total > 0 && (
           <span className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-            {filtered.length} customer{filtered.length !== 1 ? "s" : ""}
+            {pagination.total} customer{pagination.total !== 1 ? "s" : ""}
           </span>
         )}
       </div>
@@ -344,14 +377,14 @@ export function CRMPage() {
           <tbody>
             {loading ? (
               <TableSkeleton />
-            ) : filtered.length === 0 ? (
+            ) : customers.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
-                  No customers found.
+                  {debouncedSearch ? "No customers match your search." : "No customers found."}
                 </td>
               </tr>
             ) : (
-              filtered.map((c, idx) => (
+              customers.map((c, idx) => (
                 <tr
                   key={c.id}
                   className="transition-colors"
@@ -422,12 +455,12 @@ export function CRMPage() {
               <div className="h-3 w-24 rounded" style={{ background: "var(--color-border)" }} />
             </div>
           ))
-        ) : filtered.length === 0 ? (
+        ) : customers.length === 0 ? (
           <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
-            No customers found.
+            {debouncedSearch ? "No customers match your search." : "No customers found."}
           </div>
         ) : (
-          filtered.map((c) => (
+          customers.map((c) => (
             <div
               key={c.id}
               className="rounded-[10px] border p-4 space-y-3"
@@ -484,6 +517,15 @@ export function CRMPage() {
         )}
       </div>
 
+      <ListPagination
+        total={pagination.total}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
+
       {toast && (
         <ToastBanner message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />
       )}
@@ -494,7 +536,7 @@ export function CRMPage() {
         onClose={() => setAddCustomerOpen(false)}
         onCreated={(customerId) => {
           window.dispatchEvent(new Event("bazaar:customers-changed"));
-          void fetchCustomers(true);
+          void fetchPageData(true);
           setToast({ message: "Customer added.", type: "success" });
           router.push(`/crm/customers/${customerId}`);
         }}

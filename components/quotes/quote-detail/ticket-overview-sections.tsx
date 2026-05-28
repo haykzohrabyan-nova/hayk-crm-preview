@@ -13,6 +13,7 @@ import type { TicketPaymentDraft } from "@/components/quotes/quote-payment-confi
 import {
   DetailSection,
   DetailSectionTitle,
+  DetailCollapsibleSection,
   DetailNotesBox,
   DetailPricingTable,
 } from "@/components/quotes/quote-detail/detail-layout-primitives";
@@ -133,35 +134,36 @@ export function TicketOverviewSections({
       </DetailSection>
 
       <DetailSection>
-        <DetailSectionTitle>{paymentReviewAbove ? "Quote details" : "Pricing"}</DetailSectionTitle>
-        {!paymentReviewAbove && (
-          <DetailPricingTable rows={pricingRows} totalLabel={totalLabel} />
-        )}
-        <div className={paymentReviewAbove ? "" : "mt-5"}>
-          <QuoteForm
-            editing={false}
-            ticket={ticket}
-            hidePricingSummary
-            pricing={pricing}
-            shipping={shipping}
-            setShipping={setShipping}
-            discountType={discountType}
-            setDiscountType={setDiscountType}
-            discountValue={discountValue}
-            setDiscountValue={setDiscountValue}
-            discountReason={discountReason}
-            setDiscountReason={setDiscountReason}
-            taxRate={taxRate}
-            setTaxRate={setTaxRate}
-            taxExempt={taxExempt}
-            setTaxExempt={setTaxExempt}
-            salesPermit={salesPermit}
-            setSalesPermit={setSalesPermit}
-            salesPermitError={salesPermitError}
-            paymentDraft={paymentDraft}
-            onPaymentChange={onPaymentChange}
-          />
-        </div>
+        <DetailCollapsibleSection title={paymentReviewAbove ? "Quote details" : "Pricing"}>
+          {!paymentReviewAbove && (
+            <DetailPricingTable rows={pricingRows} totalLabel={totalLabel} />
+          )}
+          <div className={paymentReviewAbove ? "" : "mt-5"}>
+            <QuoteForm
+              editing={false}
+              ticket={ticket}
+              hidePricingSummary
+              pricing={pricing}
+              shipping={shipping}
+              setShipping={setShipping}
+              discountType={discountType}
+              setDiscountType={setDiscountType}
+              discountValue={discountValue}
+              setDiscountValue={setDiscountValue}
+              discountReason={discountReason}
+              setDiscountReason={setDiscountReason}
+              taxRate={taxRate}
+              setTaxRate={setTaxRate}
+              taxExempt={taxExempt}
+              setTaxExempt={setTaxExempt}
+              salesPermit={salesPermit}
+              setSalesPermit={setSalesPermit}
+              salesPermitError={salesPermitError}
+              paymentDraft={paymentDraft}
+              onPaymentChange={onPaymentChange}
+            />
+          </div>
+        </DetailCollapsibleSection>
       </DetailSection>
 
       {(ticket.special_requirements || ticket.notes) && (

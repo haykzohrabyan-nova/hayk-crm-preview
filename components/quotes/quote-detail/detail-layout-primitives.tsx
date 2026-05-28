@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 
 /** Shared layout pieces for quote / order detail overview (redesign). */
@@ -62,6 +64,46 @@ export function DetailSectionTitle({ children }: { children: React.ReactNode }) 
       </p>
       <div className="flex-1 h-px" style={{ background: "var(--color-border)" }} />
     </div>
+  );
+}
+
+/** Collapsible block — default closed. Use for Timeline, Pricing, payment settings on detail pages. */
+export function DetailCollapsibleSection({
+  title,
+  defaultOpen = false,
+  children,
+  titleClassName = "text-xs font-semibold uppercase tracking-[0.08em]",
+}: {
+  title: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+  titleClassName?: string;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-2 text-left rounded-[6px] -mx-1 px-1 py-0.5 transition-opacity hover:opacity-80"
+        aria-expanded={open}
+      >
+        <span className={`shrink-0 ${titleClassName}`} style={{ color: "var(--color-text-muted)" }}>
+          {title}
+        </span>
+        <div className="flex-1 h-px" style={{ background: "var(--color-border)" }} />
+        <ChevronDown
+          size={16}
+          className="shrink-0 transition-transform duration-200"
+          style={{
+            color: "var(--color-text-muted)",
+            transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+          }}
+        />
+      </button>
+      {open ? <div className="mt-4">{children}</div> : null}
+    </>
   );
 }
 

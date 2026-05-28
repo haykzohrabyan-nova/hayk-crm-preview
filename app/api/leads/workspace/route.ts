@@ -15,8 +15,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const query = parseLeadsWorkspaceQuery(request.nextUrl.searchParams);
-    const leads = await fetchLeadsWorkspace(admin, query, userId!, roleName);
-    return NextResponse.json({ leads });
+    const { rows } = await fetchLeadsWorkspace(admin, query, userId!, roleName);
+    return NextResponse.json({ leads: rows });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Query failed.";
     return NextResponse.json({ error: message, code: "DB_ERROR" }, { status: 500 });

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import dynamic from "next/dynamic";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, RefreshCw, X, Clock, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
+import { Search, RefreshCw, X, Clock, ArrowUpDown, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { StatusPill } from "@/components/ui/status-pill";
+import {
+  GLOBAL_LOADING_MESSAGES,
+  useGlobalLoading,
+} from "@/components/layout/global-loading-provider";
 
 const VerifyDrawer = dynamic(
   () => import("@/components/leads/verify-drawer").then((m) => ({ default: m.VerifyDrawer })),
@@ -39,9 +43,7 @@ import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { LeadHistoryTable, type LeadHistoryRow } from "@/components/leads/lead-history-table";
 import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-interests";
 import {
-  countRoutedPipelineStages,
   getRoutedPipelineStage,
-  matchesRoutedPipelineFilter,
   ROUTED_FILTER_LABELS,
   ROUTED_FILTER_OPTIONS,
   ROUTED_STAGE_LABELS,
@@ -54,6 +56,15 @@ import {
 } from "@/lib/utils/lead-routed-ticket-status";
 import { parseLeadsTabParam } from "@/lib/utils/leads-return-path";
 import { createClient } from "@/lib/supabase/client";
+import { AdminUserFilter } from "@/components/ui/admin-user-filter";
+import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
+import { ListPagination } from "@/components/ui/list-pagination";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+  type PaginationMeta,
+} from "@/lib/utils/pagination";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -204,13 +215,24 @@ function ToastBanner({ message, type, onDismiss }: Toast & { onDismiss: () => vo
 export function LeadsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { runWithLoading } = useGlobalLoading();
   const [activeTab, setActiveTab] = useState<Tab>(
     () => parseLeadsTabParam(searchParams.get("tab")) ?? "all",
   );
   const [leads, setLeads] = useState<Lead[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    limit: 25,
+    offset: 0,
+    total: 0,
+    hasMore: false,
+  });
   const [loading, setLoading] = useState(true);
   const fetchGenerationRef = useRef(0);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [filterUserId, setFilterUserId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
   const [lookups, setLookups] = useState<LookupMap>({});
@@ -218,6 +240,7 @@ export function LeadsPage() {
 
   // Drawer state
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
+  const [openingLeadId, setOpeningLeadId] = useState<string | null>(null);
   const [drawerReadOnly, setDrawerReadOnly] = useState(false);
   const [drawerLockedBy, setDrawerLockedBy] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -231,11 +254,17 @@ export function LeadsPage() {
   const [reassigning, setReassigning] = useState(false);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
 
-  // Owner filter (SDR users only): "all" = unclaimed + mine, "mine" = only my leads
+  // Owner filter (SDR users only): "all" = unclaimed pool, "mine" = leads I claimed
   const [ownerFilter, setOwnerFilter] = useState<"all" | "mine">("all");
 
   // Routed tab sub-filter — pipeline stage within SDR-routed leads
   const [routedFilter, setRoutedFilter] = useState<RoutedPipelineFilter>("all");
+  const [routedSubCounts, setRoutedSubCounts] = useState<Record<RoutedPipelineFilter, number>>(() =>
+    Object.fromEntries(ROUTED_FILTER_OPTIONS.map((key) => [key, 0])) as Record<
+      RoutedPipelineFilter,
+      number
+    >,
+  );
 
   // Sort — field + direction
   type SortField = "created" | "urgency";
@@ -248,20 +277,37 @@ export function LeadsPage() {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     } else {
       setSortField(field);
-      // sensible defaults: created → desc (newest), urgency → asc (High first)
       setSortDir(field === "urgency" ? "asc" : "desc");
     }
+    setOffset(0);
   }
 
   // Mobile cycling: newest → oldest → urgency high → (repeat)
   function cycleMobileSort() {
-    if (sortField === "created" && sortDir === "desc") { setSortField("created"); setSortDir("asc"); }
-    else if (sortField === "created" && sortDir === "asc") { setSortField("urgency"); setSortDir("asc"); }
-    else { setSortField("created"); setSortDir("desc"); }
+    if (sortField === "created" && sortDir === "desc") {
+      setSortField("created");
+      setSortDir("asc");
+    } else if (sortField === "created" && sortDir === "asc") {
+      setSortField("urgency");
+      setSortDir("asc");
+    } else {
+      setSortField("created");
+      setSortDir("desc");
+    }
+    setOffset(0);
   }
   const mobileSortLabel =
     sortField === "urgency" ? "Urgency: High first" :
     sortDir === "asc"       ? "Oldest first"        : "Newest first";
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [activeTab, debouncedSearch, filterUserId, ownerFilter, routedFilter, pageSize, sortField, sortDir]);
 
   // Fetch current user id + role
   useEffect(() => {
@@ -310,11 +356,23 @@ export function LeadsPage() {
 
   function selectTab(next: Tab) {
     setActiveTab(next);
+    setOffset(0);
     if (next !== "routed") setRoutedFilter("all");
     const url = new URL(window.location.href);
     if (next === "all") url.searchParams.delete("tab");
     else url.searchParams.set("tab", next);
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  }
+
+  function selectRoutedFilter(next: RoutedPipelineFilter) {
+    setRoutedFilter(next);
+    setOffset(0);
+  }
+
+  function handlePageSizeChange(size: ListPageSize) {
+    writeStoredListPageSize(size);
+    setPageSize(size);
+    setOffset(0);
   }
 
   useEffect(() => {
@@ -348,30 +406,70 @@ export function LeadsPage() {
     const tabConf = TAB_CONFIG.find((t) => t.id === activeTab)!;
     const params = new URLSearchParams();
     if (tabConf.status) params.set("status", tabConf.status);
-    if (tabConf.serverStatuses) params.set("statuses", tabConf.serverStatuses.join(","));
+    if (tabConf.statuses) params.set("statuses", tabConf.statuses.join(","));
     if (tabConf.routed) params.set("routed", "true");
     if (tabConf.scope) params.set("scope", tabConf.scope);
-    if (search) params.set("search", search);
+    if (debouncedSearch) params.set("search", debouncedSearch);
     if (activeTab === "won") params.set("won", "true");
+    if (activeTab === "all" && !isAdmin) params.set("owner_scope", ownerFilter);
+    if (activeTab === "routed" && routedFilter !== "all") params.set("routed_filter", routedFilter);
+    params.set("sort", sortField);
+    params.set("sort_dir", sortDir);
+    params.set("limit", String(pageSize));
+    params.set("offset", String(offset));
+    appendAdminFilterUserId(params, isAdmin ? "admin" : null, filterUserId);
 
     const res = await fetch(`/api/leads/workspace/page-data?${params}`);
     const data = await res.json();
     if (generation !== fetchGenerationRef.current) return;
 
-    let fetched: Lead[] = data.leads ?? [];
-    if (activeTab === "all" && tabConf.statuses) {
-      fetched = fetched.filter((l) => tabConf.statuses!.includes(l.status));
-    }
-
-    setLeads(fetched);
+    const rows = Array.isArray(data.leads) ? data.leads : [];
+    setLeads(rows);
     if (data.counts) setTabCounts(data.counts);
+    if (data.pagination) {
+      setPagination(data.pagination);
+      if (
+        data.pagination.total > 0 &&
+        offset >= data.pagination.total
+      ) {
+        setOffset(0);
+        return;
+      }
+    }
+    if (data.routedSubCounts) setRoutedSubCounts(data.routedSubCounts);
     if (!silent) setLoading(false);
-  }, [activeTab, search]);
+  }, [
+    activeTab,
+    debouncedSearch,
+    filterUserId,
+    isAdmin,
+    ownerFilter,
+    routedFilter,
+    offset,
+    pageSize,
+    sortField,
+    sortDir,
+  ]);
 
-  useCoalescedRefresh(fetchPageData, [activeTab, search], {
-    events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
-    enabled: !drawerLead || drawerReadOnly,
-  });
+  useCoalescedRefresh(
+    fetchPageData,
+    [
+      activeTab,
+      debouncedSearch,
+      filterUserId,
+      isAdmin,
+      ownerFilter,
+      routedFilter,
+      offset,
+      pageSize,
+      sortField,
+      sortDir,
+    ],
+    {
+      events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
+      enabled: !drawerLead || drawerReadOnly,
+    },
+  );
 
   // ── Open drawer ───────────────────────────────────────────────────────────
 
@@ -380,11 +478,23 @@ export function LeadsPage() {
     return userRole === "sdr" && (activeTab === "routed" || activeTab === "won");
   }
 
+  async function withLeadOpening(leadId: string, fn: () => Promise<void>) {
+    if (openingLeadId) return;
+    setOpeningLeadId(leadId);
+    try {
+      await runWithLoading(fn, GLOBAL_LOADING_MESSAGES.openingLead);
+    } finally {
+      setOpeningLeadId(null);
+    }
+  }
+
   async function openReadOnlyLead(lead: Lead) {
-    const full = (await fetchLeadById(lead.id)) ?? lead;
-    setDrawerLead(full);
-    setDrawerReadOnly(true);
-    setDrawerLockedBy(null);
+    await withLeadOpening(lead.id, async () => {
+      const full = (await fetchLeadById(lead.id)) ?? lead;
+      setDrawerLead(full);
+      setDrawerReadOnly(true);
+      setDrawerLockedBy(null);
+    });
   }
 
   async function handleWorkLead(lead: Lead) {
@@ -392,19 +502,21 @@ export function LeadsPage() {
       await openReadOnlyLead(lead);
       return;
     }
-    const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
-    const data = await res.json();
-    const full = (await fetchLeadById(lead.id)) ?? lead;
+    await withLeadOpening(lead.id, async () => {
+      const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
+      const data = await res.json();
+      const full = (await fetchLeadById(lead.id)) ?? lead;
 
-    if (res.status === 409) {
-      setDrawerLead(full);
-      setDrawerReadOnly(true);
-      setDrawerLockedBy(data.locked_by?.full_name ?? "Another user");
-    } else {
-      setDrawerLead(full);
-      setDrawerReadOnly(false);
-      setDrawerLockedBy(null);
-    }
+      if (res.status === 409) {
+        setDrawerLead(full);
+        setDrawerReadOnly(true);
+        setDrawerLockedBy(data.locked_by?.full_name ?? "Another user");
+      } else {
+        setDrawerLead(full);
+        setDrawerReadOnly(false);
+        setDrawerLockedBy(null);
+      }
+    });
   }
 
   async function handleViewLead(lead: Lead) {
@@ -412,10 +524,26 @@ export function LeadsPage() {
       await openReadOnlyLead(lead);
       return;
     }
-    const full = (await fetchLeadById(lead.id)) ?? lead;
-    setDrawerLead(full);
-    setDrawerReadOnly(!isAdmin);
-    setDrawerLockedBy(null);
+    await withLeadOpening(lead.id, async () => {
+      const full = (await fetchLeadById(lead.id)) ?? lead;
+      setDrawerLead(full);
+      setDrawerReadOnly(!isAdmin);
+      setDrawerLockedBy(null);
+    });
+  }
+
+  function leadActionDisabled() {
+    return openingLeadId !== null;
+  }
+
+  function leadActionLabel(leadId: string, label: string) {
+    if (openingLeadId !== leadId) return label;
+    return (
+      <span className="inline-flex items-center gap-1.5">
+        <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+        Opening…
+      </span>
+    );
   }
 
   async function handleResumeLead(lead: Lead) {
@@ -458,36 +586,8 @@ export function LeadsPage() {
     { id: "won",      label: "Won" },
   ];
 
-  // Filtered leads (client-side search + owner filter)
-  const searchFiltered = search
-    ? leads.filter((l) => {
-        const q = search.toLowerCase();
-        const c = l.customer;
-        return (
-          c?.first_name?.toLowerCase().includes(q) ||
-          c?.last_name?.toLowerCase().includes(q) ||
-          c?.email?.toLowerCase().includes(q) ||
-          c?.phone?.includes(q) ||
-          c?.company?.toLowerCase().includes(q) ||
-          l.source?.toLowerCase().includes(q) ||
-          l.status?.toLowerCase().includes(q) ||
-          (l.sales_status?.toLowerCase().includes(q) ?? false) ||
-          l.urgency?.toLowerCase().includes(q)
-        );
-      })
-    : leads;
-
-  // "My Leads" filter — SDR only, applied on All Leads tab only
-  const ownerFiltered =
-    activeTab === "all" && !isAdmin && ownerFilter === "mine"
-      ? searchFiltered.filter((l) => l.locked_by_id === userId)
-      : searchFiltered;
-
-  const routedLeads = ownerFiltered as RoutedLeadRow[];
-  const routedSubCounts = useMemo(
-    () => countRoutedPipelineStages(routedLeads),
-    [routedLeads],
-  );
+  // Filtered leads — server-side filters, sort, and pagination
+  const filtered = leads;
 
   useEffect(() => {
     if (activeTab !== "routed" || routedFilter === "all") return;
@@ -495,27 +595,6 @@ export function LeadsPage() {
       setRoutedFilter("all");
     }
   }, [activeTab, routedFilter, routedSubCounts]);
-
-  const routedFiltered =
-    activeTab === "routed"
-      ? routedLeads.filter((l) => matchesRoutedPipelineFilter(l, routedFilter))
-      : ownerFiltered;
-
-  // Client-side sort
-  const URGENCY_ORDER: Record<string, number> = { High: 1, Medium: 2, Low: 3 };
-  const filtered = [...routedFiltered].sort((a, b) => {
-    if (sortField === "urgency") {
-      const ua = URGENCY_ORDER[a.urgency ?? ""] ?? 4;
-      const ub = URGENCY_ORDER[b.urgency ?? ""] ?? 4;
-      const primary = sortDir === "asc" ? ua - ub : ub - ua;
-      if (primary !== 0) return primary;
-      // tie-break: newest first
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-    }
-    // created
-    const diff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    return sortDir === "asc" ? diff : -diff;
-  });
 
   // ─────────────────────────────────────────────────────────────────────────
   // Render
@@ -577,6 +656,10 @@ export function LeadsPage() {
           />
         </div>
 
+        {isAdmin && (
+          <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />
+        )}
+
         {/* My Leads / All Leads toggle — SDR only, All Leads tab only */}
         {activeTab === "all" && !isAdmin && (
           <div
@@ -586,7 +669,10 @@ export function LeadsPage() {
             {(["all", "mine"] as const).map((opt) => (
               <button
                 key={opt}
-                onClick={() => setOwnerFilter(opt)}
+                onClick={() => {
+                  setOwnerFilter(opt);
+                  setOffset(0);
+                }}
                 className="px-3 h-8 transition-colors"
                 style={{
                   background: ownerFilter === opt ? "var(--color-tab-active)" : "var(--color-surface)",
@@ -707,11 +793,12 @@ export function LeadsPage() {
                         {isAdmin ? (
                           <div className="flex items-center gap-1.5">
                             <button
-                              onClick={() => handleViewLead(lead)}
-                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                              onClick={() => void handleViewLead(lead)}
+                              disabled={leadActionDisabled()}
+                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                               style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                             >
-                              Edit
+                              {leadActionLabel(lead.id, "Edit")}
                             </button>
                             <button
                               onClick={() => { setReassignLead(lead); setReassignUserId(lead.locked_by_id ? "unassign" : ""); }}
@@ -723,19 +810,21 @@ export function LeadsPage() {
                           </div>
                         ) : lead.locked_by_id === userId ? (
                           <button
-                            onClick={() => handleWorkLead(lead)}
-                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                            onClick={() => void handleWorkLead(lead)}
+                            disabled={leadActionDisabled()}
+                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                             style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                           >
-                            View
+                            {leadActionLabel(lead.id, "View")}
                           </button>
                         ) : (
                           <button
-                            onClick={() => handleWorkLead(lead)}
-                            className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                            onClick={() => void handleWorkLead(lead)}
+                            disabled={leadActionDisabled()}
+                            className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                             style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                           >
-                            Claim
+                            {leadActionLabel(lead.id, "Claim")}
                           </button>
                         )}
                       </td>
@@ -823,11 +912,12 @@ export function LeadsPage() {
                   {isAdmin ? (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleViewLead(lead)}
-                        className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
+                        onClick={() => void handleViewLead(lead)}
+                        disabled={leadActionDisabled()}
+                        className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
                         style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                       >
-                        Edit
+                        {leadActionLabel(lead.id, "Edit")}
                       </button>
                       <button
                         onClick={() => { setReassignLead(lead); setReassignUserId(lead.locked_by_id ? "unassign" : ""); }}
@@ -839,19 +929,21 @@ export function LeadsPage() {
                     </div>
                   ) : lead.locked_by_id === userId ? (
                     <button
-                      onClick={() => handleWorkLead(lead)}
-                      className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium"
+                      onClick={() => void handleWorkLead(lead)}
+                      disabled={leadActionDisabled()}
+                      className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
                       style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                     >
-                      View
+                      {leadActionLabel(lead.id, "View")}
                     </button>
                   ) : (
                     <button
-                      onClick={() => handleWorkLead(lead)}
-                      className="w-full rounded-[6px] py-1.5 text-[13px] font-medium"
+                      onClick={() => void handleWorkLead(lead)}
+                      disabled={leadActionDisabled()}
+                      className="w-full rounded-[6px] py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
                       style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                     >
-                      Claim
+                      {leadActionLabel(lead.id, "Claim")}
                     </button>
                   )}
                 </div>
@@ -914,11 +1006,12 @@ export function LeadsPage() {
                             Resume
                           </button>
                           <button
-                            onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)}
-                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium"
+                            onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
+                            disabled={leadActionDisabled()}
+                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
                             style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                           >
-                            View
+                            {leadActionLabel(lead.id, "View")}
                           </button>
                         </div>
                       </td>
@@ -953,7 +1046,14 @@ export function LeadsPage() {
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => handleResumeLead(lead)} className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium" style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}>Resume</button>
-                    <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>View</button>
+                    <button
+                      onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
+                      disabled={leadActionDisabled()}
+                      className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                    >
+                      {leadActionLabel(lead.id, "View")}
+                    </button>
                   </div>
                 </div>
               ))
@@ -974,7 +1074,7 @@ export function LeadsPage() {
                 <button
                   key={f}
                   type="button"
-                  onClick={() => setRoutedFilter(f)}
+                  onClick={() => selectRoutedFilter(f)}
                   className="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12px] font-medium transition-colors"
                   style={{
                     background: isActive ? "var(--color-tab-active)" : "var(--color-surface)",
@@ -1033,7 +1133,7 @@ export function LeadsPage() {
                       }}
                       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
-                      onClick={() => handleViewLead(lead)}
+                      onClick={() => { if (!leadActionDisabled()) void handleViewLead(lead); }}
                     >
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
@@ -1093,7 +1193,7 @@ export function LeadsPage() {
                   key={lead.id}
                   className="rounded-[10px] border p-4 space-y-3 cursor-pointer"
                   style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-                  onClick={() => handleViewLead(lead)}
+                  onClick={() => { if (!leadActionDisabled()) void handleViewLead(lead); }}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -1179,7 +1279,14 @@ export function LeadsPage() {
                       <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.rejection_reason || "—"}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
                       <td className="px-3 py-2.5">
-                        <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>View</button>
+                        <button
+                          onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
+                          disabled={leadActionDisabled()}
+                          className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                        >
+                          {leadActionLabel(lead.id, "View")}
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -1209,7 +1316,14 @@ export function LeadsPage() {
                     <ProductInterestsMobileRow lead={lead} />
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{lead.rejection_reason || "—"}</span></div>
                   </div>
-                  <button onClick={() => isAdmin ? handleViewLead(lead) : handleWorkLead(lead)} className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>View</button>
+                  <button
+                    onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
+                    disabled={leadActionDisabled()}
+                    className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                    style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                  >
+                    {leadActionLabel(lead.id, "View")}
+                  </button>
                 </div>
               ))
             )}
@@ -1226,20 +1340,32 @@ export function LeadsPage() {
           loading={loading}
           showTitle={false}
           borderRadius="12px"
-          onLeadClick={(lead) => (isAdmin ? handleViewLead : handleWorkLead)(lead as Lead)}
+          onLeadClick={(lead) => {
+            if (!openingLeadId) {
+              void (isAdmin ? handleViewLead : handleWorkLead)(lead as Lead);
+            }
+          }}
         />
       )}
+
+      <ListPagination
+        total={pagination.total}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
 
       {/* Add Lead Modal */}
       <AddLeadModal
         open={addOpen}
         lookups={lookups}
         onClose={() => setAddOpen(false)}
-        onCreated={(lead) => {
+        onCreated={() => {
           setAddOpen(false);
-          if (activeTab === "all") {
-            setLeads((prev) => [lead, ...prev]);
-          }
+          window.dispatchEvent(new Event("bazaar:leads-changed"));
+          window.dispatchEvent(new Event("bazaar:refresh-counts"));
         }}
         showToast={showToast}
       />

@@ -47,7 +47,7 @@ New lifecycle stages → add a `context` + overview sub-component under `compone
 1. **Helpers** — import from `lib/utils/*` (`format.ts`, `ticket-math.ts`, `invoice-payment-summary.ts`). Do not copy `relativeTime`, `fmtDate`, `parseLocalDate`, or currency formatters into components.
 2. **Types** — shared shapes in `lib/types/index.ts` or `components/quotes/shared/types.ts`. Do not redefine `Ticket`-like interfaces in list pages when the API type exists.
 3. **API logic** — one Route Handler per endpoint. Business rules (auto-release, evidence queue, paid-in-full) live in `lib/utils/` and are called from handlers — not duplicated in client components.
-4. **UI blocks** — if the same card/section appears on 2+ detail contexts, extract to `ticket-overview-sections.tsx`, `*-detail-overview.tsx`, or `components/ui/`.
+4. **UI blocks** — if the same card/section appears on 2+ detail contexts, extract to `ticket-overview-sections.tsx`, `*-detail-overview.tsx`, or `components/ui/`. Use `DetailCollapsibleSection` from `detail-layout-primitives.tsx` for long optional detail blocks (Timeline, Pricing, Payment settings).
 5. **Tab counts** — dedicated `GET /api/{feature}/counts` per tabbed page (see `tab-counts` rule). Do not derive tab badges only from loaded list data.
 
 ## Before adding a new file

@@ -91,6 +91,8 @@ export async function DELETE(
     order_source:    "order_source",
     quote_channel:   "quote_channel",
     follow_up_freq:  "follow_up_frequency",
+    quote_cancel_reason: "cancel_reason",
+    order_cancel_reason: "cancel_reason",
   };
 
   const ticketField = ticketFieldMap[row.category];

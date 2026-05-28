@@ -151,6 +151,7 @@ Extends `auth.users` with app-level role reference and display info.
 | `avatar_url` | `text` | Optional profile image |
 | `is_active` | `boolean` DEFAULT `true` | Soft-disable without deleting auth user |
 | `must_change_password` | `boolean` DEFAULT `false` | Force password change on next login (set when Admin creates user with temp password) |
+| `dashboard_values_hidden` | `boolean` DEFAULT `false` | When `true`, dashboard KPI routes redact numeric metrics for this user (screen-sharing privacy). Set explicitly to `false` on admin user create. |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
 
@@ -162,6 +163,7 @@ create table public.user_profiles (
   avatar_url            text,
   is_active             boolean     not null default true,
   must_change_password  boolean     not null default false,
+  dashboard_values_hidden boolean   not null default false,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
@@ -275,7 +277,7 @@ Core lead record. A lead starts in the inbox (`is_inbox = true`) and moves to th
 | `sdr_comment` | `text` | SDR verification notes ("Verify Lead Comment") — internal, not visible to client |
 | `rejection_notes` | `text` | Free-text |
 | `sales_notes` | `text` | Internal notes entered by Sales reps (not visible to SDRs) |
-| `locked_by_id` | `uuid` FK → `auth.users` | User currently working this lead (drawer open) |
+| `locked_by_id` | `uuid` FK → `auth.users` | SDR who **claimed** the lead (permanent until route/reject/unassign); null = open pool |
 | `locked_at` | `timestamptz` | Timestamp when lock was acquired |
 | `created_at` | `timestamptz` NOT NULL DEFAULT `now()` | **Immutable** — never patched |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
@@ -359,7 +361,7 @@ create table public.leads (
 
 ### `job_tickets`
 
-Unified model for both quotes and orders. `ticket_kind` distinguishes them. Extended in migrations 042 and 066 with all fields required by the Quotes & Orders module and per-ticket payment configuration.
+Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`reference_code`** (`QUO-YYYY-NNNN` vs `ORD-YYYY-NNN`) is the authoritative stage indicator in UI and API guards (`ticketKindForReference()`). Extended in migrations 042 and 066 with all fields required by the Quotes & Orders module and per-ticket payment configuration.
 
 > **Legacy columns** (`subtotal`, `discount_percent`, `discount_amount`, `total`, `payment_type`, `prepay_amount`, `product_lines`, `follow_up_at`) are preserved as nullable for backwards compatibility. New code uses the `quote_*` and `ticket_*` columns instead.
 
@@ -375,7 +377,7 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them. Exte
 | `contact_name` | `text` | Denormalized |
 | `contact_company` | `text` | Denormalized |
 | `title` | `text` | Human-readable ticket title (required on create) |
-| `reference_code` | `text` UNIQUE | `ORD-YYYY-NNN` — auto-generated for orders |
+| `reference_code` | `text` UNIQUE | `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders) — auto-generated on create; quote convert assigns `ORD-*` |
 | `contact_phone` | `text` | Denormalized phone for display |
 | `quote_channel` | `text` | `'SMS'` \| `'WhatsApp'` \| `'Email'` \| `'In-person'` |
 | `quote_destination` | `text` | Phone (digits) for SMS/WhatsApp; email address for Email |
@@ -511,12 +513,14 @@ Each element of `quote_skus` conforms to `QuoteSku` in `lib/utils/ticket-math.ts
 - `completed` — fulfilled
 - `cancelled` — cancelled (admin/owner only; only if no payment recorded)
 
-#### RLS (updated in migration 042 + 043)
+#### RLS (migrations 042, 043, **086**)
 
-- **SELECT (rep):** `created_by_id = auth.uid()` — each rep sees only their own tickets. Exception: Sales/Admin can also SELECT tickets with `ticket_status = 'routed'` regardless of `created_by_id` (handled at API layer via admin client, not RLS).
-- **SELECT (admin):** `public.current_user_role() = 'admin'` — admin sees all
-- **INSERT:** any authenticated user
-- **UPDATE:** `created_by_id = auth.uid() OR public.current_user_role() = 'admin'`. Exception: Sales/Admin can UPDATE a `routed` ticket to claim it (sets `ticket_status = 'draft'` and `created_by_id` to claimant) — enforced in the API route, not RLS.
+- **SELECT (rep):** `rep_read_own_tickets` — `created_by_id = auth.uid()`
+- **SELECT (sales):** `sales_read_routed_tickets` (086) — `ticket_status = 'routed'` and role `sales` (inline `EXISTS`, Realtime-safe). Lets Sales receive Supabase Realtime for SDR-owned HVT hand-offs on `/quotes` → Routed tab.
+- **SELECT (admin):** `admin_read_all_tickets` (086) — inline `EXISTS` for role `admin` (replaces `current_user_role()` which breaks Realtime)
+- **INSERT:** `authenticated_insert_tickets` — any authenticated user
+- **UPDATE:** `owner_admin_update_tickets` — owner or admin (`current_user_role()` on update only; claim uses **service-role** `PATCH /api/tickets/[id]` with `claim_ownership: true`)
+- **API list scope** (`lib/utils/db-counts.ts` `scopeJobTicketsQuery`, `fetch-quotes-data.ts` `applyTicketScope`): **Sales** `created_by_id = me OR ticket_status = routed`; **SDR** `created_by_id = me` only (matches `/orders`, `/completed`; `routed_by_id` used for detail read access only via `canAccessTicket()`)
 
 ---
 
@@ -963,29 +967,44 @@ create policy "authenticated_update_leads" on public.leads
 ```sql
 alter table public.job_tickets enable row level security;
 
--- Reps: own tickets only (migration 042 — replaces old catch-all)
+-- Reps: own tickets only (042)
 create policy "rep_read_own_tickets" on public.job_tickets
   for select using (created_by_id = auth.uid());
 
--- Admin: all tickets (migration 042)
-create policy "admin_read_all_tickets" on public.job_tickets
-  for select using (public.current_user_role() = 'admin');
+-- Sales: all routed HVT hand-offs (086 — Realtime + browser SELECT)
+create policy "sales_read_routed_tickets" on public.job_tickets
+  for select using (
+    ticket_status = 'routed'
+    and exists (
+      select 1 from public.user_profiles up
+      join public.roles r on r.id = up.role_id
+      where up.id = auth.uid() and r.name = 'sales'
+    )
+  );
 
--- All authenticated users can insert tickets
+-- Admin: all tickets (086 — inline EXISTS for Realtime)
+create policy "admin_read_all_tickets" on public.job_tickets
+  for select using (
+    exists (
+      select 1 from public.user_profiles up
+      join public.roles r on r.id = up.role_id
+      where up.id = auth.uid() and r.name = 'admin'
+    )
+  );
+
 create policy "authenticated_insert_tickets" on public.job_tickets
   for insert with check (auth.uid() is not null);
 
--- Owner or admin can update tickets
 create policy "owner_admin_update_tickets" on public.job_tickets
   for update using (
     created_by_id = auth.uid()
     or public.current_user_role() = 'admin'
   );
 
--- ⚠️ NO DELETE POLICY — intentional business rule.
--- Quotes and orders are permanent financial records and must never be deleted.
--- The only terminal action is ticket_status = 'cancelled'.
+-- ⚠️ NO DELETE POLICY — quotes/orders are permanent financial records.
 ```
+
+**Realtime (086):** `REPLICA IDENTITY FULL`, `supabase_realtime` publication, `GRANT SELECT` to `authenticated` on `job_tickets` and `activities`. Post-claim `job_tickets` UPDATE is often invisible to other Sales (row no longer `routed`); claim refresh uses `activities` INSERT (`order_ticket_status_changed`, `action: claimed`).
 
 ### `activities` policies
 

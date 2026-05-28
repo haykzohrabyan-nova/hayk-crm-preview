@@ -12,6 +12,7 @@ import {
   formatQuoteReference,
   nextOrderNumber,
   nextQuoteNumber,
+  ticketKindForReference,
 } from "@/lib/utils/reference-codes";
 import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 
@@ -46,15 +47,17 @@ export async function GET(request: NextRequest) {
 
   if (isQuoteList) {
     try {
-      const tickets = await fetchQuotesList(admin, roleName, userId!, search);
-      return NextResponse.json({ tickets });
+      const { rows } = await fetchQuotesList(admin, roleName, userId!, { search });
+      return NextResponse.json({ tickets: rows });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Query failed.";
       return NextResponse.json({ error: message, code: "DB_ERROR" }, { status: 500 });
     }
   }
 
-  type ScopeFn = <T extends { or: (filter: string) => T }>(q: T) => T;
+  type ScopeFn = <T extends { or: (filter: string) => T; eq: (col: string, val: string) => T }>(
+    q: T,
+  ) => T;
   const applyScope: ScopeFn = (q) => applyTicketScope(q, roleName, userId);
 
   let q = admin
@@ -298,8 +301,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const resolvedTicketKind = ticketKindForReference(reference_code, ticket_kind) ?? ticket_kind;
+
   const insertPayload = {
-    ticket_kind,
+    ticket_kind: resolvedTicketKind,
     ticket_status,
     title: title.trim(),
     reference_code,
@@ -372,14 +377,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: insertErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  // Log activity
+  // Log activity (type name is legacy; payload.ticket_kind + reference_code drive UI labels).
   await admin.from("activities").insert({
     type: "order_ticket_created",
     lead_id: resolvedLeadId,
     customer_id: resolvedCustomerId,
     ticket_id: ticket.id,
     by_user_id: userId,
-    payload: { ticket_kind, title: ticket.title, reference_code },
+    payload: {
+      ticket_kind: resolvedTicketKind,
+      title: ticket.title,
+      reference_code,
+    },
     created_at: now,
   });
 

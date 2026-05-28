@@ -51,7 +51,12 @@ import { TicketDetailOverview } from "@/components/quotes/quote-detail/ticket-de
 import { TicketOverviewSections } from "@/components/quotes/quote-detail/ticket-overview-sections";
 import { TicketStatsRow } from "@/components/quotes/quote-detail/ticket-stats-row";
 import { TicketLifecycleTimeline } from "@/components/quotes/quote-detail/ticket-lifecycle-timeline";
+import { ticketIsQuoteStage } from "@/lib/utils/reference-codes";
 import { DetailQuickActions } from "@/components/quotes/quote-detail/detail-quick-actions";
+import { CancelTicketModal, type CancelTicketForm } from "@/components/quotes/quote-detail/cancel-ticket-modal";
+import { CancelledReasonBanner } from "@/components/quotes/quote-detail/cancelled-reason-banner";
+import { cancelReasonCategoryForStatus } from "@/lib/utils/cancel-reason-category";
+import type { LookupValue } from "@/lib/types";
 import { DetailStatusDotBadge } from "@/components/quotes/quote-detail/detail-layout-primitives";
 import {
   GLOBAL_LOADING_MESSAGES,
@@ -140,6 +145,7 @@ interface Ticket {
     email: string | null;
     industry: string | null;
     website: string | null;
+    created_at?: string | null;
   } | null;
   // Per-ticket payment config (migration 066)
   ticket_payment_strategy:       "partial" | "full" | "net" | null;
@@ -173,6 +179,9 @@ interface Ticket {
   payment_evidence_reviewed_at:   string | null;
   payment_evidence_amount:        number | null;
   convert_meta?: ManualConvertMeta | null;
+  cancel_reason?: string | null;
+  cancel_reason_label?: string | null;
+  cancel_notes?: string | null;
 }
 
 interface ProductType {
@@ -257,6 +266,15 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       .then((r) => r.json())
       .then((d) => { if (d.settings?.high_value_threshold != null) setHvThreshold(d.settings.high_value_threshold); })
       .catch(() => {});
+    fetch("/api/lookups?categories=quote_cancel_reason,order_cancel_reason")
+      .then((r) => r.json())
+      .then((d) => {
+        setCancelReasonLookups({
+          quote: d.quote_cancel_reason ?? [],
+          order: d.order_cancel_reason ?? [],
+        });
+      })
+      .catch(() => {});
   }, []);
 
   // ── High-value threshold modal ────────────────────────────────────────────
@@ -267,6 +285,12 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   useEffect(() => () => { if (hvTimerRef.current) clearInterval(hvTimerRef.current); }, []);
   const [convertModal, setConvertModal] = useState<ReturnType<typeof buildAdminConvertPreview> | null>(null);
   const [completeModalBalance, setCompleteModalBalance] = useState<number | null>(null);
+  const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [cancelForm, setCancelForm] = useState<CancelTicketForm>({ cancel_reason: "", cancel_notes: "" });
+  const [cancelReasonLookups, setCancelReasonLookups] = useState<{
+    quote: LookupValue[];
+    order: LookupValue[];
+  }>({ quote: [], order: [] });
   const handleSaveRef = useRef<((newStatus?: string, extraFields?: Record<string, unknown>, opts?: { skipSendValidation?: boolean }) => Promise<void>) | null>(null);
 
   // Edit state mirrors ticket fields
@@ -417,6 +441,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     if (newStatus === "order") return GLOBAL_LOADING_MESSAGES.convertingOrder;
     if (newStatus === "routed") return GLOBAL_LOADING_MESSAGES.routingQuote;
     if (extraFields?.ticket_status === "completed") return GLOBAL_LOADING_MESSAGES.completingOrder;
+    if (extraFields?.ticket_status === "cancelled") return GLOBAL_LOADING_MESSAGES.saving;
     if (extraFields?.release_production) return GLOBAL_LOADING_MESSAGES.releasingProduction;
     return GLOBAL_LOADING_MESSAGES.saving;
   }
@@ -454,7 +479,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         if (res.ok) {
           setTicket(json.ticket);
           window.dispatchEvent(new Event("bazaar:refresh-counts"));
-          if (extraFields.ticket_status === "completed") {
+          if (extraFields.ticket_status === "cancelled") {
+            setNoticeIsWarning(false);
+            setNotice("Ticket cancelled.");
+          } else if (extraFields.ticket_status === "completed") {
             if (json.notification?.ok) {
               setNoticeIsWarning(false);
               setNotice(`Order completed — pickup notification sent via ${json.notification.channel ?? "email"}.`);
@@ -672,6 +700,21 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const quoteSendReady = sendMissingFields.length === 0;
   const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
 
+  function openCancelModal() {
+    setCancelForm({ cancel_reason: "", cancel_notes: "" });
+    setCancelModalOpen(true);
+  }
+
+  async function handleConfirmCancel() {
+    if (!cancelForm.cancel_reason) return;
+    setCancelModalOpen(false);
+    await handleSave(undefined, {
+      ticket_status: "cancelled",
+      cancel_reason: cancelForm.cancel_reason,
+      cancel_notes: cancelForm.cancel_notes.trim() || null,
+    });
+  }
+
   function openAdminConvertModal() {
     if (!ticket) return;
     setConvertModal(
@@ -778,7 +821,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     userRole,
     saving,
     onMarkComplete: requestMarkComplete,
-    onCancelTicket: () => { void handleSave("cancelled"); },
+    onCancelTicket: openCancelModal,
     onSendQuote: () => { void handleSave("sent"); },
     onConvertToOrder: openAdminConvertModal,
     quoteSendReady,
@@ -787,6 +830,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     isRoutedReadOnly,
     clientConfirmed: !!ticket.client_confirmed,
   };
+
+  const activeCancelReasons =
+    cancelReasonCategoryForStatus(ticket.ticket_status) === "order_cancel_reason"
+      ? cancelReasonLookups.order
+      : cancelReasonLookups.quote;
+  const cancelModalTitle = ["order", "in_production"].includes(ticket.ticket_status)
+    ? "Cancel order"
+    : "Cancel quote";
 
   const currentTicket = ticket;
 
@@ -1050,6 +1101,12 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           <div className="flex flex-col">
             {showStatsRow && (
               <div className="shrink-0">
+                {ticket.ticket_status === "cancelled" && (
+                  <CancelledReasonBanner
+                    reasonLabel={ticket.cancel_reason_label ?? ticket.cancel_reason}
+                    notes={ticket.cancel_notes}
+                  />
+                )}
                 <TicketStatsRow
                   ticket={ticket}
                   totalLabel={statsTotalLabel}
@@ -1060,13 +1117,18 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   createdAt={ticket.created_at}
                   dueDate={ticket.due_date}
                   createdByName={ticket.created_by?.full_name}
-                  isQuote={statsTotalLabel === "Quote Total"}
+                  isQuote={ticketIsQuoteStage(ticket)}
                   referenceCode={ticket.reference_code}
+                  ticketKind={ticket.ticket_kind}
                   ticketStatus={ticket.ticket_status}
                   completedAtFallback={ticket.updated_at}
                   onCompletedAt={context === "completed" ? setCompletionAt : undefined}
                   leadCreatedAt={ticket.lead?.created_at}
                   leadSource={ticket.lead?.source}
+                  customerCreatedAt={
+                    !ticket.lead?.created_at ? ticket.customer?.created_at : undefined
+                  }
+                  quoteSource={ticket.quote_source}
                 />
               </div>
             )}
@@ -1384,6 +1446,17 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     </div>
 
     {/* ── Admin convert confirmation ─────────────────────────────────────── */}
+    <CancelTicketModal
+      open={cancelModalOpen}
+      title={cancelModalTitle}
+      reasons={activeCancelReasons}
+      form={cancelForm}
+      onChange={setCancelForm}
+      onConfirm={() => { void handleConfirmCancel(); }}
+      onClose={() => setCancelModalOpen(false)}
+      saving={saving}
+    />
+
     {convertModal && (
       <div
         style={{

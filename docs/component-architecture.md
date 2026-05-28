@@ -124,6 +124,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `ErrorBoundary` | `components/layout/error-boundary.tsx` | Wraps `{children}` in `app/(app)/layout.tsx`. Catches unhandled runtime errors and shows a "Try again" button instead of a blank page. |
 | `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Leads **Won** tab only (not customer profile) |
 | `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | SDR/Sales/Admin dashboards, Orders, Quotes, Completed list pages |
+| `DashboardValuesPrivacyToggle` / `DashboardHiddenValue` | `components/dashboard/dashboard-privacy.tsx` | SDR, Sales, Accountant dashboards — Hide / Show KPI values |
 | `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail |
 | `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail |
 | `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar) |
@@ -135,9 +136,12 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `validateWebsite()` / `normalizeWebsite()` | `lib/utils/website.ts` | Optional website/social URL; scheme not required in UI |
 | `scrollToFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll `[data-field-anchor]` into view + focus on validation failure |
 | `scrollToFirstFormField()` | `lib/utils/scroll-field-into-view.ts` | First error in priority order (New Quote tabs) |
+| `ticketKindForReference()` / `ticketIsQuoteStage()` | `lib/utils/reference-codes.ts` | Align `ticket_kind` with `QUO-*` / `ORD-*`; quote vs order UI labels |
+| `buildTicketLifecycleTimeline()` | `lib/utils/ticket-lifecycle-timeline.ts` | Quote/order detail milestone row (creation from activity payload) |
 
 > **Rule:** Validatable fields in scrollable modals/drawers use `data-field-anchor="…"` on a wrapper `div` and call `scrollToFormField(containerRef, anchor)` when setting an error — so off-screen fields (e.g. Source) are visible after failed submit.
 | `MobileListCard` / `TicketListToolbar` | `components/ui/mobile-list-card.tsx` | Quotes, Orders, In Production, Completed, Payments list pages (mobile card fallback at `< lg`) |
+| `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible section header (chevron toggle; default closed) — Timeline, Pricing, Payment settings on detail pages |
 | `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), **Customer Link** + **Copy Link** (two 50/50 buttons; `sent` / `order` / `in_production` / `completed`), Mark Completed, Resend invoice |
 | `DatePicker` | `components/ui/date-picker.tsx` | New Quote form (Due Date field), Quote Detail (Due Date edit), Quote tab (First Reminder date) |
 
@@ -184,12 +188,15 @@ app/(app)/dashboard/page.tsx  [Server Component — thin wrapper]
               components/admin/admin-dashboard.tsx (role === "admin")
               components/admin/accountant-dashboard.tsx (role === "accountant")
         SDR / Sales / Admin dashboards:
-              ├── components/ui/dashboard-date-range-filter.tsx — Today / Yesterday / Last 7 Days / Last 30 Days / Custom
-              ├── SDR & Sales: KPI cards with % trend vs prior period; default preset Today
-              ├── Admin: company KPI cards + Team section; default preset Last 7 Days
-              └── GET /api/dashboard/kpis?sdr_preset=… | sales_preset=… | admin_preset=…
+              ├── components/ui/dashboard-date-range-filter.tsx — Today / Yesterday / Last 7 Days / Last 30 Days / Custom; default **Last 30 Days** (`last_month`)
+              ├── components/dashboard/dashboard-privacy.tsx — Hide / Show values toggle + confirm modal; `useDashboardPrivacy`, `DashboardHiddenValue` (masked KPI placeholders)
+              ├── SDR KPI grid (9 cards): Orders ($ + convert count in subtext), Received, Balance, Lead Claimed, Lead Created, Inbox, Rejected, On Hold, Routed to Sales — no **Sales Win** or routed-lead revenue — `components/sales/sdr-dashboard.tsx`
+              ├── Sales KPI grid (7 cards): Orders ($ + convert count), Received, Balance, Lead Claimed, Inbox, Rejected, On Hold — no **Lead Created** (SDRs only) — `components/sales/sales-dashboard.tsx`
+              ├── Admin: company KPI cards + Team section (privacy toggle on Admin UI pending)
+              └── GET /api/dashboard/kpis?sdr_preset=… | sales_preset=… | admin_preset=… (API defaults `last_month`; early return when `dashboard_values_hidden`)
         Accountant dashboard:
-              └── GET /api/payments/counts (not KPIs route)
+              ├── components/dashboard/dashboard-privacy.tsx — same Hide / Show toggle
+              └── GET /api/payments/counts (not KPIs route; returns `values_hidden` + counts or null)
 ```
 
 ---
@@ -201,15 +208,17 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
   └── components/leads/leads-page.tsx  [Client Component "use client"]
         ├── Tabs: All Leads | On Hold | Directed to Sales | Rejected | Won
         ├── Tab state: local useState (not synced to URL)
-        ├── Mount: GET /api/leads/workspace/page-data?… → { leads, counts } (one auth pass)
-        ├── Tab switch / lazy tabs: GET /api/leads/workspace?status=...&scope=... (slim list)
+        ├── Mount: GET /api/leads/workspace/page-data?… → { leads, counts, pagination, routedSubCounts? }
         ├── Lookups / product-types / SDR users: lazy on Add Lead or Reassign open
         ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
         ├── Refetch: useCoalescedRefresh + bazaar:refresh-counts (counts-only or full page-data)
-        ├── Search: client-side filter on fetched data
-        ├── Sort: client-side sort by Created or Urgency (column headers on desktop,
-        │         cycling pill button on mobile)
-        ├── Owner filter (SDR only): All Leads / My Leads toggle
+        ├── Search: server-side (debounced 300 ms) via `?search=`
+        ├── Sort: server-side — `?sort=created|urgency&sort_dir=`
+        ├── Owner filter (SDR only): All Leads / My Leads → `?owner_scope=all|mine` (all = unclaimed pool; mine = claimed by me)
+        ├── Claim/View: `useGlobalLoading` overlay + row spinner while lock + `fetchLeadById` run
+        ├── Routed tab sub-filters: server-side → `?routed_filter=`; badges from `routedSubCounts`
+        ├── ListPagination: Showing 1–25 of N, prev/next, rows-per-page (25/50/100)
+        ├── components/leads/product-interest-rows.tsx — shared Product Interests rows (Add Lead + Verify drawer)
         └── components/leads/verify-drawer.tsx (opens on Claim / View click)
               └── components/leads/hold-sub-form.tsx (hold reason sub-form)
 ```
@@ -218,7 +227,7 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
 
 | Tab | API params | Notes |
 |-----|------------|-------|
-| All Leads | no `status`, no `scope` | SDR sees unlocked + own; Admin sees all |
+| All Leads | `statuses=Pending,Validated&owner_scope=all\|mine` | SDR **All** toggle → unclaimed only; **My** → claimed by me; Admin sees all |
 | On Hold | `status=On Hold&scope=mine` | SDR sees own; Admin sees all |
 | Directed to Sales | `status=Routed to Sales&scope=mine` | SDR sees own; Admin sees all |
 | Rejected | `status=Rejected&scope=mine` | SDR sees own (leads they rejected); Admin sees all SDR-rejected leads |
@@ -277,14 +286,18 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
   └── components/quotes/quotes-page.tsx  [Client Component "use client"]
-        ├── Date filter: components/ui/dashboard-date-range-filter.tsx (default Today; filters created_at client-side)
+        ├── Date filter: DashboardDateRangeFilter → server `date_from` / `date_to` on page-data
         ├── Tabs: All | Draft | Sent | Won | Routed to Sales* (count badge on all)
         │         * "Routed to Sales" only visible to Sales + Admin roles
-        ├── Mount: GET /api/quotes/page-data → { tickets, counts }
-        ├── Realtime: bazaar:tickets-changed + bazaar:refresh-counts (sidebar → useCoalescedRefresh)
+        ├── Mount: GET /api/quotes/page-data → { tickets, counts, pagination }
+        ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed | refresh-counts | activities-changed
+        │    Sidebar: job_tickets + activities INSERT (claim) → tickets-changed
+        │    Page (Sales/Admin/SDR with Routed tab): channel quotes-page-routed-sync on job_tickets + activities INSERT → silent page-data refetch
+        │    Requires supabase migration 086_job_tickets_routed_realtime_rls.sql (sales_read_routed_tickets RLS)
         ├── Slim list — no quote_skus on table rows
         ├── Columns: Contact, Title, Channel, Total, Due Now, Status pill, Follow-up, Created
-        ├── Search: client-side filter
+        ├── Search: server-side (debounced) via `?search=`
+        ├── ListPagination (25 default)
         ├── Mobile (< lg): `MobileListCard` per row + `TicketListToolbar`; desktop: table
         ├── Claim action (Routed tab): PATCH /api/tickets/[id] { claim_ownership: true }
         └── Row click → /quotes/[id]
@@ -297,14 +310,16 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/orders/page.tsx  [Server Component — thin wrapper]
   └── components/orders/orders-page.tsx  [Client Component "use client"]
-        ├── Date filter: components/ui/dashboard-date-range-filter.tsx (default Today; filters created_at client-side)
+        ├── Date filter: DashboardDateRangeFilter → server `date_from` / `date_to`
         ├── Tabs: All | Pending Payment | In Production | Cancelled (count badge on all; default tab = All; URL `?tab=`)
-        ├── Mount: GET /api/orders/page-data → { orders, counts }
+        ├── Mount: GET /api/orders/page-data → { orders, counts, pagination }
         ├── Slim list from page-data — status_label / status_tone from API
+        ├── Column sort: server-side `?sort=` (Created by, Balance Due, Due Date, Status, Payment)
         ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed
         ├── Columns: Order #, Contact, Title (⚡ Rush), Total, Status pill (from status_label), Payment status pill, Priority, Due Date, Created
         ├── No "New Order" button — orders created only through Quotes flow
-        ├── Search: client-side filter
+        ├── Search: server-side (debounced) via `?search=`
+        ├── ListPagination (25 default)
         ├── Mobile (< lg): `MobileListCard` per row + `TicketListToolbar`; desktop: table
         └── Row click → /orders/[id]
 
@@ -323,14 +338,16 @@ app/(app)/orders/[id]/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/completed/page.tsx  [Server Component — thin wrapper]
   └── components/orders/completed-page.tsx  [Client Component "use client"]
-        ├── Mount: GET /api/completed/page-data → { orders, counts }
+        ├── Mount: GET /api/completed/page-data → { orders, counts, pagination }
         ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed + bazaar:refresh-counts
-        ├── Search: client-side filter
+        ├── Search + date filter: server-side on page-data
+        ├── ListPagination (25 default)
         ├── Mobile (< lg): MobileListCard per row; desktop: table
         ├── Row click → /completed/[id]
-        └── Role scope (API layer):
-              SDR — ticket_status = completed AND created_by_id = session user
-                    (excludes Sales-completed orders from SDR routed hand-offs)
+        └── Role scope (API layer — `scopeJobTicketsQuery` / `scopeCompletedTicketsQuery`):
+              SDR — Quotes / Orders / Completed: `created_by_id = session user`
+                    (after Sales claims HVT quote, row leaves SDR lists; detail via `routed_by_id` until completed)
+              Sales — Orders/Completed: `created_by_id`; Quotes + routed claim queue
               Accountant / Admin — all completed tickets
 
 app/(app)/completed/[id]/page.tsx  [Server Component — thin wrapper]
@@ -439,7 +456,8 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │     components/quotes/quote-detail/ticket-skeleton.tsx
         │     components/quotes/quote-detail/ticket-detail-overview.tsx
         │     components/quotes/quote-detail/ticket-overview-sections.tsx
-        │     components/quotes/quote-detail/detail-layout-primitives.tsx
+        │     components/quotes/quote-detail/detail-layout-primitives.tsx  ← DetailCollapsibleSection, stat cards
+        │     components/quotes/quote-detail/ticket-lifecycle-timeline.tsx
         │     components/quotes/quote-detail/ticket-stats-row.tsx
         │     components/quotes/quote-detail/detail-quick-actions.tsx
         │     components/orders/payment-detail-overview.tsx
@@ -447,7 +465,9 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │
         ├── Overview layout (`isOverviewLayout` — sent quote, order, payment, production, completed):
         │    Top: `TicketStatsRow` (5 stat cards; mobile: 100% total + 2×2 grid)
+        │    Below stats: `TicketLifecycleTimeline` — collapsible, default collapsed
         │    Grid: left sidebar (always) + right Overview/History panel
+        │    Overview tab: Line Items always visible; **Pricing** + **Payment & order settings** collapsible (default collapsed)
         │    Desktop xl+: fixed viewport height; only right panel scrolls
         │    Mobile/tablet: single page scroll (no nested scroll on Overview panel)
         │
@@ -501,6 +521,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         ├── Status actions: see `DetailQuickActions` in left sidebar (no bottom action bar on overview layout)
         ├── In-production on /orders/[id]: header badge In Production; Mark Completed in DetailQuickActions
         ├── Payment review (order context): PricingPaymentSummary read-only for sales/SDR; evidence hidden
+        ├── TicketLifecycleTimeline: GET /api/activities?ticket_id=… (same id resolution); buildTicketLifecycleTimeline() — creation label from activity payload (QUO-*), not post-convert ORD-*
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true (ticket_id = UUID or ORD-* / QUO-*)
         ├── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
         └── Rendered at:
@@ -575,11 +596,16 @@ app/(app)/reports/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/crm/page.tsx  [Server Component — thin wrapper]
   └── components/crm/crm-page.tsx  [Client Component "use client"]
+        ├── Mount: GET /api/crm/page-data → { customers, pagination }
         ├── Header: Add Customer + search/status/heat filters (no manual Refresh — Realtime)
+        ├── Search/status/heat: server-side; debounced search (300 ms)
+        ├── ListPagination (25 default; 25/50/100)
         ├── AddCustomerModal → POST /api/customers
         ├── useCoalescedRefresh: bazaar:customers-changed, leads-changed, tickets-changed
         ├── Industry column (lookup labels); company → profile; tel:/mailto: links
         └── View / Add Quote actions (row not clickable)
+
+        GET /api/customers — merge search + Add Customer callers only (not list page)
 
 app/(app)/crm/customers/[id]/page.tsx  [Server Component — thin wrapper]
   └── components/crm/customer-profile.tsx  [Client Component]

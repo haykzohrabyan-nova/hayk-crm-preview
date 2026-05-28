@@ -17,8 +17,10 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - Add leads manually
 - View and manage CRM contacts
 - Create new quotes and orders
-- View **Completed** orders they personally created (`created_by_id` = SDR through full lifecycle)
-- **Completed scope rule:** SDR does **not** see completed orders from leads/quotes they **routed to Sales** and Sales finished — those belong to Sales on Completed; SDR may still view in-progress routed hand-offs read-only on Quotes/Orders
+- **Quotes / Orders / Completed list scope:** tickets where `created_by_id` = SDR only (same rule on all three pages)
+- View **Completed** orders they personally created through full lifecycle
+- **Excluded from lists:** after Sales **claims** an HVT quote, `created_by_id` becomes Sales — row leaves SDR Quotes/Orders/Completed lists
+- **Detail read (not list):** `canAccessTicket()` may still allow read-only GET on in-progress hand-offs where `routed_by_id` = SDR until `completed`
 - **Hard-blocked when a quote total exceeds `company_settings.high_value_threshold`** — a non-dismissible modal forces the quote to be saved as `routed` (status) and handed to Sales. SDR cannot bypass this.
 
 ### Sales
@@ -128,7 +130,9 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET /api/activities` | ✓ | ✓ | ✓ |
 | `GET /api/activity` | ✓ | ✓ | ✓ |
 | `POST /api/activity` | ✓ | ✓ | ✓ |
-| `GET /api/dashboard/kpis` | ✓ | ✓ | ✓ |
+| `GET /api/dashboard/kpis` | ✓ | ✓ | ✗ | ✓ | SDR/Sales/Admin only; respects `dashboard_values_hidden` |
+| `GET /api/user/dashboard-privacy` | ✓ | ✓ | ✓ | ✓ | Own profile — read hide/show preference |
+| `PATCH /api/user/dashboard-privacy` | ✓ | ✓ | ✓ | ✓ | Own profile — toggle dashboard values privacy |
 | `POST /api/outreach/send` | ✓ | ✓ | ✓ |
 | `GET /api/admin/company` | ✓ (safe fields) | ✓ (safe fields) | ✓ (full row) | Non-admin: tax rate, thresholds, idle timeout only |
 | `PATCH /api/admin/company` | ✗ | ✗ | ✓ |
@@ -232,21 +236,23 @@ if (!isAllowed) {
 
 ## Lead Locking Rules
 
-A lead is "locked" when an SDR has its drawer open. Lock state is stored as `locked_by_id` + `locked_at` on the `leads` row.
+A lead is **claimed** when an SDR clicks **Claim** (or an Admin assigns). Lock state is stored as `locked_by_id` + `locked_at` on the `leads` row. **Manual Add Lead** does not set a lock — new leads stay in the open pool until Claim/Assign.
 
 ### Lead Visibility (Queue Filtering)
 
-Before a lock is ever acquired, the API filters which leads each role can see on the All Leads tab:
+The All Leads tab uses an **All Leads / My Leads** toggle (`owner_scope`):
 
-| Role | Sees |
-|------|------|
-| SDR | Unlocked leads (`locked_by_id IS NULL`) + leads they themselves have open |
-| Admin | All leads — includes leads locked by any SDR; also returns `locked_by` profile for the Working column |
-| Sales | Not applicable — Sales users access `/sales`, not `/leads` |
+| Role | Toggle | Sees |
+|------|--------|------|
+| SDR | **All Leads** (`owner_scope=all`) | Unclaimed pool only (`locked_by_id IS NULL`) |
+| SDR | **My Leads** (`owner_scope=mine`) | Leads claimed by current user (`locked_by_id = me`) |
+| SDR | *(either toggle)* | Never sees leads locked by another SDR |
+| Admin | — | All leads — includes leads locked by any SDR; also returns `locked_by` profile for the Working column |
+| Sales | — | Not applicable — Sales users access `/sales`, not `/leads` |
 
 ### Acquiring a Lock
 
-When an SDR clicks Verify, the client calls `POST /api/leads/[id]/lock`:
+When an SDR clicks **Claim**, the client calls `POST /api/leads/[id]/lock`:
 
 | Scenario | Result |
 |----------|--------|
@@ -260,7 +266,7 @@ When an SDR clicks Verify, the client calls `POST /api/leads/[id]/lock`:
 This is a safety net for stale-page scenarios. The drawer opens read-only:
 - All inputs are disabled
 - A banner shows: **"[Name] is currently working this lead"**
-- No action buttons (Verify, Hold, Route, Reject) are shown
+- No action buttons (Route, Hold, Reject, Save) are shown
 - History tab is still accessible
 - On close or page refresh, the lead disappears from the SDR's queue (filtered out by the API)
 

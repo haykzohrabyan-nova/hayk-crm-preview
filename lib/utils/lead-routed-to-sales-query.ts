@@ -5,7 +5,7 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 /** Lead IDs with an explicit Route to Sales event (`lead_routed_to_sales` activity). */
 export async function fetchRoutedToSalesLeadIds(
   admin: AdminClient,
-  opts: { userId: string | null; roleName: string | null },
+  opts: { userId: string | null; roleName: string | null; adminFilterUserId?: string | null },
 ): Promise<string[]> {
   const { data: acts, error: actError } = await admin
     .from("activities")
@@ -30,7 +30,9 @@ export async function fetchRoutedToSalesLeadIds(
     .eq("is_inbox", false)
     .in("id", activityLeadIds);
 
-  if (opts.roleName !== "admin" && opts.userId) {
+  if (opts.roleName === "admin" && opts.adminFilterUserId) {
+    leadQuery = leadQuery.eq("sdr_id", opts.adminFilterUserId);
+  } else if (opts.roleName !== "admin" && opts.userId) {
     leadQuery = leadQuery.eq("sdr_id", opts.userId);
   }
 
@@ -42,7 +44,7 @@ export async function fetchRoutedToSalesLeadIds(
 
 export async function countLeadsRoutedToSales(
   admin: AdminClient,
-  opts: { userId: string | null; roleName: string | null },
+  opts: { userId: string | null; roleName: string | null; adminFilterUserId?: string | null },
 ): Promise<number> {
   const ids = await fetchRoutedToSalesLeadIds(admin, opts);
   return ids.length;

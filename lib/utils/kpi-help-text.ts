@@ -36,13 +36,15 @@ export const KPI_HELP = {
   lead_claimed_sdr: "Distinct leads you claimed (locked) in the selected period.",
   lead_created_sdr: "Leads added to the workspace with you as SDR in the selected period.",
   order_total_sdr:
-    "Sum of quote totals on orders from routed leads that entered production in this period.",
+    "Sum of order totals you quoted, converted, and collected payment on — production released in this period. Excludes leads routed to Sales.",
+  order_total_with_count_sdr:
+    "Production-released order value on quotes you created and closed yourself (with payment recorded). Count uses quote-to-order conversions in the period.",
   order_received_sdr:
-    "Payments recorded on those production-released orders from your routed leads.",
+    "Payments received on your self-closed orders that entered production in this period.",
   order_balance_sdr:
-    "Quote total minus received on those production-released orders.",
+    "Quote total minus received on your self-closed production orders.",
   order_created_sdr:
-    "Orders converted from quotes on leads you routed to Sales in the period.",
+    "Quotes you created, converted to orders, and collected payment on — in the period.",
   on_hold_sdr_period: "Times you put a lead on hold in the selected period.",
   sales_win_sdr:
     "Routed-to-Sales leads whose linked order entered production in the period.",
@@ -50,6 +52,8 @@ export const KPI_HELP = {
   lead_created_sales: "Quotes you created in the selected period.",
   order_total_sales:
     "Sum of quote totals on your orders that entered production in this period.",
+  order_total_with_count_sales:
+    "Production-released order value in the period, with how many quotes you converted to orders in the same range.",
   order_received_sales:
     "Payments recorded on your orders that entered production in this period.",
   order_balance_sales:

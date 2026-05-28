@@ -138,17 +138,19 @@ One auth pass, one serverless invocation, parallel DB queries inside the handler
 
 ---
 
-### P2 — Pagination / cursor limits
+### P2 — Pagination / cursor limits ✅ Done (May 2026) for main list pages
 
-**When:** Any list exceeds ~500 rows (not needed yet).
+**Implemented:** Orders (template + column sort), Quotes, Completed, Production, CRM, Leads workspace.
 
 **Pattern:**
 
 ```
-GET /api/.../orders?limit=50&cursor=2026-05-22T...
+GET /api/.../page-data?limit=25&offset=0&search=…
 ```
 
-**Pages to paginate first:** `/crm` (all customers), `/completed`, `/quotes`, `/leads` (admin all-leads view).
+Response: `{ …rows, pagination: { limit, offset, total, hasMore } }`. Tab `counts` exclude pagination.
+
+**Still open:** `/sales`, `/payments` — full tab lists; add pagination when volume grows.
 
 ---
 
@@ -202,8 +204,9 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 
 **Any-doer tasks:**
 
-- [x] **P0** `GET /api/production/page-data` → `{ orders, counts }`
+- [x] **P0** `GET /api/production/page-data` → `{ orders, counts, pagination }`
 - [x] Coalesced refetch (`useCoalescedRefresh`)
+- [x] **P2** List pagination + server-side tab/search filters
 
 ---
 
@@ -218,6 +221,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 - [x] **P0** `GET /api/orders/page-data`
 - [x] **P0** Coalesced refetch pattern
 - [x] **P1** Dedicated `GET /api/orders/counts`
+- [x] **P2** List pagination + column sort
 
 ---
 
@@ -232,6 +236,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 - [x] **P0** `GET /api/quotes/page-data` with quote-stage counts only
 - [x] **P0** Coalesced refetch
 - [x] Split `GET /api/quotes/counts` (quote-stage counts only)
+- [x] **P2** List pagination + server-side filters
 
 ---
 
@@ -259,7 +264,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 
 - [x] **P0** Coalesced refetch
 - [x] `GET /api/completed/page-data`
-- [ ] **P2** Pagination when completed volume grows
+- [x] **P2** Pagination + server-side search/date filters
 
 ---
 
@@ -275,7 +280,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 
 - [x] **P0** `GET /api/leads/workspace/page-data?tab=...` → `{ leads, counts }`
 - [x] **P1** Lazy-fetch lookups / product-types / SDR list when modal opens
-- [ ] **P2** Pagination for admin "All Leads" at scale
+- [x] **P2** Pagination for workspace leads list (all tabs)
 - [x] Won tab: slim `?won=true` query
 
 ---
@@ -300,12 +305,12 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 
 | Current fetches | Issue |
 |-----------------|-------|
-| `GET /api/customers` | ✅ Slim + aggregates; loads **all** customers every time |
-| Server-side search is client filter after full fetch | Won't scale |
+| `GET /api/crm/page-data` | ✅ Paginated list + server-side search/status/heat |
+| Full aggregation still built in memory before slice | Won't scale past ~1000 customers |
 
 **Any-doer tasks:**
 
-- [ ] **P2** Server-side `?search=` + pagination on `GET /api/customers`
+- [x] **P2** Server-side `?search=` + pagination (`GET /api/crm/page-data`)
 - [ ] **P2** Materialized or cached aggregates if customer count > 1000
 - [ ] Silent Realtime refresh ✅ — keep
 
@@ -317,7 +322,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 |-----------|---------|
 | `sdr-dashboard.tsx` | `GET /api/dashboard/kpis?sdr_preset=…` (+ `date_from`/`date_to` for custom) |
 | `sales-dashboard.tsx` | `GET /api/dashboard/kpis?sales_preset=…` |
-| `admin-dashboard.tsx` | `GET /api/dashboard/kpis?admin_preset=…` (default `last_week`) + `GET /api/admin/team` + sessions + Realtime silent refresh |
+| `admin-dashboard.tsx` | `GET /api/dashboard/kpis?admin_preset=…` (default `last_month`) + `GET /api/admin/team` + sessions + Realtime silent refresh |
 | `accountant-dashboard.tsx` | `GET /api/payments/counts` |
 
 **Any-doer tasks:**
@@ -369,8 +374,6 @@ Multiple sections each fetch independently on tab open. Lower priority (admin-on
 
 ## Priority matrix
 
-| Priority | Work | Impact | Effort | Pages |
-|----------|------|--------|--------|-------|
 | Priority | Item | Impact | Effort | Status |
 |----------|------|--------|--------|--------|
 | **P0** | Combined `page-data` endpoints | High (~40% load time) | Medium | ✅ Done |
@@ -379,9 +382,8 @@ Multiple sections each fetch independently on tab open. Lower priority (admin-on
 | **P1** | Lazy-load modal/drawer bootstrap data | Medium | Low | ✅ Done (leads, sales) |
 | **P1** | Session memoization | Medium–High (burst) | Medium | ✅ Done |
 | **P2** | SWR / React Query | Medium (navigation) | Medium | Open |
-| **P2** | CRM pagination + server search | High at scale | Medium | Open |
 | **P2** | Sidebar page-data cache for badges | Medium | Medium | Open |
-| **P2** | List pagination | High at scale | Medium | Open |
+| **P2** | List pagination | High at scale | Medium | ✅ Done — Orders, Quotes, Completed, Production, CRM, Leads; **open:** Sales, Payments |
 | **P3** | Infra upgrades | Variable | $ | Open |
 | **P3** | Quote form bootstrap bundle | Low–Medium | Medium | Open |
 
@@ -441,7 +443,7 @@ Run in **production build** (`npm run build && npm start`) — dev Strict Mode e
 ## Suggested implementation order (remaining work)
 
 1. **SWR / React Query** — cache list page-data for back-navigation
-2. **Pagination** — when any tab exceeds ~500 rows (quotes, completed, leads admin view)
+2. **Pagination** — **Orders, Quotes, Completed, Production shipped (May 2026)**; extend to Leads, Sales, CRM, Payments when lists grow
 3. **CRM server search** — `?search=` + pagination on `GET /api/customers`
 4. **Detail bootstrap bundle** — ticket + company in one request for first paint
 5. **Infra** — Vercel Pro, Supabase pooler if concurrent load grows

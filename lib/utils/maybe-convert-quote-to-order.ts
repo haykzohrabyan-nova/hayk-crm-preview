@@ -5,7 +5,7 @@ import {
   isPaymentEvidencePending,
   type TicketPaymentFields,
 } from "@/lib/utils/invoice-payment-summary";
-import { assignOrderReferenceCode } from "@/lib/utils/reference-codes";
+import { assignOrderReferenceCode, isQuoteReferenceCode } from "@/lib/utils/reference-codes";
 import type { PaymentConfig } from "@/lib/types";
 
 export interface ConvertQuoteTicket extends TicketPaymentFields {
@@ -126,8 +126,12 @@ export async function maybeConvertQuoteToOrder(
     try {
       referenceCode = await assignOrderReferenceCode(admin, referenceCode);
     } catch {
-      // proceed without ORD if sequence fails
+      return { converted: false };
     }
+  }
+
+  if (!referenceCode || isQuoteReferenceCode(referenceCode)) {
+    return { converted: false };
   }
 
   const { error: updateErr } = await admin

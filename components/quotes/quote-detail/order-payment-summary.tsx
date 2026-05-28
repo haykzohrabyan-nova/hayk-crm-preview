@@ -7,6 +7,7 @@ import type { PaymentConfig } from "@/lib/types";
 import {
   DetailSection,
   DetailSectionTitle,
+  DetailCollapsibleSection,
   DetailDataGrid,
   DetailDataCell,
   DetailFollowUpCard,
@@ -708,70 +709,71 @@ export function OrderPaymentSummary({
     return (
       <>
         <DetailSection>
-          <DetailSectionTitle>Payment &amp; order settings</DetailSectionTitle>
-          <DetailDataGrid>
-            <DetailDataCell label="Strategy" value={STRATEGY_LABEL[strategy] ?? strategy} />
-            <DetailDataCell
-              label="Payment status"
-              value={statusLabel}
-              valueColor={evidencePending ? "var(--color-warning-text-deep)" : ticket.payment_status === "partial" ? "var(--color-accent-dark)" : undefined}
-            />
-            {strategy === "partial" && depositPaid && (
-              <>
-                <DetailDataCell label="Deposit paid" value={formatCurrency(depositAmt)} valueColor="var(--color-success)" />
-                <DetailDataCell label="Deposit paid at" value={fmtDate(ticket.deposit_paid_at)} />
-                {ticket.deposit_method && (
-                  <DetailDataCell label="Deposit method" value={getChannelLabel(ticket.deposit_method)} />
-                )}
-                <DetailDataCell
-                  label="Balance due"
-                  value={formatCurrency(balanceDue)}
-                  valueColor={balanceDue > 0.01 ? "var(--color-danger)" : "var(--color-success)"}
-                />
-              </>
-            )}
-            {strategy === "partial" && !depositPaid && (
-              <>
-                <DetailDataCell label="Deposit due" value={formatCurrency(checkout.depositDue)} valueColor="var(--color-warning-text-deep)" />
-                <DetailDataCell label="Balance after deposit" value={formatCurrency(Math.max(0, total - checkout.depositDue))} />
-              </>
-            )}
-            {strategy === "full" && !fullyPaid && amountPaid <= 0 && (
-              <DetailDataCell label="Due now" value={formatCurrency(total)} valueColor="var(--color-danger)" />
-            )}
-            {strategy === "full" && amountPaid > 0 && (
-              <DetailDataCell label="Paid so far" value={formatCurrency(amountPaid)} valueColor="var(--color-success)" />
-            )}
-            {strategy === "net" && (
-              <DetailDataCell label="Terms" value={netTerms.charAt(0).toUpperCase() + netTerms.slice(1)} />
-            )}
-            {fullyPaid && (
-              <DetailDataCell label="Total received" value={formatCurrency(amountPaid)} valueColor="var(--color-success)" />
-            )}
-            {ticket.payment_paid_at && (
-              <DetailDataCell label="Fully paid at" value={fmtDate(ticket.payment_paid_at)} />
-            )}
-            {ticket.balance_paid_at && (
-              <DetailDataCell label="Balance paid at" value={fmtDate(ticket.balance_paid_at)} />
-            )}
-            {strategy === "partial" && ticket.ticket_dep_handling && (
+          <DetailCollapsibleSection title="Payment &amp; order settings">
+            <DetailDataGrid>
+              <DetailDataCell label="Strategy" value={STRATEGY_LABEL[strategy] ?? strategy} />
               <DetailDataCell
-                label="Deposit collection"
-                value={ticket.ticket_dep_handling === "cash" ? "Cash / offline" : "Online gateway"}
+                label="Payment status"
+                value={statusLabel}
+                valueColor={evidencePending ? "var(--color-warning-text-deep)" : ticket.payment_status === "partial" ? "var(--color-accent-dark)" : undefined}
               />
-            )}
-            <DetailDataCell
-              label="Price confirmation"
-              value={
-                ticket.ticket_require_client_confirm === false
-                  ? "Not required"
-                  : ticket.client_confirmed
-                    ? "Confirmed by customer"
-                    : "Required — pending"
-              }
-            />
-            <DetailDataCell label="Accepted channels" value={channelStr} />
-          </DetailDataGrid>
+              {strategy === "partial" && depositPaid && (
+                <>
+                  <DetailDataCell label="Deposit paid" value={formatCurrency(depositAmt)} valueColor="var(--color-success)" />
+                  <DetailDataCell label="Deposit paid at" value={fmtDate(ticket.deposit_paid_at)} />
+                  {ticket.deposit_method && (
+                    <DetailDataCell label="Deposit method" value={getChannelLabel(ticket.deposit_method)} />
+                  )}
+                  <DetailDataCell
+                    label="Balance due"
+                    value={formatCurrency(balanceDue)}
+                    valueColor={balanceDue > 0.01 ? "var(--color-danger)" : "var(--color-success)"}
+                  />
+                </>
+              )}
+              {strategy === "partial" && !depositPaid && (
+                <>
+                  <DetailDataCell label="Deposit due" value={formatCurrency(checkout.depositDue)} valueColor="var(--color-warning-text-deep)" />
+                  <DetailDataCell label="Balance after deposit" value={formatCurrency(Math.max(0, total - checkout.depositDue))} />
+                </>
+              )}
+              {strategy === "full" && !fullyPaid && amountPaid <= 0 && (
+                <DetailDataCell label="Due now" value={formatCurrency(total)} valueColor="var(--color-danger)" />
+              )}
+              {strategy === "full" && amountPaid > 0 && (
+                <DetailDataCell label="Paid so far" value={formatCurrency(amountPaid)} valueColor="var(--color-success)" />
+              )}
+              {strategy === "net" && (
+                <DetailDataCell label="Terms" value={netTerms.charAt(0).toUpperCase() + netTerms.slice(1)} />
+              )}
+              {fullyPaid && (
+                <DetailDataCell label="Total received" value={formatCurrency(amountPaid)} valueColor="var(--color-success)" />
+              )}
+              {ticket.payment_paid_at && (
+                <DetailDataCell label="Fully paid at" value={fmtDate(ticket.payment_paid_at)} />
+              )}
+              {ticket.balance_paid_at && (
+                <DetailDataCell label="Balance paid at" value={fmtDate(ticket.balance_paid_at)} />
+              )}
+              {strategy === "partial" && ticket.ticket_dep_handling && (
+                <DetailDataCell
+                  label="Deposit collection"
+                  value={ticket.ticket_dep_handling === "cash" ? "Cash / offline" : "Online gateway"}
+                />
+              )}
+              <DetailDataCell
+                label="Price confirmation"
+                value={
+                  ticket.ticket_require_client_confirm === false
+                    ? "Not required"
+                    : ticket.client_confirmed
+                      ? "Confirmed by customer"
+                      : "Required — pending"
+                }
+              />
+              <DetailDataCell label="Accepted channels" value={channelStr} />
+            </DetailDataGrid>
+          </DetailCollapsibleSection>
         </DetailSection>
 
         <DetailSection>

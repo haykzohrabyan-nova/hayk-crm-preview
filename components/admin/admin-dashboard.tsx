@@ -464,7 +464,7 @@ function TeamSection({
 
 export function AdminDashboard() {
   const [filter, setFilter] = useState<DashboardDateRangeFilterValue>(() =>
-    defaultDashboardDateRangeFilterValue("last_week"),
+    defaultDashboardDateRangeFilterValue("last_month"),
   );
   const [data, setData] = useState<AdminKpis | null>(null);
   const [loading, setLoading] = useState(true);

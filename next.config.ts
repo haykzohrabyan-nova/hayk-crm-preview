@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { buildContentSecurityPolicy } from "./lib/security/content-security-policy";
 
 const nextConfig: NextConfig = {
   // Using proxy.ts for session gating — do NOT add middleware.ts with auth logic.
@@ -18,15 +19,7 @@ const nextConfig: NextConfig = {
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
           {
             key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://vercel.live",
-              "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-              "font-src 'self' https://fonts.gstatic.com",
-              "img-src 'self' data: blob: https:",
-              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://vercel.live",
-              "frame-ancestors 'none'",
-            ].join("; "),
+            value: buildContentSecurityPolicy(),
           },
         ],
       },

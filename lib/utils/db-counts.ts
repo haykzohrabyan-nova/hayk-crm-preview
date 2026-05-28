@@ -22,10 +22,18 @@ export function scopeJobTicketsQuery<T extends CountQuery>(
   query: T,
   roleName: string | null,
   userId: string | null,
+  adminFilterUserId?: string | null,
 ): T {
+  if (roleName === "admin" && adminFilterUserId) {
+    return query.eq("created_by_id", adminFilterUserId) as T;
+  }
   if (roleName === "admin" || roleName === "accountant") return query;
   if (roleName === "sales" && userId) {
     return query.or(`created_by_id.eq.${userId},ticket_status.eq.routed`) as T;
+  }
+  /** SDR: own tickets only — same rule as Quotes list and Completed (not routed_by_id). */
+  if (roleName === "sdr" && userId) {
+    return query.eq("created_by_id", userId) as T;
   }
   if (userId) {
     return query.or(`created_by_id.eq.${userId},routed_by_id.eq.${userId}`) as T;
@@ -38,7 +46,11 @@ export function scopeCompletedTicketsQuery<T extends CountQuery>(
   query: T,
   roleName: string | null,
   userId: string | null,
+  adminFilterUserId?: string | null,
 ): T {
+  if (roleName === "admin" && adminFilterUserId) {
+    return query.eq("created_by_id", adminFilterUserId) as T;
+  }
   if (roleName === "admin" || roleName === "accountant") return query;
   if (userId) {
     return query.eq("created_by_id", userId) as T;
@@ -52,9 +64,10 @@ export function scopedCompletedTicketCount(
   roleName: string | null,
   userId: string | null,
   configure: (q: CountQuery) => CountQuery,
+  adminFilterUserId?: string | null,
 ): Promise<number> {
   return countExact(admin, "job_tickets", (q) =>
-    configure(scopeCompletedTicketsQuery(q, roleName, userId)),
+    configure(scopeCompletedTicketsQuery(q, roleName, userId, adminFilterUserId)),
   );
 }
 
@@ -72,8 +85,9 @@ export function scopedTicketCount(
   roleName: string | null,
   userId: string | null,
   configure: (q: CountQuery) => CountQuery,
+  adminFilterUserId?: string | null,
 ): Promise<number> {
   return countExact(admin, "job_tickets", (q) =>
-    configure(scopeJobTicketsQuery(q, roleName, userId)),
+    configure(scopeJobTicketsQuery(q, roleName, userId, adminFilterUserId)),
   );
 }

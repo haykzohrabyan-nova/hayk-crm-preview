@@ -4,6 +4,16 @@ import { leadIdsRoutedToSales } from "@/lib/utils/lead-sdr-won-filter";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
+type SelfHandledTicket = {
+  id: string;
+  quote_final_total: number | null;
+  payment_amount_received: number | null;
+  deposit_amount: number | null;
+  linked_lead_id: string | null;
+  created_by_id: string | null;
+  routed_by_id: string | null;
+};
+
 export interface SdrMetricTrend {
   value: number;
   prior: number;
@@ -20,7 +30,6 @@ export interface SdrDashboardMetrics {
   rejected: SdrMetricTrend;
   on_hold: SdrMetricTrend;
   routed_to_sales: SdrMetricTrend;
-  sales_win: SdrMetricTrend;
 }
 
 export function pctChange(current: number, prior: number): number | null {
@@ -70,27 +79,42 @@ async function countLeadsCreated(
   return count ?? 0;
 }
 
-async function filterSdrRoutedLeadIds(
-  admin: AdminClient,
-  userId: string,
-  leadIds: string[],
-): Promise<Set<string>> {
-  if (leadIds.length === 0) return new Set();
-
-  const routed = await leadIdsRoutedToSales(admin, leadIds);
-  if (routed.size === 0) return new Set();
-
-  const { data, error } = await admin
-    .from("leads")
-    .select("id")
-    .in("id", [...routed])
-    .eq("sdr_id", userId);
-
-  if (error) throw error;
-  return new Set((data ?? []).map((r) => r.id as string));
+function paidAmount(ticket: SelfHandledTicket): number {
+  return Number(ticket.payment_amount_received ?? ticket.deposit_amount ?? 0);
 }
 
-async function countOrdersCreatedRouted(
+/** Quotes the SDR created and closed themselves — not routed to Sales. */
+async function filterSelfHandledTickets(
+  admin: AdminClient,
+  userId: string,
+  tickets: SelfHandledTicket[],
+): Promise<SelfHandledTicket[]> {
+  if (!tickets.length) return [];
+
+  const ownQuotes = tickets.filter(
+    (t) => t.created_by_id === userId && !t.routed_by_id,
+  );
+  if (!ownQuotes.length) return [];
+
+  const leadIds = [
+    ...new Set(
+      ownQuotes
+        .map((t) => t.linked_lead_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+
+  const routedLeadIds = leadIds.length
+    ? await leadIdsRoutedToSales(admin, leadIds)
+    : new Set<string>();
+
+  return ownQuotes.filter((t) => {
+    if (t.linked_lead_id && routedLeadIds.has(t.linked_lead_id)) return false;
+    return paidAmount(t) > 0;
+  });
+}
+
+async function countOrdersCreatedSelfHandled(
   admin: AdminClient,
   userId: string,
   startIso: string,
@@ -108,40 +132,34 @@ async function countOrdersCreatedRouted(
   if (!converts?.length) return 0;
 
   const ticketIds = [...new Set(converts.map((c) => c.ticket_id as string))];
-  const { data: tickets } = await admin
+  const { data: tickets, error: ticketError } = await admin
     .from("job_tickets")
-    .select("id, linked_lead_id")
+    .select(
+      "id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id, created_by_id, routed_by_id",
+    )
     .in("id", ticketIds);
 
-  const leadIds = [
-    ...new Set(
-      (tickets ?? [])
-        .map((t) => t.linked_lead_id as string | null)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  ];
-  const eligible = await filterSdrRoutedLeadIds(admin, userId, leadIds);
-  if (eligible.size === 0) return 0;
+  if (ticketError) throw ticketError;
 
-  const ticketToLead = new Map(
-    (tickets ?? []).map((t) => [t.id as string, t.linked_lead_id as string | null]),
+  const eligible = new Set(
+    (await filterSelfHandledTickets(admin, userId, (tickets ?? []) as SelfHandledTicket[])).map(
+      (t) => t.id,
+    ),
   );
+  if (eligible.size === 0) return 0;
 
   let count = 0;
   const seen = new Set<string>();
   for (const row of converts) {
     const ticketId = row.ticket_id as string;
-    if (seen.has(ticketId)) continue;
-    const leadId = ticketToLead.get(ticketId);
-    if (leadId && eligible.has(leadId)) {
-      seen.add(ticketId);
-      count += 1;
-    }
+    if (seen.has(ticketId) || !eligible.has(ticketId)) continue;
+    seen.add(ticketId);
+    count += 1;
   }
   return count;
 }
 
-async function productionReleasedRouted(
+async function productionReleasedSelfHandled(
   admin: AdminClient,
   userId: string,
   startIso: string,
@@ -149,34 +167,35 @@ async function productionReleasedRouted(
 ): Promise<{ count: number; value: number; received: number; balance: number }> {
   const { data: tickets, error } = await admin
     .from("job_tickets")
-    .select("id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id")
+    .select(
+      "id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id, created_by_id, routed_by_id",
+    )
     .in("ticket_status", ["in_production", "completed"])
     .not("production_released_at", "is", null)
     .gte("production_released_at", startIso)
     .lte("production_released_at", endIso)
-    .not("linked_lead_id", "is", null);
+    .eq("created_by_id", userId)
+    .is("routed_by_id", null);
 
   if (error) throw error;
   if (!tickets?.length) return { count: 0, value: 0, received: 0, balance: 0 };
 
-  const leadIds = [
-    ...new Set(tickets.map((t) => t.linked_lead_id as string)),
-  ];
-  const eligible = await filterSdrRoutedLeadIds(admin, userId, leadIds);
-  if (eligible.size === 0) return { count: 0, value: 0, received: 0, balance: 0 };
+  const eligible = await filterSelfHandledTickets(
+    admin,
+    userId,
+    tickets as SelfHandledTicket[],
+  );
+  if (!eligible.length) return { count: 0, value: 0, received: 0, balance: 0 };
 
   let value = 0;
   let received = 0;
-  let count = 0;
-  for (const t of tickets) {
-    const leadId = t.linked_lead_id as string;
-    if (!eligible.has(leadId)) continue;
+  for (const t of eligible) {
     value += Number(t.quote_final_total ?? 0);
-    received += Number(t.payment_amount_received ?? t.deposit_amount ?? 0);
-    count += 1;
+    received += paidAmount(t);
   }
+
   return {
-    count,
+    count: eligible.length,
     value: roundMoney(value),
     received: roundMoney(received),
     balance: roundMoney(Math.max(0, value - received)),
@@ -215,8 +234,8 @@ async function metricsForWindow(
     distinctLeadActivityCount(admin, userId, "lead_rejected", startIso, endIso),
     distinctLeadActivityCount(admin, userId, "lead_held", startIso, endIso),
     distinctLeadActivityCount(admin, userId, "lead_routed_to_sales", startIso, endIso),
-    countOrdersCreatedRouted(admin, userId, startIso, endIso),
-    productionReleasedRouted(admin, userId, startIso, endIso),
+    countOrdersCreatedSelfHandled(admin, userId, startIso, endIso),
+    productionReleasedSelfHandled(admin, userId, startIso, endIso),
   ]);
 
   return {
@@ -229,7 +248,6 @@ async function metricsForWindow(
     order_value: production.value,
     order_received: production.received,
     order_balance: production.balance,
-    sales_win: production.count,
   };
 }
 
@@ -259,6 +277,5 @@ export async function buildSdrDashboardMetrics(
     rejected: trend(cur.rejected, prev.rejected),
     on_hold: trend(cur.on_hold, prev.on_hold),
     routed_to_sales: trend(cur.routed_to_sales, prev.routed_to_sales),
-    sales_win: trend(cur.sales_win, prev.sales_win),
   };
 }

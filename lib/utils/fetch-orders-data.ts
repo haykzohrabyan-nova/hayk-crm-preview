@@ -3,9 +3,17 @@ import { orderListStatus } from "@/lib/utils/order-list-status";
 import {
   countExact,
   scopeJobTicketsQuery,
-  scopedTicketCount,
   type TicketSelectQuery,
 } from "@/lib/utils/db-counts";
+import type { PaginationParams } from "@/lib/utils/pagination";
+import {
+  applyTicketDateFilter,
+  applyTicketSearchFilterWithCustomerIds,
+  resolveTicketSearchCustomerIds,
+  tabToTicketStatuses,
+  type TicketListFilters,
+} from "@/lib/utils/ticket-list-filters";
+import { sortOrdersRows } from "@/lib/utils/orders-list-sort";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -22,40 +30,80 @@ const ORDERS_LIST_SELECT = `
   deposit_amount,
   payment_amount_received,
   title, reference_code, quote_final_total,
-  priority, due_date, rush, created_at,
+  priority, due_date, rush, created_at, production_released_at,
+  created_by_id,
   customer:customers(id, first_name, last_name, company)
 `.trim();
 
-export async function fetchOrdersList(
+type RawOrderRow = Record<string, unknown> & {
+  id: string;
+  ticket_status: string;
+  client_confirmed?: boolean | null;
+  ticket_require_client_confirm?: boolean | null;
+  payment_evidence_url?: string | null;
+  payment_evidence_submitted_at?: string | null;
+  payment_paid_at?: string | null;
+  created_by_id?: string | null;
+  deposit_paid_at?: string | null;
+  deposit_amount?: number | null;
+  payment_amount_received?: number | null;
+};
+
+async function buildScopedOrdersQuery(
   admin: AdminClient,
   roleName: string,
   userId: string,
-) {
-  const query = scopeJobTicketsQuery(
-    admin.from("job_tickets").select(ORDERS_LIST_SELECT) as TicketSelectQuery,
+  filters: TicketListFilters,
+  select: string,
+  options?: { count?: "exact"; pagination?: PaginationParams; skipDefaultOrder?: boolean },
+): Promise<TicketSelectQuery> {
+  const searchCustomerIds = filters.search?.trim()
+    ? await resolveTicketSearchCustomerIds(admin, filters.search)
+    : [];
+
+  let query = scopeJobTicketsQuery(
+    admin.from("job_tickets").select(select, options?.count ? { count: "exact" } : undefined) as TicketSelectQuery,
     roleName,
     userId,
+    filters.adminFilterUserId ?? null,
   );
 
-  const { data, error } = await query
-    .in("ticket_status", ["order", "in_production", "cancelled"])
-    .order("production_released_at", { ascending: false, nullsFirst: false })
-    .order("created_at", { ascending: false });
+  query = query.in("ticket_status", tabToTicketStatuses(filters.tab)) as TicketSelectQuery;
+  query = applyTicketDateFilter(query, filters.dateFrom, filters.dateTo) as TicketSelectQuery;
+  query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds) as TicketSelectQuery;
 
-  if (error) throw error;
+  if (!options?.skipDefaultOrder) {
+    query = query
+      .order("production_released_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false }) as TicketSelectQuery;
+  }
 
-  const orders = (data ?? []) as Array<
-    Record<string, unknown> & {
-      id: string;
-      ticket_status: string;
-      client_confirmed?: boolean | null;
-      ticket_require_client_confirm?: boolean | null;
-      payment_evidence_url?: string | null;
-      payment_evidence_submitted_at?: string | null;
-      payment_paid_at?: string | null;
-    }
-  >;
+  if (options?.pagination) {
+    const { offset, limit } = options.pagination;
+    query = query.range(offset, offset + limit - 1) as TicketSelectQuery;
+  }
 
+  return query;
+}
+
+async function countFilteredOrdersByStatus(
+  admin: AdminClient,
+  roleName: string,
+  userId: string,
+  filters: TicketListFilters,
+  status: "order" | "in_production" | "cancelled",
+  searchCustomerIds: string[],
+): Promise<number> {
+  return countExact(admin, "job_tickets", (q) => {
+    let query = scopeJobTicketsQuery(q, roleName, userId, filters.adminFilterUserId ?? null);
+    query = query.eq("ticket_status", status);
+    query = applyTicketDateFilter(query, filters.dateFrom, filters.dateTo);
+    query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds);
+    return query;
+  });
+}
+
+async function enrichOrdersPage(admin: AdminClient, orders: RawOrderRow[]) {
   const orderRowIds = orders.filter((o) => o.ticket_status === "order").map((o) => o.id);
 
   const customerConfirmedByTicket = new Set<string>();
@@ -93,8 +141,16 @@ export async function fetchOrdersList(
   }
 
   const converterIds = [...new Set(converterByTicket.values())];
-  const { data: profiles } = converterIds.length
-    ? await admin.from("user_profiles").select("id, full_name, roles(name)").in("id", converterIds)
+  const creatorIds = [
+    ...new Set(
+      orders
+        .map((o) => o.created_by_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  const profileIds = [...new Set([...converterIds, ...creatorIds])];
+  const { data: profiles } = profileIds.length
+    ? await admin.from("user_profiles").select("id, full_name, roles(name)").in("id", profileIds)
     : { data: [] as { id: string; full_name: string | null; roles: { name: string } | null }[] };
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
@@ -121,24 +177,113 @@ export async function fetchOrdersList(
       payment_evidence_url: o.payment_evidence_url,
       payment_evidence_submitted_at: o.payment_evidence_submitted_at,
       payment_paid_at: o.payment_paid_at,
-      deposit_paid_at: o.deposit_paid_at as string | null | undefined,
-      payment_amount_received: o.payment_amount_received as number | null | undefined,
-      deposit_amount: o.deposit_amount as number | null | undefined,
+      deposit_paid_at: o.deposit_paid_at,
+      payment_amount_received: o.payment_amount_received,
+      deposit_amount: o.deposit_amount,
     });
 
-    return { ...o, status_label: label, status_tone: tone };
+    return {
+      ...o,
+      status_label: label,
+      status_tone: tone,
+      created_by: o.created_by_id
+        ? {
+            id: o.created_by_id,
+            full_name: profileById.get(o.created_by_id)?.full_name ?? null,
+          }
+        : null,
+    };
   });
+}
+
+export async function fetchOrdersList(
+  admin: AdminClient,
+  roleName: string,
+  userId: string,
+  filters: TicketListFilters = {},
+  pagination?: PaginationParams,
+) {
+  const useCustomSort = filters.sort && filters.sort !== "default";
+
+  if (useCustomSort) {
+    const query = await buildScopedOrdersQuery(
+      admin,
+      roleName,
+      userId,
+      filters,
+      ORDERS_LIST_SELECT,
+      { skipDefaultOrder: true },
+    );
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    let orders = (data ?? []) as RawOrderRow[];
+
+    let creatorNameById: Map<string, string> | undefined;
+    if (filters.sort === "created_by") {
+      const creatorIds = [
+        ...new Set(
+          orders
+            .map((o) => o.created_by_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ];
+      if (creatorIds.length > 0) {
+        const { data: profiles } = await admin
+          .from("user_profiles")
+          .select("id, full_name")
+          .in("id", creatorIds);
+        creatorNameById = new Map(
+          (profiles ?? []).map((p) => [p.id as string, (p.full_name as string | null) ?? ""]),
+        );
+      }
+    }
+
+    orders = sortOrdersRows(orders, filters.sort!, { creatorNameById });
+
+    const total = orders.length;
+    const offset = pagination?.offset ?? 0;
+    const limit = pagination?.limit ?? total;
+    const pageSlice = pagination ? orders.slice(offset, offset + limit) : orders;
+    const rows = await enrichOrdersPage(admin, pageSlice);
+
+    return { rows, total };
+  }
+
+  const query = await buildScopedOrdersQuery(
+    admin,
+    roleName,
+    userId,
+    filters,
+    ORDERS_LIST_SELECT,
+    pagination ? { count: "exact", pagination } : undefined,
+  );
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+
+  const orders = (data ?? []) as RawOrderRow[];
+  const rows = await enrichOrdersPage(admin, orders);
+  const total = pagination ? (count ?? rows.length) : rows.length;
+
+  return { rows, total };
 }
 
 export async function fetchOrdersTabCounts(
   admin: AdminClient,
   roleName: string,
   userId: string,
+  filters: TicketListFilters = {},
 ) {
+  const searchCustomerIds = filters.search?.trim()
+    ? await resolveTicketSearchCustomerIds(admin, filters.search)
+    : [];
+
   const [pending, inProduction, cancelled] = await Promise.all([
-    scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "order")),
-    scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "in_production")),
-    scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "cancelled")),
+    countFilteredOrdersByStatus(admin, roleName, userId, filters, "order", searchCustomerIds),
+    countFilteredOrdersByStatus(admin, roleName, userId, filters, "in_production", searchCustomerIds),
+    countFilteredOrdersByStatus(admin, roleName, userId, filters, "cancelled", searchCustomerIds),
   ]);
 
   return {
@@ -154,8 +299,9 @@ export async function fetchOrdersCountsOnly(
   admin: AdminClient,
   roleName: string,
   userId: string,
+  filters: TicketListFilters = {},
 ) {
-  const counts = await fetchOrdersTabCounts(admin, roleName, userId);
+  const counts = await fetchOrdersTabCounts(admin, roleName, userId, filters);
   return { counts };
 }
 

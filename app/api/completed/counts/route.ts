@@ -1,16 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { fetchCompletedTabCounts } from "@/lib/utils/fetch-completed-data";
+import { parseCompletedListFilters } from "@/lib/utils/ticket-list-filters";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
+  const filters = parseCompletedListFilters(request.nextUrl.searchParams, roleName);
   const admin = createAdminClient();
 
   try {
-    const counts = await fetchCompletedTabCounts(admin, roleName!, userId!);
+    const counts = await fetchCompletedTabCounts(admin, roleName!, userId!, filters);
     return NextResponse.json({ counts });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Count query failed.";

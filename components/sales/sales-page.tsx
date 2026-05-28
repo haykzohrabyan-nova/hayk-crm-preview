@@ -164,7 +164,8 @@ export function SalesPage() {
 
     const res = await fetch(`/api/leads/sales/page-data?${params}`);
     const data = await res.json();
-    if (data.leads) setLeads(data.leads);
+    if (Array.isArray(data.leads)) setLeads(data.leads);
+    else if (!res.ok) setLeads([]);
     if (data.counts) setTabCounts(data.counts);
     if (!silent) setLoading(false);
   }, [activeTab, search]);
@@ -211,7 +212,7 @@ export function SalesPage() {
   }
 
   const q = search.toLowerCase();
-  const activeLeads = leads.filter((l) => !q || matchesSearch(l, q));
+  const activeLeads = (Array.isArray(leads) ? leads : []).filter((l) => !q || matchesSearch(l, q));
   const isLoading = loading;
 
   // ── Actions ───────────────────────────────────────────────────────────────

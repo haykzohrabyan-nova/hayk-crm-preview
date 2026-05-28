@@ -16,16 +16,23 @@ import {
 import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
 import {
   defaultDashboardDateRangeFilterValue,
-  isoTimestampInDashboardRange,
   resolveDashboardDateRangeFilter,
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
-import { countQuotesTabBadges } from "@/lib/utils/list-page-tab-counts";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { formatQuoteListDueNow, getQuoteListDueNowAmount } from "@/lib/utils/quote-list-due-now";
 import { quoteListStatus } from "@/lib/utils/quote-list-status";
 import { quoteDetailPath, ticketPathSegment } from "@/lib/utils/reference-codes";
 import { createClient } from "@/lib/supabase/client";
+import { AdminUserFilter } from "@/components/ui/admin-user-filter";
+import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
+import { ListPagination } from "@/components/ui/list-pagination";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+  type PaginationMeta,
+} from "@/lib/utils/pagination";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -260,15 +267,37 @@ function RoutedQuoteMobileCard({
 export default function QuotesPage() {
   const router = useRouter();
   const [quotes, setQuotes] = useState<QuoteTicket[]>([]);
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    limit: 25,
+    offset: 0,
+    total: 0,
+    hasMore: false,
+  });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
-    defaultDashboardDateRangeFilterValue("last_week"),
+    defaultDashboardDateRangeFilterValue("last_month"),
   );
+  const [filterUserId, setFilterUserId] = useState<string | null>(null);
+
+  const isAdmin = userRole === "admin";
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [tab, debouncedSearch, dateFilter, filterUserId, pageSize]);
 
   const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
 
@@ -296,18 +325,67 @@ export default function QuotesPage() {
 
   const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    fetch("/api/quotes/page-data")
+    const params = new URLSearchParams();
+    if (tab !== "all") params.set("tab", tab);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (dateRange) {
+      params.set("date_from", dateRange.start.toISOString());
+      params.set("date_to", dateRange.end.toISOString());
+    }
+    params.set("limit", String(pageSize));
+    params.set("offset", String(offset));
+    appendAdminFilterUserId(params, isAdmin ? "admin" : null, filterUserId);
+    const qs = params.toString();
+    fetch(`/api/quotes/page-data${qs ? `?${qs}` : ""}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.tickets) setQuotes(d.tickets);
+        if (d.counts) setTabCounts(d.counts);
+        if (d.pagination) setPagination(d.pagination);
       })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
-  }, []);
+  }, [filterUserId, isAdmin, tab, debouncedSearch, dateRange, offset, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [], {
-    events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
+  useCoalescedRefresh(fetchPageData, [filterUserId, isAdmin, tab, debouncedSearch, dateFilter, offset, pageSize], {
+    events: ["bazaar:tickets-changed", "bazaar:refresh-counts", "bazaar:activities-changed"],
   });
+
+  // Routed tab: job_tickets Realtime needs sales_read_routed_tickets RLS (migration 086).
+  // Claim UPDATE often invisible to other reps (row no longer routed); activities INSERT covers that.
+  useEffect(() => {
+    if (!canSeeRouted) return;
+
+    const supabase = createClient();
+    const silentRefresh = () => fetchPageData(true);
+
+    const channel = supabase
+      .channel("quotes-page-routed-sync")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "job_tickets" },
+        () => {
+          window.dispatchEvent(new Event("bazaar:refresh-counts"));
+          silentRefresh();
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "activities" },
+        (payload) => {
+          const row = payload.new as { ticket_id?: string | null; lead_id?: string | null };
+          if (row.ticket_id || row.lead_id) {
+            window.dispatchEvent(new Event("bazaar:refresh-counts"));
+            silentRefresh();
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [canSeeRouted, fetchPageData]);
 
   // ─── Claim action ────────────────────────────────────────────────────────
 
@@ -323,6 +401,7 @@ export default function QuotesPage() {
       });
       if (res.ok) {
         window.dispatchEvent(new Event("bazaar:refresh-counts"));
+        window.dispatchEvent(new Event("bazaar:tickets-changed"));
         router.push(quoteDetailPath(q));
       }
     } finally {
@@ -330,39 +409,24 @@ export default function QuotesPage() {
     }
   }
 
-  // ─── Filter ──────────────────────────────────────────────────────────────
+  function handlePageSizeChange(size: ListPageSize) {
+    writeStoredListPageSize(size);
+    setPageSize(size);
+    setOffset(0);
+  }
 
-  const activeTab = TABS.find((t) => t.id === tab) ?? TABS[0];
+  function selectTab(next: Tab) {
+    setTab(next);
+    setOffset(0);
+  }
 
-  const dateFilteredQuotes = useMemo(() => {
-    if (!dateRange) return quotes;
-    return quotes.filter((q) => isoTimestampInDashboardRange(q.created_at, dateRange));
-  }, [quotes, dateRange]);
-
-  const displayTabCounts = useMemo(
-    () => countQuotesTabBadges(dateFilteredQuotes),
-    [dateFilteredQuotes],
-  );
-
-  const filtered = dateFilteredQuotes.filter((q) => {
-    // Orders / production have moved off Quotes — never show here
-    if (q.ticket_status === "order" || q.ticket_status === "in_production" || q.ticket_status === "completed") return false;
-    // Routed tickets only appear in the dedicated "routed" tab
-    if (q.ticket_status === "routed" && tab !== "routed") return false;
-    if (activeTab.status && q.ticket_status !== activeTab.status) return false;
-    if (search) {
-      const s = search.toLowerCase();
-      const name = displayName(q).toLowerCase();
-      const company = (q.customer?.company ?? "").toLowerCase();
-      const title = (q.title ?? "").toLowerCase();
-      const ref = (q.reference_code ?? "").toLowerCase();
-      const shortId = q.id.slice(0, 8).toLowerCase();
-      if (!name.includes(s) && !company.includes(s) && !title.includes(s) && !ref.includes(s) && !shortId.includes(s)) return false;
-    }
-    return true;
-  });
-
-  // ─── Render ──────────────────────────────────────────────────────────────
+  const emptyMessage = debouncedSearch
+    ? "No quotes match your search."
+    : tabCounts.all === 0 && tab !== "routed"
+      ? "No quotes in this date range."
+      : tab === "routed" && (tabCounts.routed ?? 0) === 0
+        ? "No routed quotes."
+        : "No quotes in this tab.";
 
   const isRoutedTab = tab === "routed";
 
@@ -409,11 +473,16 @@ export default function QuotesPage() {
       <TicketListToolbar
         tabs={TABS.map((t) => ({ id: t.id, label: t.label }))}
         activeTab={tab}
-        onTabChange={(id) => setTab(id as Tab)}
-        tabCounts={displayTabCounts}
+        onTabChange={(id) => selectTab(id as Tab)}
+        tabCounts={tabCounts}
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search quotes…"
+        endAdornment={
+          isAdmin ? (
+            <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />
+          ) : undefined
+        }
       />
 
       {/* Desktop table */}
@@ -423,16 +492,10 @@ export default function QuotesPage() {
       >
         {loading ? (
           <TableDivSkeleton cols={isRoutedTab ? 8 : 9} />
-        ) : filtered.length === 0 ? (
+        ) : quotes.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              {search
-                ? "No quotes match your search."
-                : quotes.length > 0 && dateFilteredQuotes.length === 0
-                  ? "No quotes in this date range."
-                  : isRoutedTab
-                    ? "No routed quotes — all clear!"
-                    : "No quotes yet."}
+              {emptyMessage}
             </p>
           </div>
         ) : isRoutedTab ? (
@@ -452,7 +515,7 @@ export default function QuotesPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((q, idx) => (
+              {quotes.map((q, idx) => (
                 <tr
                   key={q.id}
                   className="transition-colors"
@@ -534,7 +597,18 @@ export default function QuotesPage() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Contact", "Quote #", "Title", "Channel", "Total", "Due Now", "Status", "Follow-up", "Created"].map((h) => (
+                {[
+                  "Contact",
+                  "Quote #",
+                  "Title",
+                  ...(isAdmin ? ["Created by"] : []),
+                  "Channel",
+                  "Total",
+                  "Due Now",
+                  "Status",
+                  "Follow-up",
+                  "Created",
+                ].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -547,7 +621,7 @@ export default function QuotesPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((q, idx) => {
+              {quotes.map((q, idx) => {
                 const statusStyle = quoteListStatus(q);
                 const overdue = isOverdue(q.quote_reminder_date);
                 return (
@@ -577,6 +651,13 @@ export default function QuotesPage() {
                         {q.title ?? "—"}
                       </p>
                     </td>
+                    {isAdmin && (
+                      <td className="px-4 py-3">
+                        <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                          {q.created_by?.full_name ?? q.created_by_name ?? "—"}
+                        </span>
+                      </td>
+                    )}
                     <td className="px-4 py-3">
                       <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
                         {q.quote_channel ?? "—"}
@@ -646,20 +727,10 @@ export default function QuotesPage() {
       <div className="flex flex-col gap-3 lg:hidden">
         {loading ? (
           <MobileListCardSkeleton />
-        ) : filtered.length === 0 ? (
-          <MobileListCardEmpty
-            message={
-              search
-                ? "No quotes match your search."
-                : quotes.length > 0 && dateFilteredQuotes.length === 0
-                  ? "No quotes in this date range."
-                  : isRoutedTab
-                    ? "No routed quotes — all clear!"
-                    : "No quotes yet."
-            }
-          />
+        ) : quotes.length === 0 ? (
+          <MobileListCardEmpty message={emptyMessage} />
         ) : isRoutedTab ? (
-          filtered.map((q) => (
+          quotes.map((q) => (
             <RoutedQuoteMobileCard
               key={q.id}
               quote={q}
@@ -670,7 +741,7 @@ export default function QuotesPage() {
             />
           ))
         ) : (
-          filtered.map((q) => (
+          quotes.map((q) => (
             <QuoteMobileCard
               key={q.id}
               quote={q}
@@ -680,13 +751,14 @@ export default function QuotesPage() {
         )}
       </div>
 
-      {!loading && quotes.length > 0 && (
-        <p className="text-xs mt-3 text-right" style={{ color: "var(--color-text-muted)" }}>
-          {dateRange && dateFilteredQuotes.length < quotes.length
-            ? `Showing ${filtered.length} of ${quotes.length} quotes in selected period`
-            : `${filtered.length} quote${filtered.length !== 1 ? "s" : ""}`}
-        </p>
-      )}
+      <ListPagination
+        total={pagination.total}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
     </div>
   );
 }

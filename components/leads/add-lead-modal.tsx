@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { User, X, Plus } from "lucide-react";
+import { User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,6 +23,14 @@ import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
 import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
 import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
+import {
+  buildLeadProductInterestPayload,
+  EMPTY_PRODUCT_ROW_ERRORS,
+  remapProductRowErrors,
+  rowErrorsFromValidation,
+  type LeadProductInterestRow,
+} from "@/lib/utils/validate-lead-product-interests";
+import { ProductInterestRows } from "@/components/leads/product-interest-rows";
 
 export interface AddLeadModalProps {
   open: boolean;
@@ -72,12 +80,6 @@ const EMPTY_FORM: AddForm = {
   sdr_comment: "",
 };
 
-interface ProductInterestRow {
-  product: string;
-  quantity: string;
-  has_design: boolean;
-}
-
 function formFromCustomer(customer: Customer): AddForm {
   return {
     phone: (customer.phone ?? "").replace(/\D/g, ""),
@@ -112,7 +114,9 @@ export function AddLeadModal({
   const [industryError, setIndustryError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [productRows, setProductRows] = useState<ProductInterestRow[]>([]);
+  const [productRows, setProductRows] = useState<LeadProductInterestRow[]>([]);
+  const [productRowErrors, setProductRowErrors] = useState(EMPTY_PRODUCT_ROW_ERRORS);
+  const [productInterestsError, setProductInterestsError] = useState<string | null>(null);
 
   // Product types from admin panel
   const [productTypes, setProductTypes] = useState<{ id: string; name: string }[]>([]);
@@ -154,6 +158,8 @@ export function AddLeadModal({
     setIndustryError(null);
     setError(null);
     setProductRows([]);
+    setProductRowErrors(EMPTY_PRODUCT_ROW_ERRORS);
+    setProductInterestsError(null);
     setMatchedCustomers([]);
     setSelectedCustomer(linkedCustomer);
     setDedupBanner("none");
@@ -170,12 +176,25 @@ export function AddLeadModal({
     setProductRows((rows) => [...rows, { product: "", quantity: "", has_design: false }]);
   }
 
-  function updateProductRow(idx: number, patch: Partial<ProductInterestRow>) {
+  function updateProductRow(idx: number, patch: Partial<LeadProductInterestRow>) {
     setProductRows((rows) => rows.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    if (patch.product !== undefined || patch.quantity !== undefined) {
+      setProductRowErrors((prev) => {
+        const next = {
+          product: new Set(prev.product),
+          quantity: new Set(prev.quantity),
+        };
+        if (patch.product !== undefined) next.product.delete(idx);
+        if (patch.quantity !== undefined) next.quantity.delete(idx);
+        return next;
+      });
+      setProductInterestsError(null);
+    }
   }
 
   function removeProductRow(idx: number) {
     setProductRows((rows) => rows.filter((_, i) => i !== idx));
+    setProductRowErrors((prev) => remapProductRowErrors(prev, idx));
   }
 
   function handleClose() {
@@ -262,11 +281,24 @@ export function AddLeadModal({
       return;
     }
 
+    const productPayload = buildLeadProductInterestPayload(productRows);
+    if (!productPayload.ok) {
+      setProductRowErrors(
+        rowErrorsFromValidation(
+          productPayload.invalidProductIndexes,
+          productPayload.invalidQuantityIndexes,
+        ),
+      );
+      setProductInterestsError(productPayload.error);
+      setError(productPayload.error);
+      scrollToFormField(formRef, "productInterests");
+      return;
+    }
+    setProductRowErrors(EMPTY_PRODUCT_ROW_ERRORS);
+    setProductInterestsError(null);
+
     setSaving(true);
-    const validRows = productRows.filter((r) => r.product.trim() !== "");
-    const interests = Object.fromEntries(validRows.map((r) => [r.product, true]));
-    const quantities = Object.fromEntries(validRows.map((r) => [r.product, r.quantity]));
-    const has_design = Object.fromEntries(validRows.map((r) => [r.product, r.has_design]));
+    const { interests, quantities, has_design } = productPayload;
 
     const res = await fetch("/api/leads/manual", {
       method: "POST",
@@ -580,133 +612,17 @@ export function AddLeadModal({
             </div>
 
             {/* Product Interests — full width, row-based */}
-            <div className="sm:col-span-2 space-y-2">
+            <div className="sm:col-span-2 space-y-2" data-field-anchor="productInterests">
               <label className={labelCls} style={labelStyle}>Product Interests</label>
-
-              {productRows.length > 0 && (
-                <div className="space-y-2">
-                  {/* Column headers */}
-                  <div className="grid grid-cols-[1fr_100px_auto_28px] gap-2 items-center px-0.5">
-                    <span className={labelCls} style={labelStyle}>Product</span>
-                    <span className={labelCls} style={labelStyle}>Quantity</span>
-                    <span className={labelCls} style={labelStyle}>Has Design</span>
-                    <span />
-                  </div>
-
-                  {productRows.map((row, idx) => {
-                    const selectedProducts = productRows
-                      .filter((_, i) => i !== idx)
-                      .map((r) => r.product)
-                      .filter(Boolean);
-                    const availableTypes = productTypes.filter(
-                      (pt) => !selectedProducts.includes(pt.name)
-                    );
-
-                    return (
-                      <div key={idx} className="grid grid-cols-[1fr_100px_auto_28px] gap-2 items-center">
-                        {/* Product select */}
-                        <Select
-                          value={row.product}
-                          onValueChange={(v) => updateProductRow(idx, { product: v ?? "" })}
-                        >
-                          <SelectTrigger className="h-9 text-sm w-full">
-                            <SelectValue placeholder="Select product…">
-                              {row.product || "Select product…"}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {availableTypes.map((pt) => (
-                              <SelectItem key={pt.id} value={pt.name}>{pt.name}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-
-                        {/* Quantity */}
-                        <input
-                          type="number"
-                          min="0"
-                          step="1"
-                          value={row.quantity}
-                          onChange={(e) =>
-                            updateProductRow(idx, {
-                              quantity: e.target.value.replace(/[^0-9]/g, "").replace(/^0+([1-9])/, "$1"),
-                            })
-                          }
-                          placeholder="0"
-                          className={inputCls}
-                          style={inputStyle}
-                          onFocus={(e) => {
-                            e.currentTarget.style.borderColor = "var(--color-accent)";
-                            e.currentTarget.style.boxShadow = "0 0 0 3px rgba(232,201,122,0.18)";
-                          }}
-                          onBlur={(e) => {
-                            e.currentTarget.style.borderColor = "var(--color-border)";
-                            e.currentTarget.style.boxShadow = "none";
-                          }}
-                        />
-
-                        {/* Has Design toggle */}
-                        <button
-                          type="button"
-                          onClick={() => updateProductRow(idx, { has_design: !row.has_design })}
-                          className="flex items-center gap-1.5 rounded-[6px] border px-2.5 py-1.5 text-[12px] font-medium transition-colors whitespace-nowrap"
-                          style={
-                            row.has_design
-                              ? {
-                                  background: "var(--color-badge-bg)",
-                                  borderColor: "var(--color-tab-underline)",
-                                  color: "var(--color-tab-active)",
-                                }
-                              : {
-                                  background: "var(--color-surface)",
-                                  borderColor: "var(--color-border)",
-                                  color: "var(--color-text-muted)",
-                                }
-                          }
-                        >
-                          <span
-                            className="inline-block h-2 w-2 rounded-full"
-                            style={{
-                              background: row.has_design
-                                ? "var(--color-tab-active)"
-                                : "var(--color-text-muted)",
-                            }}
-                          />
-                          {row.has_design ? "Yes" : "No"}
-                        </button>
-
-                        {/* Remove row */}
-                        <button
-                          type="button"
-                          onClick={() => removeProductRow(idx)}
-                          className="flex h-7 w-7 items-center justify-center rounded-[6px] transition-colors"
-                          style={{ color: "var(--color-text-muted)" }}
-                          onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-danger)"; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-muted)"; }}
-                          aria-label="Remove product interest"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Add row button */}
-              <button
-                type="button"
-                onClick={addProductRow}
-                disabled={productTypes.length > 0 && productRows.filter(r => r.product).length >= productTypes.length}
-                className="flex items-center gap-1.5 rounded-[6px] border border-dashed px-3 py-1.5 text-[12px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                style={{
-                  borderColor: "var(--color-border)",
-                  color: "var(--color-text-muted)",
-                }}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add Product Interest
-              </button>
+              <ProductInterestRows
+                rows={productRows}
+                productTypes={productTypes}
+                errors={productRowErrors}
+                onUpdateRow={updateProductRow}
+                onRemoveRow={removeProductRow}
+                onAddRow={addProductRow}
+                bannerError={productInterestsError}
+              />
             </div>
 
             {/* Returning customer — full width */}

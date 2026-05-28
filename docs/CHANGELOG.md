@@ -3,6 +3,261 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-28] — Leads workspace, locking, and Product Interests (session batch)
+
+### Fixed
+- **Leads list empty while tab count showed rows** — All Leads query excluded `sales_status IS NULL` via PostgREST `not.eq Won`; fixed with `sales_status IS NULL OR sales_status <> Won` (`applyExcludeSalesStatusWon`). Affected admin and SDR.
+- `components/leads/leads-page.tsx` — clamp pagination when `offset` exceeds `total`; guard `data.leads` with `Array.isArray`
+
+### Changed
+- **SDR All Leads / My Leads toggle** — `owner_scope=all` lists only **unclaimed** leads (`locked_by_id IS NULL`); `owner_scope=mine` lists leads **claimed** by current user. Other SDRs' locked leads stay hidden. Tab badge **All** count = unclaimed pool size (not affected by toggle).
+- **Manual Add Lead** (`POST /api/leads/manual`) — sets `sdr_id` for attribution only; does **not** set `locked_by_id` / `locked_at`. New leads (SDR or admin) enter the open pool until someone clicks **Claim**.
+- **Claim / View loading** — `components/leads/leads-page.tsx` uses `useGlobalLoading` + row spinner (`GLOBAL_LOADING_MESSAGES.openingLead`) while lock + lead fetch run.
+- **Product Interests** — each selected product requires **quantity > 0**; product required when row is used (cannot save quantity-only rows); shared `components/leads/product-interest-rows.tsx` with labels **above** inputs; separate product vs quantity error borders; styled remove button; validated on `POST /api/leads/manual` and `PATCH /api/leads/[id]`
+- `lib/utils/leads-workspace-query.ts`, `lib/utils/validate-lead-product-interests.ts`, `components/leads/add-lead-modal.tsx`, `components/leads/verify-drawer.tsx`, `components/layout/global-loading-provider.tsx`
+
+### Removed
+- `supabase/migrations/089_leads_backfill_manual_lock.sql` — auto-lock backfill not desired
+
+### Docs
+- `docs/feature-specs/leads-sdr.md`, `docs/feature-specs/lead-locking.md`, `docs/component-architecture.md`, `docs/api-contract.md`, `docs/types.md`, `docs/session-summary.md`, `docs/navigation.md`, `docs/mvp-scope.md`, `docs/architecture.md`, `docs/rbac.md`, `docs/schema.md`, `docs/crm-logic-overview.html`
+
+## [2026-05-28] — Content Security Policy fixes
+
+### Fixed
+- CSP — allow Vercel Speed Insights in development (`va.vercel-scripts.com`, `vitals.vercel-insights.com`), Vercel Live frames, Next.js HMR localhost connections, `style-src-elem` for Google Fonts on 404 page, `worker-src blob:`
+- `lib/security/content-security-policy.ts` — single builder used by `next.config.ts`
+
+## [2026-05-28] — Fix Sales page leads.filter crash
+
+### Fixed
+- `GET /api/leads/sales/page-data` — return `result.rows` as `leads` (workspace query now returns `{ rows, total }`, not a bare array)
+- `components/sales/sales-page.tsx` — guard against non-array `leads` on fetch error
+
+## [2026-05-28] — Quote & order cancellation reasons
+
+### Added
+- Admin → Settings → **Dropdown Options** — **Quote Cancellation Reasons** and **Order Cancellation Reasons** (5 defaults each; add, edit label, reorder, deactivate)
+- Migration `088_ticket_cancel_reasons.sql` — `job_tickets.cancel_reason`, `cancel_reason_label`, `cancel_notes`
+- Cancel confirmation modal on quote/order detail — required reason + optional notes before `ticket_status = cancelled`
+- Cancelled tickets show reason banner on detail overview; history logs `ticket_cancelled` with reason
+
+### Changed
+- `PATCH /api/tickets/[id]` — requires active lookup reason on cancel; snapshots label on ticket for audit
+- In-use cancellation reasons cannot be deleted (409) — deactivate instead; stored label preserved on cancelled tickets
+- Cancel modal — selecting **Other** requires free-text detail (saved in `cancel_notes`); optional notes for all other reasons
+
+## [2026-05-28] — Admin cancel on unpaid in-production orders
+
+### Fixed
+- Order detail — **Cancel Ticket** now shows for admins on unpaid orders in **`in_production`** (previously only `order` status), matching net/cash auto-release behaviour
+- `lib/utils/can-admin-cancel-ticket.ts` — shared gate: no payment received, no evidence pending
+- `PATCH /api/tickets/[id]` — validates admin-only cancel on order/in_production stages; blocks when payment exists or is under review
+
+## [2026-05-28] — Collapsible detail sections (Timeline, Pricing, Payment settings)
+
+### Changed
+- Quote/order detail overview — **Timeline**, **Pricing**, and **Payment & order settings** are collapsible via `DetailCollapsibleSection`; **default collapsed**
+- `components/quotes/quote-detail/detail-layout-primitives.tsx` — shared collapsible header with chevron toggle
+
+### Changed (docs)
+- Updated `feature-specs/tickets.md`, `component-architecture.md`, `architecture.md`, `navigation.md`, `session-summary.md`, `types.md`, `TODO.md`, `feature-specs/invoice-payment.md`, `.cursor/rules/folder-structure.mdc`
+
+## [2026-05-28] — Documentation sync: list pagination
+
+### Changed
+- Updated `docs/api-contract.md`, `architecture.md`, `component-architecture.md`, `navigation.md`, `types.md`, `TODO.md`, `session-summary.md`
+- Updated feature specs: `crm.md`, `leads-sdr.md`, `tickets.md`
+- Updated performance docs: `performance-optimization.md`, `performance-anydoer-roadmap.md`
+- Updated `.cursor/rules/tab-counts.mdc` — pagination + tab counts interaction
+
+## [2026-05-28] — Leads list pagination
+
+### Changed
+- `GET /api/leads/workspace/page-data` — paginated leads list; query params: `search`, `status` / `statuses`, `owner_scope` (SDR all tab), `routed_filter`, `sort`, `sort_dir`, `limit`, `offset`; response includes `pagination` and `routedSubCounts` on routed tab
+- `lib/utils/leads-workspace-query.ts` — server-side search, SDR owner scope, routed sub-filter, sort, and pagination slice
+- `components/leads/leads-page.tsx` — `ListPagination` (25 default), debounced search; filters/sort moved server-side
+
+## [2026-05-28] — CRM list pagination
+
+### Added
+- `lib/utils/fetch-crm-data.ts` — shared CRM customer aggregation, server-side search/status/heat filters, pagination slice
+- `GET /api/crm/page-data` — paginated CRM list for all roles; query params: `search`, `status` (`all`|`new`|`known`), `heat` (`all`|`hot`|`warm`|`cold`), `limit`, `offset`; response `{ customers, pagination }`
+
+### Changed
+- `components/crm/crm-page.tsx` — server-side filters + `ListPagination` (25 default, 25/50/100); debounced search (300 ms)
+- `GET /api/customers` — refactored to use `fetch-crm-data` (full list for merge/search callers; optional `?search=`)
+
+## [2026-05-28] — List pagination on Quotes, Completed, Production
+
+### Changed
+- **Quoted Requests** (`/quotes`) — server-side tab, search, date, admin user filter + `ListPagination` (25 default); API `GET /api/quotes/page-data` returns `pagination`
+- **Completed** (`/completed`) — server-side search, completion date, admin user filter + pagination
+- **Production** (`/production`) — server-side tab, search + pagination (page still used for legacy redirect context)
+- Extended `lib/utils/ticket-list-filters.ts` with quotes/completed/production filter parsers
+- Refactored `fetch-quotes-data.ts`, `fetch-completed-data.ts`, `fetch-production-data.ts` for filtered paginated queries
+
+### Note
+- **Sales** still loads full lists — follow-up
+
+## [2026-05-28] — Orders column sorting
+
+### Changed
+- `lib/utils/orders-list-sort.ts` — server-side column sort for Orders list
+- Clickable sort headers on `/orders`: **Created by** (A–Z), **Balance Due** (high → low), **Due Date** (overdue first, then soonest), **Status** (In Production first), **Payment** (Unpaid → Partial → Paid); small **filter icon** on sortable columns (highlighted when active)
+- `GET /api/orders/page-data` — optional `sort=` query param (`created_by`, `balance_due`, `due_date`, `status`, `payment`); click same header again to reset default sort
+
+## [2026-05-28] — Orders list pagination (template)
+
+### Added
+- `lib/utils/pagination.ts` — shared `limit`/`offset` parsing (default **25**, allowed 25 / 50 / 100), range label helper, localStorage page-size key
+- `lib/utils/ticket-list-filters.ts` — server-side tab, search, date, and admin user filters for ticket lists (reusable by Quotes / Completed)
+- `components/ui/list-pagination.tsx` — **Showing 1–25 of 200**, Previous / Next, rows-per-page selector
+
+### Changed
+- `GET /api/orders/page-data` — paginated list + tab counts; query params: `tab`, `search`, `date_from`, `date_to`, `user_id`, `limit`, `offset`; response includes `pagination: { limit, offset, total, hasMore }`
+- `GET /api/orders/counts` — accepts same filter params (search, date, admin user) as page-data
+- `components/orders/orders-page.tsx` — server-side filters only; tab badges from API counts; debounced search (300 ms)
+
+## [2026-05-28] — Admin team filter includes admin users
+
+### Changed
+- `AdminUserFilter` — admins appear in the dropdown (can filter to their own leads/quotes/orders/completed)
+
+## [2026-05-28] — Fix admin team filter not refetching list data
+
+### Fixed
+- Quotes, Orders, Completed, and Leads pages — `useCoalescedRefresh` now depends on `filterUserId` / `isAdmin` so changing the team member dropdown triggers a new page-data fetch with `?user_id=`
+
+## [2026-05-28] — Admin team member filter on Leads, Quotes, Orders, Completed
+
+### Added
+- `components/ui/admin-user-filter.tsx` — admin-only **All team members** dropdown (SDR / Sales / Accountant)
+- `?user_id=` query param on list page-data and counts routes — **admin role only**; ignored for other roles
+
+### Changed
+- **Leads** — filter by `sdr_id` (Hold / Rejected / Won / Routed) or `sdr_id` + `locked_by_id` (All Leads tab); tab counts respect filter
+- **Quotes / Orders / Completed** — filter by ticket `created_by_id`; tab counts respect filter on server fetch
+- Admin list tables — **Created by** column on Quotes, Orders, and Completed when viewing as admin
+- `TicketListToolbar` — optional `endAdornment` slot for the user filter
+
+## [2026-05-28] — Dashboard privacy: masked placeholders instead of "Hidden" text
+
+### Changed
+- `DashboardHiddenValue` in `components/dashboard/dashboard-privacy.tsx` — EyeOff icon + bullet mask (`$ • • • • •` for currency, `• • •` for counts); screen-reader label remains "Hidden"
+- SDR, Sales, and Accountant dashboards — use masked placeholder when values are hidden
+- **Docs:** `feature-specs/dashboard.md`, `api-contract.md`, `schema.md`, `component-architecture.md`, `architecture.md`, `feature-specs/admin.md`, `session-summary.md`, `TODO.md`
+
+## [2026-05-28] — Dashboard values privacy (Hide / Show KPIs)
+
+### Added
+- Migration `087_user_profiles_dashboard_values_hidden.sql` — `user_profiles.dashboard_values_hidden boolean default false`
+- `lib/utils/dashboard-privacy.ts` — read/set flag, server redact helpers
+- `GET` / `PATCH /api/user/dashboard-privacy` — per-user preference
+- `components/dashboard/dashboard-privacy.tsx` — toggle, confirm modal, `useDashboardPrivacy`, `DashboardHiddenValue`
+- Server redaction when hidden: `GET /api/dashboard/kpis`, `GET /api/payments/counts`, `GET /api/admin/team`, `GET /api/admin/sessions`
+
+### Changed
+- SDR, Sales, Accountant dashboards — Hide / Show values button; KPI cards use masked placeholders when hidden
+- Admin KPI/team/session routes — redact numeric fields when viewer has privacy enabled (Admin UI toggle pending)
+
+## [2026-05-28] — New users: explicit dashboard privacy default
+
+### Fixed
+- `POST /api/admin/users/create` — sets `dashboard_values_hidden: false` on `user_profiles` insert (matches DB default; dashboard values visible for new accounts)
+
+## [2026-05-28] — SDR Orders/Quotes scope: created_by_id only
+
+### Changed
+- SDR `/orders` list, tab counts, and sidebar badge — `created_by_id` only (matches `/completed`; no `routed_by_id` rows)
+- `scopeJobTicketsQuery()` and `applyTicketScope()` — SDR branch uses `eq("created_by_id", userId)`
+- **Docs:** `feature-specs/dashboard.md`, `feature-specs/tickets.md`, `navigation.md`, `architecture.md`, `component-architecture.md`, `schema.md`, `api-contract.md`, `rbac.md`, `session-summary.md`
+
+## [2026-05-28] — SDR dashboard: self-closed order revenue only
+
+### Changed
+- SDR dashboard — **Orders**, **Received**, and **Balance** restored; credit only quotes the SDR **created**, **converted**, and **collected payment on** (`created_by_id`, not routed to Sales, payment > 0)
+- `lib/utils/sdr-dashboard-metrics.ts` — `filterSelfHandledTickets`, `productionReleasedSelfHandled`, `countOrdersCreatedSelfHandled`
+- `lib/utils/kpi-help-text.ts` — SDR order help copy updated
+- **Docs:** `feature-specs/dashboard.md`, `feature-specs/tickets.md`, `navigation.md`, `architecture.md`, `component-architecture.md`, `schema.md`, `api-contract.md`, `rbac.md`, `session-summary.md`
+
+### Removed
+- SDR dashboard — **Sales Win** and routed-lead production attribution (unchanged from prior pass)
+
+## [2026-05-28] — SDR dashboard: hide sales order revenue
+
+### Removed
+- SDR dashboard — **Orders**, **Received**, **Balance**, and **Sales Win** KPI cards (sales-attributed production revenue after routing)
+- `lib/utils/sdr-dashboard-metrics.ts` — order value / production release queries for SDR role
+
+### Changed
+- SDR dashboard — **Lead Claimed** is now the accent card; six activity-only KPIs remain (claimed, created, inbox, rejected, on hold, routed)
+
+## [2026-05-27] — Documentation sync (May 27 feature batch)
+
+### Changed
+- **Dashboards & lists** — `feature-specs/dashboard.md`, `component-architecture.md`, `api-contract.md`, `navigation.md`, `session-summary.md`, `TODO.md`: default **Last 30 Days**; SDR/Sales **Orders** merged KPI; Sales omits **Lead Created**
+- **Timeline & references** — `feature-specs/tickets.md`, `activity.md`, `order-ticket/lifecycle-flow.md`, `schema.md`, `architecture.md`: QUO/ORD labels, `ticketKindForReference()`, creation activity payload
+- **CRM & Realtime** — `feature-specs/crm.md`, `realtime-live-updates.md` (Bug 3, migration **086**), `feature-specs/tickets.md` routed-tab live refresh
+
+## [2026-05-27] — Sales dashboard: remove Lead Created card
+
+### Removed
+- Sales dashboard — **Lead Created** KPI (SDRs own lead creation; card was always zero or misleading for Sales)
+
+## [2026-05-27] — SDR/Sales dashboard: merge Orders KPI card
+
+### Changed
+- SDR & Sales dashboards — **Orders** card combines former **Total** ($) and **Order Created** (count in subtext: `from N orders converted`); accent styling; % trend remains on dollar value
+- `lib/utils/kpi-help-text.ts` — `order_total_with_count_sdr` / `order_total_with_count_sales` help copy
+
+## [2026-05-27] — Default date filter: Last 30 Days
+
+### Changed
+- `DashboardDateRangeFilter` default preset **`last_month`** (Last 30 Days) on Admin / SDR / Sales dashboards and Quotes / Orders / Completed list pages
+- `GET /api/dashboard/kpis` — fallback presets when omitted: `admin_preset`, `sdr_preset`, `sales_preset` default to `last_month`
+
+## [2026-05-27] — Routed quotes tab live refresh for Sales
+
+### Fixed
+- **Routed to Sales** tab — other Sales reps now see claims and new SDR routings without reload; migration `086_job_tickets_routed_realtime_rls.sql` adds `sales_read_routed_tickets` SELECT policy and Realtime-safe `admin_read_all_tickets` (inline `EXISTS`, not `current_user_role()`)
+- `quotes-page.tsx` — page-level `job_tickets` + `activities` Realtime when user can see Routed tab; listens to `bazaar:activities-changed`
+- SDR high-value route save — dispatches `bazaar:tickets-changed` after successful `POST /api/tickets` (`routed` / `sent`)
+
+### Changed
+- `docs/feature-specs/tickets.md`, `realtime-live-updates.md`, `schema.md`, `api-contract.md`, `component-architecture.md`, `architecture.md`, `session-summary.md`, `TODO.md` — routed-tab Realtime (RLS 086, dual refresh paths, deploy checklist)
+
+## [2026-05-27] — Documentation sync (timeline, references, CRM)
+
+### Changed
+- `docs/feature-specs/tickets.md`, `activity.md`, `crm.md`, `api-contract.md`, `schema.md`, `component-architecture.md`, `realtime-live-updates.md`, `architecture.md`, `session-summary.md`, `TODO.md` — lifecycle timeline rules, `ticketKindForReference()`, CRM list/realtime notes
+
+## [2026-05-27] — Fix QUO tickets labeled Order created
+
+### Fixed
+- Ticket lifecycle timeline — creation node uses **creation activity payload** (`QUO-*`), not the ticket’s current `ORD-*` (orders detail no longer shows “Order created” for an original quote)
+- Timeline/history — **QUO-* reference wins** over `ticket_kind` when labeling creation (fixes rows where `ticket_kind` was `order` but reference was still `QUO-…`)
+- `POST /api/tickets` / `PATCH /api/tickets/[id]` — `ticketKindForReference()` keeps `ticket_kind` aligned with `QUO-*` / `ORD-*`
+- `maybeConvertQuoteToOrder` — aborts convert when `ORD-*` assignment fails (avoids `ticket_kind: order` with a `QUO-*` code)
+
+## [2026-05-27] — Timeline: CRM customer quotes vs lead quotes
+
+### Fixed
+- Quote from **CRM customer profile** (no linked lead) — timeline shows **Quote created** using `ticket_kind`, `QUO-*`, and activity payload (not page route); **Customer in CRM** origin node when the contact existed before the quote
+- History — **Quote created** when activity payload `ticket_kind` is `quote` even if reference was missing on older rows
+
+## [2026-05-27] — Timeline & history: Quote created for QUO-* tickets
+
+### Fixed
+- Order detail timeline no longer shows **Order created** for tickets that are still quotes (`QUO-*` reference); uses `ticketIsQuoteStage()` instead of page context (`Order Total` label)
+- History tab — **Quote created** / **Order created** from activity `reference_code`; detail line shows `QUO-…` / `ORD-…` when present
+
+## [2026-05-27] — Routed quote list live update when another Sales rep claims
+
+### Fixed
+- Other Sales users on **Routed to Sales** now refresh when a colleague claims a quote (no manual reload) — `activities` Realtime also dispatches `bazaar:tickets-changed` because `job_tickets` events are dropped by RLS once the row is no longer visible
+- Claim action also dispatches `bazaar:tickets-changed` on the claimant’s client
+
 ## [2026-05-27] — CRM list 500 for standalone customers
 
 ### Fixed

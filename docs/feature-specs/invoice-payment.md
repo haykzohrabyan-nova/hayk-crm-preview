@@ -370,7 +370,7 @@ In `components/quotes/quote-detail.tsx` action bar:
 | `lib/integrations/invoice-link-template.ts` | B+++ | ✅ Built | Resend customer portal link |
 | `lib/integrations/order-ready-template.ts` | B+++ | ✅ Built | Pickup-ready notification |
 | `lib/utils/compute-checkout.ts` | B++ | ✅ Built | Payment stepper + production gate evaluation |
-| `lib/utils/maybe-convert-quote-to-order.ts` | B+++ | ✅ Built | Quote → order conversion gate (payment, net confirm, admin override) |
+| `lib/utils/maybe-convert-quote-to-order.ts` | B+++ | ✅ Built | Quote → order conversion gate (payment, net confirm, admin override); assigns `ORD-*` — convert skipped if sequence fails (no `ticket_kind: order` with `QUO-*` left behind) |
 | `lib/utils/maybe-auto-release-production.ts` | B+++ | ✅ Built | Shared auto-release to in_production |
 | `lib/utils/invoice-payment-summary.ts` | B+++ | ✅ Built | Paid-in-full + evidence-pending helpers |
 | `lib/utils/quote-list-status.ts` | — | ✅ Built | Quote list status badges |
@@ -403,6 +403,8 @@ In `components/quotes/quote-detail.tsx` action bar:
 | `lib/utils/mark-lead-won-on-production.ts` | — | ✅ Built | Won on production release |
 | `app/api/tickets/[id]/route.ts` | A | ✅ Built | `record_payment`, `resend_invoice`, mark completed, send triggers |
 | `app/api/tickets/[id]/evidence/route.ts` | B+++ | ✅ Built | Signed evidence file URL |
+| `components/quotes/quote-detail/detail-layout-primitives.tsx` | B+++ | ✅ Built | Stat cards, `DetailCollapsibleSection` (Timeline / Pricing / Payment settings) |
+| `components/quotes/quote-detail/ticket-lifecycle-timeline.tsx` | B+++ | ✅ Built | Collapsible lifecycle milestone row |
 | `components/quotes/quote-detail.tsx` | B+ | ✅ Built | Unified Overview + History across all contexts |
 | `components/quotes/quote-detail/ticket-detail-overview.tsx` | B+++ | ✅ Built | Context-aware overview router |
 | `components/quotes/quote-detail/quote-stage-overview.tsx` | B+++ | ✅ Built | Customer link + Copy on quote stage |

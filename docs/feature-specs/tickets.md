@@ -24,6 +24,15 @@
 - `approved` — **retired** — kept in `TicketStatus` type for backwards compatibility only; new code never sets this
 - `routed` — SDR's quote exceeded High-Value Threshold; routed to Sales for claiming
 - `order` — production order (`ticket_kind = order`, `ORD-*`). Set by payment recorded, net terms on confirm, or **admin** manual convert. **Does not** mark the linked lead Won — that happens at production release.
+
+### Reference codes vs `ticket_kind` (May 2026)
+
+| Code | Meaning | `ticket_kind` |
+|------|---------|---------------|
+| `QUO-YYYY-NNNN` | Quote-stage record | `quote` |
+| `ORD-YYYY-NNN` | Order-stage record | `order` |
+
+**Source of truth:** `reference_code` prefix wins over `ticket_kind` in UI helpers (`ticketIsQuoteStage()`, `resolveTicketQuoteStage()` in `lib/utils/reference-codes.ts` and `lib/utils/ticket-lifecycle-timeline.ts`). API create/update enforces alignment via `ticketKindForReference()` on `POST /api/tickets` and `PATCH /api/tickets/[id]`. `maybeConvertQuoteToOrder()` aborts if `ORD-*` assignment fails (no `ticket_kind: order` while reference stays `QUO-*`).
 - `in_production` — released to shop floor (`production_released_at` set). Partial orders may owe balance. **Linked lead `sales_status` → `Won`** via `markLeadWonOnProduction()`.
 - `completed` — finished; customer notified (email/SMS pickup message with same `/q/{token}` URL); public page shows **Ready for pickup**
 - `cancelled` — terminal; no payment recorded
@@ -60,9 +69,11 @@ A new quote can be started from three places. The entry point controls the UI sh
 ## `/quotes` — Quoted Requests page
 
 **Component:** `components/quotes/quotes-page.tsx`  
-**List API:** `GET /api/quotes/page-data` — slim ticket list (no `quote_skus` on list). Full record on `/quotes/[id]`.
+**List API:** `GET /api/quotes/page-data` — slim ticket list (no `quote_skus` on list). Returns `pagination`. Full record on `/quotes/[id]`.
 
-**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 7 Days**; Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters rows by `created_at` client-side after page-data load. **Tab badges follow the selected date range** (`lib/utils/list-page-tab-counts.ts`); sidebar `/quotes` badge stays all-time total.
+**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 30 Days** (`last_month`); Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters rows by `created_at` **server-side** via `date_from` / `date_to`. **Tab badges** from page-data `counts` under the same filters; sidebar `/quotes` badge stays all-time total.
+
+**Pagination (May 2026):** Default 25 rows; `ListPagination` with 25 / 50 / 100 selector. Search and admin team filter are server-side.
 
 **Mobile (< `lg`):** `TicketListToolbar` (scrollable tabs + full-width search) + `MobileListCard` per row. Desktop: full table. See `components/ui/mobile-list-card.tsx` and `.cursor/rules/mobile-table-cards.mdc`.
 
@@ -74,7 +85,7 @@ A new quote can be started from three places. The entry point controls the UI sh
 | Draft | `ticket_status = 'draft'` | All roles |
 | Sent | `ticket_status = 'sent'` | All roles |
 | Won | `ticket_status = 'approved'` | All roles |
-| **Routed to Sales** | `ticket_status = 'routed'` | **Sales + Admin** (Claim button) · **SDR** (View button, read-only) |
+| **Routed to Sales** | `ticket_status = 'routed'` | **Sales + Admin** (Claim) · **SDR** (View own HVT quotes only — `created_by_id`) |
 
 **Table columns (standard tabs):** Contact, Title, Channel, Total, **Due Now** (partial deposit when configured; `—` otherwise), Status pill, Follow-up (red if overdue), Created
 
@@ -84,6 +95,7 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 **Action button in Routed tab:**
 - **Sales / Admin** — "Claim" button → `PATCH /api/tickets/[id]` with `{ claim_ownership: true }` → sets `ticket_status = 'draft'`, `created_by_id = claimant`, redirects to quote detail
+- **Live refresh (May 2026):** Other Sales users on this tab refresh when a colleague claims or when an SDR routes a new HVT quote — requires migration **`086_job_tickets_routed_realtime_rls.sql`** (`sales_read_routed_tickets` RLS + Realtime-safe `admin_read_all_tickets`). `quotes-page.tsx` also subscribes to `job_tickets` + `activities` INSERT; sidebar dispatches `bazaar:tickets-changed` on claim activities. **Why it broke:** `job_tickets` RLS only allowed `created_by_id = auth.uid()`, so non-owner Sales never received Realtime for SDR-owned routed rows; post-claim UPDATE is still invisible to others (row no longer `routed`) — claim is signaled via `activities` INSERT (`order_ticket_status_changed`, `action: claimed`).
 - **SDR** — "View" button → navigates to `/quotes/[id]` in read-only mode with a yellow banner
 
 **Routed tab banner:**
@@ -92,17 +104,31 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 ### Sidebar badge (`/quotes`)
 
-- **SDR:** count of `draft` + `sent` + `approved` tickets (own)
-- **Sales/Admin:** same + count of all `routed` tickets
+- **SDR:** count of own `draft` + `sent` + `approved` (`created_by_id` only)
+- **Sales/Admin:** same + count of all `routed` tickets (company claim queue)
+
+### List scope (`scopeJobTicketsQuery` / `applyTicketScope`)
+
+| Role | `/quotes` | `/orders` | `/completed` |
+|------|-----------|-----------|--------------|
+| **SDR** | `created_by_id = session user` | `created_by_id = session user` | `created_by_id = session user` |
+| **Sales** | `created_by_id = me` **OR** all `ticket_status = routed` | `created_by_id = me` (routed rows excluded by status filter) | `created_by_id = me` |
+| **Admin / Accountant** | All | All | All |
+
+**SDR detail access (not list):** `canAccessTicket()` still allows read-only GET on in-progress hand-offs where `routed_by_id = session user` (until `completed`). After Sales claims an HVT quote, `created_by_id` becomes Sales — the ticket drops off SDR list pages but remains openable by URL while in progress.
 
 ---
 
 ## `/orders` — Orders page
 
 **Component:** `components/orders/orders-page.tsx`  
-**List API:** `GET /api/orders/page-data` — scoped to `order` + `in_production` + `cancelled`. Includes evidence-pending rows for the ticket owner.
+**List API:** `GET /api/orders/page-data` — scoped to `order` + `in_production` + `cancelled`. Returns `pagination`. Includes evidence-pending rows for the ticket owner. **SDR / Sales:** `created_by_id = session user` (see list scope table under `/quotes`).
 
-**Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — default **Last 7 Days**; filters by `created_at` client-side. **Tab badges follow the selected date range**; sidebar `/orders` badge stays all-time scoped total.
+**Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — default **Last 30 Days**; filters by `created_at` **server-side**. **Tab badges** from page-data `counts` under the same filters; sidebar `/orders` badge stays all-time scoped total.
+
+**Column sort (May 2026):** Server-side sort on Created by (A–Z), Balance Due (high→low), Due Date (overdue first), Status (In Production first), Payment (Unpaid→Partial→Paid). Click header again to reset default sort.
+
+**Pagination (May 2026):** Default 25 rows; `ListPagination` with 25 / 50 / 100 selector.
 
 **Due today highlight (May 2026):** Rows with due date **today** and not cancelled use a full-row danger background on all table cells (desktop) and matching fill on mobile cards (`isDueToday()` in `lib/utils/format.ts`). Past-due rows still show **· Overdue** on the due date column.
 
@@ -127,7 +153,8 @@ When customer submitted payment evidence:
 - **Pricing & payment** combined read-only card (`PricingPaymentSummary`) for sales/SDR
 - Duplicate **Pricing** overview section hidden; quote metadata in **Quote details**
 - Evidence file link **not shown** to sales/SDR — accountant/admin only via `GET /api/tickets/[id]/evidence`
-- **Order settings** section shows payment config read-only
+- **Quote details** collapsible section (replaces separate Pricing header when evidence pending) — default collapsed
+- **Payment & order settings** collapsible — default collapsed
 - Confirm payment only on `/payments/[id]` or order detail for accountant/admin (`record_payment`)
 
 ---
@@ -177,17 +204,19 @@ Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in
 | **SDR** | `ticket_status = 'completed'` **and** `created_by_id = session user` — self-created quote/order through completion only |
 | **Accountant / Admin** | All completed tickets |
 
-**Excluded from SDR Completed:** leads/quotes the SDR **routed to Sales** where Sales claimed and completed the order (`created_by_id` becomes Sales). SDR may still view those hand-offs read-only on Quotes/Orders while in progress (`routed_by_id`), but not once `completed`.
+**Excluded from SDR Completed:** quotes the SDR routed to Sales where Sales **claimed** and completed the order (`created_by_id` becomes Sales). While still `routed` or before claim, own HVT quotes may appear on `/quotes` → Routed tab; after Sales claims, list pages no longer show the row — detail read-only access via `routed_by_id` until `completed`.
 
 **Mobile (< `lg`):** `MobileListCard` list + full-width search.
 
 **Row click** → `/completed/[id]` (`QuoteDetail` with `context="completed"`)
 
-**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 7 Days**; filters list by completion date (`updated_at`). Sidebar completed badge stays all-time total.
+**Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 30 Days**; filters list by completion date (`updated_at`) **server-side**. Sidebar completed badge stays all-time total.
+
+**Pagination (May 2026):** Default 25 rows; server-side search, date, admin team filter; `ListPagination`.
 
 **Actions:** Resend invoice link (Admin + Accountant only on detail)
 
-**API:** `GET /api/completed/page-data` (mount), `GET /api/completed/counts` (sidebar badge — all-time scoped). Scoped via `scopeCompletedTicketsQuery()` in `lib/utils/db-counts.ts`.
+**API:** `GET /api/completed/page-data` → `{ orders, counts, pagination }`; `GET /api/completed/counts` (sidebar badge — all-time scoped). Scoped via `scopeCompletedTicketsQuery()` in `lib/utils/db-counts.ts`.
 
 ---
 
@@ -201,7 +230,9 @@ All post-draft detail routes share the **overview layout** (`isOverviewLayout`):
 | `customer-info-card.tsx` / `linked-lead-card.tsx` | Left sidebar contact card (lookup labels for industry/source) |
 | `detail-quick-actions.tsx` | **All action buttons** under customer card |
 | `ticket-detail-overview.tsx` | Routes to payment / production / quote-stage contextual notices |
-| `ticket-overview-sections.tsx` | Line items, pricing, payment config (read-only) |
+| `ticket-overview-sections.tsx` | Line items, pricing (collapsible), payment config (read-only) |
+| `ticket-lifecycle-timeline.tsx` | Lifecycle milestone row (**collapsible**, default closed) |
+| `detail-layout-primitives.tsx` | Stat cards, section titles, `DetailCollapsibleSection` |
 | `history-section.tsx` | Full activity trail |
 
 **Customer link** (when `public_token` is set): **Customer Link** + **Copy Link** as two 50/50 buttons on their own row in `DetailQuickActions` — opens `/q/{token}` in new tab; copy with **Copied!** feedback. Shown for `sent`, `order`, `in_production`, and `completed` (balance payments on public portal).
@@ -320,8 +351,9 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
    - **OK — Route to Sales** → immediately saves the quote as `ticket_status = 'routed'` and redirects to `/quotes`
 3. If neither button is clicked, the countdown reaches 0 and the quote is auto-routed (same as clicking OK)
 4. The routed quote appears in the "Routed to Sales" tab for Sales/Admin (Claim button) and the SDR (View/read-only)
+5. Client dispatches `bazaar:tickets-changed` after save so open Quotes sessions refetch; other browsers rely on Supabase Realtime (migration **086** + `quotes-page-routed-sync` channel — see Routed tab section above)
 
-> **SDR visibility after routing:** The ticket stores `routed_by_id = userId` at creation time. Even after Sales claims the ticket (which changes `created_by_id` to the Sales rep), the SDR can still see and view the ticket via the Routed to Sales tab on `/quotes`.
+> **SDR visibility after routing:** The ticket stores `routed_by_id = userId` at creation. While `ticket_status = 'routed'` and `created_by_id` is still the SDR, the quote appears on the SDR **Routed to Sales** tab (read-only). After Sales claims (`created_by_id` → Sales), it leaves SDR list pages; `canAccessTicket()` may still allow read-only detail via `routed_by_id` until `completed`.
 
 ### Footer actions
 
@@ -375,7 +407,13 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
 **Overview layout** (default for sent quotes, orders, payments review, production, completed — not draft edit mode):
 
 - **Top:** `TicketStatsRow` — Order/Quote Total, Received, Balance Due, Due Date, Payment (mobile: full-width total + 2×2 grid for the other four)
-- **Below stats:** `TicketLifecycleTimeline` — linear timeline from **created** through **payments** (amount, method, staff or Customer) to **due date**; exact date/time on each node
+- **Below stats:** `TicketLifecycleTimeline` — **collapsible** (default **collapsed**); click header to expand. Horizontal (desktop) / vertical (mobile) milestone row when open.
+  - **Origin nodes (prepended when applicable):** **Lead created** (linked lead + `lead.source`) · **Customer in CRM** (no linked lead; `customer.created_at` before ticket create — typical CRM **Add Quote**)
+  - **Creation node:** **Quote created** or **Order created** from the `order_ticket_created` activity payload (`reference_code`, `ticket_kind`) — **not** from the ticket’s current `ORD-*` after convert (orders detail still shows **Quote created** + `QUO-…` when the row started as a quote)
+  - **Milestones:** Quote sent/resent · Customer confirmed · Converted to order (`ticket_converted`) · payment proof / recorded · due-date / completion nodes when applicable
+  - Detail lines show `QUO-…` / `ORD-…` from activity payload where present
+  - Data: `GET /api/activities?ticket_id=…&include_linked_lead=true` (UUID or `QUO-*` / `ORD-*`); refreshes on `bazaar:activities-changed`
+- **Overview tab sections (read-only):** **Line Items** always visible; **Pricing** and **Payment & order settings** are **collapsible** via `DetailCollapsibleSection` (default **collapsed**). Quote delivery, Follow-up, Production & evidence remain expanded.
 - **Two-column grid:**
   - **Left sidebar** (always shown): `LinkedLeadCard` or `CustomerInfoCard`, then **`DetailQuickActions`** (all action buttons)
   - **Right panel:** Overview | History tabs; on desktop (`xl+`) only this panel scrolls
@@ -404,9 +442,10 @@ Single scrollable view combining all three edit sections, separated by labelled 
 
 ### History Tab
 
-- Full lifetime of the record (lead activities + ticket activities), merged chronologically
+- Full lifetime of the record (lead activities + ticket activities), merged chronologically (`history-section.tsx`)
 - Date separators
 - Per-event icons, human-readable labels, actor name, relative timestamp
+- **`order_ticket_created`:** **Quote created** when payload `reference_code` is `QUO-*` (or `ticket_kind: quote`); **Order created** for `ORD-*` / `ticket_kind: order` — same reference-first rules as the lifecycle timeline
 - Auto-refreshes on `bazaar:activities-changed`
 
 ### Header — status badges
@@ -439,9 +478,9 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 | Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; logs `ticket_sent` |
 | Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers delivery; logs `ticket_sent` with `resend: true` in payload |
 | Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead Won until production |
-| Cancel Ticket | non-locked only | `PATCH → ticket_status = 'cancelled'` |
+| Cancel Ticket | non-locked only | Opens cancel modal → pick **Quote Cancellation Reason** (admin-managed) + optional notes → `PATCH ticket_status = cancelled` |
 
-**Order / production / completed stage (same sidebar block):**
+**Order / production stage (same sidebar block):**
 
 | Action | Condition |
 |--------|-----------|
@@ -449,7 +488,11 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 | Copy Link | Same conditions — copies public URL to clipboard |
 | Mark Completed | `in_production`; admin always; accountant only if paid in full |
 | Resend invoice link | `in_production` or `completed`; sends via ticket outreach channel |
-| Cancel Ticket | Admin only; `ticket_status = 'order'` |
+| Cancel Ticket | Admin only; `ticket_status = 'order'` or `'in_production'` with no payment received — opens cancel modal with **Order Cancellation Reasons** |
+
+**Cancelled state:** Overview shows red banner with stored reason label + notes. Reason labels are snapshotted on cancel (`cancel_reason_label`) so they remain visible even if the admin later deactivates or deletes the lookup option.
+
+**Admin-managed reasons:** `/admin/settings/dropdowns` → Order / Quote section → **Quote Cancellation Reasons** / **Order Cancellation Reasons**. In-use reasons cannot be hard-deleted (409) — deactivate instead. **Other** requires free-text detail in the cancel modal (saved in `cancel_notes`).
 
 Layout: row 1 — **Mark Completed** | **Resend Link** (when applicable); row 2 — **Customer Link** | **Copy Link** (50/50 width on mobile).
 
@@ -527,7 +570,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `quote_skus`). SDRs see own + routed-by. Sales/Admin see own + all `routed`. |
+| `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `quote_skus`). **SDR:** `created_by_id` only (same as `/orders`, `/completed`). **Sales/Admin:** own + all `routed`. |
 | `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `order` + `in_production` + `cancelled`; includes evidence-pending for owner; returns `status_label` / `status_tone`. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders). Direct Quotes page: stores `quote_source` on ticket (no auto-lead). Lead/CRM flows: may create linked lead with `source`. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket by UUID or reference code (`QUO-*`, `ORD-*`). Sales/Admin can GET `routed` tickets they don't own. **Accountant** can GET any ticket (matches list scoping). |
@@ -541,7 +584,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `GET /api/production/counts` | GET | Legacy production tab counts |
 | `GET /api/completed/orders` | GET | Completed orders list — SDR: `created_by_id` only; Admin/Accountant: all |
 | `GET /api/completed/counts` | GET | Completed page + sidebar badge — same scope as list |
-| `GET /api/completed/page-data` | GET | List + counts in one auth pass — same scope as list |
+| `GET /api/completed/page-data` | GET | Paginated list + counts — same scope as list |
 | `GET /api/activities` | GET | `?ticket_id=xxx` (UUID or `QUO-*` / `ORD-*`) + optional `include_linked_lead=true` → full lifetime merged |
 | `GET /api/tickets/[id]/pdf` | GET | PDF download — MFA + `canAccessTicket()` |
 | `GET /api/tickets/[id]/print` | GET | HTML print view — same auth as PDF |
@@ -575,10 +618,10 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 
 | Badge | SDR | Sales | Accountant | Admin |
 |-------|-----|-------|------------|-------|
-| `/quotes` | draft + sent (own) | + all `routed` | — | all |
-| `/orders` | scoped orders (own) | scoped orders | pending + in_production | pending + in_production |
+| `/quotes` | own draft + sent + approved | own + all `routed` | — | all |
+| `/orders` | own (`created_by_id`) | own (`created_by_id`) | pending + in_production | pending + in_production |
 | `/payments` | — | — | unreviewed evidence (sidebar) | unreviewed evidence (sidebar) |
-| `/completed` | own created (`created_by_id`) | — | completed count (all) | completed count (all) |
+| `/completed` | own (`created_by_id`) | own (`created_by_id`) | completed count (all) | completed count (all) |
 
 Counts from `GET /api/tickets/counts`, `/api/payments/counts`, `/api/completed/counts`, `/api/sidebar-counts`. Refresh via `bazaar:refresh-counts`.
 
@@ -594,14 +637,15 @@ Default: `$5,000`.
 | SDR creating/editing a quote | Blocked when total > threshold. Modal shown with Cancel (edit amount) and OK (route). Quote saved as `routed` on OK or countdown expiry. |
 | Sales / Admin | No block. Full save regardless of total. |
 
-When a `routed` quote is **claimed** by Sales:
+When a `routed` quote is **claimed** by Sales (other reps’ Routed tab should update live — **`086_job_tickets_routed_realtime_rls.sql`** required):
+
 - `ticket_status` → `draft`
 - `created_by_id` → claiming Sales user's ID
 - `routed_by_id` → **unchanged** (preserves original SDR's identity)
 - All other Sales users see it disappear from "Routed to Sales" tab instantly (via Realtime)
 - Claimer finds it in their own "Draft" tab and can continue working it
 
-**SDR visibility after claiming:** Because `routed_by_id` is never changed, the original SDR can always see the ticket in their "Routed to Sales" tab and open it in read-only mode to track what happened to their quote.
+**SDR visibility after claiming:** `routed_by_id` is never changed. The ticket disappears from SDR **list** pages once `created_by_id` becomes Sales; read-only detail may still work via `canAccessTicket()` until `completed`.
 
 ---
 

@@ -5,6 +5,7 @@ import { CheckCircle2, Loader2, Link as LinkIcon, Copy, Check, Mail, BadgeCheck 
 import { OutreachChannelIcons } from "@/components/ui/outreach-channel-icons";
 import { resolveOutreachChannelKind, OUTREACH_CHANNEL_LABEL } from "@/lib/utils/outreach-channel-display";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { canAdminCancelTicket } from "@/lib/utils/can-admin-cancel-ticket";
 import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
 import { copyTextToClipboard, publicQuoteUrl } from "@/lib/utils/copy-to-clipboard";
 
@@ -22,6 +23,9 @@ interface QuickActionsTicket {
   deposit_paid_at: string | null;
   balance_paid_at: string | null;
   production_released_at: string | null;
+  payment_evidence_url: string | null;
+  payment_evidence_submitted_at: string | null;
+  payment_evidence_reviewed_at: string | null;
   ticket_payment_strategy: "partial" | "full" | "net" | null;
   ticket_deposit_type: "percent" | "fixed" | null;
   ticket_deposit_value: number | null;
@@ -91,7 +95,10 @@ export function DetailQuickActions({
     (ticket.ticket_status === "draft" || ticket.ticket_status === "sent");
 
   const showOrderCancel =
-    !isLocked && ticket.ticket_status === "order" && userRole === "admin" && !!onCancelTicket;
+    !isLocked &&
+    userRole === "admin" &&
+    !!onCancelTicket &&
+    canAdminCancelTicket(ticket);
 
   const canConvertToOrder =
     userRole === "admin" &&

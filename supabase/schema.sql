@@ -60,6 +60,7 @@ create table if not exists public.user_profiles (
   is_active             boolean     not null default true,
   must_change_password  boolean     not null default false,
   mfa_required          boolean     not null default true,
+  dashboard_values_hidden boolean   not null default false,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
@@ -251,6 +252,11 @@ create table if not exists public.job_tickets (
   payment_evidence_submitted_at      timestamptz,
   payment_evidence_amount            numeric,
   payment_evidence_reviewed_at       timestamptz,
+
+  -- Cancellation audit (migration 088)
+  cancel_reason                      text,
+  cancel_reason_label                text,
+  cancel_notes                       text,
 
   notes                              text,
   created_at                         timestamptz    not null default now(),
@@ -693,7 +699,8 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 -- ── job_tickets ───────────────────────────────────────────────────────────────
--- Reps see only tickets they created; admin sees all (migration 042).
+-- Reps see own tickets; sales also see ticket_status = routed (HVT hand-off queue).
+-- Admin uses inline EXISTS (not current_user_role()) for Supabase Realtime (086).
 -- Quotes and orders are permanent financial records — no DELETE policy.
 
 do $$ begin
@@ -702,8 +709,28 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
+  create policy "sales_read_routed_tickets" on public.job_tickets
+    for select using (
+      ticket_status = 'routed'
+      and exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name = 'sales'
+      )
+    );
+exception when duplicate_object then null; end $$;
+
+do $$ begin
   create policy "admin_read_all_tickets" on public.job_tickets
-    for select using (public.current_user_role() = 'admin');
+    for select using (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name = 'admin'
+      )
+    );
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -1184,6 +1211,20 @@ insert into public.lookup_values (category, value, label, sort_order) values
   ('sales_drop_reason', 'competitor', 'Competitor', 2),
   ('sales_drop_reason', 'timeline',   'Timeline',   3),
   ('sales_drop_reason', 'other',      'Other',      4),
+
+  -- ── quote cancellation reasons ─────────────────────────────────────────────
+  ('quote_cancel_reason', 'quote_customer_requested', 'Customer requested cancellation', 0),
+  ('quote_cancel_reason', 'quote_duplicate',          'Duplicate quote',                 1),
+  ('quote_cancel_reason', 'quote_pricing_issue',      'Pricing did not work',            2),
+  ('quote_cancel_reason', 'quote_timeline_issue',     'Timeline / lead time issue',      3),
+  ('quote_cancel_reason', 'quote_other',              'Other',                           4),
+
+  -- ── order cancellation reasons ─────────────────────────────────────────────
+  ('order_cancel_reason', 'order_customer_requested', 'Customer requested cancellation', 0),
+  ('order_cancel_reason', 'order_no_payment',         'No payment received',             1),
+  ('order_cancel_reason', 'order_created_in_error',   'Order created in error',          2),
+  ('order_cancel_reason', 'order_scope_change',       'Timeline / scope change',         3),
+  ('order_cancel_reason', 'order_other',              'Other',                           4),
 
   -- ── lamination (per-SKU line) ──────────────────────────────────────────────
   ('lamination', 'none',       'None',       0),

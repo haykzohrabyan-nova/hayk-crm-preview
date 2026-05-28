@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   UserCheck,
   UserPlus,
-  DollarSign,
   Banknote,
   Scale,
   ShoppingCart,
@@ -12,7 +11,6 @@ import {
   XCircle,
   Clock,
   TrendingUp,
-  Trophy,
 } from "lucide-react";
 import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
 import { formatCurrency as formatMoneyFull } from "@/lib/utils/format";
@@ -23,6 +21,11 @@ import {
   type SdrDashboardPreset,
 } from "@/lib/utils/sdr-dashboard-date-range";
 import { defaultDashboardDateRangeFilterValue } from "@/lib/utils/dashboard-date-range-filter";
+import {
+  DashboardHiddenValue,
+  DashboardValuesPrivacyToggle,
+  useDashboardPrivacy,
+} from "@/components/dashboard/dashboard-privacy";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -33,6 +36,7 @@ interface MetricTrend {
 }
 
 interface SdrKpis {
+  values_hidden?: boolean;
   role: "sdr";
   range: {
     preset: SdrDashboardPreset;
@@ -41,16 +45,15 @@ interface SdrKpis {
     start_iso: string;
     end_iso: string;
   };
-  lead_claimed: MetricTrend;
-  lead_created: MetricTrend;
-  order_value: MetricTrend;
-  order_value_breakdown: { total: number; received: number; balance: number };
-  order_created: MetricTrend;
-  inbox: { value: number };
-  rejected: MetricTrend;
-  on_hold: MetricTrend;
-  routed_to_sales: MetricTrend;
-  sales_win: MetricTrend;
+  lead_claimed?: MetricTrend;
+  lead_created?: MetricTrend;
+  order_value?: MetricTrend;
+  order_value_breakdown?: { total: number; received: number; balance: number };
+  order_created?: MetricTrend;
+  inbox?: { value: number };
+  rejected?: MetricTrend;
+  on_hold?: MetricTrend;
+  routed_to_sales?: MetricTrend;
 }
 
 export interface SdrTimeFilter {
@@ -63,6 +66,10 @@ function formatCurrency(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return formatMoneyFull(n);
+}
+
+function orderCountPhrase(count: number): string {
+  return count === 1 ? "1 order" : `${count} orders`;
 }
 
 function formatPct(pct: number | null): string {
@@ -87,6 +94,8 @@ function KpiCard({
   pctChange,
   priorLabel,
   accent = false,
+  valuesHidden = false,
+  valueKind = "count",
 }: {
   label: string;
   value: string | number;
@@ -96,7 +105,10 @@ function KpiCard({
   pctChange?: number | null;
   priorLabel?: string;
   accent?: boolean;
+  valuesHidden?: boolean;
+  valueKind?: "currency" | "count";
 }) {
+  const showTrend = !valuesHidden && pctChange !== undefined;
   return (
     <div
       className="rounded-[10px] border p-5 flex flex-col gap-3"
@@ -130,13 +142,17 @@ function KpiCard({
       </div>
       <div>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <p
-            className="text-[28px] font-semibold leading-none"
-            style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-primary)" }}
-          >
-            {value}
-          </p>
-          {pctChange !== undefined && (
+          {valuesHidden ? (
+            <DashboardHiddenValue kind={valueKind} accent={accent} />
+          ) : (
+            <p
+              className="text-[28px] font-semibold leading-none"
+              style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-primary)" }}
+            >
+              {value}
+            </p>
+          )}
+          {showTrend && (
             <span
               className="text-[13px] font-medium"
               style={{
@@ -159,7 +175,7 @@ function KpiCard({
             {subtext}
           </p>
         )}
-        {priorLabel && pctChange !== undefined && (
+        {priorLabel && showTrend && (
           <p
             className="mt-0.5 text-[11px]"
             style={{
@@ -198,8 +214,11 @@ function KpiCardSkeleton() {
 // ─── SDR Dashboard ───────────────────────────────────────────────────────────
 
 export function SdrDashboard() {
+  const fetchKpisRef = useRef<() => Promise<void>>(async () => {});
+  const privacy = useDashboardPrivacy(() => fetchKpisRef.current());
+
   const [filter, setFilter] = useState<SdrTimeFilter>(() =>
-    defaultDashboardDateRangeFilterValue("today") as SdrTimeFilter,
+    defaultDashboardDateRangeFilterValue("last_month") as SdrTimeFilter,
   );
   const [data, setData] = useState<SdrKpis | null>(null);
   const [loading, setLoading] = useState(true);
@@ -223,14 +242,22 @@ export function SdrDashboard() {
       new Promise((r) => setTimeout(r, 200)),
     ]);
     const json = await res.json();
-    if (res.ok) setData(json as SdrKpis);
+    if (res.ok) {
+      setData(json as SdrKpis);
+      if (typeof json.values_hidden === "boolean") {
+        privacy.syncFromApi(json.values_hidden);
+      }
+    }
     setLoading(false);
-  }, [filter, buildQuery]);
+  }, [filter, buildQuery, privacy.syncFromApi]);
+
+  fetchKpisRef.current = fetchKpis;
 
   useEffect(() => {
     fetchKpis();
   }, [fetchKpis]);
 
+  const metricsHidden = privacy.valuesHidden;
   const priorLabel = data?.range.prior_label ?? "vs prior period";
   const rangeLabel = data?.range.label ?? SDR_DASHBOARD_PRESET_LABELS.today;
 
@@ -250,45 +277,67 @@ export function SdrDashboard() {
           )}
         </div>
 
-        <DashboardDateRangeFilter
-          value={filter}
-          onChange={(next) => setFilter(next as SdrTimeFilter)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardValuesPrivacyToggle
+            valuesHidden={privacy.valuesHidden}
+            onRequestToggle={privacy.requestToggle}
+            confirmOpen={privacy.confirmOpen}
+            onConfirmOpenChange={privacy.setConfirmOpen}
+            pendingHidden={privacy.pendingHidden}
+            saving={privacy.saving}
+            onConfirm={privacy.confirmToggle}
+          />
+          <DashboardDateRangeFilter
+            value={filter}
+            onChange={(next) => setFilter(next as SdrTimeFilter)}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         {loading ? (
-          Array.from({ length: 11 }).map((_, i) => <KpiCardSkeleton key={i} />)
+          Array.from({ length: 9 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : data ? (
           <>
             <KpiCard
-              label="Total"
-              value={formatCurrency(data.order_value_breakdown.total)}
-              pctChange={data.order_value.pct_change}
+              label="Orders"
+              valuesHidden={metricsHidden}
+              valueKind="currency"
+              value={formatCurrency(data.order_value_breakdown?.total ?? 0)}
+              pctChange={metricsHidden ? undefined : data.order_value?.pct_change}
               priorLabel={priorLabel}
-              subtext="routed leads → production"
-              help={KPI_HELP.order_total_sdr}
-              icon={<DollarSign className="h-4 w-4" />}
+              subtext={
+                metricsHidden
+                  ? "your quotes → paid"
+                  : `from ${orderCountPhrase(data.order_created!.value)} converted · your quotes → paid`
+              }
+              help={KPI_HELP.order_total_with_count_sdr}
+              icon={<ShoppingCart className="h-4 w-4" />}
               accent
             />
             <KpiCard
               label="Received"
-              value={formatCurrency(data.order_value_breakdown.received)}
-              subtext="routed leads → production"
+              valuesHidden={metricsHidden}
+              valueKind="currency"
+              value={formatCurrency(data.order_value_breakdown?.received ?? 0)}
+              subtext="your quotes → paid"
               help={KPI_HELP.order_received_sdr}
               icon={<Banknote className="h-4 w-4" />}
             />
             <KpiCard
               label="Balance"
-              value={formatCurrency(data.order_value_breakdown.balance)}
-              subtext="routed leads → production"
+              valuesHidden={metricsHidden}
+              valueKind="currency"
+              value={formatCurrency(data.order_value_breakdown?.balance ?? 0)}
+              subtext="your quotes → paid"
               help={KPI_HELP.order_balance_sdr}
               icon={<Scale className="h-4 w-4" />}
             />
             <KpiCard
               label="Lead Claimed"
-              value={data.lead_claimed.value}
-              pctChange={data.lead_claimed.pct_change}
+              valuesHidden={metricsHidden}
+              value={data.lead_claimed?.value ?? 0}
+              pctChange={metricsHidden ? undefined : data.lead_claimed?.pct_change}
               priorLabel={priorLabel}
               subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.lead_claimed_sdr}
@@ -296,33 +345,27 @@ export function SdrDashboard() {
             />
             <KpiCard
               label="Lead Created"
-              value={data.lead_created.value}
-              pctChange={data.lead_created.pct_change}
+              valuesHidden={metricsHidden}
+              value={data.lead_created?.value ?? 0}
+              pctChange={metricsHidden ? undefined : data.lead_created?.pct_change}
               priorLabel={priorLabel}
               subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.lead_created_sdr}
               icon={<UserPlus className="h-4 w-4" />}
             />
             <KpiCard
-              label="Order Created"
-              value={data.order_created.value}
-              pctChange={data.order_created.pct_change}
-              priorLabel={priorLabel}
-              subtext="converted to order"
-              help={KPI_HELP.order_created_sdr}
-              icon={<ShoppingCart className="h-4 w-4" />}
-            />
-            <KpiCard
               label="Inbox"
-              value={data.inbox.value}
+              valuesHidden={metricsHidden}
+              value={data.inbox?.value ?? 0}
               subtext="unclaimed now"
               help={KPI_HELP.inbox_leads}
               icon={<Inbox className="h-4 w-4" />}
             />
             <KpiCard
               label="Rejected"
-              value={data.rejected.value}
-              pctChange={data.rejected.pct_change}
+              valuesHidden={metricsHidden}
+              value={data.rejected?.value ?? 0}
+              pctChange={metricsHidden ? undefined : data.rejected?.pct_change}
               priorLabel={priorLabel}
               subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.rejected}
@@ -330,8 +373,9 @@ export function SdrDashboard() {
             />
             <KpiCard
               label="On Hold"
-              value={data.on_hold.value}
-              pctChange={data.on_hold.pct_change}
+              valuesHidden={metricsHidden}
+              value={data.on_hold?.value ?? 0}
+              pctChange={metricsHidden ? undefined : data.on_hold?.pct_change}
               priorLabel={priorLabel}
               subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.on_hold_sdr_period}
@@ -339,21 +383,13 @@ export function SdrDashboard() {
             />
             <KpiCard
               label="Routed to Sales"
-              value={data.routed_to_sales.value}
-              pctChange={data.routed_to_sales.pct_change}
+              valuesHidden={metricsHidden}
+              value={data.routed_to_sales?.value ?? 0}
+              pctChange={metricsHidden ? undefined : data.routed_to_sales?.pct_change}
               priorLabel={priorLabel}
               subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.routed}
               icon={<TrendingUp className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Sales Win"
-              value={data.sales_win.value}
-              pctChange={data.sales_win.pct_change}
-              priorLabel={priorLabel}
-              subtext="routed → in production"
-              help={KPI_HELP.sales_win_sdr}
-              icon={<Trophy className="h-4 w-4" />}
             />
           </>
         ) : null}

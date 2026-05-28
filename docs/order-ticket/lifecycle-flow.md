@@ -242,3 +242,19 @@ LEAD ──create quote──► QUO sent (/quotes)
                        ▼
               completed (+ pickup email)
 ```
+
+---
+
+## 8. Staff UI timeline (quote/order detail)
+
+On `/quotes/[id]`, `/orders/[id]`, `/payments/[id]`, `/completed/[id]`:
+
+| Milestone | When shown | Label rule |
+|-----------|------------|------------|
+| Customer in CRM | No linked lead; customer `created_at` before ticket | CRM **Add Quote** path |
+| Lead created | `linked_lead_id` set | Lead source in detail |
+| First ticket event | `order_ticket_created` activity | **Quote created** if activity payload is `QUO-*` (even on `/orders/[id]` after convert to `ORD-*`) |
+| Quote sent | `ticket_sent` activity | Always **Quote sent** |
+| Converted | `ticket_converted` activity | **Converted to order** + `ORD-*` in detail |
+
+`reference_code` prefix is authoritative over `ticket_kind` in helpers (`lib/utils/reference-codes.ts`). API keeps them aligned via `ticketKindForReference()` on create/update.

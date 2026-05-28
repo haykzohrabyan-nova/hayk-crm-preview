@@ -1,5 +1,6 @@
 import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/format";
 import { dueDateEndOfDayMs, isDueDateOverdue } from "@/lib/utils/due-date";
+import { isOrderReferenceCode, isQuoteReferenceCode } from "@/lib/utils/reference-codes";
 
 export type TimelineActivity = {
   id: string;
@@ -325,6 +326,22 @@ export function timelineSegmentFlex(prevAt: string, at: string): number {
   return Math.max(2, Math.round(hours / 6));
 }
 
+/** Quote vs order — QUO-* / ORD-* reference is authoritative (ticket_kind can lag until convert). */
+export function resolveTicketQuoteStage(input: {
+  isQuote?: boolean;
+  referenceCode?: string | null;
+  ticketKind?: string | null;
+}): boolean {
+  const ref = input.referenceCode?.trim();
+  if (ref) {
+    if (isQuoteReferenceCode(ref)) return true;
+    if (isOrderReferenceCode(ref)) return false;
+  }
+  if (input.ticketKind === "quote") return true;
+  if (input.ticketKind === "order") return false;
+  return input.isQuote ?? true;
+}
+
 export function buildTicketLifecycleTimeline(input: {
   activities: TimelineActivity[];
   createdAt: string;
@@ -339,6 +356,11 @@ export function buildTicketLifecycleTimeline(input: {
   /** Linked lead — show origin before quote/order creation. */
   leadCreatedAt?: string | null;
   leadSource?: string | null;
+  /** CRM customer (no lead) — show when quote started from customer profile. */
+  customerCreatedAt?: string | null;
+  /** Ticket quote_source (CRM Add Quote) for creation detail. */
+  quoteSource?: string | null;
+  ticketKind?: string | null;
   now?: number;
 }): LifecycleTimelineNode[] {
   const relevant = input.activities
@@ -346,20 +368,47 @@ export function buildTicketLifecycleTimeline(input: {
     .sort(timelineActivitySort);
 
   const createdActivity = relevant.find((a) => a.type === "order_ticket_created");
+  const createdPayload = createdActivity?.payload;
+  const payloadRef =
+    createdPayload?.reference_code != null ? String(createdPayload.reference_code).trim() : "";
+  const payloadKind =
+    createdPayload?.ticket_kind != null ? String(createdPayload.ticket_kind) : undefined;
+
+  // Creation moment: use activity payload only (current ORD-* must not relabel a QUO-* create).
+  const creationQuoteStage = createdActivity
+    ? resolveTicketQuoteStage({
+        referenceCode: payloadRef || undefined,
+        ticketKind: payloadKind,
+        isQuote: true,
+      })
+    : resolveTicketQuoteStage({
+        isQuote: input.isQuote,
+        referenceCode: input.referenceCode,
+        ticketKind: input.ticketKind,
+      });
+
+  const quoteStage = resolveTicketQuoteStage({
+    isQuote: input.isQuote,
+    referenceCode: input.referenceCode,
+    ticketKind: input.ticketKind,
+  });
+
   const startAt = createdActivity?.created_at ?? input.createdAt;
-  const fromLead = Boolean(input.leadCreatedAt && atMs(input.leadCreatedAt) <= atMs(startAt));
-  const creationLabel = fromLead
-    ? "Quote created"
-    : input.isQuote
-      ? "Quote created"
-      : "Order created";
+  const creationLabel = creationQuoteStage ? "Quote created" : "Order created";
+
+  const creationDetail =
+    (createdActivity
+      ? timelineDetail(createdActivity, payloadRef || input.referenceCode)
+      : null) ??
+    referenceDetail(createdPayload, payloadRef || input.referenceCode) ??
+    (input.quoteSource?.trim() ? `Source · ${input.quoteSource.trim()}` : undefined);
 
   const startNode: LifecycleTimelineNode = createdActivity
     ? {
         id: createdActivity.id,
         at: createdActivity.created_at,
         label: creationLabel,
-        detail: timelineDetail(createdActivity, input.referenceCode),
+        detail: creationDetail,
         actor: actorName(createdActivity, input.createdByName),
         tone: "start",
       }
@@ -367,7 +416,7 @@ export function buildTicketLifecycleTimeline(input: {
         id: "start",
         at: startAt,
         label: creationLabel,
-        detail: referenceDetail(null, input.referenceCode),
+        detail: creationDetail,
         actor: input.createdByName ?? "Staff",
         tone: "start",
       };
@@ -382,7 +431,7 @@ export function buildTicketLifecycleTimeline(input: {
     middleNodes.push({
       id: a.id,
       at: a.created_at,
-      label: timelineLabelForActivity(a, input.isQuote),
+      label: timelineLabelForActivity(a, quoteStage),
       detail: timelineDetail(a, input.referenceCode),
       actor: actorName(a, input.createdByName),
       tone: nodeTone(a.type),
@@ -448,6 +497,16 @@ export function buildTicketLifecycleTimeline(input: {
       at: input.leadCreatedAt,
       label: "Lead created",
       detail: input.leadSource?.trim() ? `Source · ${input.leadSource.trim()}` : undefined,
+      tone: nodeTone("", { isLead: true }),
+    });
+  } else if (
+    input.customerCreatedAt &&
+    atMs(input.customerCreatedAt) <= atMs(startAt)
+  ) {
+    ordered.push({
+      id: "customer-in-crm",
+      at: input.customerCreatedAt,
+      label: "Customer in CRM",
       tone: nodeTone("", { isLead: true }),
     });
   }

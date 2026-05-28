@@ -68,6 +68,8 @@ export type LookupCategory =
   | 'ticket_priority'
   | 'order_source'
   | 'ticket_payment'
+  | 'quote_cancel_reason'
+  | 'order_cancel_reason'
 
 export interface LookupValue {
   id: string
@@ -370,6 +372,11 @@ export interface JobTicket {
   deposit_method:           string | null
   balance_paid_at:          string | null
   production_released_at:   string | null
+
+  // Cancellation audit (migration 088)
+  cancel_reason:            string | null
+  cancel_reason_label:      string | null
+  cancel_notes:             string | null
 
   // Legacy columns (nullable — backwards compat only)
   subtotal: number | null

@@ -1,6 +1,6 @@
 # BazarCRM — TODO Tracker
 
-**Last updated:** 2026-05-26 (docs sync — deploy-ready)
+**Last updated:** 2026-05-27 (timeline/reference docs + May 27 feature sync)
 
 This file tracks **what is still open** vs **what is already built**. Detailed specs live in `docs/feature-specs/` and `docs/CHANGELOG.md`.
 
@@ -75,10 +75,13 @@ Production is on **Vercel Hobby (free)**. Automatic daily cron requires **Vercel
 
 **Status:** **Phase 3 core complete (May 2026)** — page-data bundling, session cache, coalesced refetch, role-scoped sidebar counts, lazy modal bootstrap
 
+**List pagination (May 2026 — done):** Orders (template), Quotes, Completed, Production, CRM, Leads workspace — default 25 rows, `ListPagination`, server-side filters. See `lib/utils/pagination.ts` and `docs/api-contract.md`.
+
 **Still optional at scale:**
 - SWR / React Query for back-navigation cache
-- List pagination when any tab exceeds ~500 rows
-- CRM server-side search + pagination
+- Sales pipeline pagination
+- Payments tab pagination
+- CRM materialized aggregates when customer count > ~1000
 
 **Spec:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md)
 
@@ -120,18 +123,25 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Sales pipeline, claim flow, HVT routing
 - CRM list + customer profile, merge (admin/sales API), dedup lookup
 - **May 26:** **Add Customer** modal on CRM list (`POST /api/customers`); standalone customers in list
+- **May 27:** `GET /api/customers` — list no longer 500 for customers with zero leads/tickets; CRM search autofill isolation
 - **May 26:** CRM **Realtime** live updates (`customers` table, migration 083); manual Refresh removed
+- **May 28:** CRM list pagination — `GET /api/crm/page-data`; server-side search/status/heat; `GET /api/customers` for merge/search only
 - **May 26:** Customer profile — Lead History removed; Quotes & Orders only
 - **May 26:** SDR Directed to Sales / Won tabs — read-only Verify Drawer (not customer profile redirect)
 - Admin override on terminal leads (TODO-001)
 - **May 26:** Product Interests column (`ProductName[quantity]`); removed Initial Interest; website URL validation (scheme optional); **inline field errors + scroll-to-invalid-field** on Add Lead / Verify / Edit Customer / New Quote; CRM list Industry column (Heat badge on profile only); company/phone/email targeted links
+- **May 28:** Leads workspace — SDR All/My toggle (`owner_scope`); manual add stays unclaimed; NULL-safe Won exclusion fix; Product Interests quantity validation + shared `product-interest-rows.tsx`; Claim loading via global loader
+- **May 28:** List pagination on Leads workspace (all tabs) — server-side search, owner scope, routed sub-filters, sort; `ListPagination` 25/50/100
 
 ### Quotes & orders
 - New quote form, quote detail, send/resend quote (email/SMS/WhatsApp)
 - Public portal `/q/{token}` — confirm, payment proof upload, balance while in production
 - Quote-until-payment, convert to order, ORD-/QUO- reference codes
+- **May 27:** Lifecycle timeline — **Quote created** from creation activity `QUO-*` (not relabeled by current `ORD-*` on order detail); `ticketKindForReference()` on API; CRM **Customer in CRM** origin node
 - Orders page (Pending / In Production / Cancelled tabs), completed queue
+- **May 28:** List pagination — Orders (with column sort), Quotes, Completed, Production; server-side search/date/admin filters; `ListPagination` default 25
 - **May 26:** SDR Completed page — nav access + list scoped to self-created completed orders (`created_by_id`); routed-to-Sales hand-offs excluded
+- **May 28:** SDR Quotes + Orders lists aligned with Completed — `created_by_id` only (removed `routed_by_id` from list scope); dashboard order KPIs credit self-closed paid orders only (no Sales Win / routed-lead revenue)
 - Order lifecycle: release to production, mark completed, pickup notifications
 - Record locking after customer confirm; payment link bar
 
@@ -145,12 +155,14 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 
 ### Dashboard & reports
 - Role dashboards (SDR / Sales / Admin / Accountant) with KPI help text
-- SDR/Sales dashboards: separate **Total**, **Received**, **Balance** KPI cards + shared date filter component
-- **May 27:** Admin dashboard — same `DashboardDateRangeFilter` as list pages; default **Last 7 Days**; `GET /api/dashboard/kpis?admin_preset=…`
-- Cash collected, released order value, pipeline, team session + work metrics
+- SDR/Sales dashboards: **Orders** (merged $ + convert count), **Received**, **Balance**, plus role-specific cards; **Sales** omits Lead Created; default date filter **Last 30 Days**
+- **May 27:** Admin / SDR / Sales dashboards + Quotes / Orders / Completed — `DashboardDateRangeFilter` default `last_month`; `GET /api/dashboard/kpis` preset fallbacks `last_month`
+- **May 28:** Dashboard values privacy — `dashboard_values_hidden` on `user_profiles` (087); Hide/Show toggle on SDR/Sales/Accountant; server redaction on KPI/payments/admin routes; masked UI placeholders
+- **Pending:** Admin dashboard privacy toggle + Team section masked KPI display (API ready)
 - Reports Phase 1 + 2: funnel, win rate, rep scorecards, payment ledger, awaiting collection, custom date range
 - **May 26:** Staff cash deposits log `ticket_payment_recorded` (Reports + dashboard alignment); scorecards display-only; Reports links use lifecycle routes + `?from=/reports` Back
-- **May 26:** Orders + Quotes + Completed list pages — `DashboardDateRangeFilter` (default Last 7 Days); tab badges on Quotes/Orders follow selected range; sidebar badges all-time
+- **May 26:** Orders + Quotes + Completed list pages — `DashboardDateRangeFilter` (default Last 30 Days as of May 27); tab badges on Quotes/Orders follow selected range; sidebar badges all-time
+- **May 27:** Routed quotes tab live refresh — migration `086_job_tickets_routed_realtime_rls.sql`; `sales_read_routed_tickets` RLS; `quotes-page-routed-sync`; claim via `activities` INSERT + `bazaar:tickets-changed` (docs: `realtime-live-updates.md` Bug 3)
 
 ### Admin & auth
 - User/role management, MFA (TOTP), per-user `mfa_required`, remember device 30 days
@@ -166,6 +178,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - **May 26:** Quote/order detail — Customer Link + Copy Link on `in_production` / `completed`; two 50/50 buttons on own row
 - Mobile list cards (quotes, orders, payments, completed)
 - Quote/order detail overview layout, global loading overlay
+- **May 28:** Collapsible Timeline, Pricing, and Payment & order settings on detail overview (default collapsed)
 - PDF download (staff + public), print view
 
 ### Infrastructure

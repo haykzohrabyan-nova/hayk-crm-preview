@@ -70,7 +70,7 @@ Each activity entry is rendered as a timeline row with:
 | `quote_approval_requested` | `Bell` | Approval Requested |
 | `quote_follow_up_completed` | `CheckSquare` | Follow-up Done |
 | `quote_follow_up_reset` | `RotateCcw` | Follow-up Reset |
-| `order_ticket_created` | `ShoppingCart` | Order Created |
+| `order_ticket_created` | `FileText` | **Quote created** or **Order created** (from payload `reference_code` / `ticket_kind`; activity `type` name is legacy) |
 | `order_ticket_updated` | `Edit3` | Order Updated |
 | `order_ticket_status_changed` | `ArrowRight` | Status Changed |
 | `ticket_client_confirmed` | `ThumbsUp` | Client Confirmed |
@@ -94,6 +94,7 @@ Each activity entry is rendered as a timeline row with:
 | `lead_edited` | List of changed field names (`payload.fields`) |
 | `lead_reassigned` | "From [name] → [name]" or "Unassigned from [name]" |
 | `contact_edited` | List of changed fields |
+| `order_ticket_created` | `reference_code` (`QUO-*` / `ORD-*`) and/or `title` |
 | `order_ticket_updated` | List of changed field names (`payload.fields`) |
 | `ticket_payment_evidence_submitted` | Method, amount claimed, channel (`payload.method`, `payload.amount`) — **does not** count in Reports/dashboard cash until accountant confirms |
 | `ticket_payment_recorded` | Mode, method, amount (`payload.payment_mode`, `payload.payment_method`, `payload.payment_amount`) — **counts** in Reports/dashboard **Cash Collected** |

@@ -747,7 +747,7 @@
           <tbody>
             <tr>
               <td><span class="pill info">All Leads</span></td>
-              <td>No status filter — returns all non-inbox leads visible to SDR (<code style="font-size:11px;">locked_by_id IS NULL OR locked_by_id = me</code>)</td>
+              <td><code style="font-size:11px;">?owner_scope=all</code> → <code style="font-size:11px;">locked_by_id IS NULL</code>; <code style="font-size:11px;">?owner_scope=mine</code> → claimed by me. Other SDRs' locks hidden.</td>
               <td>Keep only <code style="font-size:11px;">status = "Pending"</code> or <code style="font-size:11px;">"Validated"</code></td>
               <td>Claim, edit, route, hold, reject</td>
             </tr>
@@ -1979,9 +1979,9 @@
               <td>HTTP 200; overwrites existing lock</td>
             </tr>
             <tr>
-              <td>SDR workspace — All Leads tab hides locked-by-other leads</td>
-              <td><code style="font-size:11px;">GET /api/leads/workspace</code> (roleName = sdr, no status/statuses)</td>
-              <td>Returns only leads where <code style="font-size:11px;">locked_by_id IS NULL OR locked_by_id = sdrId</code></td>
+              <td>SDR workspace — All Leads tab (<code style="font-size:11px;">owner_scope=all</code>)</td>
+              <td><code style="font-size:11px;">GET /api/leads/workspace/page-data?owner_scope=all</code></td>
+              <td>Returns only unclaimed leads (<code style="font-size:11px;">locked_by_id IS NULL</code>)</td>
             </tr>
             <tr>
               <td>Routed tab multi-status fetch</td>
@@ -2111,7 +2111,7 @@
             </tr>
             <tr>
               <td><code style="font-size:11px;">status=Pending, locked_by_id=SDR-A</code></td>
-              <td>✅ All Leads — "View" button (soft lock)</td>
+              <td>❌ hidden on **All Leads** toggle (unclaimed filter); ✅ **My Leads** — "View" button</td>
               <td>❌ hidden (lock filter)</td>
               <td>❌ not shown</td>
               <td>❌ not shown</td>

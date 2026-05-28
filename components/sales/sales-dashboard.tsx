@@ -1,10 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   UserCheck,
-  FilePlus,
-  DollarSign,
   Banknote,
   Scale,
   ShoppingCart,
@@ -21,6 +19,11 @@ import {
   type SdrDashboardPreset,
 } from "@/lib/utils/sdr-dashboard-date-range";
 import { defaultDashboardDateRangeFilterValue } from "@/lib/utils/dashboard-date-range-filter";
+import {
+  DashboardHiddenValue,
+  DashboardValuesPrivacyToggle,
+  useDashboardPrivacy,
+} from "@/components/dashboard/dashboard-privacy";
 
 interface MetricTrend {
   value: number;
@@ -29,6 +32,7 @@ interface MetricTrend {
 }
 
 interface SalesKpis {
+  values_hidden?: boolean;
   role: "sales";
   range: {
     preset: SdrDashboardPreset;
@@ -37,14 +41,13 @@ interface SalesKpis {
     start_iso: string;
     end_iso: string;
   };
-  lead_claimed: MetricTrend;
-  lead_created: MetricTrend;
-  order_value: MetricTrend;
-  order_value_breakdown: { total: number; received: number; balance: number };
-  order_created: MetricTrend;
-  inbox: { value: number };
-  rejected: MetricTrend;
-  on_hold: MetricTrend;
+  lead_claimed?: MetricTrend;
+  order_value?: MetricTrend;
+  order_value_breakdown?: { total: number; received: number; balance: number };
+  order_created?: MetricTrend;
+  inbox?: { value: number };
+  rejected?: MetricTrend;
+  on_hold?: MetricTrend;
 }
 
 interface SalesTimeFilter {
@@ -65,6 +68,10 @@ function formatPct(pct: number | null): string {
   return `${pct}%`;
 }
 
+function orderCountPhrase(count: number): string {
+  return count === 1 ? "1 order" : `${count} orders`;
+}
+
 function pctColor(pct: number | null): string {
   if (pct === null || pct === 0) return "var(--color-text-muted)";
   return pct > 0 ? "var(--color-success)" : "var(--color-danger)";
@@ -79,6 +86,8 @@ function KpiCard({
   pctChange,
   priorLabel,
   accent = false,
+  valuesHidden = false,
+  valueKind = "count",
 }: {
   label: string;
   value: string | number;
@@ -88,7 +97,10 @@ function KpiCard({
   pctChange?: number | null;
   priorLabel?: string;
   accent?: boolean;
+  valuesHidden?: boolean;
+  valueKind?: "currency" | "count";
 }) {
+  const showTrend = !valuesHidden && pctChange !== undefined;
   return (
     <div
       className="rounded-[10px] border p-5 flex flex-col gap-3"
@@ -122,13 +134,17 @@ function KpiCard({
       </div>
       <div>
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <p
-            className="text-[28px] font-semibold leading-none"
-            style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-primary)" }}
-          >
-            {value}
-          </p>
-          {pctChange !== undefined && (
+          {valuesHidden ? (
+            <DashboardHiddenValue kind={valueKind} accent={accent} />
+          ) : (
+            <p
+              className="text-[28px] font-semibold leading-none"
+              style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-primary)" }}
+            >
+              {value}
+            </p>
+          )}
+          {showTrend && (
             <span
               className="text-[13px] font-medium"
               style={{
@@ -151,7 +167,7 @@ function KpiCard({
             {subtext}
           </p>
         )}
-        {priorLabel && pctChange !== undefined && (
+        {priorLabel && showTrend && (
           <p
             className="mt-0.5 text-[11px]"
             style={{
@@ -187,8 +203,11 @@ function KpiCardSkeleton() {
 }
 
 export function SalesDashboard() {
+  const fetchKpisRef = useRef<() => Promise<void>>(async () => {});
+  const privacy = useDashboardPrivacy(() => fetchKpisRef.current());
+
   const [filter, setFilter] = useState<SalesTimeFilter>(() =>
-    defaultDashboardDateRangeFilterValue("today") as SalesTimeFilter,
+    defaultDashboardDateRangeFilterValue("last_month") as SalesTimeFilter,
   );
   const [data, setData] = useState<SalesKpis | null>(null);
   const [loading, setLoading] = useState(true);
@@ -212,14 +231,22 @@ export function SalesDashboard() {
       new Promise((r) => setTimeout(r, 200)),
     ]);
     const json = await res.json();
-    if (res.ok) setData(json as SalesKpis);
+    if (res.ok) {
+      setData(json as SalesKpis);
+      if (typeof json.values_hidden === "boolean") {
+        privacy.syncFromApi(json.values_hidden);
+      }
+    }
     setLoading(false);
-  }, [filter, buildQuery]);
+  }, [filter, buildQuery, privacy.syncFromApi]);
+
+  fetchKpisRef.current = fetchKpis;
 
   useEffect(() => {
     fetchKpis();
   }, [fetchKpis]);
 
+  const metricsHidden = privacy.valuesHidden;
   const priorLabel = data?.range.prior_label ?? "vs prior period";
   const rangeLabel = data?.range.label ?? SDR_DASHBOARD_PRESET_LABELS.today;
 
@@ -239,79 +266,81 @@ export function SalesDashboard() {
           )}
         </div>
 
-        <DashboardDateRangeFilter
-          value={filter}
-          onChange={(next) => setFilter(next as SalesTimeFilter)}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardValuesPrivacyToggle
+            valuesHidden={privacy.valuesHidden}
+            onRequestToggle={privacy.requestToggle}
+            confirmOpen={privacy.confirmOpen}
+            onConfirmOpenChange={privacy.setConfirmOpen}
+            pendingHidden={privacy.pendingHidden}
+            saving={privacy.saving}
+            onConfirm={privacy.confirmToggle}
+          />
+          <DashboardDateRangeFilter
+            value={filter}
+            onChange={(next) => setFilter(next as SalesTimeFilter)}
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
         {loading ? (
-          Array.from({ length: 9 }).map((_, i) => <KpiCardSkeleton key={i} />)
+          Array.from({ length: 7 }).map((_, i) => <KpiCardSkeleton key={i} />)
         ) : data ? (
           <>
             <KpiCard
-              label="Total"
-              value={formatCurrency(data.order_value_breakdown.total)}
-              pctChange={data.order_value.pct_change}
+              label="Orders"
+              valuesHidden={metricsHidden}
+              valueKind="currency"
+              value={formatCurrency(data.order_value_breakdown?.total ?? 0)}
+              pctChange={metricsHidden ? undefined : data.order_value?.pct_change}
               priorLabel={priorLabel}
-              subtext="your orders → production"
-              help={KPI_HELP.order_total_sales}
-              icon={<DollarSign className="h-4 w-4" />}
+              subtext={metricsHidden ? "your orders → production" : `from ${orderCountPhrase(data.order_created!.value)} converted · your orders → production`}
+              help={KPI_HELP.order_total_with_count_sales}
+              icon={<ShoppingCart className="h-4 w-4" />}
               accent
             />
             <KpiCard
               label="Received"
-              value={formatCurrency(data.order_value_breakdown.received)}
+              valuesHidden={metricsHidden}
+              valueKind="currency"
+              value={formatCurrency(data.order_value_breakdown?.received ?? 0)}
               subtext="your orders → production"
               help={KPI_HELP.order_received_sales}
               icon={<Banknote className="h-4 w-4" />}
             />
             <KpiCard
               label="Balance"
-              value={formatCurrency(data.order_value_breakdown.balance)}
+              valuesHidden={metricsHidden}
+              valueKind="currency"
+              value={formatCurrency(data.order_value_breakdown?.balance ?? 0)}
               subtext="your orders → production"
               help={KPI_HELP.order_balance_sales}
               icon={<Scale className="h-4 w-4" />}
             />
             <KpiCard
               label="Lead Claimed"
-              value={data.lead_claimed.value}
-              pctChange={data.lead_claimed.pct_change}
+              valuesHidden={metricsHidden}
+              value={data.lead_claimed?.value ?? 0}
+              pctChange={metricsHidden ? undefined : data.lead_claimed?.pct_change}
               priorLabel={priorLabel}
               subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.lead_claimed_sales}
               icon={<UserCheck className="h-4 w-4" />}
             />
             <KpiCard
-              label="Lead Created"
-              value={data.lead_created.value}
-              pctChange={data.lead_created.pct_change}
-              priorLabel={priorLabel}
-              subtext="quotes created"
-              help={KPI_HELP.lead_created_sales}
-              icon={<FilePlus className="h-4 w-4" />}
-            />
-            <KpiCard
-              label="Order Created"
-              value={data.order_created.value}
-              pctChange={data.order_created.pct_change}
-              priorLabel={priorLabel}
-              subtext="converted to order"
-              help={KPI_HELP.order_created_sales}
-              icon={<ShoppingCart className="h-4 w-4" />}
-            />
-            <KpiCard
               label="Inbox"
-              value={data.inbox.value}
+              valuesHidden={metricsHidden}
+              value={data.inbox?.value ?? 0}
               subtext="unclaimed in pipeline"
               help={KPI_HELP.inbox_sales}
               icon={<Inbox className="h-4 w-4" />}
             />
             <KpiCard
               label="Rejected"
-              value={data.rejected.value}
-              pctChange={data.rejected.pct_change}
+              valuesHidden={metricsHidden}
+              value={data.rejected?.value ?? 0}
+              pctChange={metricsHidden ? undefined : data.rejected?.pct_change}
               priorLabel={priorLabel}
               subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.rejected_sales}
@@ -319,8 +348,9 @@ export function SalesDashboard() {
             />
             <KpiCard
               label="On Hold"
-              value={data.on_hold.value}
-              pctChange={data.on_hold.pct_change}
+              valuesHidden={metricsHidden}
+              value={data.on_hold?.value ?? 0}
+              pctChange={metricsHidden ? undefined : data.on_hold?.pct_change}
               priorLabel={priorLabel}
               subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.on_hold_sales_period}

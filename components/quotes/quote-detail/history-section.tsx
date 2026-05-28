@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { isOrderReferenceCode, isQuoteReferenceCode } from "@/lib/utils/reference-codes";
 import {
   User,
   Mail,
@@ -90,12 +91,35 @@ function activityMeta(type: string, payload?: Record<string, unknown> | null) {
   if (type === "ticket_sent" && payload?.resend) {
     return ACTIVITY_META["ticket_resent"] ?? ACTIVITY_META["ticket_sent"];
   }
+  if (type === "order_ticket_created") {
+    const ref = payload?.reference_code != null ? String(payload.reference_code).trim() : "";
+    const kind = payload?.ticket_kind != null ? String(payload.ticket_kind) : "";
+    if (ref && isQuoteReferenceCode(ref)) {
+      return { icon: FileText, label: "Quote created", color: "var(--color-accent)" };
+    }
+    if (ref && isOrderReferenceCode(ref)) {
+      return { icon: FileText, label: "Order created", color: "var(--color-accent)" };
+    }
+    if (kind === "quote") {
+      return { icon: FileText, label: "Quote created", color: "var(--color-accent)" };
+    }
+    if (kind === "order") {
+      return { icon: FileText, label: "Order created", color: "var(--color-accent)" };
+    }
+    return ACTIVITY_META.order_ticket_created;
+  }
   return ACTIVITY_META[type] ?? { icon: Clock, label: type.replace(/_/g, " "), color: "var(--color-text-muted)" };
 }
 
 function activityDetail(a: ActivityRow): string | null {
   const p = a.payload;
   if (!p) return null;
+  if (a.type === "ticket_cancelled") {
+    const label = p.reason_label ? String(p.reason_label) : p.reason ? String(p.reason).replace(/_/g, " ") : null;
+    const from = p.from ? String(p.from).replace(/_/g, " ") : null;
+    const parts = [label, from ? `from ${from}` : null, p.notes ? String(p.notes) : null].filter(Boolean);
+    return parts.length ? parts.join(" · ") : null;
+  }
   if (a.type === "lead_status_changed" || a.type === "order_ticket_status_changed") {
     const from = p.from ? String(p.from).replace(/_/g, " ") : null;
     const to = p.to ? String(p.to).replace(/_/g, " ") : null;
@@ -170,7 +194,10 @@ function activityDetail(a: ActivityRow): string | null {
   if (a.type === "lead_rejected" || a.type === "lead_routed_to_sales") {
     if (p.reason) return String(p.reason);
   }
-  if (a.type === "order_ticket_created" && p.title) return String(p.title);
+  if (a.type === "order_ticket_created") {
+    if (p.reference_code) return String(p.reference_code);
+    if (p.title) return String(p.title);
+  }
   return null;
 }
 

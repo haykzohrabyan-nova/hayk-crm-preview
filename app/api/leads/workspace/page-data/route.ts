@@ -6,21 +6,34 @@ import {
   fetchLeadsWorkspaceTabCounts,
   parseLeadsWorkspaceQuery,
 } from "@/lib/utils/leads-workspace-query";
+import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 
-/** GET /api/leads/workspace/page-data — workspace list + all tab counts in one auth pass. */
+/** GET /api/leads/workspace/page-data — paginated workspace list + all tab counts in one auth pass. */
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
-  const query = parseLeadsWorkspaceQuery(request.nextUrl.searchParams);
+  const searchParams = request.nextUrl.searchParams;
+  const query = parseLeadsWorkspaceQuery(searchParams);
+  const pagination = parseListPaginationParams(searchParams);
   const admin = createAdminClient();
 
   try {
-    const [leads, counts] = await Promise.all([
-      fetchLeadsWorkspace(admin, query, userId!, roleName),
-      fetchLeadsWorkspaceTabCounts(admin, userId!, roleName),
+    const filterUserId = roleName === "admin" ? query.filterUserId ?? null : null;
+    const [result, counts] = await Promise.all([
+      fetchLeadsWorkspace(admin, { ...query, pagination }, userId!, roleName),
+      fetchLeadsWorkspaceTabCounts(admin, userId!, roleName, filterUserId),
     ]);
-    return NextResponse.json({ leads, counts });
+    return NextResponse.json({
+      leads: result.rows,
+      counts,
+      routedSubCounts: result.routedSubCounts,
+      pagination: toPaginatedMeta({
+        ...pagination,
+        total: result.total,
+        rowCount: result.rows.length,
+      }),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load leads data.";
     return NextResponse.json({ error: message, code: "DB_ERROR" }, { status: 500 });

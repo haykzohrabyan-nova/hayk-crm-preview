@@ -8,6 +8,7 @@ import {
   type LifecycleTimelineNode,
   type TimelineActivity,
 } from "@/lib/utils/ticket-lifecycle-timeline";
+import { DetailCollapsibleSection } from "@/components/quotes/quote-detail/detail-layout-primitives";
 
 const LINE_COLOR = "color-mix(in srgb, var(--color-accent) 55%, var(--color-border))";
 
@@ -198,6 +199,9 @@ export function TicketLifecycleTimeline({
   onCompletedAt,
   leadCreatedAt,
   leadSource,
+  customerCreatedAt,
+  quoteSource,
+  ticketKind,
 }: {
   ticketId: string;
   createdAt: string;
@@ -210,6 +214,9 @@ export function TicketLifecycleTimeline({
   onCompletedAt?: (iso: string | null) => void;
   leadCreatedAt?: string | null;
   leadSource?: string | null;
+  customerCreatedAt?: string | null;
+  quoteSource?: string | null;
+  ticketKind?: string | null;
 }) {
   const [activities, setActivities] = useState<TimelineActivity[]>([]);
   const [loading, setLoading] = useState(true);
@@ -252,8 +259,25 @@ export function TicketLifecycleTimeline({
         completedAtFallback,
         leadCreatedAt,
         leadSource,
+        customerCreatedAt,
+        quoteSource,
+        ticketKind,
       }),
-    [activities, createdAt, dueDate, createdByName, isQuote, referenceCode, ticketStatus, completedAtFallback, leadCreatedAt, leadSource],
+    [
+      activities,
+      createdAt,
+      dueDate,
+      createdByName,
+      isQuote,
+      referenceCode,
+      ticketStatus,
+      completedAtFallback,
+      leadCreatedAt,
+      leadSource,
+      customerCreatedAt,
+      quoteSource,
+      ticketKind,
+    ],
   );
 
   if (loading) {
@@ -279,22 +303,17 @@ export function TicketLifecycleTimeline({
         boxShadow: "0 1px 3px color-mix(in srgb, var(--color-text-primary) 6%, transparent)",
       }}
     >
-      <p
-        className="text-[11px] md:text-[12px] font-medium uppercase tracking-[0.08em] mb-4"
-        style={{ color: "var(--color-text-muted)" }}
-      >
-        Timeline
-      </p>
+      <DetailCollapsibleSection title="Timeline" titleClassName="text-[11px] md:text-[12px] font-medium uppercase tracking-[0.08em]">
+        <div className="md:hidden">
+          {nodes.map((node) => (
+            <MobileTimelineNode key={node.id} node={node} />
+          ))}
+        </div>
 
-      <div className="md:hidden">
-        {nodes.map((node) => (
-          <MobileTimelineNode key={node.id} node={node} />
-        ))}
-      </div>
-
-      <div className="hidden md:block overflow-x-auto overflow-y-visible pt-0.5 pb-1">
-        <DesktopTimeline nodes={nodes} />
-      </div>
+        <div className="hidden md:block overflow-x-auto overflow-y-visible pt-0.5 pb-1">
+          <DesktopTimeline nodes={nodes} />
+        </div>
+      </DetailCollapsibleSection>
     </div>
   );
 }

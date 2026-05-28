@@ -277,7 +277,7 @@ export interface JobTicket {
   contact_phone: string | null
   // Info tab
   title: string | null
-  reference_code: string | null     // ORD-YYYY-NNN, auto-generated for orders
+  reference_code: string | null     // QUO-YYYY-NNNN (quote) or ORD-YYYY-NNN (order); authoritative for stage in UI (see ticketIsQuoteStage)
   priority: string | null           // from `ticket_priority` lookup
   due_date: string | null           // ISO date
   order_source: string | null       // from `order_source` lookup
@@ -679,6 +679,9 @@ export interface TicketForm {
 | `buildInitialFollowUpSchedule()` | `lib/utils/follow-up-schedule.ts` | Seed `follow_up_at` when a quote is sent |
 | `processDueQuoteFollowUps()` | `lib/utils/process-due-follow-ups.ts` | Process due quote follow-ups (manual `GET /api/cron/follow-ups` or Vercel Cron on Pro) |
 | `formatLeadProductInterests()` | `lib/utils/format-lead-product-interests.ts` | List display: `Booklets[1111], Labels[500]` |
+| `validateLeadProductInterests()` | `lib/utils/validate-lead-product-interests.ts` | Product + quantity rules for Add Lead / Verify drawer (client + server) |
+| `rowErrorsFromValidation()` / `EMPTY_PRODUCT_ROW_ERRORS` | `lib/utils/validate-lead-product-interests.ts` | Map validation result to per-row field errors for UI |
+| `applyExcludeSalesStatusWon()` / `applySdrAllTabOwnerFilter()` | `lib/utils/leads-workspace-query.ts` | All Leads list/count filters (NULL-safe Won exclusion; SDR owner scope) |
 
 ### Field validation UX (May 2026)
 
@@ -698,15 +701,21 @@ Markup pattern: wrap each validatable field in `<div data-field-anchor="source">
 | Helper | Module | Purpose |
 |--------|--------|---------|
 | `useCoalescedRefresh()` | `hooks/use-coalesced-refresh.ts` | Debounce mount + `bazaar:*-changed` refetch; `enabled` pause for editable modals; **silent resume** when re-enabled; read-only drawers on leads page use `enabled: !drawerLead \|\| drawerReadOnly` |
+| `ListPagination` | `components/ui/list-pagination.tsx` | Showing X–Y of Z, prev/next, rows-per-page selector |
+| `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible detail sections (Timeline, Pricing, Payment settings); default collapsed |
+| `parseListPaginationParams()` / `toPaginatedMeta()` / `readStoredListPageSize()` | `lib/utils/pagination.ts` | Shared pagination parse, meta, localStorage page size (key `bazaar-list-page-size`) |
+| `parseOrdersListFilters()` / `parseQuotesListFilters()` / etc. | `lib/utils/ticket-list-filters.ts` | Server-side tab, search, date, admin user filters for ticket lists |
+| `sortOrdersList()` | `lib/utils/orders-list-sort.ts` | Orders column sort rules |
 | `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | SDR/Sales/Admin dashboards + Quotes/Orders/Completed lists; `lib/utils/dashboard-date-range-filter.ts` resolves presets + `isoTimestampInDashboardRange()` |
 | `getCachedSession()` / `setCachedSession()` | `lib/auth/session-cache.ts` | In-process ~3 s memoization inside `requireSession()` |
 | `fetchProductionOrders()` / `fetchProductionTabCounts()` | `lib/utils/fetch-production-data.ts` | Production list + counts (page-data route) |
-| `fetchOrdersList()` / `fetchOrdersTabCounts()` | `lib/utils/fetch-orders-data.ts` | Orders list + tab counts |
-| `fetchQuotesList()` / `fetchQuotesTabCounts()` | `lib/utils/fetch-quotes-data.ts` | Quotes list + quote-stage counts |
+| `fetchOrdersList()` / `fetchOrdersTabCounts()` | `lib/utils/fetch-orders-data.ts` | Orders list + tab counts + pagination |
+| `fetchQuotesList()` / `fetchQuotesTabCounts()` | `lib/utils/fetch-quotes-data.ts` | Quotes list + quote-stage counts + pagination |
 | `fetchPendingPaymentOrders()` | `lib/utils/fetch-payments-data.ts` | Payments pending evidence list |
-| `fetchCompletedOrders()` / `fetchCompletedTabCounts()` | `lib/utils/fetch-completed-data.ts` | Completed list + counts — SDR scoped by `created_by_id` via `scopeCompletedTicketsQuery()` |
+| `fetchCompletedOrders()` / `fetchCompletedTabCounts()` | `lib/utils/fetch-completed-data.ts` | Completed list + counts + pagination — SDR scoped by `created_by_id` via `scopeCompletedTicketsQuery()` |
+| `fetchCrmCustomers()` / `parseCrmListFilters()` | `lib/utils/fetch-crm-data.ts` | CRM aggregation, filters, pagination slice |
 | `scopeCompletedTicketsQuery()` / `scopedCompletedTicketCount()` | `lib/utils/db-counts.ts` | Completed-only scope — SDR `created_by_id` only; Admin/Accountant unscoped |
-| `fetchLeadsWorkspace()` / `fetchLeadsWorkspaceTabCounts()` / `fetchLeadsSalesTabCounts()` | `lib/utils/leads-workspace-query.ts` | Leads/sales workspace list + tab counts |
+| `fetchLeadsWorkspace()` / `fetchLeadsWorkspaceTabCounts()` / `fetchLeadsSalesTabCounts()` | `lib/utils/leads-workspace-query.ts` | Leads/sales workspace list + tab counts + pagination slice |
 | `fetchSidebarCounts()` | `lib/utils/sidebar-counts-query.ts` | Role-scoped sidebar badges (`?routes=`) |
 | `copyTextToClipboard()` / `publicQuoteUrl()` | `lib/utils/copy-to-clipboard.ts` | **Copy Link** button + public portal URL on quote/order detail |
 

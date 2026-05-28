@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
 import { canReadLead } from "@/lib/utils/lead-access";
+import { validateLeadInterestsPayload } from "@/lib/utils/validate-lead-product-interests";
 
 const IMMUTABLE = ["id", "created_at"];
 
@@ -119,6 +120,21 @@ export async function PATCH(
       { error: "Lead is locked by another user.", code: "LEAD_LOCKED" },
       { status: 409 }
     );
+  }
+
+  if (
+    body.interests !== undefined ||
+    body.quantities !== undefined ||
+    body.has_design !== undefined
+  ) {
+    const interestsErr = validateLeadInterestsPayload(
+      body.interests as Record<string, unknown> | undefined,
+      body.quantities as Record<string, unknown> | undefined,
+      body.has_design as Record<string, unknown> | undefined,
+    );
+    if (interestsErr) {
+      return NextResponse.json({ error: interestsErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
   }
 
   const prevStatus = current.status;

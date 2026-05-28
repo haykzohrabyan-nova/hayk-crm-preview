@@ -17,6 +17,33 @@ export function isTicketReferenceCode(value: string): boolean {
   return isQuoteReferenceCode(value) || isOrderReferenceCode(value);
 }
 
+/** Align ticket_kind with QUO-* / ORD-* when reference is set; otherwise keep fallback. */
+export function ticketKindForReference(
+  referenceCode: string | null | undefined,
+  fallbackKind: string | null | undefined,
+): "quote" | "order" | null {
+  const ref = referenceCode?.trim().toUpperCase() ?? "";
+  if (ref.startsWith("QUO-")) return "quote";
+  if (ref.startsWith("ORD-")) return "order";
+  if (fallbackKind === "quote" || fallbackKind === "order") return fallbackKind;
+  return null;
+}
+
+/** True while the ticket is still a quote (QUO-*), not a converted order (ORD-*). Reference wins over ticket_kind. */
+export function ticketIsQuoteStage(ticket: {
+  reference_code?: string | null;
+  ticket_kind?: string | null;
+}): boolean {
+  const ref = ticket.reference_code?.trim();
+  if (ref) {
+    if (isQuoteReferenceCode(ref)) return true;
+    if (isOrderReferenceCode(ref)) return false;
+  }
+  if (ticket.ticket_kind === "quote") return true;
+  if (ticket.ticket_kind === "order") return false;
+  return true;
+}
+
 export function normalizeTicketReference(value: string): string {
   return value.toUpperCase();
 }

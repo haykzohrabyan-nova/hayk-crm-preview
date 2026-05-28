@@ -1,6 +1,8 @@
 # Feature Spec — Lead Locking (Soft Lock / Permanent Ownership)
 
-When an SDR clicks Verify, the lead is **permanently assigned** to them. It stays off other SDRs' queues until the SDR routes it to Sales, rejects it, or an admin force-releases it. Closing the drawer no longer releases the lead.
+When an SDR clicks **Claim** on an unclaimed lead, the lead is **permanently assigned** to them via `locked_by_id`. It stays off other SDRs' queues until the SDR routes it to Sales, rejects it, puts it on hold (SDR retains lock through hold/resume), or an admin force-releases/reassigns it. Closing the drawer does **not** release the lock.
+
+**Manual Add Lead** does **not** acquire a lock — `POST /api/leads/manual` sets `sdr_id` (who entered it) but leaves `locked_by_id` null so the lead appears in the **open pool** until someone claims it.
 
 ---
 
@@ -8,9 +10,24 @@ When an SDR clicks Verify, the lead is **permanently assigned** to them. It stay
 
 With multiple SDRs working concurrently, locking serves two purposes:
 
-1. **Permanent ownership (primary):** When an SDR clicks Verify, `locked_by_id` is set to their user ID and stays set. The lead is hidden from all other SDRs' queues. The SDR is the sole responsible party for the lead — through Hold, Resume, Validate, and all the way to Route to Sales or Reject.
+1. **Permanent ownership (primary):** When an SDR clicks **Claim**, `locked_by_id` is set to their user ID and stays set (until route/reject/unassign). The lead is hidden from other SDRs' **All Leads** pool. The SDR is the sole responsible party — through Hold, Resume, and all the way to Route to Sales or Reject.
 
-2. **Race-condition protection (safety net):** If an SDR's page is stale (loaded before another SDR claimed a lead), they may still see it. When they click Verify, `POST /api/leads/[id]/lock` returns `409` and the drawer opens read-only with a banner — preventing a conflicting edit.
+2. **Race-condition protection (safety net):** If an SDR's page is stale (loaded before another SDR claimed a lead), they may still briefly see it. When they click **Claim**, `POST /api/leads/[id]/lock` returns `409` and the drawer opens read-only with a banner — preventing a conflicting edit.
+
+---
+
+## SDR queue visibility (All Leads tab)
+
+The **All Leads / My Leads** toggle on the All Leads tab controls `owner_scope`:
+
+| Toggle | Filter | Action button |
+|--------|--------|---------------|
+| **All Leads** | `locked_by_id IS NULL` only — shared open pool | **Claim** |
+| **My Leads** | `locked_by_id = currentUserId` — leads I have claimed | **View** |
+
+Leads locked by **another** SDR never appear in either toggle. Tab badge count for **All Leads** = unclaimed pool size (always; not affected by toggle).
+
+**Admin** sees all leads regardless of lock state.
 
 ---
 
@@ -31,23 +48,25 @@ All three fields are `null` when a lead is unowned/unlocked.
 ## Lock Lifecycle
 
 ```
-SDR loads All Leads tab
+SDR loads All Leads tab (owner_scope from toggle)
       │
       ▼
-GET /api/leads/workspace
+GET /api/leads/workspace/page-data
       │
-      └── Server filters: locked_by_id IS NULL OR locked_by_id = currentUserId
-          (Admin skips this filter — sees all leads + locked_by name in each row)
+      ├── owner_scope=all  → locked_by_id IS NULL (open pool)
+      ├── owner_scope=mine → locked_by_id = currentUserId
+      └── Admin            → no lock filter (all leads + locked_by join)
 
-SDR clicks Verify on a lead
+SDR clicks Claim on an unclaimed lead
       │
       ▼
-POST /api/leads/[id]/lock  (also sets sdr_id = userId)
+POST /api/leads/[id]/lock  (also sets sdr_id = userId when role is SDR)
       │
       ├── Lead unlocked? ──────────────────────────── Grant ownership
       │                                               (locked_by_id = user, locked_at = now(),
-      │                                                sdr_id = user)
+      │                                                sdr_id = user for SDR)
       │                                               → Drawer opens in EDIT mode
+      │                                               (useGlobalLoading overlay while fetching)
       │
       ├── Locked by same user? ────────────────────── Refresh locked_at
       │   (page refresh / reconnect)                  → Drawer opens in EDIT mode
@@ -55,7 +74,12 @@ POST /api/leads/[id]/lock  (also sets sdr_id = userId)
       └── Locked by different user? ──────────────── Return 409 with locker info
           (race condition — stale page)               → Drawer opens in READ-ONLY mode
                                                       → Banner: "Jane is working this lead"
-                                                      → On close/refresh: lead disappears from queue
+
+SDR or Admin saves via Manual Add Lead (POST /api/leads/manual)
+      │
+      └── status=Pending, sdr_id=creator, locked_by_id=null
+          → Lead visible in All Leads pool (All toggle) for all SDRs
+          → Admin sees row immediately; can Assign to an SDR
 
 Admin clicks Edit on a lead
       │
@@ -114,9 +138,9 @@ No lock banner is shown to the SDR while admin is editing — admin edits are si
 
 ## Client Implementation
 
-### Lock on Open
+### Lock on Claim
 
-`POST /api/leads/[id]/lock` is called immediately when the SDR clicks Verify (before the drawer opens):
+`POST /api/leads/[id]/lock` is called when the SDR clicks **Claim** on the All Leads toggle (before the drawer opens). **View** on My Leads skips lock — lead is already owned. Global loading overlay + row spinner run during lock + `GET /api/leads/[id]` fetch.
 
 ```typescript
 const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });

@@ -446,8 +446,8 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 | Entity | Migration(s) | Channel name | Browser event | Page consumers |
 |--------|-------------|-------------|---------------|----------------|
 | `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx`, `crm-page.tsx` (silent refresh) |
-| `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` | `bazaar:activities-changed` | `activity-log-section.tsx` |
-| `job_tickets` | `047_enable_job_tickets_realtime.sql` | `tickets-realtime` (sidebar only) | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx`, `orders-page.tsx`, `payments-page.tsx`, `production-page.tsx`, `completed-page.tsx`, `quote-detail.tsx` |
+| `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` (sidebar) | `bazaar:activities-changed` **and** `bazaar:tickets-changed` when `payload.new.ticket_id` or `lead_id` is set (May 2026 — claim/routed flows where `job_tickets` UPDATE is invisible to non-owners under RLS) | `activity-log-section.tsx`, quote/order list pages via tickets event |
+| `job_tickets` | `047_enable_job_tickets_realtime.sql` (consolidated in `schema.sql`) · **`086_job_tickets_routed_realtime_rls.sql`** | `tickets-realtime` (sidebar) + `quotes-page-routed-sync` on Quotes page | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx` (Routed tab), `orders-page.tsx`, … |
 | `customers` | `083_enable_customers_realtime.sql` | `customers-realtime` (sidebar only) | `bazaar:customers-changed` | `crm-page.tsx` |
 
 ---
@@ -456,7 +456,9 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 
 ## Direct-Channel Pattern (page-level subscription)
 
-> **Deprecated for tickets (2026-05-22):** `quotes-page.tsx` previously opened its own `quotes-page-tickets` channel. That duplicate subscription was removed — all ticket list pages now rely on sidebar → `bazaar:tickets-changed`. Keep this pattern only for new entities that are **not** already subscribed in the sidebar.
+> **Quotes Routed tab (2026-05-27):** `quotes-page.tsx` re-added a page channel (`quotes-page-routed-sync`) because `job_tickets` RLS previously blocked Realtime for SDR-owned routed rows. Migration **086** fixes RLS; the page channel + `activities` INSERT remain for claim events (post-claim UPDATE is invisible to non-owners).
+>
+> **Other ticket lists (2026-05-22):** Orders, Payments, Completed rely on sidebar → `bazaar:tickets-changed` only.
 
 For pages where cross-session updates are critical and the sidebar does not yet broadcast the table, a page component can open its **own** Supabase channel directly instead of relying on sidebar → window event dispatch.
 
@@ -479,7 +481,7 @@ useEffect(() => {
 }, [fetchQuotes, fetchCounts]);
 ```
 
-**When to use this pattern:** When the sidebar relay is insufficient — e.g. the page needs to react to changes made by *other users* in near-real-time and there is no intermediate event dispatcher available in the same session. **Do not** use for `job_tickets` — sidebar already handles it.
+**When to use this pattern:** When the sidebar relay is insufficient — e.g. cross-user updates where RLS hides `job_tickets` rows from subscribers (routed quote claim). See **Routed to Sales** on `/quotes`.
 
 ---
 
@@ -547,3 +549,17 @@ the handshake had already happened without auth.
 **Fix:** `components/layout/sidebar.tsx` — moved all `.channel().subscribe()` calls inside
 the `getSession().then()` callback. Removed the manual `setAuth` and `onAuthStateChange`
 calls since `createBrowserClient` handles JWT lifecycle automatically.
+
+### Bug 3 — `job_tickets` RLS hid routed quotes from other Sales (May 2026)
+
+**Symptom:** `/quotes` → **Routed to Sales** did not live-update when an SDR routed a new HVT quote or when another Sales rep claimed one — manual reload required.
+
+**Cause:**
+- List API uses the **service role** and returns all `ticket_status = 'routed'` rows to Sales.
+- Supabase Realtime evaluates **RLS per subscriber**. Policy `rep_read_own_tickets` (`created_by_id = auth.uid()`) blocked Sales from seeing SDR-owned routed rows → no `INSERT`/`UPDATE` events.
+- After **claim**, the row becomes `draft` with `created_by_id = claimant` — other Sales still cannot `SELECT` it → `UPDATE` events dropped. Claim must be signaled via **`activities` INSERT** (`order_ticket_status_changed`, `action: claimed`).
+- `admin_read_all_tickets` used `current_user_role()` (`SECURITY DEFINER`) → Realtime broken for admins on `job_tickets` (same class of bug as leads).
+
+**Fix:** `086_job_tickets_routed_realtime_rls.sql` — `sales_read_routed_tickets` (inline `EXISTS`), Realtime-safe `admin_read_all_tickets`, idempotent Realtime publication/grants for `job_tickets` + `activities`. `quotes-page.tsx` — `quotes-page-routed-sync` channel + `bazaar:activities-changed`. `new-quote-form.tsx` — dispatches `bazaar:tickets-changed` after SDR `routed`/`sent` save.
+
+**Deploy checklist:** Run migration 086; confirm Dashboard **Realtime ON** for `job_tickets` and `activities`.

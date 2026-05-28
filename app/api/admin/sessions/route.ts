@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import {
+  getDashboardValuesHidden,
+  redactSessionSummary,
+} from "@/lib/utils/dashboard-privacy";
 
 // GET /api/admin/sessions
 //
@@ -19,10 +23,11 @@ import { requireAdmin } from "@/lib/auth/require-admin";
 //       total_minutes, last_signed_in_at, currently_active }
 
 export async function GET(request: Request) {
-  const { errorResponse } = await requireAdmin();
+  const { userId, errorResponse } = await requireAdmin();
   if (errorResponse) return errorResponse;
 
   const admin = createAdminClient();
+  const valuesHidden = await getDashboardValuesHidden(admin, userId!);
 
   const { searchParams } = new URL(request.url);
   const filterUserId = searchParams.get("user_id") ?? null;
@@ -157,5 +162,10 @@ export async function GET(request: Request) {
     };
   });
 
-  return NextResponse.json({ sessions: shaped, total: count ?? 0, summary });
+  return NextResponse.json({
+    values_hidden: valuesHidden,
+    sessions: valuesHidden ? redactSessionSummary(shaped) : shaped,
+    total: valuesHidden ? 0 : (count ?? 0),
+    summary: valuesHidden ? redactSessionSummary(summary) : summary,
+  });
 }

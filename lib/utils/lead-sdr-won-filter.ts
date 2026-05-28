@@ -27,7 +27,7 @@ export async function leadIdsRoutedToSales(
 /** SDR Leads → Won tab: production Won AND routed to Sales first. */
 export async function countLeadsWonViaSalesRoute(
   admin: AdminClient,
-  opts: { userId: string | null; roleName: string | null },
+  opts: { userId: string | null; roleName: string | null; adminFilterUserId?: string | null },
 ): Promise<number> {
   let wonQuery = admin
     .from("leads")
@@ -35,7 +35,9 @@ export async function countLeadsWonViaSalesRoute(
     .eq("is_inbox", false)
     .eq("sales_status", "Won");
 
-  if (opts.roleName !== "admin" && opts.userId) {
+  if (opts.roleName === "admin" && opts.adminFilterUserId) {
+    wonQuery = wonQuery.eq("sdr_id", opts.adminFilterUserId);
+  } else if (opts.roleName !== "admin" && opts.userId) {
     wonQuery = wonQuery.eq("sdr_id", opts.userId);
   }
 

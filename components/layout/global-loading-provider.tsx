@@ -129,4 +129,5 @@ export const GLOBAL_LOADING_MESSAGES = {
   confirmingPayment: "Confirming payment…",
   releasingProduction: "Releasing to production…",
   completingOrder: "Completing order…",
+  openingLead: "Opening lead…",
 } as const;

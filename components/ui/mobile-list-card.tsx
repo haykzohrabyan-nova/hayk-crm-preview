@@ -101,6 +101,7 @@ export function TicketListToolbar({
   search,
   onSearchChange,
   searchPlaceholder,
+  endAdornment,
 }: {
   tabs: { id: string; label: string }[];
   activeTab: string;
@@ -109,6 +110,7 @@ export function TicketListToolbar({
   search: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
+  endAdornment?: React.ReactNode;
 }) {
   return (
     <div
@@ -152,7 +154,9 @@ export function TicketListToolbar({
         })}
       </div>
 
-      <div className="relative mb-2 w-full lg:w-52 shrink-0">
+      <div className="flex flex-col gap-2 mb-2 w-full lg:w-auto shrink-0 sm:flex-row sm:items-center">
+        {endAdornment}
+        <div className="relative w-full lg:w-52 shrink-0">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
         <input
           value={search}
@@ -165,6 +169,7 @@ export function TicketListToolbar({
             color: "var(--color-text-primary)",
           }}
         />
+        </div>
       </div>
     </div>
   );

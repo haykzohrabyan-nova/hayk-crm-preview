@@ -69,7 +69,7 @@ Scoped status filter + explicit column list (no `quote_skus` on lists).
 - Filter: `ticket_status IN ('order', 'cancelled')`
 - Excludes payment-evidence-pending rows server-side
 - Slim select (~15 fields + slim customer join) — **no `quote_skus`**
-- Role scope: matches `GET /api/tickets` (`created_by_id` / `routed_by_id` / admin)
+- Role scope: matches `GET /api/tickets` — SDR `created_by_id` only; Sales `created_by_id` or `routed`; admin unscoped
 
 ### 1B. SQL counts
 
@@ -147,18 +147,19 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 
 ## Phase 3 — ✅ Core complete (2026-05-26)
 
-- **Page-data routes:** `/api/production/page-data`, `/api/orders/page-data`, `/api/quotes/page-data`, `/api/payments/page-data`, `/api/completed/page-data`, `/api/leads/workspace/page-data`, `/api/leads/sales/page-data`
+- **Page-data routes:** `/api/production/page-data`, `/api/orders/page-data`, `/api/quotes/page-data`, `/api/payments/page-data`, `/api/completed/page-data`, `/api/crm/page-data`, `/api/leads/workspace/page-data`, `/api/leads/sales/page-data`
 - **Session cache:** `requireSession()` hits in-memory cache for ~3 s (same warm serverless instance)
 - **Coalesced refetch:** all ticket + lead list pages
-- **Optional remainder:** pagination, SWR/React Query, CRM server search — defer until lists exceed ~500 rows
+- **List pagination (May 2026):** Orders, Quotes, Completed, Production, CRM, Leads — default 25 rows, server-side filters, `ListPagination`
+- **Optional remainder:** SWR/React Query, Sales/Payments pagination, CRM aggregate caching at scale
 
 ---
 
 ## Phase 3 — Optional (defer unless lists exceed ~500 rows)
 
-- Pagination (`limit` + cursor) on orders/quotes/leads
 - SWR / React Query for deduped fetches and back-navigation cache
-- CRM server-side `?search=` + pagination on `GET /api/customers`
+- Sales pipeline + Payments tab pagination
+- CRM materialized aggregates when customer count > ~1000
 - Bundle ticket + company into a detail bootstrap endpoint for first paint
 
 ---
@@ -207,8 +208,9 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 - [x] **Phase 1A–E**
 - [x] **Phase 2A–D**
 - [x] **Phase 3 core** — page-data routes, session cache, coalesced refetch on all tabbed list pages
+- [x] **List pagination** — Orders, Quotes, Completed, Production, CRM, Leads (May 2026)
 - [x] **Build passes**
-- [ ] **Phase 3 optional** — pagination / SWR (only if needed at scale)
+- [ ] **Phase 3 optional** — SWR / Sales+Payments pagination (only if needed at scale)
 
 ---
 

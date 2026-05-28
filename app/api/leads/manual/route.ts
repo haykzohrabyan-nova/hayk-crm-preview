@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
 import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
+import { validateLeadInterestsPayload } from "@/lib/utils/validate-lead-product-interests";
 
 export async function POST(request: NextRequest) {
   const { userId, errorResponse } = await requireSession();
@@ -61,6 +62,11 @@ export async function POST(request: NextRequest) {
     if (websiteErr) {
       return NextResponse.json({ error: websiteErr, code: "VALIDATION_ERROR" }, { status: 400 });
     }
+  }
+
+  const interestsErr = validateLeadInterestsPayload(interests, quantities, has_design);
+  if (interestsErr) {
+    return NextResponse.json({ error: interestsErr, code: "VALIDATION_ERROR" }, { status: 400 });
   }
 
   const admin = createAdminClient();

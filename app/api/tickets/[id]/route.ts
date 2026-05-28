@@ -8,10 +8,13 @@ import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-p
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
 import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
 import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
+import { canAdminCancelTicket } from "@/lib/utils/can-admin-cancel-ticket";
+import { cancelReasonCategoryForStatus, isOtherCancelReason } from "@/lib/utils/cancel-reason-category";
 import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
 import {
   assignOrderReferenceCode,
   resolveTicketId,
+  ticketKindForReference,
 } from "@/lib/utils/reference-codes";
 import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
@@ -35,7 +38,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .from("job_tickets")
     .select(
       `*,
-       customer:customers(id, first_name, last_name, company, phone, email, industry, website),
+       customer:customers(id, first_name, last_name, company, phone, email, industry, website, created_at),
        lead:leads(
          id, created_at, status, sales_status, urgency, source,
          sdr_comment, hold_reason, rejection_reason, is_returning_customer, interests, quantities,
@@ -594,6 +597,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // Payment evidence (migration 068)
     "payment_evidence_url",
     "payment_evidence_submitted_at",
+    // Cancellation audit (migration 088) — label set server-side on cancel
+    "cancel_reason",
+    "cancel_notes",
   ];
 
   const now = new Date().toISOString();
@@ -607,6 +613,66 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (dueErr) {
       return NextResponse.json({ error: dueErr, code: "VALIDATION_ERROR" }, { status: 400 });
     }
+  }
+
+  if (
+    body.ticket_status === "cancelled" &&
+    existing.ticket_status !== "cancelled"
+  ) {
+    const isOrderStage = ["order", "in_production"].includes(existing.ticket_status);
+    if (isOrderStage) {
+      if (roleName !== "admin") {
+        return NextResponse.json(
+          { error: "Only administrators can cancel orders.", code: "FORBIDDEN" },
+          { status: 403 },
+        );
+      }
+      if (!canAdminCancelTicket(existing)) {
+        return NextResponse.json(
+          {
+            error: "Cannot cancel this order — payment has been received or is awaiting review.",
+            code: "VALIDATION_ERROR",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    const reasonCategory = cancelReasonCategoryForStatus(existing.ticket_status);
+    const cancelReason = typeof body.cancel_reason === "string" ? body.cancel_reason.trim() : "";
+    if (!cancelReason) {
+      return NextResponse.json(
+        { error: "Cancellation reason is required.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const { data: reasonRow, error: reasonErr } = await admin
+      .from("lookup_values")
+      .select("label")
+      .eq("category", reasonCategory)
+      .eq("value", cancelReason)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (reasonErr || !reasonRow) {
+      return NextResponse.json(
+        { error: "Invalid or inactive cancellation reason.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    patch.cancel_reason = cancelReason;
+    patch.cancel_reason_label = reasonRow.label;
+
+    const notesRaw = typeof body.cancel_notes === "string" ? body.cancel_notes.trim() : "";
+    if (isOtherCancelReason(cancelReason) && !notesRaw) {
+      return NextResponse.json(
+        { error: "Please specify a reason when selecting Other.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+    patch.cancel_notes = notesRaw || null;
   }
 
   // When manually converting a quote to an order (not via customer public link),
@@ -634,6 +700,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       }
     }
   }
+
+  const mergedRef =
+    typeof patch.reference_code === "string"
+      ? patch.reference_code
+      : (existing as { reference_code?: string | null }).reference_code ?? null;
+  const mergedKind =
+    typeof patch.ticket_kind === "string"
+      ? patch.ticket_kind
+      : (existing as { ticket_kind?: string | null }).ticket_kind ?? null;
+  const syncedKind = ticketKindForReference(mergedRef, mergedKind);
+  if (syncedKind) patch.ticket_kind = syncedKind;
 
   const { data: updated, error: updateErr } = await admin
     .from("job_tickets")
@@ -713,6 +790,21 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           payment_received: Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0) > 0.01
             || !!existing.deposit_paid_at
             || !!existing.payment_paid_at,
+        },
+        created_at: now,
+      });
+    } else if (body.ticket_status === "cancelled" && existing.ticket_status !== "cancelled") {
+      await admin.from("activities").insert({
+        type: "ticket_cancelled",
+        lead_id: existing.linked_lead_id ?? null,
+        customer_id: existing.customer_id ?? null,
+        ticket_id: ticketId,
+        by_user_id: userId,
+        payload: {
+          from: existing.ticket_status,
+          reason: patch.cancel_reason ?? body.cancel_reason ?? null,
+          reason_label: patch.cancel_reason_label ?? null,
+          notes: patch.cancel_notes ?? null,
         },
         created_at: now,
       });

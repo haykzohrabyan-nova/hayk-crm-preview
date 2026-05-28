@@ -8,13 +8,13 @@ Route: `/crm` (all roles)
 
 The CRM is the master customer registry. Every contact who has ever been a lead — or was added directly via **Add Customer** — is tracked here. The CRM shows customers, their status (New / Known), quotes & orders, and activity timeline.
 
-**List API:** `GET /api/customers` — slim customer fields plus lightweight `lead_count` / `ticket_count` aggregates (2026-05-22). Silent refresh via `useCoalescedRefresh` on `bazaar:customers-changed`, `bazaar:leads-changed`, and `bazaar:tickets-changed` (sidebar Supabase Realtime on `customers`, `leads`, `job_tickets`).
+**List API:** `GET /api/crm/page-data` — paginated CRM list with server-side search, status, and heat filters (May 2026). **`GET /api/customers`** remains for merge search and Add Customer flows (full filtered list, no pagination). Slim customer fields plus lightweight `lead_count` / `ticket_count` aggregates via `lib/utils/fetch-crm-data.ts`. Customers with **no leads or tickets yet** (e.g. **Add Customer** only) return safe zero aggregates — no 500. Silent refresh via `useCoalescedRefresh` on `bazaar:customers-changed`, `bazaar:leads-changed`, and `bazaar:tickets-changed` (sidebar Supabase Realtime on `customers`, `leads`, `job_tickets`; migration `083` for `customers`).
 
 ---
 
 ## Customer Status (list & profile)
 
-Computed on `GET /api/customers` from lead/ticket aggregates:
+Computed on list APIs (`GET /api/crm/page-data`, `GET /api/customers`) from lead/ticket aggregates:
 
 | Status | API value | Definition | Badge |
 |--------|-----------|------------|-------|
@@ -144,10 +144,10 @@ Table of all `job_tickets` linked to this customer.
 | Control | Behaviour |
 |---------|---------|
 | **Add Customer** | Header button — modal to create a customer record only (no lead/quote); opens profile after save |
-| Search | Client-side filter on name, email, phone, company |
-| Sort | By name, company, last activity, order count |
-| Status filter | **All** / **New Contact** / **Known Customer** — `customer_status` from API (`new` = no leads/tickets; `known` = has activity) |
-| Heat Tag filter | **Hot** / **Warm** / **Cold** — optional toggle; filters `customers.heat_tag` (see below). Not shown as a table column. |
+| Search | Server-side filter on name, email, phone, company (`autoComplete="off"`, `type="search"` — debounced 300 ms) |
+| Pagination | **Showing 1–25 of N**, Previous/Next, rows-per-page 25 / 50 / 100 (`ListPagination`; default 25) |
+| Status filter | **All** / **New Contact** / **Known Customer** — server `?status=` |
+| Heat Tag filter | **Hot** / **Warm** / **Cold** — optional toggle; server `?heat=`; click again to clear. Not shown as a table column. |
 
 ### Heat Tag (`heat_tag`)
 
@@ -209,6 +209,7 @@ Available to SDR and Sales via **+ Add Quote** button in the CRM customer list (
 2. The New Quote form detects CRM params, **skips the Customer tab**, shows a read-only customer card on the left sidebar, and shows **Quote source** (required) on the **Info** tab
 3. User fills in Info → Line Items → Quote as normal
 4. On save: existing customer linked via `customer_id`; `quote_source` stored on ticket with `from_quote_page: true`; no duplicate customer or auto-lead created
+5. Quote/order detail timeline (when opened later): **Customer in CRM** origin node if the customer existed before the ticket; creation shows **Quote created** with `QUO-*` (see `docs/feature-specs/tickets.md` — lifecycle timeline)
 
 > **No drawer used** — the New Quote page (`/quotes/new`) handles all entry points (lead, CRM, standalone).
 

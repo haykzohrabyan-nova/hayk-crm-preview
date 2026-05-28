@@ -43,15 +43,107 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 
 | Route | Response | Used by |
 |-------|----------|---------|
-| `GET /api/production/page-data` | `{ orders, counts }` | Production page |
-| `GET /api/orders/page-data` | `{ orders, counts }` | Orders page — tab badges from **date-filtered** list client-side |
-| `GET /api/quotes/page-data` | `{ tickets, counts }` | Quotes page — tab badges from **date-filtered** list client-side |
+| `GET /api/orders/page-data` | `{ orders, counts, pagination }` | Orders page — **server-side** tab, search, date, admin user filter + pagination (default `limit=25`) |
+| `GET /api/quotes/page-data` | `{ tickets, counts, pagination }` | Quotes page — server-side tab, search, date, admin user + pagination |
 | `GET /api/payments/page-data` | `{ orders, approvedOrders, counts: { pending, approved } }` | Payments page (Pending + Approved tabs) |
-| `GET /api/completed/page-data` | `{ orders, counts }` | Completed page — date filter on `updated_at`; SDR: `created_by_id` only |
-| `GET /api/leads/workspace/page-data?…` | `{ leads, counts }` | Leads page (same query params as workspace list) |
+| `GET /api/completed/page-data` | `{ orders, counts, pagination }` | Completed — server-side search, date on `updated_at`, admin user + pagination |
+| `GET /api/production/page-data` | `{ orders, counts, pagination }` | Production — server-side tab, search + pagination |
+| `GET /api/crm/page-data` | `{ customers, pagination }` | CRM page — server-side search, status, heat + pagination |
+| `GET /api/leads/workspace/page-data?…` | `{ leads, counts, pagination, routedSubCounts? }` | Leads page — server-side tab, search, owner scope, routed sub-filter, sort + pagination |
 | `GET /api/leads/sales/page-data?tab=…` | `{ leads, counts }` | Sales page |
 
 **Slim count-only routes** (realtime refresh without full list): `GET /api/orders/counts`, `GET /api/quotes/counts`, plus existing `*/counts` routes.
+
+**List pagination (May 2026):** Paginated page-data routes return `pagination: { limit, offset, total, hasMore }`. Default **25** rows; allowed **25 / 50 / 100** (`lib/utils/pagination.ts`). Page size persists in browser `localStorage` key `bazaar-list-page-size`. Tab badge `counts` reflect all tabs under the same filters but **exclude** `limit`/`offset`. Shared UI: `components/ui/list-pagination.tsx`.
+
+**Paginated list pages (May 2026):** Orders (template), Quotes, Completed, Production, CRM, Leads workspace. **Not yet paginated:** Sales pipeline, Payments.
+
+Shared helpers:
+
+| Module | Purpose |
+|--------|---------|
+| `lib/utils/pagination.ts` | Parse `limit`/`offset`, meta, localStorage page size |
+| `lib/utils/ticket-list-filters.ts` | Tab, search, date, admin user filters for ticket lists |
+| `lib/utils/fetch-orders-data.ts` | Orders list + counts + sort |
+| `lib/utils/fetch-quotes-data.ts` | Quotes list + counts |
+| `lib/utils/fetch-completed-data.ts` | Completed list + counts |
+| `lib/utils/fetch-production-data.ts` | Production list + counts |
+| `lib/utils/fetch-crm-data.ts` | CRM aggregation + filters + slice |
+| `lib/utils/leads-workspace-query.ts` | Leads workspace list + tab counts + pagination slice; `applyExcludeSalesStatusWon`, SDR `owner_scope` filters |
+| `lib/utils/validate-lead-product-interests.ts` | Product + quantity validation for manual create and PATCH lead |
+| `lib/utils/orders-list-sort.ts` | Orders column sort rules |
+
+**Common pagination params** (all paginated page-data routes):
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `limit` | `25` | `25` \| `50` \| `100` |
+| `offset` | `0` | Row offset for current page |
+
+**Orders query params** (`GET /api/orders/page-data`, `GET /api/orders/counts`):
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `tab` | `all` | `all` \| `pending` \| `in_production` \| `cancelled` — list only; counts return all tabs |
+| `search` | — | Matches reference, title, customer name/company |
+| `date_from` / `date_to` | — | ISO timestamps; filters `created_at` (inclusive) |
+| `user_id` | — | Admin only — filter by `created_by_id` |
+| `limit` | `25` | `25` \| `50` \| `100` |
+| `offset` | `0` | Row offset for current page |
+| `sort` | — | `created_by` \| `balance_due` \| `due_date` \| `status` \| `payment` — click same header again to reset default sort |
+
+**Quotes query params** (`GET /api/quotes/page-data`, `GET /api/quotes/counts`):
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `tab` | `all` | `all` \| `draft` \| `sent` \| `won` \| `routed` |
+| `search` | — | Reference, title, customer name/company |
+| `date_from` / `date_to` | — | ISO timestamps; filters `created_at` (inclusive) |
+| `user_id` | — | Admin only — filter by `created_by_id` |
+| `limit` / `offset` | `25` / `0` | Pagination |
+
+**Completed query params** (`GET /api/completed/page-data`, `GET /api/completed/counts`):
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `search` | — | Reference, title, customer |
+| `date_from` / `date_to` | — | ISO timestamps; filters `updated_at` (completion window) |
+| `user_id` | — | Admin only — filter by `created_by_id` |
+| `limit` / `offset` | `25` / `0` | Pagination |
+
+**Production query params** (`GET /api/production/page-data`, `GET /api/production/counts`):
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `tab` | `all` | Production tab filter |
+| `search` | — | Reference, title, customer |
+| `limit` / `offset` | `25` / `0` | Pagination |
+
+**CRM query params** (`GET /api/crm/page-data`):
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `search` | — | Name, email, phone, company |
+| `status` | `all` | `all` \| `new` \| `known` |
+| `heat` | `all` | `all` \| `hot` \| `warm` \| `cold` |
+| `limit` / `offset` | `25` / `0` | Pagination |
+
+**Leads workspace query params** (`GET /api/leads/workspace/page-data`):
+
+| Param | Default | Description |
+|-------|---------|-------------|
+| `status` / `statuses` | — | Tab filter (same as `GET /api/leads/workspace`) |
+| `routed` | — | `"true"` for Directed to Sales tab |
+| `won` | — | `"true"` for Won tab |
+| `scope` | — | `mine` for SDR-scoped tabs |
+| `search` | — | Name, email, phone, company, status fields |
+| `owner_scope` | — | SDR All tab: `all` (unclaimed pool only) \| `mine` (claimed by me) |
+| `routed_filter` | `all` | Routed tab pipeline stage sub-filter |
+| `sort` / `sort_dir` | `created` / `desc` | `created` \| `urgency`; `asc` \| `desc` |
+| `user_id` | — | Admin only — team member filter |
+| `limit` / `offset` | `25` / `0` | Pagination |
+
+Response also includes `routedSubCounts` when `routed=true` (badge counts per pipeline stage pill).
 
 **Sidebar:** `GET /api/sidebar-counts?routes=/quotes,/orders,…` — optional comma-separated nav routes; only computes badges for visible pages. SDR `/completed` badge uses `scopedCompletedTicketCount()` (`created_by_id` only).
 
@@ -72,8 +164,9 @@ Legacy list + count routes remain for compatibility. Shared query logic lives in
 ### `GET /api/leads/workspace`
 
 Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server-side**:
-- **SDR (no `status`/`statuses` param):** only leads where `locked_by_id IS NULL OR locked_by_id = currentUserId` — SDRs never see leads being worked by another SDR
-- **SDR (with `status` or `statuses` param):** scoped to their own leads (`sdr_id = currentUserId`), used for Hold / Rejected / Directed-to-Sales tabs. When `statuses` is provided and `sales_status = 'Won'` is present in the set, Won leads are automatically excluded (they have a dedicated Won tab).
+- **SDR — All Leads tab (`owner_scope=all`):** only unclaimed leads (`locked_by_id IS NULL`) — open pool
+- **SDR — All Leads tab (`owner_scope=mine`):** only leads claimed by current user (`locked_by_id = currentUserId`)
+- **SDR (with `status` or `statuses` param):** scoped to their own leads (`sdr_id = currentUserId`), used for Hold / Rejected / Directed-to-Sales tabs. When `statuses` is provided, Won leads are excluded via `applyExcludeSalesStatusWon()` (`sales_status IS NULL OR sales_status <> 'Won'`) — PostgREST `not.eq Won` alone would drop NULL rows.
 - **Admin:** all leads, no lock filter — also returns a `locked_by` profile join on each row
 - **Sales:** only leads where `status = 'Routed to Sales'` or `sales_owner_id = currentUserId`
 
@@ -97,6 +190,37 @@ Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server
 ```
 
 > **Performance (2026-05-22):** List responses use a **slim select** — table columns only. Includes `interests` and `quantities` for Product Interests column formatting. Drawers call `GET /api/leads/[id]` for the full record (comments, joins, etc.).
+
+---
+
+### `GET /api/leads/workspace/page-data`
+
+Paginated workspace list + all tab badge counts in one auth pass. Used by `components/leads/leads-page.tsx`.
+
+**Query params:** Same filters as `GET /api/leads/workspace` plus pagination and list controls:
+
+| Param | Type | Description |
+|-------|------|-------------|
+| *(tab filters)* | — | `status`, `statuses`, `routed`, `won`, `scope`, `search`, `prev_status` — see workspace route above |
+| `owner_scope` | `all` \| `mine` | SDR **All Leads** tab only — `all` = unclaimed pool; `mine` = locked by current user |
+| `routed_filter` | string | Routed tab pipeline stage (`all`, `awaiting`, `in_progress`, `quote_sent`, `on_hold`, `dropped`) |
+| `sort` | `created` \| `urgency` | Column sort (default `created`) |
+| `sort_dir` | `asc` \| `desc` | Sort direction (default `desc`) |
+| `user_id` | uuid | Admin only — filter by team member |
+| `limit` | `25` \| `50` \| `100` | Page size (default 25) |
+| `offset` | number | Row offset (default 0) |
+
+**Response `200`:**
+```json
+{
+  "leads": [ "…Lead[]…" ],
+  "counts": { "all": 0, "hold": 0, "routed": 0, "rejected": 0, "won": 0 },
+  "routedSubCounts": { "all": 0, "awaiting": 0, "in_progress": 0, "quote_sent": 0, "on_hold": 0, "dropped": 0 },
+  "pagination": { "limit": 25, "offset": 0, "total": 200, "hasMore": true }
+}
+```
+
+`routedSubCounts` is present when `routed=true`. Tab `counts.all` = unclaimed pool size for SDR (not affected by `owner_scope` toggle). Other tab counts exclude `limit`/`offset`.
 
 ---
 
@@ -124,7 +248,7 @@ Returns tab badge counts for the SDR leads workspace. Scoped per role same as th
 
 ### `POST /api/leads/manual`
 
-Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id = current_user`.
+Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id = current_user` for attribution. Does **not** set `locked_by_id` / `locked_at` — lead enters the **open pool** until someone claims it (SDR **Claim** or Admin **Assign**).
 
 **Body:**
 ```json
@@ -158,6 +282,7 @@ Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id 
 **Business rules:**
 - Phone normalized to digits-only before save
 - **`website`** (optional): validated with `validateWebsite()`; stored via `normalizeWebsite()` (auto-prefix `https://` when protocol omitted; user may type `example.com` without scheme). Returns `400` if invalid.
+- **Product interests:** validated via `validateLeadProductInterests()` — each row with a selected product requires **quantity > 0**; product required when quantity is set; returns `400` with field errors on mismatch
 - **Customer linking:** pass either `customer_id` (selected existing) OR `create_customer: true` (create new from form data) OR neither (no customer yet — can be linked later)
 - If `create_customer: true`: server creates a `customers` row from the lead's contact fields (including **`authority`**), sets `customer_id` on the new lead
 - If `customer_id` is provided and **`authority`** is set: updates `customers.authority` (not `leads.authority`)
@@ -256,6 +381,7 @@ Partial update of a lead. `created_at` is always stripped from the body (immutab
 
 **Business rules:**
 - Phone and `quote_destination` are normalized to digits-only on every write
+- **Product interests:** when `interests` / `quantities` / `has_design` are sent, validated via `validateLeadProductInterests()` (product required; quantity **> 0** when product selected)
 - **`authority`** in the body updates **`customers.authority`** (not `leads.authority`); response includes refreshed `customer` join
 - Logs `lead_status_changed` activity if `status` or `sales_status` changes
 - **Terminal state guard:** If current `status = 'Rejected'` or `sales_status = 'Rejected'`, only Admin can apply changes. Non-admin → returns `403` with `code: 'LEAD_REJECTED_TERMINAL'`
@@ -272,7 +398,7 @@ Partial update of a lead. `created_at` is always stripped from the body (immutab
 
 ### `POST /api/leads/[id]/lock`
 
-Acquires a lock on a lead when a user opens it in the Verify or Sales Drawer. Sets `locked_by_id = current_user` and `locked_at = now()`.
+Acquires a lock on a lead when an SDR clicks **Claim** (or Sales opens a pipeline lead). Sets `locked_by_id = current_user` and `locked_at = now()`. For SDR role, also sets `sdr_id = current_user`.
 
 **Business rules:**
 - If `locked_by_id` is already set to a **different** user → returns `409` with the locker's name (client renders read-only mode)
@@ -322,15 +448,39 @@ Releases the lock on a lead when the user closes the drawer.
 
 ## Customers
 
-### `GET /api/customers`
+### `GET /api/crm/page-data`
 
-Returns the CRM customer registry with lightweight per-customer aggregates. Used by `components/crm/crm-page.tsx`.
+Paginated CRM customer list. Used by `components/crm/crm-page.tsx`.
 
 **Query params:**
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `search` | `string` | Client-side filter on name, email, phone, company (applied after fetch) |
+| `search` | `string` | Filter name, email, phone, company |
+| `status` | `all` \| `new` \| `known` | Customer status filter |
+| `heat` | `all` \| `hot` \| `warm` \| `cold` | Heat tag filter |
+| `limit` | `25` \| `50` \| `100` | Page size (default 25) |
+| `offset` | `number` | Row offset (default 0) |
+
+**Response `200`:**
+```json
+{
+  "customers": [ "…same shape as GET /api/customers…" ],
+  "pagination": { "limit": 25, "offset": 0, "total": 200, "hasMore": true }
+}
+```
+
+---
+
+### `GET /api/customers`
+
+Returns the CRM customer registry with lightweight per-customer aggregates. Used by merge UI search (`?search=`) and **Add Customer** flows — **not** the main CRM list page (see `GET /api/crm/page-data`).
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `search` | `string` | Server-side filter on name, email, phone, company |
 
 **Response `200`:**
 ```json
@@ -350,7 +500,7 @@ Returns the CRM customer registry with lightweight per-customer aggregates. Used
       "lead_count": 0,
       "ticket_count": 0,
       "last_activity": "ISO",
-      "qualifies": true
+      "customer_status": "new"
     }
   ]
 }
@@ -537,9 +687,9 @@ Max 8 results. `SELECT DISTINCT company FROM customers WHERE company ILIKE '%q%'
 
 ### `GET /api/tickets`
 
-Returns job tickets. Visibility is role-scoped:
-- **SDR:** own tickets only (`created_by_id = userId`)
-- **Sales/Admin:** own tickets + ALL tickets with `ticket_status = 'routed'` (from any SDR). Routed tickets are enriched with `created_by_name` (SDR's full name from `user_profiles`).
+Returns job tickets. Visibility is role-scoped (service role in Route Handlers; browser Realtime uses RLS — see migration **086**):
+- **SDR:** own tickets only (`created_by_id = userId`) — same scope as `/orders` and `/completed`
+- **Sales:** own tickets + **all** `ticket_status = 'routed'` (any SDR). Routed rows include `created_by_name` (SDR `user_profiles.full_name`)
 - **Admin:** all tickets
 
 **Query params:**
@@ -638,6 +788,8 @@ Create a new ticket.
   - **Lead / CRM flows** (`linked_lead_id` or `source` without `from_quote_page`): may auto-create a linked lead with `source` when no lead exists yet
 - For `ticket_kind = 'quote'`: auto-generates `QUO-YYYY-NNNN` reference code via `increment_quote_sequence(year)`
 - For `ticket_kind = 'order'`: auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence(year)` PL/pgSQL function
+- After reference assignment, **`ticketKindForReference()`** forces `ticket_kind: quote` for `QUO-*` and `order` for `ORD-*` (reference is authoritative)
+- Logs `order_ticket_created` activity (legacy type name) with payload `{ ticket_kind, title, reference_code }` using the resolved kind
 - Sets `design_required = true` if any SKU has `design_required = true`; same for `die_cut`
 - If `linked_lead_id` is provided, updates the linked lead's `status` to `'Quoted'` or `'Validated'`
 - Sets `routed_by_id = userId` when `ticket_status = 'routed'`
@@ -663,10 +815,9 @@ Returns a single ticket with full detail (line items, payment config, linked lea
 **URL segment:** UUID or human reference code (`QUO-YYYY-NNNN`, `ORD-YYYY-NNN`).
 
 **Access scoping:**
-- **Admin** — any ticket
-- **Accountant** — any ticket (matches `scopeJobTicketsQuery` on list routes; fixes 403 on `/orders/[id]`)
-- **Sales / Admin** — may also read `routed` tickets they do not own (SDR hand-offs awaiting claim)
-- **SDR / Sales** — own tickets (`created_by_id = currentUser`) only, plus routed exception above
+- **Admin / Accountant** — any ticket
+- **Sales** — own tickets (`created_by_id`) + any `ticket_status = routed` (claim queue)
+- **SDR** — own tickets (`created_by_id`) on list routes; **detail GET** also allowed when `routed_by_id = currentUser` and status is not `completed` (read-only HVT hand-off tracking)
 
 **Response `200`:**
 ```json
@@ -739,8 +890,9 @@ Partial ticket update. Six distinct operation modes:
 - Ticket must currently have `ticket_status = 'routed'`
 - Caller must be `sales` or `admin`
 - Sets `ticket_status = 'draft'` and `created_by_id = callerUserId`
-- Logs `order_ticket_status_changed` activity with `payload: { from: "routed", to: "draft", action: "claimed" }`
-- Bypasses the normal ownership check (`created_by_id = userId`)
+- Logs `order_ticket_status_changed` activity with `payload: { from: "routed", to: "draft", action: "claimed" }` — triggers **live refresh** for other Sales on `/quotes` (Routed tab) via `activities` Realtime → `bazaar:tickets-changed`
+- Bypasses the normal ownership check (`created_by_id = userId`); uses admin client for the update
+- Successful claimant client also dispatches `bazaar:tickets-changed` and `bazaar:refresh-counts`
 
 **Mode 5 — Normal update:**
 
@@ -762,6 +914,8 @@ Body: Any subset of ticket fields plus optional:
   - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`; sets `ticket_kind = "order"`
   - Logs `ticket_converted` activity with `require_client_confirm`, `client_confirmed`, `converted_by_role`
   - **Does not** set `leads.sales_status = 'Won'` — Won is deferred until production release (`markLeadWonOnProduction()`)
+- On every PATCH, **`ticketKindForReference()`** reconciles `ticket_kind` with the merged `reference_code` (prevents `QUO-*` + `ticket_kind: order` drift)
+- Auto convert via `maybeConvertQuoteToOrder()` (payment / net terms / release paths): requires successful `ORD-*` assignment — convert is skipped if sequence fails
 - If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
 - If `ticket_status` transitions to `"in_production"` (manual release, payment confirm, net terms auto-release, etc.):
   - Sets `production_released_at`
@@ -835,7 +989,7 @@ Returns a short-lived signed URL for the customer-uploaded payment evidence file
 
 Returns lightweight tab badge counts. Scoped per role. Uses parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts` (no row fetch into Node.js).
 
-> **Quotes & Orders pages (May 2026):** Tab badges on `/quotes` and `/orders` are **not** driven by this endpoint for display — they are computed client-side from the date-filtered list via `lib/utils/list-page-tab-counts.ts`. This endpoint remains for sidebar counts and legacy callers.
+> **Quotes & Orders pages (May 2026):** Tab badges on `/quotes` and `/orders` come from **`GET /api/quotes/page-data`** / **`GET /api/orders/page-data`** `counts` (same search/date/admin filters as the list, excluding pagination). Dedicated counts routes remain for counts-only realtime refresh. Sidebar badges use all-time scoped totals.
 
 **Response `200`:**
 ```json
@@ -852,7 +1006,7 @@ Returns lightweight tab badge counts. Scoped per role. Uses parallel SQL `{ coun
 }
 ```
 
-- **SDR:** `routed` = count of their own routed tickets (subtracted from `all` on the Quotes page)
+- **SDR:** `routed` = count of own routed tickets (`created_by_id`; shown on SDR Routed tab). Quotes/Orders/Completed lists all use `created_by_id` only.
 - **Sales/Admin:** `routed` = count of ALL routed tickets from any SDR
 - `cancelled` = count of cancelled tickets (used by Orders page "Cancelled" tab badge)
 - Orders tab counts exclude tickets with pending payment evidence (`payment_evidence_url` set, `payment_evidence_reviewed_at` null)
@@ -910,9 +1064,10 @@ Accountant dashboard KPIs (sidebar `/payments` badge uses `sidebar-counts` with 
 
 **Auth:** Accountant or Admin only.
 
-**Response `200`:**
+**Response `200` (values visible):**
 ```json
 {
+  "values_hidden": false,
   "counts": {
     "pending_evidence": 2,
     "orders_in_production": 5,
@@ -921,11 +1076,61 @@ Accountant dashboard KPIs (sidebar `/payments` badge uses `sidebar-counts` with 
 }
 ```
 
+**Response `200` (values hidden):**
+```json
+{
+  "values_hidden": true,
+  "counts": null
+}
+```
+
+When `values_hidden` is `true`, count queries are skipped. Reads `user_profiles.dashboard_values_hidden` for the session user.
+
 `pending_evidence` = unreviewed evidence only (`payment_evidence_reviewed_at` null). Approved history is not included in this KPI.
 
 ---
 
 ## Orders
+
+### `GET /api/orders/page-data`
+
+Combined paginated list + tab counts for `/orders` (preferred over legacy list + client filter).
+
+**Query params:** See [List pagination](#performance--combined-page-data-may-2026) table (`tab`, `search`, `date_from`, `date_to`, `user_id`, `limit`, `offset`, `sort`).
+
+**Column sort (`sort=`):** Applied server-side across the full filtered set, then paginated.
+
+| `sort` value | Order |
+|--------------|--------|
+| `created_by` | Creator name A → Z |
+| `balance_due` | Highest balance due first |
+| `due_date` | Overdue first, then soonest due date, then later dates; no due date last |
+| `status` | In Production → Pending Payment (`order`) → Cancelled |
+| `payment` | Unpaid → Partial → Paid |
+| *(omit)* | Default: `production_released_at` desc, then `created_at` desc |
+
+**Response `200`:**
+```json
+{
+  "orders": [ "…same row shape as GET /api/orders/orders…" ],
+  "counts": {
+    "all": 42,
+    "pending": 10,
+    "in_production": 30,
+    "cancelled": 2
+  },
+  "pagination": {
+    "limit": 25,
+    "offset": 0,
+    "total": 10,
+    "hasMore": false
+  }
+}
+```
+
+`pagination.total` = rows matching **current tab** + search + date + user. `counts` = all tabs under the same search/date/user (no tab filter).
+
+---
 
 ### `GET /api/orders/orders`
 
@@ -933,7 +1138,7 @@ Scoped list for the `/orders` page — **`ticket_status IN ('order', 'in_product
 
 **Includes** evidence-pending `order` rows for the ticket owner (sales/SDR scoped via `scopeJobTicketsQuery()`). Accountants still confirm on `/payments`; owners see those orders on `/orders` with status **Awaiting payment confirmation**.
 
-**Role scope:** Same as `GET /api/tickets` via `scopeJobTicketsQuery()` — SDR own tickets, Sales own + routed-by, Admin all.
+**Role scope:** Same as `GET /api/tickets` via `scopeJobTicketsQuery()` — SDR **`created_by_id` only** (matches Completed), Sales own + routed queue, Admin all.
 
 Each row is enriched server-side with **`status_label`** and **`status_tone`** from `lib/utils/order-list-status.ts`:
 
@@ -996,7 +1201,7 @@ Returns all tickets with `ticket_status = 'in_production'`.
 
 ### `GET /api/production/counts`
 
-Legacy production tab badge counts. Orders page tab badges are computed **client-side** from the date-filtered list (`lib/utils/list-page-tab-counts.ts`); sidebar uses all-time scoped totals.
+Legacy production tab badge counts. **Orders** and **Production** list pages use page-data `counts` under current filters; sidebar uses all-time scoped totals.
 
 **Response `200`:**
 ```json
@@ -1260,9 +1465,50 @@ See `docs/realtime-live-updates.md` for the full architecture and pattern guide.
 
 ## Dashboard
 
+### `GET /api/user/dashboard-privacy`
+
+Read the current user's dashboard values privacy preference.
+
+**Auth:** Any authenticated user (SDR, Sales, Admin, Accountant).
+
+**Response `200`:**
+```json
+{
+  "dashboard_values_hidden": false
+}
+```
+
+---
+
+### `PATCH /api/user/dashboard-privacy`
+
+Update dashboard values privacy for the session user. Called after the user confirms the Hide / Show modal on a dashboard.
+
+**Auth:** Any authenticated user.
+
+**Body:**
+```json
+{
+  "dashboard_values_hidden": true
+}
+```
+
+**Response `200`:**
+```json
+{
+  "dashboard_values_hidden": true
+}
+```
+
+**Errors:** `400` if `dashboard_values_hidden` is not a boolean.
+
+---
+
 ### `GET /api/dashboard/kpis`
 
 Returns KPI metrics scoped to the current user's role and date range. **SDR**, **Sales**, and **Admin** each use a role-specific preset query param; **Accountant** does not call this route (uses `GET /api/payments/counts`).
+
+When `user_profiles.dashboard_values_hidden` is `true` for the session user, the handler returns early with **`values_hidden: true`** and **no numeric metric fields** (SDR/Sales/Admin skip metric DB work).
 
 **Shared preset semantics** (`resolveSdrDashboardDateRange`):
 
@@ -1278,13 +1524,17 @@ Returns KPI metrics scoped to the current user's role and date range. **SDR**, *
 
 | Role | Preset param | Default | Custom dates |
 |------|--------------|---------|--------------|
-| SDR | `sdr_preset` | `today` | `date_from`, `date_to` |
-| Sales | `sales_preset` | `today` | `date_from`, `date_to` |
-| Admin | `admin_preset` | `last_week` | `date_from`, `date_to` |
+| SDR | `sdr_preset` | `last_month` | `date_from`, `date_to` |
+| Sales | `sales_preset` | `last_month` | `date_from`, `date_to` |
+| Admin | `admin_preset` | `last_month` | `date_from`, `date_to` |
 
-**Response for SDR `200`** (trend metrics include `value`, `prior`, `pct_change` vs prior equivalent period):
+**Admin list filter (Leads / Quotes / Orders / Completed only):** optional `user_id=<uuid>` on page-data and counts routes. Ignored unless session role is `admin`. Filters by lead `sdr_id` (+ `locked_by_id` on All Leads tab) or ticket `created_by_id`.
+
+**Response for SDR `200` (values visible).** Trend metrics include `value`, `prior`, `pct_change` vs prior equivalent period. **Orders** card in UI uses `order_value_breakdown.total` + `order_created.value` in subtext (not separate Total / Order Created cards).
+
 ```json
 {
+  "values_hidden": false,
   "role": "sdr",
   "range": { "preset": "string", "label": "string", "prior_label": "string", "start_iso": "ISO", "end_iso": "ISO" },
   "lead_claimed": { "value": "number", "prior": "number", "pct_change": "number | null" },
@@ -1295,14 +1545,24 @@ Returns KPI metrics scoped to the current user's role and date range. **SDR**, *
   "inbox": { "value": "number" },
   "rejected": { "value": "number", "prior": "number", "pct_change": "number | null" },
   "on_hold": { "value": "number", "prior": "number", "pct_change": "number | null" },
-  "routed_to_sales": { "value": "number", "prior": "number", "pct_change": "number | null" },
-  "sales_win": { "value": "number", "prior": "number", "pct_change": "number | null" }
+  "routed_to_sales": { "value": "number", "prior": "number", "pct_change": "number | null" }
 }
 ```
 
-**Response for Sales `200`:**
+**Response for SDR `200` (values hidden):**
 ```json
 {
+  "values_hidden": true,
+  "role": "sdr",
+  "range": { "preset": "string", "label": "string", "prior_label": "string", "start_iso": "ISO", "end_iso": "ISO" }
+}
+```
+
+**Response for Sales `200` (values visible):** Same metric fields as computed server-side; the **Sales dashboard UI** does not render `lead_created` (only SDRs create workspace leads). Displayed cards: **Orders** (`order_value_breakdown` + `order_created` count in subtext), Received, Balance, Lead Claimed, Inbox, Rejected, On Hold.
+
+```json
+{
+  "values_hidden": false,
   "role": "sales",
   "range": { "preset": "string", "label": "string", "prior_label": "string", "start_iso": "ISO", "end_iso": "ISO" },
   "lead_claimed": { "value": "number", "prior": "number", "pct_change": "number | null" },
@@ -1316,9 +1576,12 @@ Returns KPI metrics scoped to the current user's role and date range. **SDR**, *
 }
 ```
 
-**Response for Admin `200`:**
+**Response for Sales `200` (values hidden):** `{ values_hidden: true, role: "sales", range: { … } }` — same shape as SDR hidden response.
+
+**Response for Admin `200` (values visible):**
 ```json
 {
+  "values_hidden": false,
   "role": "admin",
   "range": { "preset": "string", "label": "string", "start_iso": "ISO", "end_iso": "ISO" },
   "total_leads": "number",
@@ -1333,6 +1596,15 @@ Returns KPI metrics scoped to the current user's role and date range. **SDR**, *
   "cash_collected": "number",
   "pipeline_value": "number",
   "team_member_metrics": "Record<userId, TeamMemberMetrics>"
+}
+```
+
+**Response for Admin `200` (values hidden):**
+```json
+{
+  "values_hidden": true,
+  "role": "admin",
+  "range": { "preset": "string", "label": "string", "start_iso": "ISO", "end_iso": "ISO" }
 }
 ```
 
@@ -1371,9 +1643,10 @@ Returns KPI metrics scoped to the current user's role and date range. **SDR**, *
 
 Admin only. Active non-admin user roster for dashboard Team section.
 
-**Response `200`:**
+**Response `200` (values visible):**
 ```json
 {
+  "values_hidden": false,
   "members": [
     {
       "id": "uuid",
@@ -1387,7 +1660,38 @@ Admin only. Active non-admin user roster for dashboard Team section.
 }
 ```
 
+**Response `200` (values hidden):** Same member list (names/roles preserved); `values_hidden: true`; numeric fields such as `claimed_leads` redacted to `0` — UI shows masked placeholders, not zeros.
+
 Members sorted: **SDR → Sales → Accountant**, then alphabetical by name.
+
+---
+
+### `GET /api/admin/sessions`
+
+Admin only. Session activity for dashboard Team section (last 7 days by default).
+
+**Query params:** `from`, `to`, `user_id`, `limit`, `offset`
+
+**Response `200` (values visible):**
+```json
+{
+  "values_hidden": false,
+  "summary": [
+    {
+      "user_id": "uuid",
+      "total_sessions": "number",
+      "auto_signouts": "number",
+      "total_minutes": "number",
+      "last_signed_in_at": "ISO | null",
+      "currently_active": "boolean"
+    }
+  ],
+  "sessions": [],
+  "total": "number"
+}
+```
+
+**Response `200` (values hidden):** `values_hidden: true`; `summary` / `sessions` numeric fields redacted; `total: 0`.
 
 ---
 
@@ -1690,7 +1994,7 @@ Creates a new user with a temp password and optionally sends a branded welcome e
 
 **Business rules:**
 1. Calls `supabase.auth.admin.createUser({ email, password: temp_password, email_confirm: true })`
-2. Creates `user_profiles` with `role_id`, `must_change_password: true`, `is_active: true`
+2. Creates `user_profiles` with `role_id`, `must_change_password: true`, `is_active: true`, `dashboard_values_hidden: false`
 3. If `send_welcome_email: true` — fires a branded HTML welcome email via **Instantly AI** (fire-and-forget) containing the user's email, temp password, and a login CTA. Requires `INSTANTLY_API_KEY` and `INSTANTLY_SENDING_ACCOUNT` env vars. Silently skips if Instantly is not configured.
 
 **Response `201`:**

@@ -18,7 +18,7 @@ components/admin/dashboard-page.tsx        ← role router
   components/admin/accountant-dashboard.tsx  ← Accountant dashboard (payments KPIs)
 ```
 
-**Data:** **Admin:** `GET /api/dashboard/kpis?admin_preset=…` (default `last_week`). **SDR:** `?sdr_preset=…`. **Sales:** `?sales_preset=…`. **Accountant:** `GET /api/payments/counts` (not KPIs route). Custom ranges use `date_from` + `date_to` on all preset-based dashboards.
+**Data:** **Admin:** `GET /api/dashboard/kpis?admin_preset=…` (default `last_month`). **SDR:** `?sdr_preset=…` (default `last_month`). **Sales:** `?sales_preset=…` (default `last_month`). **Accountant:** `GET /api/payments/counts` (not KPIs route). Custom ranges use `date_from` + `date_to` on all preset-based dashboards.
 
 The API returns role-scoped data — SDR and Sales see only their own numbers; Admin sees company totals.
 
@@ -28,9 +28,42 @@ Each KPI card shows a **help line** below the value explaining how the number is
 
 ---
 
+## Dashboard privacy (Hide / Show values)
+
+Screen-sharing privacy for KPI numbers. Available on **SDR**, **Sales**, and **Accountant** dashboards (Admin dashboard API supports redaction; UI toggle pending).
+
+### Behaviour
+
+| Aspect | Detail |
+|--------|--------|
+| **Toggle** | **Hide values** / **Show values** button (EyeOff / Eye icon) in dashboard header |
+| **Confirm** | Modal before persisting — explains that numbers are not loaded while hidden |
+| **Persistence** | Per-user flag on `user_profiles.dashboard_values_hidden` (migration `087`); survives logout and devices |
+| **New users** | `POST /api/admin/users/create` sets `dashboard_values_hidden: false` (visible by default) |
+| **Values-only mode** | Card **labels**, date filter, and help text stay visible; only numeric KPI values are concealed |
+| **Security** | Server reads the DB flag on each request — client cannot spoof hidden mode. When hidden, metric routes **omit numeric fields** from JSON (early return where possible) |
+| **UI placeholder** | `DashboardHiddenValue` — EyeOff + bullet mask (`$ • • • • •` for currency, `• • •` for counts); `aria-label="Hidden"` for screen readers |
+
+### API routes affected when hidden
+
+| Route | Hidden response |
+|-------|-----------------|
+| `GET /api/dashboard/kpis` | `{ values_hidden: true, role, range }` only — no metric queries for SDR/Sales/Admin |
+| `GET /api/payments/counts` | `{ values_hidden: true, counts: null }` |
+| `GET /api/admin/team` | `{ values_hidden: true, members: [...] }` — numeric fields zeroed (`claimed_leads`, etc.) |
+| `GET /api/admin/sessions` | `{ values_hidden: true, summary: [...], sessions: [...], total: 0 }` — session counts/minutes redacted |
+
+**Preference API:** `GET` / `PATCH /api/user/dashboard-privacy` — read/update `dashboard_values_hidden` for the session user.
+
+**Shared UI:** `components/dashboard/dashboard-privacy.tsx` — `useDashboardPrivacy`, `DashboardValuesPrivacyToggle`, `DashboardHiddenValue`.
+
+**Utils:** `lib/utils/dashboard-privacy.ts` — `getDashboardValuesHidden`, `setDashboardValuesHidden`, redact helpers.
+
+---
+
 ## SDR Dashboard — `components/sales/sdr-dashboard.tsx`
 
-KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last 7 Days, Last 30 Days, Custom. Trend metrics show **% change vs the prior equivalent period** (e.g. today vs yesterday; last 7 days vs prior 7 days).
+KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last 7 Days, Last 30 Days, Custom. **Default:** Last 30 Days (`last_month`). Trend metrics show **% change vs the prior equivalent period** (e.g. today vs yesterday; last 7 days vs prior 7 days).
 
 **API:** `GET /api/dashboard/kpis?sdr_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to` (`YYYY-MM-DD`).
 
@@ -46,45 +79,51 @@ KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last 7 D
 
 | Card | Meaning | Period? | % trend |
 |------|---------|---------|---------|
+| **Orders** | Production-released **total** ($) on quotes **you created and closed** (with payment); subtext **from N orders converted** | ✓ | $ only |
+| **Received** / **Balance** | Payments and remaining balance on those self-closed paid orders | ✓ | — |
 | **Lead Claimed** | Distinct leads you locked/claimed | ✓ | ✓ |
 | **Lead Created** | Leads created with you as `sdr_id` | ✓ | ✓ |
-| **Order Value** | Released order totals on **routed** leads you sourced | ✓ | ✓ |
-| **Order Created** | Quote → order conversions on routed leads | ✓ | ✓ |
 | **Inbox** | Unclaimed workspace leads (live snapshot) | snapshot | — |
 | **Rejected** | Leads you rejected | ✓ | ✓ |
 | **On Hold** | Times you put a lead on hold | ✓ | ✓ |
 | **Routed to Sales** | Leads you routed to Sales | ✓ | ✓ |
-| **Sales Win** | Routed leads whose order entered production | ✓ | ✓ |
 
-Order Value / Order Created / Sales Win only credit leads with a **`lead_routed_to_sales`** activity (same rule as Leads **Won** tab).
+**Orders** credit requires: you created the quote (`created_by_id`), did **not** route it to Sales (`routed_by_id` null, lead not routed), converted to order, and recorded payment. Routed hand-offs where Sales closes the deal are excluded.
+
+> **List pages vs dashboard:** `/quotes`, `/orders`, and `/completed` show all tickets where `created_by_id = you` (including unpaid or in-progress). Dashboard **Orders / Received / Balance** apply the stricter self-closed + paid filter above — do not expect dollar totals to match the Orders page row count one-to-one.
 
 Activity-based counts — see `lib/utils/sdr-dashboard-metrics.ts`.
+
+**UI card order (9):** Orders (accent) → Received → Balance → Lead Claimed → Lead Created → Inbox → Rejected → On Hold → Routed to Sales.
 
 ---
 
 ## Sales Dashboard — `components/sales/sales-dashboard.tsx`
 
-KPIs scoped to the current sales rep with **date filters**: Today, Yesterday, Last 7 Days, Last 30 Days, Custom. Trend metrics show **% change vs the prior equivalent period**.
+KPIs scoped to the current sales rep with **date filters**: Today, Yesterday, Last 7 Days, Last 30 Days, Custom. **Default:** Last 30 Days (`last_month`). Trend metrics show **% change vs the prior equivalent period**.
 
 **API:** `GET /api/dashboard/kpis?sales_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to`. Same preset semantics as SDR dashboard (`last_week` = Last 7 Days rolling, `last_month` = Last 30 Days rolling).
 
 | Card | Meaning | Period? | % trend |
 |------|---------|---------|---------|
-| **Order Value** | Released order totals credited to you | ✓ | ✓ |
+| **Orders** | Production-released **total** ($) with subtext **from N orders converted** (merged former Total + Order Created); % trend on dollar value | ✓ | $ only |
+| **Received** / **Balance** | Payments and balance on your production-released orders | ✓ | — |
 | **Lead Claimed** | Routed leads you claimed | ✓ | ✓ |
-| **Lead Created** | Quotes you created | ✓ | ✓ |
-| **Order Created** | Quote → order conversions (your credit) | ✓ | ✓ |
 | **Inbox** | Unclaimed routed leads (live snapshot) | snapshot | — |
+
+> **Lead Created** is not shown on the Sales dashboard — only SDRs create workspace leads. Sales work routed hand-offs and their own quotes/orders.
 | **Rejected** | Pipeline rejections you logged | ✓ | ✓ |
 | **On Hold** | Times you put a deal on hold | ✓ | ✓ |
 
 Activity-based counts — see `lib/utils/sales-dashboard-metrics.ts`.
 
+**UI card order (7):** Orders (accent) → Received → Balance → Lead Claimed → Inbox → Rejected → On Hold.
+
 ---
 
 ## Admin Dashboard — `components/admin/admin-dashboard.tsx`
 
-KPIs are **company-wide**. **Date filter:** same presets as Orders/Quotes/Completed (`DashboardDateRangeFilter`); default **Last 7 Days** (`last_week`).
+KPIs are **company-wide**. **Date filter:** same presets as Orders/Quotes/Completed (`DashboardDateRangeFilter`); default **Last 30 Days** (`last_month`).
 
 **API:** `GET /api/dashboard/kpis?admin_preset=today|yesterday|last_week|last_month|custom` — custom adds `date_from` + `date_to`. Response includes `range.label` for period-scoped card subtexts.
 
@@ -132,12 +171,16 @@ Hidden when all work metrics are zero for that user.
 
 Payment queue KPIs from `GET /api/payments/counts` — `pending_evidence` counts **unreviewed** proof only (`payment_evidence_reviewed_at` null). Approved evidence history lives on `/payments` → Approved tab (`GET /api/payments/page-data`). See [`invoice-payment.md`](./invoice-payment.md).
 
+**Privacy:** Same **Hide / Show values** toggle as SDR/Sales. When hidden, KPI cards show masked placeholders; the “Review Now” banner (pending count) is suppressed.
+
 ---
 
 ## Shared utilities
 
 | File | Purpose |
 |------|---------|
+| `lib/utils/dashboard-privacy.ts` | Per-user hide flag read/write; server-side redact helpers |
+| `components/dashboard/dashboard-privacy.tsx` | Privacy toggle, confirm dialog, `useDashboardPrivacy`, `DashboardHiddenValue` |
 | `lib/utils/dashboard-metrics.ts` | `sumCashCollectedInPeriod`, `sumProductionReleasedValue` |
 | `lib/utils/team-dashboard-metrics.ts` | Per-user metrics for admin Team cards |
 | `lib/utils/kpi-help-text.ts` | KPI calculation hints |

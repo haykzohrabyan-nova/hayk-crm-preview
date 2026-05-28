@@ -10,7 +10,9 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Verify Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
-> **Page load (2026-05-26):** On mount, `leads-page.tsx` calls **`GET /api/leads/workspace/page-data?…`** — one auth pass returns the active tab's slim list **and** all tab badge counts. Realtime / `bazaar:refresh-counts` may refetch counts-only or full page-data. Lookups, product types, and SDR user list **lazy-load** when Add Lead or Reassign opens.
+> **Page load (2026-05-26):** On mount, `leads-page.tsx` calls **`GET /api/leads/workspace/page-data?…`** — one auth pass returns the active tab's paginated slim list, all tab badge counts, and (on Routed tab) `routedSubCounts`. Realtime / `bazaar:refresh-counts` may refetch counts-only or full page-data. Lookups, product types, and SDR user list **lazy-load** when Add Lead or Reassign opens.
+
+> **Pagination (May 2026):** Default **25** rows per page; selector 25 / 50 / 100. Search, SDR owner scope, routed sub-filters, and column sort are **server-side**. Reset to page 1 when any filter changes.
 
 ---
 
@@ -19,7 +21,8 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 **Data:** `GET /api/leads/workspace` — leads where `is_inbox = false` and `status` in `['Pending', 'Validated']`
 
 **Visibility filtering (server-side):**
-- **SDR:** only receives leads where `locked_by_id IS NULL OR locked_by_id = currentUserId`
+- **SDR — All Leads toggle:** only unclaimed leads (`locked_by_id IS NULL`); cannot see leads locked by another SDR
+- **SDR — My Leads toggle:** only leads claimed by the current user (`locked_by_id = currentUserId`)
 - **Admin:** receives all leads (no filter); also gets `locked_by` profile joined on each row
 
 ### Table Columns
@@ -35,21 +38,23 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 | Status | All | `StatusPill` — Pending / Validated |
 | Owner | All | SDR name / "You" / "Unclaimed" badge |
 | Created | All | Relative time (e.g. "2 hours ago") |
-| Action | All | **Verify** / **Claim** (SDR) / **Edit** + **Assign/Reassign** (Admin) |
+| Action | All | **Claim** / **View** (SDR — depends on All vs My toggle) / **Edit** + **Assign/Reassign** (Admin) |
 
 ### Behaviors
 
-- **Search:** client-side filter on name, email, phone, company
-- **Sort:** by `updated_at` (newest first)
+- **Search:** server-side filter (debounced) on name, email, phone, company — `?search=`
+- **Sort:** server-side — **Created** or **Urgency** column headers (`?sort=created|urgency&sort_dir=`)
+- **Pagination:** `ListPagination` at bottom of list — Showing 1–25 of N
 - **Skeleton loader** while data fetches — never full-page spinner
-- **Verify button** (SDR) → acquires lock → opens **Verify Drawer** in edit mode
+- **Claim** (SDR, All Leads toggle) → `POST /api/leads/[id]/lock` → global loading overlay + row spinner → opens **Verify Drawer** in edit mode
+- **View** (SDR, My Leads toggle) → opens drawer without re-locking (already owned)
 - **Edit button** (Admin) → opens **Verify Drawer** in **edit mode** with no lock acquired — Admin can view and save any field changes via "Save Changes" button; the active SDR's lock is undisturbed
 - **Assign / Reassign button** (Admin only) → "Assign" label when `locked_by_id IS NULL`; "Reassign" label when lead is already owned. Opens a modal with a dropdown of all active SDR users plus an "Unassign" option. Disabled until an SDR is selected. On confirm → updates `locked_by_id`, `locked_at`, and `sdr_id`; row updates in place and tab counts refresh
 - **Empty state:** "No leads found." with muted text
 
 ### Badge
 
-Tab count reflects the filtered list — only leads the current SDR can work (unlocked + own). Admin badge shows total.
+Tab count for **All Leads** = unclaimed pool size (`locked_by_id IS NULL`), always — not affected by the All/My toggle. Admin badge shows total pending/validated leads.
 
 ---
 
@@ -91,7 +96,7 @@ This tab is read-only for SDRs. Sub-filter pills slice the list by **pipeline st
 
 ### Sub-filter Pills
 
-Client-side filters applied to the fetched result set:
+Server-side filters via `?routed_filter=` on page-data; badge counts from `routedSubCounts` in the API response:
 
 | Pill | Filter logic |
 |------|-------------|
@@ -123,7 +128,7 @@ Pills always visible; count badge when that stage has leads. **Stage** badge and
 - **No action buttons in the drawer** — footer shows only "Close".
 - **Closing the drawer** does not reload the list (read-only path keeps `useCoalescedRefresh` enabled).
 - **Sub-filter pills** persist until the SDR navigates away; pills reset to "All" when switching tabs.
-- **Search** applies (client-side filter on name, email, phone, company).
+- **Search** applies server-side (`?search=` on page-data).
 
 ### Lead Status Meanings on This Tab
 
@@ -202,10 +207,10 @@ A lead appears here when:
 
 ## Lead Visibility — Lock-Based Filtering
 
-The All Leads tab only shows leads the SDR can actually work:
+The All Leads tab splits the SDR queue with the **All Leads / My Leads** toggle:
 
-- **Unlocked leads** (`locked_by_id IS NULL`) — available to any SDR
-- **Leads the SDR themselves have open** (`locked_by_id = currentUserId`) — their own in-progress work
+- **All Leads** — only **unlocked** leads (`locked_by_id IS NULL`) in the shared pool; any SDR can **Claim**
+- **My Leads** — leads the current SDR has **claimed** (`locked_by_id = currentUserId`)
 
 Leads currently locked by another SDR are **hidden from the queue entirely**. SDRs never see a lead that someone else is working — there is nothing to click on.
 
@@ -213,7 +218,7 @@ Leads currently locked by another SDR are **hidden from the queue entirely**. SD
 
 ### Race Condition Safety Net
 
-If SDR B's page is stale (loaded before SDR A clicked Verify), SDR B may still see the lead. When SDR B clicks Verify, `POST /api/leads/[id]/lock` returns `409` and the drawer opens in read-only mode with a banner: **"[Name] is currently working this lead"**. No action buttons are shown. SDR B can close the drawer — on next refresh the lead will no longer appear in their queue.
+If SDR B's page is stale (loaded before SDR A clicked **Claim**), SDR B may still see the lead. When SDR B clicks **Claim**, `POST /api/leads/[id]/lock` returns `409` and the drawer opens in read-only mode with a banner: **"[Name] is currently working this lead"**. No action buttons are shown. SDR B can close the drawer — on next refresh the lead will no longer appear in their queue.
 
 Closing the drawer does **not** release the lock. Ownership persists until the SDR routes the lead to Sales, rejects it, or an Admin reassigns/force-releases it.
 
@@ -223,13 +228,13 @@ See `docs/feature-specs/lead-locking.md` for full lock spec.
 
 ## Verify Drawer
 
-A right-side drawer (slide-in panel) that opens when the SDR clicks **Verify** on an inbox lead or **View** on a workspace lead.
+A right-side drawer (slide-in panel) that opens when the SDR clicks **Claim** (All Leads) or **View** (My Leads / other tabs) on a workspace lead.
 
 ### Drawer Tabs
 
 | Tab | Content |
 |-----|---------|
-| Lead Info | Contact fields, source, brand, product interests (rows: product + quantity + has design) |
+| Lead Info | Contact fields, source, brand, product interests (`ProductInterestRows`: product + quantity + has design) |
 | Quote | Quote total, channel, destination |
 | History | Vertical timeline from `GET /api/leads/[id]/activities` — lazy-loaded on first open ✅ |
 
@@ -263,16 +268,19 @@ A full-width textarea below the Contact Information grid:
 
 ### Lead Info Tab — Product Interests section
 
-Dynamic row-based interface. Each row has:
+Shared UI: `components/leads/product-interest-rows.tsx` (used by Add Lead modal and Verify Drawer).
 
-| Column | Input | Notes |
-|--------|-------|-------|
-| Product | Single-select dropdown | Options from active `product_types`; already-chosen products excluded from other rows |
-| Quantity | Number input | Digits only, no negatives |
-| Has Design | Yes / No toggle pill | Whether the customer already has artwork/design |
-| Remove | × button | Removes the row; hidden in read-only mode |
+Dynamic row-based interface. Each row stacks labels **above** inputs:
+
+| Field | Input | Required | Notes |
+|-------|-------|----------|-------|
+| Product | Single-select dropdown | Yes (when row is used) | Options from active `product_types`; already-chosen products excluded from other rows |
+| Quantity | Number input | Yes when product selected | Must be **> 0**; digits only, no negatives |
+| Has Design | Yes / No toggle pill | No | Whether the customer already has artwork/design |
+| Remove | Bordered button | — | Removes the row; hidden in read-only mode |
 
 - **"+ Add Product Interest"** button appends a new empty row (disabled when all products are already selected)
+- Validation via `lib/utils/validate-lead-product-interests.ts` — product and quantity errors highlight the correct field separately
 - In **read-only mode** (locked by another user), rows display without edit controls
 - On save, rows are transformed into three JSONB fields: `interests`, `quantities`, `has_design`
 
@@ -387,12 +395,12 @@ Two-column grid (matches POC screenshot):
 | **Urgency** | — |
 
 Below the grid (full width):
-- **Product Interests** — row-based UI (see Verify Drawer section above for row structure). Each row: product select + quantity input + Has Design toggle + remove button. "+ Add Product Interest" appends a new row.
+- **Product Interests** — shared `ProductInterestRows` component (stacked labels, quantity required when product selected — see Verify Drawer section)
 - **Returning Customer (Existing Client)** — checkbox with blue-tinted background row when checked
 - **Verify Lead Comment** — textarea: "Add verification notes before opening Order / Quote..."
 
 Footer:
-- **Save Lead** → `POST /api/leads/manual` → creates lead + customer (if new)
+- **Save Lead** → `POST /api/leads/manual` → creates lead + customer (if new); lead stays **unclaimed** (`locked_by_id` null) until Claim/Assign
 - **Cancel**
 
 Required fields (*): Phone, First Name, Source, Industry.
@@ -475,14 +483,15 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Feature | Notes |
 |---------|-------|
 | All Leads / On Hold / Directed to Sales / Rejected / Won tabs | Tab counts visible before clicking; scoped correctly per SDR |
-| Lock-based lead visibility (soft lock / permanent ownership) | SDRs only see unlocked leads + their own; locked-by-other leads hidden; closing drawer does NOT release lock |
+| Lock-based lead visibility (permanent ownership) | **All Leads** toggle = unclaimed pool only; **My Leads** = claimed by me; other SDRs' locks hidden; closing drawer does NOT release lock |
 | Admin Edit action (no lock) | Admin opens any lead in **edit mode** without acquiring a lock — "Save Changes" button in footer; active SDR's lock untouched |
 | Admin "Working" column | All Leads table shows which SDR owns each lead; mobile cards too |
 | Admin Assign / Reassign action | "Assign" on unclaimed leads; "Reassign" on owned leads. Modal with active SDR dropdown + Unassign; logs `lead_reassigned` |
-| Race condition safety net | If SDR clicks Verify on a stale lead, 409 → read-only drawer with locker banner |
-| Manual Add Lead modal | Phone lookup + dedup banner + customer auto-fill; per-field validation; scroll-to-invalid-field; shared component also on CRM profile (SDR Add Lead) |
-| Verify Drawer (soft lock, lock banner) | Lock acquired on Verify; ownership persists across close/save/validate/hold until Route or Reject |
-| Product Interests — select + quantity + has-design rows | Row-based UI in both Add Lead modal and Verify Drawer; each row has product select, quantity input, and Has Design toggle; present in both Add Lead modal and Verify Drawer |
+| Race condition safety net | If SDR clicks **Claim** on a stale lead, 409 → read-only drawer with locker banner |
+| Manual Add Lead modal | Phone lookup + dedup; per-field validation; lead stays **unclaimed** until Claim/Assign; shared component on CRM profile (SDR Add Lead) |
+| Verify Drawer (permanent lock, lock banner) | Lock acquired on **Claim**; ownership persists across close/save/hold until Route or Reject |
+| Product Interests — select + quantity + has-design rows | Shared `product-interest-rows.tsx`; quantity **> 0** when product selected; labels above inputs (Add Lead + Verify Drawer) |
+| Claim loading UX | Global loading overlay + row spinner while lock + full lead fetch run |
 | Hold action (with reason, notes, hold-until date) | Full-screen hold sub-form hides lead form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
 | Reject (terminal) | Reason + notes; read-only after; ownership released |
@@ -491,7 +500,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Save without status change | PATCH lead fields; logs `lead_edited` for tracked field changes |
 | Context-aware action buttons | On Hold → Resume shown; Routed leads → read-only drawer |
 | Counts refresh after every action | bazaar:refresh-counts event fired |
-| Activity logging | `lead_claimed` on Verify, `lead_edited` on field save, `lead_reassigned` on Admin reassign |
+| Activity logging | `lead_claimed` on Claim, `lead_edited` on field save, `lead_reassigned` on Admin reassign |
 
 ### ⏳ Not yet built — deferred
 

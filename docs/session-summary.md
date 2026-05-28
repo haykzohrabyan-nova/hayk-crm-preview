@@ -1,13 +1,95 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 27, 2026
-**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **payments evidence retention, SMS templates, admin dashboard date filter, orders due-today highlight (May 27)**.
+**Last updated:** May 28, 2026
+**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–28: SDR scope/dashboard alignment, dashboard privacy, leads workspace fixes (owner scope, manual add unclaimed, product interests), timeline/reference, routed Realtime (086), default Last 30 Days date filter**.
+
+---
+
+## May 28, 2026 — Leads workspace, locking, Product Interests
+
+### Fixes
+- **Empty All Leads table while tab count > 0** — PostgREST `not.eq Won` excluded `sales_status IS NULL`; fixed with `applyExcludeSalesStatusWon()` in `lib/utils/leads-workspace-query.ts`
+- Pagination clamp when `offset` exceeds `total`; `Array.isArray` guard on list response
+
+### Behaviour
+- **SDR All Leads / My Leads toggle** — `owner_scope=all` → unclaimed only; `owner_scope=mine` → claimed by me; other SDRs' locks hidden
+- **Manual Add Lead** — no auto-lock; open pool until **Claim** or Admin **Assign**
+- **Claim loading** — `useGlobalLoading` + row spinner (`GLOBAL_LOADING_MESSAGES.openingLead`)
+- **Product Interests** — `components/leads/product-interest-rows.tsx`; quantity **> 0** when product selected; labels above inputs; shared validation helper
+
+### Docs synced
+- `feature-specs/leads-sdr.md`, `feature-specs/lead-locking.md`, `component-architecture.md`, `api-contract.md`, `types.md`, `CHANGELOG.md`, `navigation.md`, `mvp-scope.md`, `architecture.md`, `rbac.md`, `schema.md`
+
+---
+
+## May 28, 2026 — Dashboard values privacy
+
+### Feature
+- Per-user **Hide / Show values** on SDR, Sales, and Accountant dashboards (`components/dashboard/dashboard-privacy.tsx`)
+- DB: `user_profiles.dashboard_values_hidden` (migration `087`); new users default `false` via admin create route
+- Server redaction: `GET /api/dashboard/kpis`, `GET /api/payments/counts`, `GET /api/admin/team`, `GET /api/admin/sessions` when hidden
+- Preference: `GET` / `PATCH /api/user/dashboard-privacy`
+- UI: masked placeholders (`DashboardHiddenValue` — EyeOff + `$ • • • • •` / `• • •`), not plain "Hidden" text
+- **Pending:** Admin dashboard UI toggle + Team section masked display (API redaction already in place)
+
+### Docs synced
+- `feature-specs/dashboard.md`, `api-contract.md`, `schema.md`, `component-architecture.md`, `architecture.md`, `feature-specs/admin.md`, `CHANGELOG.md`
+
+---
+
+## May 28, 2026 — SDR dashboard revenue + list scope alignment
+
+### SDR dashboard (`lib/utils/sdr-dashboard-metrics.ts`)
+- Removed **Sales Win** and routed-lead production dollar credit
+- **Orders / Received / Balance** — only quotes the SDR **created**, did **not** route to Sales, **converted**, and **collected payment on** (stricter than list pages)
+- Nine KPI cards: Orders (accent) → Received → Balance → lead activity metrics
+
+### SDR list scope (`lib/utils/db-counts.ts`, `fetch-quotes-data.ts`)
+- **Quotes, Orders, Completed** — SDR uses `created_by_id = session user` only (removed `routed_by_id` from list queries)
+- **Sales unchanged:** own tickets + company-wide `routed` claim queue on Quotes
+- Detail GET still uses `canAccessTicket()` — SDR `routed_by_id` read access until `completed`
+
+### Docs synced
+- `feature-specs/dashboard.md`, `feature-specs/tickets.md`, `navigation.md`, `architecture.md`, `component-architecture.md`, `schema.md`, `api-contract.md`, `rbac.md`, `session-summary.md`, `CHANGELOG.md`
+
+---
+
+## May 27, 2026 — Dashboard KPIs & default date range
+
+### SDR / Sales dashboards
+- **Orders** card — merges former **Total** ($) + **Order Created** (count in subtext: `from N orders converted`); accent card; % trend on dollar value
+- **Sales dashboard** — removed **Lead Created** (only SDRs create workspace leads)
+- **Default date filter** — **Last 30 Days** (`last_month`) on Admin / SDR / Sales dashboards and Quotes / Orders / Completed; `GET /api/dashboard/kpis` fallbacks updated
+
+### Docs synced (dashboard + date filter)
+- `feature-specs/dashboard.md`, `component-architecture.md`, `api-contract.md`, `navigation.md`, `TODO.md`, `session-summary.md`, `CHANGELOG.md`
+
+---
+
+## May 27, 2026 — Timeline labels, reference codes, CRM list fixes
+
+### Quote/order lifecycle timeline
+- `lib/utils/ticket-lifecycle-timeline.ts` — creation node label from **`order_ticket_created` activity payload** (`QUO-*`), not the ticket’s current `ORD-*` after convert (orders detail shows **Quote created** + original `QUO-…`)
+- `ticketIsQuoteStage()` / `resolveTicketQuoteStage()` — **`reference_code` prefix wins** over `ticket_kind` (fixes mismatched rows)
+- `lib/utils/reference-codes.ts` — `ticketKindForReference()`; used on `POST` / `PATCH` tickets
+- `maybeConvertQuoteToOrder()` — skips convert when `ORD-*` sequence assignment fails
+- `history-section.tsx` — **Quote created** / **Order created** uses same reference-first rules
+- CRM **Add Quote** (no lead) — **Customer in CRM** origin node when customer predates ticket
+
+### CRM & quotes list realtime
+- `GET /api/customers` — fix 500 when customer has no leads/tickets yet (Add Customer)
+- CRM search — Chrome autofill isolation (`autoComplete="off"`, modal field names)
+- **Routed to Sales** tab — migration `086_job_tickets_routed_realtime_rls.sql` (`sales_read_routed_tickets` + Realtime-safe admin ticket read); `quotes-page` Realtime channel; claim still signaled via `activities` INSERT when row UPDATE is RLS-hidden
+
+### Docs synced
+- Timeline/reference pass: `feature-specs/tickets.md`, `activity.md`, `crm.md`, `api-contract.md`, `schema.md`, `component-architecture.md`, `realtime-live-updates.md`, `architecture.md`, `session-summary.md`, `TODO.md`, `CHANGELOG.md`
+- Routed Realtime pass (086): same set + `order-ticket/lifecycle-flow.md`; `realtime-live-updates.md` Bug 3; `schema.md` job_tickets RLS
 
 ---
 
 ## May 27, 2026 — Admin dashboard filter, payments evidence, SMS, orders UX
 
 ### Admin dashboard date filter
-- `components/admin/admin-dashboard.tsx` — `DashboardDateRangeFilter` (same as Orders/Quotes/Completed); default **Last 7 Days** (`last_week`)
+- `components/admin/admin-dashboard.tsx` — `DashboardDateRangeFilter` (same as Orders/Quotes/Completed); default **Last 30 Days** (`last_month`)
 - `GET /api/dashboard/kpis` — Admin branch: `admin_preset`, `date_from`, `date_to`; response `range.label` for period-scoped KPI subtexts; replaces `period=week|month|quarter`
 
 ### Payments evidence (migration 085)
@@ -31,9 +113,9 @@
 
 ### Date filters (Quotes / Orders / Completed)
 - Shared `DashboardDateRangeFilter` — presets: Today, Yesterday, **Last 7 Days**, **Last 30 Days**, Custom (API keys `last_week` / `last_month` unchanged)
-- Default on first visit: **Last 7 Days** on Quotes, Orders, Completed
-- Quotes & Orders filter list by `created_at`; Completed filters by `updated_at` (completion date)
-- **Tab badges on Quotes/Orders** match the selected date range (`lib/utils/list-page-tab-counts.ts`)
+- Default on first visit: **Last 30 Days** on dashboards and Quotes, Orders, Completed
+- Quotes & Orders filter list by `created_at` **server-side** on page-data; Completed filters by `updated_at`
+- **Tab badges on Quotes/Orders/Completed** from page-data `counts` under the same filters (May 2026; updated May 28 with pagination — counts exclude `limit`/`offset`)
 - **Sidebar nav badges** stay all-time scoped totals (unchanged)
 
 ### CRM
@@ -56,7 +138,7 @@
 - **Nav:** Migration `081_grant_sdr_completed_page.sql` grants SDR `/completed` (plus aligns `/quotes`, `/orders`, `/settings` in seed).
 - **List scope:** `scopeCompletedTicketsQuery()` — SDR sees completed tickets where **`created_by_id` = session user only**. Routed-to-Sales hand-offs that Sales completed are **excluded** (even though `routed_by_id` may still point at the SDR).
 - **Detail access:** `canAccessTicket()` — SDR `routed_by_id` read access applies **until** `ticket_status = 'completed'`; completed detail requires creator ownership.
-- **API:** `GET /api/completed/page-data`, `/orders`, `/counts` + sidebar badge use the completed-specific scope (not `scopeJobTicketsQuery()`).
+- **API:** `GET /api/completed/page-data`, `GET /api/orders/page-data`, and sidebar badges — SDR uses `created_by_id` via `scopeJobTicketsQuery()` / `scopeCompletedTicketsQuery()` (May 28: Orders aligned with Completed; no longer `routed_by_id` on lists).
 - **Docs:** `rbac.md`, `navigation.md`, `api-contract.md`, `security.md`, `architecture.md`, `types.md`, `component-architecture.md`, `feature-specs/tickets.md`, `feature-specs/invoice-payment.md`, `feature-specs/leads-sdr.md`, `schema.md`, `CHANGELOG.md`.
 
 ---
@@ -93,6 +175,26 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 - `docs/component-architecture.md` — new shared components, anti-pattern rules updated
 - `README.md` — created at project root with local setup instructions
 - `.env.local.example` — Stripe env vars commented out and marked as future enhancement
+
+---
+
+## May 28, 2026 — Collapsible detail sections
+
+- Quote/order detail overview — **Timeline**, **Pricing**, and **Payment & order settings** collapsible via `DetailCollapsibleSection`; **default collapsed** (chevron header toggle)
+- Line Items, Quote delivery, Follow-up, and Production & evidence sections stay expanded
+- Component: `components/quotes/quote-detail/detail-layout-primitives.tsx`
+
+---
+
+## May 28, 2026 — List pagination (Orders template → CRM + Leads)
+
+- **Shared:** `lib/utils/pagination.ts`, `components/ui/list-pagination.tsx` — default **25** rows, selector 25 / 50 / 100, browser `localStorage` page size
+- **Paginated pages:** Orders (column sort), Quotes, Completed, Production, CRM, Leads workspace
+- **Server-side filters:** search, date range, admin team filter, CRM status/heat, Leads owner scope + routed sub-filters + sort
+- **APIs:** page-data routes return `pagination: { limit, offset, total, hasMore }`; tab `counts` exclude pagination
+- **New route:** `GET /api/crm/page-data`; `GET /api/customers` for merge/search callers only
+- **Still full-list:** Sales pipeline, Payments
+- Docs synced: `api-contract.md`, `architecture.md`, `component-architecture.md`, `navigation.md`, `types.md`, feature specs, performance roadmap
 
 ---
 
@@ -653,9 +755,9 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/crm/customers/[id]` | main | ✅ Built — full customer profile page |
 | `/quotes` | main | ✅ Built — Quoted Requests list; mobile cards at `< lg`; `TicketListToolbar` |
 | `/quotes/new` | main | ✅ Built — New Quote form; global loading on Save & Send |
-| `/quotes/[id]` | main | ✅ Built — overview layout; sidebar actions (Send/Resend, Convert, Cancel, Customer Link + Copy Link on sent/order/in_production/completed); stats row; lookup labels on customer card |
+| `/quotes/[id]` | main | ✅ Built — overview layout; collapsible Timeline / Pricing / Payment settings (default closed); sidebar actions; stats row |
 | `/orders` | main | ✅ Built — Orders list (All / Pending Payment / In Production / Cancelled); mobile cards at `< lg` |
-| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; Mark Completed + Resend Link in sidebar; overview layout |
+| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; Mark Completed + Resend Link in sidebar; same collapsible overview sections |
 | `/payments` | main | ✅ Built — Pending approval + Approved tabs; evidence retained after confirm; mobile cards |
 | `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |

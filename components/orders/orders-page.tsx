@@ -14,13 +14,11 @@ import {
 import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
 import {
   defaultDashboardDateRangeFilterValue,
-  isoTimestampInDashboardRange,
   resolveDashboardDateRangeFilter,
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
-import { countOrdersTabBadges } from "@/lib/utils/list-page-tab-counts";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
-import { Zap, ExternalLink } from "lucide-react";
+import { Zap, ExternalLink, ListFilter } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import {
   displayContactName,
@@ -31,6 +29,17 @@ import {
 } from "@/lib/utils/format";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import type { OrderListStatusTone } from "@/lib/utils/order-list-status";
+import { createClient } from "@/lib/supabase/client";
+import { AdminUserFilter } from "@/components/ui/admin-user-filter";
+import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
+import { ListPagination } from "@/components/ui/list-pagination";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+  type PaginationMeta,
+} from "@/lib/utils/pagination";
+import type { OrdersListSortField } from "@/lib/utils/orders-list-sort";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -281,26 +290,88 @@ function OrderMobileCard({
   );
 }
 
+const SORTABLE_COLUMN_FIELDS: Record<string, OrdersListSortField> = {
+  "Created by": "created_by",
+  "Balance Due": "balance_due",
+  "Due Date": "due_date",
+  Status: "status",
+  Payment: "payment",
+};
+
+const SORT_COLUMN_TITLES: Record<OrdersListSortField, string> = {
+  default: "Default sort",
+  created_by: "Sort by creator (A–Z)",
+  balance_due: "Sort by balance due (high to low)",
+  due_date: "Sort by due date (overdue first)",
+  status: "Sort by status (In Production first)",
+  payment: "Sort by payment (Unpaid first)",
+};
+
 function OrdersTableDesktop({
   orders: filtered,
   onOpen,
+  showCreator = false,
+  sortField,
+  onSortColumn,
 }: {
   orders: OrderTicket[];
   onOpen: (id: string) => void;
+  showCreator?: boolean;
+  sortField: OrdersListSortField;
+  onSortColumn: (field: OrdersListSortField) => void;
 }) {
   return (
     <table className="w-full">
       <thead>
         <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-          {["Order #", "Contact", "Title", "Total", "Received", "Balance Due", "Priority", "Due Date", "Status", "Payment", "Created"].map((h) => (
-            <th
-              key={h}
-              className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
-              style={{ color: "var(--color-text-muted)" }}
-            >
-              {h}
-            </th>
-          ))}
+          {[
+            "Order #",
+            "Contact",
+            "Title",
+            ...(showCreator ? ["Created by"] : []),
+            "Total",
+            "Received",
+            "Balance Due",
+            "Priority",
+            "Due Date",
+            "Status",
+            "Payment",
+            "Created",
+          ].map((h) => {
+            const sortKey = SORTABLE_COLUMN_FIELDS[h];
+            const isSortable = Boolean(sortKey);
+            const isActive = isSortable && sortField === sortKey;
+
+            return (
+              <th
+                key={h}
+                className={`px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider${
+                  isSortable ? " cursor-pointer select-none" : ""
+                }`}
+                style={{ color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)" }}
+                title={sortKey ? SORT_COLUMN_TITLES[sortKey] : undefined}
+                onClick={
+                  isSortable && sortKey
+                    ? () => onSortColumn(sortKey)
+                    : undefined
+                }
+              >
+                <span className="inline-flex items-center gap-1">
+                  {h}
+                  {isSortable && sortKey && (
+                    <ListFilter
+                      className="h-3 w-3 shrink-0"
+                      aria-hidden
+                      style={{
+                        color: isActive ? "var(--color-accent)" : "var(--color-text-muted)",
+                        opacity: isActive ? 1 : 0.5,
+                      }}
+                    />
+                  )}
+                </span>
+              </th>
+            );
+          })}
           <th className="px-4 py-3 w-16" />
         </tr>
       </thead>
@@ -367,6 +438,13 @@ function OrdersTableDesktop({
                   </span>
                 </div>
               </td>
+              {showCreator && (
+                <td className="px-4 py-3" style={cellStyle}>
+                  <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    {o.created_by?.full_name ?? "—"}
+                  </span>
+                </td>
+              )}
               <td className="px-4 py-3" style={cellStyle}>
                 <span className="text-sm font-medium tabular-nums" style={{ color: "var(--color-text-primary)" }}>
                   {amounts.total}
@@ -471,12 +549,51 @@ export default function OrdersPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [orders, setOrders] = useState<OrderTicket[]>([]);
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    limit: 25,
+    offset: 0,
+    total: 0,
+    hasMore: false,
+  });
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
-    defaultDashboardDateRangeFilterValue("last_week"),
+    defaultDashboardDateRangeFilterValue("last_month"),
   );
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [filterUserId, setFilterUserId] = useState<string | null>(null);
+  const [sortField, setSortField] = useState<OrdersListSortField>("default");
+
+  const isAdmin = userRole === "admin";
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [tab, debouncedSearch, dateFilter, filterUserId, pageSize, sortField]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id;
+      if (!uid) return;
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("roles(name)")
+        .eq("id", uid)
+        .single();
+      const roleName = (profile?.roles as unknown as { name: string } | null)?.name ?? null;
+      setUserRole(roleName);
+    });
+  }, []);
 
   const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
 
@@ -489,53 +606,58 @@ export default function OrdersPage() {
 
   function selectTab(next: Tab) {
     setTab(next);
+    setOffset(0);
     const url = new URL(window.location.href);
     if (next === "all") url.searchParams.delete("tab");
     else url.searchParams.set("tab", next);
     window.history.replaceState(null, "", `${url.pathname}${url.search}`);
   }
 
+  function toggleSortColumn(field: OrdersListSortField) {
+    setSortField((current) => (current === field ? "default" : field));
+    setOffset(0);
+  }
+
   const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    fetch("/api/orders/page-data")
+    const params = new URLSearchParams();
+    if (tab !== "all") params.set("tab", tab);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (dateRange) {
+      params.set("date_from", dateRange.start.toISOString());
+      params.set("date_to", dateRange.end.toISOString());
+    }
+    if (sortField !== "default") params.set("sort", sortField);
+    params.set("limit", String(pageSize));
+    params.set("offset", String(offset));
+    appendAdminFilterUserId(params, isAdmin ? "admin" : null, filterUserId);
+    const qs = params.toString();
+    fetch(`/api/orders/page-data${qs ? `?${qs}` : ""}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.orders) setOrders(d.orders);
+        if (d.counts) setTabCounts(d.counts);
+        if (d.pagination) setPagination(d.pagination);
       })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
-  }, []);
+  }, [filterUserId, isAdmin, tab, debouncedSearch, dateRange, offset, pageSize, sortField]);
 
-  useCoalescedRefresh(fetchPageData, [], {
+  useCoalescedRefresh(fetchPageData, [filterUserId, isAdmin, tab, debouncedSearch, dateFilter, offset, pageSize, sortField], {
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
 
-  // ─── Filter ─────────────────────────────────────────────────────────────
+  function handlePageSizeChange(size: ListPageSize) {
+    writeStoredListPageSize(size);
+    setPageSize(size);
+    setOffset(0);
+  }
 
-  const activeTabDef = TABS.find((t) => t.id === tab)!;
-
-  const dateFilteredOrders = useMemo(() => {
-    if (!dateRange) return orders;
-    return orders.filter((o) => isoTimestampInDashboardRange(o.created_at, dateRange));
-  }, [orders, dateRange]);
-
-  const displayTabCounts = useMemo(
-    () => countOrdersTabBadges(dateFilteredOrders),
-    [dateFilteredOrders],
-  );
-
-  const filtered = dateFilteredOrders.filter((o) => {
-    if (activeTabDef.statuses && !activeTabDef.statuses.includes(o.ticket_status)) return false;
-    if (search) {
-      const s = search.toLowerCase();
-      const name = displayName(o).toLowerCase();
-      const company = (o.customer?.company ?? "").toLowerCase();
-      const title = (o.title ?? "").toLowerCase();
-      const ref = (o.reference_code ?? "").toLowerCase();
-      if (!name.includes(s) && !company.includes(s) && !title.includes(s) && !ref.includes(s)) return false;
-    }
-    return true;
-  });
+  const emptyMessage = debouncedSearch
+    ? "No orders match your search."
+    : tabCounts.all === 0
+      ? "No orders in this date range."
+      : "No orders in this tab.";
 
   // ─── Render ─────────────────────────────────────────────────────────────
 
@@ -548,9 +670,6 @@ export default function OrdersPage() {
           <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Orders
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-            Active orders and in-production jobs — payment proof awaiting accountant review stays visible here for the rep who owns the order
-          </p>
         </div>
         <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
       </div>
@@ -559,10 +678,15 @@ export default function OrdersPage() {
         tabs={TABS.map((t) => ({ id: t.id, label: t.label }))}
         activeTab={tab}
         onTabChange={(id) => selectTab(id as Tab)}
-        tabCounts={displayTabCounts}
+        tabCounts={tabCounts}
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search orders…"
+        endAdornment={
+          isAdmin ? (
+            <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />
+          ) : undefined
+        }
       />
 
       {/* Desktop table */}
@@ -572,18 +696,20 @@ export default function OrdersPage() {
       >
         {loading ? (
           <TableDivSkeleton rows={6} cols={11} />
-        ) : filtered.length === 0 ? (
+        ) : orders.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              {search
-                ? "No orders match your search."
-                : orders.length > 0 && dateFilteredOrders.length === 0
-                  ? "No orders in this date range."
-                  : "No orders yet."}
+              {emptyMessage}
             </p>
           </div>
         ) : (
-          <OrdersTableDesktop orders={filtered} onOpen={(id) => router.push(`/orders/${id}`)} />
+          <OrdersTableDesktop
+            orders={orders}
+            onOpen={(id) => router.push(`/orders/${id}`)}
+            showCreator={isAdmin}
+            sortField={sortField}
+            onSortColumn={toggleSortColumn}
+          />
         )}
       </div>
 
@@ -591,30 +717,23 @@ export default function OrdersPage() {
       <div className="flex flex-col gap-3 lg:hidden">
         {loading ? (
           <MobileListCardSkeleton />
-        ) : filtered.length === 0 ? (
-          <MobileListCardEmpty
-            message={
-              search
-                ? "No orders match your search."
-                : orders.length > 0 && dateFilteredOrders.length === 0
-                  ? "No orders in this date range."
-                  : "No orders yet."
-            }
-          />
+        ) : orders.length === 0 ? (
+          <MobileListCardEmpty message={emptyMessage} />
         ) : (
-          filtered.map((o) => (
+          orders.map((o) => (
             <OrderMobileCard key={o.id} order={o} onOpen={() => router.push(`/orders/${o.id}`)} />
           ))
         )}
       </div>
 
-      {!loading && filtered.length > 0 && (
-        <p className="text-xs mt-3 text-right" style={{ color: "var(--color-text-muted)" }}>
-          {dateRange && filtered.length < orders.length
-            ? `Showing ${filtered.length} of ${orders.length} orders in selected period`
-            : `${filtered.length} order${filtered.length !== 1 ? "s" : ""}`}
-        </p>
-      )}
+      <ListPagination
+        total={pagination.total}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
     </div>
   );
 }

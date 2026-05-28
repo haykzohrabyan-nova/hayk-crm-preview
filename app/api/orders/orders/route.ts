@@ -10,8 +10,8 @@ export async function GET() {
   const admin = createAdminClient();
 
   try {
-    const orders = await fetchOrdersList(admin, roleName, userId!);
-    return NextResponse.json({ orders });
+    const { rows } = await fetchOrdersList(admin, roleName, userId!);
+    return NextResponse.json({ orders: rows });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Query failed.";
     return NextResponse.json({ error: message, code: "DB_ERROR" }, { status: 500 });

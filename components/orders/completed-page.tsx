@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { Search, Zap, ExternalLink } from "lucide-react";
@@ -8,7 +8,6 @@ import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-f
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import {
   defaultDashboardDateRangeFilterValue,
-  isoTimestampInDashboardRange,
   resolveDashboardDateRangeFilter,
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
@@ -19,8 +18,18 @@ import {
   MobileListCardSkeleton,
   MobileListCardEmpty,
 } from "@/components/ui/mobile-list-card";
+import { ListPagination } from "@/components/ui/list-pagination";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+  type PaginationMeta,
+} from "@/lib/utils/pagination";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { displayContactName, formatDate } from "@/lib/utils/format";
+import { createClient } from "@/lib/supabase/client";
+import { AdminUserFilter } from "@/components/ui/admin-user-filter";
+import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,6 +53,7 @@ interface CompletedOrder {
     last_name: string | null;
     company: string | null;
   } | null;
+  created_by?: { id: string; full_name: string | null } | null;
 }
 
 const PAYMENT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
@@ -142,45 +152,91 @@ function CompletedMobileCard({
 
 export function CompletedPage() {
   const router = useRouter();
-  const [orders, setOrders]   = useState<CompletedOrder[]>([]);
+  const [orders, setOrders] = useState<CompletedOrder[]>([]);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    limit: 25,
+    offset: 0,
+    total: 0,
+    hasMore: false,
+  });
   const [loading, setLoading] = useState(true);
-  const [search, setSearch]   = useState("");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
-    defaultDashboardDateRangeFilterValue("last_week"),
+    defaultDashboardDateRangeFilterValue("last_month"),
   );
+  const [userRole, setUserRole] = useState<string | null>(null);
+  const [filterUserId, setFilterUserId] = useState<string | null>(null);
+  const [listTotalUnfiltered, setListTotalUnfiltered] = useState(0);
+
+  const isAdmin = userRole === "admin";
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [debouncedSearch, dateFilter, filterUserId, pageSize]);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id;
+      if (!uid) return;
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("roles(name)")
+        .eq("id", uid)
+        .single();
+      const roleName = (profile?.roles as unknown as { name: string } | null)?.name ?? null;
+      setUserRole(roleName);
+    });
+  }, []);
 
   const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
 
   const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    fetch("/api/completed/page-data")
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (dateRange) {
+      params.set("date_from", dateRange.start.toISOString());
+      params.set("date_to", dateRange.end.toISOString());
+    }
+    params.set("limit", String(pageSize));
+    params.set("offset", String(offset));
+    appendAdminFilterUserId(params, isAdmin ? "admin" : null, filterUserId);
+    const qs = params.toString();
+    fetch(`/api/completed/page-data${qs ? `?${qs}` : ""}`)
       .then((r) => r.json())
       .then((d) => {
         if (d.orders) setOrders(d.orders);
+        if (d.pagination) setPagination(d.pagination);
+        if (d.counts?.completed != null) setListTotalUnfiltered(d.counts.completed);
       })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
-  }, []);
+  }, [filterUserId, isAdmin, debouncedSearch, dateRange, offset, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [], {
+  useCoalescedRefresh(fetchPageData, [filterUserId, isAdmin, debouncedSearch, dateFilter, offset, pageSize], {
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
 
-  // Filter by completion date (updated_at); sidebar count stays all-time total.
-  const dateFilteredOrders = useMemo(() => {
-    if (!dateRange) return orders;
-    return orders.filter((o) => isoTimestampInDashboardRange(o.updated_at, dateRange));
-  }, [orders, dateRange]);
+  function handlePageSizeChange(size: ListPageSize) {
+    writeStoredListPageSize(size);
+    setPageSize(size);
+    setOffset(0);
+  }
 
-  const filtered = dateFilteredOrders.filter((o) => {
-    if (!search) return true;
-    const s       = search.toLowerCase();
-    const name    = displayName(o).toLowerCase();
-    const company = (o.customer?.company ?? "").toLowerCase();
-    const title   = (o.title ?? "").toLowerCase();
-    const ref     = (o.reference_code ?? "").toLowerCase();
-    return name.includes(s) || company.includes(s) || title.includes(s) || ref.includes(s);
-  });
+  const emptyMessage = debouncedSearch
+    ? "No orders match your search."
+    : listTotalUnfiltered === 0
+      ? "No completed orders yet."
+      : "No completed orders in this date range.";
 
   return (
     <div className="space-y-5" style={{ color: "var(--color-text-primary)" }}>
@@ -198,6 +254,9 @@ export function CompletedPage() {
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 shrink-0">
           <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
+          {isAdmin && (
+            <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />
+          )}
 
           <div className="relative w-full sm:w-52 shrink-0">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
@@ -222,22 +281,28 @@ export function CompletedPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableDivSkeleton cols={8} />
-        ) : filtered.length === 0 ? (
+          <TableDivSkeleton cols={isAdmin ? 9 : 8} />
+        ) : orders.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-              {search
-                ? "No orders match your search."
-                : orders.length > 0 && dateFilteredOrders.length === 0
-                  ? "No completed orders in this date range."
-                  : "No completed orders yet."}
+              {emptyMessage}
             </p>
           </div>
         ) : (
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Order #", "Contact", "Title", "Total", "Payment", "Priority", "Due Date", "Completed"].map((h) => (
+                {[
+                  "Order #",
+                  "Contact",
+                  "Title",
+                  ...(isAdmin ? ["Created by"] : []),
+                  "Total",
+                  "Payment",
+                  "Priority",
+                  "Due Date",
+                  "Completed",
+                ].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -250,7 +315,7 @@ export function CompletedPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((o, idx) => {
+              {orders.map((o, idx) => {
                 const ps = PAYMENT_STYLE[o.payment_status ?? "unpaid"] ?? PAYMENT_STYLE.unpaid;
                 const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
 
@@ -291,6 +356,14 @@ export function CompletedPage() {
                         </span>
                       </div>
                     </td>
+
+                    {isAdmin && (
+                      <td className="px-4 py-3">
+                        <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                          {o.created_by?.full_name ?? "—"}
+                        </span>
+                      </td>
+                    )}
 
                     {/* Total */}
                     <td className="px-4 py-3">
@@ -352,30 +425,23 @@ export function CompletedPage() {
       <div className="flex flex-col gap-3 lg:hidden">
         {loading ? (
           <MobileListCardSkeleton />
-        ) : filtered.length === 0 ? (
-          <MobileListCardEmpty
-            message={
-              search
-                ? "No orders match your search."
-                : orders.length > 0 && dateFilteredOrders.length === 0
-                  ? "No completed orders in this date range."
-                  : "No completed orders yet."
-            }
-          />
+        ) : orders.length === 0 ? (
+          <MobileListCardEmpty message={emptyMessage} />
         ) : (
-          filtered.map((o) => (
+          orders.map((o) => (
             <CompletedMobileCard key={o.id} order={o} onOpen={() => router.push(`/completed/${o.id}`)} />
           ))
         )}
       </div>
 
-      {!loading && orders.length > 0 && (
-        <p className="text-xs mt-3 text-right" style={{ color: "var(--color-text-muted)" }}>
-          {dateRange && dateFilteredOrders.length < orders.length
-            ? `Showing ${filtered.length} of ${orders.length} completed orders in selected period`
-            : `${filtered.length} order${filtered.length !== 1 ? "s" : ""}`}
-        </p>
-      )}
+      <ListPagination
+        total={pagination.total}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
     </div>
   );
 }

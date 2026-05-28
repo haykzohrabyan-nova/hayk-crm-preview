@@ -9,16 +9,18 @@ import { buildTeamMemberMetrics } from "@/lib/utils/team-dashboard-metrics";
 import { resolveSdrDashboardDateRange } from "@/lib/utils/sdr-dashboard-date-range";
 import { buildSdrDashboardMetrics } from "@/lib/utils/sdr-dashboard-metrics";
 import { buildSalesDashboardMetrics } from "@/lib/utils/sales-dashboard-metrics";
+import { getDashboardValuesHidden } from "@/lib/utils/dashboard-privacy";
 
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   const admin = createAdminClient();
+  const valuesHidden = await getDashboardValuesHidden(admin, userId!);
 
   // ── SDR ──────────────────────────────────────────────────────────────────
   if (roleName === "sdr") {
-    const sdrPreset = request.nextUrl.searchParams.get("sdr_preset") ?? "today";
+    const sdrPreset = request.nextUrl.searchParams.get("sdr_preset") ?? "last_month";
     const dateFrom = request.nextUrl.searchParams.get("date_from");
     const dateTo = request.nextUrl.searchParams.get("date_to");
 
@@ -33,6 +35,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: range.error }, { status: 400 });
     }
 
+    if (valuesHidden) {
+      return NextResponse.json({
+        values_hidden: true,
+        role: "sdr",
+        range: {
+          preset: range.preset,
+          label: range.label,
+          prior_label: range.priorLabel,
+          start_iso: range.startIso,
+          end_iso: range.endIso,
+        },
+      });
+    }
+
     const metrics = await buildSdrDashboardMetrics(
       admin,
       userId!,
@@ -41,6 +57,7 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({
+      values_hidden: false,
       role: "sdr",
       range: {
         preset: range.preset,
@@ -70,6 +87,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: range.error }, { status: 400 });
     }
 
+    if (valuesHidden) {
+      return NextResponse.json({
+        values_hidden: true,
+        role: "sales",
+        range: {
+          preset: range.preset,
+          label: range.label,
+          prior_label: range.priorLabel,
+          start_iso: range.startIso,
+          end_iso: range.endIso,
+        },
+      });
+    }
+
     const metrics = await buildSalesDashboardMetrics(
       admin,
       userId!,
@@ -78,6 +109,7 @@ export async function GET(request: NextRequest) {
     );
 
     return NextResponse.json({
+      values_hidden: false,
       role: "sales",
       range: {
         preset: range.preset,
@@ -91,7 +123,7 @@ export async function GET(request: NextRequest) {
   }
 
   // ── Admin ─────────────────────────────────────────────────────────────────
-  const adminPreset = request.nextUrl.searchParams.get("admin_preset") ?? "last_week";
+  const adminPreset = request.nextUrl.searchParams.get("admin_preset") ?? "last_month";
   const dateFrom = request.nextUrl.searchParams.get("date_from");
   const dateTo = request.nextUrl.searchParams.get("date_to");
 
@@ -104,6 +136,19 @@ export async function GET(request: NextRequest) {
 
   if ("error" in range) {
     return NextResponse.json({ error: range.error }, { status: 400 });
+  }
+
+  if (valuesHidden) {
+    return NextResponse.json({
+      values_hidden: true,
+      role: "admin",
+      range: {
+        preset: range.preset,
+        label: range.label,
+        start_iso: range.startIso,
+        end_iso: range.endIso,
+      },
+    });
   }
 
   const periodStartIso = range.startIso;
@@ -192,6 +237,7 @@ export async function GET(request: NextRequest) {
   const ordered_leads_count = orderedLeads.count ?? 0;
 
   return NextResponse.json({
+    values_hidden: false,
     role: "admin",
     range: {
       preset: range.preset,

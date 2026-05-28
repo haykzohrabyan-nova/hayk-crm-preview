@@ -17,8 +17,12 @@ Every tabbed page must expose **all tab counts in one response**. Prefer combine
 ```
 GET /api/leads/sales/page-data?tab=pipeline  → { leads, counts: { pipeline, hold, rejected } }
 GET /api/leads/workspace/page-data?…         → { leads, counts: { all, hold, routed, rejected, won } }
-GET /api/orders/page-data                    → { orders, counts: { … } }
+GET /api/orders/page-data                    → { orders, counts, pagination }
+GET /api/crm/page-data                       → { customers, pagination }
+GET /api/completed/page-data                 → { orders, counts, pagination }
 ```
+
+**Pagination:** Tab `counts` reflect all matching rows under current filters but **exclude** `limit`/`offset`. List rows are paginated; reset `offset` to 0 when filters change. Shared UI: `components/ui/list-pagination.tsx`, helpers in `lib/utils/pagination.ts`.
 
 Dedicated counts-only routes remain for lightweight realtime refresh:
 
@@ -89,4 +93,7 @@ The sidebar, tab counts, and all pages listen to this event and update immediate
 - `components/orders/orders-page.tsx` + `app/api/orders/page-data/route.ts`
 - `components/quotes/quotes-page.tsx` + `app/api/quotes/page-data/route.ts`
 - `components/orders/payments-page.tsx` + `app/api/payments/page-data/route.ts`
+- `components/orders/completed-page.tsx` + `app/api/completed/page-data/route.ts`
+- `components/orders/production-page.tsx` + `app/api/production/page-data/route.ts`
+- `components/crm/crm-page.tsx` + `app/api/crm/page-data/route.ts`
 - `hooks/use-coalesced-refresh.ts` — debounced mount + realtime refetch

@@ -85,7 +85,7 @@ All responses from `next.config.ts` include:
 | `X-XSS-Protection` | `1; mode=block` |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` |
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` |
-| `Content-Security-Policy` | Scoped to `self`, Supabase, Vercel live, Google Fonts |
+| `Content-Security-Policy` | Built in `lib/security/content-security-policy.ts` — Supabase, Google Fonts, Vercel Live, Speed Insights (dev), Next HMR (dev) |
 
 Configured in `next.config.ts` `headers()` export — applies to all routes.
 

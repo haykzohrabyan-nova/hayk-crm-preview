@@ -160,11 +160,13 @@ BazarCRM/
 │   │   │       ├── activities/route.ts   ✓ GET — lead activity timeline
 │   │   │       └── reassign/route.ts     ✓ POST — Admin reassign/unassign lead
 │   │   ├── customers/
-│   │   │   ├── route.ts                  ✓ GET list + POST create (CRM Add Customer, Add Lead)
+│   │   │   ├── route.ts                  ✓ GET list + POST create (merge search, Add Customer)
 │   │   │   ├── lookup/route.ts           ✓ GET — phone/email dedup lookup
 │   │   │   ├── companies/route.ts        ✓ GET — company name autocomplete
 │   │   │   ├── [id]/route.ts             ✓ GET/PATCH — customer profile
 │   │   │   └── [id]/merge/route.ts       ✓ POST — merge duplicate customers
+│   │   ├── crm/
+│   │   │   └── page-data/route.ts        ✓ GET — paginated CRM list (search/status/heat)
 │   │   ├── tickets/
 │   │   │   ├── route.ts                  ✓ GET list (slim quote payload when kind=quote) / POST create
 │   │   │   ├── counts/route.ts           ✓ GET — tab badge counts (SQL head counts)
@@ -232,7 +234,7 @@ BazarCRM/
 │   ├── auth/
 │   │   └── otp-input.tsx                 ✓ 6-box OTP input (used in setup-2fa + verify-2fa)
 │   ├── crm/
-│   │   ├── crm-page.tsx                  ✓ Customer registry with search/sort/filter
+│   │   ├── crm-page.tsx                  ✓ Customer registry — paginated list, server filters
 │   │   └── customer-profile.tsx          ✓ Full customer profile with history
 │   ├── layout/
 │   │   ├── sidebar.tsx                   ✓ Collapsible left sidebar (role-aware nav)
@@ -243,7 +245,8 @@ BazarCRM/
 │   │   ├── error-boundary.tsx            ✓ React ErrorBoundary — wraps page content in app layout; "Try again" button
 │   │   └── global-event-handlers.tsx     ✓ App-wide window event wiring
 │   ├── leads/
-│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Hold/Routed/Rejected/Won) — VerifyDrawer + AddLeadModal loaded via next/dynamic
+│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Hold/Routed/Rejected/Won) — All/My toggle, Claim loading, VerifyDrawer + AddLeadModal via next/dynamic
+│   │   ├── product-interest-rows.tsx     ✓ Shared Product Interests rows (Add Lead + Verify drawer)
 │   │   ├── verify-drawer.tsx             ✓ SDR lead work drawer (edit + read-only modes)
 │   │   └── hold-sub-form.tsx             ✓ Hold reason sub-form (used inside VerifyDrawer)
 │   ├── orders/
@@ -259,7 +262,8 @@ BazarCRM/
 │   │   ├── quote-detail/                 ← sub-components split from quote-detail
 │   │   │   ├── customer-info-card.tsx    ✓ Left sidebar customer card (lookup labels)
 │   │   │   ├── detail-quick-actions.tsx  ✓ Sidebar actions (send, convert, mark complete, …)
-│   │   │   ├── detail-layout-primitives.tsx ✓ Stat cards, section titles, spec pills
+│   │   │   ├── detail-layout-primitives.tsx ✓ Stat cards, section titles, DetailCollapsibleSection
+│   │   │   ├── ticket-lifecycle-timeline.tsx ✓ Collapsible lifecycle row (default collapsed)
 │   │   │   ├── ticket-stats-row.tsx      ✓ Top stats row on overview layout
 │   │   │   ├── history-section.tsx       ✓ Activity timeline tab
 │   │   │   └── ticket-skeleton.tsx       ✓ Detail page loading skeleton (quote/order/payment/production/completed)
@@ -324,7 +328,8 @@ BazarCRM/
 │       ├── fetch-quotes-data.ts         ✓ Shared quotes list + counts queries
 │       ├── fetch-payments-data.ts       ✓ Shared payments pending query
 │       ├── fetch-completed-data.ts      ✓ Shared completed list + counts queries
-│       ├── leads-workspace-query.ts     ✓ Shared leads/sales workspace list + counts
+│       ├── leads-workspace-query.ts     ✓ Shared leads/sales workspace list + counts (owner scope, NULL-safe Won exclusion)
+│       ├── validate-lead-product-interests.ts ✓ Product + quantity validation (Add Lead + PATCH lead)
 │       ├── sidebar-counts-query.ts      ✓ Role-scoped sidebar badge queries
 │       ├── website.ts                   ✓ validateWebsite / normalizeWebsite (scheme optional)
 │       ├── scroll-field-into-view.ts    ✓ Scroll invalid form fields into view on validation
@@ -366,10 +371,19 @@ List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table vi
 | `/payments` | `GET /api/payments/page-data` (`orders`, `approvedOrders`, `counts`) | `GET /api/payments/pending` (pending only) |
 | `/production` | `GET /api/production/page-data` | `GET /api/production/orders` + `/api/production/counts` |
 | `/completed` | `GET /api/completed/page-data` | `GET /api/completed/orders` + `/api/completed/counts` |
-| `/leads`, `/sales` | `GET /api/leads/workspace/page-data` or `/api/leads/sales/page-data` | workspace list + counts routes |
-| `/crm` | `GET /api/customers` | Slim customer + lead/ticket aggregates |
+| `/leads` | `GET /api/leads/workspace/page-data` | `GET /api/leads/workspace` + `/api/leads/workspace/counts` |
+| `/sales` | `GET /api/leads/sales/page-data` | workspace list + `/api/leads/sales-counts` |
+| `/crm` | `GET /api/crm/page-data` | `GET /api/customers` (merge search / full list callers only) |
 
-**Tab/sidebar counts:** Leads, Sales, Payments, Completed, and **sidebar nav** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`. **Quotes & Orders tab badges** on list pages are computed **client-side** from the date-filtered list (`lib/utils/list-page-tab-counts.ts`). **Completed** uses `scopeCompletedTicketsQuery()` — SDR counts only self-created completed tickets (`created_by_id`), not routed hand-offs.
+**List pagination (May 2026):** Orders, Quotes, Completed, Production, CRM, and Leads use server-side filters + `ListPagination` (default 25 rows). Shared: `lib/utils/pagination.ts`, `components/ui/list-pagination.tsx`. Sales and Payments still load full tab lists.
+
+**Tab/sidebar counts:** Leads, Sales, Payments, Completed, and **sidebar nav** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`. **Quotes & Orders tab badges** on list pages come from page-data `counts` under the same search/date/admin filters (not limited by pagination). **SDR** Quotes/Orders/Completed counts use `created_by_id` only (`scopeJobTicketsQuery` / `scopeCompletedTicketsQuery`).
+
+**Ticket references:** `lib/utils/reference-codes.ts` — `QUO-YYYY-NNNN` / `ORD-YYYY-NNN`, `ticketKindForReference()`, `ticketIsQuoteStage()`. Lifecycle timeline labels in `lib/utils/ticket-lifecycle-timeline.ts` (creation from activity payload; reference prefix over `ticket_kind`).
+
+**Routed quotes Realtime (086):** `job_tickets` RLS `sales_read_routed_tickets` so Sales browsers receive Realtime for SDR-owned `ticket_status = routed` rows; claim removal for other reps uses `activities` INSERT. List query: `lib/utils/fetch-quotes-data.ts` (`applyTicketScope`).
+
+**Role dashboards:** `components/sales/sdr-dashboard.tsx` (9 KPI cards — self-closed paid order revenue + lead activity), `components/sales/sales-dashboard.tsx` (7 — no Lead Created); shared `DashboardDateRangeFilter` default `last_month`; metrics in `lib/utils/sdr-dashboard-metrics.ts` / `sales-dashboard-metrics.ts`. **Dashboard privacy (May 2026):** per-user `dashboard_values_hidden` on `user_profiles` (migration `087`); `GET/PATCH /api/user/dashboard-privacy`; KPI routes redact when hidden; SDR/Sales/Accountant UI uses `components/dashboard/dashboard-privacy.tsx` with masked placeholders (`DashboardHiddenValue`).
 
 **Session cache:** `lib/auth/session-cache.ts` memoizes `requireSession()` for ~3 s during burst loads.
 
@@ -385,7 +399,7 @@ List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table vi
 
 **Completed:** [performance-optimization.md](./FuturePlan/Performance/performance-optimization.md) (Phase 1–3 core)
 
-**Optional remainder:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md) (SWR, pagination, CRM server search)
+**Optional remainder:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md) (SWR, Sales/Payments pagination, CRM aggregate caching at scale)
 
 ---
 

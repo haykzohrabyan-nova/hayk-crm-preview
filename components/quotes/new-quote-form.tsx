@@ -583,6 +583,9 @@ export default function NewQuoteForm() {
         return;
       }
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
+      if (status === "routed" || status === "sent") {
+        window.dispatchEvent(new Event("bazaar:tickets-changed"));
+      }
       const ref = json.ticket?.reference_code as string | undefined;
       if (status === "sent" && ref) {
         router.push(`/quotes/${ref}`);
