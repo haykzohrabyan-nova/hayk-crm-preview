@@ -4,8 +4,13 @@ import { useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { computePricing, formatCurrency } from "@/lib/utils/ticket-math";
 import QuotePaymentConfig, { type TicketPaymentDraft } from "@/components/quotes/quote-payment-config";
+import {
+  ShippingFulfillmentSection,
+  type ShippingFulfillmentDraft,
+} from "@/components/quotes/shared/shipping-fulfillment-section";
+import type { ShipToFields } from "@/lib/utils/address";
 
-export interface QuoteFormTicket {
+export interface QuoteFormTicket extends ShippingFulfillmentDraft {
   quote_subtotal: number | null;
   quote_shipping: number | null;
   quote_pre_tax_total: number | null;
@@ -27,6 +32,13 @@ interface QuoteFormProps {
   /** Live pricing computation result (used in edit mode). */
   pricing: ReturnType<typeof computePricing>;
   shipping: number; setShipping: (v: number) => void;
+  requiresShipping: boolean;
+  setRequiresShipping: (v: boolean) => void;
+  shipTo: ShipToFields;
+  setShipTo: (fields: ShipToFields) => void;
+  customerId?: string | null;
+  shippingError?: string;
+  zipError?: string;
   discountType: "percent" | "fixed" | ""; setDiscountType: (v: "percent" | "fixed" | "") => void;
   discountValue: string; setDiscountValue: (v: string) => void;
   discountReason: string; setDiscountReason: (v: string) => void;
@@ -46,7 +58,6 @@ export function QuoteForm(p: QuoteFormProps) {
   const editing = p.editing !== false;
   const fieldStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" };
 
-  const [shippingRaw, setShippingRaw] = useState(p.shipping === 0 ? "" : String(p.shipping));
   const [taxRateRaw, setTaxRateRaw]   = useState(p.taxRate   === 0 ? "" : String(p.taxRate));
 
   function StyledSelect({ value, onChange, children }: {
@@ -99,11 +110,10 @@ export function QuoteForm(p: QuoteFormProps) {
           </div>
         )}
 
-        {/* Key adjustments read-only */}
+        {/* Key adjustments read-only — fulfillment shown in Overview Fulfillment section */}
         <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-3">
           {([
             ["Order Flow", t.order_source === "direct" ? "Direct order" : "Quote first"],
-            ["Shipping", t.quote_shipping != null ? formatCurrency(t.quote_shipping) : null],
             ["Discount", t.discount_type === "percent" ? `${t.discount_value}%` : t.discount_type === "fixed" ? `$${t.discount_value}` : null],
             ["Tax Rate", t.tax_exempt ? "Exempt" : t.quote_tax_rate_percent != null ? `${t.quote_tax_rate_percent}%` : null],
             ["Sales Permit", t.tax_exempt ? (t.sales_permit_number ?? null) : null],
@@ -143,21 +153,25 @@ export function QuoteForm(p: QuoteFormProps) {
         </div>
       </div>
 
+      <ShippingFulfillmentSection
+        editing
+        customerId={p.customerId}
+        requiresShipping={p.requiresShipping}
+        onRequiresShippingChange={p.setRequiresShipping}
+        shipTo={p.shipTo}
+        onShipToChange={p.setShipTo}
+        shipping={p.shipping}
+        onShippingChange={p.setShipping}
+        shippingError={p.shippingError}
+        zipError={p.zipError}
+      />
+
       {/* Pricing Adjustments */}
       <div className="rounded-lg p-4 space-y-4 border" style={{ background: "var(--color-bg)", borderColor: "var(--color-border)" }}>
         <h4 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>Adjustments</h4>
 
-        {/* Shipping + Tax Rate */}
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Shipping ($)</label>
-            <input type="number" min={0} step={0.01} placeholder="0.00"
-              value={shippingRaw}
-              onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && e.currentTarget.value === "0") { e.preventDefault(); if (e.key !== "0") { setShippingRaw(e.key); p.setShipping(parseFloat(e.key)); } } }}
-              onChange={(e) => { const v = e.target.value.replace(/^0+([1-9])/, "$1"); setShippingRaw(v); p.setShipping(parseFloat(v) || 0); }}
-              onBlur={() => { const n = parseFloat(shippingRaw); setShippingRaw(isNaN(n) ? "" : String(n)); }}
-              className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
-          </div>
+        {/* Tax Rate + Discount + Tax Exempt */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Tax Rate (%)</label>
             <input type="number" min={0} max={100} step={0.1} placeholder="0" disabled={p.taxExempt}
@@ -167,10 +181,6 @@ export function QuoteForm(p: QuoteFormProps) {
               onBlur={() => { const n = parseFloat(taxRateRaw); setTaxRateRaw(isNaN(n) ? "" : String(n)); }}
               className="w-full px-3 py-2 rounded-md text-sm border outline-none disabled:opacity-40" style={fieldStyle} />
           </div>
-        </div>
-
-        {/* Discount + Tax Exempt */}
-        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Discount</label>
             <div className="grid grid-cols-3 rounded-md overflow-hidden border" style={{ borderColor: "var(--color-border)" }}>

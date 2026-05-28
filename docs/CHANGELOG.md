@@ -3,6 +3,25 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-28] — Quote & order shipping fulfillment
+
+### Added
+- Pickup vs **Ship to customer** toggle on New Quote and quote detail (Quote tab)
+- When shipping is selected: **Shipping ($)** required (> 0); optional delivery address with previous-address picker from past tickets
+- `supabase/migrations/091_ticket_shipping_address.sql` — `requires_shipping`, `ship_to_*` on `job_tickets`
+- `lib/utils/address.ts`, `components/quotes/shared/shipping-fulfillment-section.tsx`
+- `GET /api/customers/[id]/shipping-addresses` — distinct past ship-to addresses for a customer
+
+### Changed
+- `components/quotes/shared/quote-form.tsx` — shipping charge moved into fulfillment section (hidden unless Ship selected); Tax Rate (%), Discount, and Tax Exempt on one row
+- Quote detail, public quote page, PDF, and print — **Ship To** block when address entered
+- Quote/order detail **Overview** — always-visible **Fulfillment** section (method, shipping charge, ship-to address)
+- Order-ready email/SMS — pickup vs shipped copy when `requires_shipping`
+- `app/api/tickets/route.ts`, `app/api/tickets/[id]/route.ts`, `lib/utils/validate-quote-send.ts`
+
+### Docs
+- `docs/schema.md`, `docs/api-contract.md`, `docs/types.md`, `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, `docs/component-architecture.md`, `docs/session-summary.md`, `docs/order-ticket/open-questions.md`, `docs/order-ticket/product-catalog.md`
+
 ## [2026-05-28] — Resend prompt after saving sent quotes / orders
 
 ### Added

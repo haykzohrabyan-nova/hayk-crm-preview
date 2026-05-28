@@ -38,6 +38,8 @@ import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 import { createClient } from "@/lib/supabase/client";
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
 import { localDateStringFromIso, validateDueDateAgainstCreated } from "@/lib/utils/due-date";
+import { validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
+import type { ShipToFields } from "@/lib/utils/address";
 import { InfoForm } from "@/components/quotes/shared/info-form";
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
@@ -121,6 +123,7 @@ interface Ticket {
   order_source: string | null;
   quote_source: string | null;
   linked_lead_id: string | null;
+  customer_id: string | null;
   priority: string | null;
   due_date: string | null;
   rush: boolean;
@@ -131,6 +134,12 @@ interface Ticket {
   quote_destination: string | null;
   quote_subtotal: number | null;
   quote_shipping: number | null;
+  requires_shipping: boolean;
+  ship_to_line1: string | null;
+  ship_to_line2: string | null;
+  ship_to_city: string | null;
+  ship_to_state: string | null;
+  ship_to_zip: string | null;
   discount_type: string | null;
   discount_value: string | null;
   discount_reason: string | null;
@@ -327,6 +336,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [specialRequirements, setSpecialRequirements] = useState("");
   const [notes, setNotes] = useState("");
   const [skus, setSkus] = useState<FormLineItem[]>([emptyFormLineItem()]);
+  const [requiresShipping, setRequiresShipping] = useState(false);
+  const [shipTo, setShipTo] = useState<ShipToFields>({
+    ship_to_line1: "",
+    ship_to_line2: "",
+    ship_to_city: "",
+    ship_to_state: "",
+    ship_to_zip: "",
+  });
   const [shipping, setShipping] = useState(0);
   const [discountType, setDiscountType] = useState<"percent" | "fixed" | "">("");
   const [discountValue, setDiscountValue] = useState("");
@@ -356,6 +373,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         : [emptyFormLineItem()],
     );
     setShipping(t.quote_shipping ?? 0);
+    setRequiresShipping(t.requires_shipping ?? (t.quote_shipping ?? 0) > 0);
+    setShipTo({
+      ship_to_line1: t.ship_to_line1 ?? "",
+      ship_to_line2: t.ship_to_line2 ?? "",
+      ship_to_city: t.ship_to_city ?? "",
+      ship_to_state: t.ship_to_state ?? "",
+      ship_to_zip: t.ship_to_zip ?? "",
+    });
     setDiscountType((t.discount_type as "percent" | "fixed" | "") ?? "");
     setDiscountValue(t.discount_value ?? "");
     setDiscountReason(t.discount_reason ?? "");
@@ -460,7 +485,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
   const pricing = computePricing({
     skus,
-    quote_shipping: shipping,
+    quote_shipping: requiresShipping ? shipping : 0,
     discount_type: discountType || null,
     discount_value: discountValue || null,
     quote_tax_rate_percent: taxExempt ? 0 : taxRate,
@@ -577,6 +602,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         skus,
         taxExempt,
         salesPermit,
+        requiresShipping,
+        quoteShipping: requiresShipping ? shipping : 0,
+        shipToZip: shipTo.ship_to_zip ?? "",
         paymentDraft,
       });
       if (missing.length > 0) {
@@ -620,6 +648,21 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       return;
     }
 
+    const shippingErr = validateShippingCharge(requiresShipping, shipping);
+    if (shippingErr) {
+      setError(shippingErr);
+      setSaving(false);
+      hideLoading();
+      return;
+    }
+    const zipErr = validateShipToZip(shipTo.ship_to_zip);
+    if (zipErr) {
+      setError(zipErr);
+      setSaving(false);
+      hideLoading();
+      return;
+    }
+
     beginSaveLoading(globalSaveMessage(newStatus));
 
     const body: Record<string, unknown> = {
@@ -631,7 +674,13 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       special_requirements: specialRequirements || null,
       notes: notes || null,
       line_items: lineItemsToApiPayload(skus),
-      quote_shipping: shipping,
+      quote_shipping: requiresShipping ? shipping : 0,
+      requires_shipping: requiresShipping,
+      ship_to_line1: requiresShipping ? shipTo.ship_to_line1 || null : null,
+      ship_to_line2: requiresShipping ? shipTo.ship_to_line2 || null : null,
+      ship_to_city: requiresShipping ? shipTo.ship_to_city || null : null,
+      ship_to_state: requiresShipping ? shipTo.ship_to_state || null : null,
+      ship_to_zip: requiresShipping ? shipTo.ship_to_zip || null : null,
       discount_type: discountType || null,
       discount_value: discountValue || null,
       discount_reason: discountReason || null,
@@ -786,8 +835,18 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
 
   const sendValidationInput = useMemo(
-    () => ({ title, dueDate, skus, taxExempt, salesPermit, paymentDraft }),
-    [title, dueDate, skus, taxExempt, salesPermit, paymentDraft],
+    () => ({
+      title,
+      dueDate,
+      skus,
+      taxExempt,
+      salesPermit,
+      requiresShipping,
+      quoteShipping: requiresShipping ? shipping : 0,
+      shipToZip: shipTo.ship_to_zip ?? "",
+      paymentDraft,
+    }),
+    [title, dueDate, skus, taxExempt, salesPermit, requiresShipping, shipping, shipTo.ship_to_zip, paymentDraft],
   );
   const sendMissingFields = useMemo(
     () => getQuoteSendMissingFields(sendValidationInput),
@@ -1292,6 +1351,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                         pricing={pricing}
                         shipping={shipping}
                         setShipping={setShipping}
+                        requiresShipping={requiresShipping}
+                        setRequiresShipping={setRequiresShipping}
+                        shipTo={shipTo}
+                        setShipTo={setShipTo}
+                        customerId={ticket.customer_id ?? ticket.customer?.id ?? null}
                         discountType={discountType}
                         setDiscountType={setDiscountType}
                         discountValue={discountValue}
@@ -1397,6 +1461,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     pricing={pricing}
                     shipping={shipping}
                     setShipping={setShipping}
+                    requiresShipping={requiresShipping}
+                    setRequiresShipping={setRequiresShipping}
+                    shipTo={shipTo}
+                    setShipTo={setShipTo}
+                    customerId={ticket.customer_id ?? ticket.customer?.id ?? null}
                     discountType={discountType}
                     setDiscountType={setDiscountType}
                     discountValue={discountValue}
@@ -1469,6 +1538,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     ticket={ticket}
                     pricing={pricing}
                     shipping={shipping} setShipping={setShipping}
+                    requiresShipping={requiresShipping}
+                    setRequiresShipping={setRequiresShipping}
+                    shipTo={shipTo}
+                    setShipTo={setShipTo}
+                    customerId={ticket.customer_id ?? ticket.customer?.id ?? null}
                     discountType={discountType} setDiscountType={setDiscountType}
                     discountValue={discountValue} setDiscountValue={setDiscountValue}
                     discountReason={discountReason} setDiscountReason={setDiscountReason}

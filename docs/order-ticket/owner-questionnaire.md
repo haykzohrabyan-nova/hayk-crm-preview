@@ -155,7 +155,7 @@ Note from prototype: this warning currently shows **for SDR only** when the tota
 - [ ] **No — we have a fixed shipping rate:** $_______________
 - [ ] **No — we never charge shipping; remove this field**
 
-**Your answer:** Correct as-is — manual entry per quote.
+**Your answer:** Correct as-is — manual entry per quote when **Ship to customer** is selected (Pickup = no charge). Optional delivery address; no automatic rate calculation. Implemented May 2026 — migration **091**, `ShippingFulfillmentSection`.
 
 ---
 

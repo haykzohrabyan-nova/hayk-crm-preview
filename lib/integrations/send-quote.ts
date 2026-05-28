@@ -17,6 +17,7 @@ import { buildPaymentReminderEmail } from "./payment-reminder-template";
 import { buildPaymentConfirmedEmail } from "./payment-confirmed-template";
 import { buildInvoiceLinkEmail } from "./invoice-link-template";
 import { buildOrderReadyEmail, formatPickupAddress } from "./order-ready-template";
+import { formatShipToAddress, formatShipToAddressInline } from "@/lib/utils/address";
 import { ticketDisplayReference } from "@/lib/utils/reference-codes";
 import {
   fetchTicketLinesBundle,
@@ -537,7 +538,15 @@ export async function sendInvoiceLinkToCustomer(
  * Uses the ticket's configured outreach channel (email / SMS / WhatsApp).
  */
 export async function sendOrderReadyToCustomer(
-  ticket: TicketForSend & { reference_code: string },
+  ticket: TicketForSend & {
+    reference_code: string;
+    requires_shipping?: boolean | null;
+    ship_to_line1?: string | null;
+    ship_to_line2?: string | null;
+    ship_to_city?: string | null;
+    ship_to_state?: string | null;
+    ship_to_zip?: string | null;
+  },
   company: CompanyForSend,
 ): Promise<SendResult> {
   const { channel, destination } = resolveTicketOutreach(ticket);
@@ -545,6 +554,9 @@ export async function sendOrderReadyToCustomer(
   const customerName = customerDisplayName(ticket);
   const companyName = company.company_name ?? "BazaarPrinting";
   const pickupAddress = formatPickupAddress(company);
+  const requiresShipping = Boolean(ticket.requires_shipping);
+  const shipToAddress = formatShipToAddress(ticket);
+  const shipToInline = formatShipToAddressInline(ticket);
 
   if (!destination) {
     return { ok: false, channel, error: "No customer email or phone on file." };
@@ -556,6 +568,8 @@ export async function sendOrderReadyToCustomer(
       referenceCode: ticket.reference_code,
       orderUrl,
       company,
+      requiresShipping,
+      shipToAddress,
     });
     return instantlySend(destination, subject, html);
   }
@@ -578,7 +592,9 @@ export async function sendOrderReadyToCustomer(
       ref: ticket.reference_code,
       companyName,
       link: orderUrl,
-      pickupBlock: pickupAddress ? ` Pick up at: ${pickupAddress}.` : "",
+      pickupBlock: requiresShipping
+        ? shipToInline ? ` Shipping to: ${shipToInline}.` : " Your order is ready to ship."
+        : pickupAddress ? ` Pick up at: ${pickupAddress}.` : "",
       phoneBlock: company.phone ? ` Questions? Call ${company.phone}.` : "",
     });
 

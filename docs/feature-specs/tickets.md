@@ -321,9 +321,13 @@ Each SKU row:
 ### Quote Tab
 
 - **Pricing Summary** (live — updates as you type): Subtotal → Shipping → Discount → Pre-tax Total → Tax → **Total** (gold)
+- **Fulfillment card** (`ShippingFulfillmentSection`):
+  - Segmented control: **Pickup** (default) | **Ship to customer**
+  - When **Ship** selected: **Shipping ($)** required (> 0); optional delivery address (Line 1, Line 2, City, State, ZIP)
+  - When customer is linked: **Previous addresses** dropdown (from `GET /api/customers/[id]/shipping-addresses`) or enter new address
+  - When **Pickup**: shipping charge and address hidden; saved as `requires_shipping = false`, `quote_shipping = 0`
 - **Adjustments card**:
-  - Row 1: Shipping ($) + Tax Rate (%) inputs — local string state prevents snap-back to "0" when cleared
-  - Row 2: Discount selector (None / % / $) + Tax Exempt toggle; conditional inputs when active
+  - Single row: Tax Rate (%) + Discount (None / % / $) + Tax Exempt toggle; conditional inputs when active
   - "Sales permit #" input shown when Tax Exempt is selected
 - **Order Flow** (segmented control): **Quote First** | **Direct Order**
   - **Quote First** → "Send Quote to Customer" section (Send Via + destination; destination auto-fills from locked customer)
@@ -373,7 +377,7 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 
 Draft saves (`Save Draft`, `Save Changes`) allow incomplete fields. **Send Quote**, **Save & Send Quote**, and **Convert to Order** are disabled until all required send fields pass `lib/utils/validate-quote-send.ts`.
 
-When blocked, an amber banner lists missing fields (e.g. Title, Due date, line items, Sales Permit # when tax exempt, delivery destination, **Receipt ID** when cash/offline deposit or full cash-only payment).
+When blocked, an amber banner lists missing fields (e.g. Title, Due date, line items, Sales Permit # when tax exempt, **Shipping ($)** when ship-to-customer is selected, delivery destination, **Receipt ID** when cash/offline deposit or full cash-only payment).
 
 **Tab / field validation (May 2026):** On **Next** or save when a tab field fails (Source, Industry, title, due date, website, etc.), the form shows a **red border + inline message** on that field and **scrolls it into view** via `data-field-anchor` markers and `lib/utils/scroll-field-into-view.ts`.
 
@@ -417,7 +421,7 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
   - **Milestones:** Quote sent/resent · Customer confirmed · Converted to order (`ticket_converted`) · payment proof / recorded · due-date / completion nodes when applicable
   - Detail lines show `QUO-…` / `ORD-…` from activity payload where present
   - Data: `GET /api/activities?ticket_id=…&include_linked_lead=true` (UUID or `QUO-*` / `ORD-*`); refreshes on `bazaar:activities-changed`
-- **Overview tab sections (read-only):** **Line Items** always visible; **Pricing** and **Payment & order settings** are **collapsible** via `DetailCollapsibleSection` (default **collapsed**). Quote delivery, Follow-up, Production & evidence remain expanded.
+- **Overview tab sections (read-only):** **Line Items** always visible; **Fulfillment** always visible (method, shipping charge, ship-to address when entered); **Pricing** and **Payment & order settings** are **collapsible** via `DetailCollapsibleSection` (default **collapsed**). Quote delivery, Follow-up, Production & evidence remain expanded.
 - **Two-column grid:**
   - **Left sidebar** (always shown): `LinkedLeadCard` or `CustomerInfoCard`, then **`DetailQuickActions`** (all action buttons)
   - **Right panel:** Overview | History tabs; on desktop (`xl+`) only this panel scrolls
@@ -440,8 +444,8 @@ Single scrollable view combining all three edit sections, separated by labelled 
 - Edit mode: full `EditableSkuRow` fields + Add Line Item button
 
 **3. Quote & Pricing** (section divider: "QUOTE & PRICING")
-- Read-only: pricing summary + delivery/payment details
-- Edit mode: full Quote tab fields (Adjustments, Order Flow, Payment Methods, Prepayment, Send Channel, Follow-up Schedule)
+- Read-only: pricing summary + delivery/payment details (fulfillment shown in Overview **Fulfillment** section, not duplicated here)
+- Edit mode: full Quote tab fields (Fulfillment, Adjustments, Order Flow, Payment Methods, Prepayment, Send Channel, Follow-up Schedule)
 - Includes the **Order Flow** segmented control (Quote First / Direct Order)
 
 ### History Tab

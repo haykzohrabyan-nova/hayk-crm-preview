@@ -621,6 +621,32 @@ Each lead includes nested **`tickets:job_tickets(...)`** (reference codes only �
 
 ---
 
+### `GET /api/customers/[id]/shipping-addresses`
+
+Distinct past **ship-to** addresses for a customer, derived from prior `job_tickets` where `requires_shipping = true` and `ship_to_line1 IS NOT NULL`. Used by the New Quote / quote detail **Ship to customer** picker (no separate address book table).
+
+**Auth:** `requireSession()`.
+
+**Response `200`:**
+```json
+{
+  "addresses": [
+    {
+      "ship_to_line1": "123 Main St",
+      "ship_to_line2": "Suite 4",
+      "ship_to_city": "Los Angeles",
+      "ship_to_state": "CA",
+      "ship_to_zip": "90001",
+      "last_used_at": "ISO"
+    }
+  ]
+}
+```
+
+Deduped by normalized `(line1, city, state, zip)`; sorted newest first (max 50 rows scanned).
+
+---
+
 ### `PATCH /api/customers/[id]`
 
 Update a customer profile. Called when SDR chooses "Yes, update profile" on the action prompt.
@@ -742,7 +768,13 @@ Create a new ticket.
   "notes": "string | null",
   "line_items": "LineItemInput[] — catalog lines with optional variants[] (name, quantity required)",
   "quote_subtotal": "number | null",
-  "quote_shipping": "number | null",
+  "quote_shipping": "number | null — must be > 0 when requires_shipping is true; forced to 0 when pickup",
+  "requires_shipping": "boolean — default false (pickup at shop)",
+  "ship_to_line1": "string | null — optional delivery street when requires_shipping",
+  "ship_to_line2": "string | null",
+  "ship_to_city": "string | null",
+  "ship_to_state": "string | null",
+  "ship_to_zip": "string | null — validated format if provided",
   "discount_type": "percent | fixed | null",
   "discount_value": "string | null",
   "discount_reason": "string | null",
@@ -796,6 +828,7 @@ Create a new ticket.
 - Logs `order_ticket_created` activity
 - If `ticket_status = 'sent'` on create (Save & Send): logs `ticket_sent` and triggers `sendQuoteToCustomer()` — same activity shape as PATCH send
 - May auto-record cash deposit/full payment when configured — logs `ticket_payment_recorded` via `lib/utils/log-ticket-payment-recorded.ts` (counts in Reports/dashboard cash); **does not** set `client_confirmed` when `ticket_require_client_confirm = true`
+- **Fulfillment:** when `requires_shipping = false`, server clears `ship_to_*` and sets `quote_shipping = 0`. When `requires_shipping = true`, **`quote_shipping` must be > 0**; address fields are optional (ZIP validated if provided). See `lib/utils/address.ts`.
 
 **Response `201`:**
 ```json
@@ -934,7 +967,7 @@ Body: Any subset of ticket fields plus optional:
 `activity_by_role` is stripped from the stored record but used to attribute the activity log entry.
 
 **Business rules (Mode 5):**
-- If `ticket_status` transitions to `"completed"` from `"in_production"`: sends pickup-ready notification via `sendOrderReadyToCustomer()` (same `/q/{public_token}` URL); logs `ticket_order_ready_sent` or `ticket_order_ready_failed`
+- If `ticket_status` transitions to `"completed"` from `"in_production"`: sends order-ready notification via `sendOrderReadyToCustomer()` (pickup copy or **shipped to [address]** when `requires_shipping`; same `/q/{public_token}` URL); logs `ticket_order_ready_sent` or `ticket_order_ready_failed`
 - **Accountant** may set `ticket_status = "completed"` only on in-production orders that are **paid in full** (`isTicketPaidInFull()`)
 - **Admin** may mark completed with outstanding balance only when body includes `acknowledge_outstanding_balance: true` (UI shows confirmation modal); see **TODO-009**
 - If `ticket_status` transitions to `"order"` (manual "Convert to Order"):
@@ -947,6 +980,7 @@ Body: Any subset of ticket fields plus optional:
 - If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
 - Optional `notify_revision`: `"standard"` (SDR/Sales resend after edit) or `"admin"` — revision banner in quote email / SMS prefix; use with resend (`ticket_status: "sent"`) or `resend_invoice: true`.
 - **`line_items`** in body: upserts `ticket_line_items` + `ticket_line_variants` via `syncTicketLines()`; orphan variants delete Storage files. Variant files uploaded separately via `POST /api/tickets/[id]/files`.
+- **Fulfillment fields** (`requires_shipping`, `ship_to_*`, `quote_shipping`): same validation as POST — shipping charge required when `requires_shipping`; address optional; pickup clears address and zeroes shipping charge.
 - **Save without resend:** Editing a sent quote updates DB + `/q/{token}` only; UI prompts SDR/Sales (sent, unconfirmed) or Admin (sent/order/in_production) to resend after **Save Changes** (`components/quotes/quote-detail/resend-after-save-modal.tsx`).
 - If `ticket_status` transitions to `"in_production"` (manual release, payment confirm, net terms auto-release, etc.):
   - Sets `production_released_at`
@@ -983,7 +1017,7 @@ Renders the ticket as a PDF binary and returns it for direct download.
 - `Content-Disposition: attachment; filename="Quote-REF.pdf"` (or `Invoice-REF.pdf` for orders where `ticket_status` is `order`, `in_production`, or `completed`)
 - Body: raw PDF binary rendered server-side by `@react-pdf/renderer`
 
-PDF sections: company header (logo or name, address, contact), Bill To, Prepared By, line items table, pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment methods, special requirements, gold footer.
+PDF sections: company header (logo or name, address, contact), Bill To, **Ship To** (when address entered on a shipping ticket), Prepared By, line items table, pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment methods, special requirements, gold footer.
 
 The "Save PDF" button in `quote-detail.tsx` is an `<a href="/api/tickets/[id]/pdf" download>` link — clicking it triggers a direct file download with no new tab or print dialog.
 
@@ -1298,7 +1332,7 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
 
 **Auth:** None — public route.
 
-**Response `200`:** Returns safe public ticket fields including payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_reviewed_at`, `payment_evidence_amount`), and `production_released_at`. Draft tickets return `404`.
+**Response `200`:** Returns safe public ticket fields including pricing (`quote_subtotal`, `quote_shipping`, `requires_shipping`, `ship_to_*`), payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_reviewed_at`, `payment_evidence_amount`), and `production_released_at`. Draft tickets return `404`.
 
 ```json
 {

@@ -165,6 +165,12 @@ create table if not exists public.job_tickets (
   -- Rich pricing (phase 2)
   quote_subtotal                     numeric,
   quote_shipping                     numeric        default 0,
+  requires_shipping                  boolean        not null default false,
+  ship_to_line1                      text,
+  ship_to_line2                      text,
+  ship_to_city                       text,
+  ship_to_state                      text,
+  ship_to_zip                        text,
   discount_type                      text,           -- 'percent' | 'fixed'
   discount_value                     text,           -- stored as text; parsed at runtime
   discount_reason                    text,

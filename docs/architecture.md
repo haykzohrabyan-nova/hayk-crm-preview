@@ -266,6 +266,7 @@ BazarCRM/
 │   │   │   ├── detail-layout-primitives.tsx ✓ Stat cards, section titles, DetailCollapsibleSection
 │   │   │   ├── ticket-lifecycle-timeline.tsx ✓ Collapsible lifecycle row (default collapsed)
 │   │   │   ├── ticket-stats-row.tsx      ✓ Top stats row on overview layout
+│   │   │   ├── ticket-overview-sections.tsx ✓ Overview tab (Line Items, Fulfillment, Pricing)
 │   │   │   ├── history-section.tsx       ✓ Activity timeline tab
 │   │   │   └── ticket-skeleton.tsx       ✓ Detail page loading skeleton (quote/order/payment/production/completed)
 │   │   └── shared/                       ← shared between new-quote-form + quote-detail
@@ -274,6 +275,7 @@ BazarCRM/
 │   │       ├── info-form.tsx             ✓ Title / Priority / Due Date / Rush section
 │   │       ├── sku-row.tsx               ✓ Single SKU line item row
 │   │       ├── line-items-form.tsx       ✓ SKU list + Add/Remove controls
+│   │       ├── shipping-fulfillment-section.tsx ✓ Pickup / Ship + address + past-address picker
 │   │       └── quote-form.tsx            ✓ Pricing summary + adjustments + payment config
 │   ├── reports/
 │   │   ├── reports-page.tsx              ✓ Cash collected, rep scorecards, payment ledger, awaiting collection

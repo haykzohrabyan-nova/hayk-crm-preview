@@ -19,6 +19,7 @@ The full calculation chain from the shadow project, confirmed from `ContactCRM.j
                           type = 'fixed'   → min(fixed_value, subtotal)
                         if discount OFF → 0
 4.  Pre-tax total     = max(subtotal − discount_amount + shipping, 0)
+   (`shipping` applies only when `requires_shipping = true`; pickup → `quote_shipping = 0`)
 5.  Tax amount        = if tax_exempt → 0
                         else → round(pre_tax_total × (tax_rate / 100), 2)
 6.  Final total       = round(pre_tax_total + tax_amount, 2)

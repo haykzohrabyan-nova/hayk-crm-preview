@@ -252,6 +252,8 @@ export interface InvoicePDFProps {
     quoteFinalTotal: number | null;
     taxExempt: boolean | null;
     quoteChannel: string | null;
+    requiresShipping?: boolean | null;
+    shipToAddress?: string | null;
   };
   customer: { name: string; email: string; phone: string; company: string };
   repName: string;
@@ -351,7 +353,7 @@ export function InvoicePDF({
           </View>
         ) : null}
 
-        {/* ── Bill To / Prepared By ── */}
+        {/* ── Bill To / Ship To / Prepared By ── */}
         <View style={s.parties}>
           <View style={s.partyCol}>
             <Text style={s.sectionLabel}>Bill To</Text>
@@ -363,6 +365,14 @@ export function InvoicePDF({
               <Text style={{ fontSize: 10, color: "#bbb" }}>No customer details</Text>
             ) : null}
           </View>
+          {ticket.shipToAddress ? (
+            <View style={s.partyCol}>
+              <Text style={s.sectionLabel}>Ship To</Text>
+              {ticket.shipToAddress.split("\n").map((line, i) => (
+                <Text key={i} style={s.partyDetail}>{line}</Text>
+              ))}
+            </View>
+          ) : null}
           <View style={s.partyCol}>
             <Text style={s.sectionLabel}>Prepared By</Text>
             <Text style={[s.partyDetail, { fontFamily: "Helvetica-Bold", color: "#333" }]}>{repName}</Text>

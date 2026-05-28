@@ -382,7 +382,13 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `quote_channel` | `text` | `'SMS'` \| `'WhatsApp'` \| `'Email'` \| `'In-person'` |
 | `quote_destination` | `text` | Phone (digits) for SMS/WhatsApp; email address for Email |
 | `quote_subtotal` | `numeric` | Sum of all line totals |
-| `quote_shipping` | `numeric` DEFAULT `0` | Manual shipping charge |
+| `quote_shipping` | `numeric` DEFAULT `0` | Manual shipping charge (required > 0 when `requires_shipping`) |
+| `requires_shipping` | `boolean` NOT NULL DEFAULT `false` | Pickup (`false`) vs ship-to customer (`true`) |
+| `ship_to_line1` | `text` | Optional delivery street when shipping |
+| `ship_to_line2` | `text` | Optional delivery line 2 |
+| `ship_to_city` | `text` | Optional delivery city |
+| `ship_to_state` | `text` | Optional delivery state |
+| `ship_to_zip` | `text` | Optional delivery ZIP |
 | `discount_type` | `text` | `'percent'` \| `'fixed'` |
 | `discount_value` | `text` | Stored as text; parsed to numeric at runtime |
 | `discount_reason` | `text` | |

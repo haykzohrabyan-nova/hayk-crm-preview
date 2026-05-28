@@ -1,5 +1,6 @@
 import { validateEmail } from "@/lib/utils/email";
 import { validatePhone } from "@/lib/utils/phone";
+import { validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
 
 export interface QuoteSendValidationInput {
   title: string;
@@ -7,6 +8,9 @@ export interface QuoteSendValidationInput {
   skus: { product_type?: string; quantity?: number; unit_price?: number }[];
   taxExempt: boolean;
   salesPermit: string;
+  requiresShipping?: boolean;
+  quoteShipping?: number;
+  shipToZip?: string;
   paymentDraft: {
     ticket_payment_strategy: "partial" | "full" | "net";
     ticket_dep_handling: "cash" | "gateway";
@@ -38,7 +42,7 @@ export function isCashReceiptRequired(
 /** Human-readable labels for fields that must be filled before sending a quote. */
 export function getQuoteSendMissingFields(input: QuoteSendValidationInput): string[] {
   const missing: string[] = [];
-  const { title, dueDate, skus, taxExempt, salesPermit, paymentDraft: d } = input;
+  const { title, dueDate, skus, taxExempt, salesPermit, requiresShipping = false, quoteShipping = 0, shipToZip = "", paymentDraft: d } = input;
 
   if (!title.trim()) missing.push("Title");
   if (!dueDate) missing.push("Due date");
@@ -51,6 +55,12 @@ export function getQuoteSendMissingFields(input: QuoteSendValidationInput): stri
   if (taxExempt && !salesPermit.trim()) {
     missing.push("Sales Permit #");
   }
+
+  const shippingErr = validateShippingCharge(requiresShipping, quoteShipping);
+  if (shippingErr) missing.push("Shipping ($)");
+
+  const zipErr = validateShipToZip(shipToZip);
+  if (zipErr) missing.push("Valid ZIP code");
 
   if (isCashReceiptRequired(d)) {
     const receiptId = d.ticket_receipt_id.trim();

@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchTicketLinesBundle, lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
+import { formatShipToAddress } from "@/lib/utils/address";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
 import { InvoicePDF } from "@/lib/pdf/invoice-pdf";
@@ -38,6 +39,7 @@ export async function GET(
          due_date, rush, priority, special_requirements,
          contact_name, contact_email, contact_company, contact_phone,
          quote_subtotal, quote_shipping,
+         requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip,
          discount_type, discount_value, discount_reason,
          quote_pre_tax_total, quote_tax_rate_percent, quote_tax_amount, quote_final_total,
          tax_exempt, quote_payment_types, quote_channel, created_by_id,
@@ -170,6 +172,8 @@ export async function GET(
       quoteFinalTotal: ticket.quote_final_total as number | null,
       taxExempt: ticket.tax_exempt as boolean | null,
       quoteChannel: ticket.quote_channel as string | null,
+      requiresShipping: Boolean(ticket.requires_shipping),
+      shipToAddress: formatShipToAddress(ticket),
     },
     customer: { name: customerName, email: customerEmail, phone: customerPhone ? formatPhone(customerPhone) : "", company: customerCompany },
     repName,

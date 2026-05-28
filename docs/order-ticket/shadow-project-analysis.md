@@ -88,7 +88,9 @@ Each SKU object in the `quote_skus` array:
 | Shadow field | Production column | Type | Notes |
 |---|---|---|---|
 | `quoteSubtotal` | `quote_subtotal` | `numeric` | Sum of all SKU (qty × unitPrice) |
-| `quoteShipping` | `quote_shipping` | `numeric` | Shipping charge |
+| `quoteShipping` | `quote_shipping` | `numeric` | Manual charge when `requires_shipping` |
+| `requiresShipping` | `requires_shipping` | `boolean` | Pickup vs ship (migration 091) |
+| `shipTo*` | `ship_to_*` | `text` | Optional delivery address |
 | `applyDiscount` | (form state only) | `boolean` | Not stored — presence of discountValue implies it |
 | `discountType` | `discount_type` | `text` | `'percent'` or `'fixed'` |
 | `discountValue` | `discount_value` | `text` | Raw entered value |

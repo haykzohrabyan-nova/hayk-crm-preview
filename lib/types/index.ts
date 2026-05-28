@@ -304,6 +304,12 @@ export interface JobTicket {
   // Pricing (new columns — used by OrderDrawer)
   quote_subtotal: number | null
   quote_shipping: number | null
+  requires_shipping: boolean
+  ship_to_line1: string | null
+  ship_to_line2: string | null
+  ship_to_city: string | null
+  ship_to_state: string | null
+  ship_to_zip: string | null
   discount_type: DiscountType | null
   discount_value: string | null
   discount_reason: string | null

@@ -52,7 +52,7 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 | List pages | `components/{feature}/{feature}-page.tsx` | One client page per route |
 | Ticket detail | `components/quotes/quote-detail.tsx` | Single component; `context` prop for quote/order/payment/production/completed |
 | Detail sections | `components/quotes/quote-detail/*`, `components/orders/*-detail-overview.tsx` | Extract shared blocks here |
-| Shared form blocks | `components/quotes/shared/` | Used by new-quote-form + quote-detail edit mode |
+| Shared form blocks | `components/quotes/shared/` | Used by new-quote-form + quote-detail edit mode; includes `shipping-fulfillment-section.tsx`, `quote-form.tsx` |
 | Pure helpers | `lib/utils/format.ts`, `ticket-math.ts`, etc. | **Never copy** `relativeTime` / date formatters into components |
 | Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider, global-loading-provider, **error-boundary** |
 | Public customer UI | `components/public/` | `/q/[token]` only |
@@ -370,6 +370,7 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │     components/quotes/shared/line-items-form.tsx
         │     components/quotes/shared/sku-row.tsx
         │     components/quotes/shared/quote-form.tsx → components/quotes/quote-payment-config.tsx
+        │     components/quotes/shared/shipping-fulfillment-section.tsx
         │
         ├── Entry modes (detected from URL params):
         │    ?lead_id=uuid        → LinkedLeadCard sidebar, skip Customer tab, start on Info; source from lead
@@ -405,7 +406,9 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │    SkuSelect helper: appearance-none + ChevronDown on all selects
         │
         ├── Quote Tab:
-        │    Shipping/Tax Rate: local string state (no snap-back to 0 on clear)
+        │    Fulfillment: `components/quotes/shared/shipping-fulfillment-section.tsx`
+        │      Pickup | Ship to customer; Shipping ($) required when Ship; optional address + past-address picker
+        │    Adjustments: Tax Rate + Discount + Tax Exempt on one row (`quote-form.tsx`)
         │    Payment Methods: independent toggle buttons (flex gap, not connected bar)
         │      Card Payment + Zelle: multi-select allowed simultaneously
         │      Offline: mutually exclusive — clears others when selected
@@ -428,7 +431,8 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │    Customer: name + phone or email + source + industry required
         │    Info: title + due date required (priority always has a value)
         │    Line Items: ≥1 fully-filled item (product + qty + unit price)
-        │    Quote: destination required; Sales Permit # required if Tax Exempt
+        │    Quote: destination required; Sales Permit # required if Tax Exempt;
+        │      Shipping ($) required if Ship to customer selected; ZIP format if address ZIP entered
         │
         ├── High-Value Threshold modal (SDR only):
         │    Fires when advancing to Quote tab with total > HVT
@@ -455,6 +459,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │     components/quotes/shared/line-item-variants.tsx
         │     components/quotes/quote-detail/resend-after-save-modal.tsx
         │     components/quotes/shared/quote-form.tsx → components/quotes/quote-payment-config.tsx
+        │     components/quotes/shared/shipping-fulfillment-section.tsx
         │     components/quotes/quote-detail/customer-info-card.tsx
         │     components/quotes/quote-detail/history-section.tsx
         │     components/quotes/quote-detail/ticket-skeleton.tsx
@@ -471,7 +476,8 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    Top: `TicketStatsRow` (5 stat cards; mobile: 100% total + 2×2 grid)
         │    Below stats: `TicketLifecycleTimeline` — collapsible, default collapsed
         │    Grid: left sidebar (always) + right Overview/History panel
-        │    Overview tab: Line Items always visible; **Pricing** + **Payment & order settings** collapsible (default collapsed)
+        │    Overview tab: Line Items always visible; **Fulfillment** always visible (method, charge, ship-to);
+        │      **Pricing** + **Payment & order settings** collapsible (default collapsed)
         │    Desktop xl+: fixed viewport height; only right panel scrolls
         │    Mobile/tablet: single page scroll (no nested scroll on Overview panel)
         │

@@ -312,6 +312,12 @@ export interface JobTicket {
   // Pricing (Quote tab)
   quote_subtotal: number | null
   quote_shipping: number | null
+  requires_shipping: boolean            // false = pickup (default); true = ship to customer
+  ship_to_line1: string | null          // optional when requires_shipping
+  ship_to_line2: string | null
+  ship_to_city: string | null
+  ship_to_state: string | null
+  ship_to_zip: string | null
   discount_type: 'percent' | 'fixed' | null
   discount_value: string | null     // stored as text, parsed at runtime
   discount_reason: string | null
@@ -660,6 +666,12 @@ export interface TicketForm {
   line_items: Partial<LineItemInput>[]  // lib/utils/ticket-line-items.ts
   // Pricing
   quote_shipping: string          // string in form; parsed to number on submit
+  requires_shipping: boolean      // Pickup vs Ship toggle
+  ship_to_line1: string
+  ship_to_line2: string
+  ship_to_city: string
+  ship_to_state: string
+  ship_to_zip: string
   discount_enabled: boolean
   discount_type: 'percent' | 'fixed' | ''
   discount_value: string
@@ -694,6 +706,12 @@ export interface TicketForm {
 | `validateWebsite()` | `lib/utils/website.ts` | Optional website/social URL; empty allowed; **`http://` / `https://` not required** (e.g. `example.com`, `www.10x.am`, `instagram.com/page`) |
 | `normalizeWebsite()` | `lib/utils/website.ts` | Prefix `https://` when protocol omitted before save |
 | `WEBSITE_FIELD_PLACEHOLDER` | `lib/utils/website.ts` | Shared placeholder: `example.com or instagram.com/page` |
+| `validateShippingCharge()` | `lib/utils/address.ts` | When `requires_shipping`, `quote_shipping` must be > 0 |
+| `validateShipToZip()` | `lib/utils/address.ts` | Optional ZIP — validates format only if non-empty |
+| `resolveRequiresShipping()` | `lib/utils/address.ts` | `requires_shipping ?? (quote_shipping > 0)` for legacy rows |
+| `formatShipToAddress()` | `lib/utils/address.ts` | Multi-line ship-to for display/PDF |
+| `normalizeShipToPayload()` | `lib/utils/address.ts` | Clears address + zeroes shipping when pickup |
+| `getQuoteSendMissingFields()` | `lib/utils/validate-quote-send.ts` | Send validation incl. Shipping ($) when shipping selected |
 | `scrollToFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll a `[data-field-anchor="…"]` wrapper into view and focus its control |
 | `scrollToFirstFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll to the first error in a priority-ordered list (New Quote tab validation) |
 | `buildInitialFollowUpSchedule()` | `lib/utils/follow-up-schedule.ts` | Seed `follow_up_at` when a quote is sent |

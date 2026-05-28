@@ -261,9 +261,9 @@ Blocks: `HIGH_VALUE_THRESHOLD` constant removed, warning banner replaced with ha
 
 **C6. Is shipping manual or fixed?**
 
-✅ **ANSWERED from shadow project code — confirmed by owner.**
+✅ **ANSWERED from shadow project code — confirmed by owner. Extended May 2026.**
 
-**Answer: Manual entry per quote, defaults to blank (no charge).**
+**Answer: Manual entry per quote when shipping is selected.** Default fulfillment is **Pickup** (no shipping charge). When rep selects **Ship to customer**, **Shipping ($)** is required (> 0). Delivery address is **optional** (ZIP validated if entered). Past ship-to addresses for a customer are offered from prior tickets (`GET /api/customers/[id]/shipping-addresses`).
 
 > Owner answer: radio selected "Manual entry per quote."
 

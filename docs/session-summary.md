@@ -1,6 +1,22 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 28, 2026
-**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–28: SDR scope/dashboard, leads workspace, ticket line items (089/090), additional SKUs, resend-after-save modal**.
+**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–28: SDR scope/dashboard, leads workspace, ticket line items (089/090), additional SKUs, resend-after-save modal, quote shipping fulfillment (091)**.
+
+---
+
+## May 28, 2026 — Quote shipping fulfillment
+
+### Database (apply before deploy)
+- **091** — `requires_shipping`, `ship_to_line1` … `ship_to_zip` on `job_tickets`
+
+### Features
+- Pickup vs **Ship to customer** on New Quote + quote detail Quote tab
+- When shipping: **Shipping ($)** required; optional delivery address; past addresses from `GET /api/customers/[id]/shipping-addresses`
+- Overview **Fulfillment** section (always visible); Ship To on public quote, PDF, print when address entered
+- Order-ready email/SMS: pickup vs shipped copy
+
+### Docs synced
+- `schema.md`, `api-contract.md`, `types.md`, `feature-specs/tickets.md`, `component-architecture.md`, `CHANGELOG.md`
 
 ---
 

@@ -14,6 +14,8 @@ import { EmailInput } from "@/components/ui/email-input";
 import { validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
 import { validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
+import { validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
+import type { ShipToFields } from "@/lib/utils/address";
 import { scrollToFirstFormField, scrollToFormField } from "@/lib/utils/scroll-field-into-view";
 import {
   formatQuoteSendMissingMessage,
@@ -193,6 +195,14 @@ export default function NewQuoteForm() {
   const [skus, setSkus] = useState<FormLineItem[]>([emptyFormLineItem()]);
 
   // ── Quote tab fields ──────────────────────────────────────────────────────
+  const [requiresShipping, setRequiresShipping] = useState(false);
+  const [shipTo, setShipTo] = useState<ShipToFields>({
+    ship_to_line1: "",
+    ship_to_line2: "",
+    ship_to_city: "",
+    ship_to_state: "",
+    ship_to_zip: "",
+  });
   const [shipping, setShipping] = useState(0);
   const [discountType, setDiscountType] = useState<"percent" | "fixed" | "">("");
   const [discountValue, setDiscountValue] = useState("");
@@ -335,7 +345,7 @@ export default function NewQuoteForm() {
 
   const pricing = computePricing({
     skus,
-    quote_shipping: shipping,
+    quote_shipping: requiresShipping ? shipping : 0,
     discount_type: discountType || null,
     discount_value: discountValue || null,
     quote_tax_rate_percent: taxExempt ? 0 : taxRate,
@@ -399,6 +409,10 @@ export default function NewQuoteForm() {
       if (taxExempt && !salesPermit.trim()) {
         errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
       }
+      const shippingErr = validateShippingCharge(requiresShipping, shipping);
+      if (shippingErr) errors.shipping = shippingErr;
+      const zipErr = validateShipToZip(shipTo.ship_to_zip);
+      if (zipErr) errors.shipToZip = zipErr;
     }
 
     setFieldErrors(errors);
@@ -480,6 +494,9 @@ export default function NewQuoteForm() {
         skus,
         taxExempt,
         salesPermit,
+        requiresShipping,
+        quoteShipping: requiresShipping ? shipping : 0,
+        shipToZip: shipTo.ship_to_zip ?? "",
         paymentDraft,
       });
       if (missing.length > 0) {
@@ -493,6 +510,21 @@ export default function NewQuoteForm() {
       setFieldErrors({ salesPermit: "Sales Permit # is required when Tax Exempt is selected." });
       setTab("quote");
       scrollToFormField(tabContentRef, "salesPermit");
+      return;
+    }
+
+    const shippingErr = validateShippingCharge(requiresShipping, shipping);
+    if (shippingErr) {
+      setFieldErrors({ shipping: shippingErr });
+      setTab("quote");
+      scrollToFormField(tabContentRef, "shipping");
+      return;
+    }
+    const zipErr = validateShipToZip(shipTo.ship_to_zip);
+    if (zipErr) {
+      setFieldErrors({ shipToZip: zipErr });
+      setTab("quote");
+      scrollToFormField(tabContentRef, "shipToZip");
       return;
     }
 
@@ -557,7 +589,13 @@ export default function NewQuoteForm() {
           ? paymentDraft.ticket_dest_email
           : paymentDraft.ticket_dest_phone,
       quote_subtotal: pricing.subtotal,
-      quote_shipping: shipping,
+      quote_shipping: requiresShipping ? shipping : 0,
+      requires_shipping: requiresShipping,
+      ship_to_line1: requiresShipping ? shipTo.ship_to_line1 || undefined : undefined,
+      ship_to_line2: requiresShipping ? shipTo.ship_to_line2 || undefined : undefined,
+      ship_to_city: requiresShipping ? shipTo.ship_to_city || undefined : undefined,
+      ship_to_state: requiresShipping ? shipTo.ship_to_state || undefined : undefined,
+      ship_to_zip: requiresShipping ? shipTo.ship_to_zip || undefined : undefined,
       discount_type: discountType || undefined,
       discount_value: discountValue || undefined,
       discount_reason: discountReason || undefined,
@@ -628,9 +666,12 @@ export default function NewQuoteForm() {
         skus,
         taxExempt,
         salesPermit,
+        requiresShipping,
+        quoteShipping: requiresShipping ? shipping : 0,
+        shipToZip: shipTo.ship_to_zip ?? "",
         paymentDraft,
       }),
-    [title, dueDate, skus, taxExempt, salesPermit, paymentDraft],
+    [title, dueDate, skus, taxExempt, salesPermit, requiresShipping, shipping, shipTo.ship_to_zip, paymentDraft],
   );
   const quoteSendReady = sendMissingFields.length === 0;
   const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
@@ -879,6 +920,13 @@ export default function NewQuoteForm() {
                 <QuoteForm
                   pricing={pricing}
                   shipping={shipping} setShipping={setShipping}
+                  requiresShipping={requiresShipping}
+                  setRequiresShipping={setRequiresShipping}
+                  shipTo={shipTo}
+                  setShipTo={setShipTo}
+                  customerId={selectedCustomerId ?? lead?.customer?.id ?? null}
+                  shippingError={fieldErrors.shipping}
+                  zipError={fieldErrors.shipToZip}
                   discountType={discountType} setDiscountType={setDiscountType}
                   discountValue={discountValue} setDiscountValue={setDiscountValue}
                   discountReason={discountReason} setDiscountReason={setDiscountReason}

@@ -2,9 +2,11 @@
 
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
+import { ShippingFulfillmentSection } from "@/components/quotes/shared/shipping-fulfillment-section";
 import { OrderPaymentSummary } from "@/components/quotes/quote-detail/order-payment-summary";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { resolveRequiresShipping } from "@/lib/utils/address";
 import { emptySkuRow as sharedEmptySkuRow } from "@/components/quotes/shared/utils";
 import type { QuoteSku, ProductType, SkuLookups } from "@/components/quotes/shared/types";
 import type { TicketLineItemRow } from "@/lib/utils/ticket-line-items";
@@ -12,6 +14,7 @@ import { lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
 import type { QuoteFormTicket } from "@/components/quotes/shared/quote-form";
 import type { SummaryTicket } from "@/components/quotes/quote-detail/order-payment-summary";
 import type { TicketPaymentDraft } from "@/components/quotes/quote-payment-config";
+import type { ShipToFields } from "@/lib/utils/address";
 import {
   DetailSection,
   DetailSectionTitle,
@@ -33,6 +36,12 @@ interface OverviewTicket {
   notes: string | null;
   quote_subtotal: number | null;
   quote_shipping: number | null;
+  requires_shipping?: boolean | null;
+  ship_to_line1?: string | null;
+  ship_to_line2?: string | null;
+  ship_to_city?: string | null;
+  ship_to_state?: string | null;
+  ship_to_zip?: string | null;
   quote_pre_tax_total: number | null;
   quote_tax_amount: number | null;
   quote_final_total: number | null;
@@ -47,6 +56,11 @@ interface Props {
   pricing: ReturnType<typeof import("@/lib/utils/ticket-math").computePricing>;
   shipping: number;
   setShipping: (v: number) => void;
+  requiresShipping: boolean;
+  setRequiresShipping: (v: boolean) => void;
+  shipTo: ShipToFields;
+  setShipTo: (fields: ShipToFields) => void;
+  customerId?: string | null;
   discountType: "percent" | "fixed" | "";
   setDiscountType: (v: "percent" | "fixed" | "") => void;
   discountValue: string;
@@ -93,6 +107,11 @@ export function TicketOverviewSections({
   pricing,
   shipping,
   setShipping,
+  requiresShipping,
+  setRequiresShipping,
+  shipTo,
+  setShipTo,
+  customerId,
   discountType,
   setDiscountType,
   discountValue,
@@ -114,6 +133,7 @@ export function TicketOverviewSections({
 }: Props) {
   const paymentReviewAbove = isPaymentEvidencePending(ticket);
   const pricingRows = buildPricingRows(ticket);
+  const fulfillmentRequiresShipping = resolveRequiresShipping(ticket);
   if (pricingRows.length > 0) {
     pricingRows[pricingRows.length - 1] = {
       ...pricingRows[pricingRows.length - 1],
@@ -141,6 +161,24 @@ export function TicketOverviewSections({
       </DetailSection>
 
       <DetailSection>
+        <DetailSectionTitle>Fulfillment</DetailSectionTitle>
+        <ShippingFulfillmentSection
+          editing={false}
+          requiresShipping={fulfillmentRequiresShipping}
+          onRequiresShippingChange={() => {}}
+          shipTo={ticket}
+          onShipToChange={() => {}}
+          shipping={ticket.quote_shipping ?? 0}
+          onShippingChange={() => {}}
+          ticket={{
+            ...ticket,
+            requires_shipping: fulfillmentRequiresShipping,
+            quote_shipping: ticket.quote_shipping,
+          }}
+        />
+      </DetailSection>
+
+      <DetailSection>
         <DetailCollapsibleSection title={paymentReviewAbove ? "Quote details" : "Pricing"}>
           {!paymentReviewAbove && (
             <DetailPricingTable rows={pricingRows} totalLabel={totalLabel} />
@@ -153,6 +191,11 @@ export function TicketOverviewSections({
               pricing={pricing}
               shipping={shipping}
               setShipping={setShipping}
+              requiresShipping={requiresShipping}
+              setRequiresShipping={setRequiresShipping}
+              shipTo={shipTo}
+              setShipTo={setShipTo}
+              customerId={customerId}
               discountType={discountType}
               setDiscountType={setDiscountType}
               discountValue={discountValue}

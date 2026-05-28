@@ -25,6 +25,7 @@ import {
   ticketKindForReference,
 } from "@/lib/utils/reference-codes";
 import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
+import { normalizeShipToPayload, validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
 import {
@@ -117,7 +118,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_at, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at")
+    .select("id, created_at, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at, requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip, quote_shipping")
     .eq("id", ticketId)
     .single();
 
@@ -580,6 +581,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "quote_destination",
     "quote_subtotal",
     "quote_shipping",
+    "requires_shipping",
+    "ship_to_line1",
+    "ship_to_line2",
+    "ship_to_city",
+    "ship_to_state",
+    "ship_to_zip",
     "discount_type",
     "discount_value",
     "discount_reason",
@@ -639,6 +646,31 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const patch: Record<string, unknown> = { updated_at: now };
   for (const key of ALLOWED_FIELDS) {
     if (key in body) patch[key] = body[key];
+  }
+
+  if ("requires_shipping" in body || "ship_to_line1" in body || "ship_to_line2" in body || "ship_to_city" in body || "ship_to_state" in body || "ship_to_zip" in body || "quote_shipping" in body) {
+    const requiresShipping = "requires_shipping" in body
+      ? Boolean(body.requires_shipping)
+      : Boolean(existing.requires_shipping);
+    const shipPayload = normalizeShipToPayload(requiresShipping, {
+      ship_to_line1: "ship_to_line1" in body ? body.ship_to_line1 : existing.ship_to_line1,
+      ship_to_line2: "ship_to_line2" in body ? body.ship_to_line2 : existing.ship_to_line2,
+      ship_to_city: "ship_to_city" in body ? body.ship_to_city : existing.ship_to_city,
+      ship_to_state: "ship_to_state" in body ? body.ship_to_state : existing.ship_to_state,
+      ship_to_zip: "ship_to_zip" in body ? body.ship_to_zip : existing.ship_to_zip,
+    });
+    const resolvedQuoteShipping = shipPayload.requires_shipping
+      ? Number("quote_shipping" in body ? body.quote_shipping : existing.quote_shipping ?? 0)
+      : 0;
+    const shippingErr = validateShippingCharge(shipPayload.requires_shipping, resolvedQuoteShipping);
+    if (shippingErr) {
+      return NextResponse.json({ error: shippingErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+    const zipErr = validateShipToZip(shipPayload.ship_to_zip);
+    if (zipErr) {
+      return NextResponse.json({ error: zipErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+    Object.assign(patch, shipPayload, { quote_shipping: resolvedQuoteShipping });
   }
 
   if ("due_date" in body && body.due_date) {

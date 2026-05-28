@@ -106,16 +106,17 @@ flowchart TD
 3. **Reference card** — reference code + status badge (Awaiting Approval / Order / Cancelled)
 4. **Rush Order banner** — amber, shown when `rush = true`
 5. **Line items** — desktop table (Product, Qty, Unit Price, Total) + mobile card layout
-6. **Pricing Summary** — subtotal → shipping → discount → tax → **Order Total** (gold)
-7. **Payment Schedule** *(partial prepayment only)*:
+6. **Bill To / Ship To** — customer contact; **Ship To** shown when delivery address was entered on a shipping ticket
+7. **Pricing Summary** — subtotal → shipping → discount → tax → **Order Total** (gold)
+8. **Payment Schedule** *(partial prepayment only)*:
    - Amber box: **Deposit Due Now** + amount + "Required to begin your order"
    - **Balance Remaining** + "Due upon completion / delivery"
    - Gold border wrapping the entire block for prominence
    - Hidden entirely for Full Payment orders
-8. **Accepted Payment Methods** — green badge block
-9. **Special Requirements** — amber block (if set)
-10. **"Confirm & Accept Quote"** CTA — gold button, only when `ticket_status = "sent"`
-11. **Footer** — company name, address, phone, email, website
+9. **Accepted Payment Methods** — green badge block
+10. **Special Requirements** — amber block (if set)
+11. **"Confirm & Accept Quote"** CTA — gold button, only when `ticket_status = "sent"`
+12. **Footer** — company name, address, phone, email, website
 
 ### On Confirm
 

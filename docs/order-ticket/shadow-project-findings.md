@@ -98,7 +98,9 @@ Each SKU object:
 | Shadow field | Production column | Formula |
 |---|---|---|
 | (from SKU loop) | `quote_subtotal` | `SUM(qty × unit_price)` across all SKUs |
-| `quoteShipping` | `quote_shipping` | Manual entry |
+| `quoteShipping` | `quote_shipping` | Manual when ship selected |
+| `requiresShipping` | `requires_shipping` | Pickup vs ship |
+| `shipTo*` | `ship_to_*` | Optional address |
 | `applyDiscount` | — | Boolean form state, not stored |
 | `discountType` | `discount_type` | `'percent'` / `'fixed'` |
 | `discountValue` | `discount_value` | Raw string value entered |

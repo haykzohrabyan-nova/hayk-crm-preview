@@ -22,6 +22,7 @@ import {
   syncTicketLines,
   ticketHasFilledLineItem,
 } from "@/lib/utils/ticket-line-items";
+import { normalizeShipToPayload, validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -132,6 +133,12 @@ export async function POST(request: NextRequest) {
     quote_destination,
     quote_subtotal,
     quote_shipping = 0,
+    requires_shipping = false,
+    ship_to_line1,
+    ship_to_line2,
+    ship_to_city,
+    ship_to_state,
+    ship_to_zip,
     discount_type,
     discount_value,
     discount_reason,
@@ -174,6 +181,23 @@ export async function POST(request: NextRequest) {
 
   if (!title?.trim()) {
     return NextResponse.json({ error: "title is required.", code: "VALIDATION_ERROR" }, { status: 400 });
+  }
+
+  const shipPayload = normalizeShipToPayload(Boolean(requires_shipping), {
+    ship_to_line1,
+    ship_to_line2,
+    ship_to_city,
+    ship_to_state,
+    ship_to_zip,
+  });
+  const resolvedQuoteShipping = shipPayload.requires_shipping ? (quote_shipping ?? 0) : 0;
+  const shippingErr = validateShippingCharge(shipPayload.requires_shipping, resolvedQuoteShipping);
+  if (shippingErr) {
+    return NextResponse.json({ error: shippingErr, code: "VALIDATION_ERROR" }, { status: 400 });
+  }
+  const zipErr = validateShipToZip(shipPayload.ship_to_zip);
+  if (zipErr) {
+    return NextResponse.json({ error: zipErr, code: "VALIDATION_ERROR" }, { status: 400 });
   }
 
   const now = new Date().toISOString();
@@ -337,7 +361,8 @@ export async function POST(request: NextRequest) {
     quote_channel: quote_channel ?? null,
     quote_destination: quote_destination ?? null,
     quote_subtotal: quote_subtotal ?? null,
-    quote_shipping: quote_shipping ?? 0,
+    quote_shipping: resolvedQuoteShipping,
+    ...shipPayload,
     discount_type: discount_type ?? null,
     discount_value: discount_value ?? null,
     discount_reason: discount_reason ?? null,

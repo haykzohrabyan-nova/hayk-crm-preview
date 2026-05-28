@@ -6,6 +6,7 @@ import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-var
 import type { InvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { AddressMapLink } from "@/components/public/address-map-link";
 import { mapLinkStyle } from "@/lib/utils/maps-link";
+import { formatShipToAddress } from "@/lib/utils/address";
 
 const NAVY    = "#1B2B4B";
 const MUTED   = "#6B7280";
@@ -37,6 +38,12 @@ interface PublicTicketDoc {
   special_requirements?: string | null;
   quote_subtotal: number | null;
   quote_shipping: number | null;
+  requires_shipping?: boolean;
+  ship_to_line1?: string | null;
+  ship_to_line2?: string | null;
+  ship_to_city?: string | null;
+  ship_to_state?: string | null;
+  ship_to_zip?: string | null;
   discount_reason?: string | null;
   quote_pre_tax_total: number | null;
   quote_tax_rate_percent: number | null;
@@ -236,6 +243,16 @@ export function PublicQuoteDocument({
           {custEmail && <div style={{ fontSize: 13, color: MUTED }}>{custEmail}</div>}
           {custPhone && <div style={{ fontSize: 13, color: MUTED }}>{custPhone}</div>}
         </div>
+        {formatShipToAddress(ticket) ? (
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: MUTED, marginBottom: 8 }}>
+              Ship To
+            </div>
+            {formatShipToAddress(ticket)?.split("\n").map((line, i) => (
+              <div key={i} style={{ fontSize: 13, color: TEXT, marginBottom: 2 }}>{line}</div>
+            ))}
+          </div>
+        ) : null}
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: MUTED, marginBottom: 8 }}>
             Quote Details

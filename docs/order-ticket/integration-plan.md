@@ -63,6 +63,7 @@ alter table public.job_tickets
   -- Richer pricing
   add column if not exists quote_subtotal         numeric,
   add column if not exists quote_shipping         numeric default 0,
+  -- Migration 091 (May 2026): requires_shipping, ship_to_line1 … ship_to_zip
   add column if not exists discount_type          text,
   add column if not exists discount_value         text,
   add column if not exists discount_reason        text,
@@ -267,7 +268,7 @@ View/Edit mode tabs: Info | Line Items | Quote | History
 
 ### Quote tab
 - Pricing summary display (subtotal, shipping, discount, pre-tax, tax, total)
-- `quote_shipping` (number input, defaults to 0 — manual entry per shadow C6)
+- **Fulfillment (May 2026):** Pickup vs Ship; `quote_shipping` manual when Ship (required > 0); optional `ship_to_*` address
 - Discount toggle: `discount_type` radio (percent / fixed) + `discount_value` input + `discount_reason`
 - Tax rate input (pre-filled from `company_settings.default_tax_rate` — admin-configurable, not hardcoded) + tax exempt toggle + `sales_permit_number`
 - Payment types: checkboxes — Card Payment, Zelle, Offline (confirmed C1; card default-checked)

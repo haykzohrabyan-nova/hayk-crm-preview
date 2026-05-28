@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { fetchTicketLinesBundle, lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
+import { formatShipToAddress } from "@/lib/utils/address";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
@@ -49,6 +50,7 @@ export async function GET(
          due_date, rush, priority, special_requirements,
          contact_name, contact_email, contact_company, contact_phone,
          quote_subtotal, quote_shipping,
+         requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip,
          discount_type, discount_value, discount_reason,
          quote_pre_tax_total, quote_tax_rate_percent, quote_tax_amount, quote_final_total,
          tax_exempt, quote_payment_types, quote_channel, quote_reminder_date, created_by_id,
@@ -87,6 +89,7 @@ export async function GET(
   const customerEmail = cust?.email ?? (ticket.contact_email as string | null) ?? "";
   const customerPhone = cust?.phone ?? (ticket.contact_phone as string | null) ?? "";
   const customerCompany = cust?.company ?? (ticket.contact_company as string | null) ?? "";
+  const shipToAddress = formatShipToAddress(ticket);
   // Fetch creator name separately (created_by_id → user_profiles)
   let repName = "—";
   if (ticket.created_by_id) {
@@ -497,7 +500,7 @@ export async function GET(
         </div>
       </div>
 
-      <!-- Bill To + Prepared By -->
+      <!-- Bill To + Ship To + Prepared By -->
       <div class="parties">
         <div>
           <div class="section-label">Bill To</div>
@@ -507,6 +510,11 @@ export async function GET(
           ${customerPhone ? `<div class="party-detail">${esc(formatPhone(customerPhone))}</div>` : ""}
           ${!customerName && !customerEmail && !customerPhone ? `<div style="color:#bbb;font-size:13px">No customer details</div>` : ""}
         </div>
+        ${shipToAddress ? `
+        <div>
+          <div class="section-label">Ship To</div>
+          ${shipToAddress.split("\n").map((line) => `<div class="party-detail">${esc(line)}</div>`).join("")}
+        </div>` : ""}
         <div>
           <div class="section-label">Prepared By</div>
           <div class="party-detail" style="font-weight:500;color:#333">${esc(repName)}</div>
