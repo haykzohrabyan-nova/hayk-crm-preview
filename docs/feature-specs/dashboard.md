@@ -30,7 +30,7 @@ Each KPI card shows a **help line** below the value explaining how the number is
 
 ## Dashboard privacy (Hide / Show values)
 
-Screen-sharing privacy for KPI numbers. Available on **SDR**, **Sales**, and **Accountant** dashboards (Admin dashboard API supports redaction; UI toggle pending).
+Screen-sharing privacy for KPI numbers. Available on **SDR**, **Sales**, **Accountant**, and **Admin** dashboards.
 
 ### Behaviour
 

@@ -3,6 +3,15 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-28] — Admin dashboard privacy toggle
+
+### Changed
+- `components/admin/admin-dashboard.tsx` — **Hide / Show values** toggle (same as SDR/Sales/Accountant); KPI cards and Team section use `DashboardHiddenValue` when `dashboard_values_hidden` is set; team/sessions refetch on toggle
+- `components/dashboard/dashboard-privacy.tsx` — Hide/Show toggle matches date filter height (`rounded-[8px] border p-0.5` wrapper + inner `py-1.5` button)
+
+### Docs
+- `docs/feature-specs/dashboard.md`, `docs/TODO.md`, `docs/component-architecture.md`
+
 ## [2026-05-28] — Quote & order shipping fulfillment
 
 ### Added

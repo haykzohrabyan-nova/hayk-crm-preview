@@ -148,8 +148,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Role dashboards (SDR / Sales / Admin / Accountant) with KPI help text
 - SDR/Sales dashboards: **Orders** (merged $ + convert count), **Received**, **Balance**, plus role-specific cards; **Sales** omits Lead Created; default date filter **Last 30 Days**
 - **May 27:** Admin / SDR / Sales dashboards + Quotes / Orders / Completed — `DashboardDateRangeFilter` default `last_month`; `GET /api/dashboard/kpis` preset fallbacks `last_month`
-- **May 28:** Dashboard values privacy — `dashboard_values_hidden` on `user_profiles` (087); Hide/Show toggle on SDR/Sales/Accountant; server redaction on KPI/payments/admin routes; masked UI placeholders
-- **Pending:** Admin dashboard privacy toggle + Team section masked KPI display (API ready)
+- **May 28:** Dashboard values privacy — `dashboard_values_hidden` on `user_profiles` (087); Hide/Show toggle on SDR/Sales/Accountant/Admin; server redaction on KPI/payments/admin routes; masked UI placeholders (Admin Team section included)
 - Reports Phase 1 + 2: funnel, win rate, rep scorecards, payment ledger, awaiting collection, custom date range
 - **May 26:** Staff cash deposits log `ticket_payment_recorded` (Reports + dashboard alignment); scorecards display-only; Reports links use lifecycle routes + `?from=/reports` Back
 - **May 26:** Orders + Quotes + Completed list pages — `DashboardDateRangeFilter` (default Last 30 Days as of May 27); tab badges on Quotes/Orders follow selected range; sidebar badges all-time

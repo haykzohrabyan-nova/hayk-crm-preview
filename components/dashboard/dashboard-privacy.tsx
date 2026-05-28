@@ -153,21 +153,20 @@ export function DashboardValuesPrivacyToggle({
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={onRequestToggle}
-        className="gap-1.5 text-[13px] font-medium"
-        style={{
-          borderColor: "var(--color-border)",
-          color: "var(--color-text-primary)",
-          background: "var(--color-surface)",
-        }}
+      <div
+        className="rounded-[8px] border p-0.5 shrink-0"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        {valuesHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-        {valuesHidden ? "Show values" : "Hide values"}
-      </Button>
+        <button
+          type="button"
+          onClick={onRequestToggle}
+          className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all"
+          style={{ color: "var(--color-text-primary)" }}
+        >
+          {valuesHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          {valuesHidden ? "Show values" : "Hide values"}
+        </button>
+      </div>
 
       <Dialog open={confirmOpen} onOpenChange={onConfirmOpenChange}>
         <DialogContent className="sm:max-w-[440px]" showCloseButton={!saving}>

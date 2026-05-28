@@ -124,7 +124,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `ErrorBoundary` | `components/layout/error-boundary.tsx` | Wraps `{children}` in `app/(app)/layout.tsx`. Catches unhandled runtime errors and shows a "Try again" button instead of a blank page. |
 | `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Leads **Won** tab only (not customer profile) |
 | `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | SDR/Sales/Admin dashboards, Orders, Quotes, Completed list pages |
-| `DashboardValuesPrivacyToggle` / `DashboardHiddenValue` | `components/dashboard/dashboard-privacy.tsx` | SDR, Sales, Accountant dashboards — Hide / Show KPI values |
+| `DashboardValuesPrivacyToggle` / `DashboardHiddenValue` | `components/dashboard/dashboard-privacy.tsx` | SDR, Sales, Accountant, Admin dashboards — Hide / Show KPI values |
 | `PhoneInput` | `components/ui/phone-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Admin Company Info, New Quote / Quote Detail |
 | `EmailInput` | `components/ui/email-input.tsx` | Add Lead modal, Verify Drawer, Customer Profile, Login page, Admin Invite User form, Admin Company Info, New Quote / Quote Detail |
 | `LinkedLeadCard` | `components/ui/linked-lead-card.tsx` | New Quote form (left sidebar when `?lead_id` present), Quote Detail (left sidebar) |

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { formatCurrency as formatMoney } from "@/lib/utils/format";
 import { KPI_HELP } from "@/lib/utils/kpi-help-text";
@@ -21,10 +21,16 @@ import {
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
 import type { SdrDashboardPreset } from "@/lib/utils/sdr-dashboard-date-range";
+import {
+  DashboardHiddenValue,
+  DashboardValuesPrivacyToggle,
+  useDashboardPrivacy,
+} from "@/components/dashboard/dashboard-privacy";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface AdminKpis {
+  values_hidden?: boolean;
   range?: {
     preset: SdrDashboardPreset;
     label: string;
@@ -111,6 +117,8 @@ function KpiCard({
   icon,
   accent = false,
   subStats,
+  valuesHidden = false,
+  valueKind = "count",
 }: {
   label: string;
   value: string | number;
@@ -119,6 +127,8 @@ function KpiCard({
   icon: React.ReactNode;
   accent?: boolean;
   subStats?: { label: string; value: number; color: string }[];
+  valuesHidden?: boolean;
+  valueKind?: "currency" | "count";
 }) {
   return (
     <div
@@ -152,12 +162,16 @@ function KpiCard({
         </div>
       </div>
       <div>
-        <p
-          className="text-[28px] font-semibold leading-none"
-          style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-primary)" }}
-        >
-          {value}
-        </p>
+        {valuesHidden ? (
+          <DashboardHiddenValue kind={valueKind} accent={accent} />
+        ) : (
+          <p
+            className="text-[28px] font-semibold leading-none"
+            style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-primary)" }}
+          >
+            {value}
+          </p>
+        )}
         <p
           className="mt-1 text-[12px]"
           style={{
@@ -168,7 +182,7 @@ function KpiCard({
           {subtext}
         </p>
         {help && <KpiHelpLine text={help} variant={accent ? "accent" : "default"} />}
-        {subStats && subStats.length > 0 && (
+        {!valuesHidden && subStats && subStats.length > 0 && (
           <div className="mt-2.5 flex items-center gap-2 flex-wrap">
             {subStats.map((s) => (
               <span
@@ -218,10 +232,14 @@ function MetricCell({
   label,
   value,
   valueColor,
+  valuesHidden = false,
+  valueKind = "count",
 }: {
   label: string;
   value: string | number;
   valueColor?: string;
+  valuesHidden?: boolean;
+  valueKind?: "currency" | "count";
 }) {
   return (
     <div>
@@ -231,12 +249,16 @@ function MetricCell({
       >
         {label}
       </p>
-      <p
-        className="text-[13px] font-semibold tabular-nums"
-        style={{ color: valueColor ?? "var(--color-text-primary)" }}
-      >
-        {value}
-      </p>
+      {valuesHidden ? (
+        <DashboardHiddenValue size="sm" kind={valueKind} />
+      ) : (
+        <p
+          className="text-[13px] font-semibold tabular-nums"
+          style={{ color: valueColor ?? "var(--color-text-primary)" }}
+        >
+          {value}
+        </p>
+      )}
     </div>
   );
 }
@@ -245,25 +267,31 @@ function TeamMemberWorkMetrics({
   role,
   metrics,
   periodLabel,
+  valuesHidden = false,
 }: {
   role: string;
   metrics: TeamMemberMetrics | undefined;
   periodLabel: string;
+  valuesHidden?: boolean;
 }) {
-  if (!metrics) return null;
+  if (!valuesHidden && !metrics) return null;
 
   const hasSdr =
     role === "sdr" &&
-    (metrics.handled > 0 ||
-      metrics.routed > 0 ||
-      metrics.rejected > 0 ||
-      metrics.sourced_cash > 0);
+    (valuesHidden ||
+      (metrics &&
+        (metrics.handled > 0 ||
+          metrics.routed > 0 ||
+          metrics.rejected > 0 ||
+          metrics.sourced_cash > 0)));
   const hasSales =
     role === "sales" &&
-    (metrics.cash_collected > 0 ||
-      metrics.released_order_value > 0 ||
-      metrics.awaiting_collection > 0 ||
-      metrics.pipeline_value > 0);
+    (valuesHidden ||
+      (metrics &&
+        (metrics.cash_collected > 0 ||
+          metrics.released_order_value > 0 ||
+          metrics.awaiting_collection > 0 ||
+          metrics.pipeline_value > 0)));
 
   if (!hasSdr && !hasSales) return null;
 
@@ -271,28 +299,54 @@ function TeamMemberWorkMetrics({
     <div className="space-y-1.5 pt-1" style={{ borderTop: "1px solid var(--color-border)" }}>
       {role === "sdr" && hasSdr && (
         <div className="grid grid-cols-3 gap-2">
-          <MetricCell label="Handled" value={metrics.handled} />
-          <MetricCell label="Routed" value={metrics.routed} valueColor="var(--color-success)" />
-          <MetricCell label="Sourced" value={formatMoney(metrics.sourced_cash)} />
+          <MetricCell label="Handled" value={metrics?.handled ?? 0} valuesHidden={valuesHidden} />
+          <MetricCell
+            label="Routed"
+            value={metrics?.routed ?? 0}
+            valueColor="var(--color-success)"
+            valuesHidden={valuesHidden}
+          />
+          <MetricCell
+            label="Sourced"
+            value={formatMoney(metrics?.sourced_cash ?? 0)}
+            valuesHidden={valuesHidden}
+            valueKind="currency"
+          />
         </div>
       )}
       {role === "sales" && hasSales && (
         <div className="grid grid-cols-3 gap-2">
-          <MetricCell label="Collected" value={formatMoney(metrics.cash_collected)} />
-          <MetricCell label="Released" value={formatMoney(metrics.released_order_value)} />
+          <MetricCell
+            label="Collected"
+            value={formatMoney(metrics?.cash_collected ?? 0)}
+            valuesHidden={valuesHidden}
+            valueKind="currency"
+          />
+          <MetricCell
+            label="Released"
+            value={formatMoney(metrics?.released_order_value ?? 0)}
+            valuesHidden={valuesHidden}
+            valueKind="currency"
+          />
           <MetricCell
             label="Balance due"
-            value={formatMoney(metrics.awaiting_collection)}
+            value={formatMoney(metrics?.awaiting_collection ?? 0)}
             valueColor={
-              metrics.awaiting_collection > 0 ? "var(--color-warning)" : undefined
+              !valuesHidden && (metrics?.awaiting_collection ?? 0) > 0
+                ? "var(--color-warning)"
+                : undefined
             }
+            valuesHidden={valuesHidden}
+            valueKind="currency"
           />
         </div>
       )}
       <p className="text-[10px]" style={{ color: "var(--color-text-muted)" }}>
-        {role === "sales" && metrics.awaiting_collection > 0
-          ? `${periodLabel.toLowerCase()} · balance due is live snapshot`
-          : periodLabel.toLowerCase()}
+        {valuesHidden
+          ? periodLabel.toLowerCase()
+          : role === "sales" && (metrics?.awaiting_collection ?? 0) > 0
+            ? `${periodLabel.toLowerCase()} · balance due is live snapshot`
+            : periodLabel.toLowerCase()}
       </p>
     </div>
   );
@@ -301,9 +355,11 @@ function TeamMemberWorkMetrics({
 function TeamSection({
   periodLabel,
   teamMetrics,
+  valuesHidden = false,
 }: {
   periodLabel: string;
   teamMetrics: Record<string, TeamMemberMetrics>;
+  valuesHidden?: boolean;
 }) {
   const [members, setMembers] = useState<TeamMember[] | null>(null);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -320,7 +376,7 @@ function TeamSection({
         setSessions(sessionData.summary ?? []);
       })
       .catch(() => {});
-  }, []);
+  }, [valuesHidden]);
 
   if (!members || members.length === 0) return null;
 
@@ -342,7 +398,7 @@ function TeamSection({
         <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
           Sessions · last 7 days · work metrics · {periodLabel.toLowerCase()}
         </span>
-        {activeNow > 0 && (
+        {!valuesHidden && activeNow > 0 && (
           <span
             className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
             style={{ background: "var(--color-success-bg)", color: "var(--color-success)" }}
@@ -398,7 +454,7 @@ function TeamSection({
                 </div>
 
                 {/* Auto sign-out warning */}
-                {sess && sess.auto_signouts > 0 && (
+                {!valuesHidden && sess && sess.auto_signouts > 0 && (
                   <div
                     className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0"
                     style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
@@ -415,17 +471,25 @@ function TeamSection({
                   <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
                     Sessions
                   </p>
-                  <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-                    {sess?.total_sessions ?? 0}
-                  </p>
+                  {valuesHidden ? (
+                    <DashboardHiddenValue size="sm" kind="count" />
+                  ) : (
+                    <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
+                      {sess?.total_sessions ?? 0}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
                     Active time
                   </p>
-                  <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-                    {sess ? formatDuration(sess.total_minutes) : "—"}
-                  </p>
+                  {valuesHidden ? (
+                    <DashboardHiddenValue size="sm" kind="count" />
+                  ) : (
+                    <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
+                      {sess ? formatDuration(sess.total_minutes) : "—"}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
@@ -445,9 +509,13 @@ function TeamSection({
                 role={m.role_name}
                 metrics={teamMetrics[m.id]}
                 periodLabel={periodLabel}
+                valuesHidden={valuesHidden}
               />
 
-              {m.role_name === "sales" && m.claimed_leads > 0 && (
+              {m.role_name === "sales" && valuesHidden && (
+                <MetricCell label="Active deals" value={0} valuesHidden />
+              )}
+              {m.role_name === "sales" && !valuesHidden && m.claimed_leads > 0 && (
                 <p className="text-[11px] font-medium" style={{ color: "var(--color-accent-dark)" }}>
                   {m.claimed_leads} active deal{m.claimed_leads !== 1 ? "s" : ""}
                 </p>
@@ -463,6 +531,9 @@ function TeamSection({
 // ─── Admin Dashboard ──────────────────────────────────────────────────────────
 
 export function AdminDashboard() {
+  const fetchKpisRef = useRef<() => Promise<void>>(async () => {});
+  const privacy = useDashboardPrivacy(() => fetchKpisRef.current());
+
   const [filter, setFilter] = useState<DashboardDateRangeFilterValue>(() =>
     defaultDashboardDateRangeFilterValue("last_month"),
   );
@@ -488,9 +559,16 @@ export function AdminDashboard() {
       new Promise((r) => setTimeout(r, 300)),
     ]);
     const json = await res.json();
-    if (res.ok) setData(json as AdminKpis);
+    if (res.ok) {
+      setData(json as AdminKpis);
+      if (typeof json.values_hidden === "boolean") {
+        privacy.syncFromApi(json.values_hidden);
+      }
+    }
     setLoading(false);
-  }, [filter, buildQuery]);
+  }, [filter, buildQuery, privacy.syncFromApi]);
+
+  fetchKpisRef.current = fetchKpis;
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
 
@@ -500,14 +578,20 @@ export function AdminDashboard() {
     function onLeadsChanged() {
       fetch(`/api/dashboard/kpis?${buildQuery(filter)}`)
         .then((r) => r.json())
-        .then((json) => setData(json as AdminKpis))
+        .then((json) => {
+          setData(json as AdminKpis);
+          if (typeof json.values_hidden === "boolean") {
+            privacy.syncFromApi(json.values_hidden);
+          }
+        })
         .catch(() => {});
     }
     window.addEventListener("bazaar:leads-changed", onLeadsChanged);
     return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
-  }, [filter, buildQuery]);
+  }, [filter, buildQuery, privacy.syncFromApi]);
 
   const periodLabel = data?.range?.label ?? "Last 7 Days";
+  const metricsHidden = privacy.valuesHidden;
 
   return (
     <div className="space-y-8">
@@ -517,7 +601,18 @@ export function AdminDashboard() {
         <h1 className="text-[20px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
           Dashboard
         </h1>
-        <DashboardDateRangeFilter value={filter} onChange={setFilter} />
+        <div className="flex flex-wrap items-center gap-2">
+          <DashboardValuesPrivacyToggle
+            valuesHidden={privacy.valuesHidden}
+            onRequestToggle={privacy.requestToggle}
+            confirmOpen={privacy.confirmOpen}
+            onConfirmOpenChange={privacy.setConfirmOpen}
+            pendingHidden={privacy.pendingHidden}
+            saving={privacy.saving}
+            onConfirm={privacy.confirmToggle}
+          />
+          <DashboardDateRangeFilter value={filter} onChange={setFilter} />
+        </div>
       </div>
 
       {/* KPI Cards */}
@@ -528,7 +623,9 @@ export function AdminDashboard() {
           <>
             <KpiCard
               label="Cash Collected"
-              value={formatMoney(data.cash_collected)}
+              valuesHidden={metricsHidden}
+              valueKind="currency"
+              value={formatMoney(data.cash_collected ?? 0)}
               subtext={periodLabel.toLowerCase()}
               help={KPI_HELP.cash_collected}
               icon={<DollarSign className="h-4 w-4" />}
@@ -536,42 +633,58 @@ export function AdminDashboard() {
             />
             <KpiCard
               label="Pipeline Value"
-              value={formatCurrency(data.pipeline_value)}
+              valuesHidden={metricsHidden}
+              valueKind="currency"
+              value={formatCurrency(data.pipeline_value ?? 0)}
               subtext="current total"
               help={KPI_HELP.pipeline_value}
               icon={<DollarSign className="h-4 w-4" />}
             />
             <KpiCard
               label="Total Leads"
-              value={data.total_leads}
+              valuesHidden={metricsHidden}
+              value={data.total_leads ?? 0}
               subtext={periodLabel.toLowerCase()}
               help={KPI_HELP.total_leads}
               icon={<Users className="h-4 w-4" />}
-              subStats={[
-                { label: "Open",       value: data.open_leads,      color: "var(--color-success)" },
-                { label: "Claimed",    value: data.claimed_leads,    color: "var(--color-accent-dark)" },
-                ...(data.pipeline_leads > 0 ? [{ label: "In Pipeline", value: data.pipeline_leads, color: "var(--color-warning)" }] : []),
-                ...(data.quoted_leads   > 0 ? [{ label: "Quoted",      value: data.quoted_leads,   color: "var(--color-info-text)" }] : []),
-                ...(data.ordered_leads  > 0 ? [{ label: "Ordered",     value: data.ordered_leads,  color: "var(--color-btn-verify-bg)" }] : []),
-              ]}
+              subStats={
+                metricsHidden
+                  ? undefined
+                  : [
+                      { label: "Open", value: data.open_leads, color: "var(--color-success)" },
+                      { label: "Claimed", value: data.claimed_leads, color: "var(--color-accent-dark)" },
+                      ...(data.pipeline_leads > 0
+                        ? [{ label: "In Pipeline", value: data.pipeline_leads, color: "var(--color-warning)" }]
+                        : []),
+                      ...(data.quoted_leads > 0
+                        ? [{ label: "Quoted", value: data.quoted_leads, color: "var(--color-info-text)" }]
+                        : []),
+                      ...(data.ordered_leads > 0
+                        ? [{ label: "Ordered", value: data.ordered_leads, color: "var(--color-btn-verify-bg)" }]
+                        : []),
+                    ]
+              }
             />
             <KpiCard
               label="In Inbox"
-              value={data.inbox_leads}
+              valuesHidden={metricsHidden}
+              value={data.inbox_leads ?? 0}
               subtext="waiting for SDR"
               help={KPI_HELP.inbox_leads}
               icon={<Clock className="h-4 w-4" />}
             />
             <KpiCard
               label="Routed to Sales"
-              value={data.routed_leads}
+              valuesHidden={metricsHidden}
+              value={data.routed_leads ?? 0}
               subtext="active pipeline"
               help={KPI_HELP.routed_to_sales}
               icon={<TrendingUp className="h-4 w-4" />}
             />
             <KpiCard
               label="Won"
-              value={data.won_leads}
+              valuesHidden={metricsHidden}
+              value={data.won_leads ?? 0}
               subtext={periodLabel.toLowerCase()}
               help={KPI_HELP.won}
               icon={<CheckCircle className="h-4 w-4" />}
@@ -597,7 +710,11 @@ export function AdminDashboard() {
 
       {/* Team */}
       {!loading && data && (
-        <TeamSection periodLabel={periodLabel} teamMetrics={data.team_member_metrics ?? {}} />
+        <TeamSection
+          periodLabel={periodLabel}
+          teamMetrics={data.team_member_metrics ?? {}}
+          valuesHidden={metricsHidden}
+        />
       )}
 
     </div>
