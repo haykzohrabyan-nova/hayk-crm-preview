@@ -1,0 +1,366 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { Plus, Trash2, Download, Paperclip, Eye, FileText, Image as ImageIcon } from "lucide-react";
+import type { TicketFileMeta, TicketLineVariantDisplayRow } from "@/lib/utils/ticket-line-items";
+import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
+
+function viewAttachmentLabel(mime: string | undefined): string {
+  if (mime === "application/pdf") return "View PDF";
+  if (mime?.startsWith("image/")) return "View image";
+  return "View file";
+}
+
+function ViewAttachmentIcon({ mime }: { mime?: string }) {
+  if (mime === "application/pdf") return <FileText size={14} />;
+  if (mime?.startsWith("image/")) return <ImageIcon size={14} />;
+  return <Eye size={14} />;
+}
+
+/** Read-only additional SKUs block for quote/order detail Overview. */
+export function AdditionalSkusOverviewList({
+  variants,
+  ticketRef,
+}: {
+  variants: TicketLineVariantDisplayRow[];
+  ticketRef?: string | null;
+}) {
+  if (!variants.length) return null;
+
+  /** Match line item title in DetailLineItemCard */
+  const rowTextCls = "text-sm md:text-[15px] leading-snug";
+
+  return (
+    <div
+      className="border-t px-3.5 py-3 md:px-5 md:py-3.5 space-y-2.5"
+      style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
+    >
+      <p
+        className="text-[11px] font-semibold uppercase tracking-[0.08em]"
+        style={{ color: "var(--color-text-muted)" }}
+      >
+        Additional SKUs
+      </p>
+      {variants.map((v, i) => {
+        const qty = Number(v.quantity);
+        const qtyLabel = Number.isFinite(qty) && qty % 1 === 0 ? String(Math.round(qty)) : String(qty);
+        const file = v.file;
+        const canView = Boolean(file?.id && ticketRef);
+
+        const sep = (
+          <span className={`${rowTextCls} shrink-0 select-none`} style={{ color: "var(--color-text-muted)" }} aria-hidden>
+            ·
+          </span>
+        );
+
+        return (
+          <div
+            key={`${v.name}-${i}`}
+            className="flex items-center gap-2 rounded-md border px-3 py-2.5 min-w-0"
+            style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}
+          >
+            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+              <span className={`${rowTextCls} font-medium shrink-0`} style={{ color: "var(--color-text-primary)" }}>
+                {v.name.trim() || "—"}
+              </span>
+              {sep}
+              <span className={`${rowTextCls} shrink-0 tabular-nums`} style={{ color: "var(--color-text-muted)" }}>
+                Qty {qtyLabel}
+              </span>
+              {file?.file_name && (
+                <>
+                  {sep}
+                  <span
+                    className={`${rowTextCls} truncate min-w-0`}
+                    style={{ color: "var(--color-text-muted)" }}
+                    title={file.file_name}
+                  >
+                    {file.file_name}
+                  </span>
+                </>
+              )}
+            </div>
+            {canView && file && (
+              <a
+                href={`/api/tickets/${ticketRef}/files/${file.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-opacity hover:opacity-85"
+                style={{
+                  borderColor: "var(--color-border)",
+                  background: "var(--color-btn-primary-bg)",
+                  color: "var(--color-btn-primary-text)",
+                }}
+              >
+                <ViewAttachmentIcon mime={file.mime_type} />
+                {viewAttachmentLabel(file.mime_type)}
+              </a>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+export interface FormLineVariant {
+  id: string;
+  name: string;
+  quantity: string;
+  file?: TicketFileMeta | null;
+  pendingFile?: File | null;
+}
+
+interface LineItemVariantsProps {
+  editing?: boolean;
+  lineIdx: number;
+  variants: FormLineVariant[];
+  ticketRef?: string | null;
+  onChange: (variants: FormLineVariant[]) => void;
+  nameError?: string;
+  qtyError?: string;
+  bannerError?: string | null;
+}
+
+const labelCls = "block text-xs font-medium uppercase tracking-wider";
+const labelStyle = { color: "var(--color-text-muted)" } as const;
+const fieldStyle = {
+  background: "var(--color-surface)",
+  border: "1px solid var(--color-border)",
+  color: "var(--color-text-primary)",
+} as const;
+
+/** Match text inputs (py-2 + text-sm + border) so Attach aligns with Quantity */
+const controlHeightCls = "box-border h-[38px]";
+const inputCls = `mt-1 w-full px-3 rounded-md text-sm border outline-none ${controlHeightCls}`;
+const attachBtnCls = `mt-1 inline-flex items-center justify-center gap-1.5 px-3 rounded-md text-sm font-medium border whitespace-nowrap ${controlHeightCls}`;
+
+function newVariantRow(): FormLineVariant {
+  return { id: crypto.randomUUID(), name: "", quantity: "" };
+}
+
+export function LineItemVariants({
+  editing = true,
+  lineIdx,
+  variants,
+  ticketRef,
+  onChange,
+  nameError,
+  qtyError,
+  bannerError,
+}: LineItemVariantsProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingVariantIdx, setPendingVariantIdx] = useState<number | null>(null);
+
+  function updateVariant(idx: number, patch: Partial<FormLineVariant>) {
+    onChange(variants.map((v, i) => (i === idx ? { ...v, ...patch } : v)));
+  }
+
+  function removeVariant(idx: number) {
+    onChange(variants.filter((_, i) => i !== idx));
+  }
+
+  function addVariant() {
+    onChange([...variants, newVariantRow()]);
+  }
+
+  function pickFile(idx: number) {
+    setPendingVariantIdx(idx);
+    fileInputRef.current?.click();
+  }
+
+  function onFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file == null || pendingVariantIdx == null) return;
+    updateVariant(pendingVariantIdx, { pendingFile: file, file: undefined });
+    setPendingVariantIdx(null);
+  }
+
+  if (!editing) {
+    if (!variants.length) return null;
+    return (
+      <AdditionalSkusOverviewList
+        variants={variants.map((v) => ({
+          name: v.name,
+          quantity: Number(v.quantity) || 0,
+          file: v.file ?? null,
+        }))}
+        ticketRef={ticketRef}
+      />
+    );
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t space-y-3" style={{ borderColor: "var(--color-border)" }} data-field-anchor={`lineVariants-${lineIdx}`}>
+      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,application/pdf" className="hidden" onChange={onFileSelected} />
+      <div className="flex items-center justify-between">
+        <p className={labelCls} style={labelStyle}>Additional SKUs</p>
+        <button
+          type="button"
+          onClick={addVariant}
+          className="inline-flex items-center gap-1 text-xs font-medium hover:opacity-70"
+          style={{ color: "var(--color-accent-dark)" }}
+        >
+          <Plus size={14} />
+          Add SKU
+        </button>
+      </div>
+      {bannerError && (
+        <p className="text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">
+          {bannerError}
+        </p>
+      )}
+      {variants.length === 0 && (
+        <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>Optional — add named SKUs with quantities under this line item.</p>
+      )}
+      {variants.map((v, vIdx) => (
+        <div
+          key={v.id}
+          className="rounded-lg p-3 space-y-2 border"
+          style={{ background: "var(--color-bg)", borderColor: "var(--color-border)" }}
+        >
+          <div className="flex flex-wrap gap-2 items-end">
+            <div className="min-w-0 flex-1 basis-[140px]">
+              <label className={labelCls} style={labelStyle}>Name *</label>
+              <input
+                type="text"
+                value={v.name}
+                onChange={(e) => updateVariant(vIdx, { name: e.target.value })}
+                className={inputCls}
+                style={{
+                  ...fieldStyle,
+                  borderColor: nameError ? "var(--color-danger)" : "var(--color-border)",
+                }}
+                placeholder="SKU name"
+              />
+            </div>
+            <div className="w-[88px] shrink-0">
+              <label className={labelCls} style={labelStyle}>Quantity *</label>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={v.quantity}
+                onChange={(e) => updateVariant(vIdx, { quantity: e.target.value.replace(/[^\d.]/g, "") })}
+                className={inputCls}
+                style={{
+                  ...fieldStyle,
+                  borderColor: qtyError ? "var(--color-danger)" : "var(--color-border)",
+                }}
+                placeholder="0"
+              />
+            </div>
+            <div className="flex shrink-0 flex-col">
+              <label className={labelCls} style={labelStyle}>File</label>
+              <button
+                type="button"
+                onClick={() => pickFile(vIdx)}
+                className={attachBtnCls}
+                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)", background: "var(--color-surface)" }}
+              >
+                <Paperclip size={13} />
+                <span className="hidden md:inline">
+                  {v.pendingFile ? "Replace" : v.file ? "Replace file" : "Attach image or PDF"}
+                </span>
+                <span className="md:hidden">{v.pendingFile || v.file ? "Replace" : "Attach"}</span>
+              </button>
+            </div>
+            <div className="shrink-0">
+              <span className={`${labelCls} invisible select-none`} aria-hidden>
+                Remove
+              </span>
+              <button
+                type="button"
+                onClick={() => removeVariant(vIdx)}
+                className={`mt-1 p-2 rounded-md hover:opacity-70 ${controlHeightCls} flex items-center justify-center`}
+                style={{ color: "var(--color-danger)" }}
+                aria-label="Remove SKU"
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </div>
+          {(v.pendingFile || (v.file?.id && ticketRef && !v.pendingFile)) && (
+            <div className="flex flex-wrap items-center gap-2 pl-0.5">
+              {v.pendingFile && (
+                <>
+                  <span className="text-xs truncate max-w-[240px]" style={{ color: "var(--color-text-primary)" }}>
+                    {v.pendingFile.name}
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Uploads when you save</span>
+                </>
+              )}
+              {v.file?.id && ticketRef && !v.pendingFile && (
+                <a
+                  href={`/api/tickets/${ticketRef}/files/${v.file.id}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs hover:opacity-70 min-w-0"
+                  style={{ color: "var(--color-accent-dark)" }}
+                >
+                  <Download size={13} className="shrink-0" />
+                  <span className="truncate">{v.file.file_name}</span>
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export async function uploadPendingVariantFiles(
+  ticketRef: string,
+  lines: { variants?: FormLineVariant[] }[],
+): Promise<string | null> {
+  for (const line of lines) {
+    for (const v of line.variants ?? []) {
+      if (!v.pendingFile) continue;
+      const fd = new FormData();
+      fd.append("variant_id", v.id);
+      fd.append("file", v.pendingFile);
+      const res = await fetch(`/api/tickets/${ticketRef}/files`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        return (j as { error?: string }).error ?? "Failed to upload file.";
+      }
+    }
+  }
+  return null;
+}
+
+import type { FormLineItem } from "./utils";
+
+export function lineItemsToApiPayload(
+  lines: FormLineItem[],
+): import("@/lib/utils/ticket-line-items").LineItemInput[] {
+  return lines.map((line, i) => ({
+    id: line.id,
+    sort_order: i,
+    product_type: line.product_type,
+    description: line.description,
+    material: line.material,
+    lamination: line.lamination,
+    color_mode: line.color_mode,
+    sides: line.sides,
+    roll_direction: line.roll_direction,
+    width: line.width,
+    height: line.height,
+    quantity: line.quantity,
+    unit_price: line.unit_price,
+    line_total: line.line_total,
+    design_required: line.design_required,
+    die_cut: line.die_cut,
+    spot_uv: line.spot_uv,
+    foil: line.foil,
+    perforation: line.perforation,
+    comment: line.comment,
+    variants: (line.variants ?? []).map((v, j) => ({
+      id: v.id,
+      name: v.name.trim(),
+      quantity: Number(v.quantity) || 0,
+      sort_order: j,
+    })),
+  }));
+}

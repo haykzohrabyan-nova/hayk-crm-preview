@@ -173,7 +173,8 @@ BazarCRM/
 │   │   │   ├── quotes/page-data/route.ts ✓ GET — quote list + quote-stage counts
 │   │   │   └── [id]/route.ts             ✓ GET single / PATCH update (supports claim_ownership)
 │   │   ├── orders/
-│   │   │   ├── orders/route.ts           ✓ GET — slim orders list (order/cancelled, no quote_skus)
+│   │   │   ├── orders/route.ts           ✓ GET — slim orders list (order/cancelled, no line_items)
+│   │   │   ├── tickets/[id]/files/       ✓ POST/GET/DELETE — variant attachments (ticket-attachments bucket)
 │   │   │   ├── page-data/route.ts        ✓ GET — orders list + tab counts
 │   │   │   └── counts/route.ts           ✓ GET — orders tab badge counts only
 │   │   ├── payments/
@@ -360,7 +361,7 @@ BazarCRM/
 
 ## Performance — Scoped List APIs + Page-Data (2026-05-22 / 2026-05-26)
 
-List pages fetch **scoped, slim payloads** — no `quote_skus` JSONB on table views. Full records load only on detail routes or drawer open.
+List pages fetch **scoped, slim payloads** — no `line_items` on table views. Full records load on detail routes via `fetchTicketLinesBundle()` (`ticket_line_items` + `ticket_line_variants` + `ticket_files`).
 
 **Initial load (May 2026):** Tabbed list pages prefer **`GET /api/{feature}/page-data`** — one `requireSession()` pass, then parallel list + counts queries. See `docs/api-contract.md`.
 

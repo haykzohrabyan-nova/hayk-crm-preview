@@ -180,9 +180,8 @@ create table if not exists public.job_tickets (
   prepayment_type                    text,           -- 'percent' | 'fixed'
   prepayment_value                   text,           -- stored as text; parsed at runtime
 
-  -- Line items
+  -- Line items (relational — see ticket_line_items)
   product_lines                      jsonb          not null default '[]',
-  quote_skus                         jsonb          not null default '[]',
 
   -- Flags
   rush                               boolean        not null default false,
@@ -261,6 +260,59 @@ create table if not exists public.job_tickets (
   notes                              text,
   created_at                         timestamptz    not null default now(),
   updated_at                         timestamptz    not null default now()
+);
+
+-- ── ticket_line_items (migration 089) ────────────────────────────────────────
+
+create table if not exists public.ticket_line_items (
+  id               uuid        primary key default gen_random_uuid(),
+  ticket_id        uuid        not null references public.job_tickets(id) on delete cascade,
+  sort_order       int         not null default 0,
+  product_type     text        not null default '',
+  description      text,
+  material         text,
+  lamination       text,
+  color_mode       text,
+  sides            text,
+  roll_direction   text,
+  width            numeric,
+  height           numeric,
+  quantity         numeric,
+  unit_price       numeric,
+  line_total       numeric,
+  design_required  boolean     not null default false,
+  die_cut          boolean     not null default false,
+  spot_uv          boolean     not null default false,
+  foil             boolean     not null default false,
+  perforation      boolean     not null default false,
+  comment          text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now()
+);
+
+create table if not exists public.ticket_line_variants (
+  id            uuid        primary key default gen_random_uuid(),
+  line_item_id  uuid        not null references public.ticket_line_items(id) on delete cascade,
+  ticket_id     uuid        not null references public.job_tickets(id) on delete cascade,
+  sort_order    int         not null default 0,
+  name          text        not null,
+  quantity      numeric     not null check (quantity > 0),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+create table if not exists public.ticket_files (
+  id              uuid        primary key default gen_random_uuid(),
+  ticket_id       uuid        not null references public.job_tickets(id) on delete cascade,
+  line_item_id    uuid        not null references public.ticket_line_items(id) on delete cascade,
+  variant_id      uuid        not null references public.ticket_line_variants(id) on delete cascade,
+  storage_path    text        not null,
+  file_name       text        not null,
+  mime_type       text        not null,
+  byte_size       bigint,
+  uploaded_by_id  uuid        references auth.users(id),
+  created_at      timestamptz not null default now(),
+  constraint ticket_files_variant_id_key unique (variant_id)
 );
 
 -- ── activities ────────────────────────────────────────────────────────────────

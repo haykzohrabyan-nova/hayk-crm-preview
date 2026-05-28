@@ -150,7 +150,6 @@ export async function processDueQuoteFollowUps(
     const sendResult = await sendQuoteFollowUpReminder(
       {
         ...working,
-        quote_skus: [],
         quote_payment_types: [],
         quote_subtotal: null,
         quote_shipping: null,

@@ -60,14 +60,13 @@ export async function DELETE(_request: Request, { params }: Ctx) {
 
   if (!mat) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
-  // Safety check: referenced in any quote_skus JSONB?
-  const { data: tickets } = await admin
-    .from("job_tickets")
+  const { data: lineRef } = await admin
+    .from("ticket_line_items")
     .select("id")
-    .filter("quote_skus", "cs", JSON.stringify([{ material: mat.name }]))
+    .eq("material", mat.name)
     .limit(1);
 
-  if (tickets && tickets.length > 0) {
+  if (lineRef && lineRef.length > 0) {
     return NextResponse.json(
       { error: `Cannot delete — "${mat.name}" is used in existing quotes or orders. Deactivate it instead.` },
       { status: 409 }

@@ -69,7 +69,7 @@ A new quote can be started from three places. The entry point controls the UI sh
 ## `/quotes` — Quoted Requests page
 
 **Component:** `components/quotes/quotes-page.tsx`  
-**List API:** `GET /api/quotes/page-data` — slim ticket list (no `quote_skus` on list). Returns `pagination`. Full record on `/quotes/[id]`.
+**List API:** `GET /api/quotes/page-data` — slim ticket list (no `line_items` on list). Returns `pagination`. Full record on `/quotes/[id]` includes `line_items` tree.
 
 **Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 30 Days** (`last_month`); Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters rows by `created_at` **server-side** via `date_from` / `date_to`. **Tab badges** from page-data `counts` under the same filters; sidebar `/quotes` badge stays all-time total.
 
@@ -313,6 +313,10 @@ Each SKU row:
 > All selects in Line Items tab use `appearance-none` + custom ChevronDown via `SkuSelect` helper for consistent cross-browser styling.
 
 **Validation:** At least one line item must be fully filled (product type + qty + unit price > 0) before advancing to Quote tab or saving.
+
+**Resend after edit (May 2026):** Saving changes does **not** auto-email the customer. **SDR/Sales** editing a **sent** quote before customer confirm see a modal to **Resend quote**. **Admin** edits on sent quote or order-stage tickets see **Send update** (quote resend or invoice link with “revised by our team” copy). Portal `/q/{token}` always shows latest data after save.
+
+**Additional SKUs (per line, May 2026):** Under each catalog line, staff can add zero or more **additional SKUs** — **name** and **quantity** required; optional image/PDF uploaded after save via `POST /api/tickets/{ref}/files`. Stored in `ticket_line_variants` + `ticket_files`; does not affect pricing (`computePricing` uses catalog lines only). Shown on detail, PDF, email, and public quote (name + qty only — **no file download** on `/q/[token]`). Persisted with `line_items` on `POST`/`PATCH /api/tickets`.
 
 ### Quote Tab
 
@@ -570,7 +574,9 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 
 | Route | Method | Purpose |
 |-------|--------|---------|
-| `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `quote_skus`). **SDR:** `created_by_id` only (same as `/orders`, `/completed`). **Sales/Admin:** own + all `routed`. |
+| `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `line_items`). **SDR:** `created_by_id` only (same as `/orders`, `/completed`). **Sales/Admin:** own + all `routed`. |
+| `POST /api/tickets/[id]/files` | POST | Multipart upload for additional-SKU attachment (`variant_id`, `file`). Staff only. |
+| `GET/DELETE /api/tickets/[id]/files/[fileId]` | GET/DELETE | Signed URL download / remove file. |
 | `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `order` + `in_production` + `cancelled`; includes evidence-pending for owner; returns `status_label` / `status_tone`. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders). Direct Quotes page: stores `quote_source` on ticket (no auto-lead). Lead/CRM flows: may create linked lead with `source`. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket by UUID or reference code (`QUO-*`, `ORD-*`). Sales/Admin can GET `routed` tickets they don't own. **Accountant** can GET any ticket (matches list scoping). |

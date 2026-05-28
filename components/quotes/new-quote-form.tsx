@@ -31,7 +31,14 @@ import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/q
 import { minDueDateForNewTicket, validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { InfoForm } from "@/components/quotes/shared/info-form";
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
-import { emptySkuRow } from "@/components/quotes/shared/utils";
+import {
+  emptyFormLineItem,
+  type FormLineItem,
+} from "@/components/quotes/shared/utils";
+import {
+  lineItemsToApiPayload,
+  uploadPendingVariantFiles,
+} from "@/components/quotes/shared/line-item-variants";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
 import type { LookupOption as SharedLookupOption, SkuLookups as SharedSkuLookups } from "@/components/quotes/shared/types";
 import {
@@ -183,7 +190,7 @@ export default function NewQuoteForm() {
   const [notes, setNotes] = useState("");
 
   // ── Line Items ────────────────────────────────────────────────────────────
-  const [skus, setSkus] = useState<QuoteSku[]>([emptySkuRow()]);
+  const [skus, setSkus] = useState<FormLineItem[]>([emptyFormLineItem()]);
 
   // ── Quote tab fields ──────────────────────────────────────────────────────
   const [shipping, setShipping] = useState(0);
@@ -316,8 +323,12 @@ export default function NewQuoteForm() {
     setSkus((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
+  const updateVariants = useCallback((idx: number, variants: FormLineItem["variants"]) => {
+    setSkus((prev) => prev.map((s, i) => (i === idx ? { ...s, variants } : s)));
+  }, []);
+
   const addSku = useCallback(() => {
-    setSkus((prev) => [...prev, emptySkuRow()]);
+    setSkus((prev) => [...prev, emptyFormLineItem()]);
   }, []);
 
   // ─── Pricing ─────────────────────────────────────────────────────────────
@@ -533,14 +544,12 @@ export default function NewQuoteForm() {
             from_quote_page: true,
             quote_source: contactSource || undefined,
           }),
-      quote_skus: skus,
+      line_items: lineItemsToApiPayload(skus),
       notes: notes || undefined,
       order_source: orderSource,
       priority,
       due_date: dueDate || undefined,
       rush,
-      design_required: skus.some((s) => s.design_required),
-      die_cut: skus.some((s) => s.die_cut),
       special_requirements: specialRequirements || undefined,
       quote_channel: paymentDraft.ticket_quote_channel,
       quote_destination:
@@ -582,11 +591,22 @@ export default function NewQuoteForm() {
         setError(json.error ?? "Failed to save quote.");
         return;
       }
+
+      const savedTicket = json.ticket;
+      const ref = savedTicket?.reference_code as string | undefined;
+      const ticketRef = ref ?? savedTicket?.id;
+      if (ticketRef) {
+        const uploadErr = await uploadPendingVariantFiles(ticketRef, skus);
+        if (uploadErr) {
+          setError(uploadErr);
+          return;
+        }
+      }
+
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
       if (status === "routed" || status === "sent") {
         window.dispatchEvent(new Event("bazaar:tickets-changed"));
       }
-      const ref = json.ticket?.reference_code as string | undefined;
       if (status === "sent" && ref) {
         router.push(`/quotes/${ref}`);
       } else {
@@ -837,6 +857,7 @@ export default function NewQuoteForm() {
                   onUpdate={updateSku}
                   onRemove={removeSku}
                   onAdd={addSku}
+                  onVariantsChange={updateVariants}
                   error={fieldErrors.lineItems}
                 />
               </div>

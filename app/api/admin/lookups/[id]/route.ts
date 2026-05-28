@@ -84,7 +84,7 @@ export async function DELETE(
     }
   }
 
-  // Check if any ticket references this value in quote_skus or direct columns
+  // Check if any ticket references this value in ticket_line_items or direct columns
   const ticketFieldMap: Record<string, string> = {
     lamination:      "lamination",
     ticket_priority: "priority",

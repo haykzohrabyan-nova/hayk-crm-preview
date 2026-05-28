@@ -1,6 +1,12 @@
 import type { QuoteSku } from "@/lib/utils/ticket-math";
+import type { FormLineVariant } from "./line-item-variants";
 import type { LookupOption } from "./types";
 import React from "react";
+
+export type FormLineItem = QuoteSku & {
+  id: string;
+  variants: FormLineVariant[];
+};
 
 export function emptySkuRow(): QuoteSku {
   return {
@@ -17,6 +23,47 @@ export function emptySkuRow(): QuoteSku {
     foil: false,
     perforation: false,
   };
+}
+
+export function emptyFormLineItem(): FormLineItem {
+  return {
+    id: crypto.randomUUID(),
+    ...emptySkuRow(),
+    variants: [],
+  };
+}
+
+/** API bundle rows → editable form lines (includes file metadata on variants). */
+export function bundleToFormLineItems(
+  lines: import("@/lib/utils/ticket-line-items").TicketLineItemRow[],
+): FormLineItem[] {
+  return lines.map((row) => ({
+    id: row.id,
+    product_type: row.product_type,
+    description: row.description ?? undefined,
+    material: row.material ?? undefined,
+    lamination: row.lamination ?? undefined,
+    color_mode: row.color_mode ?? undefined,
+    sides: row.sides ?? undefined,
+    roll_direction: row.roll_direction ?? undefined,
+    width: row.width ?? undefined,
+    height: row.height ?? undefined,
+    quantity: row.quantity ?? undefined,
+    unit_price: row.unit_price ?? undefined,
+    line_total: row.line_total ?? undefined,
+    design_required: row.design_required,
+    die_cut: row.die_cut,
+    spot_uv: row.spot_uv,
+    foil: row.foil,
+    perforation: row.perforation,
+    comment: row.comment ?? undefined,
+    variants: row.variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      quantity: String(v.quantity),
+      file: v.file ?? null,
+    })),
+  }));
 }
 
 /**

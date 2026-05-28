@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { fetchTicketLinesBundle, lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
 
 // GET /api/public/quotes/[token]
 // No auth required — used by the public customer-facing quote page (/q/[token]).
@@ -26,7 +27,6 @@ export async function GET(_request: NextRequest, { params }: Params) {
        reference_code,
        public_token,
        quote_channel,
-       quote_skus,
        quote_subtotal,
        quote_shipping,
        discount_type,
@@ -86,5 +86,12 @@ export async function GET(_request: NextRequest, { params }: Params) {
     .eq("id", 1)
     .single();
 
-  return NextResponse.json({ ticket, company: company ?? null });
+  const line_items = lineItemsToDisplayRows(
+    await fetchTicketLinesBundle(admin, ticket.id as string),
+  );
+
+  return NextResponse.json({
+    ticket: { ...ticket, line_items },
+    company: company ?? null,
+  });
 }

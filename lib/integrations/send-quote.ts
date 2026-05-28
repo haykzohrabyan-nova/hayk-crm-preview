@@ -17,10 +17,21 @@ import { buildPaymentReminderEmail } from "./payment-reminder-template";
 import { buildPaymentConfirmedEmail } from "./payment-confirmed-template";
 import { buildInvoiceLinkEmail } from "./invoice-link-template";
 import { buildOrderReadyEmail, formatPickupAddress } from "./order-ready-template";
-import type { QuoteSku } from "@/lib/types";
 import { ticketDisplayReference } from "@/lib/utils/reference-codes";
+import {
+  fetchTicketLinesBundle,
+  lineItemsToDisplayRows,
+  type TicketLineDisplayRow,
+} from "@/lib/utils/ticket-line-items";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+/** When set, customer messaging includes an "updated quote/order" notice. */
+export type OutreachRevisionNotice = "standard" | "admin";
+
+export interface SendOutreachOptions {
+  revisionNotice?: OutreachRevisionNotice;
+}
 
 interface TicketForSend {
   id: string;
@@ -34,7 +45,6 @@ interface TicketForSend {
   ticket_dest_phone?: string | null;
   ticket_status?: string | null;
   payment_status?: string | null;
-  quote_skus: QuoteSku[];
   quote_subtotal: number | null;
   quote_shipping: number | null;
   quote_pre_tax_total: number | null;
@@ -228,7 +238,20 @@ async function instantlySend(destination: string, subject: string, html: string)
   }
 }
 
-async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promise<SendResult> {
+function smsRevisionPrefix(notice: OutreachRevisionNotice | undefined, isOrder: boolean): string {
+  if (!notice) return "";
+  const word = isOrder ? "order" : "quote";
+  if (notice === "admin") {
+    return `Update: Your ${word} was revised by our team. Please review the latest details. `;
+  }
+  return `Update: We've revised your ${word}. `;
+}
+
+async function sendEmail(
+  ticket: TicketForSend,
+  company: CompanyForSend,
+  options?: SendOutreachOptions,
+): Promise<SendResult> {
   const destination = ticket.quote_destination?.trim();
   if (!destination) {
     return { ok: false, channel: "email", error: "No destination email address." };
@@ -243,12 +266,16 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
   const taxAmount = ticket.quote_tax_amount ?? 0;
   const finalTotal = ticket.quote_final_total ?? preTaxTotal + taxAmount;
 
+  const admin = createAdminClient();
+  const lineBundle = await fetchTicketLinesBundle(admin, ticket.id);
+  const skus: TicketLineDisplayRow[] = lineItemsToDisplayRows(lineBundle);
+
   const isOrder = ticket.order_source === "direct";
   const { subject, html } = buildQuoteEmail({
     customerName: customerDisplayName(ticket),
     title: ticket.title ?? "Your Quote",
     referenceCode: ticketDisplayReference(ticket),
-    skus: ticket.quote_skus,
+    skus,
     subtotal,
     shipping,
     discountAmount,
@@ -262,6 +289,7 @@ async function sendEmail(ticket: TicketForSend, company: CompanyForSend): Promis
     confirmUrl: publicUrl(ticket.public_token),
     company,
     isOrder,
+    revisionNotice: options?.revisionNotice,
   });
 
   return instantlySend(destination, subject, html);
@@ -291,6 +319,7 @@ async function sendSms(
   company: CompanyForSend,
   channel: "sms" | "whatsapp",
   templates: Record<SmsTemplateKey, string>,
+  options?: SendOutreachOptions,
 ): Promise<SendResult> {
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
@@ -314,11 +343,13 @@ async function sendSms(
   const normalised = toE164(destination);
   const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
   const isOrder = ticket.order_source === "direct";
-  const body = renderStoredSms(
-    templates,
-    isOrder ? "order_sent" : "quote_sent",
-    baseSmsVars(ticket, company),
-  );
+  const body =
+    smsRevisionPrefix(options?.revisionNotice, isOrder) +
+    renderStoredSms(
+      templates,
+      isOrder ? "order_sent" : "quote_sent",
+      baseSmsVars(ticket, company),
+    );
 
   try {
     const client = twilio(accountSid, authToken);
@@ -337,22 +368,23 @@ async function sendSms(
  */
 export async function sendQuoteToCustomer(
   ticket: TicketForSend,
-  company: CompanyForSend
+  company: CompanyForSend,
+  options?: SendOutreachOptions,
 ): Promise<SendResult> {
   const channel = (ticket.quote_channel ?? "").toLowerCase();
 
   if (channel === "email") {
-    return sendEmail(ticket, company);
+    return sendEmail(ticket, company, options);
   }
 
   const templates = await loadTemplatesForSend();
 
   if (channel === "sms") {
-    return sendSms(ticket, company, "sms", templates);
+    return sendSms(ticket, company, "sms", templates, options);
   }
 
   if (channel === "whatsapp") {
-    return sendSms(ticket, company, "whatsapp", templates);
+    return sendSms(ticket, company, "whatsapp", templates, options);
   }
 
   // In-person or unknown — no outreach needed
@@ -437,6 +469,7 @@ export async function sendInvoiceLinkToCustomer(
   ticket: TicketForSend & { reference_code: string },
   company: CompanyForSend,
   override?: { channel?: string; destination?: string },
+  options?: SendOutreachOptions,
 ): Promise<SendResult> {
   const { channel, destination } = resolveTicketOutreach(ticket, override);
   const orderUrl = publicUrl(ticket.public_token);
@@ -454,6 +487,7 @@ export async function sendInvoiceLinkToCustomer(
       orderUrl,
       statusLine: invoiceStatusLine(ticket),
       company,
+      revisionNotice: options?.revisionNotice === "admin" ? "admin" : undefined,
     });
     return instantlySend(destination, subject, html);
   }
@@ -478,7 +512,9 @@ export async function sendInvoiceLinkToCustomer(
       : inProd
         ? "invoice_link_in_production_unpaid"
         : "invoice_link";
-    const body = renderStoredSms(templates, templateKey, baseSmsVars(ticket, company));
+    const body =
+      smsRevisionPrefix(options?.revisionNotice, true) +
+      renderStoredSms(templates, templateKey, baseSmsVars(ticket, company));
     const normalised = toE164(destination);
     const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
 

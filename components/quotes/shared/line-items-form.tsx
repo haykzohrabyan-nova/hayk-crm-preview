@@ -3,20 +3,26 @@
 import { useEffect, useRef } from "react";
 import { AlertCircle } from "lucide-react";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
-import { emptySkuRow } from "./utils";
+import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
+import { AdditionalSkusOverviewList } from "./line-item-variants";
+import { emptySkuRow, emptyFormLineItem, type FormLineItem } from "./utils";
 import { SkuRow } from "./sku-row";
+import type { FormLineVariant } from "./line-item-variants";
 import type { ProductType, SkuLookups } from "./types";
 import { DetailLineItemCard } from "@/components/quotes/quote-detail/detail-layout-primitives";
 
 interface LineItemsFormProps {
   /** When false, renders a read-only list. Default true. */
   editing?: boolean;
-  skus: QuoteSku[];
+  skus: QuoteSku[] | FormLineItem[];
   products: ProductType[];
   skuLookups: SkuLookups;
   onUpdate: (idx: number, field: keyof QuoteSku, value: unknown) => void;
   onRemove: (idx: number) => void;
   onAdd: () => void;
+  onVariantsChange?: (idx: number, variants: FormLineVariant[]) => void;
+  ticketRef?: string | null;
+  displayLines?: TicketLineDisplayRow[];
   error?: string;
 }
 
@@ -28,6 +34,9 @@ export function LineItemsForm({
   onUpdate,
   onRemove,
   onAdd,
+  onVariantsChange,
+  ticketRef,
+  displayLines,
   error,
 }: LineItemsFormProps) {
   const lastRowRef = useRef<HTMLDivElement>(null);
@@ -41,12 +50,13 @@ export function LineItemsForm({
   }, [skus.length, editing]);
 
   if (!editing) {
-    if (!skus.length) {
+    const rows = displayLines ?? skus;
+    if (!rows.length) {
       return <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>No line items yet.</p>;
     }
     return (
       <div className="space-y-3">
-        {skus.map((sku, i) => {
+        {rows.map((sku, i) => {
           const computedLineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
           const lineTotal = sku.line_total ?? computedLineTotal;
           const name = [
@@ -62,8 +72,19 @@ export function LineItemsForm({
           if (sku.quantity) specs.push(`Qty: ${sku.quantity}`);
           if (sku.unit_price) specs.push(`${formatCurrency(sku.unit_price)} ea`);
           if (sku.comment) specs.push(sku.comment);
+          const variants = "variants" in sku && Array.isArray(sku.variants) ? sku.variants : [];
           return (
-            <DetailLineItemCard key={i} name={name} specs={specs} price={lineTotal} />
+            <DetailLineItemCard
+              key={i}
+              name={name}
+              specs={specs}
+              price={lineTotal}
+              footer={
+                variants.length > 0 ? (
+                  <AdditionalSkusOverviewList variants={variants} ticketRef={ticketRef} />
+                ) : undefined
+              }
+            />
           );
         })}
       </div>
@@ -82,19 +103,25 @@ export function LineItemsForm({
         </div>
       )}
       <div className="space-y-4">
-        {skus.map((sku, idx) => (
-          <div key={idx} ref={idx === skus.length - 1 ? lastRowRef : undefined}>
-            <SkuRow
-              idx={idx}
-              sku={sku}
-              products={products}
-              skuLookups={skuLookups}
-              onUpdate={onUpdate}
-              onRemove={onRemove}
-              canRemove={skus.length > 1}
-            />
-          </div>
-        ))}
+        {skus.map((sku, idx) => {
+          const formSku = sku as FormLineItem;
+          return (
+            <div key={formSku.id ?? idx} ref={idx === skus.length - 1 ? lastRowRef : undefined}>
+              <SkuRow
+                idx={idx}
+                sku={sku}
+                products={products}
+                skuLookups={skuLookups}
+                onUpdate={onUpdate}
+                onRemove={onRemove}
+                canRemove={skus.length > 1}
+                variants={formSku.variants}
+                onVariantsChange={onVariantsChange}
+                ticketRef={ticketRef}
+              />
+            </div>
+          );
+        })}
       </div>
       <button
         type="button"
@@ -112,4 +139,5 @@ export function LineItemsForm({
   );
 }
 
-export { emptySkuRow };
+export { emptySkuRow, emptyFormLineItem };
+export type { FormLineItem };

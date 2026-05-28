@@ -134,18 +134,7 @@ Blocks: Edit button visibility logic, Cancel action, duplicate ticket API endpoi
 
 **B6. Sent-quote email shows old total after rep edits — how should we handle it?**
 
-⚠️ **OWNER DECISION NEEDED — 2026-05-23**
-
-**Problem:** First **Send Quote** emails embed the total and line items at send time. **Save Changes** on a still-`sent` quote updates the DB and the public `/q/{token}` page, but **does not** update the email already in the customer's inbox. Only **Resend Quote** sends fresh numbers.
-
-**Pick one (or combine):**
-
-- [ ] **A — Link-only email** — No total/line items in email; customer must open the portal for pricing.
-- [ ] **B — Require resend after edit** — UI warns or prompts (or auto-resends) when a sent quote is edited.
-- [ ] **C — Lock pricing after first send** — Reps cannot change SKUs/totals once sent (admin duplicate flow for revisions).
-- [ ] **D — A + resend prompt** — Link-only email plus optional nudge to resend when material fields change.
-
-**Tracked in:** [TODO-008](../TODO.md#open--owner-question-sent-quote-email-vs-live-portal-mismatch-todo-008) · Owner HTML: [owner-decisions-pending.html](./owner-decisions-pending.html#question-1)
+✅ **Implemented 2026-05-28** — Option **B / D hybrid:** post-save modal prompts resend; `notify_revision` on PATCH adds revision copy to email/SMS. Portal always current after save. See `resend-after-save-modal.tsx`, [TODO-008](../TODO.md).
 
 ---
 

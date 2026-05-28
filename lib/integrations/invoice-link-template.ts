@@ -23,6 +23,7 @@ export interface InvoiceLinkEmailData {
   orderUrl: string;
   statusLine: string;
   company: CompanySettings;
+  revisionNotice?: "admin";
 }
 
 function fmt(n: number): string {
@@ -35,11 +36,17 @@ function esc(s: string | null | undefined): string {
 }
 
 export function buildInvoiceLinkEmail(data: InvoiceLinkEmailData): { subject: string; html: string } {
-  const { customerName, referenceCode, finalTotal, orderUrl, statusLine, company } = data;
+  const { customerName, referenceCode, finalTotal, orderUrl, statusLine, company, revisionNotice } = data;
 
   const companyName = company.company_name ?? "BazaarPrinting";
   const firstName = customerName.split(" ")[0] || customerName;
-  const subject = `Your Order ${referenceCode} — View Online · ${companyName}`;
+  const subject = revisionNotice
+    ? `Updated order ${referenceCode} — please review · ${companyName}`
+    : `Your Order ${referenceCode} — View Online · ${companyName}`;
+
+  const revisionBanner = revisionNotice
+    ? `<tr><td style="padding:0 28px 16px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#fffbeb" style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #d97706; padding:12px 14px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#92400e;"><strong>Update:</strong> Your order has been revised by our team. Open the link below to view the latest details.</td></tr></table></td></tr>`
+    : "";
 
   const cityLine = [company.city, company.state, company.zip].filter(Boolean).join(", ");
   const footerLines = [
@@ -64,7 +71,10 @@ export function buildInvoiceLinkEmail(data: InvoiceLinkEmailData): { subject: st
 }</td></tr>
 <tr><td bgcolor="#ffffff" style="background-color:#ffffff; padding:0; border-left:1px solid #e5e7eb; border-right:1px solid #e5e7eb;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
 <tr><td style="padding:24px 28px 8px; font-family:Arial,Helvetica,sans-serif; font-size:20px; line-height:1.3; font-weight:bold; color:#111827;">Hi ${esc(firstName)},</td></tr>
-<tr><td style="padding:0 28px 20px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#6b7280;">${esc(statusLine)}</td></tr>
+<tr><td style="padding:0 28px 20px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#6b7280;">${
+  revisionNotice ? "Your order was updated. Please review the latest information on your customer portal." : esc(statusLine)
+}</td></tr>
+${revisionBanner}
 <tr><td style="padding:0 28px 20px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#f9fafb" style="background-color:#f9fafb; border-left:3px solid #1b2b4b; padding:14px 18px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; vertical-align:middle;"><span style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">Order Reference</span><br><strong style="font-size:18px; color:#111827;">${esc(referenceCode)}</strong></td><td bgcolor="#f9fafb" style="background-color:#f9fafb; padding:14px 18px; font-family:Arial,Helvetica,sans-serif; text-align:right; vertical-align:middle; white-space:nowrap;"><span style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:4px;">Order Total</span><strong style="font-size:22px; color:#c9a84c; font-family:Arial,Helvetica,sans-serif;">${fmt(finalTotal)}</strong></td></tr></table></td></tr>
 <tr><td bgcolor="#e5e7eb" style="background-color:#e5e7eb; height:1px; padding:0; font-size:1px; line-height:1px; mso-line-height-rule:exactly;">&nbsp;</td></tr>
 <tr><td align="center" style="padding:24px 28px 8px;"><a href="${esc(orderUrl)}" target="_blank" style="display:inline-block; background-color:#e8c97a; color:#1b2b4b; font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:bold; text-decoration:none; padding:14px 36px; border-radius:6px; letter-spacing:0.3px;">View Order &amp; Invoice</a></td></tr>

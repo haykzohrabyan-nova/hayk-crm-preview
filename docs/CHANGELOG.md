@@ -3,6 +3,57 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-28] — Resend prompt after saving sent quotes / orders
+
+### Added
+- Post-save modal on quote detail — **SDR/Sales:** after editing a **sent** quote (not yet confirmed), prompts to resend; **Admin:** after any edit on **sent**, **order**, or **in_production**, prompts to notify customer
+- `components/quotes/quote-detail/resend-after-save-modal.tsx`, `lib/utils/should-offer-resend-after-save.ts`
+- `PATCH` body `notify_revision` (`standard` | `admin`) — revision banner in quote email and invoice-link email; SMS prefix for updates
+
+### Changed
+- `lib/integrations/quote-email-template.ts`, `invoice-link-template.ts`, `send-quote.ts`, `app/api/tickets/[id]/route.ts`
+
+### Docs
+- `docs/api-contract.md`, `docs/feature-specs/tickets.md`, `docs/TODO.md`, `docs/order-ticket/open-questions.md`
+
+## [2026-05-28] — Quote overview: additional SKU display
+
+### Changed
+- Quote/order detail **Overview** line items — additional SKUs in a nested card with name, quantity, filename, and **View PDF** / **View image** button (staff download via signed URL)
+- `components/quotes/shared/line-item-variants.tsx` — `AdditionalSkusOverviewList`; `line-items-form.tsx` + `detail-layout-primitives.tsx` footer on line item card
+- `lib/utils/ticket-line-items.ts` — `lineItemsToDisplayRows` includes variant file metadata
+
+## [2026-05-28] — Ticket attachment upload fixes
+
+### Added
+- `supabase/migrations/090_ticket_attachments_storage_bucket.sql` — creates private `ticket-attachments` Storage bucket
+
+### Fixed
+- `lib/utils/ticket-line-files.ts` — MIME from file extension when browser sends empty type; clearer error when bucket is missing
+- `app/api/tickets/[id]/files/route.ts` — uses resolved MIME on upload
+
+## [2026-05-28] — Additional SKU row layout
+
+### Changed
+- `components/quotes/shared/line-item-variants.tsx` — Name, Quantity, Attach, and delete on one row; matched 38px control height for Quantity and File attach; file name / pending hint on a second line when relevant
+
+## [2026-05-28] — Ticket line items: additional SKUs and variant files
+
+### Added
+- Migration `089_ticket_line_items_variants_files.sql` — `ticket_line_items`, `ticket_line_variants`, `ticket_files`; backfill from `quote_skus` then drop column
+- `lib/utils/ticket-line-items.ts` — sync/fetch/validate; `lib/utils/ticket-line-files.ts` — Storage upload/signed URL; `lib/utils/format-ticket-line-variants.ts`
+- `POST/GET/DELETE /api/tickets/[id]/files` — staff-only variant attachments (bucket `ticket-attachments`)
+- `components/quotes/shared/line-item-variants.tsx` — additional SKU rows + pending upload after save
+
+### Changed
+- `POST` / `PATCH` / `GET /api/tickets/[id]` — client sends **`line_items`** tree (not `quote_skus`); detail returns lines → variants → file metadata
+- Quote/new + `QuoteDetail` forms, overview, PDF, print, email (`send-quote`), public `/q/[token]` — show variant name + qty (files staff-only on public)
+- Admin product-type/material delete guards query `ticket_line_items` instead of JSONB
+- `supabase/schema.sql` — relational line-item tables; removed `quote_skus` from `job_tickets`
+
+### Docs
+- `docs/schema.md`, `docs/api-contract.md`, `docs/feature-specs/tickets.md`, `docs/types.md`, `docs/component-architecture.md`, `docs/architecture.md`, `docs/TODO.md`, `docs/session-summary.md`, `docs/order-ticket/product-catalog.md`
+
 ## [2026-05-28] — Leads workspace, locking, and Product Interests (session batch)
 
 ### Fixed

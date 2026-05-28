@@ -15,7 +15,8 @@
  *    own nested tables inside a single <td> of the inner content table.
  */
 
-import type { QuoteSku } from "@/lib/types";
+import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
+import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
 
 interface CompanySettings {
   company_name?: string | null;
@@ -34,7 +35,7 @@ interface QuoteEmailData {
   customerName: string;
   title: string;
   referenceCode: string | null;
-  skus: QuoteSku[];
+  skus: TicketLineDisplayRow[];
   subtotal: number;
   shipping: number;
   discountAmount: number;
@@ -48,6 +49,8 @@ interface QuoteEmailData {
   confirmUrl: string;
   company: CompanySettings;
   isOrder?: boolean;
+  /** Staff edited after customer already had access — include update notice */
+  revisionNotice?: "standard" | "admin";
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,7 +64,7 @@ function esc(s: string | null | undefined): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function skuSpecs(sku: QuoteSku): string {
+function skuSpecs(sku: TicketLineDisplayRow): string {
   const parts: string[] = [];
   if (sku.material) parts.push(esc(sku.material));
   if (sku.width && sku.height) parts.push(`${sku.width}" &times; ${sku.height}"`);
@@ -89,7 +92,10 @@ const HR = `<tr><td bgcolor="#e5e7eb" style="background-color:#e5e7eb; padding:0
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export function buildQuoteEmail(data: QuoteEmailData): { subject: string; html: string } {
-  const { customerName, title, referenceCode, skus, subtotal, shipping, discountAmount, taxAmount, finalTotal, taxRate, paymentTypes, prepaymentType, prepaymentValue, confirmUrl, company, isOrder = false } = data;
+  const {
+    customerName, title, referenceCode, skus, subtotal, shipping, discountAmount, taxAmount, finalTotal, taxRate,
+    paymentTypes, prepaymentType, prepaymentValue, confirmUrl, company, isOrder = false, revisionNotice,
+  } = data;
 
   // Compute partial prepayment breakdown if applicable
   const prepay = (() => {
@@ -105,7 +111,20 @@ export function buildQuoteEmail(data: QuoteEmailData): { subject: string; html: 
   })();
 
   const companyName = company.company_name ?? "BazaarPrinting";
-  const subject = isOrder ? `Your Order from ${companyName} — Payment Details` : `Your Quote from ${companyName} is Ready`;
+  const recordWord = isOrder ? "order" : "quote";
+  const subject = revisionNotice
+    ? `Updated ${recordWord} from ${companyName} — ${referenceCode ?? title ?? "please review"}`
+    : isOrder
+      ? `Your Order from ${companyName} — Payment Details`
+      : `Your Quote from ${companyName} is Ready`;
+
+  const revisionBanner = revisionNotice
+    ? `<tr><td style="padding:0 28px 16px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#fffbeb" style="background-color:#fffbeb; border:1px solid #fde68a; border-left:4px solid #d97706; padding:12px 14px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#92400e;">${
+      revisionNotice === "admin"
+        ? `<strong>Update:</strong> Your ${recordWord} has been revised by our team. Please review the latest line items and pricing below.`
+        : `<strong>Update:</strong> We&rsquo;ve revised your ${recordWord}. Please review the updated details below.`
+    }</td></tr></table></td></tr>`
+    : "";
   const firstName = customerName.split(" ")[0] || customerName;
   const refCode = referenceCode ?? title ?? "—";
   const ctaLabel = isOrder ? "View Order &amp; Payment Details" : "View &amp; Confirm Quote";
@@ -124,7 +143,10 @@ export function buildQuoteEmail(data: QuoteEmailData): { subject: string; html: 
     const specs = skuSpecs(sku);
     const bg = i % 2 === 0 ? "#ffffff" : "#f9fafb";
     const cell = `background-color:${bg}; padding:10px 14px; border-bottom:1px solid #e5e7eb; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#111827; vertical-align:top;`;
-    return `<tr><td bgcolor="${bg}" style="${cell}">${esc(sku.product_type)}${specs ? `<br><span style="font-size:12px; color:#6b7280;">${specs}</span>` : ""}${sku.comment ? `<br><span style="font-size:12px; color:#9ca3af; font-style:italic;">${esc(sku.comment)}</span>` : ""}</td><td bgcolor="${bg}" style="${cell} text-align:center; white-space:nowrap;">${sku.quantity ?? 0}</td><td bgcolor="${bg}" style="${cell} text-align:right; white-space:nowrap;">${fmt(sku.unit_price ?? 0)}</td><td bgcolor="${bg}" style="${cell} font-weight:bold; text-align:right; white-space:nowrap;">${fmt(lineTotal)}</td></tr>`;
+    const variantLines = (sku.variants ?? [])
+      .map((v) => `<br><span style="font-size:12px; color:#4b5563;">${esc(formatTicketLineVariantLabel(v))}</span>`)
+      .join("");
+    return `<tr><td bgcolor="${bg}" style="${cell}">${esc(sku.product_type)}${specs ? `<br><span style="font-size:12px; color:#6b7280;">${specs}</span>` : ""}${variantLines}${sku.comment ? `<br><span style="font-size:12px; color:#9ca3af; font-style:italic;">${esc(sku.comment)}</span>` : ""}</td><td bgcolor="${bg}" style="${cell} text-align:center; white-space:nowrap;">${sku.quantity ?? 0}</td><td bgcolor="${bg}" style="${cell} text-align:right; white-space:nowrap;">${fmt(sku.unit_price ?? 0)}</td><td bgcolor="${bg}" style="${cell} font-weight:bold; text-align:right; white-space:nowrap;">${fmt(lineTotal)}</td></tr>`;
   }).join("");
 
   // ── Pricing rows ───────────────────────────────────────────────────────────
@@ -155,7 +177,14 @@ export function buildQuoteEmail(data: QuoteEmailData): { subject: string; html: 
     : `<span style="font-family:Arial,Helvetica,sans-serif; font-size:18px; font-weight:bold; color:#e8c97a; letter-spacing:3px;">${esc(companyName.toUpperCase())}</span>`
 }</td></tr><tr><td bgcolor="#ffffff" style="background-color:#ffffff; padding:0; border-left:1px solid #e5e7eb; border-right:1px solid #e5e7eb;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
 <tr><td style="padding:24px 28px 8px; font-family:Arial,Helvetica,sans-serif; font-size:20px; line-height:1.3; font-weight:bold; color:#111827;">Hi ${esc(firstName)},</td></tr>
-<tr><td style="padding:0 28px 20px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#6b7280;">${isOrder ? `Your order from <strong style="color:#374151;">${esc(companyName)}</strong> has been confirmed. Here are your order details.` : `Your quote from <strong style="color:#374151;">${esc(companyName)}</strong> is ready. Please review the details below and confirm when you&rsquo;re ready to proceed.`}</td></tr>
+<tr><td style="padding:0 28px 20px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#6b7280;">${
+  revisionNotice
+    ? `Please open the link below to view the current version of your ${recordWord}.`
+    : isOrder
+      ? `Your order from <strong style="color:#374151;">${esc(companyName)}</strong> has been confirmed. Here are your order details.`
+      : `Your quote from <strong style="color:#374151;">${esc(companyName)}</strong> is ready. Please review the details below and confirm when you&rsquo;re ready to proceed.`
+}</td></tr>
+${revisionBanner}
 <tr><td style="padding:0 28px 20px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#f9fafb" style="background-color:#f9fafb; border-left:3px solid #1b2b4b; padding:10px 14px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; vertical-align:middle;"><span style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">${isOrder ? "Order" : "Quote"} Reference</span><br><strong style="font-size:16px; color:#111827;">${esc(refCode)}</strong>${referenceCode && title ? `<br><span style="font-size:12px; color:#9ca3af;">${esc(title)}</span>` : ""}</td><td bgcolor="#f9fafb" style="background-color:#f9fafb; padding:10px 14px; font-family:Arial,Helvetica,sans-serif; text-align:right; vertical-align:middle; white-space:nowrap;"><span style="display:inline-block; background-color:#1b2b4b; color:#e8c97a; font-family:Arial,Helvetica,sans-serif; font-size:10px; font-weight:bold; text-transform:uppercase; letter-spacing:1px; padding:4px 8px;">${isOrder ? "Confirmed" : "Awaiting Approval"}</span></td></tr></table></td></tr>
 ${HR}
 <tr><td style="padding:12px 28px 6px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#6b7280;">Line Items</td></tr>

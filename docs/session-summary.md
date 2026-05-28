@@ -1,6 +1,23 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 28, 2026
-**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–28: SDR scope/dashboard alignment, dashboard privacy, leads workspace fixes (owner scope, manual add unclaimed, product interests), timeline/reference, routed Realtime (086), default Last 30 Days date filter**.
+**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–28: SDR scope/dashboard, leads workspace, ticket line items (089/090), additional SKUs, resend-after-save modal**.
+
+---
+
+## May 28, 2026 — Ticket line items, additional SKUs, resend after save
+
+### Database (apply before deploy)
+- **089** — `ticket_line_items`, `ticket_line_variants`, `ticket_files`; backfill; drop `job_tickets.quote_skus`
+- **090** — Storage bucket `ticket-attachments` (required for variant file upload)
+
+### Features
+- Relational line items + **additional SKUs** (name, qty, optional image/PDF per variant)
+- API: `line_items` on POST/PATCH/GET; `POST/GET/DELETE /api/tickets/[id]/files`
+- Public quote shows variant text only (no file download)
+- Post-save **Resend** modal (SDR/Sales: sent + unconfirmed; Admin: sent/order/in_production) with `notify_revision` email/SMS copy
+
+### Docs synced
+- `schema.md`, `api-contract.md`, `types.md`, `feature-specs/tickets.md`, `component-architecture.md`, `architecture.md`, `product-catalog.md`, `TODO.md` (TODO-008 done), `CHANGELOG.md`
 
 ---
 

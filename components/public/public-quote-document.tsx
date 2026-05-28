@@ -1,7 +1,8 @@
 "use client";
 
 import { Printer } from "lucide-react";
-import type { QuoteSku } from "@/lib/types";
+import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
+import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
 import type { InvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { AddressMapLink } from "@/components/public/address-map-link";
 import { mapLinkStyle } from "@/lib/utils/maps-link";
@@ -45,7 +46,7 @@ interface PublicTicketDoc {
   contact_name?: string | null;
   contact_email?: string | null;
   contact_company?: string | null;
-  quote_skus: QuoteSku[];
+  line_items: TicketLineDisplayRow[];
   customer?: {
     first_name?: string | null;
     last_name?: string | null;
@@ -72,7 +73,7 @@ function customerDisplayName(ticket: PublicTicketDoc): string {
   return ticket.contact_name ?? "";
 }
 
-function skuSpecification(sku: QuoteSku): string {
+function skuSpecification(sku: TicketLineDisplayRow): string {
   const parts = [
     sku.material,
     sku.lamination && sku.lamination !== "None" ? sku.lamination : null,
@@ -84,7 +85,7 @@ function skuSpecification(sku: QuoteSku): string {
   return parts.join(" · ") || "—";
 }
 
-function skuAddons(sku: QuoteSku): string {
+function skuAddons(sku: TicketLineDisplayRow): string {
   return [
     sku.spot_uv && "Spot UV",
     sku.foil && "Foil",
@@ -142,7 +143,7 @@ export function PublicQuoteDocument({
 }) {
   const companyName = company.company_name ?? "BazaarPrinting";
 
-  const skus = ticket.quote_skus ?? [];
+  const skus = ticket.line_items ?? [];
   const disc = discountAmount(ticket);
   const custName = customerDisplayName(ticket);
   const custCompany = ticket.customer?.company ?? ticket.contact_company ?? "";
@@ -289,6 +290,11 @@ export function PublicQuoteDocument({
                         <div style={{ fontWeight: 600, color: NAVY }}>{sku.product_type}</div>
                         {addons && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{addons}</div>}
                         {sku.comment && <div style={{ fontSize: 11, color: "#aaa", fontStyle: "italic", marginTop: 2 }}>{sku.comment}</div>}
+                        {(sku.variants ?? []).map((v, vi) => (
+                          <div key={vi} style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>
+                            {formatTicketLineVariantLabel(v)}
+                          </div>
+                        ))}
                       </td>
                       <td style={{ padding: "10px 12px", fontSize: 12, color: "#666" }}>{skuSpecification(sku)}</td>
                       <td style={{ padding: "10px 12px", textAlign: "right" }}>{sku.quantity ?? "—"}</td>
@@ -311,6 +317,11 @@ export function PublicQuoteDocument({
                   </div>
                   <div style={{ fontSize: 12, color: MUTED }}>{skuSpecification(sku)}</div>
                   <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>Qty {sku.quantity} · Unit {fmt(sku.unit_price)}</div>
+                  {(sku.variants ?? []).map((v, vi) => (
+                    <div key={vi} style={{ fontSize: 11, color: "#4b5563", marginTop: 4 }}>
+                      {formatTicketLineVariantLabel(v)}
+                    </div>
+                  ))}
                 </div>
               );
             })}

@@ -7,6 +7,8 @@ import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { emptySkuRow as sharedEmptySkuRow } from "@/components/quotes/shared/utils";
 import type { QuoteSku, ProductType, SkuLookups } from "@/components/quotes/shared/types";
+import type { TicketLineItemRow } from "@/lib/utils/ticket-line-items";
+import { lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
 import type { QuoteFormTicket } from "@/components/quotes/shared/quote-form";
 import type { SummaryTicket } from "@/components/quotes/quote-detail/order-payment-summary";
 import type { TicketPaymentDraft } from "@/components/quotes/quote-payment-config";
@@ -25,6 +27,7 @@ function emptySkuRow(): QuoteSku {
 type SectionTicket = OverviewTicket & QuoteFormTicket & SummaryTicket;
 
 interface OverviewTicket {
+  line_items?: TicketLineItemRow[] | null;
   quote_skus?: QuoteSku[] | null;
   special_requirements: string | null;
   notes: string | null;
@@ -124,9 +127,13 @@ export function TicketOverviewSections({
         <DetailSectionTitle>Line Items</DetailSectionTitle>
         <LineItemsForm
           editing={false}
-          skus={ticket.quote_skus?.length ? ticket.quote_skus : [emptySkuRow()]}
+          skus={[]}
+          displayLines={
+            ticket.line_items?.length ? lineItemsToDisplayRows(ticket.line_items) : []
+          }
           products={products}
           skuLookups={skuLookups}
+          ticketRef={("reference_code" in ticket && ticket.reference_code) ? String(ticket.reference_code) : null}
           onUpdate={() => {}}
           onRemove={() => {}}
           onAdd={() => {}}

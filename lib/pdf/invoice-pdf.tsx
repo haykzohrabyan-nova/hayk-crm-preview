@@ -7,7 +7,9 @@ import {
   Image,
   StyleSheet,
 } from "@react-pdf/renderer";
-import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
+import { formatCurrency } from "@/lib/utils/ticket-math";
+import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
+import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
 import type { InvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 
 // ── Colors ──────────────────────────────────────────────────────────────────
@@ -253,7 +255,7 @@ export interface InvoicePDFProps {
   };
   customer: { name: string; email: string; phone: string; company: string };
   repName: string;
-  skus: QuoteSku[];
+  skus: TicketLineDisplayRow[];
   discountAmt: number | null;
   paymentMethods: string;
   paymentSummary?: InvoicePaymentSummary | null;
@@ -416,6 +418,11 @@ export function InvoicePDF({
                     </Text>
                     {addons ? <Text style={s.tdSub}>{addons}</Text> : null}
                     {sku.comment ? <Text style={s.tdNote}>{sku.comment}</Text> : null}
+                    {(sku.variants ?? []).map((v, vi) => (
+                      <Text key={vi} style={s.tdSub}>
+                        {formatTicketLineVariantLabel(v)}
+                      </Text>
+                    ))}
                   </View>
                   <Text style={[s.tdText, s.colSpec, { color: "#666", fontSize: 9 }]}>
                     {specParts || "—"}

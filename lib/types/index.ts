@@ -240,7 +240,7 @@ export interface PaymentConfig {
   zelleEmail:         string
 }
 
-// ── QuoteSku — one line item inside quote_skus JSONB ─────────────────────────
+// ── QuoteSku — catalog line item shape (form math + display; persisted in ticket_line_items) ──
 // Canonical definition also lives in lib/utils/ticket-math.ts (pricing helpers
 // import from there). Both must stay in sync.
 export interface QuoteSku {
@@ -333,8 +333,7 @@ export interface JobTicket {
   design_required: boolean
   die_cut: boolean
 
-  // Line items
-  quote_skus: QuoteSku[]
+  // Line items (relational — loaded via API `line_items` on detail/public responses)
 
   // Flags & dates
   rush: boolean
@@ -416,7 +415,7 @@ export interface TicketForm {
   contact_company: string
 
   // Line items
-  quote_skus: Partial<QuoteSku>[]
+  line_items?: Partial<import("@/lib/utils/ticket-line-items").LineItemInput>[]
 
   // Quote pricing
   quote_shipping: string          // string for input; parsed to number

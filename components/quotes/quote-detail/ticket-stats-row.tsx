@@ -10,6 +10,7 @@ import { DetailStatCard } from "@/components/quotes/quote-detail/detail-layout-p
 
 export interface StatsTicket {
   quote_final_total: number | null;
+  line_items?: { product_type: string }[] | null;
   quote_skus?: QuoteSku[] | null;
   title?: string | null;
   payment_status: "unpaid" | "partial" | "paid" | null;
@@ -51,7 +52,7 @@ function buildConfig(t: StatsTicket): PaymentConfig {
 }
 
 function primaryProductLabel(t: StatsTicket): string | undefined {
-  const sku = t.quote_skus?.[0];
+  const sku = t.line_items?.[0] ?? t.quote_skus?.[0];
   if (sku?.product_type) return sku.product_type;
   return t.title?.trim() || undefined;
 }

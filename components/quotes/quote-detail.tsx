@@ -41,7 +41,17 @@ import { localDateStringFromIso, validateDueDateAgainstCreated } from "@/lib/uti
 import { InfoForm } from "@/components/quotes/shared/info-form";
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
-import { emptySkuRow as sharedEmptySkuRow } from "@/components/quotes/shared/utils";
+import {
+  bundleToFormLineItems,
+  emptyFormLineItem,
+  type FormLineItem,
+} from "@/components/quotes/shared/utils";
+import {
+  lineItemsToApiPayload,
+  uploadPendingVariantFiles,
+} from "@/components/quotes/shared/line-item-variants";
+import type { TicketLineItemRow } from "@/lib/utils/ticket-line-items";
+import { lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
 import type { LookupOption as SharedLookupOption, SkuLookups as SharedSkuLookups } from "@/components/quotes/shared/types";
 import { HistorySection } from "@/components/quotes/quote-detail/history-section";
 import { TicketSkeleton } from "@/components/quotes/quote-detail/ticket-skeleton";
@@ -54,6 +64,13 @@ import { TicketLifecycleTimeline } from "@/components/quotes/quote-detail/ticket
 import { ticketIsQuoteStage } from "@/lib/utils/reference-codes";
 import { DetailQuickActions } from "@/components/quotes/quote-detail/detail-quick-actions";
 import { CancelTicketModal, type CancelTicketForm } from "@/components/quotes/quote-detail/cancel-ticket-modal";
+import { ResendAfterSaveModal } from "@/components/quotes/quote-detail/resend-after-save-modal";
+import {
+  shouldOfferResendAfterSave,
+  resendDeliveryMode,
+  type ResendPromptKind,
+} from "@/lib/utils/should-offer-resend-after-save";
+import { OUTREACH_CHANNEL_LABEL, resolveOutreachChannelKind } from "@/lib/utils/outreach-channel-display";
 import { CancelledReasonBanner } from "@/components/quotes/quote-detail/cancelled-reason-banner";
 import { cancelReasonCategoryForStatus } from "@/lib/utils/cancel-reason-category";
 import type { LookupValue } from "@/lib/types";
@@ -99,7 +116,7 @@ interface Ticket {
   contact_email: string | null;
   contact_company: string | null;
   contact_phone: string | null;
-  quote_skus: QuoteSku[];
+  line_items?: TicketLineItemRow[];
   notes: string | null;
   order_source: string | null;
   quote_source: string | null;
@@ -207,7 +224,7 @@ const PAYMENT_OPTIONS = ["Card Payment", "Zelle", "Offline"];
 const FOLLOW_UP_FREQ = ["Daily", "Every 2 days", "Weekly"];
 
 
-function emptySkuRow(): QuoteSku { return sharedEmptySkuRow(); }
+function emptySkuRow(): FormLineItem { return emptyFormLineItem(); }
 
 const STATUS_COLORS: Record<string, { bg: string; text: string }> = {
   draft:    { bg: "var(--color-neutral-bg)",  text: "var(--color-neutral-text)" },
@@ -291,7 +308,15 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     quote: LookupValue[];
     order: LookupValue[];
   }>({ quote: [], order: [] });
-  const handleSaveRef = useRef<((newStatus?: string, extraFields?: Record<string, unknown>, opts?: { skipSendValidation?: boolean }) => Promise<void>) | null>(null);
+  const [resendPrompt, setResendPrompt] = useState<ResendPromptKind | null>(null);
+  const [resendSending, setResendSending] = useState(false);
+  const handleSaveRef = useRef<
+    ((
+      newStatus?: string,
+      extraFields?: Record<string, unknown>,
+      opts?: { skipSendValidation?: boolean; notifyRevision?: "standard" | "admin"; skipResendPrompt?: boolean },
+    ) => Promise<void>) | null
+  >(null);
 
   // Edit state mirrors ticket fields
   const [title, setTitle] = useState("");
@@ -301,7 +326,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [orderSource, setOrderSource] = useState("quoted");
   const [specialRequirements, setSpecialRequirements] = useState("");
   const [notes, setNotes] = useState("");
-  const [skus, setSkus] = useState<QuoteSku[]>([emptySkuRow()]);
+  const [skus, setSkus] = useState<FormLineItem[]>([emptyFormLineItem()]);
   const [shipping, setShipping] = useState(0);
   const [discountType, setDiscountType] = useState<"percent" | "fixed" | "">("");
   const [discountValue, setDiscountValue] = useState("");
@@ -325,7 +350,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     setOrderSource(t.order_source ?? "quoted");
     setSpecialRequirements(t.special_requirements ?? "");
     setNotes(t.notes ?? "");
-    setSkus(t.quote_skus?.length ? t.quote_skus : [emptySkuRow()]);
+    setSkus(
+      t.line_items?.length
+        ? bundleToFormLineItems(t.line_items)
+        : [emptyFormLineItem()],
+    );
     setShipping(t.quote_shipping ?? 0);
     setDiscountType((t.discount_type as "percent" | "fixed" | "") ?? "");
     setDiscountValue(t.discount_value ?? "");
@@ -423,6 +452,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     setSkus((prev) => prev.map((s, i) => i === idx ? { ...s, [field]: value } : s));
   }, []);
 
+  const updateVariants = useCallback((idx: number, variants: FormLineItem["variants"]) => {
+    setSkus((prev) => prev.map((s, i) => (i === idx ? { ...s, variants } : s)));
+  }, []);
+
   // ─── Pricing ─────────────────────────────────────────────────────────────
 
   const pricing = computePricing({
@@ -459,7 +492,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   async function handleSave(
     newStatus?: string,
     extraFields?: Record<string, unknown>,
-    opts?: { skipSendValidation?: boolean },
+    opts?: {
+      skipSendValidation?: boolean;
+      notifyRevision?: "standard" | "admin";
+      skipResendPrompt?: boolean;
+    },
   ) {
     // Keep ref current for the HV countdown timer
     handleSaveRef.current = handleSave;
@@ -593,7 +630,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       order_source: orderSource,
       special_requirements: specialRequirements || null,
       notes: notes || null,
-      quote_skus: skus,
+      line_items: lineItemsToApiPayload(skus),
       quote_shipping: shipping,
       discount_type: discountType || null,
       discount_value: discountValue || null,
@@ -605,8 +642,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       quote_final_total: pricing.final_total,
       tax_exempt: taxExempt,
       sales_permit_number: salesPermit || null,
-      design_required: skus.some((s) => s.design_required),
-      die_cut: skus.some((s) => s.die_cut),
       // Per-ticket payment config (migration 066)
       ...paymentDraft,
       quote_reminder_date: paymentDraft.quote_reminder_date || null,
@@ -620,6 +655,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     };
 
     if (newStatus) body.ticket_status = newStatus;
+    if (opts?.notifyRevision) body.notify_revision = opts.notifyRevision;
 
     try {
       const res = await fetch(`/api/tickets/${ticketId}`, {
@@ -632,6 +668,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         setError(json.error ?? "Failed to save.");
         return;
       }
+
+      const ticketRef = ticket?.reference_code ?? ticketId;
+      const uploadErr = await uploadPendingVariantFiles(ticketRef, skus);
+      if (uploadErr) {
+        setError(uploadErr);
+        return;
+      }
+
       const saved = json.ticket as Ticket;
       if (newStatus === "order" && userRole === "admin") {
         const paymentMissing =
@@ -653,6 +697,21 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       populateEditState(saved);
       setEditing(false);
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
+
+      if (!opts?.skipResendPrompt && !newStatus) {
+        const offer = shouldOfferResendAfterSave({
+          userRole,
+          ticketStatus: saved.ticket_status,
+          clientConfirmed: saved.client_confirmed,
+        });
+        if (offer) setResendPrompt(offer);
+      }
+
+      if (opts?.notifyRevision) {
+        setNoticeIsWarning(false);
+        setNotice("Update sent to customer.");
+      }
+
       // If we just routed a quote, redirect SDR back to the quotes list
       if (newStatus === "routed") {
         router.push("/quotes");
@@ -668,6 +727,43 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     if (ticket) populateEditState(ticket);
     setEditing(false);
     setError(null);
+  }
+
+  async function confirmResendAfterSave() {
+    if (!resendPrompt || !ticket) return;
+    const revision = resendPrompt === "admin" ? "admin" : "standard";
+    setResendSending(true);
+    setError(null);
+    try {
+      if (resendDeliveryMode(ticket.ticket_status) === "quote") {
+        await handleSave("sent", undefined, {
+          skipSendValidation: true,
+          notifyRevision: revision,
+          skipResendPrompt: true,
+        });
+      } else {
+        beginSaveLoading(GLOBAL_LOADING_MESSAGES.sendingQuote);
+        const res = await fetch(`/api/tickets/${ticketId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ resend_invoice: true, notify_revision: revision }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          setError(json.error ?? "Failed to send update to customer.");
+          return;
+        }
+        setNoticeIsWarning(false);
+        setNotice("Update sent to customer.");
+        window.dispatchEvent(new Event("bazaar:refresh-counts"));
+      }
+      setResendPrompt(null);
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setResendSending(false);
+      endSaveLoading();
+    }
   }
 
   async function handleReleaseProduction() {
@@ -1351,7 +1447,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     skuLookups={skuLookups}
                     onUpdate={updateSku}
                     onRemove={(idx) => setSkus((prev) => prev.filter((_, i) => i !== idx))}
-                    onAdd={() => setSkus((prev) => [...prev, emptySkuRow()])}
+                    onAdd={() => setSkus((prev) => [...prev, emptyFormLineItem()])}
+                    onVariantsChange={updateVariants}
+                    ticketRef={ticket.reference_code ?? ticketId}
+                    displayLines={
+                      !editing && ticket.line_items?.length
+                        ? lineItemsToDisplayRows(ticket.line_items)
+                        : undefined
+                    }
                   />
                 </div>
 
@@ -1446,6 +1549,22 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     </div>
 
     {/* ── Admin convert confirmation ─────────────────────────────────────── */}
+    <ResendAfterSaveModal
+      open={resendPrompt != null}
+      kind={resendPrompt ?? "sdr-sales"}
+      recordLabel={
+        ticket && (ticket.ticket_status === "sent" || ticketIsQuoteStage(ticket))
+          ? "quote"
+          : "order"
+      }
+      outreachLabel={
+        ticket ? OUTREACH_CHANNEL_LABEL[resolveOutreachChannelKind(ticket)] : "Email"
+      }
+      onResend={() => { void confirmResendAfterSave(); }}
+      onSkip={() => setResendPrompt(null)}
+      sending={resendSending || saving}
+    />
+
     <CancelTicketModal
       open={cancelModalOpen}
       title={cancelModalTitle}

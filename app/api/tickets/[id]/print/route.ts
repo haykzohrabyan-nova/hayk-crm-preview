@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
+import { formatCurrency } from "@/lib/utils/ticket-math";
+import { fetchTicketLinesBundle, lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
@@ -47,7 +48,7 @@ export async function GET(
         `id, ticket_kind, ticket_status, title, reference_code, created_at,
          due_date, rush, priority, special_requirements,
          contact_name, contact_email, contact_company, contact_phone,
-         quote_skus, quote_subtotal, quote_shipping,
+         quote_subtotal, quote_shipping,
          discount_type, discount_value, discount_reason,
          quote_pre_tax_total, quote_tax_rate_percent, quote_tax_amount, quote_final_total,
          tax_exempt, quote_payment_types, quote_channel, quote_reminder_date, created_by_id,
@@ -97,9 +98,7 @@ export async function GET(
     repName = profile?.full_name ?? "—";
   }
 
-  const skus: QuoteSku[] = Array.isArray(ticket.quote_skus)
-    ? (ticket.quote_skus as QuoteSku[])
-    : [];
+  const skus = lineItemsToDisplayRows(await fetchTicketLinesBundle(admin, ticketId));
 
   const hasDiscount = !!ticket.discount_type && !!ticket.discount_value;
   const discountAmt =

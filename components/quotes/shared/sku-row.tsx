@@ -5,6 +5,7 @@ import { Trash2, ChevronDown } from "lucide-react";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { renderLookupOptions } from "./utils";
 import type { ProductType, SkuLookups } from "./types";
+import { LineItemVariants, type FormLineVariant } from "./line-item-variants";
 
 interface SkuRowProps {
   idx: number;
@@ -14,9 +15,23 @@ interface SkuRowProps {
   onUpdate: (idx: number, field: keyof QuoteSku, value: unknown) => void;
   onRemove: (idx: number) => void;
   canRemove: boolean;
+  variants?: FormLineVariant[];
+  onVariantsChange?: (idx: number, variants: FormLineVariant[]) => void;
+  ticketRef?: string | null;
 }
 
-export function SkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, canRemove }: SkuRowProps) {
+export function SkuRow({
+  idx,
+  sku,
+  products,
+  skuLookups,
+  onUpdate,
+  onRemove,
+  canRemove,
+  variants,
+  onVariantsChange,
+  ticketRef,
+}: SkuRowProps) {
   const selectedProduct = products.find((p) => p.name === sku.product_type);
   const allMaterials = selectedProduct?.material_groups.flatMap((g) => g.materials) ?? [];
   const computedTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
@@ -274,6 +289,15 @@ export function SkuRow({ idx, sku, products, skuLookups, onUpdate, onRemove, can
           </button>
         )}
       </div>
+
+      {variants != null && onVariantsChange ? (
+        <LineItemVariants
+          lineIdx={idx}
+          variants={variants}
+          ticketRef={ticketRef}
+          onChange={(next) => onVariantsChange(idx, next)}
+        />
+      ) : null}
     </div>
   );
 }

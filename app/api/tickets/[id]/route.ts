@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
-import { sendQuoteToCustomer, sendPaymentReminder, sendPaymentConfirmed, sendInvoiceLinkToCustomer, sendOrderReadyToCustomer, resolveTicketOutreach } from "@/lib/integrations/send-quote";
+import {
+  sendQuoteToCustomer,
+  sendPaymentReminder,
+  sendPaymentConfirmed,
+  sendInvoiceLinkToCustomer,
+  sendOrderReadyToCustomer,
+  resolveTicketOutreach,
+  type OutreachRevisionNotice,
+} from "@/lib/integrations/send-quote";
 import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { logTicketPaymentRecorded } from "@/lib/utils/log-ticket-payment-recorded";
 import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-payment";
@@ -19,7 +27,19 @@ import {
 import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
+import {
+  aggregateLineFlags,
+  fetchTicketLinesBundle,
+  parseLineItemsFromBody,
+  syncTicketLines,
+} from "@/lib/utils/ticket-line-items";
 type Params = { params: Promise<{ id: string }> };
+
+function parseNotifyRevision(raw: unknown, roleName: string | null): OutreachRevisionNotice | undefined {
+  if (raw === "admin" || raw === true) return "admin";
+  if (raw === "standard") return roleName === "admin" ? "admin" : "standard";
+  return undefined;
+}
 
 // ─── GET /api/tickets/[id] ────────────────────────────────────────────────────
 
@@ -71,8 +91,9 @@ export async function GET(_request: NextRequest, { params }: Params) {
   }
 
   const convert_meta = await fetchManualConvertMeta(admin, ticketId, ticket);
+  const line_items = await fetchTicketLinesBundle(admin, ticketId);
 
-  return NextResponse.json({ ticket: { ...ticket, created_by, convert_meta } });
+  return NextResponse.json({ ticket: { ...ticket, created_by, convert_meta, line_items } });
 }
 
 // ─── PATCH /api/tickets/[id] ──────────────────────────────────────────────────
@@ -174,6 +195,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
 
     const refCode = fullTicket.reference_code ?? `ORD-${fullTicket.id.slice(0, 8).toUpperCase()}`;
+    const revisionNotice = parseNotifyRevision(body.notify_revision, roleName);
     const result = await sendInvoiceLinkToCustomer(
       { ...fullTicket, reference_code: refCode } as typeof fullTicket & { reference_code: string },
       companyRow ?? {},
@@ -181,6 +203,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         channel: body.invoice_channel as string | undefined,
         destination: body.invoice_destination as string | undefined,
       },
+      revisionNotice ? { revisionNotice } : undefined,
     );
 
     if (!result.ok) {
@@ -525,6 +548,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ ticket: released });
   }
 
+  if ("line_items" in body) {
+    const lineItems = parseLineItemsFromBody(body.line_items);
+    const syncResult = await syncTicketLines(admin, ticketId, lineItems);
+    if (!syncResult.ok) {
+      return NextResponse.json({ error: syncResult.error, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+    const lineFlags = aggregateLineFlags(lineItems);
+    body.design_required = lineFlags.design_required;
+    body.die_cut = lineFlags.die_cut;
+  }
+
   const ALLOWED_FIELDS = [
     "title",
     "ticket_status",
@@ -534,7 +568,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "contact_email",
     "contact_company",
     "contact_phone",
-    "quote_skus",
     "notes",
     "order_source",
     "priority",
@@ -838,7 +871,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           await initializeTicketFollowUpSchedule(admin, ticketId, fullTicket);
         }
         // Non-blocking: log the result but don't surface errors to the rep
-        sendQuoteToCustomer(fullTicket, companyRow).then((result) => {
+        const revisionNotice = parseNotifyRevision(body.notify_revision, roleName);
+        sendQuoteToCustomer(fullTicket, companyRow, revisionNotice ? { revisionNotice } : undefined).then((result) => {
           if (!result.ok) {
             console.error("[send-quote] delivery failed:", result.error, { ticketId: ticketId, channel: result.channel });
           }
@@ -924,8 +958,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     }
   }
 
+  const line_items = await fetchTicketLinesBundle(admin, ticketId);
+
   return NextResponse.json({
-    ticket: responseTicket ?? updated,
+    ticket: { ...(responseTicket ?? updated), line_items },
     ...(notification ? { notification } : {}),
   });
 }

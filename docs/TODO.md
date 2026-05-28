@@ -1,6 +1,6 @@
 # BazarCRM — TODO Tracker
 
-**Last updated:** 2026-05-27 (timeline/reference docs + May 27 feature sync)
+**Last updated:** 2026-05-28 (line items migration 089, resend-after-save modal)
 
 This file tracks **what is still open** vs **what is already built**. Detailed specs live in `docs/feature-specs/` and `docs/CHANGELOG.md`.
 
@@ -12,20 +12,11 @@ These are **product/policy choices**, not engineering unknowns. Pick an option, 
 
 **Owner review doc (send as attachment or link):** [owner-decisions-pending.html](./order-ticket/owner-decisions-pending.html) — open in browser, print, or attach to email.
 
-### TODO-008 — Sent-quote email vs live portal after edit
+### ~~TODO-008~~ — Sent-quote email vs live portal after edit — **Done (2026-05-28)**
 
-**Related:** [open-questions.md § B6](./order-ticket/open-questions.md)
+Implemented **option B / D hybrid:** post-save modal prompts resend; optional `notify_revision` on PATCH (`standard` | `admin`) adds revision copy to email/SMS. Portal always live after save.
 
-When a rep edits a `sent` quote and saves, `/q/{token}` shows the new price but the original email/SMS still shows the old total. Only **Resend Quote** updates the customer message — nothing enforces it.
-
-| Option | Policy |
-|--------|--------|
-| **A** | Link-only email/SMS — no totals in message; portal is source of truth |
-| **B** | Keep full quote in email; prompt or require resend after material edits |
-| **C** | Lock SKU/pricing after first send (admin exception) |
-| **D** | A + soft resend nudge when price changes *(recommended hybrid)* |
-
-**Files (after decision):** `lib/integrations/send-quote.ts`, `components/quotes/quote-detail.tsx`
+**Files:** `resend-after-save-modal.tsx`, `should-offer-resend-after-save.ts`, `send-quote.ts`, `quote-email-template.ts`, `invoice-link-template.ts`
 
 ---
 

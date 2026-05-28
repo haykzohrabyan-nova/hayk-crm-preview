@@ -696,7 +696,7 @@ Returns job tickets. Visibility is role-scoped (service role in Route Handlers; 
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `kind` | `'quote' \| 'order'` | Filter by `ticket_kind`. When `kind=quote` (list use), response uses **slim select** and auto-filters to quote-stage statuses (`draft`, `sent`, `approved`, `routed`) — no `quote_skus`, notes, or payment-config blobs. |
+| `kind` | `'quote' \| 'order'` | Filter by `ticket_kind`. When `kind=quote` (list use), response uses **slim select** and auto-filters to quote-stage statuses (`draft`, `sent`, `approved`, `routed`) — no `line_items`, notes, or payment-config blobs. |
 | `status` | `string` | Filter by `ticket_status` |
 | `lead_id` | `uuid` | Filter by `linked_lead_id` |
 | `search` | `string` | Search on contact name, company, title, reference code |
@@ -740,7 +740,7 @@ Create a new ticket.
   "rush": "boolean",
   "special_requirements": "string | null",
   "notes": "string | null",
-  "quote_skus": "QuoteSku[]",
+  "line_items": "LineItemInput[] — catalog lines with optional variants[] (name, quantity required)",
   "quote_subtotal": "number | null",
   "quote_shipping": "number | null",
   "discount_type": "percent | fixed | null",
@@ -824,9 +824,35 @@ Returns a single ticket with full detail (line items, payment config, linked lea
 { "ticket": Ticket }
 ```
 
+`ticket.line_items` — array of line rows with nested `variants[]`; each variant may include `file: { id, file_name, mime_type, byte_size }` (metadata only; download via files API).
+
 **Response `403`:** Ticket exists but caller lacks read access.
 
 **Response `404`:** Ticket not found.
+
+---
+
+### `POST /api/tickets/[id]/files`
+
+Upload an attachment for an additional SKU variant (staff only).
+
+**Auth:** `requireSession()` + `canMutateTicket()`.
+
+**Body:** `multipart/form-data` — `variant_id` (uuid), `file` (image or PDF, size/MIME limits in `lib/utils/ticket-line-files.ts`).
+
+**Response `200`:** `{ file: TicketFileMeta }`
+
+---
+
+### `GET /api/tickets/[id]/files/[fileId]`
+
+**Auth:** `canAccessTicket()`. **Response `302`:** redirect to short-lived signed Storage URL.
+
+---
+
+### `DELETE /api/tickets/[id]/files/[fileId]`
+
+**Auth:** `canMutateTicket()`. Removes DB row and Storage object.
 
 ---
 
@@ -855,12 +881,14 @@ Partial ticket update. Six distinct operation modes:
 {
   "resend_invoice": true,
   "invoice_channel": "email | sms | whatsapp",
-  "invoice_destination": "string"
+  "invoice_destination": "string",
+  "notify_revision": "admin"
 }
 ```
 - Sends customer the permanent `/q/{public_token}` portal link via `sendInvoiceLinkToCustomer()`
 - Works for paid, unpaid, in-production, and completed orders
 - Optional `invoice_channel` / `invoice_destination` override quote defaults
+- Optional `notify_revision: "admin"` — email/SMS includes “order revised by our team” banner (post-save update flow)
 - Logs `ticket_invoice_resent` with `{ channel, destination }`
 - Returns `{ ok: true, channel }` or `502` on send failure
 
@@ -917,6 +945,9 @@ Body: Any subset of ticket fields plus optional:
 - On every PATCH, **`ticketKindForReference()`** reconciles `ticket_kind` with the merged `reference_code` (prevents `QUO-*` + `ticket_kind: order` drift)
 - Auto convert via `maybeConvertQuoteToOrder()` (payment / net terms / release paths): requires successful `ORD-*` assignment — convert is skipped if sequence fails
 - If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
+- Optional `notify_revision`: `"standard"` (SDR/Sales resend after edit) or `"admin"` — revision banner in quote email / SMS prefix; use with resend (`ticket_status: "sent"`) or `resend_invoice: true`.
+- **`line_items`** in body: upserts `ticket_line_items` + `ticket_line_variants` via `syncTicketLines()`; orphan variants delete Storage files. Variant files uploaded separately via `POST /api/tickets/[id]/files`.
+- **Save without resend:** Editing a sent quote updates DB + `/q/{token}` only; UI prompts SDR/Sales (sent, unconfirmed) or Admin (sent/order/in_production) to resend after **Save Changes** (`components/quotes/quote-detail/resend-after-save-modal.tsx`).
 - If `ticket_status` transitions to `"in_production"` (manual release, payment confirm, net terms auto-release, etc.):
   - Sets `production_released_at`
   - If ticket has `linked_lead_id`: calls `markLeadWonOnProduction()` → `leads.sales_status = 'Won'`
@@ -1134,7 +1165,7 @@ Combined paginated list + tab counts for `/orders` (preferred over legacy list +
 
 ### `GET /api/orders/orders`
 
-Scoped list for the `/orders` page — **`ticket_status IN ('order', 'in_production', 'cancelled')`**, slim payload (no `quote_skus`).
+Scoped list for the `/orders` page — **`ticket_status IN ('order', 'in_production', 'cancelled')`**, slim payload (no `line_items`).
 
 **Includes** evidence-pending `order` rows for the ticket owner (sales/SDR scoped via `scopeJobTicketsQuery()`). Accountants still confirm on `/payments`; owners see those orders on `/orders` with status **Awaiting payment confirmation**.
 

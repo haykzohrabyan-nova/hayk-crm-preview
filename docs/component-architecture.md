@@ -142,7 +142,9 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 > **Rule:** Validatable fields in scrollable modals/drawers use `data-field-anchor="…"` on a wrapper `div` and call `scrollToFormField(containerRef, anchor)` when setting an error — so off-screen fields (e.g. Source) are visible after failed submit.
 | `MobileListCard` / `TicketListToolbar` | `components/ui/mobile-list-card.tsx` | Quotes, Orders, In Production, Completed, Payments list pages (mobile card fallback at `< lg`) |
 | `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible section header (chevron toggle; default closed) — Timeline, Pricing, Payment settings on detail pages |
-| `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), **Customer Link** + **Copy Link** (two 50/50 buttons; `sent` / `order` / `in_production` / `completed`), Mark Completed, Resend invoice |
+| `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), **Customer Link** + **Copy Link**, Mark Completed, Resend invoice |
+| `ResendAfterSaveModal` | `components/quotes/quote-detail/resend-after-save-modal.tsx` | After **Save Changes** on sent/unconfirmed quote (SDR/Sales) or sent/order/in_production (Admin) — optional resend with revision email |
+| `LineItemVariants` | `components/quotes/shared/line-item-variants.tsx` | Additional SKUs per catalog line (name, qty, attach); `AdditionalSkusOverviewList` on detail Overview |
 | `DatePicker` | `components/ui/date-picker.tsx` | New Quote form (Due Date field), Quote Detail (Due Date edit), Quote tab (First Reminder date) |
 
 > **Rule:** Every phone or email input in the app **must** use `PhoneInput` or `EmailInput`. Never add a raw `<input type="tel">` or `<input type="email">` in a component.
@@ -294,7 +296,7 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
         │    Sidebar: job_tickets + activities INSERT (claim) → tickets-changed
         │    Page (Sales/Admin/SDR with Routed tab): channel quotes-page-routed-sync on job_tickets + activities INSERT → silent page-data refetch
         │    Requires supabase migration 086_job_tickets_routed_realtime_rls.sql (sales_read_routed_tickets RLS)
-        ├── Slim list — no quote_skus on table rows
+        ├── Slim list — no line_items on table rows
         ├── Columns: Contact, Title, Channel, Total, Due Now, Status pill, Follow-up, Created
         ├── Search: server-side (debounced) via `?search=`
         ├── ListPagination (25 default)
@@ -450,6 +452,8 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │     components/quotes/shared/info-form.tsx
         │     components/quotes/shared/line-items-form.tsx
         │     components/quotes/shared/sku-row.tsx
+        │     components/quotes/shared/line-item-variants.tsx
+        │     components/quotes/quote-detail/resend-after-save-modal.tsx
         │     components/quotes/shared/quote-form.tsx → components/quotes/quote-payment-config.tsx
         │     components/quotes/quote-detail/customer-info-card.tsx
         │     components/quotes/quote-detail/history-section.tsx

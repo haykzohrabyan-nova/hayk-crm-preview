@@ -149,33 +149,38 @@ export function DetailLineItemCard({
   name,
   specs,
   price,
+  footer,
 }: {
   name: string;
   specs: string[];
   price: number;
+  footer?: React.ReactNode;
 }) {
   return (
     <div
-      className="rounded-lg px-3.5 py-3.5 md:px-5 md:py-4 flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_auto] sm:gap-2 sm:items-center border"
+      className="rounded-lg border overflow-hidden"
       style={{ background: "var(--color-row-alt)", borderColor: "var(--color-border)" }}
     >
-      <div className="min-w-0">
-        <p className="text-sm md:text-[15px] font-semibold leading-snug" style={{ color: "var(--color-text-primary)" }}>
-          {name}
-        </p>
-        {specs.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {specs.map((s) => (
-              <DetailSpecPill key={s}>{s}</DetailSpecPill>
-            ))}
-          </div>
+      <div className="px-3.5 py-3.5 md:px-5 md:py-4 flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_auto] sm:gap-2 sm:items-center">
+        <div className="min-w-0">
+          <p className="text-sm md:text-[15px] font-semibold leading-snug" style={{ color: "var(--color-text-primary)" }}>
+            {name}
+          </p>
+          {specs.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {specs.map((s) => (
+                <DetailSpecPill key={s}>{s}</DetailSpecPill>
+              ))}
+            </div>
+          )}
+        </div>
+        {price > 0 && (
+          <p className="text-lg md:text-xl font-semibold tabular-nums sm:text-right shrink-0" style={{ color: "var(--color-text-primary)" }}>
+            {formatCurrency(price)}
+          </p>
         )}
       </div>
-      {price > 0 && (
-        <p className="text-lg md:text-xl font-semibold tabular-nums sm:text-right shrink-0" style={{ color: "var(--color-text-primary)" }}>
-          {formatCurrency(price)}
-        </p>
-      )}
+      {footer}
     </div>
   );
 }

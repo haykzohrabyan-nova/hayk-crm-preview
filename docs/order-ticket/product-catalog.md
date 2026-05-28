@@ -373,7 +373,7 @@ create table public.product_material_links (
 );
 ```
 
-Text slug PKs (`labels-roll`, `bopp-white`) are intentional — they stay stable in `quote_skus` JSONB without FK overhead. `material_groups.id` is UUID (internal only).
+Text slug PKs (`labels-roll`, `bopp-white`) are intentional — they are stored on `ticket_line_items.product_type` / `material` for referential delete guards. `material_groups.id` is UUID (internal only).
 
 Laminations, finishings, color modes, and sides remain as `lookup_values` categories — simple flat lists with no product associations needed.
 
@@ -392,7 +392,7 @@ Laminations, finishings, color modes, and sides remain as `lookup_values` catego
   - Type to filter existing materials → click to **link existing**
   - Press Enter or click a "Create" option to **create new and link in one step**
 - Each material row: name, active toggle, rename (pencil), `×` remove from this product, 🗑 delete from library (with safety check)
-- Deletion is blocked if the material appears in any `job_tickets.quote_skus`
+- Deletion is blocked if the material appears in any `ticket_line_items` row
 
 > Material groups are an internal DB concept used for organisation only. The admin never sees or manages them directly.
 
@@ -402,12 +402,12 @@ Laminations, finishings, color modes, and sides remain as `lookup_values` catego
 GET    /api/admin/product-types                        list all product types + linked material IDs
 POST   /api/admin/product-types                        create (auto-generates slug ID from name)
 PATCH  /api/admin/product-types/[id]                   update name / print type / active / facility
-DELETE /api/admin/product-types/[id]                   blocked if referenced in any quote_skus
+DELETE /api/admin/product-types/[id]                   blocked if referenced in any ticket_line_items
 
 GET    /api/admin/materials                            all material groups + their materials
 POST   /api/admin/materials                            create material
 PATCH  /api/admin/materials/[id]                       update name / active / group
-DELETE /api/admin/materials/[id]                       blocked if referenced in any quote_skus
+DELETE /api/admin/materials/[id]                       blocked if referenced in any ticket_line_items
 
 POST   /api/admin/product-types/[id]/materials/[matId] link material to product
 DELETE /api/admin/product-types/[id]/materials/[matId] unlink material from product

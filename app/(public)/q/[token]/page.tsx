@@ -5,7 +5,7 @@ import {
   CheckCircle2, AlertCircle, Package, Loader2,
   Copy, Check, Upload, X, Clock,
 } from "lucide-react";
-import type { QuoteSku } from "@/lib/types";
+import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { PublicQuoteDocument } from "@/components/public/public-quote-document";
 import { AddressMapLink, AddressMapText } from "@/components/public/address-map-link";
 import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
@@ -24,7 +24,7 @@ interface PublicTicket {
   due_date?: string | null;
   priority?: string | null;
   quote_channel?: string | null;
-  quote_skus: QuoteSku[];
+  line_items: TicketLineDisplayRow[];
   quote_subtotal: number | null;
   quote_shipping: number | null;
   discount_type: string | null;

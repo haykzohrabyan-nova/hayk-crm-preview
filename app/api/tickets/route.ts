@@ -15,6 +15,13 @@ import {
   ticketKindForReference,
 } from "@/lib/utils/reference-codes";
 import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
+import {
+  aggregateLineFlags,
+  fetchTicketLinesBundle,
+  parseLineItemsFromBody,
+  syncTicketLines,
+  ticketHasFilledLineItem,
+} from "@/lib/utils/ticket-line-items";
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -114,14 +121,12 @@ export async function POST(request: NextRequest) {
     authority,
     from_quote_page = false,
     quote_source,
-    quote_skus = [],
+    line_items: lineItemsBody,
     notes,
     order_source,
     priority,
     due_date,
     rush = false,
-    design_required = false,
-    die_cut = false,
     special_requirements,
     quote_channel,
     quote_destination,
@@ -189,6 +194,9 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminClient();
+  const lineItems = parseLineItemsFromBody(lineItemsBody);
+  const lineFlags = aggregateLineFlags(lineItems);
+  const hasFilledLine = ticketHasFilledLineItem(lineItems);
 
   // ── Upsert customer so they appear in CRM ──────────────────────────────────
   // Only when contact info is provided and no existing customer_id is given.
@@ -267,15 +275,14 @@ export async function POST(request: NextRequest) {
 
   // CRM / lead flows: capture source on a new lead. Direct Quotes page stores source on the ticket instead.
   if (!resolvedLeadId && resolvedCustomerId && source?.trim() && !isDirectQuotePage) {
-    const hasSkus = Array.isArray(quote_skus) && quote_skus.length > 0;
     const { data: newLead } = await admin
       .from("leads")
       .insert({
         customer_id: resolvedCustomerId,
         source: source.trim(),
         is_inbox: false,
-        status: hasSkus ? "Quoted" : "Pending",
-        sales_status: hasSkus ? "Quote Sent" : null,
+        status: hasFilledLine ? "Quoted" : "Pending",
+        sales_status: hasFilledLine ? "Quote Sent" : null,
         sdr_id: userId,
       })
       .select("id")
@@ -319,14 +326,13 @@ export async function POST(request: NextRequest) {
     contact_company: contact_company ?? null,
     contact_phone: contact_phone ?? null,
     quote_source: isDirectQuotePage ? (quote_source?.trim() || null) : null,
-    quote_skus,
     notes: notes ?? null,
     order_source: order_source ?? null,
     priority: priority ?? null,
     due_date: due_date ?? null,
     rush,
-    design_required,
-    die_cut,
+    design_required: lineFlags.design_required,
+    die_cut: lineFlags.die_cut,
     special_requirements: special_requirements ?? null,
     quote_channel: quote_channel ?? null,
     quote_destination: quote_destination ?? null,
@@ -377,6 +383,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: insertErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
+  let syncedLineItems = null;
+  if (lineItems.length > 0) {
+    const syncResult = await syncTicketLines(admin, ticket.id, lineItems);
+    if (!syncResult.ok) {
+      await admin.from("job_tickets").delete().eq("id", ticket.id);
+      return NextResponse.json({ error: syncResult.error, code: "VALIDATION_ERROR" }, { status: 400 });
+    }
+    syncedLineItems = syncResult.line_items;
+  }
+
   // Log activity (type name is legacy; payload.ticket_kind + reference_code drive UI labels).
   await admin.from("activities").insert({
     type: "order_ticket_created",
@@ -411,9 +427,8 @@ export async function POST(request: NextRequest) {
 
   // TODO-002: update linked lead status when ticket is created
   if (resolvedLeadId) {
-    const hasSkus = Array.isArray(quote_skus) && quote_skus.length > 0;
-    const newLeadStatus = hasSkus ? "Quoted" : "Validated";
-    const newSalesStatus = hasSkus ? "Quote Sent" : null;
+    const newLeadStatus = hasFilledLine ? "Quoted" : "Validated";
+    const newSalesStatus = hasFilledLine ? "Quote Sent" : null;
 
     await admin
       .from("leads")
@@ -495,5 +510,11 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ticket: finalTicket ?? ticket }, { status: 201 });
+  const line_items =
+    syncedLineItems ?? (await fetchTicketLinesBundle(admin, ticket.id));
+
+  return NextResponse.json(
+    { ticket: { ...(finalTicket ?? ticket), line_items } },
+    { status: 201 },
+  );
 }

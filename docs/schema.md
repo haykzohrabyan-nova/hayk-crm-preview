@@ -406,7 +406,7 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `special_requirements` | `text` | |
 | `design_required` | `boolean` NOT NULL DEFAULT `false` | Auto-set from SKUs |
 | `die_cut` | `boolean` NOT NULL DEFAULT `false` | Auto-set from SKUs |
-| `quote_skus` | `jsonb` DEFAULT `'[]'` | Array of SKU rows — see QuoteSku type |
+| *(removed)* | — | Line items moved to `ticket_line_items` (migration 089) |
 | `rush` | `boolean` DEFAULT `false` | Rush order flag |
 | `follow_up_completed` | `boolean` DEFAULT `false` | |
 | `client_confirmed` | `boolean` DEFAULT `false` | Client has approved quote → transitions to order |
@@ -476,9 +476,23 @@ When evidence is pending (`payment_evidence_url` set, `payment_evidence_reviewed
 | `product_lines` | `jsonb` |
 | `follow_up_at` | `timestamptz` |
 
-#### QuoteSku (JSONB shape)
+#### `ticket_line_items` / `ticket_line_variants` / `ticket_files` (migration 089)
 
-Each element of `quote_skus` conforms to `QuoteSku` in `lib/utils/ticket-math.ts`:
+Priced catalog lines live in **`ticket_line_items`** (one row per quote line; fields mirror `QuoteSku` in `lib/utils/ticket-math.ts`). **Additional SKUs** (name + quantity, optional image/PDF) are **`ticket_line_variants`** per line. At most one file per variant in **`ticket_files`** (`variant_id` UNIQUE); binary in Supabase Storage bucket **`ticket-attachments`**.
+
+| Table | Notes |
+|--------|------|
+| `ticket_line_items` | `ticket_id` FK, `sort_order`, catalog/pricing columns |
+| `ticket_line_variants` | `line_item_id` + denormalized `ticket_id`, `name`, `quantity > 0` |
+| `ticket_files` | `storage_path`, `file_name`, `mime_type`, `byte_size`, `uploaded_by_id` |
+
+Sync on create/update: `syncTicketLines()` in `lib/utils/ticket-line-items.ts`. Read: `fetchTicketLinesBundle()`; public/PDF/email use `lineItemsToDisplayRows()`.
+
+#### QuoteSku (TypeScript shape — form math only)
+
+`QuoteSku` in `lib/utils/ticket-math.ts` remains the in-form shape; persisted rows use the tables above. Legacy JSONB field **`quote_skus`** on `job_tickets` was removed in migration 089.
+
+Each catalog line conforms to:
 
 | Field | Type | Notes |
 |---|---|---|
@@ -787,7 +801,9 @@ Admin-managed product catalog for quote line items. Created and seeded in migrat
 - `materials` — text slug PK (e.g. `bopp-white`), 37 materials seeded
 - `product_material_links` — junction table linking materials to product types
 
-Text slug PKs are stable identifiers stored inside `job_tickets.quote_skus` JSONB without FK overhead. Defined in `supabase/schema.sql` (product catalog section).
+Text slug PKs (e.g. `labels-roll`) are stored in `ticket_line_items.product_type` and `material` for delete guards. Defined in `supabase/schema.sql` (product catalog section).
+
+**Storage:** Private bucket **`ticket-attachments`** (migration 090) — variant file binaries; metadata in `ticket_files`. Create bucket via migration 090 or Supabase Dashboard.
 
 **RLS:** SELECT open to all (including anon — needed by public quote page and quote forms). INSERT / UPDATE / DELETE: admin only (migration 043 `admin_all_*` policies).
 

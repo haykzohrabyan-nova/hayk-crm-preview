@@ -238,10 +238,8 @@ export type TicketStatus =
   | 'cancelled'
 
 /**
- * A single line item inside `job_tickets.quote_skus` (JSONB array).
- * Canonical definition: lib/types/index.ts QuoteSku.
- * Pricing helpers (computePricing, skuLineTotal, formatCurrency) live in
- * lib/utils/ticket-math.ts and use the same interface.
+ * Catalog line item shape (forms, pricing math). Persisted in `ticket_line_items`;
+ * additional SKUs in `ticket_line_variants`. Canonical: lib/types/index.ts + lib/utils/ticket-math.ts.
  */
 export interface QuoteSku {
   product_type: string              // product name from admin catalog
@@ -261,6 +259,28 @@ export interface QuoteSku {
   foil?: boolean
   perforation?: boolean
   comment?: string                  // per-SKU line item free-text note
+}
+
+/** Persisted rows — `lib/utils/ticket-line-items.ts` */
+export interface TicketLineVariantRow {
+  id: string
+  name: string
+  quantity: number
+  file?: { id: string; file_name: string; mime_type: string; byte_size: number | null } | null
+}
+
+export interface TicketLineItemRow extends QuoteSku {
+  id: string
+  ticket_id: string
+  sort_order: number
+  variants: TicketLineVariantRow[]
+}
+
+/** POST/PATCH body shape for catalog lines + nested variants */
+export interface LineItemInput extends QuoteSku {
+  id?: string
+  sort_order?: number
+  variants?: { id?: string; name: string; quantity: number; sort_order?: number }[]
 }
 
 export interface JobTicket {
@@ -285,9 +305,9 @@ export interface JobTicket {
   rush: boolean
   special_requirements: string | null
   notes: string | null
-  // Line items
-  quote_skus: QuoteSku[]
-  design_required: boolean          // auto-set from SKUs: any SKU with design_required=true
+  // Line items — loaded on detail GET as `line_items` (not stored on job_tickets row)
+  line_items?: TicketLineItemRow[]  // see lib/utils/ticket-line-items.ts
+  design_required: boolean          // auto-set from line items: any line with design_required=true
   die_cut: boolean                  // auto-set from SKUs: any SKU with die_cut=true
   // Pricing (Quote tab)
   quote_subtotal: number | null
@@ -636,8 +656,8 @@ export interface TicketForm {
   contact_email: string
   contact_phone: string
   contact_company: string
-  // Line items
-  quote_skus: Partial<QuoteSku>[]
+  // Line items (API: line_items)
+  line_items: Partial<LineItemInput>[]  // lib/utils/ticket-line-items.ts
   // Pricing
   quote_shipping: string          // string in form; parsed to number on submit
   discount_enabled: boolean
