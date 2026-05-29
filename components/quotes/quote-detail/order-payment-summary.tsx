@@ -6,7 +6,6 @@ import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import type { PaymentConfig } from "@/lib/types";
 import {
   DetailSection,
-  DetailSectionTitle,
   DetailCollapsibleSection,
   DetailDataGrid,
   DetailDataCell,
@@ -496,58 +495,61 @@ export function OrderPaymentSummary({
     return (
       <>
         <DetailSection>
-          <DetailSectionTitle>Payment plan</DetailSectionTitle>
-          <DetailDataGrid>
-            <DetailDataCell label="Strategy" value={STRATEGY_LABEL[strategy] ?? strategy} />
-            <DetailDataCell label="Accepted channels" value={channelStr} />
-            {strategy === "partial" && ticket.ticket_dep_handling && (
+          <DetailCollapsibleSection title="Payment plan">
+            <DetailDataGrid>
+              <DetailDataCell label="Strategy" value={STRATEGY_LABEL[strategy] ?? strategy} />
+              <DetailDataCell label="Accepted channels" value={channelStr} />
+              {strategy === "partial" && ticket.ticket_dep_handling && (
+                <DetailDataCell
+                  label="Deposit collection"
+                  value={ticket.ticket_dep_handling === "cash" ? "Cash / offline" : "Online gateway"}
+                />
+              )}
+              {strategy === "net" && (
+                <DetailDataCell label="Terms" value={netTerms.charAt(0).toUpperCase() + netTerms.slice(1)} />
+              )}
               <DetailDataCell
-                label="Deposit collection"
-                value={ticket.ticket_dep_handling === "cash" ? "Cash / offline" : "Online gateway"}
+                label="Price confirmation"
+                value={
+                  ticket.ticket_require_client_confirm === false
+                    ? "Not required"
+                    : ticket.client_confirmed
+                      ? "Confirmed by customer"
+                      : "Required — pending"
+                }
               />
-            )}
-            {strategy === "net" && (
-              <DetailDataCell label="Terms" value={netTerms.charAt(0).toUpperCase() + netTerms.slice(1)} />
-            )}
-            <DetailDataCell
-              label="Price confirmation"
-              value={
-                ticket.ticket_require_client_confirm === false
-                  ? "Not required"
-                  : ticket.client_confirmed
-                    ? "Confirmed by customer"
-                    : "Required — pending"
-              }
-            />
-          </DetailDataGrid>
+            </DetailDataGrid>
+          </DetailCollapsibleSection>
         </DetailSection>
         <DetailSection>
-          <DetailSectionTitle>Quote delivery</DetailSectionTitle>
-          <DetailDataGrid>
-            <DetailDataCell
-              label="Send quote via"
-              value={ticket.ticket_quote_channel ? (CHANNEL_LABEL[ticket.ticket_quote_channel] ?? ticket.ticket_quote_channel) : "—"}
-            />
-            <DetailDataCell label="Destination" value={sendDest} />
-          </DetailDataGrid>
+          <DetailCollapsibleSection title="Quote delivery">
+            <DetailDataGrid>
+              <DetailDataCell
+                label="Send quote via"
+                value={ticket.ticket_quote_channel ? (CHANNEL_LABEL[ticket.ticket_quote_channel] ?? ticket.ticket_quote_channel) : "—"}
+              />
+              <DetailDataCell label="Destination" value={sendDest} />
+            </DetailDataGrid>
+          </DetailCollapsibleSection>
         </DetailSection>
         {followUpEnabled && (
           <DetailSection>
-            <DetailSectionTitle>Follow-up schedule</DetailSectionTitle>
-            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-3">
-              <DetailFollowUpCard label="Reminders" value="Enabled" valueColor="var(--color-success)" />
-              <DetailFollowUpCard label="Follow-ups" value={String(ticket.ticket_follow_up_count ?? "—")} />
-              <DetailFollowUpCard
-                label="Frequency"
-                value={ticket.ticket_follow_up_freq ? (FREQ_LABEL[ticket.ticket_follow_up_freq] ?? ticket.ticket_follow_up_freq) : "—"}
-              />
-              <DetailFollowUpCard
-                label="Start date"
-                value={ticket.quote_reminder_date
-                  ? new Date(ticket.quote_reminder_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                  : "—"}
-              />
-            </div>
+            <DetailCollapsibleSection title="Follow-up schedule">
+              <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-3">
+                <DetailFollowUpCard label="Reminders" value="Enabled" valueColor="var(--color-success)" />
+                <DetailFollowUpCard label="Follow-ups" value={String(ticket.ticket_follow_up_count ?? "—")} />
+                <DetailFollowUpCard
+                  label="Frequency"
+                  value={ticket.ticket_follow_up_freq ? (FREQ_LABEL[ticket.ticket_follow_up_freq] ?? ticket.ticket_follow_up_freq) : "—"}
+                />
+                <DetailFollowUpCard
+                  label="Start date"
+                  value={ticket.quote_reminder_date
+                    ? new Date(ticket.quote_reminder_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                    : "—"}
+                />
+              </div>
+            </DetailCollapsibleSection>
           </DetailSection>
         )}
       </>
@@ -777,75 +779,78 @@ export function OrderPaymentSummary({
         </DetailSection>
 
         <DetailSection>
-          <DetailSectionTitle>Quote delivery</DetailSectionTitle>
-          <DetailDataGrid>
-            <DetailDataCell
-              label="Send quote via"
-              value={ticket.ticket_quote_channel ? (CHANNEL_LABEL[ticket.ticket_quote_channel] ?? ticket.ticket_quote_channel) : "—"}
-            />
-            <DetailDataCell label="Destination" value={sendDest} />
-          </DetailDataGrid>
-        </DetailSection>
-
-        <DetailSection>
-          <DetailSectionTitle>Follow-up schedule</DetailSectionTitle>
-          <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-3">
-            <DetailFollowUpCard
-              label="Reminders"
-              value={followUpEnabled ? "Enabled" : "Disabled"}
-              valueColor={followUpEnabled ? "var(--color-success)" : undefined}
-            />
-            {followUpEnabled && (
-              <>
-                <DetailFollowUpCard label="Follow-ups" value={String(ticket.ticket_follow_up_count ?? "—")} />
-                <DetailFollowUpCard
-                  label="Frequency"
-                  value={ticket.ticket_follow_up_freq ? (FREQ_LABEL[ticket.ticket_follow_up_freq] ?? ticket.ticket_follow_up_freq) : "—"}
-                />
-                <DetailFollowUpCard
-                  label="Start date"
-                  value={ticket.quote_reminder_date
-                    ? new Date(ticket.quote_reminder_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                    : "—"}
-                />
-              </>
-            )}
-          </div>
-        </DetailSection>
-
-        <DetailSection>
-          <DetailSectionTitle>Production &amp; evidence</DetailSectionTitle>
-          <DetailDataGrid>
-            {ticket.reference_code && (
-              <DetailDataCell label="Order reference" value={ticket.reference_code} />
-            )}
-            <DetailDataCell label="Production released" value={fmtDate(ticket.production_released_at)} />
-            <DetailDataCell
-              label="Status"
-              value={ticket.ticket_status.replace(/_/g, " ")}
-              valueColor="var(--color-info-text)"
-            />
-            <DetailDataCell label="Accepted channels" value={channelStr} />
-            {showEvidenceLink && ticket.id && (
+          <DetailCollapsibleSection title="Quote delivery">
+            <DetailDataGrid>
               <DetailDataCell
-                label="Payment evidence"
-                value={
-                  <a
-                    href={`/api/tickets/${ticket.id}/evidence`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                    style={{ color: "var(--color-tab-active)" }}
-                  >
-                    View uploaded file
-                  </a>
-                }
+                label="Send quote via"
+                value={ticket.ticket_quote_channel ? (CHANNEL_LABEL[ticket.ticket_quote_channel] ?? ticket.ticket_quote_channel) : "—"}
               />
-            )}
-            {showEvidencePendingNote && (
-              <DetailDataCell label="Payment proof" value="Submitted — awaiting review" valueColor="var(--color-warning-text-deep)" />
-            )}
-          </DetailDataGrid>
+              <DetailDataCell label="Destination" value={sendDest} />
+            </DetailDataGrid>
+          </DetailCollapsibleSection>
+        </DetailSection>
+
+        <DetailSection>
+          <DetailCollapsibleSection title="Follow-up schedule">
+            <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:gap-3">
+              <DetailFollowUpCard
+                label="Reminders"
+                value={followUpEnabled ? "Enabled" : "Disabled"}
+                valueColor={followUpEnabled ? "var(--color-success)" : undefined}
+              />
+              {followUpEnabled && (
+                <>
+                  <DetailFollowUpCard label="Follow-ups" value={String(ticket.ticket_follow_up_count ?? "—")} />
+                  <DetailFollowUpCard
+                    label="Frequency"
+                    value={ticket.ticket_follow_up_freq ? (FREQ_LABEL[ticket.ticket_follow_up_freq] ?? ticket.ticket_follow_up_freq) : "—"}
+                  />
+                  <DetailFollowUpCard
+                    label="Start date"
+                    value={ticket.quote_reminder_date
+                      ? new Date(ticket.quote_reminder_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                      : "—"}
+                  />
+                </>
+              )}
+            </div>
+          </DetailCollapsibleSection>
+        </DetailSection>
+
+        <DetailSection>
+          <DetailCollapsibleSection title="Production &amp; evidence">
+            <DetailDataGrid>
+              {ticket.reference_code && (
+                <DetailDataCell label="Order reference" value={ticket.reference_code} />
+              )}
+              <DetailDataCell label="Production released" value={fmtDate(ticket.production_released_at)} />
+              <DetailDataCell
+                label="Status"
+                value={ticket.ticket_status.replace(/_/g, " ")}
+                valueColor="var(--color-info-text)"
+              />
+              <DetailDataCell label="Accepted channels" value={channelStr} />
+              {showEvidenceLink && ticket.id && (
+                <DetailDataCell
+                  label="Payment evidence"
+                  value={
+                    <a
+                      href={`/api/tickets/${ticket.id}/evidence`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                      style={{ color: "var(--color-tab-active)" }}
+                    >
+                      View uploaded file
+                    </a>
+                  }
+                />
+              )}
+              {showEvidencePendingNote && (
+                <DetailDataCell label="Payment proof" value="Submitted — awaiting review" valueColor="var(--color-warning-text-deep)" />
+              )}
+            </DetailDataGrid>
+          </DetailCollapsibleSection>
         </DetailSection>
       </>
     );

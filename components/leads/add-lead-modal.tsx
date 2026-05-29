@@ -302,6 +302,7 @@ export function AddLeadModal({
 
     const res = await fetch("/api/leads/manual", {
       method: "POST",
+      credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...form,
@@ -318,6 +319,14 @@ export function AddLeadModal({
 
     if (!res.ok) {
       const msg = data.error ?? "Failed to create lead.";
+      if (data.code === "UNAUTHENTICATED") {
+        setError("Your session expired. Please refresh the page and sign in again.");
+        return;
+      }
+      if (data.code === "MFA_VERIFY_REQUIRED" || data.code === "MFA_SETUP_REQUIRED") {
+        setError("Two-factor verification required. Refresh the page to continue.");
+        return;
+      }
       if (msg === "Phone is required.") failField("phone", setPhoneError, msg);
       else if (msg === "First name is required.") failField("firstName", setFirstNameError, msg);
       else if (msg === "Source is required.") failField("source", setSourceError, msg);

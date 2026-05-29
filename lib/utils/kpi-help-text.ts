@@ -33,19 +33,28 @@ export const KPI_HELP = {
   rejected: "Leads you rejected this period.",
   quote_value_sdr: "Sum of quote_total on leads you handled this period.",
   share_pct: "Your handled leads as a share of all SDR activity this period.",
-  lead_claimed_sdr: "Distinct leads you claimed (locked) in the selected period.",
-  lead_created_sdr: "Leads added to the workspace with you as SDR in the selected period.",
+  lead_claimed_sdr:
+    "QTY of claimed Leads by SDR from all lead sources during the selected period.",
+  lead_created_sdr:
+    "Leads personally created by SDR, such as walk-ins, referrals, or contacts they met directly.",
   order_total_sdr:
-    "Sum of order totals you quoted, converted, and collected payment on — production released in this period. Excludes leads routed to Sales.",
+    "Total value of orders closed by the SDR during the selected period.",
   order_total_with_count_sdr:
-    "Production-released order value on quotes you created and closed yourself (with payment recorded). Count uses quote-to-order conversions in the period.",
+    "Total value of orders closed by the SDR during the selected period.",
   order_received_sdr:
-    "Payments received on your self-closed orders that entered production in this period.",
+    "Total payments received from the SDR's closed orders during the selected period.",
   order_balance_sdr:
-    "Quote total minus received on your self-closed production orders.",
+    "Remaining unpaid balance from the SDR's closed orders during the selected period.",
   order_created_sdr:
     "Quotes you created, converted to orders, and collected payment on — in the period.",
-  on_hold_sdr_period: "Times you put a lead on hold in the selected period.",
+  on_hold_sdr_period:
+    "Leads that could not be reached or are waiting for a status update.",
+  unclaimed_pending_leads_sdr:
+    "New leads that have not been claimed, touched or assigned yet.",
+  rejected_not_qualified_sdr:
+    "Leads rejected because they did not turn into a quote or order, were outside our target segment, or did not have clear project needs.",
+  qty_routed_to_sales_sdr:
+    "Leads SDR did not quote or close directly and were forwarded to the sales team because they were outside the SDR's quoting criteria.",
   sales_win_sdr:
     "Routed-to-Sales leads whose linked order entered production in the period.",
   lead_claimed_sales: "Distinct routed leads you claimed in the selected period.",

@@ -169,6 +169,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Mobile list cards (quotes, orders, payments, completed)
 - Quote/order detail overview layout, global loading overlay
 - **May 28:** Collapsible Timeline, Pricing, and Payment & order settings on detail overview (default collapsed)
+- **May 29:** Admin cancel/edit at any stage (incl. completed); expanded collapsibles (Fulfillment, Quote & Pricing, Payment review, etc.); Verify drawer ✕; Add Lead auth cookie refresh; Product Interests row alignment
 - PDF download (staff + public), print view
 
 ### Infrastructure

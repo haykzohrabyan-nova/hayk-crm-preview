@@ -3,6 +3,64 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-29] — SDR dashboard KPI labels and owner copy
+
+### Changed
+- `components/sales/sdr-dashboard.tsx` — renamed all 9 KPI cards to owner terminology (Closed Order Value, Paid From Closed Orders, Remaining Balance for Closed Orders, Qty of Claimed Leads, Manually Created Leads, Unclaimed/Pending Leads, Rejected / Not Qualified, Pending Follow-Up, Qty of Leads Routed to Sales Team); lead metrics show `N leads` format
+- `lib/utils/kpi-help-text.ts` — updated SDR dashboard help lines to match owner descriptions
+
+### Docs
+- `docs/feature-specs/dashboard.md`
+
+## [2026-05-29] — Collapsible Quote & Pricing and Fulfillment on detail
+
+### Changed
+- Quote/order detail — **Quote & Pricing** and **Fulfillment** use `DetailCollapsibleSection`, collapsed by default (overview layout + draft/sent quote tab)
+- Order overview — **Payment plan**, **Quote delivery**, **Follow-up schedule**, **Production & evidence**, and **Payment review** collapsible, collapsed by default on order detail
+- `components/quotes/shared/quote-form.tsx` — optional `hideFulfillment` when parent renders fulfillment separately
+
+### Docs
+- `docs/feature-specs/tickets.md`, `docs/feature-specs/invoice-payment.md`, `docs/component-architecture.md`, `docs/navigation.md`, `docs/session-summary.md`, `docs/TODO.md`
+
+## [2026-05-29] — Admin cancel and edit at any lifecycle stage
+
+### Changed
+- **Cancel** — only **admin** may cancel quotes or orders; allowed at any status including **completed** (still requires cancellation reason from Admin → Dropdown Options)
+- **Edit** — admin can edit any non-cancelled ticket, including completed orders and customer-confirmed records
+- After admin **Save Changes** on `sent`, `order`, `in_production`, or **completed** tickets → resend prompt offers to notify the customer
+- `lib/utils/can-admin-cancel-ticket.ts` — removed unpaid-only gate; admin cancel blocked only when already `cancelled`
+- `lib/utils/cancel-reason-category.ts` — `completed` uses **Order Cancellation Reasons**
+- `app/api/tickets/[id]/route.ts`, `components/quotes/quote-detail/detail-quick-actions.tsx`, `components/quotes/quote-detail.tsx`
+
+### Docs
+- `docs/feature-specs/tickets.md`, `docs/api-contract.md`, `docs/component-architecture.md`, `docs/session-summary.md`
+
+## [2026-05-29] — Verify Lead modal close button for claimed leads
+
+### Changed
+- `components/leads/verify-drawer.tsx` — X close button always visible in the header so SDRs can dismiss the modal without saving (lead stays claimed per soft-lock model)
+
+### Docs
+- `docs/feature-specs/leads-sdr.md`, `docs/feature-specs/lead-locking.md`
+
+## [2026-05-29] — Fix 401 on Add Lead after session token refresh
+
+### Fixed
+- `lib/supabase/server.ts` — Route Handler Supabase client now refreshes auth cookies via `setAll` (was a no-op in `requireSession`, causing `POST /api/leads/manual` and other writes to return 401 when the access token expired)
+- `lib/auth/session-cache.ts` — exclude `__next_hmr_refresh_hash__` from cache key so dev hot reload does not force a fresh auth check on every save
+- `components/leads/add-lead-modal.tsx` — clearer error when session expires or MFA is required
+
+### Docs
+- `docs/security.md`, `docs/architecture.md`, `docs/api-contract.md`
+
+## [2026-05-29] — Product Interests layout in Add Lead modal
+
+### Changed
+- `components/leads/product-interest-rows.tsx` — Product, Quantity, and Has Design in one row; labels and inputs on separate grid rows so fields align pixel-perfect
+
+### Docs
+- `docs/feature-specs/leads-sdr.md`
+
 ## [2026-05-28] — Admin dashboard privacy toggle
 
 ### Changed
@@ -127,6 +185,8 @@ Format: `## [version or date] — description`, newest first.
 - Cancel modal — selecting **Other** requires free-text detail (saved in `cancel_notes`); optional notes for all other reasons
 
 ## [2026-05-28] — Admin cancel on unpaid in-production orders
+
+> **Superseded (2026-05-29):** Admin may cancel at **any** lifecycle stage including **completed** (paid or unpaid). See changelog entry **Admin cancel and edit at any lifecycle stage**.
 
 ### Fixed
 - Order detail — **Cancel Ticket** now shows for admins on unpaid orders in **`in_production`** (previously only `order` status), matching net/cash auto-release behaviour

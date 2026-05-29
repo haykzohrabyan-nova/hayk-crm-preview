@@ -10,6 +10,7 @@ import {
   type SummaryTicket,
   type PricingTicketFields,
 } from "@/components/quotes/quote-detail/order-payment-summary";
+import { DetailCollapsibleSection } from "@/components/quotes/quote-detail/detail-layout-primitives";
 
 const CHANNEL_LABELS: Record<string, string> = {
   wire:    "Wire Transfer",
@@ -39,9 +40,12 @@ function submittedAmount(ticket: SummaryTicket): number {
 export function PaymentDetailOverview({
   ticket,
   readOnly = false,
+  defaultOpen = false,
 }: {
   ticket: SummaryTicket & PricingTicketFields & { id: string };
   readOnly?: boolean;
+  /** When false, payment review starts collapsed (order detail). Payments queue passes true. */
+  defaultOpen?: boolean;
 }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
@@ -86,90 +90,93 @@ export function PaymentDetailOverview({
     }
   }
 
+  const sectionTitle = evidencePending ? "Payment review" : "Payment evidence";
+
   return (
     <div
-      className="rounded-xl border p-5 space-y-5"
+      className="rounded-xl border px-5 py-5"
       style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
     >
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--color-text-muted)" }}>
-            {evidencePending ? "Payment review" : "Payment evidence"}
+      <DetailCollapsibleSection title={sectionTitle} defaultOpen={defaultOpen}>
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              {ticket.payment_method_used && (
+                <span
+                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+                  style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
+                >
+                  <CreditCard size={11} />
+                  {CHANNEL_LABELS[ticket.payment_method_used] ?? ticket.payment_method_used}
+                </span>
+              )}
+              {!evidencePending && ticket.payment_evidence_reviewed_at && (
+                <p className="text-sm mt-2" style={{ color: "var(--color-success)" }}>
+                  Approved {formatDateTime(ticket.payment_evidence_reviewed_at)}
+                </p>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap ml-auto">
+              {ticket.payment_evidence_url && (
+                <a
+                  href={`/api/tickets/${ticket.id}/evidence`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border"
+                  style={{
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text-primary)",
+                    background: "var(--color-bg)",
+                    textDecoration: "none",
+                  }}
+                >
+                  <FileText size={14} />
+                  View evidence
+                </a>
+              )}
+              {canConfirm && (
+                <button
+                  type="button"
+                  disabled={confirming}
+                  onClick={handleConfirm}
+                  className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60"
+                  style={{
+                    background: "var(--color-btn-primary-bg)",
+                    color: "var(--color-btn-primary-text)",
+                  }}
+                >
+                  {confirming ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  Confirm payment
+                </button>
+              )}
+            </div>
+          </div>
+
+          {confirmErr && (
+            <div
+              className="rounded-[6px] border px-3 py-2 text-sm"
+              style={{
+                borderColor: "var(--color-danger-border)",
+                background: "var(--color-danger-bg)",
+                color: "var(--color-danger)",
+              }}
+            >
+              {confirmErr}
+            </div>
+          )}
+
+          <PricingPaymentSummary ticket={ticket} reviewPending={evidencePending} />
+
+          <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+            {evidencePending
+              ? readOnly
+                ? "An accountant must confirm this payment before production can start. Contact your accountant if this order is urgent."
+                : "Confirming records the submitted amount and releases the order to production when payment gates are met."
+              : "Payment evidence was reviewed and recorded. The file remains available for audit."}
           </p>
-          {ticket.payment_method_used && (
-            <span
-              className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold mt-1"
-              style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
-            >
-              <CreditCard size={11} />
-              {CHANNEL_LABELS[ticket.payment_method_used] ?? ticket.payment_method_used}
-            </span>
-          )}
-          {!evidencePending && ticket.payment_evidence_reviewed_at && (
-            <p className="text-sm mt-2" style={{ color: "var(--color-success)" }}>
-              Approved {formatDateTime(ticket.payment_evidence_reviewed_at)}
-            </p>
-          )}
         </div>
-
-        <div className="flex items-center gap-2 flex-wrap ml-auto">
-          {ticket.payment_evidence_url && (
-            <a
-              href={`/api/tickets/${ticket.id}/evidence`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border"
-              style={{
-                borderColor: "var(--color-border)",
-                color: "var(--color-text-primary)",
-                background: "var(--color-bg)",
-                textDecoration: "none",
-              }}
-            >
-              <FileText size={14} />
-              View evidence
-            </a>
-          )}
-          {canConfirm && (
-            <button
-              type="button"
-              disabled={confirming}
-              onClick={handleConfirm}
-              className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60"
-              style={{
-                background: "var(--color-btn-primary-bg)",
-                color: "var(--color-btn-primary-text)",
-              }}
-            >
-              {confirming ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-              Confirm payment
-            </button>
-          )}
-        </div>
-      </div>
-
-      {confirmErr && (
-        <div
-          className="rounded-[6px] border px-3 py-2 text-sm"
-          style={{
-            borderColor: "var(--color-danger-border)",
-            background: "var(--color-danger-bg)",
-            color: "var(--color-danger)",
-          }}
-        >
-          {confirmErr}
-        </div>
-      )}
-
-      <PricingPaymentSummary ticket={ticket} reviewPending={evidencePending} />
-
-      <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-        {evidencePending
-          ? readOnly
-            ? "An accountant must confirm this payment before production can start. Contact your accountant if this order is urgent."
-            : "Confirming records the submitted amount and releases the order to production when payment gates are met."
-          : "Payment evidence was reviewed and recorded. The file remains available for audit."}
-      </p>
+      </DetailCollapsibleSection>
     </div>
   );
 }

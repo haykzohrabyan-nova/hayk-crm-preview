@@ -94,8 +94,7 @@ export function DetailQuickActions({
     !isRoutedReadOnly &&
     (ticket.ticket_status === "draft" || ticket.ticket_status === "sent");
 
-  const showOrderCancel =
-    !isLocked &&
+  const showAdminCancel =
     userRole === "admin" &&
     !!onCancelTicket &&
     canAdminCancelTicket(ticket);
@@ -143,7 +142,7 @@ export function DetailQuickActions({
 
   const hasActions =
     showQuoteLifecycle ||
-    showOrderCancel ||
+    showAdminCancel ||
     canMarkComplete ||
     canResendInvoice ||
     showQuoteLink;
@@ -193,21 +192,10 @@ export function DetailQuickActions({
               <span className="truncate">Convert to Order</span>
             </button>
           )}
-          {onCancelTicket && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={onCancelTicket}
-              className={`${btnBase} w-full border hover:opacity-80`}
-              style={{ color: "var(--color-danger)", borderColor: "var(--color-danger-border)", background: "var(--color-danger-bg)" }}
-            >
-              <span className="truncate">Cancel Ticket</span>
-            </button>
-          )}
         </>
       )}
 
-      {showOrderCancel && (
+      {showAdminCancel && (
         <button
           type="button"
           disabled={saving}

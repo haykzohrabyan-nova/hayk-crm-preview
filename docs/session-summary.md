@@ -1,6 +1,29 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 28, 2026
-**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–28: SDR scope/dashboard, leads workspace, ticket line items (089/090), additional SKUs, resend-after-save modal, quote shipping fulfillment (091)**.
+**Last updated:** May 29, 2026
+**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–29: SDR scope/dashboard, leads workspace, ticket line items, admin cancel/edit anytime, collapsible detail sections, auth cookie refresh fix**.
+
+---
+
+## May 29, 2026 — Admin cancel/edit, collapsibles, leads UX, auth fix
+
+### Admin ticket lifecycle
+- **Cancel** — admin only at any status except already `cancelled` (includes **completed**, paid or unpaid); required cancellation reason from Admin → Dropdown Options
+- **Edit** — admin can edit any non-`cancelled` ticket including completed / customer-confirmed records
+- Post-save **Send update** prompt for admin on `sent`, `order`, `in_production`, **completed** (`lib/utils/should-offer-resend-after-save.ts`)
+
+### Collapsible detail sections (expanded)
+- Beyond Timeline / Pricing / Payment settings: **Quote & Pricing**, **Fulfillment**, **Quote delivery**, **Follow-up**, **Production & evidence**, **Payment review**, **Payment plan** — default **collapsed** on order/quote detail; Payment review **open** on `/payments/[id]`
+
+### Leads UX
+- Verify drawer **✕** always visible — dismiss without saving; soft-lock retained
+- Product Interests — Product, Quantity, Has Design on one aligned row (`product-interest-rows.tsx`)
+
+### Auth fix
+- `lib/supabase/server.ts` — Route Handler cookie refresh for `requireSession()` (fixes 401 on `POST /api/leads/manual` after token expiry)
+- Session cache excludes HMR cookie from cache key
+
+### Docs synced
+- `docs/feature-specs/tickets.md`, `leads-sdr.md`, `lead-locking.md`, `invoice-payment.md`, `api-contract.md`, `security.md`, `architecture.md`, `component-architecture.md`, `CHANGELOG.md`, `TODO.md`
 
 ---
 
@@ -47,7 +70,7 @@
 - **SDR All Leads / My Leads toggle** — `owner_scope=all` → unclaimed only; `owner_scope=mine` → claimed by me; other SDRs' locks hidden
 - **Manual Add Lead** — no auto-lock; open pool until **Claim** or Admin **Assign**
 - **Claim loading** — `useGlobalLoading` + row spinner (`GLOBAL_LOADING_MESSAGES.openingLead`)
-- **Product Interests** — `components/leads/product-interest-rows.tsx`; quantity **> 0** when product selected; labels above inputs; shared validation helper
+- **Product Interests** — `components/leads/product-interest-rows.tsx`; Product + Quantity + Has Design on one row; quantity **> 0** when product selected; shared validation helper
 
 ### Docs synced
 - `feature-specs/leads-sdr.md`, `feature-specs/lead-locking.md`, `component-architecture.md`, `api-contract.md`, `types.md`, `CHANGELOG.md`, `navigation.md`, `mvp-scope.md`, `architecture.md`, `rbac.md`, `schema.md`
@@ -214,7 +237,7 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 ## May 28, 2026 — Collapsible detail sections
 
 - Quote/order detail overview — **Timeline**, **Pricing**, and **Payment & order settings** collapsible via `DetailCollapsibleSection`; **default collapsed** (chevron header toggle)
-- Line Items, Quote delivery, Follow-up, and Production & evidence sections stay expanded
+- **May 29 extension:** Quote & Pricing, Fulfillment, Quote delivery, Follow-up, Production & evidence, Payment review, Payment plan also collapsible (default collapsed; Payment review open on `/payments/[id]`)
 - Component: `components/quotes/quote-detail/detail-layout-primitives.tsx`
 
 ---
@@ -616,7 +639,7 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 
 Full business-rule enforcement and payment workflow built:
 
-- **Record locking**: Once a customer approves a quote (`client_confirmed = true`), the record is **locked for SDR/Sales users**. Only admins can cancel or edit it. A "Record Locked" banner is shown to non-admins. `isLocked` logic: `ticket.ticket_status === "cancelled" || (isCustomerApproved && userRole !== "admin")`.
+- **Record locking**: Once a customer approves a quote (`client_confirmed = true`), the record is **locked for SDR/Sales users**. Only **admin** can cancel or edit (including **completed** orders). A "Record Locked" banner is shown to non-admins. `isLocked` logic: `ticket.ticket_status === "cancelled" || ((isCustomerApproved || ticket_status === "completed") && userRole !== "admin")`.
 - **"Convert to Order" (was "Mark Won")**: The "Mark Won" button was replaced with **"Convert to Order"**. Clicking it sets `ticket_status = "order"`, auto-generates `ORD-YYYY-NNN` reference code, sets `ticket_kind = "order"`, and logs `ticket_converted` activity. Mirrors the customer confirmation flow exactly.
 - **`approved` status phased out**: The intermediate `approved` state is no longer used. Tickets go directly `sent → order` (either by customer or by rep clicking "Convert to Order"). The `approved` status is kept in the `TicketStatus` type for backwards compatibility only.
 - **SDR/Sales Won tracking**: When a linked ticket enters **`in_production`**, the lead's `sales_status` is automatically updated to `"Won"`. Handled by `markLeadWonOnProduction()` on all production-release paths (not at order conversion).
@@ -788,9 +811,9 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/crm/customers/[id]` | main | ✅ Built — full customer profile page |
 | `/quotes` | main | ✅ Built — Quoted Requests list; mobile cards at `< lg`; `TicketListToolbar` |
 | `/quotes/new` | main | ✅ Built — New Quote form; global loading on Save & Send |
-| `/quotes/[id]` | main | ✅ Built — overview layout; collapsible Timeline / Pricing / Payment settings (default closed); sidebar actions; stats row |
+| `/quotes/[id]` | main | ✅ Built — overview layout; collapsible overview sections (Timeline, Quote & Pricing, Fulfillment, Pricing, Payment settings — default closed); sidebar actions; stats row |
 | `/orders` | main | ✅ Built — Orders list (All / Pending Payment / In Production / Cancelled); mobile cards at `< lg` |
-| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; Mark Completed + Resend Link in sidebar; same collapsible overview sections |
+| `/orders/[id]` | main | ✅ Built — reuses QuoteDetail; Mark Completed + Resend Link in sidebar; same collapsible overview sections + Payment review (collapsed) |
 | `/payments` | main | ✅ Built — Pending approval + Approved tabs; evidence retained after confirm; mobile cards |
 | `/q/[token]` | public | ✅ Built — customer-facing quote page; "Quote Confirmed!" or "Order Confirmed!" based on kind; Confirm & Accept; Payment Schedule for partial prepayments |
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createServerSupabase } from "@/lib/supabase/server";
 import {
   clearMfaTrustCookie,
   createMfaTrustForUser,
@@ -11,19 +10,7 @@ import {
 
 // POST /api/auth/mfa-trust — issue 30-day trusted-device cookie after successful 2FA
 export async function POST() {
-  const cookieStore = await cookies();
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {},
-      },
-    },
-  );
+  const { supabase } = await createServerSupabase();
 
   const {
     data: { user },

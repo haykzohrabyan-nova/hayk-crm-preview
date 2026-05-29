@@ -1401,7 +1401,7 @@
 
       <div class="lock-box">
         <span style="font-size:18px;">🔒</span>
-        <div><strong>Once a customer confirms a quote</strong>, the record is locked for all SDR and Sales users. They can view it and send payment reminders, but they cannot edit the line items, pricing, or cancel the order. Only an Admin can make changes or cancel a confirmed order.</div>
+        <div><strong>Once a customer confirms a quote</strong> (or an order reaches <strong>completed</strong>), the record is locked for all SDR and Sales users. They can view it and send payment reminders, but they cannot edit line items, pricing, or cancel. <strong>Only Admin</strong> can cancel (at any lifecycle stage except already cancelled, including completed) or edit locked records.</div>
       </div>
 
       <div class="card">
@@ -1413,12 +1413,17 @@
           <tbody>
             <tr>
               <td>Draft or Sent quote</td>
-              <td>✅ Can edit &amp; cancel</td>
-              <td>✅ Full access</td>
+              <td>✅ Can edit (no cancel — admin only)</td>
+              <td>✅ Full access (edit &amp; cancel)</td>
             </tr>
             <tr>
               <td>Customer-confirmed order</td>
               <td>🔒 View only + send payment reminders</td>
+              <td>✅ Full access (edit &amp; cancel)</td>
+            </tr>
+            <tr>
+              <td>Completed order</td>
+              <td>🔒 View only</td>
               <td>✅ Full access (edit &amp; cancel)</td>
             </tr>
             <tr>
@@ -2835,7 +2840,7 @@
               <td>Q18</td>
               <td>Confirmed order (<code style="font-size:11px;">ticket_status=order</code>)</td>
               <td>Admin opens the order</td>
-              <td>No "Record locked" banner; Edit button visible; admin can change pricing, line items, or cancel</td>
+              <td>No "Record locked" banner; Edit button visible; admin can change pricing, line items, or cancel (including completed orders)</td>
             </tr>
             <tr>
               <td>Q19</td>

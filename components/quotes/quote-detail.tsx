@@ -43,6 +43,7 @@ import type { ShipToFields } from "@/lib/utils/address";
 import { InfoForm } from "@/components/quotes/shared/info-form";
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
+import { ShippingFulfillmentSection } from "@/components/quotes/shared/shipping-fulfillment-section";
 import {
   bundleToFormLineItems,
   emptyFormLineItem,
@@ -76,7 +77,7 @@ import { OUTREACH_CHANNEL_LABEL, resolveOutreachChannelKind } from "@/lib/utils/
 import { CancelledReasonBanner } from "@/components/quotes/quote-detail/cancelled-reason-banner";
 import { cancelReasonCategoryForStatus } from "@/lib/utils/cancel-reason-category";
 import type { LookupValue } from "@/lib/types";
-import { DetailStatusDotBadge } from "@/components/quotes/quote-detail/detail-layout-primitives";
+import { DetailStatusDotBadge, DetailCollapsibleSection } from "@/components/quotes/quote-detail/detail-layout-primitives";
 import {
   GLOBAL_LOADING_MESSAGES,
   useGlobalLoading,
@@ -942,6 +943,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   // Non-admins cannot edit or cancel. Admins retain full control.
   const isCustomerApproved = ticket.ticket_status === "order" || ticket.ticket_status === "in_production" || ticket.ticket_status === "completed";
   const isLocked = ticket.ticket_status === "cancelled" || (isCustomerApproved && userRole !== "admin");
+  // SDR read-only: this SDR created the quote but it was routed to Sales.
+  const isRoutedReadOnly = userRole === "sdr" && ticket.routed_by_id != null && ticket.routed_by_id === userId;
+  const canEditTicket =
+    !editing &&
+    !isRoutedReadOnly &&
+    (userRole === "admin"
+      ? ticket.ticket_status !== "cancelled"
+      : !isLocked && !ticket.client_confirmed);
   const showPaymentSummary = !editing && (
     context === "production" ||
     context === "completed" ||
@@ -966,9 +975,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const showStatsRow = isOverviewLayout && context !== "payment";
   const statsTotalLabel = context === "quote" ? "Quote Total" as const : "Order Total" as const;
 
-  // SDR read-only: this SDR created the quote but it was routed to Sales.
-  // They can view it but cannot edit it regardless of ticket status.
-  const isRoutedReadOnly = userRole === "sdr" && ticket.routed_by_id != null && ticket.routed_by_id === userId;
   const canViewPaymentEvidence = userRole === "accountant" || userRole === "admin";
 
   const detailQuickActionsProps = {
@@ -990,7 +996,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     cancelReasonCategoryForStatus(ticket.ticket_status) === "order_cancel_reason"
       ? cancelReasonLookups.order
       : cancelReasonLookups.quote;
-  const cancelModalTitle = ["order", "in_production"].includes(ticket.ticket_status)
+  const cancelModalTitle = ["order", "in_production", "completed"].includes(ticket.ticket_status)
     ? "Cancel order"
     : "Cancel quote";
 
@@ -1153,7 +1159,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           <span className="hidden sm:inline">Save PDF</span>
         </a>
 
-        {!editing && !isLocked && !ticket.client_confirmed && !isRoutedReadOnly && (
+        {canEditTicket && (
           <button
             onClick={() => setEditing(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80 shrink-0"
@@ -1527,14 +1533,26 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   />
                 </div>
 
-                {/* ── Divider: Quote & Pricing ── */}
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>Quote &amp; Pricing</p>
-                    <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
-                  </div>
+                {/* ── Fulfillment ── */}
+                <DetailCollapsibleSection title="Fulfillment">
+                  <ShippingFulfillmentSection
+                    editing={editing}
+                    customerId={ticket.customer_id ?? ticket.customer?.id ?? null}
+                    requiresShipping={requiresShipping}
+                    onRequiresShippingChange={setRequiresShipping}
+                    shipTo={shipTo}
+                    onShipToChange={setShipTo}
+                    shipping={shipping}
+                    onShippingChange={setShipping}
+                    ticket={editing ? undefined : ticket}
+                  />
+                </DetailCollapsibleSection>
+
+                {/* ── Quote & Pricing ── */}
+                <DetailCollapsibleSection title="Quote & Pricing">
                   <QuoteForm
                     editing={editing}
+                    hideFulfillment
                     ticket={ticket}
                     pricing={pricing}
                     shipping={shipping} setShipping={setShipping}
@@ -1553,7 +1571,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     paymentDraft={paymentDraft}
                     onPaymentChange={setPaymentDraft}
                   />
-                </div>
+                </DetailCollapsibleSection>
 
                 {/* ── Divider: Payment & Production ── */}
                 {showPaymentSummary && (

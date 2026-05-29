@@ -160,7 +160,7 @@ Additional UX:
 1. Customer submits proof via `POST /api/public/quotes/[token]/submit-payment` (multipart: `method`, optional `file`, optional `receiptId` — **digits only** for cash). **Amount is server-computed** via `computePublicPaymentDueAmount()` — the public UI shows a fixed deposit/balance at the top; customers cannot override the amount.
 2. For wire / ACH / Zelle / check / card: file stored in Supabase Storage `payment-evidence` bucket; `payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_amount` set; **payment totals are NOT updated**
 3. Ticket appears on **`/payments`** → **Pending approval** tab for accountant confirm — queue includes **`sent`** quotes and **`in_production`** orders with unreviewed evidence (`payment_evidence_reviewed_at` null). Ticket **owner** (sales/SDR) also sees evidence-pending rows on **`/orders`** with status **Awaiting payment confirmation** (read-only payment review card; no evidence file link for sales/SDR).
-4. Accountant opens `/payments/[id]` or order detail, reviews evidence (`GET /api/tickets/[id]/evidence` — accountant/admin only), clicks **Confirm**
+4. Accountant opens `/payments/[id]` or order detail, reviews evidence (`GET /api/tickets/[id]/evidence` — accountant/admin only), clicks **Confirm**. **Payment review** is a **`DetailCollapsibleSection`** — **default open** on `/payments/[id]`; **default collapsed** on `/orders/[id]` (May 2026).
 5. `PATCH /api/tickets/[id]` with `{ record_payment: true, … }` — **accountant + admin only**; runs `maybeConvertQuoteToOrder()` then `maybeAutoReleaseProduction()`; sets `payment_evidence_reviewed_at` and **keeps** evidence URL/amount for audit; sends **payment confirmed** email/SMS. Order moves to **`/payments`** → **Approved** tab (evidence still viewable).
 6. **Staff cash / offline auto-record** (receipt ID on ticket create/update): records payment immediately via `lib/utils/maybe-auto-record-cash-payment.ts` and logs **`ticket_payment_recorded`** (not `ticket_payment_evidence_submitted`) — counts toward Reports/dashboard **Cash Collected**. May auto-release when gates pass (respecting `ticket_require_client_confirm`).
 7. **Public cash** without evidence file may still auto-record and auto-release when gates pass (same activity type as staff cash when payment is immediate)
@@ -391,7 +391,7 @@ In `components/quotes/quote-detail.tsx` action bar:
 | `app/(app)/completed/page.tsx` | B+++ | ✅ Built | Completed orders list |
 | `app/(app)/completed/[id]/page.tsx` | B+++ | ✅ Built | Completed order detail |
 | `components/orders/payments-page.tsx` | B+++ | ✅ Built | Pending + Approved tabs; evidence retained after confirm |
-| `components/orders/payment-detail-overview.tsx` | B+++ | ✅ Built | Payment review; read-only when `payment_evidence_reviewed_at` set |
+| `components/orders/payment-detail-overview.tsx` | B+++ | ✅ Built | Payment review collapsible; default open on payment context, collapsed on order detail; read-only when `payment_evidence_reviewed_at` set |
 | `components/admin/sms-templates-section.tsx` | — | ✅ Built | Admin → Settings → SMS Templates |
 | `app/api/admin/sms-templates/route.ts` | — | ✅ Built | GET/PATCH editable SMS bodies |
 | `components/orders/production-page.tsx` | B+++ | ⚠ Legacy | Superseded by `/orders?tab=in_production` |
@@ -404,7 +404,7 @@ In `components/quotes/quote-detail.tsx` action bar:
 | `lib/utils/mark-lead-won-on-production.ts` | — | ✅ Built | Won on production release |
 | `app/api/tickets/[id]/route.ts` | A | ✅ Built | `record_payment`, `resend_invoice`, mark completed, send triggers |
 | `app/api/tickets/[id]/evidence/route.ts` | B+++ | ✅ Built | Signed evidence file URL |
-| `components/quotes/quote-detail/detail-layout-primitives.tsx` | B+++ | ✅ Built | Stat cards, `DetailCollapsibleSection` (Timeline / Pricing / Payment settings) |
+| `components/quotes/quote-detail/detail-layout-primitives.tsx` | B+++ | ✅ Built | Stat cards, `DetailCollapsibleSection` (Timeline, Quote & Pricing, Fulfillment, Payment review, etc.) |
 | `components/quotes/quote-detail/ticket-lifecycle-timeline.tsx` | B+++ | ✅ Built | Collapsible lifecycle milestone row |
 | `components/quotes/quote-detail.tsx` | B+ | ✅ Built | Unified Overview + History across all contexts |
 | `components/quotes/quote-detail/ticket-detail-overview.tsx` | B+++ | ✅ Built | Context-aware overview router |

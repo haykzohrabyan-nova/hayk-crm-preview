@@ -50,7 +50,7 @@
 | `completed` | `/completed` |
 | `cancelled` | `/orders` (Cancelled tab) |
 
-> **Record Locking:** Once `client_confirmed = true`, the record is locked for SDR/Sales users. Only Admins can edit or cancel. Locking applies to the order detail header buttons, action bar, and editing mode. Manual admin convert without customer confirm shows an amber **Admin converted** banner instead of **Confirmed by Customer**.
+> **Record Locking:** Once `client_confirmed = true`, the record is locked for SDR/Sales users. Only **admin** can edit or cancel (including **completed** orders). Locking applies to the order detail header buttons, action bar, and editing mode for non-admins. Manual admin convert without customer confirm shows an amber **Admin converted** banner instead of **Confirmed by Customer**.
 
 ---
 
@@ -314,7 +314,7 @@ Each SKU row:
 
 **Validation:** At least one line item must be fully filled (product type + qty + unit price > 0) before advancing to Quote tab or saving.
 
-**Resend after edit (May 2026):** Saving changes does **not** auto-email the customer. **SDR/Sales** editing a **sent** quote before customer confirm see a modal to **Resend quote**. **Admin** edits on sent quote or order-stage tickets see **Send update** (quote resend or invoice link with “revised by our team” copy). Portal `/q/{token}` always shows latest data after save.
+**Resend after edit (May 2026):** Saving changes does **not** auto-email the customer. **SDR/Sales** editing a **sent** quote before customer confirm see a modal to **Resend quote**. **Admin** edits on `sent`, `order`, `in_production`, or **completed** tickets see **Send update** (quote resend or invoice link with “revised by our team” copy). Portal `/q/{token}` always shows latest data after save.
 
 **Additional SKUs (per line, May 2026):** Under each catalog line, staff can add zero or more **additional SKUs** — **name** and **quantity** required; optional image/PDF uploaded after save via `POST /api/tickets/{ref}/files`. Stored in `ticket_line_variants` + `ticket_files`; does not affect pricing (`computePricing` uses catalog lines only). Shown on detail, PDF, email, and public quote (name + qty only — **no file download** on `/q/[token]`). Persisted with `line_items` on `POST`/`PATCH /api/tickets`.
 
@@ -405,9 +405,10 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
 - Status pill
 - Save PDF link (`/api/tickets/[id]/pdf`) — requires MFA-complete session + ticket read scope (`canAccessTicket()`)
 - **Edit button** — visibility rules:
-  - `draft` or `sent` → always shown
-  - `order` with `payment_status = 'unpaid'` (or null) → shown
-  - `order` with `payment_status = 'partial'` or `'paid'` → hidden (locked)
+  - `draft` or `sent` → always shown (non-admin)
+  - `order` with `payment_status = 'unpaid'` (or null) → shown (non-admin)
+  - `order` with `payment_status = 'partial'` or `'paid'` → hidden for non-admin (locked)
+  - `client_confirmed = true` or `completed` → hidden for non-admin; **admin** always sees Edit on any non-`cancelled` ticket
   - `cancelled` → always hidden (locked)
 
 ### Layout
@@ -421,7 +422,7 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
   - **Milestones:** Quote sent/resent · Customer confirmed · Converted to order (`ticket_converted`) · payment proof / recorded · due-date / completion nodes when applicable
   - Detail lines show `QUO-…` / `ORD-…` from activity payload where present
   - Data: `GET /api/activities?ticket_id=…&include_linked_lead=true` (UUID or `QUO-*` / `ORD-*`); refreshes on `bazaar:activities-changed`
-- **Overview tab sections (read-only):** **Line Items** always visible; **Fulfillment** always visible (method, shipping charge, ship-to address when entered); **Pricing** and **Payment & order settings** are **collapsible** via `DetailCollapsibleSection` (default **collapsed**). Quote delivery, Follow-up, Production & evidence remain expanded.
+- **Overview tab sections (read-only):** **Line Items** always visible. All other long blocks use **`DetailCollapsibleSection`** (default **collapsed**): **Quote & Pricing**, **Fulfillment**, **Pricing** (summary), **Payment & order settings**, **Quote delivery**, **Follow-up schedule**, **Production & evidence**, **Payment review**, **Payment plan** (when shown). On `/payments/[id]`, **Payment review** defaults **open**.
 - **Two-column grid:**
   - **Left sidebar** (always shown): `LinkedLeadCard` or `CustomerInfoCard`, then **`DetailQuickActions`** (all action buttons)
   - **Right panel:** Overview | History tabs; on desktop (`xl+`) only this panel scrolls
@@ -468,14 +469,16 @@ Single scrollable view combining all three edit sections, separated by labelled 
 |-----------|-----------|--------|
 | `ticket_status = 'cancelled'` | ✅ Yes | All edit/cancel controls hidden |
 | `client_confirmed = true` AND `userRole ≠ 'admin'` | ✅ Yes | Edit/cancel hidden; amber "Record Locked" banner shown |
-| `client_confirmed = true` AND `userRole = 'admin'` | ❌ No | Admin retains full control |
-| Any non-confirmed ticket | ❌ No | Normal edit flow |
+| `client_confirmed = true` AND `userRole = 'admin'` | ❌ No | Admin retains full edit + cancel |
+| `ticket_status = 'completed'` AND `userRole ≠ 'admin'` | ✅ Yes | Non-admins cannot edit or cancel |
+| `ticket_status = 'completed'` AND `userRole = 'admin'` | ❌ No | Admin may edit and cancel |
+| Any non-confirmed, non-completed ticket | ❌ No | Normal edit flow (subject to payment lock on paid orders) |
 
 ### Sidebar quick actions (`DetailQuickActions`)
 
 All primary actions live **under the customer/lead card** in the left sidebar — not in a bottom bar (overview layout).
 
-Hidden entirely when record is locked (`isLocked = true`) for quote lifecycle actions; production actions follow their own rules.
+Hidden entirely when record is locked (`isLocked = true`) for quote lifecycle actions; production actions follow their own rules. **Cancel Ticket** is **admin-only** at all stages (not shown to SDR/Sales).
 
 Send and Convert buttons are **disabled** when send validation fails; same amber missing-fields banner as new-quote form.
 
@@ -486,9 +489,8 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 | Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; logs `ticket_sent` |
 | Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers delivery; logs `ticket_sent` with `resend: true` in payload |
 | Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead Won until production |
-| Cancel Ticket | non-locked only | Opens cancel modal → pick **Quote Cancellation Reason** (admin-managed) + optional notes → `PATCH ticket_status = cancelled` |
 
-**Order / production stage (same sidebar block):**
+**Order / production / completed stage (same sidebar block):**
 
 | Action | Condition |
 |--------|-----------|
@@ -496,7 +498,7 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 | Copy Link | Same conditions — copies public URL to clipboard |
 | Mark Completed | `in_production`; admin always; accountant only if paid in full |
 | Resend invoice link | `in_production` or `completed`; sends via ticket outreach channel |
-| Cancel Ticket | Admin only; `ticket_status = 'order'` or `'in_production'` with no payment received — opens cancel modal with **Order Cancellation Reasons** |
+| Cancel Ticket | **Admin only** — any status except already `cancelled` (includes **completed**, paid or unpaid) — opens cancel modal with **Quote** or **Order Cancellation Reasons** by stage |
 
 **Cancelled state:** Overview shows red banner with stored reason label + notes. Reason labels are snapshotted on cancel (`cancel_reason_label`) so they remain visible even if the admin later deactivates or deletes the lookup option.
 
@@ -545,6 +547,8 @@ Visible when `ticket_status = 'order'` **and** `prepayment_type` is `"percent"` 
 | `draft` or `sent` ticket | ✅ Yes |
 | `order`, `client_confirmed = true`, non-admin | ❌ Locked — "Record Locked" banner shown |
 | `order`, `client_confirmed = true`, admin | ✅ Yes (admin only) |
+| `completed`, non-admin | ❌ Locked |
+| `completed`, admin | ✅ Yes (admin only) |
 | `cancelled` | ❌ Locked |
 
 > `payment_status` can always be updated from the payment status bar without entering edit mode.

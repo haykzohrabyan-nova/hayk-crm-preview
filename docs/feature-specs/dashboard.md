@@ -79,14 +79,15 @@ KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last 7 D
 
 | Card | Meaning | Period? | % trend |
 |------|---------|---------|---------|
-| **Orders** | Production-released **total** ($) on quotes **you created and closed** (with payment); subtext **from N orders converted** | ✓ | $ only |
-| **Received** / **Balance** | Payments and remaining balance on those self-closed paid orders | ✓ | — |
-| **Lead Claimed** | Distinct leads you locked/claimed | ✓ | ✓ |
-| **Lead Created** | Leads created with you as `sdr_id` | ✓ | ✓ |
-| **Inbox** | Unclaimed workspace leads (live snapshot) | snapshot | — |
-| **Rejected** | Leads you rejected | ✓ | ✓ |
-| **On Hold** | Times you put a lead on hold | ✓ | ✓ |
-| **Routed to Sales** | Leads you routed to Sales | ✓ | ✓ |
+| **Closed Order Value** | Total value of orders closed by the SDR during the selected period | ✓ | $ only |
+| **Paid From Closed Orders** | Total payments received from the SDR's closed orders during the selected period | ✓ | — |
+| **Remaining Balance for Closed Orders** | Remaining unpaid balance from the SDR's closed orders during the selected period | ✓ | — |
+| **Qty of Claimed Leads** | QTY of claimed leads by SDR from all lead sources during the selected period | ✓ | ✓ |
+| **Manually Created Leads** | Leads personally created by SDR (walk-ins, referrals, direct contacts) | ✓ | ✓ |
+| **Unclaimed/Pending Leads** | New leads not yet claimed, touched, or assigned (live snapshot) | snapshot | — |
+| **Rejected / Not Qualified** | Leads rejected — no quote/order, outside target segment, or unclear needs | ✓ | ✓ |
+| **Pending Follow-Up** | Leads that could not be reached or are waiting for a status update | ✓ | ✓ |
+| **Qty of Leads Routed to Sales Team** | Leads forwarded to sales because they were outside the SDR's quoting criteria | ✓ | ✓ |
 
 **Orders** credit requires: you created the quote (`created_by_id`), did **not** route it to Sales (`routed_by_id` null, lead not routed), converted to order, and recorded payment. Routed hand-offs where Sales closes the deal are excluded.
 
@@ -94,7 +95,7 @@ KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last 7 D
 
 Activity-based counts — see `lib/utils/sdr-dashboard-metrics.ts`.
 
-**UI card order (9):** Orders (accent) → Received → Balance → Lead Claimed → Lead Created → Inbox → Rejected → On Hold → Routed to Sales.
+**UI card order (9):** Closed Order Value (accent) → Paid From Closed Orders → Remaining Balance for Closed Orders → Qty of Claimed Leads → Manually Created Leads → Unclaimed/Pending Leads → Rejected / Not Qualified → Pending Follow-Up → Qty of Leads Routed to Sales Team. Lead counts display as `N leads`; help text under each card matches owner copy in `lib/utils/kpi-help-text.ts`.
 
 ---
 

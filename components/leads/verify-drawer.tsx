@@ -622,16 +622,16 @@ export function VerifyDrawer({
               </div>
             </div>
           </div>
-          {/* X only shown in read-only mode — claimed leads must be acted on, not dismissed */}
-          {isReadOnly && (
-            <button
-              onClick={handleClose}
-              className="rounded-full p-1.5 transition-colors hover:bg-muted"
-              style={{ color: "var(--color-text-muted)" }}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={saving}
+            className="shrink-0 rounded-full p-1.5 transition-colors hover:bg-muted disabled:opacity-50"
+            style={{ color: "var(--color-text-muted)" }}
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
         </div>
 
         {/* Lock / terminal banners */}

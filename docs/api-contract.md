@@ -1,6 +1,6 @@
 # BazarCRM — API Contract
 
-All endpoints are Next.js 16 Route Handlers under `app/api/`. Most handlers use the **admin Supabase client** (`lib/supabase/admin.ts`) for database access. The server client (from `@supabase/ssr`) is used where session cookies must be read or refreshed.
+All endpoints are Next.js 16 Route Handlers under `app/api/`. Most handlers use the **admin Supabase client** (`lib/supabase/admin.ts`) for database access. **`requireSession()`** uses **`lib/supabase/server.ts`** (`createServerSupabase`) so Route Handlers can read and refresh auth cookies on API responses.
 
 **Base URL:** `/api` (relative, same origin).
 
@@ -20,7 +20,7 @@ All endpoints are Next.js 16 Route Handlers under `app/api/`. Most handlers use 
 | `requireAdmin()` | `requireSession()` + `roleName === 'admin'` |
 | `requireSession({ requireMfa: false })` | Sign-out / session-end only |
 
-Implemented in `lib/auth/require-session.ts` and `lib/auth/require-admin.ts`. Ticket scope: `lib/utils/ticket-access.ts` (`canAccessTicket`, `canMutateTicket`).
+Implemented in `lib/auth/require-session.ts` (via `lib/supabase/server.ts`) and `lib/auth/require-admin.ts`. Ticket scope: `lib/utils/ticket-access.ts` (`canAccessTicket`, `canMutateTicket`).
 
 ### Error codes
 
@@ -33,7 +33,7 @@ Implemented in `lib/auth/require-session.ts` and `lib/auth/require-admin.ts`. Ti
 
 Full security model: **`docs/security.md`**.
 
-**Session cache (May 2026):** Successful `requireSession()` results are memoized in-process for ~3 s (`lib/auth/session-cache.ts`) to avoid duplicate auth + profile lookups during page load bursts.
+**Session cache (May 2026):** Successful `requireSession()` results are memoized in-process for ~3 s (`lib/auth/session-cache.ts`) to avoid duplicate auth + profile lookups during page load bursts. Dev HMR cookie `__next_hmr_refresh_hash__` is excluded from the cache key so hot reload does not invalidate every write.
 
 ---
 
@@ -981,7 +981,7 @@ Body: Any subset of ticket fields plus optional:
 - Optional `notify_revision`: `"standard"` (SDR/Sales resend after edit) or `"admin"` — revision banner in quote email / SMS prefix; use with resend (`ticket_status: "sent"`) or `resend_invoice: true`.
 - **`line_items`** in body: upserts `ticket_line_items` + `ticket_line_variants` via `syncTicketLines()`; orphan variants delete Storage files. Variant files uploaded separately via `POST /api/tickets/[id]/files`.
 - **Fulfillment fields** (`requires_shipping`, `ship_to_*`, `quote_shipping`): same validation as POST — shipping charge required when `requires_shipping`; address optional; pickup clears address and zeroes shipping charge.
-- **Save without resend:** Editing a sent quote updates DB + `/q/{token}` only; UI prompts SDR/Sales (sent, unconfirmed) or Admin (sent/order/in_production) to resend after **Save Changes** (`components/quotes/quote-detail/resend-after-save-modal.tsx`).
+- **Save without resend:** Editing a sent quote updates DB + `/q/{token}` only; UI prompts SDR/Sales (sent, unconfirmed) or Admin (`sent`, `order`, `in_production`, **completed**) to resend after **Save Changes** (`components/quotes/quote-detail/resend-after-save-modal.tsx`; `lib/utils/should-offer-resend-after-save.ts`).
 - If `ticket_status` transitions to `"in_production"` (manual release, payment confirm, net terms auto-release, etc.):
   - Sets `production_released_at`
   - If ticket has `linked_lead_id`: calls `markLeadWonOnProduction()` → `leads.sales_status = 'Won'`
@@ -993,7 +993,22 @@ Body: Any subset of ticket fields plus optional:
 - `payment_status` and `prepayment_status` can be updated on `order` status tickets even by non-admins (special relaxed guard)
 - **Accountants** may update payment fields on any ticket; non-admins on locked `order` tickets may only update payment-related fields
 
-**Mode 6 — Field guard notes:**
+**Mode 6 — Cancel ticket (Admin only):**
+```json
+{
+  "ticket_status": "cancelled",
+  "cancel_reason": "<lookup uuid>",
+  "cancel_notes": "string | null"
+}
+```
+- Caller must have `roleName === 'admin'` — non-admin receives `403`
+- Allowed from any status except already **`cancelled`** (includes **draft**, **sent**, **order**, **in_production**, **completed** — paid or unpaid)
+- `cancel_reason` must be an active lookup in **Quote Cancellation Reasons** (draft/sent) or **Order Cancellation Reasons** (order / in_production / completed); label snapshotted to `cancel_reason_label`
+- **Other** reason requires non-empty `cancel_notes`
+- Logs `ticket_cancelled` activity with reason metadata
+- Gate helper: `lib/utils/can-admin-cancel-ticket.ts`; reason category: `lib/utils/cancel-reason-category.ts`
+
+**Mode 7 — Field guard notes:**
 - Once `ticket_status = 'order'`, non-admins (except accountant payment updates) cannot edit non-payment fields
 - Customer-confirmed orders are locked for SDR/Sales in the UI; admin may still edit/cancel
 

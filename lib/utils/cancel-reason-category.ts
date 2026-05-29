@@ -2,7 +2,7 @@ import type { LookupCategory } from "@/lib/types";
 
 export type CancelReasonCategory = "quote_cancel_reason" | "order_cancel_reason";
 
-const ORDER_STAGE_STATUSES = new Set(["order", "in_production"]);
+const ORDER_STAGE_STATUSES = new Set(["order", "in_production", "completed"]);
 
 /** Pick admin lookup category based on ticket lifecycle stage at cancel time. */
 export function cancelReasonCategoryForStatus(ticketStatus: string): CancelReasonCategory {

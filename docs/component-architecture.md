@@ -141,7 +141,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 
 > **Rule:** Validatable fields in scrollable modals/drawers use `data-field-anchor="…"` on a wrapper `div` and call `scrollToFormField(containerRef, anchor)` when setting an error — so off-screen fields (e.g. Source) are visible after failed submit.
 | `MobileListCard` / `TicketListToolbar` | `components/ui/mobile-list-card.tsx` | Quotes, Orders, In Production, Completed, Payments list pages (mobile card fallback at `< lg`) |
-| `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible section header (chevron toggle; default closed) — Timeline, Pricing, Payment settings on detail pages |
+| `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible section header (chevron toggle; default closed) — Timeline, Quote & Pricing, Fulfillment, Pricing summary, Payment settings, Quote delivery, Follow-up, Production & evidence, Payment review, Payment plan on detail pages |
 | `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), **Customer Link** + **Copy Link**, Mark Completed, Resend invoice |
 | `ResendAfterSaveModal` | `components/quotes/quote-detail/resend-after-save-modal.tsx` | After **Save Changes** on sent/unconfirmed quote (SDR/Sales) or sent/order/in_production (Admin) — optional resend with revision email |
 | `LineItemVariants` | `components/quotes/shared/line-item-variants.tsx` | Additional SKUs per catalog line (name, qty, attach); `AdditionalSkusOverviewList` on detail Overview |
@@ -192,7 +192,7 @@ app/(app)/dashboard/page.tsx  [Server Component — thin wrapper]
         SDR / Sales / Admin dashboards:
               ├── components/ui/dashboard-date-range-filter.tsx — Today / Yesterday / Last 7 Days / Last 30 Days / Custom; default **Last 30 Days** (`last_month`)
               ├── components/dashboard/dashboard-privacy.tsx — Hide / Show values toggle + confirm modal; `useDashboardPrivacy`, `DashboardHiddenValue` (masked KPI placeholders)
-              ├── SDR KPI grid (9 cards): Orders ($ + convert count in subtext), Received, Balance, Lead Claimed, Lead Created, Inbox, Rejected, On Hold, Routed to Sales — no **Sales Win** or routed-lead revenue — `components/sales/sdr-dashboard.tsx`
+              ├── SDR KPI grid (9 cards): Closed Order Value, Paid From Closed Orders, Remaining Balance for Closed Orders, Qty of Claimed Leads, Manually Created Leads, Unclaimed/Pending Leads, Rejected / Not Qualified, Pending Follow-Up, Qty of Leads Routed to Sales Team — `components/sales/sdr-dashboard.tsx`
               ├── Sales KPI grid (7 cards): Orders ($ + convert count), Received, Balance, Lead Claimed, Inbox, Rejected, On Hold — no **Lead Created** (SDRs only) — `components/sales/sales-dashboard.tsx`
               ├── Admin: company KPI cards + Team section (privacy toggle on Admin UI pending)
               └── GET /api/dashboard/kpis?sdr_preset=… | sales_preset=… | admin_preset=… (API defaults `last_month`; early return when `dashboard_values_hidden`)
@@ -476,8 +476,10 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    Top: `TicketStatsRow` (5 stat cards; mobile: 100% total + 2×2 grid)
         │    Below stats: `TicketLifecycleTimeline` — collapsible, default collapsed
         │    Grid: left sidebar (always) + right Overview/History panel
-        │    Overview tab: Line Items always visible; **Fulfillment** always visible (method, charge, ship-to);
-        │      **Pricing** + **Payment & order settings** collapsible (default collapsed)
+        │    Overview tab: Line Items always visible; long optional blocks collapsible (default collapsed):
+        │      **Quote & Pricing**, **Fulfillment**, **Pricing**, **Payment & order settings**,
+        │      **Quote delivery**, **Follow-up**, **Production & evidence**, **Payment review**, **Payment plan**
+        │    Payment context (`/payments/[id]`): Payment review defaults **open** (`defaultOpen={true}`)
         │    Desktop xl+: fixed viewport height; only right panel scrolls
         │    Mobile/tablet: single page scroll (no nested scroll on Overview panel)
         │
@@ -491,15 +493,16 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    LinkedLeadCard   — if ticket has linked_lead_id
         │    CustomerInfoCard — if customer/contact exists (lookup labels for industry + quote_source)
         │    DetailQuickActions — all lifecycle actions stacked below card:
-        │      Quote: Cancel, Send/Resend Quote, Convert to Order (admin)
+        │      Quote: Send/Resend Quote, Convert to Order (admin)
+        │      All stages: Cancel Ticket (**admin only** — any non-cancelled status incl. completed)
         │      Order+: row 1 Mark Completed | Resend Link; row 2 Customer Link | Copy Link (public `/q/{token}`)
         │
         ├── 2-tab view: Overview | History  (draft edit mode may show full form instead)
         │    Overview tab: context-specific snapshot + read-only line items / pricing / payment config
         │    History tab: full activity trail (ticket + linked lead when include_linked_lead=true)
         ├── View mode default; Edit button toggles edit mode (quote stage only when unlocked)
-        │    Edit lock: customer-approved tickets (status: order/in_production/completed) are read-only
-        │    for non-admins. "Record Locked" banner shown. Admin can still edit/cancel.
+        │    Edit lock: customer-approved and **completed** tickets are read-only for non-admins.
+        │    "Record Locked" banner shown. Admin can still edit/cancel any non-`cancelled` ticket.
         │
         ├── Long-running saves: global loading overlay (`useGlobalLoading`) on send, convert, complete, etc.
         │

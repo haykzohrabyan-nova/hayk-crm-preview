@@ -251,7 +251,7 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 
 In-production orders use **`/orders/[id]`** with `context="order"` (header badge **In Production**). Legacy `/production/[id]` redirects here.
 
-All non-draft detail views use **Overview + History** tabs and shared overview sections. On overview layout, **Timeline**, **Pricing**, and **Payment & order settings** are **collapsible** (default collapsed); Line Items stays expanded.
+All non-draft detail views use **Overview + History** tabs and shared overview sections. On overview layout, long optional blocks use **`DetailCollapsibleSection`** (default **collapsed**): Timeline, Quote & Pricing, Fulfillment, Pricing, Payment & order settings, Quote delivery, Follow-up, Production & evidence, Payment review, Payment plan. **Line Items** stays expanded. On `/payments/[id]`, Payment review defaults **open**.
 
 ---
 

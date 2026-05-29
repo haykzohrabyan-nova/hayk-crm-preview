@@ -52,6 +52,8 @@ interface QuoteFormProps {
   customerEmail?: string;
   /** When true, hides the pricing breakdown (shown elsewhere, e.g. combined payment review card). */
   hidePricingSummary?: boolean;
+  /** When true, fulfillment block is rendered by the parent (e.g. collapsible section). */
+  hideFulfillment?: boolean;
 }
 
 export function QuoteForm(p: QuoteFormProps) {
@@ -153,18 +155,20 @@ export function QuoteForm(p: QuoteFormProps) {
         </div>
       </div>
 
-      <ShippingFulfillmentSection
-        editing
-        customerId={p.customerId}
-        requiresShipping={p.requiresShipping}
-        onRequiresShippingChange={p.setRequiresShipping}
-        shipTo={p.shipTo}
-        onShipToChange={p.setShipTo}
-        shipping={p.shipping}
-        onShippingChange={p.setShipping}
-        shippingError={p.shippingError}
-        zipError={p.zipError}
-      />
+      {!p.hideFulfillment && (
+        <ShippingFulfillmentSection
+          editing
+          customerId={p.customerId}
+          requiresShipping={p.requiresShipping}
+          onRequiresShippingChange={p.setRequiresShipping}
+          shipTo={p.shipTo}
+          onShipToChange={p.setShipTo}
+          shipping={p.shipping}
+          onShippingChange={p.setShipping}
+          shippingError={p.shippingError}
+          zipError={p.zipError}
+        />
+      )}
 
       {/* Pricing Adjustments */}
       <div className="rounded-lg p-4 space-y-4 border" style={{ background: "var(--color-bg)", borderColor: "var(--color-border)" }}>

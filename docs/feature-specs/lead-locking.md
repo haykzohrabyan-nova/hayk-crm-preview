@@ -179,7 +179,7 @@ function handleClose() {
 
 | Trigger | Result |
 |---------|--------|
-| SDR closes drawer | Ownership stays — lead remains hidden from others |
+| SDR closes drawer (✕ or programmatic close) | Ownership stays — lead remains hidden from others; SDR can reopen the same lead while lock is held |
 | SDR clicks Save | Ownership stays |
 | SDR validates (Pending → Validated) | Ownership stays — lead updates in place in SDR's queue |
 | SDR puts lead on Hold | Ownership stays — lead visible in SDR's Hold tab |

@@ -68,8 +68,8 @@ function formatCurrency(n: number): string {
   return formatMoneyFull(n);
 }
 
-function orderCountPhrase(count: number): string {
-  return count === 1 ? "1 order" : `${count} orders`;
+function leadCountPhrase(count: number): string {
+  return count === 1 ? "1 lead" : `${count} leads`;
 }
 
 function formatPct(pct: number | null): string {
@@ -300,95 +300,82 @@ export function SdrDashboard() {
         ) : data ? (
           <>
             <KpiCard
-              label="Orders"
+              label="Closed Order Value"
               valuesHidden={metricsHidden}
               valueKind="currency"
               value={formatCurrency(data.order_value_breakdown?.total ?? 0)}
               pctChange={metricsHidden ? undefined : data.order_value?.pct_change}
               priorLabel={priorLabel}
-              subtext={
-                metricsHidden
-                  ? "your quotes → paid"
-                  : `from ${orderCountPhrase(data.order_created!.value)} converted · your quotes → paid`
-              }
               help={KPI_HELP.order_total_with_count_sdr}
               icon={<ShoppingCart className="h-4 w-4" />}
               accent
             />
             <KpiCard
-              label="Received"
+              label="Paid From Closed Orders"
               valuesHidden={metricsHidden}
               valueKind="currency"
               value={formatCurrency(data.order_value_breakdown?.received ?? 0)}
-              subtext="your quotes → paid"
               help={KPI_HELP.order_received_sdr}
               icon={<Banknote className="h-4 w-4" />}
             />
             <KpiCard
-              label="Balance"
+              label="Remaining Balance for Closed Orders"
               valuesHidden={metricsHidden}
               valueKind="currency"
               value={formatCurrency(data.order_value_breakdown?.balance ?? 0)}
-              subtext="your quotes → paid"
               help={KPI_HELP.order_balance_sdr}
               icon={<Scale className="h-4 w-4" />}
             />
             <KpiCard
-              label="Lead Claimed"
+              label="Qty of Claimed Leads"
               valuesHidden={metricsHidden}
-              value={data.lead_claimed?.value ?? 0}
+              value={leadCountPhrase(data.lead_claimed?.value ?? 0)}
               pctChange={metricsHidden ? undefined : data.lead_claimed?.pct_change}
               priorLabel={priorLabel}
-              subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.lead_claimed_sdr}
               icon={<UserCheck className="h-4 w-4" />}
             />
             <KpiCard
-              label="Lead Created"
+              label="Manually Created Leads"
               valuesHidden={metricsHidden}
-              value={data.lead_created?.value ?? 0}
+              value={leadCountPhrase(data.lead_created?.value ?? 0)}
               pctChange={metricsHidden ? undefined : data.lead_created?.pct_change}
               priorLabel={priorLabel}
-              subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.lead_created_sdr}
               icon={<UserPlus className="h-4 w-4" />}
             />
             <KpiCard
-              label="Inbox"
+              label="Unclaimed/Pending Leads"
               valuesHidden={metricsHidden}
-              value={data.inbox?.value ?? 0}
-              subtext="unclaimed now"
-              help={KPI_HELP.inbox_leads}
+              value={leadCountPhrase(data.inbox?.value ?? 0)}
+              help={KPI_HELP.unclaimed_pending_leads_sdr}
               icon={<Inbox className="h-4 w-4" />}
             />
             <KpiCard
-              label="Rejected"
+              label="Rejected / Not Qualified"
               valuesHidden={metricsHidden}
-              value={data.rejected?.value ?? 0}
+              value={leadCountPhrase(data.rejected?.value ?? 0)}
               pctChange={metricsHidden ? undefined : data.rejected?.pct_change}
               priorLabel={priorLabel}
-              subtext={rangeLabel.toLowerCase()}
-              help={KPI_HELP.rejected}
+              help={KPI_HELP.rejected_not_qualified_sdr}
               icon={<XCircle className="h-4 w-4" />}
             />
             <KpiCard
-              label="On Hold"
+              label="Pending Follow-Up"
               valuesHidden={metricsHidden}
-              value={data.on_hold?.value ?? 0}
+              value={leadCountPhrase(data.on_hold?.value ?? 0)}
               pctChange={metricsHidden ? undefined : data.on_hold?.pct_change}
               priorLabel={priorLabel}
-              subtext={rangeLabel.toLowerCase()}
               help={KPI_HELP.on_hold_sdr_period}
               icon={<Clock className="h-4 w-4" />}
             />
             <KpiCard
-              label="Routed to Sales"
+              label="Qty of Leads Routed to Sales Team"
               valuesHidden={metricsHidden}
-              value={data.routed_to_sales?.value ?? 0}
+              value={leadCountPhrase(data.routed_to_sales?.value ?? 0)}
               pctChange={metricsHidden ? undefined : data.routed_to_sales?.pct_change}
               priorLabel={priorLabel}
-              subtext={rangeLabel.toLowerCase()}
-              help={KPI_HELP.routed}
+              help={KPI_HELP.qty_routed_to_sales_sdr}
               icon={<TrendingUp className="h-4 w-4" />}
             />
           </>

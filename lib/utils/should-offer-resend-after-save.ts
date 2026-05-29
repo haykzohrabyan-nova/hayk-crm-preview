@@ -12,7 +12,7 @@ export function shouldOfferResendAfterSave(params: {
   if (params.newStatus) return null;
 
   if (params.userRole === "admin") {
-    if (["sent", "order", "in_production"].includes(params.ticketStatus)) {
+    if (["sent", "order", "in_production", "completed"].includes(params.ticketStatus)) {
       return "admin";
     }
     return null;

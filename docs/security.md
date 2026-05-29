@@ -1,6 +1,6 @@
 # BazarCRM — Security Model
 
-**Last updated:** May 26, 2026
+**Last updated:** May 29, 2026
 
 This document describes how the app protects data, what is stored in the browser, and how API + database layers work together.
 
@@ -23,11 +23,13 @@ Most CRM writes use the **service-role admin client** in Route Handlers (RLS byp
 
 | Helper | File | Behavior |
 |--------|------|----------|
-| `requireSession()` | `lib/auth/require-session.ts` | Valid session + **MFA complete** (AAL2 or valid `bazaar_mfa_trust` cookie). Option `{ requireMfa: false }` for sign-out flows only. |
+| `requireSession()` | `lib/auth/require-session.ts` | Valid session + **MFA complete** (AAL2 or valid `bazaar_mfa_trust` cookie). Uses `lib/supabase/server.ts` so expired access tokens refresh via cookie `setAll` in Route Handlers. Option `{ requireMfa: false }` for sign-out flows only. |
+| `createServerSupabase()` | `lib/supabase/server.ts` | Server-only Supabase client for Route Handlers — reads and refreshes auth cookies (never import in client components). |
 | `requireAdmin()` | `lib/auth/require-admin.ts` | Calls `requireSession()` then checks `roleName === 'admin'`. Used on **all** admin-only Route Handlers — never use `requireSession()` + manual role check as a substitute. |
 | `canAccessTicket()` | `lib/utils/ticket-access.ts` | Ticket read scope — owner (`created_by_id`), SDR routed hand-off (`routed_by_id`, not when `completed`), admin, accountant, or sales on `routed` tickets. |
 | `canMutateTicket()` | `lib/utils/ticket-access.ts` | Ticket PATCH scope — owner, admin, or accountant. |
 | `canReadLead()` | `lib/utils/lead-access.ts` | Lead GET scope by role and ownership. Also used in `GET /api/leads/[id]/activities` and `GET /api/activities?lead_id=` to prevent IDOR. |
+| Session cache | `lib/auth/session-cache.ts` | ~3 s in-process memoization of successful `requireSession()` results during burst loads. Dev HMR cookie `__next_hmr_refresh_hash__` excluded from cache key. |
 
 Returns `401` with `{ code: "UNAUTHENTICATED" }` when not logged in. Returns `403` with `{ code: "MFA_SETUP_REQUIRED" }` or `{ code: "MFA_VERIFY_REQUIRED" }` when MFA is incomplete.
 
@@ -36,7 +38,7 @@ Returns `401` with `{ code: "UNAUTHENTICATED" }` when not logged in. Returns `40
 ## `proxy.ts` vs API routes
 
 - **`proxy.ts`** protects **pages** (`/leads`, `/dashboard`, …) — redirects to login / setup-2fa / verify-2fa.
-- **`/api/*` is skipped by proxy** — each Route Handler must call `requireSession()` or `requireAdmin()` itself.
+- **`/api/*` is skipped by proxy** — each Route Handler must call `requireSession()` or `requireAdmin()` itself. `requireSession()` delegates to `createServerSupabase()` so JWT refresh cookies are written on API responses when the access token expires.
 - **Public paths:** `/q/*`, `/policy`, `/api/public/*` — no staff auth.
 - **Missing `NEXT_PUBLIC_SUPABASE_URL`** → `proxy.ts` returns **503** (fail closed). Previously skipped auth entirely; that behavior has been removed.
 

@@ -684,23 +684,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     body.ticket_status === "cancelled" &&
     existing.ticket_status !== "cancelled"
   ) {
-    const isOrderStage = ["order", "in_production"].includes(existing.ticket_status);
-    if (isOrderStage) {
-      if (roleName !== "admin") {
-        return NextResponse.json(
-          { error: "Only administrators can cancel orders.", code: "FORBIDDEN" },
-          { status: 403 },
-        );
-      }
-      if (!canAdminCancelTicket(existing)) {
-        return NextResponse.json(
-          {
-            error: "Cannot cancel this order — payment has been received or is awaiting review.",
-            code: "VALIDATION_ERROR",
-          },
-          { status: 400 },
-        );
-      }
+    if (roleName !== "admin") {
+      return NextResponse.json(
+        { error: "Only administrators can cancel quotes and orders.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+    if (!canAdminCancelTicket(existing)) {
+      return NextResponse.json(
+        { error: "This ticket is already cancelled.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
     }
 
     const reasonCategory = cancelReasonCategoryForStatus(existing.ticket_status);

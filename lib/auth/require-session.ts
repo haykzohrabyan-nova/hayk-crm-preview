@@ -1,7 +1,6 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { isMfaRequired } from "@/lib/auth/mfa-required";
+import { createServerSupabase } from "@/lib/supabase/server";
 import {
   buildSessionCacheKey,
   getCachedSession,
@@ -25,7 +24,7 @@ export async function requireSession(
   options?: RequireSessionOptions,
 ): Promise<SessionResult> {
   const requireMfa = options?.requireMfa !== false;
-  const cookieStore = await cookies();
+  const { supabase, cookieStore } = await createServerSupabase();
   const allCookies = cookieStore.getAll();
   const cacheKey = buildSessionCacheKey(allCookies);
 
@@ -33,19 +32,6 @@ export async function requireSession(
   if (cached) {
     return cached;
   }
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll();
-        },
-        setAll() {},
-      },
-    },
-  );
 
   const {
     data: { user },

@@ -46,6 +46,7 @@ export function TicketDetailOverview({
       <PaymentDetailOverview
         ticket={ticket}
         readOnly={!canConfirmPayment}
+        defaultOpen={context === "payment"}
       />
     );
   }

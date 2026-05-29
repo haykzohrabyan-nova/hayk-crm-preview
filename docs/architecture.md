@@ -301,6 +301,7 @@ BazarCRM/
 ├── lib/
 │   ├── supabase/
 │   │   ├── client.ts                     ✓ createBrowserClient (PUBLISHABLE_KEY)
+│   │   ├── server.ts                     ✓ createServerSupabase — Route Handler session client; refreshes auth cookies via setAll
 │   │   └── admin.ts                      ✓ Service-role client — Route Handlers only. `import "server-only"` prevents accidental client import.
 │   ├── auth/
 │   │   ├── safe-return-path.ts           ✓ Redirect safety

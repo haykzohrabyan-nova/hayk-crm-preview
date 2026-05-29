@@ -161,25 +161,26 @@ export function TicketOverviewSections({
       </DetailSection>
 
       <DetailSection>
-        <DetailSectionTitle>Fulfillment</DetailSectionTitle>
-        <ShippingFulfillmentSection
-          editing={false}
-          requiresShipping={fulfillmentRequiresShipping}
-          onRequiresShippingChange={() => {}}
-          shipTo={ticket}
-          onShipToChange={() => {}}
-          shipping={ticket.quote_shipping ?? 0}
-          onShippingChange={() => {}}
-          ticket={{
-            ...ticket,
-            requires_shipping: fulfillmentRequiresShipping,
-            quote_shipping: ticket.quote_shipping,
-          }}
-        />
+        <DetailCollapsibleSection title="Fulfillment">
+          <ShippingFulfillmentSection
+            editing={false}
+            requiresShipping={fulfillmentRequiresShipping}
+            onRequiresShippingChange={() => {}}
+            shipTo={ticket}
+            onShipToChange={() => {}}
+            shipping={ticket.quote_shipping ?? 0}
+            onShippingChange={() => {}}
+            ticket={{
+              ...ticket,
+              requires_shipping: fulfillmentRequiresShipping,
+              quote_shipping: ticket.quote_shipping,
+            }}
+          />
+        </DetailCollapsibleSection>
       </DetailSection>
 
       <DetailSection>
-        <DetailCollapsibleSection title={paymentReviewAbove ? "Quote details" : "Pricing"}>
+        <DetailCollapsibleSection title={paymentReviewAbove ? "Quote details" : "Quote & Pricing"}>
           {!paymentReviewAbove && (
             <DetailPricingTable rows={pricingRows} totalLabel={totalLabel} />
           )}

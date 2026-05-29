@@ -10,10 +10,14 @@ type CachedEntry = {
 
 const sessionCache = new Map<string, CachedEntry>();
 
+/** Cookies that change without auth state — exclude so dev HMR does not bust the cache. */
+const SESSION_CACHE_IGNORE = new Set(["__next_hmr_refresh_hash__"]);
+
 export function buildSessionCacheKey(
   cookieParts: Array<{ name: string; value: string }>,
 ): string {
   const serialized = cookieParts
+    .filter((c) => !SESSION_CACHE_IGNORE.has(c.name))
     .map((c) => `${c.name}=${c.value}`)
     .sort()
     .join("|");

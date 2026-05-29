@@ -295,7 +295,7 @@ View/Edit mode tabs: Info | Line Items | Quote | History
 - Save Changes (`PATCH /api/tickets/[id]`)
 - Send Quote (`PATCH` → `ticket_status = 'sent'`) — shown when in draft
 - Mark Won (`PATCH` → `ticket_status = 'approved'`)
-- Cancel Ticket (`PATCH` → `ticket_status = 'cancelled'`)
+- Cancel Ticket (`PATCH` → `ticket_status = 'cancelled'`) — **admin only**; any status except already cancelled (includes completed); required cancellation reason
 
 Dispatches `bazaar:refresh-counts` after every successful save.
 

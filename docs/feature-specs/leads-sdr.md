@@ -270,7 +270,7 @@ A full-width textarea below the Contact Information grid:
 
 Shared UI: `components/leads/product-interest-rows.tsx` (used by Add Lead modal and Verify Drawer).
 
-Dynamic row-based interface. Each row stacks labels **above** inputs:
+Dynamic row-based interface. Each row shows **Product**, **Quantity**, and **Has Design** on one horizontal line; labels sit on a separate grid row above the inputs so fields align consistently.
 
 | Field | Input | Required | Notes |
 |-------|-------|----------|-------|
@@ -306,11 +306,11 @@ Actions available depending on drawer mode and current `status`. **All action bu
 | **Resume** | Edit mode, `status = 'On Hold'` | Saves all form edits + restores to `Pending` |
 | **Reject** | Edit mode, status not Rejected | Opens rejection form inline in footer — **TERMINAL** |
 | **Save** | Edit mode (far-right of footer) | `PATCH /api/leads/[id]` with current form values; **Decision Maker** in payload updates `customers.authority`; contact field changes may prompt "Update customer profile?"; closes drawer on success |
-| **Close** | Read-only mode only | Dismisses modal — ownership is **not** released |
+| **Close (✕)** | Always (header) | Dismisses modal — ownership is **not** released (soft-lock persists until Route, Reject, or admin unlock) |
 
 **Save button** is always visible at the far right of the footer when in edit mode (navy style). Route, Hold, and Reject also auto-save form fields before executing their specific action.
 
-**Clicking outside the modal does not close it.** The backdrop is non-interactive. The SDR must use Save, Route to Sales, On Hold, Reject, or the ✕ header button (read-only only) to exit. This prevents accidental dismissal of in-progress edits.
+**Clicking outside the modal does not close it.** The backdrop is non-interactive. Use Save, Route to Sales, On Hold, Reject, or the **✕** header button to exit. The ✕ is available in **edit mode** (after Claim) so SDRs can dismiss without saving while keeping the lead claimed.
 
 **Route to Sales is always available.** The SDR can route a lead directly from `Pending` without validating first.
 
@@ -395,7 +395,7 @@ Two-column grid (matches POC screenshot):
 | **Urgency** | — |
 
 Below the grid (full width):
-- **Product Interests** — shared `ProductInterestRows` component (stacked labels, quantity required when product selected — see Verify Drawer section)
+- **Product Interests** — shared `ProductInterestRows` component (Product + Quantity + Has Design on one row; labels above inputs — see Verify Drawer section)
 - **Returning Customer (Existing Client)** — checkbox with blue-tinted background row when checked
 - **Verify Lead Comment** — textarea: "Add verification notes before opening Order / Quote..."
 
@@ -490,7 +490,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Race condition safety net | If SDR clicks **Claim** on a stale lead, 409 → read-only drawer with locker banner |
 | Manual Add Lead modal | Phone lookup + dedup; per-field validation; lead stays **unclaimed** until Claim/Assign; shared component on CRM profile (SDR Add Lead) |
 | Verify Drawer (permanent lock, lock banner) | Lock acquired on **Claim**; ownership persists across close/save/hold until Route or Reject |
-| Product Interests — select + quantity + has-design rows | Shared `product-interest-rows.tsx`; quantity **> 0** when product selected; labels above inputs (Add Lead + Verify Drawer) |
+| Product Interests — select + quantity + has-design rows | Shared `product-interest-rows.tsx`; Product, Quantity, Has Design on one row; quantity **> 0** when product selected (Add Lead + Verify Drawer) |
 | Claim loading UX | Global loading overlay + row spinner while lock + full lead fetch run |
 | Hold action (with reason, notes, hold-until date) | Full-screen hold sub-form hides lead form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |
