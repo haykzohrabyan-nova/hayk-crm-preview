@@ -61,22 +61,13 @@ export function bundleToFormLineItems(
     foil: row.foil,
     perforation: row.perforation,
     comment: row.comment ?? undefined,
-    variants: (() => {
-      const mapped = row.variants.map((v) => ({
-        id: v.id,
-        name: v.name,
-        quantity: String(v.quantity),
-        file: v.file ?? null,
-      }));
-      if (mapped.length > 0 && row.file && !mapped[0].file) {
-        mapped[0] = { ...mapped[0], file: row.file };
-      }
-      return mapped;
-    })(),
-    lineAttachment:
-      row.variants.length === 0 && row.file
-        ? { file: row.file }
-        : undefined,
+    variants: row.variants.map((v) => ({
+      id: v.id,
+      name: v.name,
+      quantity: String(v.quantity),
+      file: v.file ?? null,
+    })),
+    lineAttachment: row.file ? { file: row.file } : undefined,
   })).map((line) => {
     const fromVariants = lineQuantityFromVariants(line.variants);
     if (fromVariants != null) {

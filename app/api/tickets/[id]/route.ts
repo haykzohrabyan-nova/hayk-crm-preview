@@ -24,6 +24,7 @@ import {
   resolveTicketId,
   ticketKindForReference,
 } from "@/lib/utils/reference-codes";
+import { notifyPublicQuoteUpdatedByTicketId } from "@/lib/integrations/notify-public-quote-updated";
 import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import {
   fetchTicketShippingDestinations,
@@ -525,6 +526,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       }
     }
 
+    notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
+
     return NextResponse.json({ ticket: payUpdated });
   }
 
@@ -552,6 +555,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       payload: { released_at: now },
       created_at: now,
     });
+
+    notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
 
     return NextResponse.json({ ticket: released });
   }
@@ -1014,6 +1019,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   const line_items = await fetchTicketLinesBundle(admin, ticketId);
   const shipping_destinations = await fetchTicketShippingDestinations(admin, ticketId);
+
+  notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
 
   return NextResponse.json({
     ticket: { ...(responseTicket ?? updated), line_items, shipping_destinations },

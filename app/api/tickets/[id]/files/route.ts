@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { notifyPublicQuoteUpdatedByTicketId } from "@/lib/integrations/notify-public-quote-updated";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
 import { canMutateTicket } from "@/lib/utils/ticket-access";
 import {
@@ -173,6 +174,7 @@ export async function POST(request: NextRequest, { params }: Params) {
       await deleteTicketAttachment(admin, storagePath);
       return NextResponse.json({ error: saveErr.message, code: "DB_ERROR" }, { status: 500 });
     }
+    notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
     return NextResponse.json({ file: saved }, { status: 200 });
   }
 
@@ -187,5 +189,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: saveErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
+  notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
   return NextResponse.json({ file: saved }, { status: 201 });
 }

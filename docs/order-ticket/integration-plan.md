@@ -5,7 +5,7 @@ Open questions: [`open-questions.md`](./open-questions.md)
 Existing BazarCRM spec: [`../feature-specs/tickets.md`](../feature-specs/tickets.md)
 
 > **Status:** Phases 0–7 complete as of 2026-05-12. Phase 8 (Dashboard integration + PDF export) is next.  
-> **May 2026 add-ons (live):** migration **092** line-level `ticket_files`; optional due date; additional-SKU quantity sync; public `/q` SKU grid + file stream API — see `docs/feature-specs/tickets.md` and `docs/schema.md`.  
+> **May 2026 add-ons (live):** migration **092** line-level `ticket_files`; optional due date; additional-SKU quantity sync; public `/q` SKU grid + file stream API; **May 29** line attachment lifecycle (line ↔ first SKU, Storage cleanup) + public portal Realtime broadcast — see `docs/feature-specs/tickets.md`, `docs/schema.md`, `docs/realtime-live-updates.md`.  
 > See `open-questions.md` for the full decision log and the three key design changes from the shadow project.  
 > **Key design change (Phase 6):** OrderDrawer replaced with dedicated pages — `/quotes/new`, `/quotes/[id]`.
 
@@ -66,7 +66,7 @@ alter table public.job_tickets
   add column if not exists quote_shipping         numeric default 0,
   -- Migration 091 (May 2026): requires_shipping, ship_to_line1 … ship_to_zip (legacy single address on job_tickets)
   -- Migration 093 (May 2026): ticket_shipping_destinations — multiple ship-to blocks per ticket; quote_shipping = sum of charges
-  -- Migration 092 (May 2026): ticket_files.variant_id nullable — line-level attachment when no additional SKUs
+  -- Migration 092 (May 2026): ticket_files.variant_id nullable — line-level attachment; moves to first SKU on 0→1+ variants; returns to line when first SKU deleted (syncTicketLines)
   add column if not exists discount_type          text,
   add column if not exists discount_value         text,
   add column if not exists discount_reason        text,

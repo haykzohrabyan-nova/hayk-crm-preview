@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket } from "@/lib/utils/maybe-auto-release-production";
 import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
 import { computePublicPaymentDueAmount } from "@/lib/utils/invoice-payment-summary";
+import { notifyPublicQuoteUpdated } from "@/lib/integrations/notify-public-quote-updated";
 import { randomUUID } from "crypto";
 
 // POST /api/public/quotes/[token]/submit-payment
@@ -247,6 +248,8 @@ export async function POST(request: NextRequest, { params }: Params) {
       if (releaseResult.reference_code) referenceCode = releaseResult.reference_code;
     }
   }
+
+  notifyPublicQuoteUpdated(token);
 
   return NextResponse.json({
     ok: true,

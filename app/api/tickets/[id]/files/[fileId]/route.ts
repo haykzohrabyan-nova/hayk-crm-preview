@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { notifyPublicQuoteUpdatedByTicketId } from "@/lib/integrations/notify-public-quote-updated";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
 import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
 import {
@@ -101,5 +102,6 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: delErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
+  notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
   return NextResponse.json({ ok: true });
 }

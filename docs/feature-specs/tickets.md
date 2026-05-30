@@ -329,7 +329,23 @@ Each SKU row:
 
 **Resend after edit (May 2026):** Saving changes does **not** auto-email the customer. **SDR/Sales** editing a **sent** quote before customer confirm see a modal to **Resend quote**. **Admin** edits on `sent`, `order`, `in_production`, or **completed** tickets see **Send update** (quote resend or invoice link with “revised by our team” copy). Portal `/q/{token}` always shows latest data after save.
 
-**Line attachment (May 2026):** In **Add-on Finishings**, **Attach file** (image or PDF) when the line has no additional SKUs. After the first **Add SKU**, that file moves to the first SKU; each further SKU has its own attachment. Staff quote/order **Overview** shows **View PDF** / **View image** links.
+**Line attachment (May 2026, lifecycle May 29):** In **Add-on Finishings**, **Attach file** (image or PDF) on the line. **One shared line file** per catalog row — not duplicated across every SKU.
+
+| Step | Behavior |
+|------|----------|
+| File on line, **no SKUs** | Stored at line level (`ticket_files.variant_id` null) |
+| **Add first SKU(s)** and save | File moves to **first SKU** (lowest `sort_order`) |
+| **Delete first SKU** (others may remain) | File returns to **line level** (Storage kept) |
+| **Add SKU again** from 0 SKUs | File moves to new first SKU on save |
+| **Delete non-first SKU** with its own file | That file removed from **Storage + DB** |
+| **Remove** via attachment control | Storage + DB row deleted |
+| **Delete whole line item** | All files for that line removed from **Storage + DB** |
+
+Each **non-first** additional SKU may still have its **own** optional attachment (independent of the shared line file).
+
+**Staff UI (May 29):** **View** opens in-page preview modal (`LineItemFilePreviewModal` — spinner + min-height while loading); **Download** on Overview and edit rows. Edit form mirrors server rules via `applyVariantListAttachmentChanges()` (first SKU removed → file back on line control).
+
+**Overview / PDF / email:** `lineFile` when a line-level attachment exists; per-SKU `file` on variant rows — both can appear on the same line.
 
 **Additional SKUs (per line, May 2026):** Under each catalog line, staff can add zero or more **additional SKUs** — **name** and **quantity** required; optional image/PDF uploaded after save via `POST /api/tickets/{ref}/files`. Stored in `ticket_line_variants` + `ticket_files`. **Add SKU** is a primary gold/orange button (no `+` icon). **Quantity sync (May 2026):** With no additional SKUs, line **Quantity *** is entered directly. After **Add SKU**, the first SKU quantity pre-fills from line Quantity; each further SKU pre-fills from the first SKU’s quantity. Line **Quantity *** becomes the **sum** of all SKU quantities (read-only while SKUs exist); changing any SKU quantity updates the line total used for `qty × unit price`. Shown on staff detail, PDF, and email. **Public quote `/q/[token]` (May 2026):** additional SKUs in a **2×2 grid** under each product (`SKU1. name · Qty N`) with image preview or embedded PDF via `GET /api/public/quotes/[token]/files/[fileId]`. Persisted with `line_items` on `POST`/`PATCH /api/tickets`.
 
@@ -435,8 +451,8 @@ No login. Staff can open the same URL to preview the customer experience.
 ### Line items display
 
 - Standard table (desktop) / cards (mobile): product, spec, qty, unit price, line total.
-- When a catalog line has **additional SKUs** (or a line-only attachment), a **full-width block** below that row shows `PublicLineItemSkusGrid`:
-  - **2-column grid** (`repeat(2, 1fr)`) — one cell per SKU (or single cell for line-only attachment labeled **Line attachment**).
+- When a catalog line has **additional SKUs** and/or a **line-level attachment**, a **full-width block** below that row shows `PublicLineItemSkusGrid`:
+  - **2-column grid** (`repeat(2, 1fr)`) — optional **Line attachment** cell plus one cell per SKU.
   - Label format: `SKU1. {name} · Qty {quantity}`.
   - **Image** (JPEG/PNG/WebP): inline `<img>` from public files API.
   - **PDF:** client `fetch` → `URL.createObjectURL` → `<object type="application/pdf">` (avoids framing CSP issues with redirected Storage URLs).
@@ -448,6 +464,10 @@ No login. Staff can open the same URL to preview the customer experience.
 `GET /api/public/quotes/[token]/files/[fileId]` — validates `public_token`, streams bytes with correct `Content-Type`. Not the same as staff `GET /api/tickets/.../files/...` (302 redirect).
 
 **CSP:** Quote page allows `blob:` in `frame-src` and `object-src` for PDF previews (`lib/security/content-security-policy.ts`, `/q/:path*` header rule in `next.config.ts`).
+
+### Live updates (May 29)
+
+Customer tabs on `/q/[token]` subscribe to Supabase **Realtime broadcast** on channel `public-quote:{public_token}` (event `updated`). Staff saves, payment confirm, file upload/delete, and customer payment submit trigger `notifyPublicQuoteUpdatedByTicketId()` — debounced silent `GET /api/public/quotes/{token}` refetch. **No HTTP polling.** See `docs/realtime-live-updates.md`.
 
 ### Shipping addresses (May 2026)
 
@@ -648,8 +668,9 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `line_items`). **SDR:** `created_by_id` only (same as `/orders`, `/completed`). **Sales/Admin:** own + all `routed`. |
-| `POST /api/tickets/[id]/files` | POST | Multipart: `variant_id` + `file` (per additional SKU) **or** `line_item_id` + `file` (line-level when no SKUs). Staff only. |
-| `GET/DELETE /api/tickets/[id]/files/[fileId]` | GET/DELETE | Staff: 302 signed URL. Delete removes Storage + DB row. |
+| `POST /api/tickets/[id]/files` | POST | Multipart: `variant_id` + `file` (per additional SKU) **or** `line_item_id` + `file` (line-level). Staff only. Replace uploads new Storage object and deletes prior path. |
+| `GET /api/tickets/[id]/files/[fileId]` | GET | Staff: 302 signed URL (preview/download). |
+| `DELETE /api/tickets/[id]/files/[fileId]` | DELETE | Removes Storage object + `ticket_files` row. Broadcasts public portal update when applicable. |
 | `GET /api/public/quotes/[token]/files/[fileId]` | GET (no auth) | Customer: streamed file; `?download=1` for Download. Token must match ticket. |
 | `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `ticket_kind = 'order'` + `order` / `in_production` / `cancelled`; includes evidence-pending for owner; returns `status_label` / `status_tone`. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders). Direct Quotes page: stores `quote_source` on ticket (no auto-lead). Lead/CRM flows: may create linked lead with `source`. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |

@@ -499,11 +499,11 @@ Priced catalog lines live in **`ticket_line_items`** (one row per quote line; fi
 |--------|------|
 | `ticket_line_items` | `ticket_id` FK, `sort_order`, catalog/pricing columns; `quantity` on the line is the catalog qty used for pricing (when additional SKUs exist, UI sets it to the **sum** of variant quantities) |
 | `ticket_line_variants` | `line_item_id` + denormalized `ticket_id`, `name`, `quantity > 0` |
-| `ticket_files` | `line_item_id` FK; `variant_id` FK **nullable** (092) — `NULL` = line-level attachment when the line has no additional SKUs; otherwise one file per variant (`variant_id` UNIQUE). Partial unique index: one line-level file per `line_item_id` where `variant_id IS NULL` |
+| `ticket_files` | `line_item_id` FK; `variant_id` FK **nullable** (092) — `NULL` = line-level attachment; non-null = one file per variant (`variant_id` UNIQUE). Line-level and variant files may both exist on the same line (shared line file + extra per-SKU files). Partial unique index: one line-level file per `line_item_id` where `variant_id IS NULL` |
 
-**Line-level file → first SKU:** On save, if a line has variants and a row in `ticket_files` with `variant_id IS NULL`, `migrateLineLevelFilesToFirstVariant()` assigns it to the first variant (by `sort_order`).
+**Line-level file ↔ first SKU:** On save, when a line goes from **0 → 1+** additional SKUs, `migrateLineLevelFilesToFirstVariant()` assigns a line-level file (`variant_id IS NULL`) to the first variant (by `sort_order`). Deleting the **first** SKU moves that file back to line level; deleting other SKUs removes their files from Storage. Deleting the whole line item removes Storage objects via `deleteOrphanLineFiles()`.
 
-Sync on create/update: `syncTicketLines()` in `lib/utils/ticket-line-items.ts`. Read: `fetchTicketLinesBundle()`; staff/public/PDF/email use `lineItemsToDisplayRows()` (`variants[]`, optional `lineFile` when no variants).
+Sync on create/update: `syncTicketLines()` in `lib/utils/ticket-line-items.ts`. Read: `fetchTicketLinesBundle()`; staff/public/PDF/email use `lineItemsToDisplayRows()` (`variants[]`, optional `lineFile` whenever a line-level file exists).
 
 #### `ticket_shipping_destinations` (migration **093**, May 2026)
 

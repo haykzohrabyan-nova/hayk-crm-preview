@@ -274,16 +274,17 @@ BazarCRM/
 │   │       ├── types.ts                  ✓ ProductType, LookupOption, SkuLookups
 │   │       ├── utils.ts                  ✓ emptySkuRow, renderLookupOptions, priorityStyle, quickDate
 │   │       ├── info-form.tsx             ✓ Title / Priority / Due Date (optional) / Rush section
-│   │       ├── sku-row.tsx               ✓ Catalog line row; line attach when no additional SKUs
+│   │       ├── sku-row.tsx               ✓ Catalog line row; line attach (+ visible when line file returned from first SKU)
 │   │       ├── line-items-form.tsx       ✓ SKU list + Add/Remove controls
 │   │       ├── line-item-variants.tsx    ✓ Additional SKUs + Add SKU button + pending file uploads after save
-│   │       ├── line-item-attachment.tsx  ✓ Line-level attach + overview download link
+│   │       ├── line-item-attachment.tsx  ✓ Line attach, View/Download actions, applyVariantListAttachmentChanges
+│   │       ├── line-item-file-preview-modal.tsx ✓ Staff in-page image/PDF preview modal
 │   │       ├── shipping-fulfillment-section.tsx ✓ Pickup / Ship + multi-address blocks + per-destination past-address picker
 │   │       └── quote-form.tsx            ✓ Pricing summary + adjustments + payment config
 │   │   ├── route-to-sales-modal.tsx      ✓ SDR manual route from new quote Line Items (route_reason picker)
 │   ├── public/
 │   │   ├── public-quote-document.tsx     ✓ Customer portal layout (line items + payment steps)
-│   │   ├── public-line-item-skus-grid.tsx ✓ 2-col SKU grid; image/PDF preview + Download
+│   │   ├── public-line-item-skus-grid.tsx ✓ 2-col SKU grid + line attachment; image/PDF preview + Download
 │   │   └── public-shipping-addresses.tsx ✓ Single Ship To vs 2-col shipping address cards
 │   ├── quotes/ticket-overview-sections.tsx ✓ Fulfillment destinations + collapsible Line Items
 │   ├── reports/

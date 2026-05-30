@@ -1,25 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Trash2, Download, Paperclip, Eye, FileText, Image as ImageIcon } from "lucide-react";
+import { Trash2, Paperclip } from "lucide-react";
 import type { TicketFileMeta, TicketLineVariantDisplayRow } from "@/lib/utils/ticket-line-items";
 import {
   additionalSkuPrefix,
   formatAdditionalSkuDisplayName,
 } from "@/lib/utils/format-ticket-line-variants";
 import { defaultNewVariantQuantity } from "@/lib/utils/line-item-variant-quantity";
-
-function viewAttachmentLabel(mime: string | undefined): string {
-  if (mime === "application/pdf") return "View PDF";
-  if (mime?.startsWith("image/")) return "View image";
-  return "View file";
-}
-
-function ViewAttachmentIcon({ mime }: { mime?: string }) {
-  if (mime === "application/pdf") return <FileText size={14} />;
-  if (mime?.startsWith("image/")) return <ImageIcon size={14} />;
-  return <Eye size={14} />;
-}
+import { LineItemSavedFileActions } from "./line-item-attachment";
 
 /** Read-only additional SKUs block for quote/order detail Overview. */
 export function AdditionalSkusOverviewList({
@@ -85,20 +74,7 @@ export function AdditionalSkusOverviewList({
               )}
             </div>
             {canView && file && (
-              <a
-                href={`/api/tickets/${ticketRef}/files/${file.id}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex shrink-0 items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-opacity hover:opacity-85"
-                style={{
-                  borderColor: "var(--color-border)",
-                  background: "var(--color-btn-primary-bg)",
-                  color: "var(--color-btn-primary-text)",
-                }}
-              >
-                <ViewAttachmentIcon mime={file.mime_type} />
-                {viewAttachmentLabel(file.mime_type)}
-              </a>
+              <LineItemSavedFileActions file={file} ticketRef={ticketRef!} variant="overview" />
             )}
           </div>
         );
@@ -139,7 +115,6 @@ const fieldStyle = {
 /** Match text inputs (py-2 + text-sm + border) so Attach aligns with Quantity */
 const controlHeightCls = "box-border h-[38px]";
 const inputCls = `mt-1 w-full px-3 rounded-md text-sm border outline-none ${controlHeightCls}`;
-const attachBtnCls = `mt-1 inline-flex items-center justify-center gap-1.5 px-3 rounded-md text-sm font-medium border whitespace-nowrap ${controlHeightCls}`;
 
 function newVariantRow(): FormLineVariant {
   return { id: crypto.randomUUID(), name: "", quantity: "" };
@@ -267,18 +242,30 @@ export function LineItemVariants({
             </div>
             <div className="flex shrink-0 flex-col">
               <label className={labelCls} style={labelStyle}>File</label>
-              <button
-                type="button"
-                onClick={() => pickFile(vIdx)}
-                className={attachBtnCls}
-                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)", background: "var(--color-surface)" }}
-              >
-                <Paperclip size={13} />
-                <span className="hidden md:inline">
-                  {v.pendingFile ? "Replace" : v.file ? "Replace file" : "Attach image or PDF"}
-                </span>
-                <span className="md:hidden">{v.pendingFile || v.file ? "Replace" : "Attach"}</span>
-              </button>
+              <div className={`mt-1 flex items-center gap-2 ${controlHeightCls}`}>
+                <button
+                  type="button"
+                  onClick={() => pickFile(vIdx)}
+                  className={`inline-flex items-center justify-center gap-1.5 px-3 rounded-md text-sm font-medium border whitespace-nowrap h-full ${controlHeightCls}`}
+                  style={{
+                    borderColor: "var(--color-border)",
+                    color: "var(--color-text-primary)",
+                    background: v.pendingFile || v.file ? "var(--color-badge-bg)" : "var(--color-surface)",
+                  }}
+                >
+                  <Paperclip size={13} />
+                  <span className="hidden md:inline">
+                    {v.pendingFile ? "Replace" : v.file ? "Replace file" : "Attach image or PDF"}
+                  </span>
+                  <span className="md:hidden">{v.pendingFile || v.file ? "Replace" : "Attach"}</span>
+                </button>
+                {v.file?.id && ticketRef && !v.pendingFile && (
+                  <LineItemSavedFileActions file={v.file} ticketRef={ticketRef} className={controlHeightCls} />
+                )}
+                {v.pendingFile && !v.file?.id && (
+                  <LineItemSavedFileActions pendingFile={v.pendingFile} className={controlHeightCls} />
+                )}
+              </div>
             </div>
             <div className="shrink-0">
               <span className={`${labelCls} invisible select-none`} aria-hidden>
@@ -295,29 +282,10 @@ export function LineItemVariants({
               </button>
             </div>
           </div>
-          {(v.pendingFile || (v.file?.id && ticketRef && !v.pendingFile)) && (
-            <div className="flex flex-wrap items-center gap-2 pl-0.5">
-              {v.pendingFile && (
-                <>
-                  <span className="text-xs truncate max-w-[240px]" style={{ color: "var(--color-text-primary)" }}>
-                    {v.pendingFile.name}
-                  </span>
-                  <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Uploads when you save</span>
-                </>
-              )}
-              {v.file?.id && ticketRef && !v.pendingFile && (
-                <a
-                  href={`/api/tickets/${ticketRef}/files/${v.file.id}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs hover:opacity-70 min-w-0"
-                  style={{ color: "var(--color-accent-dark)" }}
-                >
-                  <Download size={13} className="shrink-0" />
-                  <span className="truncate">{v.file.file_name}</span>
-                </a>
-              )}
-            </div>
+          {v.pendingFile && (
+            <p className="text-xs truncate max-w-full pl-0.5" style={{ color: "var(--color-text-muted)" }}>
+              {v.pendingFile.name} · uploads on save
+            </p>
           )}
         </div>
       ))}

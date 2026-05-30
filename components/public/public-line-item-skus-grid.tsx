@@ -11,22 +11,26 @@ export type PublicSkuGridItem = {
   file?: TicketFileMeta | null;
 };
 
-/** Build grid rows for additional SKUs (or line attachment when no SKUs). */
+/** Build grid rows for additional SKUs and optional line-level attachment. */
 export function publicSkuGridItems(sku: TicketLineDisplayRow): PublicSkuGridItem[] {
+  const items: PublicSkuGridItem[] = [];
+  if (sku.lineFile?.id) {
+    items.push({ label: "Line attachment", file: sku.lineFile });
+  }
   const variants = sku.variants ?? [];
   if (variants.length > 0) {
-    return variants.map((v, i) => ({
-      label: formatTicketLineVariantLabel(
-        { name: v.name, quantity: v.quantity },
-        i + 1,
-      ),
-      file: v.file ?? null,
-    }));
+    items.push(
+      ...variants.map((v, i) => ({
+        label: formatTicketLineVariantLabel(
+          { name: v.name, quantity: v.quantity },
+          i + 1,
+        ),
+        file: v.file ?? null,
+      })),
+    );
+    return items;
   }
-  if (sku.lineFile?.id) {
-    return [{ label: "Line attachment", file: sku.lineFile }];
-  }
-  return [];
+  return items;
 }
 
 function publicFileUrl(token: string, fileId: string, download = false): string {

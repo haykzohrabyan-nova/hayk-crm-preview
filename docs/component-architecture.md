@@ -146,8 +146,9 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), **Customer Link** + **Copy Link**, Mark Completed, Resend invoice |
 | `ResendAfterSaveModal` | `components/quotes/quote-detail/resend-after-save-modal.tsx` | After **Save Changes** on sent/unconfirmed quote (SDR/Sales) or sent/order/in_production (Admin) — optional resend with revision email |
 | `LineItemVariants` | `components/quotes/shared/line-item-variants.tsx` | Additional SKUs per catalog line (name, qty, attach); `uploadPendingLineItemFiles()` after save |
-| `LineItemAttachmentControl` | `components/quotes/shared/line-item-attachment.tsx` | Line-level attach on Add-on Finishings row; overview download link |
-| `PublicLineItemSkusGrid` | `components/public/public-line-item-skus-grid.tsx` | Customer portal SKU grid (2-col) with image/PDF preview + Download |
+| `LineItemAttachmentControl` / `LineItemSavedFileActions` / `LineItemAttachmentOverview` | `components/quotes/shared/line-item-attachment.tsx` | Line attach on Add-on Finishings; View (modal) + Download icons; `applyVariantListAttachmentChanges()` |
+| `LineItemFilePreviewModal` | `components/quotes/shared/line-item-file-preview-modal.tsx` | In-page image/PDF preview (X, Escape, backdrop); loading shell until content ready |
+| `PublicLineItemSkusGrid` | `components/public/public-line-item-skus-grid.tsx` | Customer portal SKU grid (2-col) + line attachment row; image/PDF preview + Download |
 | `PublicShippingAddressesList` / `PublicShippingAddressSingle` | `components/public/public-shipping-addresses.tsx` | Multi- vs single-destination shipping on `/q/[token]` |
 | `ShippingFulfillmentSection` | `components/quotes/shared/shipping-fulfillment-section.tsx` | Pickup / Ship + **Add shipping address** blocks; **Previous addresses** per destination |
 | `RouteToSalesModal` | `components/quotes/route-to-sales-modal.tsx` | SDR manual route from new quote Line Items — `route_reason` picker + notes |
@@ -422,8 +423,8 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         ├── Line Items Tab:
         │    Line Total override per SKU row (overrides qty × unit price)
         │    Line Item Comment on its own row above Line Total
-        │    Add-on Finishings + **Attach file** (right) when no additional SKUs (`line-item-attachment.tsx`)
-        │    Additional SKUs: name, qty, per-SKU attach; **Add SKU** primary button; line Quantity = sum of SKU qtys when SKUs exist
+        │    Add-on Finishings + **Attach file** (`line-item-attachment.tsx`; visible on line or when line file returned from deleted first SKU)
+        │    Additional SKUs: name, qty, per-SKU attach; **View** opens `line-item-file-preview-modal.tsx`; **Add SKU** primary button
         │    SDR only: **Route to Sales** on Line Items + Quote footer → `route-to-sales-modal.tsx`
         │    Add Line Item auto-scrolls to new row
         │    SkuSelect helper: appearance-none + ChevronDown on all selects
@@ -600,7 +601,8 @@ app/(public)/q/[token]/page.tsx  [Client Component "use client"]
       │      Below each product → PublicLineItemSkusGrid (2×50% grid)
       │      Labels: SKU{n}. {name} · Qty {qty}; image preview or PDF via blob: + object embed
       │      Actions: Open PDF (new tab), Download (?download=1)
-      │      Data: ticket.line_items[].variants[], lineFile when no variants
+      │      Data: ticket.line_items[].variants[], lineFile when line-level attachment exists
+      │      Live refresh: Realtime broadcast public-quote:{token} → debounced GET (no polling)
       │      Files: GET /api/public/quotes/[token]/files/[fileId] (streamed 200, not redirect)
       │      Shipping: shipping_destinations[] — 1 → Ship To column; 2+ → PublicShippingAddressesList (2-col)
       └── Save PDF: GET /api/public/quotes/[token]/pdf (no auth; InvoicePDF parity — shipping grid, SKUs, files, Need a design)

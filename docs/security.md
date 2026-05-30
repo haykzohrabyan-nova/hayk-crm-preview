@@ -101,7 +101,9 @@ Configured in `next.config.ts` `headers()` export.
 
 **Public quote PDF previews** load file bytes with `fetch`, then display via a `blob:` URL in `<object type="application/pdf">`. Without `blob:` in `frame-src` / `object-src`, the browser blocks the embed (not a localhost-specific issue).
 
-**Staff file download** (`GET /api/tickets/[id]/files/[fileId]`) still uses a **302** to signed Storage; public customer files use **200** streamed body for same-origin preview.
+**Staff file download** (`GET /api/tickets/[id]/files/[fileId]`) uses a **302** to signed Storage for direct download. **Staff in-page preview** (`LineItemFilePreviewModal`) fetches the same URL client-side and builds a `blob:` URL for `<img>` / `<object>` (same pattern as public PDF embed). Public customer files use **200** streamed body for same-origin preview.
+
+**Line attachment Storage:** Upload/replace/delete via file API removes objects from bucket `ticket-attachments`. Orphan line-item delete in `syncTicketLines()` calls `deleteOrphanLineFiles()` before FK cascade. See `docs/schema.md`.
 
 ---
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, use, useRef, type CSSProperties } from "react";
+import { useEffect, useState, use, useRef, useCallback, type CSSProperties } from "react";
 import {
   CheckCircle2, AlertCircle, Package, Loader2,
   Copy, Check, Upload, X, Clock,
@@ -11,6 +11,11 @@ import { AddressMapLink, AddressMapText } from "@/components/public/address-map-
 import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { companyAddressFull, mapLinkStyle } from "@/lib/utils/maps-link";
 import { digitsOnly } from "@/lib/utils/phone";
+import { createClient } from "@/lib/supabase/client";
+import {
+  PUBLIC_QUOTE_BROADCAST_EVENT,
+  publicQuoteChannelName,
+} from "@/lib/constants/public-quote-realtime";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -983,13 +988,6 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
     onPaymentSubmitted(autoReleased, refCode);
   }
 
-  // Poll while payment evidence is awaiting accountant review
-  useEffect(() => {
-    if (!awaitingReview || fullyPaid) return;
-    const timer = setInterval(onRefresh, 30000);
-    return () => clearInterval(timer);
-  }, [awaitingReview, fullyPaid, onRefresh]);
-
   const [showPayModal, setShowPayModal] = useState(false);
   const [confirming, setConfirming]     = useState(false);
   const [confirmErr, setConfirmErr]     = useState<string | null>(null);
@@ -1338,7 +1336,7 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
   const [clientConfirmed, setClientConfirmed] = useState(false);
   const [finalRef, setFinalRef]               = useState<string | null>(null);
 
-  function refreshTicket() {
+  const refreshTicket = useCallback(() => {
     fetch(`/api/public/quotes/${token}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -1347,7 +1345,35 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
         if (d.ticket.reference_code) setFinalRef(d.ticket.reference_code);
       })
       .catch(() => {});
-  }
+  }, [token]);
+
+  const refreshTicketRef = useRef(refreshTicket);
+  refreshTicketRef.current = refreshTicket;
+
+  // Realtime broadcast from staff saves / payment confirm — no polling.
+  useEffect(() => {
+    const supabase = createClient();
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function scheduleRefresh() {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => refreshTicketRef.current(), 300);
+    }
+
+    const channel = supabase
+      .channel(publicQuoteChannelName(token))
+      .on("broadcast", { event: PUBLIC_QUOTE_BROADCAST_EVENT }, scheduleRefresh)
+      .subscribe((status, err) => {
+        if (process.env.NODE_ENV === "development") {
+          console.log("[PublicQuote Realtime]", status, err ?? "");
+        }
+      });
+
+    return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      supabase.removeChannel(channel);
+    };
+  }, [token]);
 
   function handlePaymentSubmitted(_autoReleased: boolean, refCode: string | null) {
     refreshTicket();

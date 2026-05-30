@@ -55,7 +55,7 @@ export interface TicketLineItemRow {
   id: string;
   ticket_id: string;
   sort_order: number;
-  /** Set when file is attached to the line with no additional SKUs (variant_id null in DB). */
+  /** Set when file is attached at line level (`variant_id` null in DB). */
   file?: TicketFileMeta | null;
   product_type: string;
   description: string | null;
@@ -151,14 +151,14 @@ export type TicketLineVariantDisplayRow = {
 
 export type TicketLineDisplayRow = QuoteSku & {
   variants?: TicketLineVariantDisplayRow[];
-  /** Line-level attachment when there are no additional SKUs. */
+  /** Line-level attachment (`variant_id` null) — may coexist with additional SKUs after first SKU is removed. */
   lineFile?: TicketFileMeta | null;
 };
 
 export function lineItemsToDisplayRows(lines: TicketLineItemRow[]): TicketLineDisplayRow[] {
   return lines.map((row) => ({
     ...lineItemsToQuoteSkuRows([row])[0],
-    lineFile: row.variants.length === 0 ? (row.file ?? null) : null,
+    lineFile: row.file ?? null,
     variants: row.variants.map((v) => ({
       name: v.name,
       quantity: v.quantity,
@@ -382,16 +382,73 @@ export async function fetchTicketLinesBundle(
   );
 }
 
-async function deleteOrphanVariantFiles(
+/** First SKU removed → line-level file; other SKU files → delete from Storage (DB row cascades). */
+async function handleOrphanVariantFiles(
   admin: SupabaseClient,
-  variantIds: string[],
+  orphanVariantIds: string[],
 ): Promise<void> {
-  if (!variantIds.length) return;
+  if (!orphanVariantIds.length) return;
+
+  const { data: orphanVariants } = await admin
+    .from("ticket_line_variants")
+    .select("id, line_item_id, sort_order")
+    .in("id", orphanVariantIds);
+
+  if (!orphanVariants?.length) return;
+
+  const lineIds = [...new Set(orphanVariants.map((v) => String(v.line_item_id)))];
+
+  const { data: allVariantsOnLines } = await admin
+    .from("ticket_line_variants")
+    .select("id, line_item_id, sort_order")
+    .in("line_item_id", lineIds);
+
+  const { data: fileRows } = await admin
+    .from("ticket_files")
+    .select("id, storage_path, variant_id, line_item_id")
+    .in("variant_id", orphanVariantIds);
+
+  const filesByVariant = new Map((fileRows ?? []).map((f) => [String(f.variant_id), f]));
+
+  for (const ov of orphanVariants) {
+    const variantId = String(ov.id);
+    const file = filesByVariant.get(variantId);
+    if (!file) continue;
+
+    const lineId = String(ov.line_item_id);
+    const onLine = (allVariantsOnLines ?? []).filter((v) => String(v.line_item_id) === lineId);
+    const firstVariantId = [...onLine].sort(
+      (a, b) => Number(a.sort_order) - Number(b.sort_order),
+    )[0]?.id;
+
+    if (String(firstVariantId) === variantId) {
+      const { data: existingLineFile } = await admin
+        .from("ticket_files")
+        .select("id")
+        .eq("line_item_id", lineId)
+        .is("variant_id", null)
+        .maybeSingle();
+
+      if (existingLineFile && String(existingLineFile.id) !== String(file.id)) {
+        if (file.storage_path) await deleteTicketAttachment(admin, String(file.storage_path));
+        await admin.from("ticket_files").delete().eq("id", file.id);
+        continue;
+      }
+
+      await admin.from("ticket_files").update({ variant_id: null }).eq("id", file.id);
+    } else if (file.storage_path) {
+      await deleteTicketAttachment(admin, String(file.storage_path));
+    }
+  }
+}
+
+async function deleteOrphanLineFiles(admin: SupabaseClient, lineIds: string[]): Promise<void> {
+  if (!lineIds.length) return;
 
   const { data: fileRows } = await admin
     .from("ticket_files")
     .select("id, storage_path")
-    .in("variant_id", variantIds);
+    .in("line_item_id", lineIds);
 
   for (const f of fileRows ?? []) {
     if (f.storage_path) {
@@ -401,7 +458,9 @@ async function deleteOrphanVariantFiles(
 }
 
 /**
- * Upsert lines/variants by stable id; delete orphans (and Storage for removed variants).
+ * Upsert lines/variants by stable id; delete orphans.
+ * Line attachment: moves to first SKU when SKUs are first added; returns to line when first SKU is removed;
+ * deletes Storage when line item or non-first SKU file is removed.
  */
 export async function syncTicketLines(
   admin: SupabaseClient,
@@ -419,16 +478,29 @@ export async function syncTicketLines(
     .eq("ticket_id", ticketId);
   const { data: existingVariants } = await admin
     .from("ticket_line_variants")
-    .select("id")
+    .select("id, line_item_id")
     .eq("ticket_id", ticketId);
+
+  const variantCountBefore = new Map<string, number>();
+  for (const v of existingVariants ?? []) {
+    const lineId = String(v.line_item_id);
+    variantCountBefore.set(lineId, (variantCountBefore.get(lineId) ?? 0) + 1);
+  }
 
   const payloadLineIds = new Set<string>();
   const payloadVariantIds = new Set<string>();
+  const lineIdsAddingFirstSku = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineId = line.id ?? randomUUID();
     payloadLineIds.add(lineId);
+
+    const variantCountAfter = (line.variants ?? []).length;
+    const variantCountPrior = variantCountBefore.get(lineId) ?? 0;
+    if (variantCountPrior === 0 && variantCountAfter > 0) {
+      lineIdsAddingFirstSku.add(lineId);
+    }
 
     const linePayload = lineItemInputToRowPayload(ticketId, { ...line, id: lineId }, i);
 
@@ -470,25 +542,29 @@ export async function syncTicketLines(
     .filter((id) => !payloadVariantIds.has(id));
 
   if (orphanVariantIds.length) {
-    await deleteOrphanVariantFiles(admin, orphanVariantIds);
+    await handleOrphanVariantFiles(admin, orphanVariantIds);
     await admin.from("ticket_line_variants").delete().in("id", orphanVariantIds);
   }
 
   if (orphanLineIds.length) {
+    await deleteOrphanLineFiles(admin, orphanLineIds);
     await admin.from("ticket_line_items").delete().in("id", orphanLineIds);
   }
 
-  await migrateLineLevelFilesToFirstVariant(admin, ticketId);
+  await migrateLineLevelFilesToFirstVariant(admin, ticketId, lineIdsAddingFirstSku);
 
   const line_items = await fetchTicketLinesBundle(admin, ticketId);
   return { ok: true, line_items };
 }
 
-/** When additional SKUs exist, line-level files move to the first SKU. */
+/** When the first additional SKU is added, move line-level file onto that SKU. */
 async function migrateLineLevelFilesToFirstVariant(
   admin: SupabaseClient,
   ticketId: string,
+  lineIdsAddingFirstSku: Set<string>,
 ): Promise<void> {
+  if (!lineIdsAddingFirstSku.size) return;
+
   const { data: lineFiles } = await admin
     .from("ticket_files")
     .select("id, line_item_id, storage_path")
@@ -511,6 +587,8 @@ async function migrateLineLevelFilesToFirstVariant(
 
   for (const f of lineFiles) {
     const lineId = String(f.line_item_id);
+    if (!lineIdsAddingFirstSku.has(lineId)) continue;
+
     const firstVariantId = firstByLine.get(lineId);
     if (!firstVariantId) continue;
 

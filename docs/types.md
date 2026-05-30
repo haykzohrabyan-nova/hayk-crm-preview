@@ -770,8 +770,13 @@ export interface TicketForm {
 | `sumVariantQuantities()` / `lineQuantityFromVariants()` | `lib/utils/line-item-variant-quantity.ts` | Additional SKU qty → catalog line `quantity` |
 | `additionalSkuPrefix()` / `formatAdditionalSkuDisplayName()` / `formatTicketLineVariantLabel()` | `lib/utils/format-ticket-line-variants.ts` | `SKU1. {name} · Qty N` display labels |
 | `uploadPendingLineItemFiles()` | `components/quotes/shared/line-item-variants.tsx` | After save: `line_item_id` + `variant_id` multipart uploads |
+| `deleteTicketAttachment()` / `uploadTicketAttachment()` | `lib/utils/ticket-line-files.ts` | Storage CRUD for bucket `ticket-attachments` |
+| `handleOrphanVariantFiles()` / `deleteOrphanLineFiles()` / `migrateLineLevelFilesToFirstVariant()` | `lib/utils/ticket-line-items.ts` | Line ↔ first SKU file lifecycle + Storage cleanup on line/SKU delete (internal to `syncTicketLines`) |
+| `applyVariantListAttachmentChanges()` / `migrateLineAttachmentToFirstVariant()` | `components/quotes/shared/line-item-attachment.tsx` | Form state mirrors server line ↔ first SKU rules |
+| `notifyPublicQuoteUpdatedByTicketId()` | `lib/integrations/notify-public-quote-updated.ts` | Realtime broadcast after customer-visible ticket mutations |
+| `PUBLIC_QUOTE_REALTIME_CHANNEL` / `PUBLIC_QUOTE_UPDATED_EVENT` | `lib/constants/public-quote-realtime.ts` | Channel `public-quote:{token}`, event `updated` |
 | `fetchTicketAttachmentBytes()` | `lib/utils/ticket-line-files.ts` | Server-side Storage download for public file stream |
-| `FormLineItem.lineAttachment` | `components/quotes/shared/utils.ts` | Pending/saved line-level file before first additional SKU |
+| `FormLineItem.lineAttachment` | `components/quotes/shared/utils.ts` | Pending/saved line-level file; shown when no SKUs or after first SKU removed |
 | `scrollToFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll a `[data-field-anchor="…"]` wrapper into view and focus its control |
 | `scrollToFirstFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll to the first error in a priority-ordered list (New Quote tab validation) |
 | `buildInitialFollowUpSchedule()` | `lib/utils/follow-up-schedule.ts` | Seed `follow_up_at` when a quote is sent |

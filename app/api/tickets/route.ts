@@ -3,6 +3,7 @@ import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
+import { notifyPublicQuoteUpdatedByTicketId } from "@/lib/integrations/notify-public-quote-updated";
 import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-payment";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
@@ -591,6 +592,8 @@ export async function POST(request: NextRequest) {
   const line_items =
     syncedLineItems ?? (await fetchTicketLinesBundle(admin, ticket.id));
   const shipping_destinations = await fetchTicketShippingDestinations(admin, ticket.id);
+
+  notifyPublicQuoteUpdatedByTicketId(admin, (finalTicket ?? ticket).id);
 
   return NextResponse.json(
     { ticket: { ...(finalTicket ?? ticket), line_items, shipping_destinations } },

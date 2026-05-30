@@ -1,6 +1,29 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 29, 2026
-**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–29: payments Payment For UX, quote Route to Sales on Quote tab, leads Follow Up Later, Sales lock simplification, shipping picker UX**.
+**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–29: payments Payment For UX, quote Route to Sales, leads Follow Up Later, line attachment lifecycle, public portal Realtime, file preview modal**.
+
+---
+
+## May 29, 2026 — Line attachments lifecycle, preview modal, public Realtime
+
+### Line attachment lifecycle (no new migration)
+- **Shared line file** per catalog row: line level ↔ **first SKU** only on **0 → 1+** SKU transition
+- Delete **first SKU** → file back to line (Storage kept); delete **non-first SKU** file → Storage + DB removed
+- Delete **whole line item** → `deleteOrphanLineFiles()` removes Storage before FK cascade
+- Form: `applyVariantListAttachmentChanges()` in `line-item-attachment.tsx`
+- Server: `handleOrphanVariantFiles()`, `deleteOrphanLineFiles()`, conditional `migrateLineLevelFilesToFirstVariant()` in `syncTicketLines()`
+
+### Staff file preview UI
+- `LineItemFilePreviewModal` — View in popup (X, Escape, backdrop); spinner + min-height while image/PDF loads
+- `LineItemSavedFileActions` — View + Download on edit rows and Overview (`icons` | `overview` variants)
+
+### Public portal live sync (no polling)
+- Channel `public-quote:{public_token}` — Supabase broadcast event `updated`
+- `notifyPublicQuoteUpdatedByTicketId()` after ticket PATCH, create/send, file upload/delete, payment confirm, customer submit-payment
+- `/q/[token]` debounced silent refetch; guards on customer-portal statuses only
+
+### Docs synced
+- `schema.md`, `api-contract.md`, `types.md`, `feature-specs/tickets.md`, `component-architecture.md`, `architecture.md`, `realtime-live-updates.md`, `order-ticket/integration-plan.md`, `CHANGELOG.md`
 
 ---
 
@@ -104,12 +127,12 @@
 
 ### New Quote + quote detail edit
 - **Due Date** optional on create and edit (not in `validate-quote-send`; still validated against ticket creation day when set)
-- **Line attachment** — **Attach file** on Add-on Finishings (right) when no additional SKUs; JPEG/PNG/WebP/PDF; uploads via `POST /api/tickets/[id]/files` with `line_item_id`
+- **Line attachment** — **Attach file** on Add-on Finishings; JPEG/PNG/WebP/PDF; uploads via `POST /api/tickets/[id]/files` with `line_item_id` or `variant_id`
 - **Additional SKU quantity sync** — line **Quantity *** = sum of SKU qtys when SKUs exist (read-only); first **Add SKU** pre-fills from line qty; further SKUs pre-fill from first SKU qty
-- First line file moves to first SKU when **Add SKU**; `syncTicketLines()` migrates DB line-level files to first variant when variants exist
+- Line file moves to **first SKU** only when SKUs go **0 → 1+** on save; deleting first SKU returns file to line (see May 29 lifecycle section above)
 
 ### Staff detail Overview
-- Line attachment or per-SKU files: **View PDF** / **View image** (`GET /api/tickets/[id]/files/[fileId]`)
+- Line attachment and/or per-SKU files: **View** (modal preview) + **Download**
 
 ### Public quote `/q/[token]`
 - Under each product: **2-column grid** of additional SKUs — `SKU1. name · Qty N`

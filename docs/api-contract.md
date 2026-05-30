@@ -949,7 +949,7 @@ Returns a single ticket with full detail (line items, payment config, linked lea
 { "ticket": Ticket }
 ```
 
-`ticket.line_items` — array of line rows with nested `variants[]` (each variant may include `file` metadata). When the line has no additional SKUs but has a line-level attachment, `lineFile` is set on the display row (see `lineItemsToDisplayRows()`).
+`ticket.line_items` — array of line rows with nested `variants[]` (each variant may include `file` metadata). **`lineFile`** is set when the line has a line-level attachment (`variant_id` null in DB) — may coexist with `variants[]` after first SKU is removed. See `lineItemsToDisplayRows()` and `syncTicketLines()` in `lib/utils/ticket-line-items.ts`.
 
 `ticket.shipping_destinations` — array from `ticket_shipping_destinations` (empty when pickup).
 
@@ -966,10 +966,14 @@ Upload an attachment for a line item or additional SKU (staff only).
 **Auth:** `requireSession()` + `canMutateTicket()`.
 
 **Body:** `multipart/form-data` — exactly one of:
-- `line_item_id` (uuid) — line-level file when the line has **no** additional SKUs (migration **092**)
-- `variant_id` (uuid) — file for one additional SKU
+- `line_item_id` (uuid) — line-level attachment (`variant_id` null; migration **092**). Used when no SKUs exist or when the shared line file sits on the line after first SKU removal.
+- `variant_id` (uuid) — file for one additional SKU (one file per variant; non-first SKUs only for *extra* attachments beyond the shared line file)
 
 Plus `file` (JPEG, PNG, WebP, or PDF; limits in `lib/utils/ticket-line-files.ts`).
+
+**Replace:** Uploads to a new Storage path, deletes the previous object, updates the existing `ticket_files` row.
+
+**Sync side effects (`PATCH` ticket with line items):** `syncTicketLines()` — line file moves to first SKU only on **0 → 1+** SKU transition; deleting first SKU returns file to line level; deleting non-first SKU file removes Storage; deleting a line item removes all its files from Storage. See `docs/schema.md`.
 
 **Response `201` / `200`:** `{ file: TicketFileMeta }`
 
@@ -983,7 +987,7 @@ Plus `file` (JPEG, PNG, WebP, or PDF; limits in `lib/utils/ticket-line-files.ts`
 
 ### `DELETE /api/tickets/[id]/files/[fileId]`
 
-**Auth:** `canMutateTicket()`. Removes DB row and Storage object.
+**Auth:** `canMutateTicket()`. Deletes the Storage object in bucket `ticket-attachments`, then the `ticket_files` row. Calls `notifyPublicQuoteUpdatedByTicketId()` when the ticket is customer-portal visible.
 
 ---
 
@@ -1478,7 +1482,7 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
 
 **Response `404`:** Token not found or ticket in `draft` status.
 
-`ticket.line_items[]` includes `variants[]` (name, quantity, `file` metadata) and optional `lineFile` when the line has no additional SKUs.
+`ticket.line_items[]` includes `variants[]` (name, quantity, `file` metadata) and optional **`lineFile`** when a line-level attachment exists (may appear alongside variants). Live updates via Realtime broadcast — see `docs/realtime-live-updates.md`.
 
 `ticket.shipping_destinations[]` — resolved display rows for the public page (one → **Ship To** column; multiple → `PublicShippingAddressesList` 2-column grid).
 

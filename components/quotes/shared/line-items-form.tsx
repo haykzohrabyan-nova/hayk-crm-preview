@@ -82,10 +82,20 @@ export function LineItemsForm({
               ? (sku.lineFile as TicketFileMeta)
               : null;
           const footer =
-            variants.length > 0 ? (
-              <AdditionalSkusOverviewList variants={variants} ticketRef={ticketRef} />
-            ) : lineFile ? (
-              <LineItemAttachmentOverview file={lineFile} ticketRef={ticketRef} />
+            variants.length > 0 || lineFile ? (
+              <div className="space-y-0">
+                {lineFile ? (
+                  <div
+                    className="border-b px-3.5 py-3 md:px-5 md:py-3.5"
+                    style={{ borderColor: "var(--color-border)" }}
+                  >
+                    <LineItemAttachmentOverview file={lineFile} ticketRef={ticketRef} />
+                  </div>
+                ) : null}
+                {variants.length > 0 ? (
+                  <AdditionalSkusOverviewList variants={variants} ticketRef={ticketRef} />
+                ) : null}
+              </div>
             ) : undefined;
           return (
             <DetailLineItemCard

@@ -8,7 +8,7 @@ import type { ProductType, SkuLookups } from "./types";
 import { LineItemVariants, type FormLineVariant } from "./line-item-variants";
 import {
   LineItemAttachmentControl,
-  migrateLineAttachmentToFirstVariant,
+  applyVariantListAttachmentChanges,
   type FormLineAttachment,
 } from "./line-item-attachment";
 import { lineQuantityFromVariants, sumVariantQuantities } from "@/lib/utils/line-item-variant-quantity";
@@ -59,6 +59,7 @@ export function SkuRow({
 
   const variantList = variants ?? [];
   const hasVariants = variantList.length > 0;
+  const hasLineAttachment = Boolean(lineAttachment?.file || lineAttachment?.pendingFile);
 
   useEffect(() => {
     const list = variants ?? [];
@@ -73,10 +74,9 @@ export function SkuRow({
   }, [variants, sku.quantity]);
 
   function handleVariantsChange(next: FormLineVariant[]) {
-    const prevCount = variantList.length;
-    const migrated = migrateLineAttachmentToFirstVariant(prevCount, next, lineAttachment);
-    if (lineAttachment && migrated.lineAttachment === undefined) {
-      onLineAttachmentChange?.(idx, undefined);
+    const migrated = applyVariantListAttachmentChanges(variantList, next, lineAttachment);
+    if (lineAttachment !== migrated.lineAttachment) {
+      onLineAttachmentChange?.(idx, migrated.lineAttachment);
     }
     onVariantsChange?.(idx, migrated.variants);
     const synced = lineQuantityFromVariants(migrated.variants);
@@ -256,7 +256,7 @@ export function SkuRow({
           <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
             Add-on Finishings
           </p>
-          {!hasVariants && onLineAttachmentChange ? (
+          {(!hasVariants || hasLineAttachment) && onLineAttachmentChange ? (
             <LineItemAttachmentControl
               compact
               attachment={lineAttachment}
@@ -265,7 +265,7 @@ export function SkuRow({
             />
           ) : hasVariants ? (
             <p className="text-[11px] text-right max-w-[200px]" style={{ color: "var(--color-text-muted)" }}>
-              Attach files per SKU below
+              Line file below · attach per SKU in Additional SKUs
             </p>
           ) : null}
         </div>

@@ -1,24 +1,130 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Download, Paperclip, FileText, Image as ImageIcon, Eye, Trash2 } from "lucide-react";
 import type { TicketFileMeta } from "@/lib/utils/ticket-line-items";
+import { LineItemFilePreviewModal } from "./line-item-file-preview-modal";
 
 export type FormLineAttachment = {
   pendingFile?: File | null;
   file?: TicketFileMeta | null;
 };
 
-function viewAttachmentLabel(mime: string | undefined): string {
+export function viewAttachmentLabel(mime: string | undefined): string {
   if (mime === "application/pdf") return "View PDF";
   if (mime?.startsWith("image/")) return "View image";
   return "View file";
 }
 
-function ViewAttachmentIcon({ mime }: { mime?: string }) {
-  if (mime === "application/pdf") return <FileText size={14} />;
-  if (mime?.startsWith("image/")) return <ImageIcon size={14} />;
-  return <Eye size={14} />;
+export function ViewAttachmentIcon({ mime, size = 14 }: { mime?: string; size?: number }) {
+  if (mime === "application/pdf") return <FileText size={size} />;
+  if (mime?.startsWith("image/")) return <ImageIcon size={size} />;
+  return <Eye size={size} />;
+}
+
+const iconActionCls =
+  "p-2 rounded-md border flex items-center justify-center transition-opacity hover:opacity-85 h-[38px] box-border";
+
+const iconActionStyle = {
+  borderColor: "var(--color-border)",
+  color: "var(--color-text-primary)",
+  background: "var(--color-surface)",
+} as const;
+
+const overviewBtnBase =
+  "inline-flex shrink-0 items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-opacity hover:opacity-85";
+
+/** View (modal) + download for a saved or pending line-item file. */
+export function LineItemSavedFileActions({
+  file,
+  ticketRef,
+  className = "",
+  variant = "icons",
+  pendingFile,
+}: {
+  file?: TicketFileMeta | null;
+  ticketRef?: string;
+  className?: string;
+  variant?: "icons" | "overview";
+  /** Local file awaiting save — enables preview before upload. */
+  pendingFile?: File | null;
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const canDownloadSaved = Boolean(file?.id && ticketRef);
+  const canPreview = Boolean(canDownloadSaved || pendingFile);
+  if (!canPreview && !canDownloadSaved) return null;
+
+  const href = canDownloadSaved
+    ? `/api/tickets/${ticketRef}/files/${file!.id}`
+    : undefined;
+  const fileName = pendingFile?.name ?? file?.file_name ?? "Attachment";
+  const mimeType = pendingFile?.type ?? file?.mime_type;
+  const viewLabel = viewAttachmentLabel(mimeType);
+
+  return (
+    <>
+      {canPreview && (
+        <button
+          type="button"
+          onClick={() => setPreviewOpen(true)}
+          className={
+            variant === "icons"
+              ? `${iconActionCls} ${className}`.trim()
+              : overviewBtnBase
+          }
+          style={
+            variant === "icons"
+              ? iconActionStyle
+              : {
+                  borderColor: "var(--color-border)",
+                  background: "var(--color-btn-primary-bg)",
+                  color: "var(--color-btn-primary-text)",
+                }
+          }
+          aria-label={viewLabel}
+          title={viewLabel}
+        >
+          <ViewAttachmentIcon mime={mimeType} size={variant === "icons" ? 16 : 14} />
+          {variant === "overview" && viewLabel}
+        </button>
+      )}
+      {canDownloadSaved && href && (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          download
+          className={
+            variant === "icons"
+              ? `${iconActionCls} ${className}`.trim()
+              : overviewBtnBase
+          }
+          style={
+            variant === "icons"
+              ? iconActionStyle
+              : {
+                  borderColor: "var(--color-border)",
+                  background: "var(--color-surface)",
+                  color: "var(--color-text-primary)",
+                }
+          }
+          aria-label={`Download ${fileName}`}
+          title={`Download ${fileName}`}
+        >
+          <Download size={variant === "icons" ? 16 : 14} />
+          {variant === "overview" && "Download"}
+        </a>
+      )}
+      <LineItemFilePreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        fileName={fileName}
+        mimeType={mimeType}
+        previewUrl={href}
+        localFile={pendingFile}
+      />
+    </>
+  );
 }
 
 const attachBtnCls =
@@ -57,6 +163,8 @@ export function LineItemAttachmentControl({
     onChange(undefined);
   }
 
+  const showSavedActions = Boolean((saved?.id && ticketRef && !pending) || pending);
+
   return (
     <div className={compact ? "shrink-0 flex flex-col items-end gap-1" : "space-y-1.5"}>
       <input
@@ -86,6 +194,13 @@ export function LineItemAttachmentControl({
               ? "Replace image or PDF"
               : "Attach image or PDF"}
         </button>
+        {compact && showSavedActions && (
+          <LineItemSavedFileActions
+            file={saved}
+            ticketRef={ticketRef ?? undefined}
+            pendingFile={pending}
+          />
+        )}
         {hasFile && (
           <button
             type="button"
@@ -103,19 +218,17 @@ export function LineItemAttachmentControl({
           {pending.name} · uploads on save
         </p>
       )}
-      {saved?.id && ticketRef && !pending && (
-        <a
-          href={`/api/tickets/${ticketRef}/files/${saved.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1 text-xs hover:opacity-70 max-w-[240px]"
-          style={{ color: "var(--color-accent-dark)" }}
-        >
-          <Download size={13} className="shrink-0" />
-          <span className="truncate">{saved.file_name}</span>
-        </a>
+      {!compact && showSavedActions && (
+        <div className="flex flex-wrap items-center gap-2 justify-end">
+          <LineItemSavedFileActions
+            file={saved}
+            ticketRef={ticketRef ?? undefined}
+            pendingFile={pending}
+            variant="overview"
+          />
+        </div>
       )}
-      {saved && !ticketRef && !pending && (
+      {!compact && saved && !ticketRef && !pending && (
         <span className="text-xs truncate max-w-[240px]" style={{ color: "var(--color-text-muted)" }}>
           {saved.file_name}
         </span>
@@ -134,7 +247,7 @@ export function LineItemAttachmentOverview({
   ticketRef?: string | null;
   label?: string;
 }) {
-  const canView = Boolean(file.id && ticketRef);
+  const canAccess = Boolean(file.id && ticketRef);
 
   return (
     <div
@@ -149,21 +262,10 @@ export function LineItemAttachmentOverview({
           {file.file_name}
         </p>
       </div>
-      {canView && (
-        <a
-          href={`/api/tickets/${ticketRef}/files/${file.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex shrink-0 items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-opacity hover:opacity-85"
-          style={{
-            borderColor: "var(--color-border)",
-            background: "var(--color-btn-primary-bg)",
-            color: "var(--color-btn-primary-text)",
-          }}
-        >
-          <ViewAttachmentIcon mime={file.mime_type} />
-          {viewAttachmentLabel(file.mime_type)}
-        </a>
+      {canAccess && (
+        <div className="flex flex-wrap items-center gap-2">
+          <LineItemSavedFileActions file={file} ticketRef={ticketRef!} variant="overview" />
+        </div>
       )}
     </div>
   );
@@ -197,4 +299,30 @@ export function migrateLineAttachmentToFirstVariant(
     ],
     lineAttachment: undefined,
   };
+}
+
+/** Apply line ↔ first-SKU attachment rules when the variant list changes in the form. */
+export function applyVariantListAttachmentChanges(
+  previousVariants: import("./line-item-variants").FormLineVariant[],
+  nextVariants: import("./line-item-variants").FormLineVariant[],
+  lineAttachment?: FormLineAttachment,
+): { variants: import("./line-item-variants").FormLineVariant[]; lineAttachment?: FormLineAttachment } {
+  let attachment = lineAttachment;
+  let variants = nextVariants;
+
+  if (previousVariants.length > 0 && variants.length < previousVariants.length) {
+    const prevFirst = previousVariants[0];
+    const firstRemoved = !variants.some((v) => v.id === prevFirst.id);
+    if (firstRemoved && (prevFirst.file || prevFirst.pendingFile)) {
+      const lineHasFile = attachment?.file || attachment?.pendingFile;
+      if (!lineHasFile) {
+        attachment = {
+          pendingFile: prevFirst.pendingFile,
+          file: prevFirst.file,
+        };
+      }
+    }
+  }
+
+  return migrateLineAttachmentToFirstVariant(previousVariants.length, variants, attachment);
 }

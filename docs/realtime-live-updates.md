@@ -3,6 +3,8 @@
 How BazaarPrinting CRM implements instant UI updates without polling.
 Follow this guide when adding Realtime to any new entity (orders, customers, tickets, etc.).
 
+> **Shareable copy for other projects / AI agents:** see [`realtime-agent-setup-guide.md`](./realtime-agent-setup-guide.md) — same architecture, generic naming, full copy-paste templates, and an agent task prompt.
+
 ---
 
 ## How It Works — Full Architecture
@@ -441,6 +443,40 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 
 ---
 
+## Public customer portal (`/q/[token]`) — Realtime Broadcast
+
+The public quote page has **no auth**, so it cannot use `postgres_changes` on `job_tickets` like staff list pages. Instead:
+
+```
+Staff saves quote / confirms payment / uploads line attachment
+  │
+  ▼
+API route → notifyPublicQuoteUpdatedByTicketId(admin, ticketId)
+  │  (skips draft/routed — only sent | order | in_production | completed | cancelled)
+  ▼
+Supabase Realtime broadcast on channel public-quote:{public_token}
+  │
+  ▼
+app/(public)/q/[token]/page.tsx hears event "updated"
+  └── debounced GET /api/public/quotes/{token} (silent, no polling)
+```
+
+**Files:** `lib/constants/public-quote-realtime.ts`, `lib/integrations/notify-public-quote-updated.ts`, `app/(public)/q/[token]/page.tsx`.
+
+**Routes that broadcast (May 2026):**
+
+| Route | When |
+|-------|------|
+| `PATCH /api/tickets/[id]` | Quote/order save, payment confirm, production release, status changes |
+| `POST /api/tickets` | Create ticket (e.g. first send) |
+| `POST /api/tickets/[id]/files` | Line-item attachment upload/replace |
+| `DELETE /api/tickets/[id]/files/[fileId]` | Attachment removed |
+| `POST /api/public/quotes/[token]/submit-payment` | Customer payment submit (direct token broadcast) |
+
+When adding a new mutation that changes customer-visible ticket data, call `notifyPublicQuoteUpdatedByTicketId` after a successful write.
+
+---
+
 ## Existing Implementations
 
 | Entity | Migration(s) | Channel name | Browser event | Page consumers |
@@ -449,6 +485,7 @@ function onLeadsChanged() { setLoading(true); fetchLeads(); }
 | `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` (sidebar) | `bazaar:activities-changed` **and** `bazaar:tickets-changed` when `payload.new.ticket_id` or `lead_id` is set (May 2026 — claim/routed flows where `job_tickets` UPDATE is invisible to non-owners under RLS) | `activity-log-section.tsx`, quote/order list pages via tickets event |
 | `job_tickets` | `047_enable_job_tickets_realtime.sql` (consolidated in `schema.sql`) · **`086_job_tickets_routed_realtime_rls.sql`** | `tickets-realtime` (sidebar) + `quotes-page-routed-sync` on Quotes page | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx` (Routed tab), `orders-page.tsx`, … |
 | `customers` | `083_enable_customers_realtime.sql` | `customers-realtime` (sidebar only) | `bazaar:customers-changed` | `crm-page.tsx` |
+| Public `/q/[token]` | *(none — broadcast, not postgres_changes)* | `public-quote:{public_token}` | Supabase broadcast `updated` | `app/(public)/q/[token]/page.tsx` |
 
 ---
 

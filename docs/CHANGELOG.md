@@ -3,6 +3,59 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-29] — Line attachment lifecycle: line ↔ first SKU + Storage cleanup
+
+### Changed
+- `lib/utils/ticket-line-items.ts` — line file moves to first SKU only when SKUs are first added (0→1+); deleting first SKU returns file to line level; non-first SKU files deleted with SKU; orphan line delete removes Storage objects
+- `components/quotes/shared/line-item-attachment.tsx` — `applyVariantListAttachmentChanges` mirrors server rules in the edit form
+- `components/quotes/shared/utils.ts`, `line-items-form.tsx`, `public-line-item-skus-grid.tsx` — line-level file shown alongside additional SKUs when present
+
+### Docs
+- `docs/schema.md`, `docs/api-contract.md`, `docs/types.md`, `docs/feature-specs/tickets.md`, `docs/component-architecture.md`, `docs/architecture.md`, `docs/session-summary.md`, `docs/order-ticket/integration-plan.md`, `docs/realtime-live-updates.md`, `docs/CHANGELOG.md` (historical entries corrected)
+
+## [2026-05-29] — Line item file preview modal + overview download
+
+### Added
+- `components/quotes/shared/line-item-file-preview-modal.tsx` — in-page preview popup (X close, Escape, backdrop click) for images and PDFs
+
+### Changed
+- `line-item-file-preview-modal.tsx` — spinner + fixed min-height while images/PDFs load so modal does not collapse
+
+## [2026-05-29] — Add-on Finishings: icon download before delete
+
+### Changed
+- `components/quotes/shared/line-item-attachment.tsx` — shared `LineItemSavedFileActions` (view + download icons); Add-on Finishings compact row uses both
+- `components/quotes/shared/line-item-variants.tsx` — Additional SKUs: view + download icons before remove SKU
+
+## [2026-05-29] — Public portal live sync: full mutation coverage
+
+### Changed
+- `lib/integrations/notify-public-quote-updated.ts` — `notifyPublicQuoteUpdatedByTicketId` skips broadcast unless `ticket_status` is customer-portal visible (`sent`, `order`, `in_production`, `completed`, `cancelled`)
+- `app/api/tickets/route.ts` — broadcast after create/send
+- `app/api/tickets/[id]/files/route.ts` — broadcast after line-item attachment upload/replace
+- `app/api/tickets/[id]/files/[fileId]/route.ts` — broadcast after attachment delete
+- `app/api/tickets/[id]/route.ts` — payment confirm uses guarded helper (same as PATCH)
+- `docs/realtime-live-updates.md`, `docs/feature-specs/invoice-payment.md` — public portal Realtime broadcast documented
+
+## [2026-05-29] — Public quote page: Realtime instead of 30s polling
+
+### Added
+- `lib/constants/public-quote-realtime.ts` — channel name + broadcast event for `/q/[token]`
+- `lib/integrations/notify-public-quote-updated.ts` — server-side Supabase Realtime broadcast (fire-and-forget)
+
+### Changed
+- `app/(public)/q/[token]/page.tsx` — subscribe to `public-quote:{token}` broadcast; debounced silent refetch; removed 30s payment-review polling
+- `app/api/tickets/[id]/route.ts` — broadcast after payment confirm, production release, and ticket PATCH
+- `app/api/public/quotes/[token]/submit-payment/route.ts` — broadcast after customer payment submit
+
+## [2026-05-29] — Realtime setup guide for external projects
+
+### Added
+- `docs/realtime-agent-setup-guide.md` — general Supabase Realtime + Next.js guide (how it works, DB/RLS setup, three frontend patterns — page-level, central provider, local refetch; no sidebar/nav requirement); shareable to other repos
+
+### Changed
+- `docs/realtime-agent-setup-guide.md` — prominent AI-agent warning: do not use sidebar/nav; Pattern A/B only; BazarCRM sidebar marked as legacy example not to copy
+
 ## [2026-05-29] — Docs sync + build fixes for push
 
 ### Fixed
@@ -278,14 +331,14 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-29] — Line item file attachment (image / PDF)
 
 ### Added
-- **Attach file** on line item Add-on Finishings row (when no additional SKUs) — JPEG, PNG, WebP, PDF
+- **Attach file** on line item Add-on Finishings row — JPEG, PNG, WebP, PDF; line ↔ first SKU lifecycle (May 29)
 - `supabase/migrations/092_ticket_files_line_item_attachment.sql` — `ticket_files.variant_id` nullable; one file per line without SKUs
 - `components/quotes/shared/line-item-attachment.tsx` — attach control + overview download link
 - `POST /api/tickets/[id]/files` accepts `line_item_id` (or `variant_id`)
 
 ### Changed
-- First **Add SKU** moves line attachment to that SKU; further SKUs attach independently
-- Quote/order detail **Overview** line items show line attachment or per-SKU files (staff View PDF / image)
+- First **Add SKU** (0→1+ variants) moves line attachment to first SKU; further SKUs attach independently; delete first SKU returns file to line (May 29 lifecycle)
+- Quote/order detail **Overview** — View (modal) + Download for line and per-SKU files
 - `uploadPendingLineItemFiles` uploads line + variant pending files after save
 
 ### Docs
@@ -451,7 +504,7 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-05-28] — Quote overview: additional SKU display
 
 ### Changed
-- Quote/order detail **Overview** line items — additional SKUs in a nested card with name, quantity, filename, and **View PDF** / **View image** button (staff download via signed URL)
+- Quote/order detail **Overview** line items — additional SKUs in a nested card with name, quantity, filename, and **View** (modal) / **Download** actions
 - `components/quotes/shared/line-item-variants.tsx` — `AdditionalSkusOverviewList`; `line-items-form.tsx` + `detail-layout-primitives.tsx` footer on line item card
 - `lib/utils/ticket-line-items.ts` — `lineItemsToDisplayRows` includes variant file metadata
 
