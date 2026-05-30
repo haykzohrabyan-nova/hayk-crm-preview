@@ -5,7 +5,7 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 const PAYMENT_REVIEW_STATUSES = ["sent", "order", "in_production", "completed"] as const;
 
 const PAYMENT_REVIEW_SELECT = `
-  id, reference_code, title,
+  id, reference_code, title, contact_name, contact_email,
   quote_final_total,
   payment_method_used,
   payment_evidence_url,
@@ -24,9 +24,11 @@ const PAYMENT_REVIEW_SELECT = `
   customer:customers(first_name, last_name, company)
 `.trim();
 
+type PaymentReviewRow = Record<string, unknown> & { created_by_id?: string | null };
+
 async function enrichPaymentRows(
   admin: AdminClient,
-  rows: Array<Record<string, unknown> & { created_by_id?: string | null }>,
+  rows: PaymentReviewRow[],
 ) {
   const creatorIds = [...new Set(rows.map((r) => r.created_by_id).filter(Boolean))] as string[];
   const { data: profiles } = creatorIds.length
@@ -52,7 +54,8 @@ export async function fetchPendingPaymentOrders(admin: AdminClient) {
     .order("payment_evidence_submitted_at", { ascending: true });
 
   if (error) throw error;
-  return enrichPaymentRows(admin, (data ?? []) as Array<Record<string, unknown> & { created_by_id?: string | null }>);
+  const rows = Array.isArray(data) ? (data as unknown as PaymentReviewRow[]) : [];
+  return enrichPaymentRows(admin, rows);
 }
 
 export async function fetchApprovedPaymentOrders(admin: AdminClient) {
@@ -65,7 +68,8 @@ export async function fetchApprovedPaymentOrders(admin: AdminClient) {
     .order("payment_evidence_reviewed_at", { ascending: false });
 
   if (error) throw error;
-  return enrichPaymentRows(admin, (data ?? []) as Array<Record<string, unknown> & { created_by_id?: string | null }>);
+  const rows = Array.isArray(data) ? (data as unknown as PaymentReviewRow[]) : [];
+  return enrichPaymentRows(admin, rows);
 }
 
 export async function fetchPaymentsPageData(admin: AdminClient) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
@@ -15,6 +15,7 @@ import {
   MobileListCardFields,
   MobileListCardSkeleton,
   MobileListCardEmpty,
+  TicketListToolbar,
 } from "@/components/ui/mobile-list-card";
 import {
   displayContactName,
@@ -26,6 +27,7 @@ import { appendReturnPath } from "@/lib/utils/ticket-detail-href";
 import {
   inferPaymentEvidenceMode,
 } from "@/lib/utils/payment-evidence-type";
+import { filterPaymentEvidenceRows } from "@/lib/utils/filter-payment-evidence-rows";
 import { PaymentTypeBadge } from "@/components/orders/payment-type-badge";
 
 type PaymentTab = "pending" | "approved";
@@ -34,6 +36,8 @@ interface PaymentOrder {
   id: string;
   reference_code: string | null;
   title: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
   quote_final_total: number | null;
   payment_method_used: string | null;
   payment_evidence_submitted_at: string | null;
@@ -98,59 +102,6 @@ function TableSkeleton({ cols }: { cols: number }) {
   );
 }
 
-function PaymentTabs({
-  activeTab,
-  onTabChange,
-  tabCounts,
-}: {
-  activeTab: PaymentTab;
-  onTabChange: (tab: PaymentTab) => void;
-  tabCounts: { pending: number; approved: number };
-}) {
-  return (
-    <div
-      className="flex overflow-x-auto border-b -mx-1 px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
-      style={{ borderColor: "var(--color-border)" }}
-    >
-      {TABS.map((t) => {
-        const count = tabCounts[t.id];
-        const active = activeTab === t.id;
-        return (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => onTabChange(t.id)}
-            className="px-3 py-2.5 sm:px-4 text-sm relative transition-colors whitespace-nowrap shrink-0"
-            style={{
-              color: active ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
-              fontWeight: active ? 500 : 400,
-            }}
-          >
-            {t.label}
-            {count > 0 && (
-              <span
-                className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
-                style={{
-                  background: active ? "var(--color-badge-bg)" : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
-                  color: "var(--color-badge-text)",
-                }}
-              >
-                {count}
-              </span>
-            )}
-            {active && (
-              <span
-                className="absolute bottom-0 left-0 right-0 h-0.5 rounded-t"
-                style={{ background: "var(--color-tab-underline)" }}
-              />
-            )}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 export function PaymentsPage() {
   const router = useRouter();
   const { showLoading, hideLoading } = useGlobalLoading();
@@ -161,6 +112,13 @@ export function PaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const fetchPageData = useCallback((silent = false) => {
     if (!silent) setLoading(true);
@@ -179,7 +137,20 @@ export function PaymentsPage() {
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
 
-  const orders = activeTab === "pending" ? pendingOrders : approvedOrders;
+  const filteredPending = useMemo(
+    () => filterPaymentEvidenceRows(pendingOrders, debouncedSearch),
+    [pendingOrders, debouncedSearch],
+  );
+  const filteredApproved = useMemo(
+    () => filterPaymentEvidenceRows(approvedOrders, debouncedSearch),
+    [approvedOrders, debouncedSearch],
+  );
+
+  const displayCounts = debouncedSearch.trim()
+    ? { pending: filteredPending.length, approved: filteredApproved.length }
+    : tabCounts;
+
+  const orders = activeTab === "pending" ? filteredPending : filteredApproved;
   const isPendingTab = activeTab === "pending";
   const desktopCols = 8;
   const headers = isPendingTab
@@ -226,10 +197,16 @@ export function PaymentsPage() {
     }
   }
 
-  const emptyTitle = isPendingTab ? "All caught up" : "No approved evidence yet";
-  const emptySubtitle = isPendingTab
-    ? "No orders pending payment review."
-    : "Orders appear here after an accountant confirms payment evidence.";
+  const emptyTitle = debouncedSearch.trim()
+    ? "No matches"
+    : isPendingTab
+      ? "All caught up"
+      : "No approved evidence yet";
+  const emptySubtitle = debouncedSearch.trim()
+    ? "No payment evidence matches your search."
+    : isPendingTab
+      ? "No orders pending payment review."
+      : "Orders appear here after an accountant confirms payment evidence.";
 
   return (
     <div className="space-y-5">
@@ -242,7 +219,7 @@ export function PaymentsPage() {
             Review uploaded payment proof on Pending approval, then find past confirmations and evidence files on Approved.
           </p>
         </div>
-        {isPendingTab && !loading && tabCounts.pending > 0 && (
+        {isPendingTab && !loading && !debouncedSearch.trim() && tabCounts.pending > 0 && (
           <div
             className="flex items-center gap-2 rounded-[10px] border px-4 py-2.5 text-sm"
             style={{
@@ -257,7 +234,15 @@ export function PaymentsPage() {
         )}
       </div>
 
-      <PaymentTabs activeTab={activeTab} onTabChange={setActiveTab} tabCounts={tabCounts} />
+      <TicketListToolbar
+        tabs={TABS}
+        activeTab={activeTab}
+        onTabChange={(id) => setActiveTab(id as PaymentTab)}
+        tabCounts={displayCounts}
+        search={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search order, customer, creator, amount…"
+      />
 
       {confirmErr && (
         <div
@@ -274,7 +259,7 @@ export function PaymentsPage() {
 
       {/* Desktop table */}
       <div
-        className="hidden lg:block rounded-[10px] border overflow-hidden"
+        className="hidden lg:block rounded-b-[10px] border border-t-0 overflow-hidden"
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         <table className="w-full border-collapse">

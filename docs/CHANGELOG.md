@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-30] — Payment Evidence search
+
+### Added
+- `/payments` — search box filters pending and approved queues by order #, title, customer, contact, creator, payment method, amounts, and payment type
+
 ## [2026-05-30] — Fix payment status after deposit evidence confirm
 
 ### Fixed
