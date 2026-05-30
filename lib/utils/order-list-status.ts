@@ -19,6 +19,7 @@ export function orderListStatus(input: {
   require_client_confirm?: boolean | null;
   payment_evidence_url?: string | null;
   payment_evidence_submitted_at?: string | null;
+  payment_evidence_reviewed_at?: string | null;
   payment_paid_at?: string | null;
   deposit_paid_at?: string | null;
   payment_amount_received?: number | null;

@@ -25,6 +25,7 @@ const ORDERS_LIST_SELECT = `
   payment_status,
   payment_evidence_url,
   payment_evidence_submitted_at,
+  payment_evidence_reviewed_at,
   payment_paid_at,
   deposit_paid_at,
   deposit_amount,
@@ -42,6 +43,7 @@ type RawOrderRow = Record<string, unknown> & {
   ticket_require_client_confirm?: boolean | null;
   payment_evidence_url?: string | null;
   payment_evidence_submitted_at?: string | null;
+  payment_evidence_reviewed_at?: string | null;
   payment_paid_at?: string | null;
   created_by_id?: string | null;
   deposit_paid_at?: string | null;
@@ -177,6 +179,7 @@ async function enrichOrdersPage(admin: AdminClient, orders: RawOrderRow[]) {
       require_client_confirm: o.ticket_require_client_confirm,
       payment_evidence_url: o.payment_evidence_url,
       payment_evidence_submitted_at: o.payment_evidence_submitted_at,
+      payment_evidence_reviewed_at: o.payment_evidence_reviewed_at,
       payment_paid_at: o.payment_paid_at,
       deposit_paid_at: o.deposit_paid_at,
       payment_amount_received: o.payment_amount_received,

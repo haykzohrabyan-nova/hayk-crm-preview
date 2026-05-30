@@ -52,6 +52,7 @@ interface OrderTicket {
   payment_status: "unpaid" | "partial" | "paid" | null;
   payment_evidence_url: string | null;
   payment_evidence_submitted_at: string | null;
+  payment_evidence_reviewed_at: string | null;
   payment_paid_at: string | null;
   title: string | null;
   reference_code: string | null;

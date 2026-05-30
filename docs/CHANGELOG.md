@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-30] — Orders list: fix stale “Awaiting review” after evidence approved
+
+### Fixed
+- `/orders` — list API now includes `payment_evidence_reviewed_at`; rows no longer show **Awaiting payment confirmation** / **Awaiting review** once accountant has approved the evidence (e.g. ORD-2026-014 deposit)
+
 ## [2026-05-30] — Payment Evidence search
 
 ### Added
