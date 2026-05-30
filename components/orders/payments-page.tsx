@@ -44,12 +44,15 @@ interface PaymentOrder {
   payment_status: string | null;
   deposit_paid_at: string | null;
   ticket_payment_strategy: "partial" | "full" | "net" | null;
+  ticket_deposit_type: "percent" | "fixed" | null;
+  ticket_deposit_value: number | null;
   ticket_status: string;
   customer: {
     first_name: string | null;
     last_name: string | null;
     company: string | null;
   } | null;
+  created_by: { id: string; full_name: string | null } | null;
 }
 
 const TABS: { id: PaymentTab; label: string }[] = [
@@ -178,10 +181,10 @@ export function PaymentsPage() {
 
   const orders = activeTab === "pending" ? pendingOrders : approvedOrders;
   const isPendingTab = activeTab === "pending";
-  const desktopCols = isPendingTab ? 7 : 7;
+  const desktopCols = 8;
   const headers = isPendingTab
-    ? ["Order", "Customer", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
-    : ["Order", "Customer", "Claimed", "Payment For", "Method", "Submitted", "Approved"];
+    ? ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
+    : ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Approved"];
 
   const paymentsReturnPath = "/payments";
 
@@ -359,6 +362,12 @@ export function PaymentsPage() {
                       </div>
                     </td>
 
+                    <td className="px-5 py-4 align-middle whitespace-nowrap">
+                      <span className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+                        {order.created_by?.full_name ?? "—"}
+                      </span>
+                    </td>
+
                     <td className="px-5 py-4 align-middle text-right whitespace-nowrap">
                       <div className="text-sm font-semibold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
                         {fmt(claimed)}
@@ -500,6 +509,10 @@ export function PaymentsPage() {
 
                 <MobileListCardFields>
                   <MobileListCardRow label="Order Total" value={fmt(order.quote_final_total)} />
+                  <MobileListCardRow
+                    label="Created by"
+                    value={order.created_by?.full_name ?? "—"}
+                  />
                   <MobileListCardRow
                     label="Payment For"
                     value={<PaymentTypeBadge ticket={order} showDescription />}

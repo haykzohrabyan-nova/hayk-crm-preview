@@ -12,6 +12,7 @@ import {
 } from "@/lib/integrations/send-quote";
 import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { logTicketPaymentRecorded } from "@/lib/utils/log-ticket-payment-recorded";
+import { inferPaymentEvidenceMode } from "@/lib/utils/payment-evidence-type";
 import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-payment";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
 import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
@@ -354,11 +355,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       );
     }
 
-    const mode   = body.payment_mode   as "deposit" | "balance" | "full" | undefined;
+    const modeFromClient = body.payment_mode as "deposit" | "balance" | "full" | undefined;
     const method = body.payment_method as string | undefined;
     const amount = Number(body.payment_amount);
 
-    if (!mode || !method || !Number.isFinite(amount) || amount <= 0) {
+    if (!modeFromClient || !method || !Number.isFinite(amount) || amount <= 0) {
       return NextResponse.json(
         { error: "record_payment requires payment_mode, payment_method, and a positive payment_amount.", code: "VALIDATION_ERROR" },
         { status: 400 },
@@ -374,6 +375,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .select(`id, ticket_status, quote_final_total, payment_amount_received, deposit_amount, deposit_paid_at,
                balance_paid_at, payment_paid_at, client_confirmed, production_released_at,
                payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at,
+               payment_evidence_amount,
                public_token, reference_code, quote_channel, quote_destination, title,
                ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
                ticket_dep_handling, ticket_full_channels, ticket_partial_channels,
@@ -386,6 +388,17 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const alreadyPaid   = Number(cur?.payment_amount_received ?? 0);
     const newTotal      = Math.min(alreadyPaid + amount, quoteTotal);
     const fullyPaid     = newTotal >= quoteTotal - 0.01;
+
+    // Prefer server-side inference from ticket config — list APIs may omit deposit fields.
+    const mode = inferPaymentEvidenceMode({
+      quote_final_total: cur?.quote_final_total,
+      ticket_payment_strategy: cur?.ticket_payment_strategy,
+      ticket_deposit_type: cur?.ticket_deposit_type,
+      ticket_deposit_value: cur?.ticket_deposit_value,
+      payment_amount_received: alreadyPaid,
+      deposit_paid_at: cur?.deposit_paid_at,
+      payment_evidence_amount: cur?.payment_evidence_amount ?? amount,
+    });
 
     const payPatch: Record<string, unknown> = {
       updated_at: now,
@@ -405,7 +418,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (fullyPaid && !cur?.payment_paid_at) {
       payPatch.payment_paid_at = now;
       payPatch.payment_status  = "paid";
-    } else if (mode === "deposit") {
+    } else if (newTotal > 0.01 && !fullyPaid) {
       payPatch.payment_status = "partial";
     }
 

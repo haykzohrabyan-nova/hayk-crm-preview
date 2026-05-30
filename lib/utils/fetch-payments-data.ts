@@ -17,9 +17,30 @@ const PAYMENT_REVIEW_SELECT = `
   payment_status,
   deposit_paid_at,
   ticket_payment_strategy,
+  ticket_deposit_type,
+  ticket_deposit_value,
   ticket_status,
+  created_by_id,
   customer:customers(first_name, last_name, company)
 `.trim();
+
+async function enrichPaymentRows(
+  admin: AdminClient,
+  rows: Array<Record<string, unknown> & { created_by_id?: string | null }>,
+) {
+  const creatorIds = [...new Set(rows.map((r) => r.created_by_id).filter(Boolean))] as string[];
+  const { data: profiles } = creatorIds.length
+    ? await admin.from("user_profiles").select("id, full_name").in("id", creatorIds)
+    : { data: [] as { id: string; full_name: string | null }[] };
+  const nameMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name]));
+
+  return rows.map((row) => ({
+    ...row,
+    created_by: row.created_by_id
+      ? { id: row.created_by_id, full_name: nameMap[row.created_by_id] ?? null }
+      : null,
+  }));
+}
 
 export async function fetchPendingPaymentOrders(admin: AdminClient) {
   const { data, error } = await admin
@@ -31,7 +52,7 @@ export async function fetchPendingPaymentOrders(admin: AdminClient) {
     .order("payment_evidence_submitted_at", { ascending: true });
 
   if (error) throw error;
-  return data ?? [];
+  return enrichPaymentRows(admin, (data ?? []) as Array<Record<string, unknown> & { created_by_id?: string | null }>);
 }
 
 export async function fetchApprovedPaymentOrders(admin: AdminClient) {
@@ -44,7 +65,7 @@ export async function fetchApprovedPaymentOrders(admin: AdminClient) {
     .order("payment_evidence_reviewed_at", { ascending: false });
 
   if (error) throw error;
-  return data ?? [];
+  return enrichPaymentRows(admin, (data ?? []) as Array<Record<string, unknown> & { created_by_id?: string | null }>);
 }
 
 export async function fetchPaymentsPageData(admin: AdminClient) {

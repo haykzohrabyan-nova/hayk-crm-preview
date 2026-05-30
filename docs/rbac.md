@@ -1,5 +1,7 @@
 # BazarCRM — RBAC (Role-Based Access Control)
 
+> **Planned migration (deferred):** Capability-based RBAC with page + scope + action permissions, page-by-page rollout. Planning docs: [`rbac-migration/`](rbac-migration/README.md) (start with [`plan.md`](rbac-migration/plan.md)). **Not implemented yet** — current behavior below is authoritative.
+
 Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are seeded and cannot be deleted. Admin can create additional custom roles and assign page access to each via the Settings → Roles tab.
 
 **Enforcement layers:**

@@ -3,6 +3,27 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-30] — Fix payment status after deposit evidence confirm
+
+### Fixed
+- `/payments` list omitted `ticket_deposit_type` / `ticket_deposit_value`, so Confirm inferred **Full payment** instead of **Deposit** on partial-strategy orders — `payment_status` stayed **Unpaid** even after approval
+- `record_payment` now infers payment mode server-side from ticket config and sets `payment_status` to **partial** whenever money is recorded but the order is not fully paid
+
+## [2026-05-30] — Payments list: Created by column
+
+### Changed
+- `/payments` — desktop table and mobile cards show **Created by** (quote/order creator name) on Pending approval and Approved tabs
+- `lib/utils/fetch-payments-data.ts` — select `created_by_id` and enrich rows with `user_profiles.full_name`
+
+## [2026-05-29] — RBAC migration plan (deferred)
+
+### Added
+- `docs/rbac-migration/` — deferred capability-based RBAC planning folder (`README.md`, `plan.md`, placeholders for Phase 0)
+
+### Changed
+- Moved RBAC migration plan from `docs/rbac-migration-plan.md` → `docs/rbac-migration/plan.md`
+- `docs/rbac.md` — link to `docs/rbac-migration/` folder
+
 ## [2026-05-29] — Security audit fixes (API auth, RLS, rate limits)
 
 ### Added
