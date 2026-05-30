@@ -3,6 +3,31 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-29] — Security audit fixes (API auth, RLS, rate limits)
+
+### Added
+- `lib/auth/require-page-access.ts` — mirrors `proxy.ts` page RBAC on CRM and related API routes
+- `lib/security/rate-limit.ts`, `lib/security/get-client-ip.ts`, `lib/security/enforce-route-rate-limit.ts` — IP rate limits on public quote and auth endpoints
+- `lib/utils/lead-access.ts` — `canMutateLead`, `canClaimLead`, `canAcquireLeadLock`
+- `supabase/migrations/096_security_hardening.sql` — RLS on `ticket_shipping_destinations`; tighten `customers`, `leads`, `activities`, `company_settings`; lock sequence RPCs; `security_invoker` on `user_profiles_with_role`
+
+### Changed
+- Lead mutations (`PATCH`, `claim`, `hold`, `lock`) — object-level authorization aligned with `canReadLead` / scoped-tab helpers
+- Customer and CRM APIs — require `/crm` (or `/quotes` for shipping addresses) page permission
+- `GET /api/dashboard/kpis` — admin metrics branch restricted to `admin` role only (accountant uses `/api/payments/counts`)
+- `POST /api/leads/manual` — SDR and admin only with `/leads` page permission
+- `GET /api/activities?include_linked_lead=true` — `canReadLead()` on linked lead before merge
+- `PATCH /api/admin/company` — remittance fields (bank/Zelle) admin-only via API
+- `components/admin/payment-section.tsx` — load/save remittance via `/api/admin/company` (no direct Supabase client)
+- Public quote routes + `auth/change-password`, `auth/mfa-trust` — rate limiting (429)
+
+### Docs
+- `docs/security.md` — updated auth model, rate limits, RLS 096
+- `docs/rbac.md` — API matrix, RLS matrix, `requirePageAccess`
+- `docs/schema.md` — migration 096 policies
+- `docs/api-contract.md` — auth helpers, lead/customer/company endpoints
+- `docs/architecture.md`, `docs/session-summary.md`, `docs/feature-specs/crm.md`, `docs/types.md`
+
 ## [2026-05-29] — Line attachment lifecycle: line ↔ first SKU + Storage cleanup
 
 ### Changed

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import {
   fetchLeadsSalesTabCounts,
   fetchLeadsWorkspace,
@@ -12,6 +13,9 @@ import {
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/sales");
+  if (pageDeny) return pageDeny;
 
   const params = request.nextUrl.searchParams;
   const tab = params.get("tab") ?? "pipeline";

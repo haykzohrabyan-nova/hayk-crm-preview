@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireAnyPageAccess } from "@/lib/auth/require-page-access";
 import { dedupeShipToAddresses } from "@/lib/utils/address";
 
 /** GET /api/customers/[id]/shipping-addresses — distinct past ship-to addresses from tickets. */
@@ -8,8 +9,11 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requireAnyPageAccess(userId!, roleName, ["/crm", "/quotes"]);
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const admin = createAdminClient();

@@ -266,7 +266,9 @@ Single-row `company_settings` table. Used for invoice/PDF headers and quote form
 
 **API calls:**
 - `GET /api/admin/company` — all authenticated staff (MFA); **admin receives full row**; other roles receive tax rate, high-value threshold, rush surcharge %, and idle timeout only (no bank/Zelle fields)
-- `PATCH /api/admin/company` — admin only
+- `PATCH /api/admin/company` — admin only (includes bank / Zelle remittance fields)
+
+**Payment tab (`PaymentSection`):** loads and saves remittance via `GET/PATCH /api/admin/company` only — not the browser Supabase client. RLS migration **096** denies direct `company_settings` SELECT for non-admin roles.
 
 Payment remittance (bank / Zelle) is edited on **Admin → Settings → Payment** and exposed to customers on `/q/[token]` via the public quotes API — not via the filtered staff `GET`.
 

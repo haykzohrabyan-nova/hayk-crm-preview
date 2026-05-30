@@ -5,11 +5,15 @@ import {
   fetchTicketAttachmentBytes,
 } from "@/lib/utils/ticket-line-files";
 import { buildPublicQuoteFileContentSecurityPolicy } from "@/lib/security/content-security-policy";
+import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
 
 type Params = { params: Promise<{ token: string; fileId: string }> };
 
 // GET /api/public/quotes/[token]/files/[fileId] — stream file for preview (inline) or ?download=1
 export async function GET(request: NextRequest, { params }: Params) {
+  const rateLimited = enforcePublicQuoteRateLimit(request, "files");
+  if (rateLimited) return rateLimited;
+
   const { token, fileId } = await params;
 
   if (!token?.trim() || !fileId?.trim()) {

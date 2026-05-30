@@ -643,7 +643,8 @@ Returned as `{ error: string, code: string }` with HTTP status:
 | `401` | `UNAUTHENTICATED` | No valid session (`requireSession()`) |
 | `403` | `MFA_SETUP_REQUIRED` | TOTP not enrolled (`user_profiles.mfa_required = true`) |
 | `403` | `MFA_VERIFY_REQUIRED` | Session AAL1 — must verify at `/verify-2fa` |
-| `403` | `FORBIDDEN` | Authenticated but wrong role or out-of-scope resource |
+| `403` | `FORBIDDEN` | Authenticated but wrong role, page permission, or out-of-scope resource |
+| `429` | `RATE_LIMITED` | Public quote or auth endpoint rate limit exceeded |
 | `404` | `NOT_FOUND` | Resource missing or no access (ticket scope) |
 
 Full auth model: **`docs/security.md`**.

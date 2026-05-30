@@ -5,6 +5,7 @@ import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-ord
 import { computePublicPaymentDueAmount } from "@/lib/utils/invoice-payment-summary";
 import { notifyPublicQuoteUpdated } from "@/lib/integrations/notify-public-quote-updated";
 import { randomUUID } from "crypto";
+import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
 
 // POST /api/public/quotes/[token]/submit-payment
 // Quote stays quote until payment is recorded (cash) or accountant confirms (evidence).
@@ -14,6 +15,9 @@ type Params = { params: Promise<{ token: string }> };
 const EVIDENCE_REQUIRED_CHANNELS = new Set(["wire", "ach", "zelle", "check", "card"]);
 
 export async function POST(request: NextRequest, { params }: Params) {
+  const rateLimited = enforcePublicQuoteRateLimit(request, "submit-payment");
+  if (rateLimited) return rateLimited;
+
   const { token } = await params;
   if (!token) {
     return NextResponse.json({ error: "Missing token." }, { status: 400 });

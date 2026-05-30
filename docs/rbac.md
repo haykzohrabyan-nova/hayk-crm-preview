@@ -3,9 +3,9 @@
 Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are seeded and cannot be deleted. Admin can create additional custom roles and assign page access to each via the Settings → Roles tab.
 
 **Enforcement layers:**
-1. **`proxy.ts`** — reads role permissions from DB on every request; redirects unauthorized roles
-2. **Route Handlers** — `current_user_role()` DB function for secondary enforcement
-3. **Supabase RLS** — database-level row filtering regardless of who calls the API
+1. **`proxy.ts`** — reads role permissions from DB on every **page** request; redirects unauthorized roles
+2. **Route Handlers** — `requireSession()` / `requireAdmin()` + object checks (`canReadLead`, `canAccessTicket`, …) + **`requirePageAccess()`** mirroring page RBAC on sensitive APIs
+3. **Supabase RLS** — database-level row filtering for direct browser/realtime Supabase client access
 
 ---
 
@@ -90,25 +90,26 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 
 ## API Endpoint Access Matrix
 
-All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Admin-only routes also call **`requireAdmin()`**. See **`docs/security.md`**.
+All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Admin-only routes also call **`requireAdmin()`**. CRM, leads workspace, and sales pipeline routes also call **`requirePageAccess()`** for the matching page route. See **`docs/security.md`**.
 
-| Endpoint | SDR | Sales | Admin |
-|----------|:---:|:-----:|:-----:|
-| `GET /api/leads/workspace` | ✓ | ✓ (filtered) | ✓ (all) |
-| `POST /api/leads/manual` | ✓ | ✗ | ✓ |
-| `GET /api/leads/[id]` | ✓ | ✓ | ✓ |
-| `PATCH /api/leads/[id]` | ✓ | ✓ | ✓ |
-| `POST /api/leads/[id]/lock` | ✓ | ✓ | ✓ (no lock acquired for admin View) |
-| `POST /api/leads/[id]/unlock` | ✓ (own lock) | ✓ (own lock) | ✓ (any lock) |
-| `POST /api/leads/[id]/hold` | ✓ | ✓ | ✓ |
-| `POST /api/leads/[id]/resume` | ✓ | ✓ | ✓ |
-| `POST /api/leads/[id]/claim` | ✗ | ✓ | ✓ |
-| `POST /api/leads/[id]/reassign` | ✗ | ✗ | ✓ |
-| `GET /api/customers/lookup` | ✓ | ✓ | ✓ |
-| `GET /api/customers/companies` | ✓ | ✓ | ✓ |
-| `GET /api/customers/[id]` | ✓ | ✓ | ✓ |
-| `PATCH /api/customers/[id]` | ✓ | ✓ | ✓ |
-| `POST /api/customers/[id]/merge` | ✗ | ✓ | ✓ |
+| Endpoint | SDR | Sales | Admin | Notes |
+|----------|:---:|:-----:|:-----:|-------|
+| `GET /api/leads/workspace/*` | ✓ | ✗ | ✓ | Requires `/leads` page permission |
+| `GET /api/leads/sales/*` | ✗ | ✓ | ✓ | Requires `/sales` page permission |
+| `POST /api/leads/manual` | ✓ | ✗ | ✓ | SDR/admin only + `/leads` permission |
+| `GET /api/leads/[id]` | ✓ | ✓ | ✓ | `canReadLead()` |
+| `PATCH /api/leads/[id]` | ✓ | ✓ | ✓ | `canMutateLead()` + lock/rejected guards |
+| `POST /api/leads/[id]/lock` | ✓ | ✓ | ✓ | `canAcquireLeadLock()`; admin no lock in UI |
+| `POST /api/leads/[id]/unlock` | ✓ (own lock) | ✓ (own lock) | ✓ (any lock) | |
+| `POST /api/leads/[id]/hold` | ✓ | ✓ | ✓ | Scoped-tab helpers (SDR/Sales) |
+| `POST /api/leads/[id]/resume` | ✓ | ✓ | ✓ | Scoped-tab helpers |
+| `POST /api/leads/[id]/claim` | ✗ | ✓ | ✓ | `canClaimLead()` + `/sales` permission |
+| `POST /api/leads/[id]/reassign` | ✗ | ✗ | ✓ | |
+| `GET /api/crm/page-data` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
+| `GET /api/customers`, lookup, `[id]` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
+| `GET /api/customers/[id]/shipping-addresses` | ✓ | ✓ | ✓ | Requires `/crm` or `/quotes` permission |
+| `PATCH /api/customers/[id]` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
+| `POST /api/customers/[id]/merge` | ✗ | ✓ | ✓ | |
 | `GET /api/tickets` | ✓ (own) | ✓ (own + all routed) | ✓ (all) |
 | `POST /api/tickets` | ✓ | ✓ | ✓ |
 | `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | Accountant: evidence review OR in_production/completed |
@@ -131,12 +132,12 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET /api/activities` | ✓ | ✓ | ✓ |
 | `GET /api/activity` | ✓ | ✓ | ✓ |
 | `POST /api/activity` | ✓ | ✓ | ✓ |
-| `GET /api/dashboard/kpis` | ✓ | ✓ | ✗ | ✓ | SDR/Sales/Admin only; respects `dashboard_values_hidden` |
+| `GET /api/dashboard/kpis` | ✓ | ✓ | ✓ | ✗ | SDR/Sales/Admin branches only; accountant → `403` (uses `/api/payments/counts`) |
 | `GET /api/user/dashboard-privacy` | ✓ | ✓ | ✓ | ✓ | Own profile — read hide/show preference |
 | `PATCH /api/user/dashboard-privacy` | ✓ | ✓ | ✓ | ✓ | Own profile — toggle dashboard values privacy |
 | `POST /api/outreach/send` | ✓ | ✓ | ✓ |
 | `GET /api/admin/company` | ✓ (safe fields) | ✓ (safe fields) | ✓ (full row) | Non-admin: tax rate, thresholds, idle timeout only |
-| `PATCH /api/admin/company` | ✗ | ✗ | ✓ |
+| `PATCH /api/admin/company` | ✗ | ✗ | ✓ | Includes bank/Zelle remittance fields |
 | `GET /api/admin/product-types` | ✓ | ✓ | ✓ | Authenticated + MFA; inactive types included |
 | `POST /api/admin/product-types` | ✗ | ✗ | ✓ |
 | `PATCH/DELETE /api/admin/product-types/[id]` | ✗ | ✗ | ✓ |
@@ -154,18 +155,21 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 
 ## Database RLS Matrix
 
-| Table | SDR | Sales | Admin |
-|-------|-----|-------|-------|
-| `user_profiles` | Read own | Read own | Read + Write all |
-| `customers` | Read + Write | Read + Write | Read + Write all |
-| `leads` | Read + Write all | Read routed + owned | Read + Write all |
-| `job_tickets` | Read + Write own | Read + Write own | Read + Write all |
-| `activities` | Read + Insert | Read + Insert | Read + Insert all |
-| `notifications` | Read + Update own | Read + Update own | Read + Write all (admin broadcasts) |
-| `lookup_values` | Read active | Read active | Read all + Write |
-| `product_types` / `materials` | Read all | Read all | Read + Write all |
-| `company_settings` | Read (DB); API filters bank for non-admin | Read (DB); API filters bank | Read + Write |
-| `mfa_trusted_devices` | No client access | No client access | No client access (service role only) |
+Migration **096** (May 2026) tightened several policies. Route Handlers remain the primary gate (service role); RLS is defence-in-depth for browser/realtime client.
+
+| Table | SDR | Sales | Admin | Accountant |
+|-------|-----|-------|-------|------------|
+| `user_profiles` | Read own | Read own | Read + Write all | Read own |
+| `customers` | Read + Write | Read + Write | Read + Write all | **No direct access** |
+| `leads` | Read all; UPDATE scoped | Read routed + owned; UPDATE scoped | Read + UPDATE all | No direct access |
+| `job_tickets` | Read + Write own | Read + Write own + routed | Read + Write all | Read via ticket policies (detail) |
+| `activities` | Read + Insert | Read + Insert | Read + Insert all | Read + Insert |
+| `ticket_shipping_destinations` | **No client access** | **No client access** | **No client access** | **No client access** |
+| `notifications` | Read + Update own | Read + Update own | Read + Write all | Read + Update own |
+| `lookup_values` | Read active | Read active | Read all + Write | Read active |
+| `product_types` / `materials` | Read all | Read all | Read + Write all | Read all |
+| `company_settings` | **No direct SELECT** (API safe subset) | **No direct SELECT** | SELECT + UPDATE (admin policy) | **No direct SELECT** |
+| `mfa_trusted_devices` | No client access | No client access | No client access | No client access |
 
 ---
 
@@ -177,7 +181,7 @@ The existing `proxy.ts` enforces on **pages** (not `/api/*`):
 2. No TOTP enrolled → redirect to `/setup-2fa` *(skipped when `user_profiles.mfa_required = false`)*
 3. Session not AAL2 → redirect to `/verify-2fa` *(skipped when trusted-device cookie valid or `mfa_required = false`)*
 
-**API routes** mirror steps 1–3 via `requireSession()` in every Route Handler. See **`docs/security.md`**.
+**API routes** mirror steps 1–3 via `requireSession()` in every Route Handler, plus **`requirePageAccess()`** on CRM/leads/sales list endpoints. See **`docs/security.md`**.
 
 Admins can toggle **`mfa_required`** per user on **Admin → Users** (confirmation dialog). Default is `true` for all users. Admins cannot disable their own 2FA.
 

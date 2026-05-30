@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Save } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { validatePhone } from "@/lib/utils/phone";
@@ -100,27 +99,23 @@ export function PaymentSection() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("company_settings")
-      .select(
-        "bank_name, bank_account_name, bank_account_number, bank_routing_number, zelle_phone, zelle_email",
-      )
-      .eq("id", 1)
-      .single()
-      .then(({ data }) => {
-        if (data) {
+    fetch("/api/admin/company")
+      .then((r) => r.json())
+      .then((data) => {
+        const settings = data.settings;
+        if (settings) {
           setCfg({
-            bank_name: data.bank_name ?? "",
-            bank_account_name: data.bank_account_name ?? "",
-            bank_account_number: data.bank_account_number ?? "",
-            bank_routing_number: data.bank_routing_number ?? "",
-            zelle_phone: data.zelle_phone ?? "",
-            zelle_email: data.zelle_email ?? "",
+            bank_name: settings.bank_name ?? "",
+            bank_account_name: settings.bank_account_name ?? "",
+            bank_account_number: settings.bank_account_number ?? "",
+            bank_routing_number: settings.bank_routing_number ?? "",
+            zelle_phone: settings.zelle_phone ?? "",
+            zelle_email: settings.zelle_email ?? "",
           });
         }
         setLoading(false);
-      });
+      })
+      .catch(() => setLoading(false));
   }, []);
 
   function validateFields(): FieldErrors {
@@ -146,24 +141,24 @@ export function PaymentSection() {
     setError(null);
     setSaved(false);
 
-    const supabase = createClient();
-    const { error: err } = await supabase
-      .from("company_settings")
-      .update({
+    const res = await fetch("/api/admin/company", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         bank_name: cfg.bank_name || null,
         bank_account_name: cfg.bank_account_name || null,
         bank_account_number: cfg.bank_account_number || null,
         bank_routing_number: cfg.bank_routing_number || null,
         zelle_phone: cfg.zelle_phone || null,
         zelle_email: cfg.zelle_email || null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", 1);
+      }),
+    });
 
     setSaving(false);
 
-    if (err) {
-      setError(err.message);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(typeof data.error === "string" ? data.error : "Failed to save payment settings.");
     } else {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);

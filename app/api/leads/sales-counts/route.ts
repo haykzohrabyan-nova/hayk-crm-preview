@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { fetchLeadsSalesTabCounts } from "@/lib/utils/leads-workspace-query";
 
 export async function GET() {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/sales");
+  if (pageDeny) return pageDeny;
 
   const admin = createAdminClient();
 

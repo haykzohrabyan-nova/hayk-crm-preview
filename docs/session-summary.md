@@ -1,6 +1,33 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 29, 2026
-**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–29: payments Payment For UX, quote Route to Sales, leads Follow Up Later, line attachment lifecycle, public portal Realtime, file preview modal**.
+**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 29: security hardening (API auth, RLS 096, rate limits)** + line attachment lifecycle, public portal Realtime, file preview modal.
+
+---
+
+## May 29, 2026 — Security audit hardening (API + RLS 096)
+
+### API authorization
+- **`requirePageAccess()`** — mirrors `proxy.ts` page RBAC on CRM, leads workspace, sales pipeline routes
+- **Lead IDOR fixes** — `canMutateLead`, `canClaimLead`, `canAcquireLeadLock` on PATCH/claim/hold/lock
+- **Customer/CRM** — `/crm` page permission required; shipping addresses allow `/crm` or `/quotes`
+- **Dashboard KPIs** — admin metrics branch admin-only; accountant uses `/api/payments/counts`
+- **`POST /api/leads/manual`** — SDR/admin only
+- **Activities** — linked lead merge checks `canReadLead()` on linked lead
+
+### Rate limiting
+- Public quote routes: 120/min per IP (`429 RATE_LIMITED`)
+- Auth routes (`change-password`, `mfa-trust`): 20/min per IP
+
+### Database (migration **096** — applied)
+- RLS on `ticket_shipping_destinations` (deny direct client access)
+- Tightened `customers`, `leads` UPDATE, `activities` SELECT, `company_settings` SELECT
+- Sequence RPCs service-role only; `user_profiles_with_role` `security_invoker`
+
+### UI
+- `PaymentSection` — remittance load/save via `/api/admin/company` (not browser Supabase client)
+
+### Docs synced
+- `security.md`, `rbac.md`, `schema.md`, `api-contract.md`, `architecture.md`, `CHANGELOG.md`
 
 ---
 

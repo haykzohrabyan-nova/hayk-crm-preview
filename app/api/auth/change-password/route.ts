@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { enforceAuthRateLimit } from "@/lib/security/enforce-route-rate-limit";
 
 export async function POST(request: NextRequest) {
+  const rateLimited = enforceAuthRateLimit(request, "change-password");
+  if (rateLimited) return rateLimited;
+
   const body = await request.json().catch(() => ({}));
   const { new_password } = body as { new_password?: string };
 

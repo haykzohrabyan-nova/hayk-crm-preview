@@ -1,25 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
+import { canClaimLead } from "@/lib/utils/lead-access";
 
 export async function POST(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  if (roleName !== "sales" && roleName !== "admin") {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/sales");
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const admin = createAdminClient();
 
   const { data: current } = await admin
     .from("leads")
-    .select("sales_owner_id, status, customer_id")
+    .select("sales_owner_id, status, sales_status, customer_id")
     .eq("id", id)
     .single();
 
   if (!current) {
     return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
+  }
+
+  if (!canClaimLead(current, roleName)) {
+    return NextResponse.json(
+      { error: "This lead is not available to claim.", code: "FORBIDDEN" },
+      { status: 403 },
+    );
   }
 
   if (current.sales_owner_id) {

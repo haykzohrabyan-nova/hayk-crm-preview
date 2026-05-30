@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { canAcquireLeadLock } from "@/lib/utils/lead-access";
 
 export async function POST(
   _request: NextRequest,
@@ -9,17 +10,27 @@ export async function POST(
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
+  if (roleName !== "sdr" && roleName !== "sales" && roleName !== "admin") {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
+
   const { id } = await params;
   const admin = createAdminClient();
 
   const { data: lead, error: fetchErr } = await admin
     .from("leads")
-    .select("locked_by_id, locked_at, customer_id")
+    .select(
+      "locked_by_id, locked_at, customer_id, status, sales_status, sdr_id, sales_owner_id, prev_status",
+    )
     .eq("id", id)
     .single();
 
   if (fetchErr || !lead) {
     return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
+  }
+
+  if (!canAcquireLeadLock(lead, userId!, roleName)) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
   // Already locked by another user

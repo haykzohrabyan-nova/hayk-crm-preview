@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
 import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
@@ -9,8 +10,11 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/crm");
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const admin = createAdminClient();
@@ -53,8 +57,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/crm");
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));

@@ -36,7 +36,7 @@ app/
     │
     ├── sales/page.tsx                ✓ EXISTS (Sales + Admin only)
     │
-    ├── crm/page.tsx                  ✓ EXISTS (all roles)
+    ├── crm/page.tsx                  ✓ EXISTS (SDR, Sales, Admin)
     │
     ├── quotes/
     │   ├── page.tsx                  ✓ EXISTS — Quoted Requests list
@@ -378,7 +378,7 @@ Row click → `/completed/[id]`. Mount: `GET /api/completed/page-data`; counts-o
 
 ### `/crm` — Customer registry
 
-**List API:** `GET /api/crm/page-data` — paginated (default 25 rows); server-side search, status, heat filters. **`GET /api/customers`** used only for merge search and Add Customer (not the list page).
+**List API:** `GET /api/crm/page-data` — paginated (default 25 rows); server-side search, status, heat filters; requires `/crm` page permission. **`GET /api/customers`** used only for merge search and Add Customer (same permission).
 
 **Header:** **Add Customer** button (modal → `POST /api/customers`, no lead). Live updates via Realtime — no manual Refresh button. **Pagination:** `ListPagination` at bottom (25 / 50 / 100).
 

@@ -107,6 +107,16 @@ export async function GET(request: NextRequest) {
   ];
 
   if (ticket.linked_lead_id) {
+    const { data: linkedLead } = await admin
+      .from("leads")
+      .select("status, sales_status, sdr_id, sales_owner_id, locked_by_id, prev_status")
+      .eq("id", ticket.linked_lead_id)
+      .single();
+
+    if (!linkedLead || !canReadLead(linkedLead, userId, roleName)) {
+      return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+    }
+
     promises.push(
       Promise.resolve(
         admin

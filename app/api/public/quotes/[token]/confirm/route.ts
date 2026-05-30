@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket } from "@/lib/utils/maybe-auto-release-production";
 import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
+import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
 
 // POST /api/public/quotes/[token]/confirm
 // No auth required — customer clicks "Confirm & Accept" on the public quote page.
@@ -9,7 +10,10 @@ import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-ord
 
 type Params = { params: Promise<{ token: string }> };
 
-export async function POST(_request: NextRequest, { params }: Params) {
+export async function POST(request: NextRequest, { params }: Params) {
+  const rateLimited = enforcePublicQuoteRateLimit(request, "confirm");
+  if (rateLimited) return rateLimited;
+
   const { token } = await params;
 
   if (!token) {

@@ -522,6 +522,8 @@ Multiple ship-to blocks per ticket. Replaces a single `quote_shipping` + `ship_t
 
 **Sync:** `syncTicketShippingDestinations()` in `lib/utils/ticket-shipping-destinations.ts` on ticket `POST`/`PATCH`. **Read:** `fetchTicketShippingDestinations()`; UI/PDF/public API use `resolveTicketShippingDestinationsForDisplay()` (DB rows, else legacy `ship_to_*` on `job_tickets`).
 
+**RLS (migration 096):** RLS enabled with **no policies** — all access via service-role Route Handlers only. Direct browser/PostgREST access is denied.
+
 #### QuoteSku (TypeScript shape — form math only)
 
 `QuoteSku` in `lib/utils/ticket-math.ts` remains the in-form shape; persisted rows use the tables above. Legacy JSONB field **`quote_skus`** on `job_tickets` was removed in migration 089.
@@ -915,6 +917,7 @@ $$;
 
 -- Atomic order sequence increment (migration 046)
 -- Called by POST /api/tickets via service-role client to generate ORD-YYYY-NNN codes.
+-- Migration 096: EXECUTE revoked from public/anon/authenticated — service_role only.
 create or replace function public.increment_order_sequence(p_year int)
 returns int language plpgsql security definer as $$
 declare v_next int;
@@ -964,18 +967,26 @@ create policy "users_update_own_profile" on public.user_profiles
   for update using (id = auth.uid());
 ```
 
-### `customers` policies
+### `customers` policies (migration **096**)
 
 ```sql
 alter table public.customers enable row level security;
 
--- All authenticated users can read customers (needed for lookup during lead creation)
-create policy "authenticated_read_customers" on public.customers
-  for select using (auth.uid() is not null);
+-- CRM roles only (SDR, Sales, Admin) — not accountant
+create policy "crm_roles_read_customers" on public.customers
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.user_profiles up
+      join public.roles r on r.id = up.role_id
+      where up.id = auth.uid() and r.name in ('sdr', 'sales', 'admin')
+    )
+  );
 
--- SDR and Admin can insert/update customers
-create policy "sdr_admin_write_customers" on public.customers
-  for all using (public.current_user_role() in ('sdr', 'admin'));
+create policy "crm_roles_write_customers" on public.customers
+  for all to authenticated
+  using (/* same role check */)
+  with check (/* same role check */);
 ```
 
 ### `leads` policies
@@ -1002,9 +1013,10 @@ create policy "admin_read_all_leads" on public.leads
 create policy "sdr_admin_insert_leads" on public.leads
   for insert with check (public.current_user_role() in ('sdr', 'admin'));
 
--- SDR, Sales, Admin can update leads they have access to
-create policy "authenticated_update_leads" on public.leads
-  for update using (auth.uid() is not null);
+-- Scoped UPDATE per role (migration 096 — replaces authenticated_update_leads)
+create policy "admin_update_all_leads" on public.leads for update /* admin EXISTS */;
+create policy "sdr_update_leads" on public.leads for update /* sdr + pool/owned scope */;
+create policy "sales_update_leads" on public.leads for update /* sales + routed/owned scope */;
 
 -- ⚠️ NO DELETE POLICY — intentional business rule.
 -- Leads and the sales pipeline are permanent records. Close a lead by
@@ -1061,9 +1073,17 @@ create policy "owner_admin_update_tickets" on public.job_tickets
 ```sql
 alter table public.activities enable row level security;
 
--- All authenticated users can read activities
-create policy "authenticated_read_activities" on public.activities
-  for select using (auth.uid() is not null);
+-- Staff roles only (migration 096)
+create policy "staff_read_activities" on public.activities
+  for select to authenticated
+  using (
+    exists (
+      select 1 from public.user_profiles up
+      join public.roles r on r.id = up.role_id
+      where up.id = auth.uid()
+        and r.name in ('sdr', 'sales', 'admin', 'accountant')
+    )
+  );
 
 -- All authenticated users can insert activities
 create policy "authenticated_insert_activities" on public.activities
@@ -1112,14 +1132,15 @@ create policy "admin_all_materials"              on public.materials            
 create policy "admin_all_product_material_links" on public.product_material_links for all using (public.current_user_role() = 'admin');
 ```
 
-### `company_settings` policies
+### `company_settings` policies (migration **096**)
 
 ```sql
 alter table public.company_settings enable row level security;
 
--- All authenticated users can read (quote forms need tax rate + threshold at runtime)
-create policy "authenticated_read_company_settings" on public.company_settings
-  for select using (auth.uid() is not null);
+-- Admin-only SELECT (non-admin reads safe subset via GET /api/admin/company)
+create policy "admin_read_company_settings" on public.company_settings
+  for select to authenticated
+  using (/* admin role EXISTS */);
 
 -- Admin only can update
 create policy "admin_update_company_settings" on public.company_settings
@@ -1127,6 +1148,8 @@ create policy "admin_update_company_settings" on public.company_settings
 
 -- No INSERT / DELETE — single row seeded in migration 045, never changed
 ```
+
+**App access:** Non-admin quote forms read tax rate / HVT via `GET /api/admin/company` (filtered response). Remittance fields (bank, Zelle) are admin-only on GET/PATCH. `PaymentSection` uses the API, not direct Supabase client.
 
 ### `order_sequence_counters` policies
 

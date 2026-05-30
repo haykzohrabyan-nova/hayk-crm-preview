@@ -23,3 +23,45 @@ export function canReadLead(
   if (roleName === "sdr" && !lead.locked_by_id) return true;
   return false;
 }
+
+/** Whether the session user may mutate a lead (PATCH and similar). Same scope as read. */
+export function canMutateLead(
+  lead: Parameters<typeof canReadLead>[0],
+  userId: string | null,
+  roleName: string | null,
+): boolean {
+  return canReadLead(lead, userId, roleName);
+}
+
+/** Sales (or admin) may claim an unowned lead in the sales pipeline. */
+export function canClaimLead(
+  lead: {
+    status: string;
+    sales_owner_id: string | null;
+    sales_status: string | null;
+  },
+  roleName: string,
+): boolean {
+  if (lead.sales_owner_id) return false;
+  if (roleName === "admin") {
+    return lead.status === "Routed to Sales" || lead.sales_status != null;
+  }
+  if (roleName !== "sales") return false;
+  return lead.status === "Routed to Sales";
+}
+
+/** SDR / Sales / Admin may acquire a lock; scope matches each role's pipeline. */
+export function canAcquireLeadLock(
+  lead: Parameters<typeof canReadLead>[0],
+  userId: string,
+  roleName: string,
+): boolean {
+  if (roleName === "admin") return true;
+  if (roleName === "sdr") return canReadLead(lead, userId, roleName);
+  if (roleName === "sales") {
+    if (lead.sales_owner_id === userId) return true;
+    if (!lead.sales_owner_id && lead.status === "Routed to Sales") return true;
+    return false;
+  }
+  return false;
+}

@@ -7,9 +7,13 @@ import {
   MFA_TRUST_COOKIE,
   revokeMfaTrustFromRequest,
 } from "@/lib/auth/mfa-trust";
+import { enforceAuthRateLimit } from "@/lib/security/enforce-route-rate-limit";
 
 // POST /api/auth/mfa-trust — issue 30-day trusted-device cookie after successful 2FA
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const rateLimited = enforceAuthRateLimit(request, "mfa-trust-post");
+  if (rateLimited) return rateLimited;
+
   const { supabase } = await createServerSupabase();
 
   const {

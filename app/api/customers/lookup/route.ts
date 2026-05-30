@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { digitsOnly } from "@/lib/utils/phone";
 
 export async function GET(request: NextRequest) {
-  const { errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/crm");
+  if (pageDeny) return pageDeny;
 
   const { searchParams } = request.nextUrl;
   const phone = searchParams.get("phone")?.trim() ?? "";

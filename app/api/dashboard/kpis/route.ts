@@ -122,6 +122,10 @@ export async function GET(request: NextRequest) {
     });
   }
 
+  if (roleName !== "admin") {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
+
   // ── Admin ─────────────────────────────────────────────────────────────────
   const adminPreset = request.nextUrl.searchParams.get("admin_preset") ?? "last_month";
   const dateFrom = request.nextUrl.searchParams.get("date_from");

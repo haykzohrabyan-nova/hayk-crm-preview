@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -10,6 +10,7 @@ import type { CompanySettings } from "@/lib/types";
 import { InvoicePDF } from "@/lib/pdf/invoice-pdf";
 import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { getChannelLabel } from "@/lib/utils/compute-checkout";
+import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -17,9 +18,12 @@ export const dynamic = "force-dynamic";
 // No auth required — customer-facing PDF download from the public quote page.
 
 export async function GET(
-  _req: Request,
+  request: NextRequest,
   { params }: { params: Promise<{ token: string }> }
 ) {
+  const rateLimited = enforcePublicQuoteRateLimit(request, "pdf");
+  if (rateLimited) return rateLimited;
+
   const { token } = await params;
 
   const admin = createAdminClient();

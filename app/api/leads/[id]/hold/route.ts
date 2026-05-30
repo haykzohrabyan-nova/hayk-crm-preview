@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { sdrScopedLeadActionError } from "@/lib/utils/lead-sdr-scoped-tab";
+import { salesScopedLeadActionError } from "@/lib/utils/lead-sales-scoped-tab";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   const { id } = await params;
@@ -23,7 +25,7 @@ export async function POST(
   const admin = createAdminClient();
   const { data: current, error: fetchErr } = await admin
     .from("leads")
-    .select("status, sales_status")
+    .select("status, sales_status, sdr_id, locked_by_id, sales_owner_id")
     .eq("id", id)
     .single();
 
@@ -32,6 +34,12 @@ export async function POST(
   }
 
   const isSales = role === "sales";
+  const scopeError = isSales
+    ? salesScopedLeadActionError(current, userId!, roleName)
+    : sdrScopedLeadActionError(current, userId!, roleName);
+  if (scopeError) {
+    return NextResponse.json({ error: scopeError, code: "FORBIDDEN" }, { status: 403 });
+  }
   const update: Record<string, unknown> = {
     hold_reason,
     hold_notes: hold_notes ?? null,

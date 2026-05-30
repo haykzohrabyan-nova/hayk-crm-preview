@@ -207,7 +207,7 @@ BazarCRM/
 │   │       ├── pages/route.ts            ✓ GET navigable pages list
 │   │       ├── lookups/route.ts          ✓ GET all lookup values (incl. inactive)
 │   │       ├── lookups/[id]/route.ts     ✓ POST create / PATCH update / DELETE lookup value
-│   │       ├── company/route.ts          ✓ GET/PATCH company_settings (admin read; write admin-only)
+│   │       ├── company/route.ts          ✓ GET/PATCH company_settings (admin PATCH incl. remittance; GET filtered for non-admin)
 │   │       ├── product-types/route.ts    ✓ GET/POST product types
 │   │       ├── product-types/[id]/route.ts          ✓ PATCH/DELETE product type
 │   │       ├── product-types/[id]/materials/[matId]/ ✓ POST link / DELETE unlink material
@@ -319,9 +319,15 @@ BazarCRM/
 │   │   ├── require-session.ts            ✓ Route Handler auth + MFA (AAL2 / trust cookie)
 │   │   ├── session-cache.ts              ✓ 3 s in-process memoization for requireSession()
 │   │   ├── require-admin.ts              ✓ Admin role gate (builds on requireSession)
+│   │   ├── require-page-access.ts        ✓ Mirrors proxy.ts page RBAC on API routes (May 2026)
 │   │   ├── mfa-required.ts               ✓ Per-user MFA requirement flag
 │   │   ├── mfa-trust.ts                  ✓ Trusted-device cookie (server) + sessionStorage bridge (client)
 │   │   └── remember-mfa-client.ts        ✓ "Remember this device" flag (sessionStorage only)
+│   ├── security/
+│   │   ├── content-security-policy.ts    ✓ CSP builders (app + public quote routes)
+│   │   ├── rate-limit.ts                 ✓ In-process sliding-window limits (May 2026)
+│   │   ├── get-client-ip.ts              ✓ Client IP from x-forwarded-for
+│   │   └── enforce-route-rate-limit.ts   ✓ Public quote + auth rate limit helpers
 │   ├── types/index.ts                    ✓ Shared TypeScript types (Lead, Customer, Activity,
 │   │                                       JobTicket, QuoteSku, LookupValue, etc.)
 │   └── utils/
@@ -352,14 +358,14 @@ BazarCRM/
 │       ├── ticket-list-select.ts        ✓ Slim quote/orders list column definitions
 │       ├── lead-list-select.ts          ✓ Slim lead workspace column definitions (reference)
 │       ├── fetch-lead.ts                ✓ Client helper — full lead fetch for drawers
-│       ├── lead-access.ts               ✓ canReadLead() — GET /api/leads/[id] authorization
+│       ├── lead-access.ts               ✓ canReadLead / canMutateLead / canClaimLead / canAcquireLeadLock
 │       ├── ticket-access.ts             ✓ canAccessTicket() / canMutateTicket() — ticket GET/PDF/print/PATCH
 │       └── email.ts                     ✓ Email utility helpers
 ├── hooks/
 │   └── use-coalesced-refresh.ts          ✓ Debounced mount + realtime refetch for list pages
 ├── supabase/
 │   ├── schema.sql                        ✓ Consolidated DDL + seeds (single file — run on fresh projects)
-│   ├── migrations/                       ✓ Incremental deltas (001–081)
+│   ├── migrations/                       ✓ Incremental deltas (001–096)
 │   └── README.md                         ✓ Setup notes
 ├── docs/                                 ✓ Feature specs + architecture + security.md
 ├── proxy.ts                              ✓ AAL2 + RBAC session enforcement (returns 503 when SUPABASE_URL missing)

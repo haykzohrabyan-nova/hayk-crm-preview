@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { parseAdminFilterUserId } from "@/lib/utils/admin-user-filter";
 import { fetchLeadsWorkspaceTabCounts } from "@/lib/utils/leads-workspace-query";
 
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/leads");
+  if (pageDeny) return pageDeny;
 
   const adminFilterUserId = parseAdminFilterUserId(request.nextUrl.searchParams, roleName);
   const admin = createAdminClient();

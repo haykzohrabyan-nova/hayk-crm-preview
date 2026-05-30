@@ -47,6 +47,12 @@ export async function PATCH(request: Request) {
     "high_value_threshold",
     "rush_surcharge_percent",
     "session_idle_timeout_minutes",
+    "bank_name",
+    "bank_account_name",
+    "bank_account_number",
+    "bank_routing_number",
+    "zelle_phone",
+    "zelle_email",
   ];
 
   const patch: Record<string, unknown> = {};

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
-import { canReadLead } from "@/lib/utils/lead-access";
+import { canReadLead, canMutateLead } from "@/lib/utils/lead-access";
 import { validateLeadInterestsPayload } from "@/lib/utils/validate-lead-product-interests";
 
 const IMMUTABLE = ["id", "created_at"];
@@ -94,12 +94,25 @@ export async function PATCH(
   // support dynamic template literals.
   const { data: current, error: fetchErr } = await admin
     .from("leads")
-    .select("status, sales_status, locked_by_id, customer_id, urgency, interests, quantities, has_design, sdr_comment, is_returning_customer, brand, source, authority")
+    .select("status, sales_status, locked_by_id, customer_id, sdr_id, sales_owner_id, prev_status, urgency, interests, quantities, has_design, sdr_comment, is_returning_customer, brand, source, authority")
     .eq("id", id)
     .single();
 
   if (fetchErr || !current) {
     return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
+  }
+
+  const scopeRow = current as unknown as {
+    status: string;
+    sales_status: string | null;
+    sdr_id: string | null;
+    sales_owner_id: string | null;
+    locked_by_id: string | null;
+    prev_status: string | null;
+  };
+
+  if (!canMutateLead(scopeRow, userId, roleName)) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
   // Terminal state guard

@@ -1,6 +1,6 @@
 # Feature Spec — CRM
 
-Route: `/crm` (all roles)
+Route: `/crm` (SDR, Sales, Admin — not Accountant). API routes require **`requirePageAccess('/crm')`** in addition to MFA session.
 
 ---
 
@@ -8,7 +8,7 @@ Route: `/crm` (all roles)
 
 The CRM is the master customer registry. Every contact who has ever been a lead — or was added directly via **Add Customer** — is tracked here. The CRM shows customers, their status (New / Known), quotes & orders, and activity timeline.
 
-**List API:** `GET /api/crm/page-data` — paginated CRM list with server-side search, status, and heat filters (May 2026). **`GET /api/customers`** remains for merge search and Add Customer flows (full filtered list, no pagination). Slim customer fields plus lightweight `lead_count` / `ticket_count` aggregates via `lib/utils/fetch-crm-data.ts`. Customers with **no leads or tickets yet** (e.g. **Add Customer** only) return safe zero aggregates — no 500. Silent refresh via `useCoalescedRefresh` on `bazaar:customers-changed`, `bazaar:leads-changed`, and `bazaar:tickets-changed` (sidebar Supabase Realtime on `customers`, `leads`, `job_tickets`; migration `083` for `customers`).
+**List API:** `GET /api/crm/page-data` — paginated CRM list with server-side search, status, and heat filters (May 2026). Requires `/crm` page permission. **`GET /api/customers`** remains for merge search and Add Customer flows (same permission). Slim customer fields plus lightweight `lead_count` / `ticket_count` aggregates via `lib/utils/fetch-crm-data.ts`.
 
 ---
 

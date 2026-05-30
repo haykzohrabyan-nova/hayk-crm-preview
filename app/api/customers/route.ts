@@ -1,14 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
 import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 import { fetchCrmCustomers, parseCrmListFilters } from "@/lib/utils/fetch-crm-data";
 
 export async function GET(request: NextRequest) {
-  const { errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/crm");
+  if (pageDeny) return pageDeny;
 
   const filters = parseCrmListFilters(request.nextUrl.searchParams);
   const admin = createAdminClient();
@@ -23,8 +27,11 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/crm");
+  if (pageDeny) return pageDeny;
 
   const body = await request.json().catch(() => ({}));
   const { first_name, last_name, email, phone, company, industry, website, authority } = body;

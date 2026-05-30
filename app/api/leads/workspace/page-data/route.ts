@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import {
   fetchLeadsWorkspace,
   fetchLeadsWorkspaceTabCounts,
@@ -12,6 +13,9 @@ import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/paginati
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+
+  const pageDeny = await requirePageAccess(userId!, roleName, "/leads");
+  if (pageDeny) return pageDeny;
 
   const searchParams = request.nextUrl.searchParams;
   const query = parseLeadsWorkspaceQuery(searchParams);

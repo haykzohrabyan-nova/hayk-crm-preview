@@ -18,9 +18,11 @@ All endpoints are Next.js 16 Route Handlers under `app/api/`. Most handlers use 
 |--------|-----|
 | `requireSession()` | Logged in + MFA complete (AAL2 or valid trusted-device cookie) |
 | `requireAdmin()` | `requireSession()` + `roleName === 'admin'` |
+| `requirePageAccess(route)` | Mirrors `proxy.ts` page RBAC — admin bypasses; checks `role_permissions` |
+| `requireAnyPageAccess(routes[])` | Pass if user has any listed page route |
 | `requireSession({ requireMfa: false })` | Sign-out / session-end only |
 
-Implemented in `lib/auth/require-session.ts` (via `lib/supabase/server.ts`) and `lib/auth/require-admin.ts`. Ticket scope: `lib/utils/ticket-access.ts` (`canAccessTicket`, `canMutateTicket`).
+Lead scope: `canReadLead`, `canMutateLead`, `canClaimLead`, `canAcquireLeadLock` in `lib/utils/lead-access.ts`. Ticket scope: `canAccessTicket`, `canMutateTicket` in `lib/utils/ticket-access.ts`.
 
 ### Error codes
 
@@ -29,7 +31,8 @@ Implemented in `lib/auth/require-session.ts` (via `lib/supabase/server.ts`) and 
 | `401` | `UNAUTHENTICATED` | No valid session |
 | `403` | `MFA_SETUP_REQUIRED` | Must enroll TOTP at `/setup-2fa` |
 | `403` | `MFA_VERIFY_REQUIRED` | Must verify TOTP at `/verify-2fa` |
-| `403` | `FORBIDDEN` | Wrong role or ticket/lead scope |
+| `403` | `FORBIDDEN` | Wrong role, page permission, or ticket/lead scope |
+| `429` | `RATE_LIMITED` | Public quote or auth endpoint rate limit exceeded |
 
 Full security model: **`docs/security.md`**.
 
@@ -449,6 +452,7 @@ Partial update of a lead. `created_at` is always stripped from the body (immutab
 - **`authority`** in the body updates **`customers.authority`** (not `leads.authority`); response includes refreshed `customer` join
 - Logs `lead_status_changed` activity if `status` or `sales_status` changes
 - **Terminal state guard:** If current `status = 'Rejected'` or `sales_status = 'Rejected'`, only Admin can apply changes. Non-admin → returns `403` with `code: 'LEAD_REJECTED_TERMINAL'`
+- **Scope guard:** `canMutateLead()` — same rules as `GET /api/leads/[id]` (`canReadLead()`). Out-of-scope → `403` `FORBIDDEN`
 - **Lock guard:** If `locked_by_id` is set to a different user, returns `409` unless the caller is Admin
 
 **Response `200`:**
@@ -464,7 +468,10 @@ Partial update of a lead. `created_at` is always stripped from the body (immutab
 
 Sales rep claims an unclaimed routed lead. Sets `sales_owner_id = current_user`, `sales_status = 'Ongoing'`. Logs `lead_sales_claimed`.
 
+**Auth:** Sales or admin only. Requires `/sales` page permission. `canClaimLead()` — lead must be unowned and `status = 'Routed to Sales'` (admin may claim any unowned sales-pipeline lead).
+
 **Response `200`:** `{ "lead": Lead }`  
+**Response `403`:** `FORBIDDEN` — wrong role, page permission, or lead not claimable  
 **Response `409`:** `ALREADY_CLAIMED` if `sales_owner_id` is already set
 
 ---
@@ -479,6 +486,7 @@ Acquires or refreshes `locked_by_id` on a lead.
 - **Sales Open** (edge case only) — normal Open on `sales_owner_id = you` skips this endpoint in `sales-page.tsx`
 
 **Business rules:**
+- **Auth:** SDR, Sales, or Admin only. `canAcquireLeadLock()` — SDR: pool/owned scope; Sales: routed unclaimed or owned; Admin: any lead
 - If `locked_by_id` is already set to a **different** user → returns `409` with the locker's name (client renders read-only mode)
 - If `locked_by_id` is the **same** user (reconnect / refresh) → refreshes `locked_at` and returns `200`
 - If `locked_by_id` is `null` → acquires lock and returns `200`
@@ -536,6 +544,8 @@ Clears `locked_by_id` and `locked_at`. Also clears `sdr_id` when used after SDR 
 
 Paginated CRM customer list. Used by `components/crm/crm-page.tsx`.
 
+**Auth:** `requireSession()` + `requirePageAccess('/crm')`. Accountant and roles without CRM page permission → `403`.
+
 **Query params:**
 
 | Param | Type | Description |
@@ -559,6 +569,8 @@ Paginated CRM customer list. Used by `components/crm/crm-page.tsx`.
 ### `GET /api/customers`
 
 Returns the CRM customer registry with lightweight per-customer aggregates. Used by merge UI search (`?search=`) and **Add Customer** flows — **not** the main CRM list page (see `GET /api/crm/page-data`).
+
+**Auth:** `requireSession()` + `requirePageAccess('/crm')`.
 
 **Query params:**
 
@@ -671,6 +683,8 @@ Create a new customer profile. Used by:
 
 Full customer profile for `/crm/customers/[id]`. Returns customer row, `lead_count`, and `customer_status`. Lead array still returned for status computation but **Lead History UI removed** from customer profile (May 2026). Quotes & Orders loaded separately via `GET /api/tickets?customer_id=…`.
 
+**Auth:** `requireSession()` + `requirePageAccess('/crm')`.
+
 **Response `200`:**
 ```json
 {
@@ -713,7 +727,7 @@ Distinct past **ship-to** addresses for a customer, derived from:
 
 Used by the New Quote / quote detail **Ship to customer** picker — **one Previous addresses dropdown per shipping destination block** (not a global picker). No separate address book table; addresses are deduped from this customer’s past shipped tickets.
 
-**Auth:** `requireSession()`.
+**Auth:** `requireSession()` + `requireAnyPageAccess(['/crm', '/quotes'])`.
 
 **Response `200`:**
 ```json
@@ -1728,7 +1742,7 @@ Update dashboard values privacy for the session user. Called after the user conf
 
 ### `GET /api/dashboard/kpis`
 
-Returns KPI metrics scoped to the current user's role and date range. **SDR**, **Sales**, and **Admin** each use a role-specific preset query param; **Accountant** does not call this route (uses `GET /api/payments/counts`).
+Returns KPI metrics scoped to the current user's role and date range. **SDR**, **Sales**, and **Admin** each use a role-specific preset query param; **Accountant** does not call this route (uses `GET /api/payments/counts`). Other roles → `403 FORBIDDEN`.
 
 When `user_profiles.dashboard_values_hidden` is `true` for the session user, the handler returns early with **`values_hidden: true`** and **no numeric metric fields** (SDR/Sales/Admin skip metric DB work).
 
@@ -2479,7 +2493,7 @@ Non-admin responses omit bank / Zelle / branding address fields.
 
 Update company settings. **Admin only** (`requireAdmin()`).
 
-**Body:** Any subset of company_settings fields (except `id`).
+**Body:** Any subset of allowed fields (except `id`), including bank / Zelle remittance columns. Used by Admin → Settings → Payment (`PaymentSection`).
 
 **Response `200`:** `{ "settings": CompanySettings }`
 

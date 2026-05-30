@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchTicketLinesBundle, lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
 import { fetchTicketShippingDestinations } from "@/lib/utils/ticket-shipping-destinations";
+import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
 
 // GET /api/public/quotes/[token]
 // No auth required — used by the public customer-facing quote page (/q/[token]).
@@ -10,6 +11,9 @@ import { fetchTicketShippingDestinations } from "@/lib/utils/ticket-shipping-des
 type Params = { params: Promise<{ token: string }> };
 
 export async function GET(_request: NextRequest, { params }: Params) {
+  const rateLimited = enforcePublicQuoteRateLimit(_request, "get");
+  if (rateLimited) return rateLimited;
+
   const { token } = await params;
 
   if (!token) {

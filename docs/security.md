@@ -24,11 +24,16 @@ Most CRM writes use the **service-role admin client** in Route Handlers (RLS byp
 | Helper | File | Behavior |
 |--------|------|----------|
 | `requireSession()` | `lib/auth/require-session.ts` | Valid session + **MFA complete** (AAL2 or valid `bazaar_mfa_trust` cookie). Uses `lib/supabase/server.ts` so expired access tokens refresh via cookie `setAll` in Route Handlers. Option `{ requireMfa: false }` for sign-out flows only. |
+| `requirePageAccess()` | `lib/auth/require-page-access.ts` | Mirrors `proxy.ts` page RBAC on API routes — admin bypasses; checks `role_permissions` for a required page route (e.g. `/crm`). |
 | `createServerSupabase()` | `lib/supabase/server.ts` | Server-only Supabase client for Route Handlers — reads and refreshes auth cookies (never import in client components). |
 | `requireAdmin()` | `lib/auth/require-admin.ts` | Calls `requireSession()` then checks `roleName === 'admin'`. Used on **all** admin-only Route Handlers — never use `requireSession()` + manual role check as a substitute. |
 | `canAccessTicket()` | `lib/utils/ticket-access.ts` | Ticket read scope — owner (`created_by_id`), SDR routed hand-off (`routed_by_id`, not when `completed`), admin, accountant, or sales on `routed` tickets. |
 | `canMutateTicket()` | `lib/utils/ticket-access.ts` | Ticket PATCH scope — owner, admin, or accountant. |
-| `canReadLead()` | `lib/utils/lead-access.ts` | Lead GET scope by role and ownership. Also used in `GET /api/leads/[id]/activities` and `GET /api/activities?lead_id=` to prevent IDOR. |
+| `canReadLead()` | `lib/utils/lead-access.ts` | Lead GET scope by role and ownership. Used on lead GET, activities, and linked-lead merge. |
+| `canMutateLead()` | `lib/utils/lead-access.ts` | Lead PATCH scope — same rules as `canReadLead()`. |
+| `canClaimLead()` | `lib/utils/lead-access.ts` | Sales/admin claim — unowned lead in sales pipeline (`status = 'Routed to Sales'`). |
+| `canAcquireLeadLock()` | `lib/utils/lead-access.ts` | Lock acquisition — SDR pool/owned, Sales routed/owned, admin any. |
+| `requireAnyPageAccess()` | `lib/auth/require-page-access.ts` | Pass if user has **any** of the listed page routes (e.g. `/crm` or `/quotes`). |
 | Session cache | `lib/auth/session-cache.ts` | ~3 s in-process memoization of successful `requireSession()` results during burst loads. Dev HMR cookie `__next_hmr_refresh_hash__` excluded from cache key. |
 
 Returns `401` with `{ code: "UNAUTHENTICATED" }` when not logged in. Returns `403` with `{ code: "MFA_SETUP_REQUIRED" }` or `{ code: "MFA_VERIFY_REQUIRED" }` when MFA is incomplete.
@@ -119,7 +124,7 @@ Configured in `next.config.ts` `headers()` export.
 | `/api/admin/team` | Admin only (`requireAdmin()`) | — |
 | `/api/lookups/products` | Authenticated + MFA | — |
 
-Bank / Zelle remittance fields are **admin-only** on `GET /api/admin/company`. Non-admin roles receive a filtered subset.
+Bank / Zelle remittance fields are **admin-only** on `GET /api/admin/company` and `PATCH /api/admin/company`. Non-admin roles receive a filtered subset on GET. Admin **Payment Settings** UI (`PaymentSection`) loads and saves remittance via this API — not the browser Supabase client.
 
 ---
 
@@ -130,6 +135,12 @@ These endpoints verify the caller has access to the specific object before retur
 | Endpoint | Check |
 |----------|-------|
 | `GET /api/leads/[id]` | `canReadLead()` |
+| `PATCH /api/leads/[id]` | `canMutateLead()` (same scope as read) + lock/rejected guards |
+| `POST /api/leads/[id]/claim` | Sales or admin only; `canClaimLead()` |
+| `POST /api/leads/[id]/lock` | SDR/Sales/Admin only; `canAcquireLeadLock()` |
+| `POST /api/leads/[id]/hold` | Scoped-tab helpers (SDR/Sales) |
+| `GET /api/customers/[id]`, CRM list/lookup | `requirePageAccess(..., '/crm')` |
+| `GET /api/customers/[id]/shipping-addresses` | `requireAnyPageAccess(..., ['/crm', '/quotes'])` |
 | `GET /api/leads/[id]/activities` | `canReadLead()` on the lead before returning its timeline |
 | `GET /api/activities?lead_id=` | `canReadLead()` on the referenced lead |
 | `GET /api/activities?ticket_id=` | `canAccessTicket()` on the referenced ticket |
@@ -139,7 +150,9 @@ These endpoints verify the caller has access to the specific object before retur
 | `GET /api/tickets/[id]/print` | `canAccessTicket()` |
 | `GET /api/completed/orders` | Role-scoped list — SDR: `created_by_id` only via `scopeCompletedTicketsQuery()` |
 | `GET /api/completed/page-data` | Same scope as completed list |
-| `GET /api/completed/counts` | Same scope as completed list |
+| `GET /api/leads/workspace/*`, `POST /api/leads/manual` | `requirePageAccess(..., '/leads')` |
+| `GET /api/leads/sales/*` | `requirePageAccess(..., '/sales')` |
+| `GET /api/activities?ticket_id=&include_linked_lead=true` | `canAccessTicket()` on ticket + `canReadLead()` on linked lead |
 
 ---
 
@@ -160,6 +173,21 @@ These endpoints verify the caller has access to the specific object before retur
 
 - **Size limit:** 10 MB — checked before `arrayBuffer()` is called (prevents memory exhaustion on serverless)
 - **MIME allowlist:** `image/jpeg`, `image/png`, `image/webp`, `application/pdf` — client-supplied `Content-Type` is validated against this set
+- **Rate limit:** 120 requests/minute per IP (`429` + `Retry-After`)
+
+---
+
+## Rate limiting (May 2026)
+
+In-process sliding-window limits (`lib/security/rate-limit.ts`). Best-effort on serverless (per-instance counters); use edge/WAF for production-grade protection.
+
+| Route group | Limit | Key |
+|-------------|-------|-----|
+| `/api/public/quotes/*` | 120/min per IP | `public-quote:{action}:{ip}` |
+| `POST /api/auth/change-password` | 20/min per IP | `auth:change-password:{ip}` |
+| `POST /api/auth/mfa-trust` | 20/min per IP | `auth:mfa-trust-post:{ip}` |
+
+Returns `429` with `{ code: "RATE_LIMITED" }` and `Retry-After` header.
 
 ---
 
@@ -189,7 +217,13 @@ In the Supabase UI, policies show **Applied to: public** — this is the Postgre
 | Table | Setup |
 |-------|-------|
 | `mfa_trusted_devices` | RLS enabled, **no policies** — service role only |
-| `company_settings` | **Migration 080:** old permissive `authenticated_read_company_settings` policy dropped; replaced with `authenticated_read_company_settings_public` which grants read access to all authenticated users. Remittance fields (bank account, routing, Zelle) are only accessible via the service-role admin client used by API routes — not directly via the browser client. |
+| `ticket_shipping_destinations` | **Migration 096:** RLS enabled, **no policies** — service role / Route Handlers only |
+| `company_settings` | **Migration 096:** admin-only SELECT policy; remittance via `GET/PATCH /api/admin/company` |
+| `customers` | **Migration 096:** SELECT/WRITE for SDR, Sales, Admin only (not accountant) |
+| `leads` | **Migration 096:** scoped UPDATE policies per role (replaces any-auth UPDATE) |
+| `activities` | **Migration 096:** SELECT for staff roles only (SDR, Sales, Admin, Accountant) |
+| `increment_*_sequence` RPCs | **Migration 096:** `service_role` execute only |
+| `user_profiles_with_role` view | **Migration 096:** `security_invoker = true` |
 | Product catalog | `SELECT using (true)` — product names readable with anon key (low sensitivity) |
 
 Do **not** disable RLS or edit policies manually in the dashboard — update **`supabase/schema.sql`** and apply targeted SQL on existing projects (see `supabase/README.md`). Do not re-run the full schema on production.
@@ -220,10 +254,7 @@ Copy from `.env.local.example` only as a template (no real keys). Stripe variabl
 
 ## Remaining optional hardening
 
-Not required for normal operation; documented for future defense-in-depth:
-
-- Rate limits on `/api/public/quotes/*` and auth endpoints (no rate limiting currently deployed)
+- Edge/WAF rate limits (in-process limits are best-effort on serverless; see `lib/security/rate-limit.ts`)
 - Treat customer quote links (`/q/{uuid}`) like passwords — do not forward
-- Role-scoped `PATCH /api/customers/[id]` at API layer
 
 See also: `docs/rbac.md`, `docs/api-contract.md`, `docs/schema.md` (RLS sections).
