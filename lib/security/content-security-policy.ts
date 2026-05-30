@@ -44,12 +44,23 @@ export function buildContentSecurityPolicy(): string {
     `style-src-elem ${styleSrc.join(" ")}`,
     "font-src 'self' https://fonts.gstatic.com data:",
     "img-src 'self' data: blob: https:",
+    "media-src 'self' blob:",
     `connect-src ${connectSrc.join(" ")}`,
     "worker-src 'self' blob:",
-    "frame-src 'self' https://vercel.live",
-    "object-src 'none'",
+    "frame-src 'self' blob: https://vercel.live",
+    "object-src 'self' blob:", // public quote PDF previews (blob URLs after fetch)
     "base-uri 'self'",
     "form-action 'self'",
     "frame-ancestors 'none'",
   ].join("; ");
+}
+
+/** CSP for streamed quote attachments — may be embedded on /q/[token] (same origin). */
+export function buildPublicQuoteFileContentSecurityPolicy(): string {
+  return "default-src 'none'; frame-ancestors 'self'";
+}
+
+/** Public customer quote page — same as app CSP but guaranteed blob: for PDF previews. */
+export function buildPublicQuotePageContentSecurityPolicy(): string {
+  return buildContentSecurityPolicy();
 }

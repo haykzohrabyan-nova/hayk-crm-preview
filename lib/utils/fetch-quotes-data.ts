@@ -164,10 +164,11 @@ export async function fetchQuotesTabCounts(
     ? await resolveTicketSearchCustomerIds(admin, filters.search)
     : [];
 
-  const [draft, sent, approved, scopedRouted] = await Promise.all([
+  const [draft, sent, approved, cancelled, scopedRouted] = await Promise.all([
     countFilteredQuotesByStatus(admin, roleName, userId, filters, "draft", searchCustomerIds),
     countFilteredQuotesByStatus(admin, roleName, userId, filters, "sent", searchCustomerIds),
     countFilteredQuotesByStatus(admin, roleName, userId, filters, "approved", searchCustomerIds),
+    countFilteredQuotesByStatus(admin, roleName, userId, filters, "cancelled", searchCustomerIds),
     countFilteredQuotesByStatus(admin, roleName, userId, filters, "routed", searchCustomerIds),
   ]);
 
@@ -194,6 +195,7 @@ export async function fetchQuotesTabCounts(
     draft,
     sent,
     approved,
+    cancelled,
     routed,
   };
 }

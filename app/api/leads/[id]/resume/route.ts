@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { sdrScopedLeadActionError } from "@/lib/utils/lead-sdr-scoped-tab";
+import { salesScopedLeadActionError } from "@/lib/utils/lead-sales-scoped-tab";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId, errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   const { id } = await params;
@@ -16,7 +18,7 @@ export async function POST(
   const admin = createAdminClient();
   const { data: current, error: fetchErr } = await admin
     .from("leads")
-    .select("prev_status, prev_sales_status")
+    .select("prev_status, prev_sales_status, status, sales_status, sdr_id, locked_by_id, sales_owner_id")
     .eq("id", id)
     .single();
 
@@ -25,12 +27,24 @@ export async function POST(
   }
 
   const isSales = role === "sales";
+  const resumedFrom = isSales ? current.sales_status : current.status;
+  const scopeError = isSales
+    ? salesScopedLeadActionError(current, userId!, roleName)
+    : sdrScopedLeadActionError(current, userId!, roleName);
+  if (scopeError) {
+    return NextResponse.json({ error: scopeError, code: "FORBIDDEN" }, { status: 403 });
+  }
   const update: Record<string, unknown> = {
     hold_reason: null,
     hold_notes: null,
     hold_until: null,
     held_by_id: null,
     held_at: null,
+    follow_up_reason: null,
+    follow_up_notes: null,
+    follow_up_until: null,
+    follow_up_by_id: null,
+    follow_up_at: null,
     updated_at: new Date().toISOString(),
   };
 
@@ -61,7 +75,7 @@ export async function POST(
     customer_id: lead.customer_id,
     type: "lead_resumed",
     by_user_id: userId,
-    payload: { role },
+    payload: { role, from: resumedFrom ?? null },
   });
 
   return NextResponse.json({ lead });

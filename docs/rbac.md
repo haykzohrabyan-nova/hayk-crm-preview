@@ -22,6 +22,7 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - **Excluded from lists:** after Sales **claims** an HVT quote, `created_by_id` becomes Sales — row leaves SDR Quotes/Orders/Completed lists
 - **Detail read (not list):** `canAccessTicket()` may still allow read-only GET on in-progress hand-offs where `routed_by_id` = SDR until `completed`
 - **Hard-blocked when a quote total exceeds `company_settings.high_value_threshold`** — a non-dismissible modal forces the quote to be saved as `routed` (status) and handed to Sales. SDR cannot bypass this.
+- **Voluntary route below threshold:** on new quote **Line Items** or **Quote** tab, SDR may click **Route to Sales** (reason modal + optional notes) — same `routed` status and Sales claim queue as HVT. Quote tab allows completing shipping, tax, and payment settings before routing.
 
 ### Sales
 - Default pages: `/dashboard`, `/sales`, `/crm`, `/quotes`, `/orders`, `/settings`
@@ -68,7 +69,7 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/quotes` | ✓ | ✓ | ✓ | ✗ | Quoted Requests list |
 | `/quotes/new` | ✓ | ✓ | ✓ | ✗ | Create new quote/order |
 | `/quotes/[id]` | ✓ | ✓ | ✓ | ✗ | View/edit ticket detail |
-| `/orders` | ✓ | ✓ | ✓ | ✓ | Orders list: pending payment, in production, cancelled (includes evidence-pending for ticket owner) |
+| `/orders` | ✓ | ✓ | ✓ | ✓ | Orders list: pending payment, in production, cancelled **orders** (`ticket_kind = 'order'` only; cancelled quotes on `/quotes`) |
 | `/orders/[id]` | ✓ | ✓ | ✓ | ✓ | Order / in-production detail via `GET /api/tickets/[id]` — sales/SDR read-only during payment review; accountant confirms on `/payments` or here |
 | `/payments` | ✗ | ✗ | ✓ | ✓ | Payment review queue |
 | `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment review detail — Confirm payment, view evidence |
@@ -290,6 +291,19 @@ Ownership persists beyond drawer close. It is only released by a terminal action
 
 **No auto-expiry** — the lock persists until one of the release triggers above. Only Admin can force-release an abandoned lock.
 
+### Sales pipeline (`/sales`) — separate from SDR lock
+
+Sales reps do **not** use `locked_by_id` for day-to-day ownership. They use **`sales_owner_id`** via **`POST /api/leads/[id]/claim`**.
+
+| Action | `sales_owner_id` | `locked_by_id` |
+|--------|------------------|----------------|
+| Claim unclaimed lead | Set to current user | Unchanged |
+| Open your claimed lead | Unchanged | **Not set** (May 2026) |
+| Close modal | Unchanged | Cleared via unlock if a temp lock existed |
+| On Hold / Follow Up Later | Unchanged | Cleared server-side on write |
+
+Other Sales reps do not see leads where `sales_owner_id` is another user (except unclaimed rows on Pipeline/Hold). See `docs/feature-specs/lead-locking.md` and `docs/feature-specs/leads-sales.md`.
+
 ---
 
 ## Terminal State Rules
@@ -332,6 +346,7 @@ Role is read directly from Supabase (`user_profiles.roles(name)`) in each compon
 | Quotes: "Routed to Sales" tab | ✗ | ✓ | ✓ |
 | Quotes: Claim button (routed → draft + ownership transfer) | ✗ | ✓ | ✓ |
 | Quotes/New Quote: HVT blocking modal | ✓ (triggered when total > threshold) | ✗ | ✗ |
+| Quotes/New Quote: Route to Sales (Line Items or Quote, below threshold) | ✓ | ✗ | ✗ |
 ---
 
 ## Default Post-Login Destination

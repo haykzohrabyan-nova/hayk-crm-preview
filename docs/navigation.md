@@ -93,11 +93,11 @@ BAZAARPRINTING                      ← brand logo text (accent color)
 
 ─── Main ───────────────────────
 ✓ Dashboard                        /dashboard
-✓ Leads                            /leads          (badge: inbox count)
-✓ CRM                              /crm
-✓ Quoted Requests                  /quotes         (badge: active quotes)
-✓ Orders                           /orders         (badge: pending payment + in production)
-✓ Completed                        /completed      (badge: own completed count)
+✓ Leads                            /leads          (badge — see Sidebar badge counts)
+✓ CRM                              /crm            (no badge)
+✓ Quoted Requests                  /quotes         (badge — see Sidebar badge counts)
+✓ Orders                           /orders         (badge — see Sidebar badge counts)
+✓ Completed                        /completed      (badge — see Sidebar badge counts)
 
 ─── Bottom ─────────────────────
 ✓ Settings                         /settings
@@ -113,10 +113,10 @@ BAZAARPRINTING
 
 ─── Main ───────────────────────
 ✓ Dashboard                        /dashboard
-✓ Pipeline                         /sales          (badge: pipeline count)
-✓ CRM                              /crm
-✓ Quoted Requests                  /quotes         (badge: active quotes)
-✓ Orders                           /orders         (badge: pending payment + in production)
+✓ Pipeline                         /sales          (badge — see Sidebar badge counts)
+✓ CRM                              /crm            (no badge)
+✓ Quoted Requests                  /quotes         (badge — see Sidebar badge counts)
+✓ Orders                           /orders         (badge — see Sidebar badge counts)
 
 ─── Bottom ─────────────────────
 ✓ Settings                         /settings
@@ -132,9 +132,9 @@ BAZAARPRINTING
 
 ─── Main ───────────────────────
 ✓ Dashboard                        /dashboard
-✓ Payments                         /payments         (badge: unreviewed evidence)
-✓ Orders                           /orders           (badge: pending payment + in production)
-✓ Completed                        /completed        (badge: completed count)
+✓ Payments                         /payments         (badge — see Sidebar badge counts)
+✓ Orders                           /orders           (badge — see Sidebar badge counts)
+✓ Completed                        /completed        (badge — see Sidebar badge counts)
 
 ─── Bottom ─────────────────────
 ✓ Settings                         /settings
@@ -150,15 +150,15 @@ BAZAARPRINTING
 
 ─── Main ───────────────────────
 ✓ Dashboard                        /dashboard
-✓ Leads                            /leads          (badge: inbox count)
-✓ Pipeline                         /sales          (badge: pipeline count)
-✓ CRM                              /crm
-✓ Quoted Requests                  /quotes         (badge: active quotes)
-✓ Orders                           /orders         (badge: pending payment + in production)
-✓ Payments                         /payments       (admin only — optional queue access)
-✓ Completed                        /completed
-✓ Reports                          /reports        (admin only — grant via Roles & Permissions)
-✓ Activity Log                     /activity-log   (system activity feed)
+✓ Leads                            /leads          (badge — see Sidebar badge counts)
+✓ Pipeline                         /sales          (badge — see Sidebar badge counts)
+✓ CRM                              /crm            (no badge)
+✓ Quoted Requests                  /quotes         (badge — see Sidebar badge counts)
+✓ Orders                           /orders         (badge — see Sidebar badge counts)
+✓ Payments                         /payments       (badge — see Sidebar badge counts)
+✓ Completed                        /completed      (badge — see Sidebar badge counts)
+✓ Reports                          /reports        (no badge)
+✓ Activity Log                     /activity-log   (no badge)
 
 ─── Admin ──────────────────────
 ✓ Admin Panel                      /admin
@@ -171,6 +171,31 @@ BAZAARPRINTING
 ```
 
 ✓ = built and live   ⬜ = to build
+
+---
+
+## Sidebar badge counts
+
+Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0**. Counts cap at **99+** (expanded) or **99** (collapsed icon dot). Items with no badge: **Dashboard**, **CRM**, **Reports**, **Activity Log**, **Admin Panel**, **Settings**.
+
+**Source:** `GET /api/sidebar-counts?routes=…` → `lib/utils/sidebar-counts-query.ts`. Desktop sidebar passes only the user's visible routes; mobile nav fetches all applicable counts. Refreshes on mount, Supabase Realtime (`leads`, `job_tickets`, `activities`, `customers`), and the `bazaar:refresh-counts` window event (debounced 300 ms on desktop).
+
+**Important:** Sidebar badges are **all-time** totals with **no date filter**. Page tab badges may differ — Quotes, Orders, and Completed list pages apply `DashboardDateRangeFilter` (default Last 30 Days) to tab counts only.
+
+| Route | Shown on roles | What the number counts |
+|-------|----------------|------------------------|
+| `/leads` | SDR, Admin | `is_inbox = false` · `status IN ('Pending', 'Validated')` · `locked_by_id IS NULL` (unclaimed pool). **SDR:** matches **All Leads** tab. **Admin:** sidebar is unclaimed-only; Admin **All Leads** tab includes claimed rows too. |
+| `/sales` | Sales, Admin | **Sales rep:** unclaimed routed leads (`status = 'Routed to Sales'`, `sales_owner_id IS NULL`, any `sales_status`) **+** own active pipeline (`sales_owner_id = me`, `sales_status IN ('Ongoing', 'Quote Sent')`). **Admin:** `status = 'Routed to Sales'` AND `sales_status IN ('Ongoing', 'Quote Sent')`. Not identical to the **Pipeline** tab (tab filters `sales_status` on unclaimed rows and includes null `sales_status`). |
+| `/quotes` | SDR, Sales, Admin, Accountant† | Sum of scoped **`draft` + `sent` + `approved`** quote tickets (`ticket_kind = 'quote'`). **Sales + Admin:** also add **all** company-wide **`routed`** tickets (unscoped). Excludes **Cancelled**. **SDR:** own tickets only (`created_by_id = me`). **Sales:** own tickets + company **Routed to Sales** queue. |
+| `/orders` | SDR, Sales, Admin, Accountant | Scoped sum of **`ticket_status = 'order'`** (pending payment) **+** **`in_production`**. Excludes cancelled and completed. Same role scoping as list pages (`created_by_id` for SDR; Sales sees own + `routed`; Admin/Accountant see all). All-time — not reduced by the Orders page date filter. |
+| `/payments` | Admin, Accountant | Tickets with **`payment_evidence_url` set**, **`payment_evidence_reviewed_at` null**, and `ticket_status IN ('sent', 'order', 'in_production', 'completed')`. Company-wide — not scoped to a user. Matches **Pending approval** tab on `/payments`. |
+| `/completed` | SDR, Admin, Accountant | **`ticket_status = 'completed'`**. **SDR:** own created tickets only (`created_by_id = me`). **Admin + Accountant:** all completed. All-time — not reduced by Completed page date filter. Sales role has no `/completed` nav item. |
+
+† Accountant has `/orders` and `/completed` in the default permission seed but not `/quotes`; if granted via a custom role, quote badge logic applies the same scoping rules.
+
+**Display rules:** Badge hidden when count is 0. No badge on Dashboard, CRM, Reports, Activity Log, Admin Panel, or Settings.
+
+**Legacy:** `/production` badge (in-production only, unscoped) still exists in the counts helper but that route redirects to `/orders?tab=in_production` and is not in the sidebar.
 
 ---
 
@@ -205,6 +230,7 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 ```
 /leads              → defaults to ?tab=all
 /leads?tab=all      → All Leads (SDR: All Leads / My Leads toggle via ?owner_scope=all|mine)
+/leads?tab=follow-up → Follow Up Later (SDR deferred queue; admin-managed reasons)
 /leads?tab=hold     → On Hold
 /leads?tab=routed   → Directed to Sales
 /leads?tab=rejected → Rejected
@@ -212,7 +238,8 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 
 /sales              → defaults to ?tab=pipeline
 /sales?tab=pipeline → Pipeline
-/sales?tab=on-hold  → On Hold
+/sales?tab=follow_up → Follow Up Later (owner-only for Sales reps)
+/sales?tab=hold     → On Hold
 /sales?tab=rejected → Rejected
 
 /quotes             → defaults to ?tab=all
@@ -220,6 +247,7 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 /quotes?tab=draft   → Draft
 /quotes?tab=sent    → Sent
 /quotes?tab=approved → Approved
+/quotes?tab=cancelled → Cancelled (quote-stage only)
 /quotes?tab=routed  → Routed to Sales (sales/admin only)
 
 /orders             → defaults to All tab (`?tab=` omitted)
@@ -246,12 +274,12 @@ Tab switches use `router.replace` (not `router.push`) — no browser history pol
 |-------|----------------|-------------------|
 | `/quotes/[id]` | `quote` | `/quotes` |
 | `/orders/[id]` | `order` | `/orders` |
-| `/payments/[id]` | `payment` | `/payments` |
+| `/payments/[id]` | `payment` | `/payments` (always; `?from=/payments` from list rows) |
 | `/completed/[id]` | `completed` | `/completed` |
 
 In-production orders use **`/orders/[id]`** with `context="order"` (header badge **In Production**). Legacy `/production/[id]` redirects here.
 
-All non-draft detail views use **Overview + History** tabs and shared overview sections. On overview layout, long optional blocks use **`DetailCollapsibleSection`** (default **collapsed**): Timeline, Quote & Pricing, Fulfillment, Pricing, Payment & order settings, Quote delivery, Follow-up, Production & evidence, Payment review, Payment plan. **Line Items** stays expanded. On `/payments/[id]`, Payment review defaults **open**.
+All non-draft detail views use **Overview + History** tabs and shared overview sections. **Stats row** and **lifecycle timeline** appear at the top on all overview contexts including `/payments/[id]`. Long optional blocks use **`DetailCollapsibleSection`** (default **collapsed**): Timeline (milestone row under stats — separate collapsible block in sections), Quote & Pricing, Fulfillment, Pricing, Payment & order settings, Quote delivery, Follow-up, Production & evidence, Payment review, Payment plan. **Line Items**, **Fulfillment**, and **Quote & Pricing** are collapsible in overview (collapsed by default). While **editing**, those sections expand automatically. On `/payments/[id]`, Payment review defaults **open**.
 
 ---
 
@@ -261,7 +289,8 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 | Tab | Content | Badge |
 |-----|---------|-------|
-| Inbox | `status = 'Pending'`, `is_inbox = true` | count |
+| All Leads | `Pending` + `Validated` (unclaimed pool badge for SDR) | count |
+| Follow Up Later | `status = 'Follow Up Later'` (SDR own; admin all) | count |
 | On Hold | `status = 'On Hold'` | count |
 | Directed to Sales | `routed=true` — all leads SDR routed to Sales (`lead_routed_to_sales` activity) | count |
 | Rejected | `status = 'Rejected'` | — |
@@ -274,8 +303,11 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | Tab | Content | Badge |
 |-----|---------|-------|
 | Pipeline | `status = 'Routed to Sales'` AND `sales_status IN ('Ongoing', 'Quote Sent')` | count |
+| Follow Up Later | `sales_status = 'Follow Up Later'` — Sales rep sees own (`sales_owner_id`); Admin sees all | count |
 | On Hold | `sales_status = 'On Hold'` | count |
 | Rejected | `status = 'Rejected'` and `prev_status = 'Routed to Sales'` — leads rejected from the sales pipeline. Admin sees all; Sales rep sees only their own. | count |
+
+**List API:** `GET /api/leads/sales/page-data?tab=…` — list + tab counts. **Claim** → `POST /claim`; **Open** (owned) → no `POST /lock`. See `docs/feature-specs/lead-locking.md`.
 
 **Sales list columns (all tabs):** Name, Company, **Product Interests** (`ProductName[quantity]`), then tab-specific fields (Phone, Sales Status, Hold Reason, etc.).
 
@@ -287,10 +319,11 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 | Tab | Content | Badge | Visible to |
 |-----|---------|-------|-----------|
-| All | `draft` + `sent` + `approved` only (excludes in-production, completed, order) | count | All roles |
-| Draft | `ticket_status = 'draft'` | count | All roles |
-| Sent | `ticket_status = 'sent'` | count | All roles |
-| Won | `ticket_status = 'approved'` (legacy — `approved` status retired; tab remains for historical records) | count | All roles |
+| All | `ticket_kind = 'quote'` + (`draft` + `sent` + `approved`) — excludes cancelled | count | All roles |
+| Draft | `ticket_kind = 'quote'` + `ticket_status = 'draft'` | count | All roles |
+| Sent | `ticket_kind = 'quote'` + `ticket_status = 'sent'` | count | All roles |
+| Won | `ticket_kind = 'quote'` + `ticket_status = 'approved'` (legacy — `approved` status retired; tab remains for historical records) | count | All roles |
+| **Cancelled** | `ticket_kind = 'quote'` + `ticket_status = 'cancelled'` | count | All roles (SDR/Sales: own `created_by_id`; Admin: all) |
 | Routed to Sales | `ticket_status = 'routed'` | count | Sales + Admin (all) · SDR (own HVT only) |
 
 **List scope:** SDR — `created_by_id = session user` on all tabs. Sales — own quotes + company-wide **Routed to Sales** queue. **Admin** — all records; optional **team member filter** (`?user_id=`) on Leads, Quotes, Orders, and Completed narrows to that user's work.
@@ -303,14 +336,14 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 **Pagination (May 2026):** Default 25 rows; `ListPagination` (25 / 50 / 100).
 
-Includes **`order`**, **`in_production`**, and **`cancelled`** tickets. **SDR / Sales list scope:** `created_by_id = session user` (via `scopeJobTicketsQuery()`). Evidence-pending orders are **included** for the ticket owner with status **Awaiting payment confirmation**; accountants also see them on **`/payments`**.
+Includes **`ticket_kind = 'order'`** with statuses **`order`**, **`in_production`**, and **`cancelled`** (order-stage cancellations only). Cancelled **quotes** appear on **`/quotes` → Cancelled**. **SDR / Sales list scope:** `created_by_id = session user` (via `scopeJobTicketsQuery()`). Evidence-pending orders are **included** for the ticket owner with status **Awaiting payment confirmation**; accountants also see them on **`/payments`**.
 
 | Tab | Content | Badge |
 |-----|---------|-------|
-| All | `order` + `in_production` + `cancelled` | count — **default tab** |
-| Pending Payment | `ticket_status = 'order'` (includes evidence-pending for owner) | count |
-| In Production | `ticket_status = 'in_production'` | count |
-| Cancelled | `ticket_status = 'cancelled'` | count |
+| All | `ticket_kind = 'order'` + (`order` + `in_production` + `cancelled`) | count — **default tab** |
+| Pending Payment | `ticket_kind = 'order'` + `ticket_status = 'order'` (includes evidence-pending for owner) | count |
+| In Production | `ticket_kind = 'order'` + `ticket_status = 'in_production'` | count |
+| Cancelled | `ticket_kind = 'order'` + `ticket_status = 'cancelled'` | count |
 
 List API: `GET /api/orders/page-data` → `{ orders, counts, pagination }`. Tab badge counts from API `counts` (same filters as list, excluding `limit`/`offset`). Sidebar `/orders` badge stays all-time scoped total.
 
@@ -325,7 +358,11 @@ Row click → `/orders/[id]`.
 | Pending approval | Customer proof awaiting accountant confirm | `counts.pending` | `payment_evidence_url` set, `payment_evidence_reviewed_at` null |
 | Approved | Evidence already reviewed — **View evidence** only (no Confirm) | `counts.approved` | `payment_evidence_url` set, `payment_evidence_reviewed_at` set |
 
-Both tabs include **`sent`**, **`order`**, **`in_production`**, and **`completed`** tickets. Row click → `/payments/[id]`. Sidebar badge = pending count only (`GET /api/sidebar-counts`). Accountant dashboard KPI: `GET /api/payments/counts` → `pending_evidence`.
+Both tabs include **`sent`**, **`order`**, **`in_production`**, and **`completed`** tickets.
+
+**List columns:** Order · Customer · Claimed · **Payment For** (Deposit / Balance / Full payment + short description) · Method · Submitted · Actions or Approved date.
+
+Row click → `/payments/[id]?from=/payments`. Detail uses full overview layout (stats row + lifecycle timeline + Payment review). **Back** → `/payments` (`resolveTicketDetailBackPath` — payment context before ticket status). Sidebar badge = pending count only (`GET /api/sidebar-counts`). Accountant dashboard KPI: `GET /api/payments/counts` → `pending_evidence`.
 
 ### `/completed` — Completed (SDR own scope; Accountant + Admin all)
 
@@ -418,7 +455,7 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/completed/[id]` | Completed Order |
 | `/reports` | Reports |
 | `/crm/customers/[id]` | Customer Profile |
-| `/q/[token]` | Customer portal (public) |
+| `/q/[token]` | Customer portal (public) — quote/order checklist, payment, line items with additional-SKU grid + file preview/download; **shipping** (single Ship To column or 2-col address cards); PDF download (`GET /api/public/quotes/[token]/pdf`) |
 | `/settings` | Account Settings |
 | `/admin` | Admin (Overview) |
 | `/admin/settings/users` | Users |

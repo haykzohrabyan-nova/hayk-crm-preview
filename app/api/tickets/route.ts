@@ -22,7 +22,11 @@ import {
   syncTicketLines,
   ticketHasFilledLineItem,
 } from "@/lib/utils/ticket-line-items";
-import { normalizeShipToPayload, validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
+import {
+  fetchTicketShippingDestinations,
+  resolveShippingFromRequest,
+  syncTicketShippingDestinations,
+} from "@/lib/utils/ticket-shipping-destinations";
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -170,6 +174,8 @@ export async function POST(request: NextRequest) {
     ticket_follow_up_enabled,
     ticket_follow_up_count,
     ticket_follow_up_freq,
+    routed_reason,
+    routed_notes,
   } = body;
 
   if (!ticket_kind || !["quote", "order"].includes(ticket_kind)) {
@@ -183,22 +189,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "title is required.", code: "VALIDATION_ERROR" }, { status: 400 });
   }
 
-  const shipPayload = normalizeShipToPayload(Boolean(requires_shipping), {
+  if (ticket_status === "routed" && routed_reason != null && String(routed_reason).trim() === "") {
+    return NextResponse.json(
+      { error: "A route reason is required when routing to Sales.", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
+  }
+
+  const routedNotesTrimmed =
+    typeof routed_notes === "string" ? routed_notes.trim() : "";
+  const isOtherRoute =
+    routed_reason != null &&
+    (String(routed_reason).endsWith("_other") || String(routed_reason) === "other");
+  if (ticket_status === "routed" && isOtherRoute && !routedNotesTrimmed) {
+    return NextResponse.json(
+      { error: "Please specify a reason when Other is selected.", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
+  }
+
+  const shippingResolved = resolveShippingFromRequest({
+    requires_shipping,
+    quote_shipping,
     ship_to_line1,
     ship_to_line2,
     ship_to_city,
     ship_to_state,
     ship_to_zip,
+    shipping_destinations: body.shipping_destinations,
   });
-  const resolvedQuoteShipping = shipPayload.requires_shipping ? (quote_shipping ?? 0) : 0;
-  const shippingErr = validateShippingCharge(shipPayload.requires_shipping, resolvedQuoteShipping);
-  if (shippingErr) {
-    return NextResponse.json({ error: shippingErr, code: "VALIDATION_ERROR" }, { status: 400 });
+  if (shippingResolved.zipError) {
+    return NextResponse.json({ error: shippingResolved.zipError, code: "VALIDATION_ERROR" }, { status: 400 });
   }
-  const zipErr = validateShipToZip(shipPayload.ship_to_zip);
-  if (zipErr) {
-    return NextResponse.json({ error: zipErr, code: "VALIDATION_ERROR" }, { status: 400 });
-  }
+  const shipPayload = shippingResolved.legacy;
+  const resolvedQuoteShipping = shipPayload.quote_shipping;
+  const shippingDestinationsToSync = shippingResolved.destinations;
 
   const now = new Date().toISOString();
   if (due_date) {
@@ -344,6 +369,8 @@ export async function POST(request: NextRequest) {
     // When an SDR's quote is auto-routed to Sales, preserve their identity so
     // they can still view the ticket in read-only mode after Sales claims it.
     routed_by_id: ticket_status === "routed" ? userId : null,
+    routed_reason: ticket_status === "routed" ? (routed_reason?.trim() || null) : null,
+    routed_notes: ticket_status === "routed" ? (routedNotesTrimmed || null) : null,
     created_by_id: userId,
     contact_name: contact_name ?? null,
     contact_email: contact_email ?? null,
@@ -362,7 +389,12 @@ export async function POST(request: NextRequest) {
     quote_destination: quote_destination ?? null,
     quote_subtotal: quote_subtotal ?? null,
     quote_shipping: resolvedQuoteShipping,
-    ...shipPayload,
+    requires_shipping: shipPayload.requires_shipping,
+    ship_to_line1: shipPayload.ship_to_line1,
+    ship_to_line2: shipPayload.ship_to_line2,
+    ship_to_city: shipPayload.ship_to_city,
+    ship_to_state: shipPayload.ship_to_state,
+    ship_to_zip: shipPayload.ship_to_zip,
     discount_type: discount_type ?? null,
     discount_value: discount_value ?? null,
     discount_reason: discount_reason ?? null,
@@ -418,6 +450,21 @@ export async function POST(request: NextRequest) {
     syncedLineItems = syncResult.line_items;
   }
 
+  try {
+    await syncTicketShippingDestinations(
+      admin,
+      ticket.id,
+      shipPayload.requires_shipping,
+      shippingDestinationsToSync,
+    );
+  } catch (err) {
+    await admin.from("job_tickets").delete().eq("id", ticket.id);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to save shipping destinations.", code: "DB_ERROR" },
+      { status: 500 },
+    );
+  }
+
   // Log activity (type name is legacy; payload.ticket_kind + reference_code drive UI labels).
   await admin.from("activities").insert({
     type: "order_ticket_created",
@@ -429,6 +476,12 @@ export async function POST(request: NextRequest) {
       ticket_kind: resolvedTicketKind,
       title: ticket.title,
       reference_code,
+      ...(ticket_status === "routed" && routed_reason?.trim()
+        ? {
+            routed_reason: routed_reason.trim(),
+            ...(routedNotesTrimmed ? { routed_notes: routedNotesTrimmed } : {}),
+          }
+        : {}),
     },
     created_at: now,
   });
@@ -537,9 +590,10 @@ export async function POST(request: NextRequest) {
 
   const line_items =
     syncedLineItems ?? (await fetchTicketLinesBundle(admin, ticket.id));
+  const shipping_destinations = await fetchTicketShippingDestinations(admin, ticket.id);
 
   return NextResponse.json(
-    { ticket: { ...(finalTicket ?? ticket), line_items } },
+    { ticket: { ...(finalTicket ?? ticket), line_items, shipping_destinations } },
     { status: 201 },
   );
 }

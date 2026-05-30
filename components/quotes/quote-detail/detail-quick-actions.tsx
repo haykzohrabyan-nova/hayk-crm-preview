@@ -6,6 +6,7 @@ import { OutreachChannelIcons } from "@/components/ui/outreach-channel-icons";
 import { resolveOutreachChannelKind, OUTREACH_CHANNEL_LABEL } from "@/lib/utils/outreach-channel-display";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { canAdminCancelTicket } from "@/lib/utils/can-admin-cancel-ticket";
+import { cancelActionLabel } from "@/lib/utils/cancel-reason-category";
 import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
 import { copyTextToClipboard, publicQuoteUrl } from "@/lib/utils/copy-to-clipboard";
 
@@ -203,7 +204,7 @@ export function DetailQuickActions({
           className={`${btnBase} w-full border hover:opacity-80`}
           style={{ color: "var(--color-danger)", borderColor: "var(--color-danger-border)", background: "var(--color-danger-bg)" }}
         >
-          <span className="truncate">Cancel Ticket</span>
+          <span className="truncate">{cancelActionLabel(ticket.ticket_status)}</span>
         </button>
       )}
 

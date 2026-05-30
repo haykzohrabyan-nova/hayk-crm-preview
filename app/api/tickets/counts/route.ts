@@ -36,7 +36,9 @@ export async function GET() {
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "order")),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "in_production")),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "completed")),
-      scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "cancelled")),
+      scopedTicketCount(admin, roleName, userId, (q) =>
+        q.eq("ticket_kind", "quote").eq("ticket_status", "cancelled"),
+      ),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "routed")),
       scopedTicketCount(admin, roleName, userId, (q) => q),
       roleName === "sales" || roleName === "admin" || roleName === "accountant"

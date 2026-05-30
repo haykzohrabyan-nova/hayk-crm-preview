@@ -5,8 +5,14 @@ import { useRouter } from "next/navigation";
 import { X, Lock, ShieldCheck } from "lucide-react";
 import { StatusPill } from "@/components/ui/status-pill";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
-import { Activity, HoldForm, Lead, LookupMap } from "@/lib/types";
-import { holdReasonLabel } from "@/lib/constants/hold-reasons";
+import { HoldSubForm } from "@/components/leads/hold-sub-form";
+import { FollowUpSubForm } from "@/components/leads/follow-up-sub-form";
+import { Activity, FollowUpForm, HoldForm, Lead, LookupMap } from "@/lib/types";
+import {
+  leadActivityDetailLines,
+  leadActivityDotColor,
+  leadActivityLabel,
+} from "@/lib/utils/lead-activity-display";
 import { formatPhone } from "@/lib/utils/phone";
 import { lookupLabel } from "@/lib/utils/lookups";
 import { authorityLabel } from "@/lib/utils/authority";
@@ -49,39 +55,6 @@ interface SalesDrawerProps {
   onLeadUpdated: (lead: Lead) => void;
   onLeadRemoved: (leadId: string) => void;
   showToast: (msg: string, type?: "success" | "error") => void;
-}
-
-// ─── Activity timeline helpers ────────────────────────────────────────────────
-
-function activityLabel(a: Activity): string {
-  const p = a.payload as Record<string, string | null>;
-  switch (a.type) {
-    case "lead_verified":         return "Lead verified by SDR";
-    case "lead_manual_created":   return "Lead created manually";
-    case "lead_edited":           return `Lead info updated`;
-    case "lead_sales_claimed":    return "Lead claimed by sales rep";
-    case "lead_routed_to_sales":  return "Routed to Sales";
-    case "lead_held":             return `Put on hold${p.reason ? ` — ${holdReasonLabel(p.reason)}` : ""}`;
-    case "lead_resumed":          return "Resumed from hold";
-    case "lead_merged":           return "Customer record merged";
-    case "contact_edited":        return "Contact info updated";
-    case "lead_rejected": {
-      const from = p.from === "Routed to Sales" ? "Sales pipeline" : "SDR pipeline";
-      return `Rejected from ${from}${p.reason ? ` — ${p.reason}` : ""}`;
-    }
-    case "lead_status_changed":
-      return `Status: ${p.from ?? "?"} → ${p.to ?? "?"}`;
-    default:
-      return a.type.replace(/_/g, " ");
-  }
-}
-
-function activityDotColor(type: Activity["type"]): string {
-  if (type === "lead_rejected")       return "var(--color-danger)";
-  if (type === "lead_held")           return "var(--color-warning)";
-  if (type === "lead_routed_to_sales" || type === "lead_sales_claimed") return "var(--color-accent)";
-  if (type === "lead_verified" || type === "lead_resumed") return "var(--color-success)";
-  return "var(--color-text-muted)";
 }
 
 function relativeTimeAct(iso: string): string {
@@ -130,8 +103,13 @@ export function SalesDrawer({
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [activitiesFetched, setActivitiesFetched] = useState(false);
-  const [footerMode, setFooterMode] = useState<"actions" | "hold" | "reject">("actions");
+  const [footerMode, setFooterMode] = useState<"actions" | "follow_up" | "hold" | "reject">("actions");
   const [holdForm, setHoldForm] = useState<HoldForm>({ hold_reason: "", hold_notes: "", hold_until: "" });
+  const [followUpForm, setFollowUpForm] = useState<FollowUpForm>({
+    follow_up_reason: "",
+    follow_up_notes: "",
+    follow_up_until: "",
+  });
   const [rejForm, setRejForm] = useState({ rejection_reason: "", rejection_notes: "" });
   const [saving, setSaving] = useState(false);
   const unlockRef = useRef(false);
@@ -140,7 +118,10 @@ export function SalesDrawer({
   const isReadOnly = readOnly || (isTerminal && !isAdmin);
 
   const holdReasons = lookups.hold_reason ?? [];
+  const followUpReasons = lookups.follow_up_reason ?? [];
   const rejectReasons = lookups.reject_reason ?? [];
+  const isSalesDeferred =
+    lead.sales_status === "On Hold" || lead.sales_status === "Follow Up Later";
   const industries = lookups.industry ?? [];
   const sources = lookups.source ?? [];
 
@@ -228,6 +209,45 @@ export function SalesDrawer({
     onClose();
   }
 
+  // ── Action: Follow Up Later ─────────────────────────────────────────────
+
+  async function handleFollowUpConfirm() {
+    if (!followUpForm.follow_up_reason) return;
+    setSaving(true);
+    const res = await fetch(`/api/leads/${lead.id}/follow-up`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...followUpForm, role: "sales" }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    unlockRef.current = true;
+    onLeadRemoved(lead.id);
+    onLeadUpdated(data.lead);
+    showToast("Lead marked for follow-up.");
+    onClose();
+  }
+
+  // ── Action: Resume (from On Hold / Follow Up Later) ─────────────────────
+
+  async function handleResume() {
+    setSaving(true);
+    const res = await fetch(`/api/leads/${lead.id}/resume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: "sales" }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    setLead(data.lead);
+    onLeadUpdated(data.lead);
+    onLeadRemoved(lead.id);
+    showToast("Lead resumed.");
+    onClose();
+  }
+
   // ── Action: Reject ───────────────────────────────────────────────────────
 
   async function handleRejectConfirm() {
@@ -272,7 +292,7 @@ export function SalesDrawer({
       >
       {/* Modal panel */}
       <div
-        className="pointer-events-auto flex w-full max-w-[780px] flex-col overflow-hidden shadow-2xl"
+        className="pointer-events-auto flex w-full max-w-[780px] min-h-0 flex-col overflow-hidden shadow-2xl"
         style={{
           background: "var(--color-surface)",
           border: "1px solid var(--color-border)",
@@ -337,7 +357,8 @@ export function SalesDrawer({
           </div>
         )}
 
-        {/* Tab bar */}
+        {/* Tab bar — hidden while hold / follow-up forms are open */}
+        {footerMode !== "hold" && footerMode !== "follow_up" && (
         <div className="flex shrink-0" style={{ borderBottom: "1px solid var(--color-border)" }}>
           {(["info", "history"] as const).map((tab) => (
             <button
@@ -353,10 +374,36 @@ export function SalesDrawer({
             </button>
           ))}
         </div>
+        )}
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
-
+        <div
+          className={`flex-1 min-h-0 overflow-y-auto px-5 py-5 ${
+            footerMode === "hold" || footerMode === "follow_up" ? "flex flex-col" : "space-y-6"
+          }`}
+        >
+          {footerMode === "hold" ? (
+            <HoldSubForm
+              fullScreen
+              form={holdForm}
+              reasons={holdReasons}
+              onChange={setHoldForm}
+              onConfirm={handleHoldConfirm}
+              onCancel={() => setFooterMode("actions")}
+              saving={saving}
+            />
+          ) : footerMode === "follow_up" ? (
+            <FollowUpSubForm
+              fullScreen
+              form={followUpForm}
+              reasons={followUpReasons}
+              onChange={setFollowUpForm}
+              onConfirm={handleFollowUpConfirm}
+              onCancel={() => setFooterMode("actions")}
+              saving={saving}
+            />
+          ) : (
+          <>
           {activeTab === "info" && (
             <>
               {/* ── Contact Info (read-only for Sales) ── */}
@@ -598,7 +645,7 @@ export function SalesDrawer({
                       <div
                         className="relative mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
                         style={{
-                          background: activityDotColor(a.type),
+                          background: leadActivityDotColor(a.type),
                           outline: "2px solid var(--color-surface)",
                           outlineOffset: "1px",
                         }}
@@ -606,20 +653,13 @@ export function SalesDrawer({
                       {/* Content */}
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--color-text-primary)" }}>
-                          {activityLabel(a)}
+                          {leadActivityLabel(a)}
                         </p>
-                        {/* Extra note for rejection */}
-                        {a.type === "lead_rejected" && (a.payload as Record<string, string | null>).notes && (
-                          <p className="mt-0.5 text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-                            {(a.payload as Record<string, string | null>).notes}
+                        {leadActivityDetailLines(a).map((line) => (
+                          <p key={line} className="mt-0.5 text-[12px]" style={{ color: "var(--color-text-muted)" }}>
+                            {line}
                           </p>
-                        )}
-                        {/* Extra note for hold */}
-                        {a.type === "lead_held" && (a.payload as Record<string, string | null>).notes && (
-                          <p className="mt-0.5 text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-                            {(a.payload as Record<string, string | null>).notes}
-                          </p>
-                        )}
+                        ))}
                         <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
                           {a.by_user?.full_name ?? "System"} · {relativeTimeAct(a.created_at)}
                         </p>
@@ -630,93 +670,16 @@ export function SalesDrawer({
               )}
             </section>
           )}
+          </>
+          )}
         </div>
 
-        {/* ── Footer ────────────────────────────────────────────────────────── */}
+        {/* ── Footer — hidden while hold / follow-up forms fill the modal body ── */}
+        {footerMode !== "hold" && footerMode !== "follow_up" && (
         <div
           className="shrink-0 px-5 py-4 space-y-3"
           style={{ borderTop: "1px solid var(--color-border)" }}
         >
-          {/* Hold sub-form */}
-          {footerMode === "hold" && (
-            <div
-              className="flex flex-col gap-3 rounded-[10px] border p-4"
-              style={{ background: "var(--color-row-alt)", borderColor: "var(--color-border)" }}
-            >
-              <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
-                Put on hold
-              </p>
-              <div>
-                <label className={labelCls} style={labelStyle}>Hold Reason *</label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  {holdReasons.map((r) => {
-                    const selected = holdForm.hold_reason === r.value;
-                    return (
-                      <label
-                        key={r.value}
-                        className="flex items-center gap-2.5 cursor-pointer rounded-[8px] border px-3 py-2.5 text-sm transition-all"
-                        style={{
-                          borderColor: selected ? "var(--color-accent)" : "var(--color-border)",
-                          background: selected ? "color-mix(in srgb, var(--color-accent) 8%, transparent)" : "var(--color-surface)",
-                          color: "var(--color-text-primary)",
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="sales_hold_reason"
-                          value={r.value}
-                          checked={selected}
-                          onChange={() => setHoldForm((f) => ({ ...f, hold_reason: r.value }))}
-                          className="accent-[var(--color-accent)] shrink-0"
-                        />
-                        {r.label}
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-              <div>
-                <label className={labelCls} style={labelStyle}>Notes (optional)</label>
-                <textarea
-                  rows={2}
-                  value={holdForm.hold_notes}
-                  onChange={(e) => setHoldForm((f) => ({ ...f, hold_notes: e.target.value }))}
-                  placeholder="Any additional context…"
-                  className="w-full rounded-[6px] border px-3 py-2 text-[13px] outline-none resize-none"
-                  style={{ ...inputStyle, height: "auto" }}
-                />
-              </div>
-              <div>
-                <label className={labelCls} style={labelStyle}>Hold Until (optional)</label>
-                <input
-                  type="date"
-                  value={holdForm.hold_until}
-                  onChange={(e) => setHoldForm((f) => ({ ...f, hold_until: e.target.value }))}
-                  className={inputCls}
-                  style={inputStyle}
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={() => setFooterMode("actions")}
-                  disabled={saving}
-                  className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium"
-                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleHoldConfirm}
-                  disabled={!holdForm.hold_reason || saving}
-                  className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
-                  style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-                >
-                  {saving ? "Saving…" : "Confirm Hold"}
-                </button>
-              </div>
-            </div>
-          )}
-
           {/* Reject sub-form */}
           {footerMode === "reject" && (
             <div
@@ -781,14 +744,35 @@ export function SalesDrawer({
               >
                 {saving ? "Saving…" : "Create Quote / Order"}
               </button>
-              <button
-                onClick={() => setFooterMode("hold")}
-                disabled={saving}
-                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
-                style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-              >
-                On Hold
-              </button>
+              {isSalesDeferred ? (
+                <button
+                  onClick={handleResume}
+                  disabled={saving}
+                  className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                >
+                  Resume
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setFooterMode("follow_up")}
+                    disabled={saving}
+                    className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                    style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                  >
+                    Follow Up Later
+                  </button>
+                  <button
+                    onClick={() => setFooterMode("hold")}
+                    disabled={saving}
+                    className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                    style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                  >
+                    On Hold
+                  </button>
+                </>
+              )}
               <button
                 onClick={() => setFooterMode("reject")}
                 disabled={saving}
@@ -828,6 +812,7 @@ export function SalesDrawer({
             </button>
           )}
         </div>
+        )}
       </div>
       </div>
     </>

@@ -69,13 +69,14 @@ interface QuoteTicket {
   created_by: { id: string; full_name: string | null } | null;
 }
 
-type Tab = "all" | "draft" | "sent" | "approved" | "routed";
+type Tab = "all" | "draft" | "sent" | "approved" | "cancelled" | "routed";
 
 const BASE_TABS: { id: Tab; label: string; status?: string }[] = [
   { id: "all",      label: "All" },
   { id: "draft",    label: "Draft",    status: "draft" },
   { id: "sent",     label: "Sent",     status: "sent" },
   { id: "approved", label: "Won",      status: "approved" },
+  { id: "cancelled", label: "Cancelled", status: "cancelled" },
 ];
 
 // Routed tab appended for sales/admin only
@@ -422,11 +423,13 @@ export default function QuotesPage() {
 
   const emptyMessage = debouncedSearch
     ? "No quotes match your search."
-    : tabCounts.all === 0 && tab !== "routed"
+    : tabCounts.all === 0 && tab !== "routed" && tab !== "cancelled"
       ? "No quotes in this date range."
       : tab === "routed" && (tabCounts.routed ?? 0) === 0
         ? "No routed quotes."
-        : "No quotes in this tab.";
+        : tab === "cancelled" && (tabCounts.cancelled ?? 0) === 0
+          ? "No cancelled quotes."
+          : "No quotes in this tab.";
 
   const isRoutedTab = tab === "routed";
 

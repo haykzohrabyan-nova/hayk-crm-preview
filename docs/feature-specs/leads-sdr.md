@@ -6,7 +6,7 @@ Route: `/leads` (SDR + Admin only)
 
 ## Overview
 
-The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page** with five tabs. The SDR works leads from the Inbox, validates them, and routes them to Sales, marks them as quoted, rejects them, puts them on hold, or tracks Won conversions.
+The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page** with six tabs. The SDR works leads from the All Leads queue, defers contact with **Follow Up Later**, puts them on hold, routes them to Sales, rejects them, or tracks Won conversions.
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Verify Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
@@ -47,7 +47,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 - **Pagination:** `ListPagination` at bottom of list — Showing 1–25 of N
 - **Skeleton loader** while data fetches — never full-page spinner
 - **Claim** (SDR, All Leads toggle) → `POST /api/leads/[id]/lock` → global loading overlay + row spinner → opens **Verify Drawer** in edit mode
-- **View** (SDR, My Leads toggle) → opens drawer without re-locking (already owned)
+- **View** (SDR, My Leads toggle) → opens drawer for owned lead (`POST /lock` refreshes `locked_at`; no new `lead_claimed`)
 - **Edit button** (Admin) → opens **Verify Drawer** in **edit mode** with no lock acquired — Admin can view and save any field changes via "Save Changes" button; the active SDR's lock is undisturbed
 - **Assign / Reassign button** (Admin only) → "Assign" label when `locked_by_id IS NULL`; "Reassign" label when lead is already owned. Opens a modal with a dropdown of all active SDR users plus an "Unassign" option. Disabled until an SDR is selected. On confirm → updates `locked_by_id`, `locked_at`, and `sdr_id`; row updates in place and tab counts refresh
 - **Empty state:** "No leads found." with muted text
@@ -55,6 +55,33 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 ### Badge
 
 Tab count for **All Leads** = unclaimed pool size (`locked_by_id IS NULL`), always — not affected by the All/My toggle. Admin badge shows total pending/validated leads.
+
+---
+
+## Tab: Follow Up Later
+
+**Data:** `GET /api/leads/workspace?status=Follow Up Later&scope=mine`
+
+- **SDR:** only their own follow-up leads — list, tab badge, and Resume are filtered by `sdr_id = currentUserId` (`scope=mine` on the workspace API). Marking follow-up sets `sdr_id` to the acting SDR; another SDR cannot mark or resume someone else's lead (403).
+- **Admin:** all follow-up leads across every SDR (`scope=mine` is not applied server-side)
+
+### Table Columns
+
+| Column | Notes |
+|--------|-------|
+| Name | |
+| Company | |
+| Product Interests | `ProductName[quantity]` |
+| Reason | Admin-managed `follow_up_reason` lookup label |
+| Follow Up On | Optional date (`follow_up_until`) |
+| Marked | Relative time (`follow_up_at`) |
+| Actions | **Resume**, **View** |
+
+### Behaviors
+
+- **Follow Up Later** (Verify Drawer, before On Hold) → full-screen sub-form: reason (required), notes, optional follow-up date → `POST /api/leads/[id]/follow-up` → `status = 'Follow Up Later'`; SDR retains lock (same as On Hold). Choosing **Other** requires free-text in **Please specify** (Confirm disabled until filled; server returns `400` if empty)
+- **Resume** → `POST /api/leads/[id]/resume` with `role: 'sdr'` → restores `prev_status` (typically `Pending`)
+- Reasons editable in **Admin → Dropdown Options** (`follow_up_reason` category)
 
 ---
 
@@ -105,6 +132,7 @@ Server-side filters via `?routed_filter=` on page-data; badge counts from `route
 | **In Progress** | Claimed — sales working the lead (`Ongoing`, draft quote, order not won, etc.) |
 | **Quote Sent** | `sales_status = "Quote Sent"` **or** linked quote ticket is `sent` / awaiting customer confirm |
 | **On Hold** | `sales_status = "On Hold"` |
+| **Follow Up Later** | `sales_status = "Follow Up Later"` (sales defer — SDR read-only on this tab) |
 | **Dropped** | `sales_status = "Dropped"` |
 
 Pills always visible; count badge when that stage has leads. **Stage** badge and filter use the same rules (ticket-aware when linked tickets are loaded).
@@ -276,7 +304,7 @@ Dynamic row-based interface. Each row shows **Product**, **Quantity**, and **Has
 |-------|-------|----------|-------|
 | Product | Single-select dropdown | Yes (when row is used) | Options from active `product_types`; already-chosen products excluded from other rows |
 | Quantity | Number input | Yes when product selected | Must be **> 0**; digits only, no negatives |
-| Has Design | Yes / No toggle pill | No | Whether the customer already has artwork/design |
+| Has Design | Centered checkbox | No | Whether the customer already has artwork/design |
 | Remove | Bordered button | — | Removes the row; hidden in read-only mode |
 
 - **"+ Add Product Interest"** button appends a new empty row (disabled when all products are already selected)
@@ -301,16 +329,17 @@ Actions available depending on drawer mode and current `status`. **All action bu
 | Action | When Available | What it does |
 |--------|---------------|--------------|
 | ~~**Validate**~~ | _Removed_ | The Validate step has been removed from the SDR workflow. SDRs go directly to Route to Sales, On Hold, or Reject. |
-| **Route to Sales** | Edit mode, any status | Saves all form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
+| **Route to Sales** | Edit mode, any status | Full-screen reason sub-form (`route_reason` lookups); **Other** requires **Please specify**; saves form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
+| **Follow Up Later** | Edit mode, not On Hold / Follow Up Later / Rejected | Full-screen follow-up sub-form; `POST /api/leads/[id]/follow-up` |
 | **On Hold** | Edit mode, status not Rejected | Replaces drawer body with full-screen hold sub-form (tabs + lead form hidden until hold is confirmed or cancelled) |
-| **Resume** | Edit mode, `status = 'On Hold'` | Saves all form edits + restores to `Pending` |
+| **Resume** | Edit mode, `status = 'On Hold'` or `Follow Up Later` | Saves form edits + `POST /api/leads/[id]/resume` → restores `prev_status` |
 | **Reject** | Edit mode, status not Rejected | Opens rejection form inline in footer — **TERMINAL** |
 | **Save** | Edit mode (far-right of footer) | `PATCH /api/leads/[id]` with current form values; **Decision Maker** in payload updates `customers.authority`; contact field changes may prompt "Update customer profile?"; closes drawer on success |
 | **Close (✕)** | Always (header) | Dismisses modal — ownership is **not** released (soft-lock persists until Route, Reject, or admin unlock) |
 
 **Save button** is always visible at the far right of the footer when in edit mode (navy style). Route, Hold, and Reject also auto-save form fields before executing their specific action.
 
-**Clicking outside the modal does not close it.** The backdrop is non-interactive. Use Save, Route to Sales, On Hold, Reject, or the **✕** header button to exit. The ✕ is available in **edit mode** (after Claim) so SDRs can dismiss without saving while keeping the lead claimed.
+**Clicking outside the modal** (backdrop) or the **✕** header button closes the drawer without saving. Ownership is **not** released — the lead stays claimed until Route, Reject, or Admin reassign.
 
 **Route to Sales is always available.** The SDR can route a lead directly from `Pending` without validating first.
 
@@ -327,6 +356,13 @@ Default seeded reasons: Awaiting customer response · Awaiting artwork / files �
 - Notes (textarea, optional)
 - Hold Until (date picker, optional)
 - **Confirm Hold** button → `POST /api/leads/[id]/hold`
+
+### Route to Sales Sub-form (full-screen in drawer body)
+
+Radio button grid (2 columns). **Reasons are admin-managed** — `route_reason` category (same list as quote **Route to Sales** modal on new quote Line Items and Quote tabs).
+
+- Notes (textarea, optional except when **Other** is selected — then **Please specify** is required)
+- **Confirm Route** → `PATCH /api/leads/[id]` with `status: 'Routed to Sales'`
 
 ### Rejection Form (inline in drawer footer)
 
@@ -395,7 +431,7 @@ Two-column grid (matches POC screenshot):
 | **Urgency** | — |
 
 Below the grid (full width):
-- **Product Interests** — shared `ProductInterestRows` component (Product + Quantity + Has Design on one row; labels above inputs — see Verify Drawer section)
+- **Product Interests** — shared `ProductInterestRows` component (Product + Quantity + **Has Design** checkbox on one row; labels above inputs — see Verify Drawer section)
 - **Returning Customer (Existing Client)** — checkbox with blue-tinted background row when checked
 - **Verify Lead Comment** — textarea: "Add verification notes before opening Order / Quote..."
 
@@ -490,7 +526,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Race condition safety net | If SDR clicks **Claim** on a stale lead, 409 → read-only drawer with locker banner |
 | Manual Add Lead modal | Phone lookup + dedup; per-field validation; lead stays **unclaimed** until Claim/Assign; shared component on CRM profile (SDR Add Lead) |
 | Verify Drawer (permanent lock, lock banner) | Lock acquired on **Claim**; ownership persists across close/save/hold until Route or Reject |
-| Product Interests — select + quantity + has-design rows | Shared `product-interest-rows.tsx`; Product, Quantity, Has Design on one row; quantity **> 0** when product selected (Add Lead + Verify Drawer) |
+| Product Interests — select + quantity + has-design rows | Shared `product-interest-rows.tsx`; Product, Quantity, **Has Design** (checkbox) on one row; quantity **> 0** when product selected (Add Lead + Verify Drawer) |
 | Claim loading UX | Global loading overlay + row spinner while lock + full lead fetch run |
 | Hold action (with reason, notes, hold-until date) | Full-screen hold sub-form hides lead form; SDR retains ownership while on hold |
 | Resume from hold | Restores to Validated; ownership retained |

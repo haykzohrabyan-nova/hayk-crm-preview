@@ -270,14 +270,19 @@ Core lead record. A lead starts in the inbox (`is_inbox = true`) and moves to th
 | `held_at` | `timestamptz` | Timestamp when hold was set |
 | `held_by_id` | `uuid` FK → `auth.users` | User who set the hold |
 | `prev_status` | `text` | Status snapshot — set on **hold** (to restore on resume) and on **reject** (to identify pipeline origin: `"Routed to Sales"` = rejected from sales pipeline) |
-| `prev_sales_status` | `text` | Sales status snapshot before hold |
+| `prev_sales_status` | `text` | Sales status snapshot before hold or follow-up |
+| `follow_up_reason` | `text` | Admin-managed lookup (`follow_up_reason`) when deferred |
+| `follow_up_notes` | `text` | Free-text follow-up notes |
+| `follow_up_until` | `timestamptz` | Optional scheduled follow-up date |
+| `follow_up_at` | `timestamptz` | When marked Follow Up Later |
+| `follow_up_by_id` | `uuid` FK → `auth.users` | User who marked follow-up |
 | `rejection_reason` | `text` | Reason selected on reject |
 | `urgency` | `text` | `'High'` \| `'Medium'` \| `'Low'` \| `null` — how urgently the client needs the product |
 | `is_returning_customer` | `boolean` DEFAULT `false` | Existing / returning client flag |
 | `sdr_comment` | `text` | SDR verification notes ("Verify Lead Comment") — internal, not visible to client |
 | `rejection_notes` | `text` | Free-text |
 | `sales_notes` | `text` | Internal notes entered by Sales reps (not visible to SDRs) |
-| `locked_by_id` | `uuid` FK → `auth.users` | SDR who **claimed** the lead (permanent until route/reject/unassign); null = open pool |
+| `locked_by_id` | `uuid` FK → `user_profiles` | SDR **claim** (permanent until route/reject/unassign); optional **temp** lock for Sales edge cases; null = unclaimed SDR pool |
 | `locked_at` | `timestamptz` | Timestamp when lock was acquired |
 | `created_at` | `timestamptz` NOT NULL DEFAULT `now()` | **Immutable** — never patched |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
@@ -329,6 +334,7 @@ create table public.leads (
 - `Quoted` — **system-set, never set manually.** Auto-applied when a job ticket that includes a quote is created for this lead.
 - `Routed to Sales` — SDR has handed off to the Sales team
 - `On Hold` — SDR-initiated hold; can return to `Pending` (or `Validated` if previously system-validated), go to `Rejected`, or `Routed to Sales`
+- `Follow Up Later` — SDR deferred contact (separate from On Hold); restores via `prev_status` on resume
 - `Rejected` — **TERMINAL** for SDR and Sales. Only Admin can change this status.
 - `Duplicate` — merged into another contact
 
@@ -348,7 +354,8 @@ create table public.leads (
 - `Ongoing` — Sales rep has claimed the lead and is actively working it
 - `Quote Sent` — Sales has sent a formal quote
 - `Won` — linked ticket released to **`in_production`** (auto-set by `markLeadWonOnProduction()` — not at order conversion)
-- `On Hold` — Sales-initiated hold; can only return to `Ongoing` or go to `Rejected`
+- `On Hold` — Sales-initiated hold; restores to `prev_sales_status` (typically `Ongoing`) on resume
+- `Follow Up Later` — Sales deferred contact; `status` stays `Routed to Sales`; owner-only tab for reps (`sales_owner_id`)
 - `Rejected` — **TERMINAL** for Sales. Only Admin can change this. (Note: a Sales-rejected lead uses `sales_status = 'Rejected'`; the `status` field remains `Routed to Sales`)
 
 **Terminal state rules:**
@@ -382,9 +389,9 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `quote_channel` | `text` | `'SMS'` \| `'WhatsApp'` \| `'Email'` \| `'In-person'` |
 | `quote_destination` | `text` | Phone (digits) for SMS/WhatsApp; email address for Email |
 | `quote_subtotal` | `numeric` | Sum of all line totals |
-| `quote_shipping` | `numeric` DEFAULT `0` | Manual shipping charge (required > 0 when `requires_shipping`) |
+| `quote_shipping` | `numeric` DEFAULT `0` | Total shipping charge — **sum** of `ticket_shipping_destinations.shipping_amount` when multi-destination rows exist; legacy single-address tickets still use this column directly |
 | `requires_shipping` | `boolean` NOT NULL DEFAULT `false` | Pickup (`false`) vs ship-to customer (`true`) |
-| `ship_to_line1` | `text` | Optional delivery street when shipping |
+| `ship_to_line1` | `text` | Legacy mirror of **primary** destination address (first row with address, else first row) — kept in sync on save |
 | `ship_to_line2` | `text` | Optional delivery line 2 |
 | `ship_to_city` | `text` | Optional delivery city |
 | `ship_to_state` | `text` | Optional delivery state |
@@ -420,6 +427,8 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `public_token` | `uuid` NOT NULL DEFAULT `gen_random_uuid()` UNIQUE | Unguessable token for public `/q/[token]` page |
 | `payment_status` | `text` NOT NULL DEFAULT `'unpaid'` | `'unpaid'` \| `'partial'` \| `'paid'` — overall order payment state |
 | `routed_by_id` | `uuid` FK → `auth.users` | Set when SDR routes quote to Sales; preserved after Sales claim. Used for SDR read-only access on in-progress hand-offs — **not** for Completed list (SDR Completed uses `created_by_id` only) |
+| `routed_reason` | `text` | Admin-managed `route_reason` lookup value when SDR manually routes from Line Items (migration **095**) |
+| `routed_notes` | `text` | Optional detail; required when `routed_reason` is Other |
 | `notes` | `text` | Internal notes |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
@@ -482,17 +491,36 @@ When evidence is pending (`payment_evidence_url` set, `payment_evidence_reviewed
 | `product_lines` | `jsonb` |
 | `follow_up_at` | `timestamptz` |
 
-#### `ticket_line_items` / `ticket_line_variants` / `ticket_files` (migration 089)
+#### `ticket_line_items` / `ticket_line_variants` / `ticket_files` (migrations 089, **092**)
 
-Priced catalog lines live in **`ticket_line_items`** (one row per quote line; fields mirror `QuoteSku` in `lib/utils/ticket-math.ts`). **Additional SKUs** (name + quantity, optional image/PDF) are **`ticket_line_variants`** per line. At most one file per variant in **`ticket_files`** (`variant_id` UNIQUE); binary in Supabase Storage bucket **`ticket-attachments`**.
+Priced catalog lines live in **`ticket_line_items`** (one row per quote line; fields mirror `QuoteSku` in `lib/utils/ticket-math.ts`). **Additional SKUs** (name + quantity, optional image/PDF) are **`ticket_line_variants`** per line. Files live in **`ticket_files`**; binary in Supabase Storage bucket **`ticket-attachments`**.
 
 | Table | Notes |
 |--------|------|
-| `ticket_line_items` | `ticket_id` FK, `sort_order`, catalog/pricing columns |
+| `ticket_line_items` | `ticket_id` FK, `sort_order`, catalog/pricing columns; `quantity` on the line is the catalog qty used for pricing (when additional SKUs exist, UI sets it to the **sum** of variant quantities) |
 | `ticket_line_variants` | `line_item_id` + denormalized `ticket_id`, `name`, `quantity > 0` |
-| `ticket_files` | `storage_path`, `file_name`, `mime_type`, `byte_size`, `uploaded_by_id` |
+| `ticket_files` | `line_item_id` FK; `variant_id` FK **nullable** (092) — `NULL` = line-level attachment when the line has no additional SKUs; otherwise one file per variant (`variant_id` UNIQUE). Partial unique index: one line-level file per `line_item_id` where `variant_id IS NULL` |
 
-Sync on create/update: `syncTicketLines()` in `lib/utils/ticket-line-items.ts`. Read: `fetchTicketLinesBundle()`; public/PDF/email use `lineItemsToDisplayRows()`.
+**Line-level file → first SKU:** On save, if a line has variants and a row in `ticket_files` with `variant_id IS NULL`, `migrateLineLevelFilesToFirstVariant()` assigns it to the first variant (by `sort_order`).
+
+Sync on create/update: `syncTicketLines()` in `lib/utils/ticket-line-items.ts`. Read: `fetchTicketLinesBundle()`; staff/public/PDF/email use `lineItemsToDisplayRows()` (`variants[]`, optional `lineFile` when no variants).
+
+#### `ticket_shipping_destinations` (migration **093**, May 2026)
+
+Multiple ship-to blocks per ticket. Replaces a single `quote_shipping` + `ship_to_*` pair for new/edited quotes.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `uuid` PK | |
+| `ticket_id` | `uuid` FK → `job_tickets` ON DELETE CASCADE | |
+| `sort_order` | `integer` | Display order (0-based) |
+| `shipping_amount` | `numeric` DEFAULT `0` | Per-destination charge (optional — may be `0`) |
+| `ship_to_line1` … `ship_to_zip` | `text` | Optional address fields; ZIP validated when non-empty |
+| `created_at` / `updated_at` | `timestamptz` | |
+
+**Backfill:** One row per existing ticket with `requires_shipping`, `quote_shipping > 0`, or non-empty `ship_to_line1`.
+
+**Sync:** `syncTicketShippingDestinations()` in `lib/utils/ticket-shipping-destinations.ts` on ticket `POST`/`PATCH`. **Read:** `fetchTicketShippingDestinations()`; UI/PDF/public API use `resolveTicketShippingDestinationsForDisplay()` (DB rows, else legacy `ship_to_*` on `job_tickets`).
 
 #### QuoteSku (TypeScript shape — form math only)
 
@@ -513,7 +541,7 @@ Each catalog line conforms to:
 | `height` | `number?` | inches |
 | `quantity` | `number?` | |
 | `unit_price` | `number?` | |
-| `design_required` | `boolean?` | "Design on file" checkbox |
+| `design_required` | `boolean?` | "Need a design" checkbox |
 | `die_cut` | `boolean?` | |
 | `spot_uv` | `boolean?` | UV Coating |
 | `foil` | `boolean?` | |
@@ -531,7 +559,7 @@ Each catalog line conforms to:
 - `rejected` — client declined
 - `in_production` — order in production
 - `completed` — fulfilled
-- `cancelled` — cancelled (admin/owner only; only if no payment recorded)
+- `cancelled` — terminal; admin-only cancel with required reason. Quote-stage cancellations list on `/quotes`; order-stage on `/orders`. Payment/audit fields retained on the row.
 
 #### RLS (migrations 042, 043, **086**)
 
@@ -703,7 +731,7 @@ create table public.lookup_values (
 | `urgency` | Add Lead, Verify Drawer, Sales Drawer | High, Medium, Low |
 | `hold_reason` | Hold sub-form (SDR + Sales) | Awaiting customer response, Awaiting artwork / files, Awaiting payment confirmation, Pricing review needed, Vacation / customer unavailable, Other |
 | `reject_reason` | Reject sub-form (SDR) | Wrong Number / Fake, Spam / Bot, Budget Too Low, Existing Customer, Timing Not Right, Not a Fit / Other |
-| `route_reason` | Route to Sales sub-form (SDR) | Unusually Large Volume, Complex Custom Dimensions, High-Value VIP Client, Requires Technical Support, Out of Box request, Other |
+| `route_reason` | Route to Sales sub-form (SDR leads + new quote Line Items / Quote modal) | Unusually Large Volume, Complex Custom Dimensions, High-Value VIP Client, Requires Technical Support, Out of Box request, Pricing negotiation expected, Customer requested Sales rep, Needs custom quote from Sales, Other — seeded in migration **095**; Admin → Dropdown Options |
 | `sales_drop_reason` | Drop deal sub-form (Sales) | Price, Ghosted, Competitor, Timeline, Other |
 
 **Order / Quote categories** (seeded migrations 044 + 048):

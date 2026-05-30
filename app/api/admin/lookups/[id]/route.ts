@@ -64,6 +64,7 @@ export async function DELETE(
     industry:         "industry",
     urgency:          "urgency",
     hold_reason:      "hold_reason",
+    follow_up_reason: "follow_up_reason",
     reject_reason:    "rejection_reason",
     route_reason:     "route_reason",
     sales_drop_reason:"sales_drop_reason",

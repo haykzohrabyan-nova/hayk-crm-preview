@@ -112,6 +112,11 @@ create table if not exists public.leads (
   hold_notes            text,
   hold_until            timestamptz,
   held_at               timestamptz,
+  follow_up_reason      text,
+  follow_up_notes       text,
+  follow_up_until       timestamptz,
+  follow_up_at          timestamptz,
+  follow_up_by_id       uuid        references auth.users(id),
   prev_status           text,
   prev_sales_status     text,
   urgency               text        check (urgency in ('High', 'Medium', 'Low')),
@@ -222,6 +227,8 @@ create table if not exists public.job_tickets (
 
   -- Routing / quote metadata
   routed_by_id                       uuid           references auth.users(id),
+  routed_reason                      text,
+  routed_notes                       text,
   quote_source                       text,
 
   -- Per-ticket payment strategy (checkout / portal)
@@ -311,7 +318,7 @@ create table if not exists public.ticket_files (
   id              uuid        primary key default gen_random_uuid(),
   ticket_id       uuid        not null references public.job_tickets(id) on delete cascade,
   line_item_id    uuid        not null references public.ticket_line_items(id) on delete cascade,
-  variant_id      uuid        not null references public.ticket_line_variants(id) on delete cascade,
+  variant_id      uuid        references public.ticket_line_variants(id) on delete cascade,
   storage_path    text        not null,
   file_name       text        not null,
   mime_type       text        not null,
@@ -1247,6 +1254,13 @@ insert into public.lookup_values (category, value, label, sort_order) values
   ('hold_reason', 'vacation_unavailable',       'Vacation / customer unavailable',4),
   ('hold_reason', 'other',                      'Other',                         5),
 
+  -- ── follow up later reasons (SDR leads) ────────────────────────────────────
+  ('follow_up_reason', 'callback_requested',  'Customer asked to call back later', 0),
+  ('follow_up_reason', 'awaiting_decision',   'Awaiting decision / budget',        1),
+  ('follow_up_reason', 'wrong_time_to_reach', 'Wrong time — try again later',      2),
+  ('follow_up_reason', 'left_voicemail',      'Left voicemail — follow up',        3),
+  ('follow_up_reason', 'other',               'Other',                             4),
+
   -- ── reject reasons ─────────────────────────────────────────────────────────
   ('reject_reason', 'wrong_number_fake', 'Wrong Number / Fake', 0),
   ('reject_reason', 'spam_bot',          'Spam / Bot',          1),
@@ -1261,7 +1275,10 @@ insert into public.lookup_values (category, value, label, sort_order) values
   ('route_reason', 'vip_client',         'High-Value VIP Client',     2),
   ('route_reason', 'technical_support',  'Requires Technical Support',3),
   ('route_reason', 'out_of_box',         'Out of Box request',        4),
-  ('route_reason', 'other',              'Other',                     5),
+  ('route_reason', 'pricing_negotiation','Pricing negotiation expected',5),
+  ('route_reason', 'customer_wants_sales','Customer requested Sales rep',6),
+  ('route_reason', 'needs_custom_quote', 'Needs custom quote from Sales',7),
+  ('route_reason', 'other',              'Other',                     8),
 
   -- ── sales drop reasons ─────────────────────────────────────────────────────
   ('sales_drop_reason', 'price',      'Price',      0),

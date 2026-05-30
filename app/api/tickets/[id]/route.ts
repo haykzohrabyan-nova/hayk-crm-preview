@@ -25,7 +25,11 @@ import {
   ticketKindForReference,
 } from "@/lib/utils/reference-codes";
 import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
-import { normalizeShipToPayload, validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
+import {
+  fetchTicketShippingDestinations,
+  resolveShippingFromRequest,
+  syncTicketShippingDestinations,
+} from "@/lib/utils/ticket-shipping-destinations";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
 import {
@@ -93,8 +97,11 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   const convert_meta = await fetchManualConvertMeta(admin, ticketId, ticket);
   const line_items = await fetchTicketLinesBundle(admin, ticketId);
+  const shipping_destinations = await fetchTicketShippingDestinations(admin, ticketId);
 
-  return NextResponse.json({ ticket: { ...ticket, created_by, convert_meta, line_items } });
+  return NextResponse.json({
+    ticket: { ...ticket, created_by, convert_meta, line_items, shipping_destinations },
+  });
 }
 
 // ─── PATCH /api/tickets/[id] ──────────────────────────────────────────────────
@@ -648,29 +655,34 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (key in body) patch[key] = body[key];
   }
 
-  if ("requires_shipping" in body || "ship_to_line1" in body || "ship_to_line2" in body || "ship_to_city" in body || "ship_to_state" in body || "ship_to_zip" in body || "quote_shipping" in body) {
-    const requiresShipping = "requires_shipping" in body
-      ? Boolean(body.requires_shipping)
-      : Boolean(existing.requires_shipping);
-    const shipPayload = normalizeShipToPayload(requiresShipping, {
+  const shippingFieldsTouched =
+    "requires_shipping" in body ||
+    "ship_to_line1" in body ||
+    "ship_to_line2" in body ||
+    "ship_to_city" in body ||
+    "ship_to_state" in body ||
+    "ship_to_zip" in body ||
+    "quote_shipping" in body ||
+    "shipping_destinations" in body;
+
+  let shippingDestinationsToSync: ReturnType<typeof resolveShippingFromRequest>["destinations"] | null = null;
+
+  if (shippingFieldsTouched) {
+    const shippingResolved = resolveShippingFromRequest({
+      requires_shipping: "requires_shipping" in body ? body.requires_shipping : existing.requires_shipping,
+      quote_shipping: "quote_shipping" in body ? body.quote_shipping : existing.quote_shipping,
       ship_to_line1: "ship_to_line1" in body ? body.ship_to_line1 : existing.ship_to_line1,
       ship_to_line2: "ship_to_line2" in body ? body.ship_to_line2 : existing.ship_to_line2,
       ship_to_city: "ship_to_city" in body ? body.ship_to_city : existing.ship_to_city,
       ship_to_state: "ship_to_state" in body ? body.ship_to_state : existing.ship_to_state,
       ship_to_zip: "ship_to_zip" in body ? body.ship_to_zip : existing.ship_to_zip,
+      shipping_destinations: body.shipping_destinations,
     });
-    const resolvedQuoteShipping = shipPayload.requires_shipping
-      ? Number("quote_shipping" in body ? body.quote_shipping : existing.quote_shipping ?? 0)
-      : 0;
-    const shippingErr = validateShippingCharge(shipPayload.requires_shipping, resolvedQuoteShipping);
-    if (shippingErr) {
-      return NextResponse.json({ error: shippingErr, code: "VALIDATION_ERROR" }, { status: 400 });
+    if (shippingResolved.zipError) {
+      return NextResponse.json({ error: shippingResolved.zipError, code: "VALIDATION_ERROR" }, { status: 400 });
     }
-    const zipErr = validateShipToZip(shipPayload.ship_to_zip);
-    if (zipErr) {
-      return NextResponse.json({ error: zipErr, code: "VALIDATION_ERROR" }, { status: 400 });
-    }
-    Object.assign(patch, shipPayload, { quote_shipping: resolvedQuoteShipping });
+    Object.assign(patch, shippingResolved.legacy);
+    shippingDestinationsToSync = shippingResolved.destinations;
   }
 
   if ("due_date" in body && body.due_date) {
@@ -780,6 +792,22 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
+  }
+
+  if (shippingDestinationsToSync != null) {
+    try {
+      await syncTicketShippingDestinations(
+        admin,
+        ticketId,
+        Boolean(patch.requires_shipping ?? existing.requires_shipping),
+        shippingDestinationsToSync,
+      );
+    } catch (err) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Failed to save shipping destinations.", code: "DB_ERROR" },
+        { status: 500 },
+      );
+    }
   }
 
   // Auto-record cash payment if applicable (partial cash deposit or full cash in person).
@@ -985,9 +1013,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   }
 
   const line_items = await fetchTicketLinesBundle(admin, ticketId);
+  const shipping_destinations = await fetchTicketShippingDestinations(admin, ticketId);
 
   return NextResponse.json({
-    ticket: { ...(responseTicket ?? updated), line_items },
+    ticket: { ...(responseTicket ?? updated), line_items, shipping_destinations },
     ...(notification ? { notification } : {}),
   });
 }

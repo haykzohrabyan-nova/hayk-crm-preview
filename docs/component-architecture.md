@@ -101,7 +101,8 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `DashboardPage` | `components/admin/dashboard-page.tsx` | Role router — all roles |
 | `QuotesPage` | `components/quotes/quotes-page.tsx` | All roles |
 | `OrdersPage` | `components/orders/orders-page.tsx` | All roles |
-| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending approval / Approved tabs |
+| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending / Approved tabs; **Payment For** column; rows open `/payments/[id]?from=/payments` |
+| `PaymentTypeBadge` | `components/orders/payment-type-badge.tsx` | Deposit / Balance / Full payment pill with optional description (list + detail) |
 | `SmsTemplatesSection` | `components/admin/sms-templates-section.tsx` | Admin — SMS/WhatsApp template editor |
 | `ProductionPage` | `components/orders/production-page.tsx` | Legacy — UI redirects to `/orders?tab=in_production` |
 | `CompletedPage` | `components/orders/completed-page.tsx` | SDR (own created only), Accountant + Admin (all) |
@@ -141,10 +142,16 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 
 > **Rule:** Validatable fields in scrollable modals/drawers use `data-field-anchor="…"` on a wrapper `div` and call `scrollToFormField(containerRef, anchor)` when setting an error — so off-screen fields (e.g. Source) are visible after failed submit.
 | `MobileListCard` / `TicketListToolbar` | `components/ui/mobile-list-card.tsx` | Quotes, Orders, In Production, Completed, Payments list pages (mobile card fallback at `< lg`) |
-| `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible section header (chevron toggle; default closed) — Timeline, Quote & Pricing, Fulfillment, Pricing summary, Payment settings, Quote delivery, Follow-up, Production & evidence, Payment review, Payment plan on detail pages |
+| `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible section header (chevron toggle; `defaultOpen` synced when prop changes). Default **closed** on overview; **Edit** on quote/order sets `defaultOpen={true}` on Line Items, Fulfillment, Quote & Pricing |
 | `DetailQuickActions` | `components/quotes/quote-detail/detail-quick-actions.tsx` | Quote/order detail sidebar — quote lifecycle (Cancel, Send/Resend, Convert), **Customer Link** + **Copy Link**, Mark Completed, Resend invoice |
 | `ResendAfterSaveModal` | `components/quotes/quote-detail/resend-after-save-modal.tsx` | After **Save Changes** on sent/unconfirmed quote (SDR/Sales) or sent/order/in_production (Admin) — optional resend with revision email |
-| `LineItemVariants` | `components/quotes/shared/line-item-variants.tsx` | Additional SKUs per catalog line (name, qty, attach); `AdditionalSkusOverviewList` on detail Overview |
+| `LineItemVariants` | `components/quotes/shared/line-item-variants.tsx` | Additional SKUs per catalog line (name, qty, attach); `uploadPendingLineItemFiles()` after save |
+| `LineItemAttachmentControl` | `components/quotes/shared/line-item-attachment.tsx` | Line-level attach on Add-on Finishings row; overview download link |
+| `PublicLineItemSkusGrid` | `components/public/public-line-item-skus-grid.tsx` | Customer portal SKU grid (2-col) with image/PDF preview + Download |
+| `PublicShippingAddressesList` / `PublicShippingAddressSingle` | `components/public/public-shipping-addresses.tsx` | Multi- vs single-destination shipping on `/q/[token]` |
+| `ShippingFulfillmentSection` | `components/quotes/shared/shipping-fulfillment-section.tsx` | Pickup / Ship + **Add shipping address** blocks; **Previous addresses** per destination |
+| `RouteToSalesModal` | `components/quotes/route-to-sales-modal.tsx` | SDR manual route from new quote Line Items — `route_reason` picker + notes |
+| `ShippingDestinationsOverviewList` | `components/quotes/ticket-overview-sections.tsx` | Read-only destination list on quote/order overview |
 | `DatePicker` | `components/ui/date-picker.tsx` | New Quote form (Due Date field), Quote Detail (Due Date edit), Quote tab (First Reminder date) |
 
 > **Rule:** Every phone or email input in the app **must** use `PhoneInput` or `EmailInput`. Never add a raw `<input type="tel">` or `<input type="email">` in a component.
@@ -157,14 +164,20 @@ PDF rendering uses `@react-pdf/renderer` (server-side only — never imported in
 
 | File | Purpose |
 |------|---------|
-| `lib/pdf/invoice-pdf.tsx` | `InvoicePDF` React component — renders a `<Document>` + `<Page>` with all invoice sections. Accepts typed props (company, ticket, customer, skus, pricing). Used exclusively by the `/api/tickets/[id]/pdf` route handler. |
+| `lib/pdf/invoice-pdf.tsx` | `InvoicePDF` React component — renders a `<Document>` + `<Page>` with all invoice sections. Accepts typed props (company, ticket with `shippingDestinations[]`, customer, `TicketLineDisplayRow[]` skus, pricing, payment summary). |
+| `lib/utils/ticket-shipping-destinations.ts` | Fetch/sync/display shipping destination rows for forms, overview, public page, and PDF routes |
+| `resolveQuoteDeliveryFromContact()` | `lib/utils/resolve-quote-delivery-from-contact.ts` | Prefill `ticket_dest_phone` / `ticket_dest_email` / channel from customer contact when Quote tab skipped (routed save) |
+| `components/public/public-shipping-addresses.tsx` | `PublicShippingAddressSingle` (one dest) + `PublicShippingAddressesList` (2-col grid) on `/q/[token]` |
 
 **How it works:**
 1. `GET /api/tickets/[id]/pdf` — `requireSession()` (MFA) + `canAccessTicket()` (same scope as ticket detail).
-2. Route fetches ticket + company_settings from Supabase (admin client).
-3. `renderToBuffer(<InvoicePDF .../>)` produces a PDF binary server-side — wrapped in `try/catch`; failures return a clean 500 instead of an unhandled exception.
-4. Response: `Content-Type: application/pdf` + `Content-Disposition: attachment`.
-5. In `quote-detail.tsx`, the "Save PDF" button is `<a href="/api/tickets/[id]/pdf" download>` — one click downloads the file with no new tab.
+2. `GET /api/public/quotes/[token]/pdf` — no auth; same renderer, token-scoped ticket lookup.
+3. Routes fetch ticket + company_settings + `fetchTicketLinesBundle()` + `fetchTicketShippingDestinations()` from Supabase (admin client).
+4. `renderToBuffer(<InvoicePDF .../>)` produces a PDF binary server-side — wrapped in `try/catch`; failures return a clean 500 instead of an unhandled exception.
+5. Response: `Content-Type: application/pdf` + `Content-Disposition: attachment`.
+6. Staff: `quote-detail.tsx` **Save PDF** is `<a href="/api/tickets/[id]/pdf" download>`. Public: **Save PDF** on `PublicQuoteDocument`.
+
+**PDF shipping layout:** one destination → **Ship To** party column; multiple → **Shipping addresses** section with 50/50 card rows (matches `PublicShippingAddressesList`).
 
 `GET /api/tickets/[id]/print` uses the same auth checks; returns HTML for browser print. See **`docs/security.md`**.
 
@@ -220,7 +233,7 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
         ├── Claim/View: `useGlobalLoading` overlay + row spinner while lock + `fetchLeadById` run
         ├── Routed tab sub-filters: server-side → `?routed_filter=`; badges from `routedSubCounts`
         ├── ListPagination: Showing 1–25 of N, prev/next, rows-per-page (25/50/100)
-        ├── components/leads/product-interest-rows.tsx — shared Product Interests rows (Add Lead + Verify drawer)
+        ├── components/leads/product-interest-rows.tsx — shared Product Interests rows (Add Lead + Verify drawer); Product + Quantity + **Has Design** checkbox
         └── components/leads/verify-drawer.tsx (opens on Claim / View click)
               └── components/leads/hold-sub-form.tsx (hold reason sub-form)
 ```
@@ -253,9 +266,9 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/sales/page.tsx  [Server Component — thin wrapper]
   └── components/sales/sales-page.tsx  [Client Component "use client"]
-        ├── Tabs: Pipeline | On Hold | Rejected
+        ├── Tabs: Pipeline | Follow Up Later | On Hold | Rejected
         ├── Tab state: local useState
-        ├── Mount: GET /api/leads/sales/page-data?tab=… → { leads, counts }
+        ├── Mount: GET /api/leads/sales/page-data?tab=… → { leads, counts } (pipeline | follow_up | hold | rejected)
         ├── Tab switch / lazy tabs: GET /api/leads/workspace?status=... (slim list)
         ├── Lookups / sales users: lazy on drawer/modal open
         ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
@@ -267,9 +280,12 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 
 | Tab | API params | Notes |
 |-----|------------|-------|
-| Pipeline | `status=Routed to Sales` | Sales sees unclaimed + own; Admin sees all; client-filtered by `sales_status` |
-| On Hold | `status=Routed to Sales` | Client-filtered by `sales_status = On Hold` |
-| Rejected | `status=Rejected&prev_status=Routed+to+Sales` | Only leads rejected *from* the sales pipeline; lazy-fetched on first tab open |
+| Pipeline | page-data `tab=pipeline` | Unclaimed + own (`sales_owner_id` OR null); excludes `Follow Up Later` |
+| Follow Up Later | page-data `tab=follow_up` | `sales_status = Follow Up Later`; Sales rep owner-only |
+| On Hold | page-data `tab=hold` | `sales_status = On Hold` |
+| Rejected | page-data `tab=rejected` | `prev_status = Routed to Sales`; list lazy-fetched on first tab open |
+
+**Open vs Claim:** Unclaimed → `POST /claim`. Owned lead → modal without `POST /lock` when `sales_owner_id = you`.
 
 **Count badge:** From page-data `counts` on mount; `GET /api/leads/sales-counts` still used for counts-only refresh. `rejected` count uses same `prev_status = 'Routed to Sales'` filter so badge matches list.
 
@@ -281,6 +297,8 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 
 **Verify Drawer tabs:** Lead Info | Quote | **History** (same lazy-fetch pattern as Sales Drawer — fetches `GET /api/leads/[id]/activities` on first open, renders vertical timeline with colored dots, actor name, relative timestamps)
 
+**Shared sub-forms:** `hold-sub-form.tsx`, `follow-up-sub-form.tsx` — full-screen reason UI in Verify Drawer and Sales modal. Follow-up **Other** requires **Please specify** before Confirm.
+
 ---
 
 ### `/quotes` — Quoted Requests list
@@ -289,8 +307,9 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
   └── components/quotes/quotes-page.tsx  [Client Component "use client"]
         ├── Date filter: DashboardDateRangeFilter → server `date_from` / `date_to` on page-data
-        ├── Tabs: All | Draft | Sent | Won | Routed to Sales* (count badge on all)
-        │         * "Routed to Sales" only visible to Sales + Admin roles
+        ├── Tabs: All | Draft | Sent | Won | Cancelled | Routed to Sales* (count badge on all)
+        │         * "Routed to Sales" only visible to Sales + Admin + SDR roles
+        │         Cancelled = quote-stage cancellations only (`ticket_kind = 'quote'`)
         ├── Mount: GET /api/quotes/page-data → { tickets, counts, pagination }
         ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed | refresh-counts | activities-changed
         │    Sidebar: job_tickets + activities INSERT (claim) → tickets-changed
@@ -314,6 +333,7 @@ app/(app)/orders/page.tsx  [Server Component — thin wrapper]
   └── components/orders/orders-page.tsx  [Client Component "use client"]
         ├── Date filter: DashboardDateRangeFilter → server `date_from` / `date_to`
         ├── Tabs: All | Pending Payment | In Production | Cancelled (count badge on all; default tab = All; URL `?tab=`)
+        │         Cancelled = order-stage only (`ticket_kind = 'order'`); cancelled quotes live on `/quotes` → Cancelled
         ├── Mount: GET /api/orders/page-data → { orders, counts, pagination }
         ├── Slim list from page-data — status_label / status_tone from API
         ├── Column sort: server-side `?sort=` (Created by, Balance Due, Due Date, Status, Payment)
@@ -394,7 +414,7 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │    Row 1: Title (required *) | Priority segmented control (required *)
         │      Priority options: Low / Normal / High — each button uses per-priority colors
         │      (same segmented style as Discount type control, no pill buttons)
-        │    Row 2: Due Date (required *) | Rush Order compact toggle
+        │    Row 2: Due Date (optional) | Rush Order compact toggle
         │      Due Date quick picks: Today / Tomorrow / +3d (no +1w)
         │      Active quick pick highlights navy when date matches calendar selection
         │      Rush toggle: compact inline row (label above, "Rush On/Off" + switch)
@@ -402,12 +422,15 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         ├── Line Items Tab:
         │    Line Total override per SKU row (overrides qty × unit price)
         │    Line Item Comment on its own row above Line Total
+        │    Add-on Finishings + **Attach file** (right) when no additional SKUs (`line-item-attachment.tsx`)
+        │    Additional SKUs: name, qty, per-SKU attach; **Add SKU** primary button; line Quantity = sum of SKU qtys when SKUs exist
+        │    SDR only: **Route to Sales** on Line Items + Quote footer → `route-to-sales-modal.tsx`
         │    Add Line Item auto-scrolls to new row
         │    SkuSelect helper: appearance-none + ChevronDown on all selects
         │
         ├── Quote Tab:
         │    Fulfillment: `components/quotes/shared/shipping-fulfillment-section.tsx`
-        │      Pickup | Ship to customer; Shipping ($) required when Ship; optional address + past-address picker
+        │      Pickup | Ship to customer; optional Shipping ($) per block; per-destination **Previous addresses** picker
         │    Adjustments: Tax Rate + Discount + Tax Exempt on one row (`quote-form.tsx`)
         │    Payment Methods: independent toggle buttons (flex gap, not connected bar)
         │      Card Payment + Zelle: multi-select allowed simultaneously
@@ -429,14 +452,15 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │
         ├── Validation per tab before advancing:
         │    Customer: name + phone or email + source + industry required
-        │    Info: title + due date required (priority always has a value)
+        │    Info: title required; due date optional (validated only when set)
         │    Line Items: ≥1 fully-filled item (product + qty + unit price)
         │    Quote: destination required; Sales Permit # required if Tax Exempt;
-        │      Shipping ($) required if Ship to customer selected; ZIP format if address ZIP entered
+        │      ZIP format if address ZIP entered (Shipping ($) optional when Ship selected)
         │
         ├── High-Value Threshold modal (SDR only):
         │    Fires when advancing to Quote tab with total > HVT
-        │    Non-dismissible, 30s countdown → saves as 'routed' → redirect to /quotes
+        │    Cancel — Edit Amount or OK — Route to Sales; 30s countdown → saves as 'routed' → redirect to /quotes
+        │    Delivery fields prefilled from customer contact when Quote tab skipped (`lib/utils/resolve-quote-delivery-from-contact.ts`)
         │
         ├── Data: GET /api/lookups, GET /api/lookups/products, GET /api/admin/company
         ├── Save Draft: POST /api/tickets { status: 'draft' } — available from Line Items onwards
@@ -470,16 +494,17 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │     components/quotes/quote-detail/ticket-stats-row.tsx
         │     components/quotes/quote-detail/detail-quick-actions.tsx
         │     components/orders/payment-detail-overview.tsx
+        │     components/orders/payment-type-badge.tsx
         │     components/orders/production-detail-overview.tsx
         │
         ├── Overview layout (`isOverviewLayout` — sent quote, order, payment, production, completed):
-        │    Top: `TicketStatsRow` (5 stat cards; mobile: 100% total + 2×2 grid)
-        │    Below stats: `TicketLifecycleTimeline` — collapsible, default collapsed
+        │    Top: `TicketStatsRow` (5 stat cards; mobile: 100% total + 2×2 grid) — **includes `context="payment"`**
+        │    Below stats: `TicketLifecycleTimeline` — collapsible, default collapsed — **includes payment detail**
         │    Grid: left sidebar (always) + right Overview/History panel
         │    Overview tab: Line Items always visible; long optional blocks collapsible (default collapsed):
         │      **Quote & Pricing**, **Fulfillment**, **Pricing**, **Payment & order settings**,
         │      **Quote delivery**, **Follow-up**, **Production & evidence**, **Payment review**, **Payment plan**
-        │    Payment context (`/payments/[id]`): Payment review defaults **open** (`defaultOpen={true}`)
+        │    Payment context (`/payments/[id]`): Payment review defaults **open**; Back → `/payments` via `resolveTicketDetailBackPath()`
         │    Desktop xl+: fixed viewport height; only right panel scrolls
         │    Mobile/tablet: single page scroll (no nested scroll on Overview panel)
         │
@@ -494,7 +519,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    CustomerInfoCard — if customer/contact exists (lookup labels for industry + quote_source)
         │    DetailQuickActions — all lifecycle actions stacked below card:
         │      Quote: Send/Resend Quote, Convert to Order (admin)
-        │      All stages: Cancel Ticket (**admin only** — any non-cancelled status incl. completed)
+        │      All stages: **Cancel Quote** / **Cancel Order** (**admin only** — `cancelActionLabel()` by stage; any non-cancelled status incl. completed)
         │      Order+: row 1 Mark Completed | Resend Link; row 2 Customer Link | Copy Link (public `/q/{token}`)
         │
         ├── 2-tab view: Overview | History  (draft edit mode may show full form instead)
@@ -513,9 +538,9 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │
         ├── Edit mode Info section (matches new-quote-form layout):
         │    Row 1: Title (required *) | Priority segmented control (required *)
-        │    Row 2: Due Date (required *) | Rush Order compact toggle
+        │    Row 2: Due Date (optional) | Rush Order compact toggle
         │    Same quick picks (Today / Tomorrow / +3d), same active highlight behavior
-        │    Title and Due Date validated on save — blocks with inline errors
+        │    Title required on save; due date optional (validated only when set)
         │
         ├── Pricing Summary (read-only view):
         │    Discount row: derived as subtotal + shipping − pre_tax_total (not hardcoded 0)
@@ -571,7 +596,14 @@ app/(public)/q/[token]/page.tsx  [Client Component "use client"]
       │    Green "Ready for pickup" banner with shop address + phone
       │
       ├── Sub-components: LoadingSkeleton | NotFound | PublicQuoteDocument
-      └── Save PDF: GET /api/public/quotes/[token]/pdf (no auth; hides paid rows while evidence pending)
+      │    PublicQuoteDocument line items table + mobile cards:
+      │      Below each product → PublicLineItemSkusGrid (2×50% grid)
+      │      Labels: SKU{n}. {name} · Qty {qty}; image preview or PDF via blob: + object embed
+      │      Actions: Open PDF (new tab), Download (?download=1)
+      │      Data: ticket.line_items[].variants[], lineFile when no variants
+      │      Files: GET /api/public/quotes/[token]/files/[fileId] (streamed 200, not redirect)
+      │      Shipping: shipping_destinations[] — 1 → Ship To column; 2+ → PublicShippingAddressesList (2-col)
+      └── Save PDF: GET /api/public/quotes/[token]/pdf (no auth; InvoicePDF parity — shipping grid, SKUs, files, Need a design)
 ```
 
 ---

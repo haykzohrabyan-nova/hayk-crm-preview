@@ -145,7 +145,7 @@ export async function GET(
         sku.foil && "Foil",
         sku.perforation && "Perforation",
         sku.die_cut && "Die Cut",
-        sku.design_required && "Design on file",
+        sku.design_required && "Need a design",
       ].filter(Boolean) as string[];
 
       return `

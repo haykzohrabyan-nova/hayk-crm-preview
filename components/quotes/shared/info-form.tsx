@@ -26,6 +26,8 @@ interface InfoFormProps {
   priorityOpts: LookupOption[];
   titleError?: string;
   dueDateError?: string;
+  /** When false, Due Date has no required asterisk (e.g. New Quote). Default true. */
+  dueDateRequired?: boolean;
   /** Earliest selectable due date (YYYY-MM-DD), e.g. ticket creation day. */
   minDueDate?: string;
 }
@@ -111,7 +113,9 @@ export function InfoForm(p: InfoFormProps) {
       <div className="grid grid-cols-2 gap-4 items-start">
         <div data-field-anchor="dueDate">
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-            Due Date <span style={{ color: "var(--color-danger)" }}>*</span>
+            Due Date{p.dueDateRequired !== false ? (
+              <> <span style={{ color: "var(--color-danger)" }}>*</span></>
+            ) : null}
           </label>
           <div className="flex gap-2 items-center">
             <DatePicker

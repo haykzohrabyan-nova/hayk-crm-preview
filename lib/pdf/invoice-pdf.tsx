@@ -8,8 +8,10 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import { formatCurrency } from "@/lib/utils/ticket-math";
-import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
+import type { TicketFileMeta, TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
+import { formatShipToAddress } from "@/lib/utils/address";
 import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
+import type { ShippingDestinationDisplayRow } from "@/lib/utils/ticket-shipping-destinations";
 import type { InvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 
 // ── Colors ──────────────────────────────────────────────────────────────────
@@ -95,6 +97,21 @@ const s = StyleSheet.create({
   },
   partyDetail: { fontSize: 10, color: "#555", marginBottom: 1 },
   reLine: { fontSize: 10, color: "#555", marginTop: 4 },
+
+  shippingSection: { marginBottom: 20 },
+  shippingGridRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 8,
+  },
+  shippingCard: {
+    width: "48%",
+    padding: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    borderRadius: 4,
+    backgroundColor: "#FAFAFA",
+  },
 
   // Table
   tableHeader: {
@@ -253,7 +270,9 @@ export interface InvoicePDFProps {
     taxExempt: boolean | null;
     quoteChannel: string | null;
     requiresShipping?: boolean | null;
+    /** @deprecated Prefer shippingDestinations */
     shipToAddress?: string | null;
+    shippingDestinations?: ShippingDestinationDisplayRow[];
   };
   customer: { name: string; email: string; phone: string; company: string };
   repName: string;
@@ -271,6 +290,42 @@ function fmtDate(iso: string) {
   });
 }
 
+function fileLabel(file?: TicketFileMeta | null): string | null {
+  if (!file?.file_name) return null;
+  return file.file_name;
+}
+
+function shippingDestinationPairs(
+  rows: ShippingDestinationDisplayRow[],
+): ShippingDestinationDisplayRow[][] {
+  const pairs: ShippingDestinationDisplayRow[][] = [];
+  for (let i = 0; i < rows.length; i += 2) {
+    pairs.push(rows.slice(i, i + 2));
+  }
+  return pairs;
+}
+
+function ShippingDestinationCard({ row }: { row: ShippingDestinationDisplayRow }) {
+  const addr = formatShipToAddress(row);
+  const amount = Number(row.shipping_amount) || 0;
+  return (
+    <View style={s.shippingCard}>
+      {amount > 0 ? (
+        <Text style={[s.partyDetail, { marginBottom: 4 }]}>
+          Shipping: {formatCurrency(amount)}
+        </Text>
+      ) : null}
+      {addr ? (
+        addr.split("\n").map((line, j) => (
+          <Text key={j} style={s.partyDetail}>{line}</Text>
+        ))
+      ) : (
+        <Text style={{ fontSize: 10, color: MUTED }}>No address entered</Text>
+      )}
+    </View>
+  );
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 export function InvoicePDF({
   isOrder,
@@ -284,6 +339,14 @@ export function InvoicePDF({
   paymentSummary,
 }: InvoicePDFProps) {
   const docType = isOrder ? "INVOICE" : "QUOTE";
+  const shippingRows = ticket.shippingDestinations ?? [];
+  const singleShipping =
+    shippingRows.length === 1 ? shippingRows[0] : null;
+  const singleShipToText =
+    (singleShipping && formatShipToAddress(singleShipping)) ||
+    ticket.shipToAddress ||
+    null;
+  const multiShipping = shippingRows.length > 1 ? shippingRows : [];
 
   return (
     <Document
@@ -365,10 +428,15 @@ export function InvoicePDF({
               <Text style={{ fontSize: 10, color: "#bbb" }}>No customer details</Text>
             ) : null}
           </View>
-          {ticket.shipToAddress ? (
+          {singleShipToText ? (
             <View style={s.partyCol}>
               <Text style={s.sectionLabel}>Ship To</Text>
-              {ticket.shipToAddress.split("\n").map((line, i) => (
+              {(Number(singleShipping?.shipping_amount) || 0) > 0 ? (
+                <Text style={s.partyDetail}>
+                  Shipping: {formatCurrency(singleShipping!.shipping_amount)}
+                </Text>
+              ) : null}
+              {singleShipToText.split("\n").map((line, i) => (
                 <Text key={i} style={s.partyDetail}>{line}</Text>
               ))}
             </View>
@@ -384,6 +452,19 @@ export function InvoicePDF({
             ) : null}
           </View>
         </View>
+
+        {multiShipping.length > 0 ? (
+          <View style={s.shippingSection}>
+            <Text style={s.sectionLabel}>Shipping addresses</Text>
+            {shippingDestinationPairs(multiShipping).map((pair, ri) => (
+              <View key={ri} style={s.shippingGridRow}>
+                {pair.map((row, ci) => (
+                  <ShippingDestinationCard key={ci} row={row} />
+                ))}
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         {/* ── Line Items Table ── */}
         {skus.length > 0 ? (
@@ -413,7 +494,7 @@ export function InvoicePDF({
                 sku.foil && "Foil",
                 sku.perforation && "Perforation",
                 sku.die_cut && "Die Cut",
-                sku.design_required && "Design on file",
+                sku.design_required && "Need a design",
               ].filter(Boolean).join(" · ");
 
               return (
@@ -428,11 +509,18 @@ export function InvoicePDF({
                     </Text>
                     {addons ? <Text style={s.tdSub}>{addons}</Text> : null}
                     {sku.comment ? <Text style={s.tdNote}>{sku.comment}</Text> : null}
-                    {(sku.variants ?? []).map((v, vi) => (
-                      <Text key={vi} style={s.tdSub}>
-                        {formatTicketLineVariantLabel(v)}
-                      </Text>
-                    ))}
+                    {(sku.variants ?? []).map((v, vi) => {
+                      const fileName = fileLabel(v.file);
+                      return (
+                        <Text key={vi} style={s.tdSub}>
+                          {formatTicketLineVariantLabel(v, vi + 1)}
+                          {fileName ? ` · File: ${fileName}` : ""}
+                        </Text>
+                      );
+                    })}
+                    {sku.lineFile?.file_name ? (
+                      <Text style={s.tdSub}>Line attachment: {sku.lineFile.file_name}</Text>
+                    ) : null}
                   </View>
                   <Text style={[s.tdText, s.colSpec, { color: "#666", fontSize: 9 }]}>
                     {specParts || "—"}

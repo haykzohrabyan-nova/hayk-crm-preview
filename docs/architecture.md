@@ -99,10 +99,10 @@ BazarCRM/
 │   │   │   ├── page.tsx                  ✓ Role router → sdr/sales/admin dashboard
 │   │   │   └── loading.tsx               ✓ Route-level skeleton (TableDivSkeleton)
 │   │   ├── leads/
-│   │   │   ├── page.tsx                  ✓ SDR + Admin lead pipeline (4 tabs)
+│   │   │   ├── page.tsx                  ✓ SDR + Admin lead pipeline (6 tabs)
 │   │   │   └── loading.tsx               ✓ Route-level skeleton
 │   │   ├── sales/
-│   │   │   ├── page.tsx                  ✓ Sales pipeline (3 tabs)
+│   │   │   ├── page.tsx                  ✓ Sales pipeline (4 tabs)
 │   │   │   └── loading.tsx               ✓ Route-level skeleton
 │   │   ├── crm/
 │   │   │   ├── page.tsx                  ✓ Customer registry + profile expand
@@ -173,7 +173,7 @@ BazarCRM/
 │   │   │   ├── quotes/page-data/route.ts ✓ GET — quote list + quote-stage counts
 │   │   │   └── [id]/route.ts             ✓ GET single / PATCH update (supports claim_ownership)
 │   │   ├── orders/
-│   │   │   ├── orders/route.ts           ✓ GET — slim orders list (order/cancelled, no line_items)
+│   │   │   ├── orders/route.ts           ✓ GET — slim orders list (`ticket_kind = order`; order/in_production/cancelled, no line_items)
 │   │   │   ├── tickets/[id]/files/       ✓ POST/GET/DELETE — variant attachments (ticket-attachments bucket)
 │   │   │   ├── page-data/route.ts        ✓ GET — orders list + tab counts
 │   │   │   └── counts/route.ts           ✓ GET — orders tab badge counts only
@@ -246,13 +246,14 @@ BazarCRM/
 │   │   ├── error-boundary.tsx            ✓ React ErrorBoundary — wraps page content in app layout; "Try again" button
 │   │   └── global-event-handlers.tsx     ✓ App-wide window event wiring
 │   ├── leads/
-│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Hold/Routed/Rejected/Won) — All/My toggle, Claim loading, VerifyDrawer + AddLeadModal via next/dynamic
+│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Follow Up/Hold/Routed/Rejected/Won) — All/My toggle, Claim loading, VerifyDrawer + AddLeadModal via next/dynamic
 │   │   ├── product-interest-rows.tsx     ✓ Shared Product Interests rows (Add Lead + Verify drawer)
 │   │   ├── verify-drawer.tsx             ✓ SDR lead work drawer (edit + read-only modes)
-│   │   └── hold-sub-form.tsx             ✓ Hold reason sub-form (used inside VerifyDrawer)
+│   │   ├── hold-sub-form.tsx             ✓ Hold reason sub-form (Verify Drawer + Sales modal)
+│   │   └── follow-up-sub-form.tsx        ✓ Follow Up Later reason sub-form (shared SDR + Sales)
 │   ├── orders/
 │   │   ├── orders-page.tsx               ✓ Orders list (All / Pending Payment / In Production / Cancelled)
-│   │   ├── payments-page.tsx             ✓ Accountant payment evidence queue
+│   │   ├── payments-page.tsx             ✓ Accountant queue — Payment For column; opens /payments/[id]?from=/payments
 │   │   ├── production-page.tsx           ✓ Legacy — redirects to /orders?tab=in_production
 │   │   └── completed-page.tsx            ✓ Completed orders list
 │   ├── quotes/
@@ -272,11 +273,19 @@ BazarCRM/
 │   │   └── shared/                       ← shared between new-quote-form + quote-detail
 │   │       ├── types.ts                  ✓ ProductType, LookupOption, SkuLookups
 │   │       ├── utils.ts                  ✓ emptySkuRow, renderLookupOptions, priorityStyle, quickDate
-│   │       ├── info-form.tsx             ✓ Title / Priority / Due Date / Rush section
-│   │       ├── sku-row.tsx               ✓ Single SKU line item row
+│   │       ├── info-form.tsx             ✓ Title / Priority / Due Date (optional) / Rush section
+│   │       ├── sku-row.tsx               ✓ Catalog line row; line attach when no additional SKUs
 │   │       ├── line-items-form.tsx       ✓ SKU list + Add/Remove controls
-│   │       ├── shipping-fulfillment-section.tsx ✓ Pickup / Ship + address + past-address picker
+│   │       ├── line-item-variants.tsx    ✓ Additional SKUs + Add SKU button + pending file uploads after save
+│   │       ├── line-item-attachment.tsx  ✓ Line-level attach + overview download link
+│   │       ├── shipping-fulfillment-section.tsx ✓ Pickup / Ship + multi-address blocks + per-destination past-address picker
 │   │       └── quote-form.tsx            ✓ Pricing summary + adjustments + payment config
+│   │   ├── route-to-sales-modal.tsx      ✓ SDR manual route from new quote Line Items (route_reason picker)
+│   ├── public/
+│   │   ├── public-quote-document.tsx     ✓ Customer portal layout (line items + payment steps)
+│   │   ├── public-line-item-skus-grid.tsx ✓ 2-col SKU grid; image/PDF preview + Download
+│   │   └── public-shipping-addresses.tsx ✓ Single Ship To vs 2-col shipping address cards
+│   ├── quotes/ticket-overview-sections.tsx ✓ Fulfillment destinations + collapsible Line Items
 │   ├── reports/
 │   │   ├── reports-page.tsx              ✓ Cash collected, rep scorecards, payment ledger, awaiting collection
 │   │   ├── reports-filters-modal.tsx     ✓ Period + custom date range filters
@@ -284,7 +293,7 @@ BazarCRM/
 │   │   ├── payment-ledger-section.tsx    ✓ Payment line items in period
 │   │   └── awaiting-collection-section.tsx ✓ Live balance-due snapshot
 │   ├── sales/
-│   │   ├── sales-page.tsx                ✓ Sales pipeline (Pipeline/Hold/Rejected tabs) — SalesDrawer loaded via next/dynamic
+│   │   ├── sales-page.tsx                ✓ Sales pipeline (Pipeline/Follow Up/Hold/Rejected) — claim via POST /claim; Open skips lock when owned
 │   │   ├── sales-drawer.tsx              ✓ Sales lead work drawer
 │   │   ├── sales-dashboard.tsx           ✓ Sales-specific dashboard (self-contained)
 │   │   └── sdr-dashboard.tsx             ✓ SDR-specific dashboard (self-contained)
@@ -387,7 +396,7 @@ List pages fetch **scoped, slim payloads** — no `line_items` on table views. F
 
 **Routed quotes Realtime (086):** `job_tickets` RLS `sales_read_routed_tickets` so Sales browsers receive Realtime for SDR-owned `ticket_status = routed` rows; claim removal for other reps uses `activities` INSERT. List query: `lib/utils/fetch-quotes-data.ts` (`applyTicketScope`).
 
-**Role dashboards:** `components/sales/sdr-dashboard.tsx` (9 KPI cards — self-closed paid order revenue + lead activity), `components/sales/sales-dashboard.tsx` (7 — no Lead Created); shared `DashboardDateRangeFilter` default `last_month`; metrics in `lib/utils/sdr-dashboard-metrics.ts` / `sales-dashboard-metrics.ts`. **Dashboard privacy (May 2026):** per-user `dashboard_values_hidden` on `user_profiles` (migration `087`); `GET/PATCH /api/user/dashboard-privacy`; KPI routes redact when hidden; SDR/Sales/Accountant UI uses `components/dashboard/dashboard-privacy.tsx` with masked placeholders (`DashboardHiddenValue`).
+**Role dashboards:** `components/sales/sdr-dashboard.tsx` (9 owner-labeled KPI cards — Closed Order Value through Qty of Leads Routed to Sales Team; `N leads` format), `components/sales/sales-dashboard.tsx` (7 — no Lead Created); shared `DashboardDateRangeFilter` default `last_month`; metrics in `lib/utils/sdr-dashboard-metrics.ts` / `sales-dashboard-metrics.ts`. **Payments detail:** `/payments/[id]` uses full overview layout (stats row + timeline); Back → `/payments`. **Dashboard privacy (May 2026):** per-user `dashboard_values_hidden` on `user_profiles` (migration `087`); `GET/PATCH /api/user/dashboard-privacy`; KPI routes redact when hidden; SDR/Sales/Accountant UI uses `components/dashboard/dashboard-privacy.tsx` with masked placeholders (`DashboardHiddenValue`).
 
 **Session cache:** `lib/auth/session-cache.ts` memoizes `requireSession()` for ~3 s during burst loads.
 

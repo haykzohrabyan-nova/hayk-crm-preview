@@ -14,7 +14,7 @@ import { lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
 import type { QuoteFormTicket } from "@/components/quotes/shared/quote-form";
 import type { SummaryTicket } from "@/components/quotes/quote-detail/order-payment-summary";
 import type { TicketPaymentDraft } from "@/components/quotes/quote-payment-config";
-import type { ShipToFields } from "@/lib/utils/address";
+import type { ShippingDestinationDraft, TicketShippingDestinationRow } from "@/lib/utils/ticket-shipping-destinations";
 import {
   DetailSection,
   DetailSectionTitle,
@@ -42,6 +42,7 @@ interface OverviewTicket {
   ship_to_city?: string | null;
   ship_to_state?: string | null;
   ship_to_zip?: string | null;
+  shipping_destinations?: TicketShippingDestinationRow[];
   quote_pre_tax_total: number | null;
   quote_tax_amount: number | null;
   quote_final_total: number | null;
@@ -54,12 +55,10 @@ interface Props {
   products: ProductType[];
   skuLookups: SkuLookups;
   pricing: ReturnType<typeof import("@/lib/utils/ticket-math").computePricing>;
-  shipping: number;
-  setShipping: (v: number) => void;
   requiresShipping: boolean;
   setRequiresShipping: (v: boolean) => void;
-  shipTo: ShipToFields;
-  setShipTo: (fields: ShipToFields) => void;
+  shippingDestinations: ShippingDestinationDraft[];
+  setShippingDestinations: (rows: ShippingDestinationDraft[]) => void;
   customerId?: string | null;
   discountType: "percent" | "fixed" | "";
   setDiscountType: (v: "percent" | "fixed" | "") => void;
@@ -105,12 +104,10 @@ export function TicketOverviewSections({
   products,
   skuLookups,
   pricing,
-  shipping,
-  setShipping,
   requiresShipping,
   setRequiresShipping,
-  shipTo,
-  setShipTo,
+  shippingDestinations,
+  setShippingDestinations,
   customerId,
   discountType,
   setDiscountType,
@@ -144,20 +141,21 @@ export function TicketOverviewSections({
   return (
     <>
       <DetailSection>
-        <DetailSectionTitle>Line Items</DetailSectionTitle>
-        <LineItemsForm
-          editing={false}
-          skus={[]}
-          displayLines={
-            ticket.line_items?.length ? lineItemsToDisplayRows(ticket.line_items) : []
-          }
-          products={products}
-          skuLookups={skuLookups}
-          ticketRef={("reference_code" in ticket && ticket.reference_code) ? String(ticket.reference_code) : null}
-          onUpdate={() => {}}
-          onRemove={() => {}}
-          onAdd={() => {}}
-        />
+        <DetailCollapsibleSection title="Line Items">
+          <LineItemsForm
+            editing={false}
+            skus={[]}
+            displayLines={
+              ticket.line_items?.length ? lineItemsToDisplayRows(ticket.line_items) : []
+            }
+            products={products}
+            skuLookups={skuLookups}
+            ticketRef={("reference_code" in ticket && ticket.reference_code) ? String(ticket.reference_code) : null}
+            onUpdate={() => {}}
+            onRemove={() => {}}
+            onAdd={() => {}}
+          />
+        </DetailCollapsibleSection>
       </DetailSection>
 
       <DetailSection>
@@ -166,14 +164,13 @@ export function TicketOverviewSections({
             editing={false}
             requiresShipping={fulfillmentRequiresShipping}
             onRequiresShippingChange={() => {}}
-            shipTo={ticket}
-            onShipToChange={() => {}}
-            shipping={ticket.quote_shipping ?? 0}
-            onShippingChange={() => {}}
+            destinations={shippingDestinations}
+            onDestinationsChange={() => {}}
             ticket={{
               ...ticket,
               requires_shipping: fulfillmentRequiresShipping,
               quote_shipping: ticket.quote_shipping,
+              shipping_destinations: ticket.shipping_destinations,
             }}
           />
         </DetailCollapsibleSection>
@@ -189,13 +186,12 @@ export function TicketOverviewSections({
               editing={false}
               ticket={ticket}
               hidePricingSummary
+              hideFulfillment
               pricing={pricing}
-              shipping={shipping}
-              setShipping={setShipping}
               requiresShipping={requiresShipping}
               setRequiresShipping={setRequiresShipping}
-              shipTo={shipTo}
-              setShipTo={setShipTo}
+              shippingDestinations={shippingDestinations}
+              setShippingDestinations={setShippingDestinations}
               customerId={customerId}
               discountType={discountType}
               setDiscountType={setDiscountType}

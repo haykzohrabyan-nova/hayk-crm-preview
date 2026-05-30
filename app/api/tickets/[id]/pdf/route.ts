@@ -3,7 +3,10 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { createElement } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { fetchTicketLinesBundle, lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
-import { formatShipToAddress } from "@/lib/utils/address";
+import {
+  fetchTicketShippingDestinations,
+  resolveTicketShippingDestinationsForDisplay,
+} from "@/lib/utils/ticket-shipping-destinations";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
 import { InvoicePDF } from "@/lib/pdf/invoice-pdf";
@@ -93,8 +96,21 @@ export async function GET(
   const customerPhone = cust?.phone ?? (ticket.contact_phone as string | null) ?? "";
   const customerCompany = cust?.company ?? (ticket.contact_company as string | null) ?? "";
 
-  const lineBundle = await fetchTicketLinesBundle(admin, ticketId);
+  const [lineBundle, shipping_destinations] = await Promise.all([
+    fetchTicketLinesBundle(admin, ticketId),
+    fetchTicketShippingDestinations(admin, ticketId),
+  ]);
   const skus = lineItemsToDisplayRows(lineBundle);
+  const shippingDestinations = resolveTicketShippingDestinationsForDisplay({
+    requires_shipping: ticket.requires_shipping as boolean | null,
+    quote_shipping: ticket.quote_shipping as number | null,
+    ship_to_line1: ticket.ship_to_line1 as string | null,
+    ship_to_line2: ticket.ship_to_line2 as string | null,
+    ship_to_city: ticket.ship_to_city as string | null,
+    ship_to_state: ticket.ship_to_state as string | null,
+    ship_to_zip: ticket.ship_to_zip as string | null,
+    shipping_destinations,
+  });
 
   const discountAmt =
     ticket.quote_subtotal != null &&
@@ -173,7 +189,7 @@ export async function GET(
       taxExempt: ticket.tax_exempt as boolean | null,
       quoteChannel: ticket.quote_channel as string | null,
       requiresShipping: Boolean(ticket.requires_shipping),
-      shipToAddress: formatShipToAddress(ticket),
+      shippingDestinations,
     },
     customer: { name: customerName, email: customerEmail, phone: customerPhone ? formatPhone(customerPhone) : "", company: customerCompany },
     repName,

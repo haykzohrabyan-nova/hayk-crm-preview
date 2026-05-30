@@ -24,6 +24,12 @@ export async function GET(request: NextRequest) {
       prevStatus: "Routed to Sales",
       search: base.search,
     };
+  } else if (tab === "follow_up") {
+    workspaceQuery = {
+      status: "Routed to Sales",
+      salesTab: "follow_up",
+      search: base.search,
+    };
   } else {
     workspaceQuery = {
       status: "Routed to Sales",

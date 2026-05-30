@@ -13,7 +13,7 @@ import {
 
 type Params = { params: Promise<{ id: string }> };
 
-// POST /api/tickets/[id]/files — multipart: variant_id, file
+// POST /api/tickets/[id]/files — multipart: variant_id OR line_item_id, file
 export async function POST(request: NextRequest, { params }: Params) {
   const { id: rawId } = await params;
   const { userId, roleName, errorResponse } = await requireSession();
@@ -47,10 +47,20 @@ export async function POST(request: NextRequest, { params }: Params) {
   }
 
   const variantId = String(formData.get("variant_id") ?? "").trim();
+  const lineItemId = String(formData.get("line_item_id") ?? "").trim();
   const file = formData.get("file") as File | null;
 
-  if (!variantId) {
-    return NextResponse.json({ error: "variant_id is required.", code: "VALIDATION_ERROR" }, { status: 400 });
+  if (!variantId && !lineItemId) {
+    return NextResponse.json(
+      { error: "variant_id or line_item_id is required.", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
+  }
+  if (variantId && lineItemId) {
+    return NextResponse.json(
+      { error: "Provide only one of variant_id or line_item_id.", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
   }
   if (!file || !(file instanceof File) || file.size === 0) {
     return NextResponse.json({ error: "File is required.", code: "VALIDATION_ERROR" }, { status: 400 });
@@ -61,24 +71,65 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: fileErr, code: "VALIDATION_ERROR" }, { status: 400 });
   }
 
-  const { data: variant, error: varErr } = await admin
-    .from("ticket_line_variants")
-    .select("id, line_item_id, ticket_id")
-    .eq("id", variantId)
-    .eq("ticket_id", ticketId)
-    .single();
+  let resolvedLineItemId: string;
+  let resolvedVariantId: string | null = null;
+  let storageScopeId: string;
+  let storageScope: "variant" | "line";
 
-  if (varErr || !variant) {
-    return NextResponse.json({ error: "Variant not found on this ticket.", code: "NOT_FOUND" }, { status: 404 });
+  if (variantId) {
+    const { data: variant, error: varErr } = await admin
+      .from("ticket_line_variants")
+      .select("id, line_item_id, ticket_id")
+      .eq("id", variantId)
+      .eq("ticket_id", ticketId)
+      .single();
+
+    if (varErr || !variant) {
+      return NextResponse.json({ error: "Variant not found on this ticket.", code: "NOT_FOUND" }, { status: 404 });
+    }
+    resolvedLineItemId = String(variant.line_item_id);
+    resolvedVariantId = variantId;
+    storageScopeId = variantId;
+    storageScope = "variant";
+  } else {
+    const { data: line, error: lineErr } = await admin
+      .from("ticket_line_items")
+      .select("id, ticket_id")
+      .eq("id", lineItemId)
+      .eq("ticket_id", ticketId)
+      .single();
+
+    if (lineErr || !line) {
+      return NextResponse.json({ error: "Line item not found on this ticket.", code: "NOT_FOUND" }, { status: 404 });
+    }
+
+    const { count } = await admin
+      .from("ticket_line_variants")
+      .select("id", { count: "exact", head: true })
+      .eq("line_item_id", lineItemId);
+
+    if ((count ?? 0) > 0) {
+      return NextResponse.json(
+        { error: "Attach the file to an additional SKU on this line instead.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    resolvedLineItemId = lineItemId;
+    storageScopeId = lineItemId;
+    storageScope = "line";
   }
 
-  const { data: existingFile } = await admin
+  const existingQuery = admin
     .from("ticket_files")
     .select("id, storage_path")
-    .eq("variant_id", variantId)
-    .maybeSingle();
+    .eq("ticket_id", ticketId);
 
-  const storagePath = ticketAttachmentStoragePath(ticketId, variantId, file.name);
+  const { data: existingFile } = resolvedVariantId
+    ? await existingQuery.eq("variant_id", resolvedVariantId).maybeSingle()
+    : await existingQuery.eq("line_item_id", resolvedLineItemId).is("variant_id", null).maybeSingle();
+
+  const storagePath = ticketAttachmentStoragePath(ticketId, storageScopeId, file.name, storageScope);
   const buffer = Buffer.from(await file.arrayBuffer());
   const mimeType = resolveTicketAttachmentMime(file);
   const uploadResult = await uploadTicketAttachment(admin, storagePath, buffer, mimeType);
@@ -94,8 +145,8 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const fileRow = {
     ticket_id: ticketId,
-    line_item_id: variant.line_item_id,
-    variant_id: variantId,
+    line_item_id: resolvedLineItemId,
+    variant_id: resolvedVariantId,
     storage_path: storagePath,
     file_name: file.name,
     mime_type: mimeType,
@@ -104,9 +155,30 @@ export async function POST(request: NextRequest, { params }: Params) {
     created_at: now,
   };
 
+  if (existingFile?.id) {
+    const { data: saved, error: saveErr } = await admin
+      .from("ticket_files")
+      .update({
+        storage_path: storagePath,
+        file_name: file.name,
+        mime_type: mimeType,
+        byte_size: file.size,
+        uploaded_by_id: userId,
+      })
+      .eq("id", existingFile.id)
+      .select("id, file_name, mime_type, byte_size")
+      .single();
+
+    if (saveErr) {
+      await deleteTicketAttachment(admin, storagePath);
+      return NextResponse.json({ error: saveErr.message, code: "DB_ERROR" }, { status: 500 });
+    }
+    return NextResponse.json({ file: saved }, { status: 200 });
+  }
+
   const { data: saved, error: saveErr } = await admin
     .from("ticket_files")
-    .upsert(fileRow, { onConflict: "variant_id" })
+    .insert(fileRow)
     .select("id, file_name, mime_type, byte_size")
     .single();
 

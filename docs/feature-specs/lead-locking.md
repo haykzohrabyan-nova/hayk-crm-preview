@@ -1,12 +1,41 @@
-# Feature Spec — Lead Locking (Soft Lock / Permanent Ownership)
+# Feature Spec — Lead Locking
 
-When an SDR clicks **Claim** on an unclaimed lead, the lead is **permanently assigned** to them via `locked_by_id`. It stays off other SDRs' queues until the SDR routes it to Sales, rejects it, puts it on hold (SDR retains lock through hold/resume), or an admin force-releases/reassigns it. Closing the drawer does **not** release the lock.
+Two fields on `leads` serve different roles. Do not conflate them.
 
-**Manual Add Lead** does **not** acquire a lock — `POST /api/leads/manual` sets `sdr_id` (who entered it) but leaves `locked_by_id` null so the lead appears in the **open pool** until someone claims it.
+| Field | Primary role | Who sets it | Released when |
+|-------|----------------|-------------|---------------|
+| **`locked_by_id`** | SDR **permanent claim** (open pool → my queue) | SDR **Claim** → `POST /lock`; also temp session on Sales edge cases | SDR route/reject → `POST /unlock`; admin reassign/unassign; Sales hold/follow-up clears temp lock |
+| **`sales_owner_id`** | Sales **permanent assignment** | Sales **Claim** → `POST /claim` | Admin sales reassign; terminal reject (sales pipeline) |
+
+**Manual Add Lead** does **not** set `locked_by_id` — new leads stay in the SDR open pool until **Claim** or Admin **Assign**.
 
 ---
 
-## Why Locking Is Needed
+## SDR (`/leads`) — `locked_by_id` as permanent ownership
+
+When an SDR clicks **Claim** on an unclaimed lead, the lead is **permanently assigned** via `locked_by_id` (+ `sdr_id`). It stays off other SDRs' queues until route, reject, or admin reassign/unassign. Closing the Verify Drawer does **not** release the lock.
+
+SDR **Follow Up Later** and **On Hold** retain `locked_by_id` through defer/resume cycles.
+
+---
+
+## Sales (`/sales`) — `sales_owner_id` + optional temp lock
+
+Sales reps **claim** routed leads with `POST /api/leads/[id]/claim` (`sales_owner_id`, `lead_sales_claimed` activity). List queries hide other reps' claimed rows — assignment is exclusive without `locked_by_id`.
+
+| Action | Lock behaviour |
+|--------|----------------|
+| **Claim** (unclaimed) | Sets `sales_owner_id` only — no `POST /lock` required |
+| **Open** (your lead, `sales_owner_id = you`) | Opens modal in edit mode — **no** `POST /lock` |
+| **Open** (edge case / stale row) | May call `POST /lock`; `409` → read-only banner |
+| **Close** modal | `POST /unlock` if edit mode (idempotent when never locked) |
+| **On Hold / Follow Up Later** (sales) | Server clears `locked_by_id` on hold/follow-up write |
+
+`POST /lock` for Sales sets `locked_by_id` but does **not** set `sdr_id` or log `lead_claimed` (SDR-only activity).
+
+---
+
+## Why SDR locking is needed
 
 With multiple SDRs working concurrently, locking serves two purposes:
 
@@ -138,9 +167,13 @@ No lock banner is shown to the SDR while admin is editing — admin edits are si
 
 ## Client Implementation
 
-### Lock on Claim
+### Lock on Claim (SDR)
 
-`POST /api/leads/[id]/lock` is called when the SDR clicks **Claim** on the All Leads toggle (before the drawer opens). **View** on My Leads skips lock — lead is already owned. Global loading overlay + row spinner run during lock + `GET /api/leads/[id]` fetch.
+`POST /api/leads/[id]/lock` is called when the SDR clicks **Claim** on the All Leads toggle (before the drawer opens). **View** on My Leads calls the same endpoint to refresh `locked_at` (already owned — no new `lead_claimed` activity). Global loading overlay + row spinner run during lock + `GET /api/leads/[id]` fetch.
+
+### Open owned lead (Sales)
+
+`components/sales/sales-page.tsx` — when `sales_owner_id === currentUserId`, opens the modal without `POST /lock`. See Sales section above.
 
 ```typescript
 const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
@@ -182,8 +215,10 @@ function handleClose() {
 | SDR closes drawer (✕ or programmatic close) | Ownership stays — lead remains hidden from others; SDR can reopen the same lead while lock is held |
 | SDR clicks Save | Ownership stays |
 | SDR validates (Pending → Validated) | Ownership stays — lead updates in place in SDR's queue |
-| SDR puts lead on Hold | Ownership stays — lead visible in SDR's Hold tab |
-| SDR resumes from Hold | Ownership stays |
+| SDR puts lead on Hold or Follow Up Later | Ownership stays — lead visible on that SDR's tab only |
+| SDR resumes from Hold or Follow Up Later | Ownership stays |
+| Sales puts lead on Hold or Follow Up Later | `locked_by_id` cleared server-side; `sales_owner_id` unchanged |
+| Sales closes modal after temp lock | Client `POST /unlock` — only when lock was acquired |
 
 ### Heartbeat (Optional — v2)
 
@@ -228,7 +263,11 @@ Alternatively, Admin can call `POST /api/leads/[id]/unlock` directly.
 
 ## Activity Logging
 
-Lock acquisition (`lead_claimed`) and reassignment (`lead_reassigned`) **are** logged in the `activities` table — see `docs/feature-specs/activity.md`. The unlock operation itself (route/reject already has its own activity entry) is not logged separately.
+- **`lead_claimed`** — logged only when an **SDR** acquires lock for the **first** time (`POST /lock`, `isNewClaim`). Sales temp lock and SDR self-refresh do not log.
+- **`lead_sales_claimed`** — logged on `POST /claim`.
+- **`lead_reassigned`** — admin/SDR reassign.
+
+The unlock operation itself is not logged separately (route/reject/resume have their own activity types). See `docs/feature-specs/activity.md`.
 
 ---
 

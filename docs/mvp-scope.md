@@ -102,7 +102,7 @@ from public.roles r where r.name = 'admin';
 | Returning Customer | No | Checkbox — flags existing client |
 | Verify Lead Comment | No | SDR internal notes |
 | Brand | No | (in drawer, not add modal) |
-| Product Interests | No | Row-based UI in **both** Add Lead modal and Verify Drawer (`components/leads/product-interest-rows.tsx`): Product + Quantity + Has Design on one row; quantity **> 0** when product selected |
+| Product Interests | No | Row-based UI in **both** Add Lead modal and Verify Drawer (`components/leads/product-interest-rows.tsx`): Product + Quantity + **Has Design** (checkbox) on one row; quantity **> 0** when product selected |
 
 ### SDR Workflow Fields (DB only, set by actions)
 - `status` — set by SDR actions (Pending → Validated → Routed/Hold/Rejected)
@@ -116,6 +116,9 @@ from public.roles r where r.name = 'admin';
 ### Hold Fields
 - `hold_reason`, `hold_notes`, `hold_until`, `held_at`, `held_by_id`, `prev_status`, `prev_sales_status`
 
+### Follow Up Later Fields (May 2026)
+- `follow_up_reason`, `follow_up_notes`, `follow_up_until`, `follow_up_at`, `follow_up_by_id` — **Other** reason requires notes
+
 ### Rejection Fields
 - `rejection_reason`, `rejection_notes`
 
@@ -124,6 +127,7 @@ from public.roles r where r.name = 'admin';
 
 ### Built in Post-MVP Tickets Phase
 - `quote_total`, `quote_channel`, `quote_destination` — ✅ live (new-quote-form + quote-detail)
+- `routed_reason`, `routed_notes` on `job_tickets` — ✅ SDR manual Route to Sales from quote Line Items or Quote tab (migration **095**)
 
 ### Future Fields (schema ready, UI not yet built)
 - `assigned_sdr_id` (Admin phase)

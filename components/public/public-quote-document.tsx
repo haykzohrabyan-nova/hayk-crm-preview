@@ -1,12 +1,18 @@
 "use client";
 
+import { Fragment } from "react";
 import { Printer } from "lucide-react";
 import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
-import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
+import { PublicLineItemSkusGrid, publicSkuGridItems } from "@/components/public/public-line-item-skus-grid";
 import type { InvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { AddressMapLink } from "@/components/public/address-map-link";
 import { mapLinkStyle } from "@/lib/utils/maps-link";
-import { formatShipToAddress } from "@/lib/utils/address";
+import {
+  PublicShippingAddressSingle,
+  PublicShippingAddressesList,
+  publicShippingDestinationRows,
+} from "@/components/public/public-shipping-addresses";
+import type { TicketShippingDestinationRow } from "@/lib/utils/ticket-shipping-destinations";
 
 const NAVY    = "#1B2B4B";
 const MUTED   = "#6B7280";
@@ -44,6 +50,7 @@ interface PublicTicketDoc {
   ship_to_city?: string | null;
   ship_to_state?: string | null;
   ship_to_zip?: string | null;
+  shipping_destinations?: TicketShippingDestinationRow[];
   discount_reason?: string | null;
   quote_pre_tax_total: number | null;
   quote_tax_rate_percent: number | null;
@@ -98,7 +105,7 @@ function skuAddons(sku: TicketLineDisplayRow): string {
     sku.foil && "Foil",
     sku.perforation && "Perforation",
     sku.die_cut && "Die Cut",
-    sku.design_required && "Design on file",
+    sku.design_required && "Need a design",
   ].filter(Boolean).join(" · ");
 }
 
@@ -156,6 +163,8 @@ export function PublicQuoteDocument({
   const custCompany = ticket.customer?.company ?? ticket.contact_company ?? "";
   const custEmail = ticket.customer?.email ?? ticket.contact_email ?? "";
   const custPhone = ticket.customer?.phone ?? "";
+  const shippingRows = publicShippingDestinationRows(ticket);
+  const singleShippingRow = shippingRows.length === 1 ? shippingRows[0] : null;
   const docType = isOrder ? "INVOICE" : "QUOTE";
 
   const workflowStatus = (() => {
@@ -243,16 +252,7 @@ export function PublicQuoteDocument({
           {custEmail && <div style={{ fontSize: 13, color: MUTED }}>{custEmail}</div>}
           {custPhone && <div style={{ fontSize: 13, color: MUTED }}>{custPhone}</div>}
         </div>
-        {formatShipToAddress(ticket) ? (
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: MUTED, marginBottom: 8 }}>
-              Ship To
-            </div>
-            {formatShipToAddress(ticket)?.split("\n").map((line, i) => (
-              <div key={i} style={{ fontSize: 13, color: TEXT, marginBottom: 2 }}>{line}</div>
-            ))}
-          </div>
-        ) : null}
+        {singleShippingRow ? <PublicShippingAddressSingle row={singleShippingRow} /> : null}
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: MUTED, marginBottom: 8 }}>
             Quote Details
@@ -280,6 +280,8 @@ export function PublicQuoteDocument({
         </div>
       </div>
 
+      {shippingRows.length > 1 ? <PublicShippingAddressesList rows={shippingRows} /> : null}
+
       {skus.length > 0 && (
         <div style={{ marginBottom: 20, border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden" }}>
           <div className="hide-mobile" style={{ overflowX: "auto" }}>
@@ -300,24 +302,29 @@ export function PublicQuoteDocument({
                 {skus.map((sku, i) => {
                   const lineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
                   const addons = skuAddons(sku);
+                  const skuGridItems = publicSkuGridItems(sku);
                   return (
-                    <tr key={i} style={{ background: i % 2 === 1 ? "#FAFAFA" : SURFACE, borderTop: "1px solid #F0F0F0" }}>
-                      <td style={{ padding: "10px 12px", color: "#bbb", fontSize: 12 }}>{i + 1}</td>
-                      <td style={{ padding: "10px 12px" }}>
-                        <div style={{ fontWeight: 600, color: NAVY }}>{sku.product_type}</div>
-                        {addons && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{addons}</div>}
-                        {sku.comment && <div style={{ fontSize: 11, color: "#aaa", fontStyle: "italic", marginTop: 2 }}>{sku.comment}</div>}
-                        {(sku.variants ?? []).map((v, vi) => (
-                          <div key={vi} style={{ fontSize: 11, color: "#4b5563", marginTop: 2 }}>
-                            {formatTicketLineVariantLabel(v)}
-                          </div>
-                        ))}
-                      </td>
-                      <td style={{ padding: "10px 12px", fontSize: 12, color: "#666" }}>{skuSpecification(sku)}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right" }}>{sku.quantity ?? "—"}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right", whiteSpace: "nowrap" }}>{fmt(sku.unit_price)}</td>
-                      <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: NAVY, whiteSpace: "nowrap" }}>{fmt(lineTotal)}</td>
-                    </tr>
+                    <Fragment key={i}>
+                      <tr style={{ background: i % 2 === 1 ? "#FAFAFA" : SURFACE, borderTop: "1px solid #F0F0F0" }}>
+                        <td style={{ padding: "10px 12px", color: "#bbb", fontSize: 12 }}>{i + 1}</td>
+                        <td style={{ padding: "10px 12px" }}>
+                          <div style={{ fontWeight: 600, color: NAVY }}>{sku.product_type}</div>
+                          {addons && <div style={{ fontSize: 11, color: MUTED, marginTop: 2 }}>{addons}</div>}
+                          {sku.comment && <div style={{ fontSize: 11, color: "#aaa", fontStyle: "italic", marginTop: 2 }}>{sku.comment}</div>}
+                        </td>
+                        <td style={{ padding: "10px 12px", fontSize: 12, color: "#666" }}>{skuSpecification(sku)}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right" }}>{sku.quantity ?? "—"}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right", whiteSpace: "nowrap" }}>{fmt(sku.unit_price)}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600, color: NAVY, whiteSpace: "nowrap" }}>{fmt(lineTotal)}</td>
+                      </tr>
+                      {skuGridItems.length > 0 && (
+                        <tr key={`${i}-skus`} style={{ background: i % 2 === 1 ? "#FAFAFA" : SURFACE }}>
+                          <td colSpan={6} style={{ padding: "0 12px 12px" }}>
+                            <PublicLineItemSkusGrid token={token} items={skuGridItems} />
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
                   );
                 })}
               </tbody>
@@ -326,6 +333,7 @@ export function PublicQuoteDocument({
           <div className="hide-desktop" style={{ padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
             {skus.map((sku, i) => {
               const lineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
+              const skuGridItems = publicSkuGridItems(sku);
               return (
                 <div key={i} style={{ padding: 12, border: `1px solid ${BORDER}`, borderRadius: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
@@ -334,11 +342,9 @@ export function PublicQuoteDocument({
                   </div>
                   <div style={{ fontSize: 12, color: MUTED }}>{skuSpecification(sku)}</div>
                   <div style={{ fontSize: 12, color: MUTED, marginTop: 4 }}>Qty {sku.quantity} · Unit {fmt(sku.unit_price)}</div>
-                  {(sku.variants ?? []).map((v, vi) => (
-                    <div key={vi} style={{ fontSize: 11, color: "#4b5563", marginTop: 4 }}>
-                      {formatTicketLineVariantLabel(v)}
-                    </div>
-                  ))}
+                  {skuGridItems.length > 0 && (
+                    <PublicLineItemSkusGrid token={token} items={skuGridItems} />
+                  )}
                 </div>
               );
             })}

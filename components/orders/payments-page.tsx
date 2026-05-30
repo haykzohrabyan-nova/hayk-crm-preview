@@ -22,6 +22,11 @@ import {
   formatDateTime,
   relativeTime,
 } from "@/lib/utils/format";
+import { appendReturnPath } from "@/lib/utils/ticket-detail-href";
+import {
+  inferPaymentEvidenceMode,
+} from "@/lib/utils/payment-evidence-type";
+import { PaymentTypeBadge } from "@/components/orders/payment-type-badge";
 
 type PaymentTab = "pending" | "approved";
 
@@ -38,7 +43,7 @@ interface PaymentOrder {
   payment_amount_received: number | null;
   payment_status: string | null;
   deposit_paid_at: string | null;
-  ticket_payment_strategy: string | null;
+  ticket_payment_strategy: "partial" | "full" | "net" | null;
   ticket_status: string;
   customer: {
     first_name: string | null;
@@ -72,10 +77,7 @@ function customerLabel(order: PaymentOrder): string {
 }
 
 function inferPaymentMode(order: PaymentOrder): "deposit" | "balance" | "full" {
-  const strategy = order.ticket_payment_strategy ?? "full";
-  if (strategy === "full") return "full";
-  if (order.deposit_paid_at) return "balance";
-  return "deposit";
+  return inferPaymentEvidenceMode(order);
 }
 
 function claimedAmount(order: PaymentOrder): number {
@@ -176,10 +178,12 @@ export function PaymentsPage() {
 
   const orders = activeTab === "pending" ? pendingOrders : approvedOrders;
   const isPendingTab = activeTab === "pending";
-  const desktopCols = isPendingTab ? 6 : 6;
+  const desktopCols = isPendingTab ? 7 : 7;
   const headers = isPendingTab
-    ? ["Order", "Customer", "Claimed", "Method", "Submitted", "Actions"]
-    : ["Order", "Customer", "Claimed", "Method", "Submitted", "Approved"];
+    ? ["Order", "Customer", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
+    : ["Order", "Customer", "Claimed", "Payment For", "Method", "Submitted", "Approved"];
+
+  const paymentsReturnPath = "/payments";
 
   async function handleConfirm(order: PaymentOrder) {
     const amount = claimedAmount(order);
@@ -320,7 +324,11 @@ export function PaymentsPage() {
                       borderBottom: "1px solid var(--color-border)",
                       background: i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
                     }}
-                    onClick={() => router.push(`/payments/${order.id}`)}
+                    onClick={() =>
+                      router.push(
+                        appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
+                      )
+                    }
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-row-hover)"; }}
                     onMouseLeave={(e) => {
                       e.currentTarget.style.background = i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
@@ -360,6 +368,10 @@ export function PaymentsPage() {
                           of {fmt(order.quote_final_total)}
                         </div>
                       )}
+                    </td>
+
+                    <td className="px-5 py-4 align-middle whitespace-nowrap">
+                      <PaymentTypeBadge ticket={order} showDescription />
                     </td>
 
                     <td className="px-5 py-4 align-middle whitespace-nowrap">
@@ -458,7 +470,14 @@ export function PaymentsPage() {
             const isConfirming = confirmingId === order.id;
 
             return (
-              <MobileListCard key={order.id} onClick={() => router.push(`/payments/${order.id}`)}>
+              <MobileListCard
+                key={order.id}
+                onClick={() =>
+                  router.push(
+                    appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
+                  )
+                }
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <span className="text-sm font-semibold font-mono" style={{ color: "var(--color-text-primary)" }}>
@@ -481,6 +500,10 @@ export function PaymentsPage() {
 
                 <MobileListCardFields>
                   <MobileListCardRow label="Order Total" value={fmt(order.quote_final_total)} />
+                  <MobileListCardRow
+                    label="Payment For"
+                    value={<PaymentTypeBadge ticket={order} showDescription />}
+                  />
                   <MobileListCardRow
                     label="Method"
                     value={

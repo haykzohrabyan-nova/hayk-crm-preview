@@ -50,7 +50,7 @@ export function tabToTicketStatuses(tab: OrdersListTab | undefined): string[] {
 
 // ─── Quotes list filters ─────────────────────────────────────────────────────
 
-export type QuotesListTab = "all" | "draft" | "sent" | "approved" | "routed";
+export type QuotesListTab = "all" | "draft" | "sent" | "approved" | "cancelled" | "routed";
 
 export type QuotesListFilters = {
   tab?: QuotesListTab;
@@ -65,6 +65,7 @@ const QUOTES_TAB_STATUSES: Record<QuotesListTab, string[]> = {
   draft: ["draft"],
   sent: ["sent"],
   approved: ["approved"],
+  cancelled: ["cancelled"],
   routed: ["routed"],
 };
 

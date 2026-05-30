@@ -58,6 +58,7 @@ Each activity entry is rendered as a timeline row with:
 | `lead_routed_to_sales` | `ArrowRight` | Routed to Sales |
 | `lead_rejected` | `XCircle` | Rejected |
 | `lead_held` | `Pause` | Put on Hold |
+| `lead_follow_up_later` | `Pause` | Follow Up Later |
 | `lead_resumed` | `Play` | Resumed |
 | `lead_sales_claimed` | `UserPlus` | Claimed by Sales |
 | `lead_reassigned` | `RefreshCw` | Lead Reassigned |
@@ -90,7 +91,9 @@ Each activity entry is rendered as a timeline row with:
 |------|--------------|
 | `lead_status_changed` | "From [prev] → [new]" (`payload.from`, `payload.to`) |
 | `lead_rejected` | `payload.from` (previous status — `"Routed to Sales"` for sales-pipeline rejections, other values for SDR rejections) + rejection reason + notes |
-| `lead_held` | Hold reason + "Until: [date]" |
+| `lead_held` | Hold reason; optional notes; optional `until` date |
+| `lead_follow_up_later` | Follow-up reason; notes required when reason is **Other**; optional notes otherwise; optional `until` date |
+| `lead_resumed` | `from` — prior state (`On Hold` or `Follow Up Later`) |
 | `lead_edited` | List of changed field names (`payload.fields`) |
 | `lead_reassigned` | "From [name] → [name]" or "Unassigned from [name]" |
 | `contact_edited` | List of changed fields |
@@ -135,11 +138,12 @@ The following Route Handlers automatically insert activity rows when they run:
 | Handler | Activities logged |
 |---------|------------------|
 | `POST /api/leads/manual` | `lead_manual_created` |
-| `POST /api/leads/[id]/lock` | `lead_claimed` (only on new claim, not self-refresh) |
+| `POST /api/leads/[id]/lock` | `lead_claimed` — **SDR only**, first claim (not self-refresh). Sales temp lock does not log. |
 | `POST /api/leads/[id]/claim` | `lead_sales_claimed` |
 | `POST /api/leads/[id]/reassign` | `lead_reassigned` |
 | `POST /api/leads/[id]/hold` | `lead_held` |
-| `POST /api/leads/[id]/resume` | `lead_resumed` |
+| `POST /api/leads/[id]/follow-up` | `lead_follow_up_later` |
+| `POST /api/leads/[id]/resume` | `lead_resumed` (`payload.from`: On Hold or Follow Up Later) |
 | `PATCH /api/leads/[id]` | `lead_edited` (tracked field changes without status change) + `lead_status_changed` (if `status` or `sales_status` changes) + `lead_rejected` with `{ from, reason, notes }` when `status` → `Rejected` + `lead_routed_to_sales` when `status` → `Routed to Sales` |
 | `GET /api/leads/[id]/activities` | Read-only — returns timeline; no writes |
 | `PATCH /api/customers/[id]/merge` | `lead_merged` (on all affected leads) |

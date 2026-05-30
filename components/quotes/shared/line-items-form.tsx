@@ -5,6 +5,8 @@ import { AlertCircle } from "lucide-react";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { AdditionalSkusOverviewList } from "./line-item-variants";
+import { LineItemAttachmentOverview } from "./line-item-attachment";
+import type { TicketFileMeta } from "@/lib/utils/ticket-line-items";
 import { emptySkuRow, emptyFormLineItem, type FormLineItem } from "./utils";
 import { SkuRow } from "./sku-row";
 import type { FormLineVariant } from "./line-item-variants";
@@ -21,6 +23,7 @@ interface LineItemsFormProps {
   onRemove: (idx: number) => void;
   onAdd: () => void;
   onVariantsChange?: (idx: number, variants: FormLineVariant[]) => void;
+  onLineAttachmentChange?: (idx: number, attachment: import("./line-item-attachment").FormLineAttachment | undefined) => void;
   ticketRef?: string | null;
   displayLines?: TicketLineDisplayRow[];
   error?: string;
@@ -35,6 +38,7 @@ export function LineItemsForm({
   onRemove,
   onAdd,
   onVariantsChange,
+  onLineAttachmentChange,
   ticketRef,
   displayLines,
   error,
@@ -73,17 +77,23 @@ export function LineItemsForm({
           if (sku.unit_price) specs.push(`${formatCurrency(sku.unit_price)} ea`);
           if (sku.comment) specs.push(sku.comment);
           const variants = "variants" in sku && Array.isArray(sku.variants) ? sku.variants : [];
+          const lineFile =
+            "lineFile" in sku && sku.lineFile
+              ? (sku.lineFile as TicketFileMeta)
+              : null;
+          const footer =
+            variants.length > 0 ? (
+              <AdditionalSkusOverviewList variants={variants} ticketRef={ticketRef} />
+            ) : lineFile ? (
+              <LineItemAttachmentOverview file={lineFile} ticketRef={ticketRef} />
+            ) : undefined;
           return (
             <DetailLineItemCard
               key={i}
               name={name}
               specs={specs}
               price={lineTotal}
-              footer={
-                variants.length > 0 ? (
-                  <AdditionalSkusOverviewList variants={variants} ticketRef={ticketRef} />
-                ) : undefined
-              }
+              footer={footer}
             />
           );
         })}
@@ -116,6 +126,8 @@ export function LineItemsForm({
                 onRemove={onRemove}
                 canRemove={skus.length > 1}
                 variants={formSku.variants}
+                lineAttachment={formSku.lineAttachment}
+                onLineAttachmentChange={onLineAttachmentChange}
                 onVariantsChange={onVariantsChange}
                 ticketRef={ticketRef}
               />

@@ -4,7 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, CheckCircle2, Loader2, CreditCard } from "lucide-react";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { inferPaymentEvidenceMode } from "@/lib/utils/payment-evidence-type";
 import { formatDateTime } from "@/lib/utils/format";
+import { PaymentTypeBadge } from "@/components/orders/payment-type-badge";
 import {
   PricingPaymentSummary,
   type SummaryTicket,
@@ -24,10 +26,7 @@ const CHANNEL_LABELS: Record<string, string> = {
 };
 
 function inferPaymentMode(ticket: SummaryTicket): "deposit" | "balance" | "full" {
-  const strategy = ticket.ticket_payment_strategy ?? "full";
-  if (strategy === "full") return "full";
-  if (ticket.deposit_paid_at) return "balance";
-  return "deposit";
+  return inferPaymentEvidenceMode(ticket);
 }
 
 function submittedAmount(ticket: SummaryTicket): number {
@@ -99,25 +98,38 @@ export function PaymentDetailOverview({
     >
       <DetailCollapsibleSection title={sectionTitle} defaultOpen={defaultOpen}>
         <div className="space-y-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              {ticket.payment_method_used && (
-                <span
-                  className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
-                  style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 min-w-0 flex-1">
+              <div>
+                <p
+                  className="text-[11px] font-medium uppercase tracking-wider mb-2"
+                  style={{ color: "var(--color-text-muted)", letterSpacing: "0.06em" }}
                 >
-                  <CreditCard size={11} />
-                  {CHANNEL_LABELS[ticket.payment_method_used] ?? ticket.payment_method_used}
-                </span>
-              )}
-              {!evidencePending && ticket.payment_evidence_reviewed_at && (
-                <p className="text-sm mt-2" style={{ color: "var(--color-success)" }}>
-                  Approved {formatDateTime(ticket.payment_evidence_reviewed_at)}
+                  Payment for
                 </p>
+                <PaymentTypeBadge ticket={ticket} showDescription />
+              </div>
+
+              {ticket.payment_method_used && (
+                <div>
+                  <p
+                    className="text-[11px] font-medium uppercase tracking-wider mb-2"
+                    style={{ color: "var(--color-text-muted)", letterSpacing: "0.06em" }}
+                  >
+                    Method
+                  </p>
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+                    style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
+                  >
+                    <CreditCard size={11} />
+                    {CHANNEL_LABELS[ticket.payment_method_used] ?? ticket.payment_method_used}
+                  </span>
+                </div>
               )}
             </div>
 
-            <div className="flex items-center gap-2 flex-wrap ml-auto">
+            <div className="flex items-center gap-2 flex-wrap shrink-0 lg:pt-5">
               {ticket.payment_evidence_url && (
                 <a
                   href={`/api/tickets/${ticket.id}/evidence`}
@@ -152,6 +164,12 @@ export function PaymentDetailOverview({
               )}
             </div>
           </div>
+
+          {!evidencePending && ticket.payment_evidence_reviewed_at && (
+            <p className="text-sm" style={{ color: "var(--color-success)" }}>
+              Approved {formatDateTime(ticket.payment_evidence_reviewed_at)}
+            </p>
+          )}
 
           {confirmErr && (
             <div

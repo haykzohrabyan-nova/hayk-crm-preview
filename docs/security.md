@@ -89,7 +89,19 @@ All responses from `next.config.ts` include:
 | `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` |
 | `Content-Security-Policy` | Built in `lib/security/content-security-policy.ts` — Supabase, Google Fonts, Vercel Live, Speed Insights (dev), Next HMR (dev) |
 
-Configured in `next.config.ts` `headers()` export — applies to all routes.
+Configured in `next.config.ts` `headers()` export.
+
+### CSP route exceptions (May 2026)
+
+| Route pattern | Notes |
+|---------------|--------|
+| `/((?!api/public/quotes/).*)` | App pages — full CSP including `frame-ancestors 'none'`, `object-src 'self' blob:` |
+| `/api/public/quotes/:token/files/:fileId` | Minimal CSP: `frame-ancestors 'self'`; streamed file responses also set CSP in the route handler |
+| `/q/:path*` | Public quote portal — same as app CSP but listed **last** so it wins over the catch-all (includes `frame-src 'self' blob:` and `object-src 'self' blob:` for PDF previews) |
+
+**Public quote PDF previews** load file bytes with `fetch`, then display via a `blob:` URL in `<object type="application/pdf">`. Without `blob:` in `frame-src` / `object-src`, the browser blocks the embed (not a localhost-specific issue).
+
+**Staff file download** (`GET /api/tickets/[id]/files/[fileId]`) still uses a **302** to signed Storage; public customer files use **200** streamed body for same-origin preview.
 
 ---
 
@@ -121,6 +133,7 @@ These endpoints verify the caller has access to the specific object before retur
 | `GET /api/activities?ticket_id=` | `canAccessTicket()` on the referenced ticket |
 | `GET /api/tickets/[id]` | `canAccessTicket()` |
 | `GET /api/tickets/[id]/pdf` | `canAccessTicket()` |
+| `GET /api/public/quotes/[token]/pdf` | Unguessable `public_token` only (no session) |
 | `GET /api/tickets/[id]/print` | `canAccessTicket()` |
 | `GET /api/completed/orders` | Role-scoped list — SDR: `created_by_id` only via `scopeCompletedTicketsQuery()` |
 | `GET /api/completed/page-data` | Same scope as completed list |
@@ -133,6 +146,7 @@ These endpoints verify the caller has access to the specific object before retur
 | Endpoint | Auth |
 |----------|------|
 | `GET /api/tickets/[id]/pdf` | MFA session + `canAccessTicket()` — `renderToBuffer` in try/catch |
+| `GET /api/public/quotes/[token]/pdf` | Token only — same renderer; no session |
 | `GET /api/tickets/[id]/print` | MFA session + `canAccessTicket()` |
 | `POST /api/customers/[id]/merge` | Admin or Sales only (destructive — deletes source customer) |
 

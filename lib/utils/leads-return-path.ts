@@ -1,8 +1,10 @@
 /** Leads workspace tab ids (matches `components/leads/leads-page.tsx`). */
-export type LeadsTabParam = "all" | "hold" | "routed" | "rejected" | "won";
+export type LeadsTabParam = "all" | "follow_up" | "hold" | "routed" | "rejected" | "won";
 
 const TAB_ALIASES: Record<string, LeadsTabParam> = {
   all: "all",
+  follow_up: "follow_up",
+  "follow-up": "follow_up",
   hold: "hold",
   "on-hold": "hold",
   routed: "routed",

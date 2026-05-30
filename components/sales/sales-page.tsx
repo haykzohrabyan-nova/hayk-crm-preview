@@ -18,6 +18,7 @@ const SalesDrawer = dynamic(
 );
 import { Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
+import { followUpReasonLabel } from "@/lib/constants/follow-up-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-interests";
@@ -25,7 +26,7 @@ import { createClient } from "@/lib/supabase/client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "pipeline" | "hold" | "rejected";
+type Tab = "pipeline" | "follow_up" | "hold" | "rejected";
 
 interface Toast {
   message: string;
@@ -109,7 +110,12 @@ export function SalesPage() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [claimingId, setClaimingId] = useState<string | null>(null);
   const [resumingId, setResumingId] = useState<string | null>(null);
-  const [tabCounts, setTabCounts] = useState<{ pipeline: number; hold: number; rejected: number } | null>(null);
+  const [tabCounts, setTabCounts] = useState<{
+    pipeline: number;
+    follow_up: number;
+    hold: number;
+    rejected: number;
+  } | null>(null);
   const [salesUserList, setSalesUserList] = useState<{ id: string; full_name: string }[]>([]);
   const [reassignLead, setReassignLead] = useState<Lead | null>(null);
   const [reassignSalesUserId, setReassignSalesUserId] = useState<string>("unassign");
@@ -122,7 +128,7 @@ export function SalesPage() {
     if (!drawerLead && !reassignLead) return;
     if (lookupsLoadedRef.current) return;
     lookupsLoadedRef.current = true;
-    fetch("/api/lookups?categories=source,industry,urgency,hold_reason,reject_reason,route_reason,sales_drop_reason")
+    fetch("/api/lookups?categories=source,industry,urgency,hold_reason,follow_up_reason,reject_reason,route_reason,sales_drop_reason")
       .then((r) => r.json())
       .then((d) => setLookups(d))
       .catch(() => {
@@ -233,9 +239,19 @@ export function SalesPage() {
   }
 
   async function handleOpenLead(lead: Lead) {
+    const full = (await fetchLeadById(lead.id)) ?? lead;
+
+    // Claim already set sales_owner_id — other reps do not see this row. No session lock needed.
+    if (lead.sales_owner_id && lead.sales_owner_id === userId) {
+      setDrawerLead(full);
+      setDrawerReadOnly(false);
+      setDrawerLockedBy(null);
+      return;
+    }
+
+    // Edge case (stale list / reassigned row): temp lock for read-only banner if another user holds it
     const res = await fetch(`/api/leads/${lead.id}/lock`, { method: "POST" });
     const data = await res.json();
-    const full = (await fetchLeadById(lead.id)) ?? lead;
 
     if (res.status === 409) {
       setDrawerLead(full);
@@ -265,7 +281,8 @@ export function SalesPage() {
     const data = await res.json();
     setResumingId(null);
     if (!res.ok) { showToast(data.error ?? "Failed to resume.", "error"); return; }
-    setLeads((prev) => prev.map((l) => (l.id === lead.id ? data.lead : l)));
+    setLeads((prev) => prev.filter((l) => l.id !== lead.id));
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
     showToast("Lead resumed.");
   }
 
@@ -290,6 +307,7 @@ export function SalesPage() {
 
   const TABS: { id: Tab; label: string; count: number }[] = [
     { id: "pipeline", label: "Pipeline", count: tabCounts?.pipeline ?? 0 },
+    { id: "follow_up", label: "Follow Up Later", count: tabCounts?.follow_up ?? 0 },
     { id: "hold", label: "On Hold", count: tabCounts?.hold ?? 0 },
     { id: "rejected", label: "Rejected", count: tabCounts?.rejected ?? 0 },
   ];
@@ -538,6 +556,132 @@ export function SalesPage() {
                       Open
                     </button>
                   )}
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Follow Up Later tab ── */}
+      {activeTab === "follow_up" && (
+        <>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+            <table className="w-full text-sm">
+              <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
+                <tr>
+                  {["Name", "Company", "Product Interests", "Reason", "Follow Up On", "Marked", "Actions"].map((h) => (
+                    <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <TableRowsSkeleton cols={7} />
+                ) : activeLeads.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                      No leads scheduled for follow-up.
+                    </td>
+                  </tr>
+                ) : (
+                  activeLeads.map((lead, idx) => (
+                    <tr
+                      key={lead.id}
+                      className="transition-colors"
+                      style={{
+                        background: idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
+                        borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
+                    >
+                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{leadName(lead)}</td>
+                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
+                      <td className="px-3 py-2.5 max-w-[220px]" style={{ color: "var(--color-text-muted)" }}>
+                        {(() => {
+                          const products = formatLeadProductInterests(lead.interests, lead.quantities);
+                          return (
+                            <span className="block truncate" title={products !== "—" ? products : undefined}>
+                              {products}
+                            </span>
+                          );
+                        })()}
+                      </td>
+                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{followUpReasonLabel(lead.follow_up_reason)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString() : "—"}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {lead.follow_up_at ? relativeTime(lead.follow_up_at) : "—"}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleResume(lead)}
+                            disabled={resumingId === lead.id}
+                            className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium disabled:opacity-50"
+                            style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                          >
+                            {resumingId === lead.id ? "…" : "Resume"}
+                          </button>
+                          <button
+                            onClick={() => handleOpenLead(lead)}
+                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium"
+                            style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                          >
+                            Open
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-col gap-3 lg:hidden">
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+                  <div className="h-4 w-32 rounded" style={{ background: "var(--color-border)" }} />
+                </div>
+              ))
+            ) : activeLeads.length === 0 ? (
+              <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
+                No leads scheduled for follow-up.
+              </div>
+            ) : (
+              activeLeads.map((lead) => (
+                <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{leadName(lead)}</p>
+                    <StatusPill status="Follow Up Later" />
+                  </div>
+                  <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{followUpReasonLabel(lead.follow_up_reason)}</span></div>
+                    {formatLeadProductInterests(lead.interests, lead.quantities) !== "—" && (
+                      <div className="flex justify-between gap-2">
+                        <span className="shrink-0">Product Interests</span>
+                        <span className="normal-case tracking-normal text-right truncate max-w-[200px]">{formatLeadProductInterests(lead.interests, lead.quantities)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between"><span>Follow up on</span><span className="normal-case tracking-normal">{lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString() : "—"}</span></div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleResume(lead)}
+                      disabled={resumingId === lead.id}
+                      className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium disabled:opacity-50"
+                      style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                    >
+                      {resumingId === lead.id ? "Resuming…" : "Resume"}
+                    </button>
+                    <button onClick={() => handleOpenLead(lead)} className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium" style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}>
+                      Open
+                    </button>
+                  </div>
                 </div>
               ))
             )}

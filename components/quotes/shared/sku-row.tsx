@@ -1,11 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trash2, ChevronDown } from "lucide-react";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { renderLookupOptions } from "./utils";
 import type { ProductType, SkuLookups } from "./types";
 import { LineItemVariants, type FormLineVariant } from "./line-item-variants";
+import {
+  LineItemAttachmentControl,
+  migrateLineAttachmentToFirstVariant,
+  type FormLineAttachment,
+} from "./line-item-attachment";
+import { lineQuantityFromVariants, sumVariantQuantities } from "@/lib/utils/line-item-variant-quantity";
 
 interface SkuRowProps {
   idx: number;
@@ -17,6 +23,8 @@ interface SkuRowProps {
   canRemove: boolean;
   variants?: FormLineVariant[];
   onVariantsChange?: (idx: number, variants: FormLineVariant[]) => void;
+  lineAttachment?: FormLineAttachment;
+  onLineAttachmentChange?: (idx: number, attachment: FormLineAttachment | undefined) => void;
   ticketRef?: string | null;
 }
 
@@ -30,6 +38,8 @@ export function SkuRow({
   canRemove,
   variants,
   onVariantsChange,
+  lineAttachment,
+  onLineAttachmentChange,
   ticketRef,
 }: SkuRowProps) {
   const selectedProduct = products.find((p) => p.name === sku.product_type);
@@ -46,6 +56,34 @@ export function SkuRow({
   const [heightRaw, setHeightRaw]       = useState(sku.height     != null ? String(sku.height)     : "");
   const [quantityRaw, setQuantityRaw]   = useState(sku.quantity   != null ? String(sku.quantity)   : "");
   const [unitPriceRaw, setUnitPriceRaw] = useState(sku.unit_price != null ? String(sku.unit_price) : "");
+
+  const variantList = variants ?? [];
+  const hasVariants = variantList.length > 0;
+
+  useEffect(() => {
+    const list = variants ?? [];
+    if (list.length > 0) {
+      const total = sumVariantQuantities(list);
+      setQuantityRaw(total > 0 ? String(total) : "");
+    } else if (sku.quantity != null) {
+      setQuantityRaw(String(sku.quantity));
+    } else {
+      setQuantityRaw("");
+    }
+  }, [variants, sku.quantity]);
+
+  function handleVariantsChange(next: FormLineVariant[]) {
+    const prevCount = variantList.length;
+    const migrated = migrateLineAttachmentToFirstVariant(prevCount, next, lineAttachment);
+    if (lineAttachment && migrated.lineAttachment === undefined) {
+      onLineAttachmentChange?.(idx, undefined);
+    }
+    onVariantsChange?.(idx, migrated.variants);
+    const synced = lineQuantityFromVariants(migrated.variants);
+    if (synced != null) {
+      onUpdate(idx, "quantity", synced);
+    }
+  }
 
   function SkuSelect({ value, onChange, disabled = false, children }: {
     value: string;
@@ -155,14 +193,25 @@ export function SkuRow({
 
         {/* Quantity | Unit Price */}
         <div>
-          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Quantity *</label>
+          <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+            Quantity *{hasVariants ? (
+              <span className="font-normal normal-case tracking-normal opacity-70"> — total of SKUs below</span>
+            ) : null}
+          </label>
           <input
-            type="text" inputMode="numeric" placeholder="e.g. 1000"
+            type="text"
+            inputMode="numeric"
+            placeholder="e.g. 1000"
             value={quantityRaw}
-            onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && quantityRaw === "0") { e.preventDefault(); if (e.key !== "0") { setQuantityRaw(e.key); onUpdate(idx, "quantity", parseInt(e.key)); } } }}
-            onChange={(e) => { const v = e.target.value.replace(/[^0-9]/g, "").replace(/^0+([1-9])/, "$1"); setQuantityRaw(v); onUpdate(idx, "quantity", v ? parseInt(v) : undefined); }}
+            readOnly={hasVariants}
+            title={hasVariants ? "Sum of additional SKU quantities" : undefined}
+            onKeyDown={hasVariants ? undefined : (e) => { if (/^[0-9]$/.test(e.key) && quantityRaw === "0") { e.preventDefault(); if (e.key !== "0") { setQuantityRaw(e.key); onUpdate(idx, "quantity", parseInt(e.key)); } } }}
+            onChange={hasVariants ? undefined : (e) => { const v = e.target.value.replace(/[^0-9]/g, "").replace(/^0+([1-9])/, "$1"); setQuantityRaw(v); onUpdate(idx, "quantity", v ? parseInt(v) : undefined); }}
             className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-            style={skuFieldStyle}
+            style={{
+              ...skuFieldStyle,
+              ...(hasVariants ? { opacity: 0.85, cursor: "default" } : {}),
+            }}
           />
         </div>
         <div>
@@ -201,9 +250,25 @@ export function SkuRow({
         </div>
       )}
 
-      {/* Add-on finishings */}
+      {/* Add-on finishings + line attachment */}
       <div className="pt-3 border-t" style={{ borderColor: "var(--color-border)" }}>
-        <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>Add-on Finishings</p>
+        <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+            Add-on Finishings
+          </p>
+          {!hasVariants && onLineAttachmentChange ? (
+            <LineItemAttachmentControl
+              compact
+              attachment={lineAttachment}
+              ticketRef={ticketRef}
+              onChange={(att) => onLineAttachmentChange(idx, att)}
+            />
+          ) : hasVariants ? (
+            <p className="text-[11px] text-right max-w-[200px]" style={{ color: "var(--color-text-muted)" }}>
+              Attach files per SKU below
+            </p>
+          ) : null}
+        </div>
         <div className="flex flex-wrap gap-2">
           {(skuLookups.finishing.length
             ? skuLookups.finishing.map((o) => ({ key: o.value as keyof QuoteSku, label: o.label }))
@@ -213,7 +278,7 @@ export function SkuRow({
                 { key: "perforation" as keyof QuoteSku, label: "Perforation" },
               ]
           ).concat([
-            { key: "design_required" as keyof QuoteSku, label: "Design on file" },
+            { key: "design_required" as keyof QuoteSku, label: "Need a design" },
             { key: "die_cut" as keyof QuoteSku, label: "Die Cut" },
           ]).map(({ key, label }) => {
             const checked = !!sku[key];
@@ -293,9 +358,10 @@ export function SkuRow({
       {variants != null && onVariantsChange ? (
         <LineItemVariants
           lineIdx={idx}
-          variants={variants}
+          variants={variantList}
+          lineItemQuantity={sku.quantity}
           ticketRef={ticketRef}
-          onChange={(next) => onVariantsChange(idx, next)}
+          onChange={handleVariantsChange}
         />
       ) : null}
     </div>

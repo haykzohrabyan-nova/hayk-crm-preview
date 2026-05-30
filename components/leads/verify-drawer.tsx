@@ -14,8 +14,13 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { StatusPill } from "@/components/ui/status-pill";
 import { HoldSubForm } from "@/components/leads/hold-sub-form";
-import { Activity, HoldForm, Lead, LookupMap } from "@/lib/types";
-import { holdReasonLabel } from "@/lib/constants/hold-reasons";
+import { FollowUpSubForm } from "@/components/leads/follow-up-sub-form";
+import { Activity, FollowUpForm, HoldForm, Lead, LookupMap } from "@/lib/types";
+import {
+  leadActivityDetailLines,
+  leadActivityDotColor,
+  leadActivityLabel,
+} from "@/lib/utils/lead-activity-display";
 import { URGENCY_NOT_DEFINED, urgencyDbToForm, urgencyFormToDb } from "@/lib/utils/urgency-form";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
@@ -121,39 +126,6 @@ function rowsFromLead(lead: Lead): LeadProductInterestRow[] {
     }));
 }
 
-// ─── Activity timeline helpers ────────────────────────────────────────────────
-
-function activityLabel(a: Activity): string {
-  const p = a.payload as Record<string, string | null>;
-  switch (a.type) {
-    case "lead_verified":         return "Lead verified by SDR";
-    case "lead_manual_created":   return "Lead created manually";
-    case "lead_edited":           return "Lead info updated";
-    case "lead_sales_claimed":    return "Lead claimed by sales rep";
-    case "lead_routed_to_sales":  return "Routed to Sales";
-    case "lead_held":             return `Put on hold${p.reason ? ` — ${holdReasonLabel(p.reason)}` : ""}`;
-    case "lead_resumed":          return "Resumed from hold";
-    case "lead_merged":           return "Customer record merged";
-    case "contact_edited":        return "Contact info updated";
-    case "lead_rejected": {
-      const from = p.from === "Routed to Sales" ? "Sales pipeline" : "SDR pipeline";
-      return `Rejected from ${from}${p.reason ? ` — ${p.reason}` : ""}`;
-    }
-    case "lead_status_changed":
-      return `Status: ${p.from ?? "?"} → ${p.to ?? "?"}`;
-    default:
-      return a.type.replace(/_/g, " ");
-  }
-}
-
-function activityDotColorSdr(type: Activity["type"]): string {
-  if (type === "lead_rejected")       return "var(--color-danger)";
-  if (type === "lead_held")           return "var(--color-warning)";
-  if (type === "lead_routed_to_sales" || type === "lead_sales_claimed") return "var(--color-accent)";
-  if (type === "lead_verified" || type === "lead_resumed") return "var(--color-success)";
-  return "var(--color-text-muted)";
-}
-
 function relativeTimeAct(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
@@ -201,11 +173,16 @@ export function VerifyDrawer({
   const [productRowErrors, setProductRowErrors] = useState(EMPTY_PRODUCT_ROW_ERRORS);
   const [productInterestsError, setProductInterestsError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"info" | "history">("info");
-  const [footerMode, setFooterMode] = useState<"actions" | "hold" | "reject">("actions");
+  const [footerMode, setFooterMode] = useState<"actions" | "follow_up" | "hold" | "reject">("actions");
   const [activities, setActivities] = useState<Activity[]>([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [activitiesFetched, setActivitiesFetched] = useState(false);
   const [holdForm, setHoldForm] = useState<HoldForm>({ hold_reason: "", hold_notes: "", hold_until: "" });
+  const [followUpForm, setFollowUpForm] = useState<FollowUpForm>({
+    follow_up_reason: "",
+    follow_up_notes: "",
+    follow_up_until: "",
+  });
   const [saving, setSaving] = useState(false);
   const [showUpdateCustomer, setShowUpdateCustomer] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -528,6 +505,38 @@ export function VerifyDrawer({
     promptThenRun(doHold);
   }
 
+  // ── Action: Follow Up Later ───────────────────────────────────────────────
+
+  async function doFollowUp() {
+    if (!followUpForm.follow_up_reason) return;
+    if (!validateContactFields()) return;
+    const result = buildLeadPayload();
+    if (!result.ok) {
+      showToast(result.error, "error");
+      return;
+    }
+    const payload = result.payload;
+    setSaving(true);
+    await patchLead(payload);
+    const res = await fetch(`/api/leads/${lead.id}/follow-up`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...followUpForm, role: "sdr" }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    onLeadRemoved(lead.id);
+    onLeadUpdated(data.lead);
+    fireCountsRefresh();
+    showToast("Lead marked for follow-up.");
+    onClose();
+  }
+
+  function handleFollowUpConfirm() {
+    promptThenRun(doFollowUp);
+  }
+
   // ── Action: Reject ────────────────────────────────────────────────────────
 
   async function doReject() {
@@ -570,26 +579,25 @@ export function VerifyDrawer({
   const urgencyOptions = [URGENCY_NOT_DEFINED_OPTION, ...(lookups.urgency ?? [])];
   const rejectReasons = lookups.reject_reason ?? [];
   const holdReasons = lookups.hold_reason ?? [];
+  const followUpReasons = lookups.follow_up_reason ?? [];
+  const isDeferredStatus =
+    lead.status === "On Hold" || lead.status === "Follow Up Later";
 
   const displayName =
     `${form.first_name} ${form.last_name}`.trim() || "Lead Details";
 
   return (
     <>
-      {/* Backdrop — intentionally non-clickable: user must use Save or an action button to close */}
       <div
-        className="fixed inset-0 z-40 bg-black/45"
-        aria-hidden="true"
-      />
-
-      {/* Modal panel */}
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+        className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        style={{ background: "rgba(0,0,0,0.45)" }}
         aria-modal="true"
         role="dialog"
+        onClick={saving ? undefined : handleClose}
       >
       <div
-        className="pointer-events-auto flex w-full max-w-[780px] flex-col overflow-hidden shadow-2xl"
+        className="flex w-full max-w-[780px] flex-col overflow-hidden shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
         style={{
           background: "var(--color-surface)",
           border: "1px solid var(--color-border)",
@@ -677,8 +685,8 @@ export function VerifyDrawer({
           </div>
         )}
 
-        {/* Tab bar — hidden while putting on hold */}
-        {footerMode !== "hold" && (
+        {/* Tab bar — hidden while deferral sub-forms are open */}
+        {footerMode !== "hold" && footerMode !== "follow_up" && (
         <div
           className="flex shrink-0"
           style={{ borderBottom: "1px solid var(--color-border)" }}
@@ -700,7 +708,7 @@ export function VerifyDrawer({
         )}
 
         {/* Scrollable content */}
-        <div ref={scrollContainerRef} className={`flex-1 min-h-0 overflow-y-auto px-5 py-5 ${footerMode === "hold" ? "flex flex-col" : "space-y-6"}`}>
+        <div ref={scrollContainerRef} className={`flex-1 min-h-0 overflow-y-auto px-5 py-5 ${footerMode === "hold" || footerMode === "follow_up" ? "flex flex-col" : "space-y-6"}`}>
 
           {footerMode === "hold" ? (
             <HoldSubForm
@@ -709,6 +717,16 @@ export function VerifyDrawer({
               reasons={holdReasons}
               onChange={setHoldForm}
               onConfirm={handleHoldConfirm}
+              onCancel={() => setFooterMode("actions")}
+              saving={saving}
+            />
+          ) : footerMode === "follow_up" ? (
+            <FollowUpSubForm
+              fullScreen
+              form={followUpForm}
+              reasons={followUpReasons}
+              onChange={setFollowUpForm}
+              onConfirm={handleFollowUpConfirm}
               onCancel={() => setFooterMode("actions")}
               saving={saving}
             />
@@ -1019,21 +1037,20 @@ export function VerifyDrawer({
                       <div
                         className="relative mt-1 h-2.5 w-2.5 shrink-0 rounded-full"
                         style={{
-                          background: activityDotColorSdr(a.type),
+                          background: leadActivityDotColor(a.type),
                           outline: "2px solid var(--color-surface)",
                           outlineOffset: "1px",
                         }}
                       />
                       <div className="flex-1 min-w-0">
                         <p className="text-[13px] font-medium leading-snug" style={{ color: "var(--color-text-primary)" }}>
-                          {activityLabel(a)}
+                          {leadActivityLabel(a)}
                         </p>
-                        {(a.type === "lead_rejected" || a.type === "lead_held") &&
-                          (a.payload as Record<string, string | null>).notes && (
-                          <p className="mt-0.5 text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-                            {(a.payload as Record<string, string | null>).notes}
+                        {leadActivityDetailLines(a).map((line) => (
+                          <p key={line} className="mt-0.5 text-[12px]" style={{ color: "var(--color-text-muted)" }}>
+                            {line}
                           </p>
-                        )}
+                        ))}
                         <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
                           {a.by_user?.full_name ?? "System"} · {relativeTimeAct(a.created_at)}
                         </p>
@@ -1049,7 +1066,7 @@ export function VerifyDrawer({
         </div>
 
         {/* ── Footer ─────────────────────────────────────────────────────── */}
-        {footerMode !== "hold" && (
+        {footerMode !== "hold" && footerMode !== "follow_up" && (
         <div
           className="shrink-0 px-5 py-4 space-y-3"
           style={{ borderTop: "1px solid var(--color-border)" }}
@@ -1185,7 +1202,7 @@ export function VerifyDrawer({
                   >
                     {saving ? "Saving…" : "Create Quote / Order"}
                   </button>
-                  {lead.status === "On Hold" ? (
+                  {isDeferredStatus ? (
                     <button
                       onClick={handleResume}
                       disabled={saving}
@@ -1195,14 +1212,24 @@ export function VerifyDrawer({
                       Resume
                     </button>
                   ) : (
-                    <button
-                      onClick={() => setFooterMode("hold")}
-                      disabled={saving}
-                      className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
-                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                    >
-                      On Hold
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setFooterMode("follow_up")}
+                        disabled={saving}
+                        className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                      >
+                        Follow Up Later
+                      </button>
+                      <button
+                        onClick={() => setFooterMode("hold")}
+                        disabled={saving}
+                        className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                      >
+                        On Hold
+                      </button>
+                    </>
                   )}
                   <button
                     onClick={() => setFooterMode("reject")}

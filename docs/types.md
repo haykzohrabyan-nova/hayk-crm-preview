@@ -65,6 +65,7 @@ export type LookupCategory =
   | 'industry'
   | 'urgency'
   | 'hold_reason'
+  | 'follow_up_reason'
   | 'reject_reason'
   | 'route_reason'
   | 'sales_drop_reason'
@@ -136,6 +137,7 @@ export type LeadStatus =
   | 'Quoted'
   | 'Routed to Sales'
   | 'On Hold'
+  | 'Follow Up Later'
   | 'Rejected'
   | 'Duplicate'
 
@@ -145,6 +147,7 @@ export type SalesStatus =
   | 'Won'
   | 'Dropped'
   | 'On Hold'
+  | 'Follow Up Later'
 
 export type QuoteChannel = 'SMS' | 'WhatsApp' | 'Email' | 'In-person'
 
@@ -173,6 +176,11 @@ export interface Lead {
   hold_notes: string | null
   hold_until: string | null
   held_at: string | null
+  follow_up_reason: string | null
+  follow_up_notes: string | null
+  follow_up_until: string | null
+  follow_up_at: string | null
+  follow_up_by_id: string | null
   prev_status: LeadStatus | null
   prev_sales_status: SalesStatus | null
   urgency: LeadUrgency | null
@@ -253,7 +261,7 @@ export interface QuoteSku {
   height?: number                   // inches
   quantity?: number
   unit_price?: number
-  design_required?: boolean         // "Design on file" checkbox
+  design_required?: boolean         // "Need a design" checkbox
   die_cut?: boolean
   spot_uv?: boolean                 // UV Coating add-on
   foil?: boolean
@@ -281,6 +289,40 @@ export interface LineItemInput extends QuoteSku {
   id?: string
   sort_order?: number
   variants?: { id?: string; name: string; quantity: number; sort_order?: number }[]
+}
+
+/** DB row — `ticket_shipping_destinations` (migration 093) */
+export interface TicketShippingDestinationRow {
+  id: string
+  ticket_id: string
+  sort_order: number
+  shipping_amount: number
+  ship_to_line1: string | null
+  ship_to_line2: string | null
+  ship_to_city: string | null
+  ship_to_state: string | null
+  ship_to_zip: string | null
+}
+
+/** Client form row — `lib/utils/ticket-shipping-destinations.ts` */
+export interface ShippingDestinationDraft {
+  id: string
+  shipping_amount: number
+  ship_to_line1: string
+  ship_to_line2: string
+  ship_to_city: string
+  ship_to_state: string
+  ship_to_zip: string
+}
+
+/** API/display — no ids required */
+export type ShippingDestinationDisplayRow = {
+  shipping_amount: number
+  ship_to_line1: string | null
+  ship_to_line2: string | null
+  ship_to_city: string | null
+  ship_to_state: string | null
+  ship_to_zip: string | null
 }
 
 export interface JobTicket {
@@ -318,6 +360,8 @@ export interface JobTicket {
   ship_to_city: string | null
   ship_to_state: string | null
   ship_to_zip: string | null
+  /** Resolved on detail GET — migration 093 */
+  shipping_destinations?: TicketShippingDestinationRow[]
   discount_type: 'percent' | 'fixed' | null
   discount_value: string | null     // stored as text, parsed at runtime
   discount_reason: string | null
@@ -365,6 +409,9 @@ export interface JobTicket {
   payment_evidence_submitted_at?: string | null
   payment_evidence_reviewed_at?: string | null
   payment_evidence_amount?: number | null
+  /** Set when SDR routes quote to Sales (migration 095) */
+  routed_reason?: string | null
+  routed_notes?: string | null
   created_at: string
   updated_at: string
   // Joined (optional)
@@ -415,13 +462,16 @@ export type ActivityType =
   | 'lead_verified'
   | 'lead_manual_created'
   | 'lead_edited'                   // tracked field changes (no status change)
+  | 'lead_claimed'                  // SDR first claim (POST /api/leads/[id]/lock)
   | 'lead_status_changed'
   | 'lead_routed_to_sales'
   | 'lead_rejected'                 // payload: { from, reason, notes }
   | 'lead_held'
+  | 'lead_follow_up_later'
   | 'lead_resumed'
   | 'lead_merged'
   | 'lead_sales_claimed'            // Sales rep claims an unclaimed routed lead
+  | 'lead_reassigned'
   | 'contact_edited'
   | 'call_logged'
   | 'email_opened'
@@ -672,6 +722,8 @@ export interface TicketForm {
   ship_to_city: string
   ship_to_state: string
   ship_to_zip: string
+  /** Edit/create form — multiple blocks; persisted as ticket_shipping_destinations */
+  shippingDestinations: ShippingDestinationDraft[]
   discount_enabled: boolean
   discount_type: 'percent' | 'fixed' | ''
   discount_value: string
@@ -706,12 +758,20 @@ export interface TicketForm {
 | `validateWebsite()` | `lib/utils/website.ts` | Optional website/social URL; empty allowed; **`http://` / `https://` not required** (e.g. `example.com`, `www.10x.am`, `instagram.com/page`) |
 | `normalizeWebsite()` | `lib/utils/website.ts` | Prefix `https://` when protocol omitted before save |
 | `WEBSITE_FIELD_PLACEHOLDER` | `lib/utils/website.ts` | Shared placeholder: `example.com or instagram.com/page` |
-| `validateShippingCharge()` | `lib/utils/address.ts` | When `requires_shipping`, `quote_shipping` must be > 0 |
+| `validateShippingCharge()` | `lib/utils/address.ts` | **Optional** — always returns `null` (May 2026); per-destination charges may be `0` |
+| `validateShippingDestinationZips()` | `lib/utils/address.ts` | ZIP format on each destination when ship-to-customer |
 | `validateShipToZip()` | `lib/utils/address.ts` | Optional ZIP — validates format only if non-empty |
 | `resolveRequiresShipping()` | `lib/utils/address.ts` | `requires_shipping ?? (quote_shipping > 0)` for legacy rows |
-| `formatShipToAddress()` | `lib/utils/address.ts` | Multi-line ship-to for display/PDF |
+| `formatShipToAddress()` | `lib/utils/address.ts` | Multi-line ship-to for display/PDF/email |
 | `normalizeShipToPayload()` | `lib/utils/address.ts` | Clears address + zeroes shipping when pickup |
-| `getQuoteSendMissingFields()` | `lib/utils/validate-quote-send.ts` | Send validation incl. Shipping ($) when shipping selected |
+| `fetchTicketShippingDestinations()` / `syncTicketShippingDestinations()` / `resolveTicketShippingDestinationsForDisplay()` | `lib/utils/ticket-shipping-destinations.ts` | CRUD + display rows for overview, public page, PDF |
+| `sumShippingAmounts()` / `buildLegacyShipToFromDestinations()` | `lib/utils/ticket-shipping-destinations.ts` | Form → `quote_shipping` + legacy `ship_to_*` mirror |
+| `getQuoteSendMissingFields()` | `lib/utils/validate-quote-send.ts` | Send validation — ZIP on destinations when shipping; **Shipping ($) not required**; **Due date not required** |
+| `sumVariantQuantities()` / `lineQuantityFromVariants()` | `lib/utils/line-item-variant-quantity.ts` | Additional SKU qty → catalog line `quantity` |
+| `additionalSkuPrefix()` / `formatAdditionalSkuDisplayName()` / `formatTicketLineVariantLabel()` | `lib/utils/format-ticket-line-variants.ts` | `SKU1. {name} · Qty N` display labels |
+| `uploadPendingLineItemFiles()` | `components/quotes/shared/line-item-variants.tsx` | After save: `line_item_id` + `variant_id` multipart uploads |
+| `fetchTicketAttachmentBytes()` | `lib/utils/ticket-line-files.ts` | Server-side Storage download for public file stream |
+| `FormLineItem.lineAttachment` | `components/quotes/shared/utils.ts` | Pending/saved line-level file before first additional SKU |
 | `scrollToFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll a `[data-field-anchor="…"]` wrapper into view and focus its control |
 | `scrollToFirstFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll to the first error in a priority-ordered list (New Quote tab validation) |
 | `buildInitialFollowUpSchedule()` | `lib/utils/follow-up-schedule.ts` | Seed `follow_up_at` when a quote is sent |
@@ -740,7 +800,7 @@ Markup pattern: wrap each validatable field in `<div data-field-anchor="source">
 |--------|--------|---------|
 | `useCoalescedRefresh()` | `hooks/use-coalesced-refresh.ts` | Debounce mount + `bazaar:*-changed` refetch; `enabled` pause for editable modals; **silent resume** when re-enabled; read-only drawers on leads page use `enabled: !drawerLead \|\| drawerReadOnly` |
 | `ListPagination` | `components/ui/list-pagination.tsx` | Showing X–Y of Z, prev/next, rows-per-page selector |
-| `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible detail sections (Timeline, Pricing, Payment settings); default collapsed |
+| `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible detail sections; `defaultOpen` prop; quote/order **Edit** expands Line Items + Fulfillment + Quote & Pricing |
 | `parseListPaginationParams()` / `toPaginatedMeta()` / `readStoredListPageSize()` | `lib/utils/pagination.ts` | Shared pagination parse, meta, localStorage page size (key `bazaar-list-page-size`) |
 | `parseOrdersListFilters()` / `parseQuotesListFilters()` / etc. | `lib/utils/ticket-list-filters.ts` | Server-side tab, search, date, admin user filters for ticket lists |
 | `sortOrdersList()` | `lib/utils/orders-list-sort.ts` | Orders column sort rules |
@@ -765,6 +825,9 @@ Markup pattern: wrap each validatable field in `<div data-field-anchor="source">
 |--------|--------|---------|
 | `ticketLifecycleHref()` | `lib/utils/ticket-detail-href.ts` | `/orders/` / `/quotes/` / `/completed/` by ticket status |
 | `ticketLifecycleHrefWithReturn()` | `lib/utils/ticket-detail-href.ts` | Lifecycle URL + `?from=` (Reports uses `REPORTS_RETURN_PATH`) |
-| `resolveTicketDetailBackPath()` | `lib/utils/ticket-detail-href.ts` | Back target: validated `from`, else list fallback |
+| `resolveTicketDetailBackPath()` | `lib/utils/ticket-detail-href.ts` | Back target: validated `from`, else **context** fallback (`payment` → `/payments` before status), else status fallback |
 | `appendReturnPath()` | `lib/utils/ticket-detail-href.ts` | Safe internal return query param |
+| `inferPaymentEvidenceMode()` | `lib/utils/payment-evidence-type.ts` | `deposit` \| `balance` \| `full` for evidence queue + `record_payment.payment_mode` |
+| `paymentEvidenceTypeLabel()` | `lib/utils/payment-evidence-type.ts` | UI: Deposit / Balance / Full payment |
+| `cancelActionLabel()` | `lib/utils/cancel-reason-category.ts` | Admin sidebar: Cancel Quote vs Cancel Order by ticket status |
 | `logTicketPaymentRecorded()` | `lib/utils/log-ticket-payment-recorded.ts` | Inserts canonical payment activity for Reports cash |

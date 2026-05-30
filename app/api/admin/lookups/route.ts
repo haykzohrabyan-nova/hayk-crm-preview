@@ -9,8 +9,9 @@ export const CATEGORY_META: Record<string, { label: string; section: "leads" | "
   industry:         { label: "Industries",           section: "leads" },
   urgency:          { label: "Urgency Levels",       section: "leads" },
   hold_reason:      { label: "Hold Reasons",         section: "leads" },
+  follow_up_reason: { label: "Follow Up Later Reasons", section: "leads" },
   reject_reason:    { label: "Reject Reasons",       section: "leads" },
-  route_reason:     { label: "Route to Sales Reasons", section: "leads" },
+  route_reason:     { label: "Route to Sales Reasons (Leads & Quotes)", section: "leads" },
   sales_drop_reason:{ label: "Drop Reasons",         section: "leads" },
   // Order / quote categories
   lamination:       { label: "Lamination Options",   section: "order" },
@@ -42,28 +43,45 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  // Group by category and attach meta
-  const grouped: Record<string, {
+  type LookupRow = NonNullable<typeof data>[number];
+  type CategoryGroup = {
     category: string;
     label: string;
     section: "leads" | "order";
-    items: typeof data;
-  }> = {};
+    items: LookupRow[];
+  };
+
+  // Seed every admin-managed category so Dropdown Options lists them under Lead Forms / Order · Quote
+  const grouped: Record<string, CategoryGroup> = {};
+  for (const [key, meta] of Object.entries(CATEGORY_META)) {
+    grouped[key] = {
+      category: key,
+      label: meta.label,
+      section: meta.section,
+      items: [],
+    };
+  }
 
   for (const row of data ?? []) {
     if (!grouped[row.category]) {
-      const meta = CATEGORY_META[row.category];
       grouped[row.category] = {
         category: row.category,
-        label: meta?.label ?? row.category,
-        section: meta?.section ?? "leads",
+        label: row.category,
+        section: "leads",
         items: [],
       };
     }
     grouped[row.category]!.items.push(row);
   }
 
-  return NextResponse.json({ categories: Object.values(grouped) });
+  const categories: CategoryGroup[] = [
+    ...Object.keys(CATEGORY_META).map((key) => grouped[key]!),
+    ...Object.keys(grouped)
+      .filter((key) => !(key in CATEGORY_META))
+      .map((key) => grouped[key]!),
+  ];
+
+  return NextResponse.json({ categories });
 }
 
 // POST /api/admin/lookups — create a new option in an existing category
@@ -77,6 +95,13 @@ export async function POST(request: Request) {
 
   if (!category?.trim() || !label?.trim()) {
     return NextResponse.json({ error: "category and label are required" }, { status: 400 });
+  }
+
+  if (!CATEGORY_META[category.trim()]) {
+    return NextResponse.json(
+      { error: "Unknown category — manage options from Admin → Dropdown Options." },
+      { status: 400 },
+    );
   }
 
   // Auto-generate value slug from label

@@ -1,11 +1,15 @@
 import type { QuoteSku } from "@/lib/utils/ticket-math";
 import type { FormLineVariant } from "./line-item-variants";
+import type { FormLineAttachment } from "./line-item-attachment";
 import type { LookupOption } from "./types";
+import { lineQuantityFromVariants } from "@/lib/utils/line-item-variant-quantity";
 import React from "react";
 
 export type FormLineItem = QuoteSku & {
   id: string;
   variants: FormLineVariant[];
+  /** Attachment for the line when there are no additional SKUs. */
+  lineAttachment?: FormLineAttachment;
 };
 
 export function emptySkuRow(): QuoteSku {
@@ -57,13 +61,29 @@ export function bundleToFormLineItems(
     foil: row.foil,
     perforation: row.perforation,
     comment: row.comment ?? undefined,
-    variants: row.variants.map((v) => ({
-      id: v.id,
-      name: v.name,
-      quantity: String(v.quantity),
-      file: v.file ?? null,
-    })),
-  }));
+    variants: (() => {
+      const mapped = row.variants.map((v) => ({
+        id: v.id,
+        name: v.name,
+        quantity: String(v.quantity),
+        file: v.file ?? null,
+      }));
+      if (mapped.length > 0 && row.file && !mapped[0].file) {
+        mapped[0] = { ...mapped[0], file: row.file };
+      }
+      return mapped;
+    })(),
+    lineAttachment:
+      row.variants.length === 0 && row.file
+        ? { file: row.file }
+        : undefined,
+  })).map((line) => {
+    const fromVariants = lineQuantityFromVariants(line.variants);
+    if (fromVariants != null) {
+      return { ...line, quantity: fromVariants };
+    }
+    return line;
+  });
 }
 
 /**

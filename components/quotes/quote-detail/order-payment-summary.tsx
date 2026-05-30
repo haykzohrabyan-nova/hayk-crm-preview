@@ -3,6 +3,7 @@
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { computeCheckout, getChannelLabel } from "@/lib/utils/compute-checkout";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { paymentEvidenceTypeLabelForTicket } from "@/lib/utils/payment-evidence-type";
 import type { PaymentConfig } from "@/lib/types";
 import {
   DetailSection,
@@ -291,6 +292,11 @@ export function PricingPaymentSummary({
 
         {(reviewPending || evidencePending) && (
           <>
+            <SummaryRow
+              label="Payment for"
+              value={paymentEvidenceTypeLabelForTicket(ticket)}
+              highlight
+            />
             <SummaryRow label="Amount submitted" value={formatCurrency(submitted)} size="md" highlight />
             <SummaryRow label="Previously received" value={formatCurrency(receivedBefore)} />
             <SummaryRow
@@ -407,6 +413,11 @@ export function PaymentAmountSummary({
 
       {(reviewPending || evidencePending) && (
         <>
+          <SummaryRow
+            label="Payment for"
+            value={paymentEvidenceTypeLabelForTicket(ticket)}
+            highlight
+          />
           <SummaryRow label="Amount submitted" value={formatCurrency(submitted)} size="md" highlight />
           <SummaryRow label="Previously received" value={formatCurrency(receivedBefore)} />
           <SummaryRow

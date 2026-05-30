@@ -91,7 +91,7 @@ KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last 7 D
 
 **Orders** credit requires: you created the quote (`created_by_id`), did **not** route it to Sales (`routed_by_id` null, lead not routed), converted to order, and recorded payment. Routed hand-offs where Sales closes the deal are excluded.
 
-> **List pages vs dashboard:** `/quotes`, `/orders`, and `/completed` show all tickets where `created_by_id = you` (including unpaid or in-progress). Dashboard **Orders / Received / Balance** apply the stricter self-closed + paid filter above — do not expect dollar totals to match the Orders page row count one-to-one.
+> **List pages vs dashboard:** `/quotes`, `/orders`, and `/completed` show all tickets where `created_by_id = you` (including unpaid or in-progress). Dashboard **Closed Order Value / Paid From Closed Orders / Remaining Balance** apply the stricter self-closed + paid filter above — do not expect dollar totals to match the Orders page row count one-to-one.
 
 Activity-based counts — see `lib/utils/sdr-dashboard-metrics.ts`.
 

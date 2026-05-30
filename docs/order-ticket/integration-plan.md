@@ -5,6 +5,7 @@ Open questions: [`open-questions.md`](./open-questions.md)
 Existing BazarCRM spec: [`../feature-specs/tickets.md`](../feature-specs/tickets.md)
 
 > **Status:** Phases 0–7 complete as of 2026-05-12. Phase 8 (Dashboard integration + PDF export) is next.  
+> **May 2026 add-ons (live):** migration **092** line-level `ticket_files`; optional due date; additional-SKU quantity sync; public `/q` SKU grid + file stream API — see `docs/feature-specs/tickets.md` and `docs/schema.md`.  
 > See `open-questions.md` for the full decision log and the three key design changes from the shadow project.  
 > **Key design change (Phase 6):** OrderDrawer replaced with dedicated pages — `/quotes/new`, `/quotes/[id]`.
 
@@ -63,7 +64,9 @@ alter table public.job_tickets
   -- Richer pricing
   add column if not exists quote_subtotal         numeric,
   add column if not exists quote_shipping         numeric default 0,
-  -- Migration 091 (May 2026): requires_shipping, ship_to_line1 … ship_to_zip
+  -- Migration 091 (May 2026): requires_shipping, ship_to_line1 … ship_to_zip (legacy single address on job_tickets)
+  -- Migration 093 (May 2026): ticket_shipping_destinations — multiple ship-to blocks per ticket; quote_shipping = sum of charges
+  -- Migration 092 (May 2026): ticket_files.variant_id nullable — line-level attachment when no additional SKUs
   add column if not exists discount_type          text,
   add column if not exists discount_value         text,
   add column if not exists discount_reason        text,
@@ -268,7 +271,7 @@ View/Edit mode tabs: Info | Line Items | Quote | History
 
 ### Quote tab
 - Pricing summary display (subtotal, shipping, discount, pre-tax, tax, total)
-- **Fulfillment (May 2026):** Pickup vs Ship; `quote_shipping` manual when Ship (required > 0); optional `ship_to_*` address
+- **Fulfillment (May 2026):** Pickup vs Ship; **`shipping_destinations[]`** (migration 093) — per-block Shipping ($) optional; `quote_shipping` = sum; optional addresses; legacy `ship_to_*` mirror on `job_tickets`
 - Discount toggle: `discount_type` radio (percent / fixed) + `discount_value` input + `discount_reason`
 - Tax rate input (pre-filled from `company_settings.default_tax_rate` — admin-configurable, not hardcoded) + tax exempt toggle + `sales_permit_number`
 - Payment types: checkboxes — Card Payment, Zelle, Offline (confirmed C1; card default-checked)
@@ -295,7 +298,7 @@ View/Edit mode tabs: Info | Line Items | Quote | History
 - Save Changes (`PATCH /api/tickets/[id]`)
 - Send Quote (`PATCH` → `ticket_status = 'sent'`) — shown when in draft
 - Mark Won (`PATCH` → `ticket_status = 'approved'`)
-- Cancel Ticket (`PATCH` → `ticket_status = 'cancelled'`) — **admin only**; any status except already cancelled (includes completed); required cancellation reason
+- Cancel Ticket (`PATCH` → `ticket_status = 'cancelled'`) — **admin only**; any status except already cancelled (includes completed); UI label **Cancel Quote** or **Cancel Order**; required cancellation reason
 
 Dispatches `bazaar:refresh-counts` after every successful save.
 
@@ -317,7 +320,7 @@ Replaces the spec preview in `app/(app)/orders/page.tsx`.
 
 - Tabs: All / Pending Payment / Cancelled — count badge on every tab (default: Pending Payment)
 - Data: `GET /api/orders/orders` (slim scoped list — not full `/api/tickets`)
-- Counts: `GET /api/tickets/counts` (orders + cancelled buckets)
+- Counts: `GET /api/tickets/counts` (orders + cancelled quote-stage bucket); **`GET /api/quotes/page-data`** / **`GET /api/orders/page-data`** tab badges (cancelled split by `ticket_kind`)
 - Realtime via `bazaar:tickets-changed`
 - Navigates to `/orders/[id]`
 
@@ -352,8 +355,10 @@ Update `app/api/dashboard/kpis/route.ts` to include revenue from `quote_final_to
 - Company name, address, phone, email, logo from `company_settings` (owner decision E1/Q14/Q15)
 - Wire Print PDF button on `/quotes/[id]` detail page
 
-### 8f. High-value hard block for SDRs ⏳
-When `quoteFinalTotal >= company_settings.high_value_threshold` AND `user_role = 'SDR'`: hide "Send Quote" button, show "Route to Sales Pipeline" only. Not yet implemented in `new-quote-form.tsx` or `quote-detail.tsx`.
+### 8f. High-value hard block for SDRs ✅
+When `quoteFinalTotal >= company_settings.high_value_threshold` AND `user_role = 'SDR'`: advancing Line Items → Quote shows blocking modal — **Cancel — Edit Amount** or **OK — Route to Sales** (30s auto-route). Implemented in `new-quote-form.tsx`.
+
+**Manual route below threshold (May 2026):** SDR **Route to Sales** button on Line Items and Quote tabs opens `RouteToSalesModal` — admin `route_reason` + optional notes (`routed_reason` / `routed_notes` on `job_tickets`, migration **095**). Quote tab allows full shipping/tax/payment before routing. Prefills quote delivery from customer contact on save.
 
 ---
 

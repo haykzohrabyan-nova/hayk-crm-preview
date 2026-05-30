@@ -144,7 +144,10 @@ export function buildQuoteEmail(data: QuoteEmailData): { subject: string; html: 
     const bg = i % 2 === 0 ? "#ffffff" : "#f9fafb";
     const cell = `background-color:${bg}; padding:10px 14px; border-bottom:1px solid #e5e7eb; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#111827; vertical-align:top;`;
     const variantLines = (sku.variants ?? [])
-      .map((v) => `<br><span style="font-size:12px; color:#4b5563;">${esc(formatTicketLineVariantLabel(v))}</span>`)
+      .map(
+        (v, vi) =>
+          `<br><span style="font-size:12px; color:#4b5563;">${esc(formatTicketLineVariantLabel(v, vi + 1))}</span>`,
+      )
       .join("");
     return `<tr><td bgcolor="${bg}" style="${cell}">${esc(sku.product_type)}${specs ? `<br><span style="font-size:12px; color:#6b7280;">${specs}</span>` : ""}${variantLines}${sku.comment ? `<br><span style="font-size:12px; color:#9ca3af; font-style:italic;">${esc(sku.comment)}</span>` : ""}</td><td bgcolor="${bg}" style="${cell} text-align:center; white-space:nowrap;">${sku.quantity ?? 0}</td><td bgcolor="${bg}" style="${cell} text-align:right; white-space:nowrap;">${fmt(sku.unit_price ?? 0)}</td><td bgcolor="${bg}" style="${cell} font-weight:bold; text-align:right; white-space:nowrap;">${fmt(lineTotal)}</td></tr>`;
   }).join("");

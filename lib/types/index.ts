@@ -54,6 +54,7 @@ export type LookupCategory =
   | 'industry'
   | 'urgency'
   | 'hold_reason'
+  | 'follow_up_reason'
   | 'reject_reason'
   | 'route_reason'
   | 'sales_drop_reason'
@@ -119,6 +120,7 @@ export type LeadStatus =
   | 'Quoted'
   | 'Routed to Sales'
   | 'On Hold'
+  | 'Follow Up Later'
   | 'Rejected'
   | 'Duplicate'
 
@@ -128,6 +130,7 @@ export type SalesStatus =
   | 'Won'
   | 'Dropped'
   | 'On Hold'
+  | 'Follow Up Later'
 
 export type QuoteChannel = 'SMS' | 'WhatsApp' | 'Email' | 'In-person'
 
@@ -158,6 +161,11 @@ export interface Lead {
   hold_notes: string | null
   hold_until: string | null
   held_at: string | null
+  follow_up_reason: string | null
+  follow_up_notes: string | null
+  follow_up_until: string | null
+  follow_up_at: string | null
+  follow_up_by_id: string | null
   prev_status: LeadStatus | null
   prev_sales_status: SalesStatus | null
   urgency: LeadUrgency | null
@@ -255,7 +263,7 @@ export interface QuoteSku {
   height?: number               // inches
   quantity?: number
   unit_price?: number
-  design_required?: boolean     // "Design on file" checkbox
+  design_required?: boolean     // "Need a design" checkbox
   die_cut?: boolean
   spot_uv?: boolean             // UV Coating add-on
   foil?: boolean
@@ -377,6 +385,11 @@ export interface JobTicket {
   deposit_method:           string | null
   balance_paid_at:          string | null
   production_released_at:   string | null
+
+  // Routing (migration 095)
+  routed_by_id:             string | null
+  routed_reason:            string | null
+  routed_notes:             string | null
 
   // Cancellation audit (migration 088)
   cancel_reason:            string | null
@@ -511,13 +524,16 @@ export type ActivityType =
   | 'lead_verified'
   | 'lead_manual_created'
   | 'lead_edited'
+  | 'lead_claimed'
   | 'lead_status_changed'
   | 'lead_routed_to_sales'
   | 'lead_rejected'
   | 'lead_held'
+  | 'lead_follow_up_later'
   | 'lead_resumed'
   | 'lead_merged'
   | 'lead_sales_claimed'
+  | 'lead_reassigned'
   | 'contact_edited'
   | 'call_logged'
   | 'email_opened'
@@ -648,4 +664,10 @@ export interface HoldForm {
   hold_reason: string
   hold_notes: string
   hold_until: string
+}
+
+export interface FollowUpForm {
+  follow_up_reason: string
+  follow_up_notes: string
+  follow_up_until: string
 }

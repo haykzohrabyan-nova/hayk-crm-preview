@@ -58,9 +58,9 @@ export async function POST(
     })
     .eq("id", id);
 
-  // Log a claim event only when the lead is being claimed for the first time
-  // (not when the same SDR simply reopens their own lead).
-  if (isNewClaim) {
+  // SDR soft-claim only — Sales uses POST /claim (lead_sales_claimed) and a temporary
+  // lock while the modal is open; unlocking on close must not re-log lead_claimed on reopen.
+  if (roleName === "sdr" && isNewClaim) {
     await admin.from("activities").insert({
       lead_id: id,
       customer_id: lead.customer_id,

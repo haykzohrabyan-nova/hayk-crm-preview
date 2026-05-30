@@ -1,6 +1,7 @@
 import { validateEmail } from "@/lib/utils/email";
 import { validatePhone } from "@/lib/utils/phone";
-import { validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
+import { validateShippingDestinationZips } from "@/lib/utils/address";
+import type { ShipToFields } from "@/lib/utils/address";
 
 export interface QuoteSendValidationInput {
   title: string;
@@ -9,8 +10,9 @@ export interface QuoteSendValidationInput {
   taxExempt: boolean;
   salesPermit: string;
   requiresShipping?: boolean;
-  quoteShipping?: number;
+  /** @deprecated Use shipToDestinations — kept for callers still passing one ZIP */
   shipToZip?: string;
+  shipToDestinations?: ShipToFields[];
   paymentDraft: {
     ticket_payment_strategy: "partial" | "full" | "net";
     ticket_dep_handling: "cash" | "gateway";
@@ -42,10 +44,18 @@ export function isCashReceiptRequired(
 /** Human-readable labels for fields that must be filled before sending a quote. */
 export function getQuoteSendMissingFields(input: QuoteSendValidationInput): string[] {
   const missing: string[] = [];
-  const { title, dueDate, skus, taxExempt, salesPermit, requiresShipping = false, quoteShipping = 0, shipToZip = "", paymentDraft: d } = input;
+  const {
+    title,
+    skus,
+    taxExempt,
+    salesPermit,
+    requiresShipping = false,
+    shipToZip = "",
+    shipToDestinations,
+    paymentDraft: d,
+  } = input;
 
   if (!title.trim()) missing.push("Title");
-  if (!dueDate) missing.push("Due date");
 
   const hasLineItem = skus.some(
     (s) => s.product_type?.trim() && (s.quantity ?? 0) > 0 && (s.unit_price ?? 0) > 0,
@@ -56,11 +66,14 @@ export function getQuoteSendMissingFields(input: QuoteSendValidationInput): stri
     missing.push("Sales Permit #");
   }
 
-  const shippingErr = validateShippingCharge(requiresShipping, quoteShipping);
-  if (shippingErr) missing.push("Shipping ($)");
-
-  const zipErr = validateShipToZip(shipToZip);
-  if (zipErr) missing.push("Valid ZIP code");
+  if (requiresShipping) {
+    const zipErr = validateShippingDestinationZips(
+      shipToDestinations?.length
+        ? shipToDestinations
+        : [{ ship_to_zip: shipToZip }],
+    );
+    if (zipErr) missing.push("Valid ZIP code");
+  }
 
   if (isCashReceiptRequired(d)) {
     const receiptId = d.ticket_receipt_id.trim();

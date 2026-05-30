@@ -55,6 +55,8 @@ export interface TicketLineItemRow {
   id: string;
   ticket_id: string;
   sort_order: number;
+  /** Set when file is attached to the line with no additional SKUs (variant_id null in DB). */
+  file?: TicketFileMeta | null;
   product_type: string;
   description: string | null;
   material: string | null;
@@ -149,11 +151,14 @@ export type TicketLineVariantDisplayRow = {
 
 export type TicketLineDisplayRow = QuoteSku & {
   variants?: TicketLineVariantDisplayRow[];
+  /** Line-level attachment when there are no additional SKUs. */
+  lineFile?: TicketFileMeta | null;
 };
 
 export function lineItemsToDisplayRows(lines: TicketLineItemRow[]): TicketLineDisplayRow[] {
   return lines.map((row) => ({
     ...lineItemsToQuoteSkuRows([row])[0],
+    lineFile: row.variants.length === 0 ? (row.file ?? null) : null,
     variants: row.variants.map((v) => ({
       name: v.name,
       quantity: v.quantity,
@@ -290,8 +295,10 @@ function assembleBundle(
   files: DbFile[],
 ): TicketLineItemRow[] {
   const filesByVariant = new Map<string, DbFile>();
+  const filesByLine = new Map<string, DbFile>();
   for (const f of files) {
     if (f.variant_id) filesByVariant.set(String(f.variant_id), f);
+    else if (f.line_item_id) filesByLine.set(String(f.line_item_id), f);
   }
 
   const variantsByLine = new Map<string, TicketLineVariantRow[]>();
@@ -339,6 +346,7 @@ function assembleBundle(
       foil: boolVal(row.foil),
       perforation: boolVal(row.perforation),
       comment: row.comment != null ? String(row.comment) : null,
+      file: mapFileMeta(filesByLine.get(String(row.id))),
       variants: variantsByLine.get(String(row.id)) ?? [],
     }))
     .sort((a, b) => a.sort_order - b.sort_order);
@@ -359,7 +367,7 @@ export async function fetchTicketLinesBundle(
       .select("*")
       .eq("ticket_id", ticketId)
       .order("sort_order", { ascending: true }),
-    admin.from("ticket_files").select("id, variant_id, file_name, mime_type, byte_size").eq("ticket_id", ticketId),
+    admin.from("ticket_files").select("id, line_item_id, variant_id, file_name, mime_type, byte_size").eq("ticket_id", ticketId),
   ]);
 
   if (linesRes.error) {
@@ -470,8 +478,56 @@ export async function syncTicketLines(
     await admin.from("ticket_line_items").delete().in("id", orphanLineIds);
   }
 
+  await migrateLineLevelFilesToFirstVariant(admin, ticketId);
+
   const line_items = await fetchTicketLinesBundle(admin, ticketId);
   return { ok: true, line_items };
+}
+
+/** When additional SKUs exist, line-level files move to the first SKU. */
+async function migrateLineLevelFilesToFirstVariant(
+  admin: SupabaseClient,
+  ticketId: string,
+): Promise<void> {
+  const { data: lineFiles } = await admin
+    .from("ticket_files")
+    .select("id, line_item_id, storage_path")
+    .eq("ticket_id", ticketId)
+    .is("variant_id", null);
+
+  if (!lineFiles?.length) return;
+
+  const { data: variants } = await admin
+    .from("ticket_line_variants")
+    .select("id, line_item_id, sort_order")
+    .eq("ticket_id", ticketId)
+    .order("sort_order", { ascending: true });
+
+  const firstByLine = new Map<string, string>();
+  for (const v of variants ?? []) {
+    const lid = String(v.line_item_id);
+    if (!firstByLine.has(lid)) firstByLine.set(lid, String(v.id));
+  }
+
+  for (const f of lineFiles) {
+    const lineId = String(f.line_item_id);
+    const firstVariantId = firstByLine.get(lineId);
+    if (!firstVariantId) continue;
+
+    const { data: variantHasFile } = await admin
+      .from("ticket_files")
+      .select("id")
+      .eq("variant_id", firstVariantId)
+      .maybeSingle();
+
+    if (variantHasFile) {
+      if (f.storage_path) await deleteTicketAttachment(admin, String(f.storage_path));
+      await admin.from("ticket_files").delete().eq("id", f.id);
+      continue;
+    }
+
+    await admin.from("ticket_files").update({ variant_id: firstVariantId }).eq("id", f.id);
+  }
 }
 
 /** Derive ticket-level design_required / die_cut flags from line rows. */

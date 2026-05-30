@@ -62,11 +62,13 @@ function mapStorageUploadError(message: string): string {
 
 export function ticketAttachmentStoragePath(
   ticketId: string,
-  variantId: string,
+  scopeId: string,
   fileName: string,
+  scope: "variant" | "line" = "variant",
 ): string {
   const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-  return `${ticketId}/${variantId}/${randomUUID()}-${safeName}`;
+  const folder = scope === "line" ? `line/${scopeId}` : scopeId;
+  return `${ticketId}/${folder}/${randomUUID()}-${safeName}`;
 }
 
 export async function uploadTicketAttachment(
@@ -106,4 +108,24 @@ export async function createTicketAttachmentSignedUrl(
     return null;
   }
   return data.signedUrl;
+}
+
+/** Download bytes from Storage (for same-origin proxy / iframe preview). */
+export async function fetchTicketAttachmentBytes(
+  admin: SupabaseClient,
+  storagePath: string,
+): Promise<{ data: Uint8Array; contentType: string } | null> {
+  const { data, error } = await admin.storage.from(TICKET_ATTACHMENTS_BUCKET).download(storagePath);
+  if (error || !data) {
+    console.error("[ticket-attachments] download failed:", error);
+    return null;
+  }
+  const buf = await data.arrayBuffer();
+  return { data: new Uint8Array(buf), contentType: data.type || "application/octet-stream" };
+}
+
+export function attachmentContentDisposition(fileName: string, download: boolean): string {
+  const safe = fileName.replace(/[^\w.\-() ]+/g, "_") || "attachment";
+  const type = download ? "attachment" : "inline";
+  return `${type}; filename="${safe}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
 }

@@ -62,13 +62,22 @@ export function validateShipToZip(zip: string | null | undefined): string | null
   return null;
 }
 
+/** Shipping charge is optional when ship-to-customer is selected (May 2026). */
 export function validateShippingCharge(
-  requiresShipping: boolean,
-  quoteShipping: number | null | undefined,
+  _requiresShipping: boolean,
+  _quoteShipping: number | null | undefined,
 ): string | null {
-  if (!requiresShipping) return null;
-  const amount = quoteShipping ?? 0;
-  if (amount <= 0) return "Shipping ($) is required when shipping is selected.";
+  return null;
+}
+
+/** Validate ZIP on every destination that has a ZIP entered. */
+export function validateShippingDestinationZips(
+  destinations: ShipToFields[],
+): string | null {
+  for (const d of destinations) {
+    const err = validateShipToZip(d.ship_to_zip);
+    if (err) return err;
+  }
   return null;
 }
 

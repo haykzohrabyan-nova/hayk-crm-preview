@@ -6,13 +6,15 @@ export type QuoteListStatusTone =
   | "confirmed"
   | "awaiting_payment"
   | "approved"
+  | "cancelled"
   | "routed";
 
 const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  draft:    { bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", label: "Draft" },
-  sent:     { bg: "var(--color-info-bg)",    text: "var(--color-info-text)",    label: "Sent" },
-  approved: { bg: "var(--color-success-bg)", text: "var(--color-success)",      label: "Approved" },
-  routed:   { bg: "var(--color-warning-bg)", text: "var(--color-warning)",      label: "Routed" },
+  draft:     { bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", label: "Draft" },
+  sent:      { bg: "var(--color-info-bg)",    text: "var(--color-info-text)",    label: "Sent" },
+  approved:  { bg: "var(--color-success-bg)", text: "var(--color-success)",      label: "Approved" },
+  cancelled: { bg: "var(--color-danger-bg)",  text: "var(--color-danger)",       label: "Cancelled" },
+  routed:    { bg: "var(--color-warning-bg)", text: "var(--color-warning)",      label: "Routed" },
 };
 
 export function quoteListStatus(ticket: TicketPaymentFields & {

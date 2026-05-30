@@ -167,7 +167,7 @@ Admin-managed via `finishing` lookup category. Default options:
 | Perforation | `perforation` boolean on `job_tickets` | Graphtec manual knife position adjustment |
 
 Below finishings, two fixed boolean checkboxes (not admin-managed):
-- **Design on file** → `design_required` column
+- **Need a design** → `design_required` column
 - **Die Cut** → `die_cut` column
 
 ### Color Mode (select)

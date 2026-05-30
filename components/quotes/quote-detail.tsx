@@ -26,6 +26,7 @@ import {
   formatQuoteSendMissingMessage,
   getQuoteSendMissingFields,
 } from "@/lib/utils/validate-quote-send";
+import { resolveQuoteDeliveryFromContact } from "@/lib/utils/resolve-quote-delivery-from-contact";
 import { buildAdminConvertPreview } from "@/lib/utils/admin-convert-preview";
 import type { ManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { isPaymentEvidencePending, isTicketPaidInFull, computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
@@ -38,8 +39,16 @@ import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 import { createClient } from "@/lib/supabase/client";
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
 import { localDateStringFromIso, validateDueDateAgainstCreated } from "@/lib/utils/due-date";
-import { validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
-import type { ShipToFields } from "@/lib/utils/address";
+import { validateShippingDestinationZips } from "@/lib/utils/address";
+import {
+  draftsFromLegacyTicket,
+  emptyShippingDestination,
+  rowToDraft,
+  shippingDestinationsToApiFields,
+  sumShippingAmounts,
+  type ShippingDestinationDraft,
+  type TicketShippingDestinationRow,
+} from "@/lib/utils/ticket-shipping-destinations";
 import { InfoForm } from "@/components/quotes/shared/info-form";
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
@@ -75,7 +84,7 @@ import {
 } from "@/lib/utils/should-offer-resend-after-save";
 import { OUTREACH_CHANNEL_LABEL, resolveOutreachChannelKind } from "@/lib/utils/outreach-channel-display";
 import { CancelledReasonBanner } from "@/components/quotes/quote-detail/cancelled-reason-banner";
-import { cancelReasonCategoryForStatus } from "@/lib/utils/cancel-reason-category";
+import { cancelActionLabel, cancelReasonCategoryForStatus } from "@/lib/utils/cancel-reason-category";
 import type { LookupValue } from "@/lib/types";
 import { DetailStatusDotBadge, DetailCollapsibleSection } from "@/components/quotes/quote-detail/detail-layout-primitives";
 import {
@@ -141,6 +150,7 @@ interface Ticket {
   ship_to_city: string | null;
   ship_to_state: string | null;
   ship_to_zip: string | null;
+  shipping_destinations?: TicketShippingDestinationRow[];
   discount_type: string | null;
   discount_value: string | null;
   discount_reason: string | null;
@@ -338,14 +348,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [notes, setNotes] = useState("");
   const [skus, setSkus] = useState<FormLineItem[]>([emptyFormLineItem()]);
   const [requiresShipping, setRequiresShipping] = useState(false);
-  const [shipTo, setShipTo] = useState<ShipToFields>({
-    ship_to_line1: "",
-    ship_to_line2: "",
-    ship_to_city: "",
-    ship_to_state: "",
-    ship_to_zip: "",
-  });
-  const [shipping, setShipping] = useState(0);
+  const [shippingDestinations, setShippingDestinations] = useState<ShippingDestinationDraft[]>([
+    emptyShippingDestination(),
+  ]);
   const [discountType, setDiscountType] = useState<"percent" | "fixed" | "">("");
   const [discountValue, setDiscountValue] = useState("");
   const [discountReason, setDiscountReason] = useState("");
@@ -373,39 +378,42 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         ? bundleToFormLineItems(t.line_items)
         : [emptyFormLineItem()],
     );
-    setShipping(t.quote_shipping ?? 0);
     setRequiresShipping(t.requires_shipping ?? (t.quote_shipping ?? 0) > 0);
-    setShipTo({
-      ship_to_line1: t.ship_to_line1 ?? "",
-      ship_to_line2: t.ship_to_line2 ?? "",
-      ship_to_city: t.ship_to_city ?? "",
-      ship_to_state: t.ship_to_state ?? "",
-      ship_to_zip: t.ship_to_zip ?? "",
-    });
+    if (t.shipping_destinations?.length) {
+      setShippingDestinations(t.shipping_destinations.map(rowToDraft));
+    } else {
+      setShippingDestinations(draftsFromLegacyTicket(t));
+    }
     setDiscountType((t.discount_type as "percent" | "fixed" | "") ?? "");
     setDiscountValue(t.discount_value ?? "");
     setDiscountReason(t.discount_reason ?? "");
     setTaxRate(t.quote_tax_rate_percent ?? 0);
     setTaxExempt(t.tax_exempt ?? false);
     setSalesPermit(t.sales_permit_number ?? "");
-    setPaymentDraft({
-      ticket_payment_strategy:       t.ticket_payment_strategy       ?? PAYMENT_CONFIG_DEFAULTS.ticket_payment_strategy,
-      ticket_deposit_type:           t.ticket_deposit_type           ?? PAYMENT_CONFIG_DEFAULTS.ticket_deposit_type,
-      ticket_deposit_value:          t.ticket_deposit_value          ?? PAYMENT_CONFIG_DEFAULTS.ticket_deposit_value,
-      ticket_dep_handling:           t.ticket_dep_handling           ?? PAYMENT_CONFIG_DEFAULTS.ticket_dep_handling,
-      ticket_receipt_id:             t.ticket_receipt_id             ?? PAYMENT_CONFIG_DEFAULTS.ticket_receipt_id,
-      ticket_partial_channels:       t.ticket_partial_channels       ?? PAYMENT_CONFIG_DEFAULTS.ticket_partial_channels,
-      ticket_full_channels:          t.ticket_full_channels          ?? PAYMENT_CONFIG_DEFAULTS.ticket_full_channels,
-      ticket_require_client_confirm: t.ticket_require_client_confirm ?? PAYMENT_CONFIG_DEFAULTS.ticket_require_client_confirm,
-      ticket_net_terms_label:        t.ticket_net_terms_label        ?? PAYMENT_CONFIG_DEFAULTS.ticket_net_terms_label,
-      ticket_quote_channel:          t.ticket_quote_channel          ?? PAYMENT_CONFIG_DEFAULTS.ticket_quote_channel,
-      ticket_dest_phone:             t.ticket_dest_phone             ?? PAYMENT_CONFIG_DEFAULTS.ticket_dest_phone,
-      ticket_dest_email:             t.ticket_dest_email             ?? PAYMENT_CONFIG_DEFAULTS.ticket_dest_email,
-      ticket_follow_up_enabled:      t.ticket_follow_up_enabled      ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_enabled,
-      ticket_follow_up_count:        t.ticket_follow_up_count        ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_count,
-      ticket_follow_up_freq:         t.ticket_follow_up_freq         ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_freq,
-      quote_reminder_date:           t.quote_reminder_date           ?? PAYMENT_CONFIG_DEFAULTS.quote_reminder_date,
-    });
+    setPaymentDraft(
+      resolveQuoteDeliveryFromContact(
+        {
+          ticket_payment_strategy:       t.ticket_payment_strategy       ?? PAYMENT_CONFIG_DEFAULTS.ticket_payment_strategy,
+          ticket_deposit_type:           t.ticket_deposit_type           ?? PAYMENT_CONFIG_DEFAULTS.ticket_deposit_type,
+          ticket_deposit_value:          t.ticket_deposit_value          ?? PAYMENT_CONFIG_DEFAULTS.ticket_deposit_value,
+          ticket_dep_handling:           t.ticket_dep_handling           ?? PAYMENT_CONFIG_DEFAULTS.ticket_dep_handling,
+          ticket_receipt_id:             t.ticket_receipt_id             ?? PAYMENT_CONFIG_DEFAULTS.ticket_receipt_id,
+          ticket_partial_channels:       t.ticket_partial_channels       ?? PAYMENT_CONFIG_DEFAULTS.ticket_partial_channels,
+          ticket_full_channels:          t.ticket_full_channels          ?? PAYMENT_CONFIG_DEFAULTS.ticket_full_channels,
+          ticket_require_client_confirm: t.ticket_require_client_confirm ?? PAYMENT_CONFIG_DEFAULTS.ticket_require_client_confirm,
+          ticket_net_terms_label:        t.ticket_net_terms_label        ?? PAYMENT_CONFIG_DEFAULTS.ticket_net_terms_label,
+          ticket_quote_channel:          t.ticket_quote_channel          ?? PAYMENT_CONFIG_DEFAULTS.ticket_quote_channel,
+          ticket_dest_phone:             t.ticket_dest_phone             ?? PAYMENT_CONFIG_DEFAULTS.ticket_dest_phone,
+          ticket_dest_email:             t.ticket_dest_email             ?? PAYMENT_CONFIG_DEFAULTS.ticket_dest_email,
+          ticket_follow_up_enabled:      t.ticket_follow_up_enabled      ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_enabled,
+          ticket_follow_up_count:        t.ticket_follow_up_count        ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_count,
+          ticket_follow_up_freq:         t.ticket_follow_up_freq         ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_freq,
+          quote_reminder_date:           t.quote_reminder_date           ?? PAYMENT_CONFIG_DEFAULTS.quote_reminder_date,
+        },
+        t.contact_phone ?? t.customer?.phone ?? "",
+        t.contact_email ?? t.customer?.email ?? "",
+      ),
+    );
   }
 
   // ─── Fetch ticket (silent=true skips the loading skeleton) ──────────────
@@ -482,11 +490,18 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     setSkus((prev) => prev.map((s, i) => (i === idx ? { ...s, variants } : s)));
   }, []);
 
+  const updateLineAttachment = useCallback(
+    (idx: number, attachment: FormLineItem["lineAttachment"]) => {
+      setSkus((prev) => prev.map((s, i) => (i === idx ? { ...s, lineAttachment: attachment } : s)));
+    },
+    [],
+  );
+
   // ─── Pricing ─────────────────────────────────────────────────────────────
 
   const pricing = computePricing({
     skus,
-    quote_shipping: requiresShipping ? shipping : 0,
+    quote_shipping: requiresShipping ? sumShippingAmounts(shippingDestinations) : 0,
     discount_type: discountType || null,
     discount_value: discountValue || null,
     quote_tax_rate_percent: taxExempt ? 0 : taxRate,
@@ -576,10 +591,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     } else {
       setTitleError(undefined);
     }
-    if (!dueDate) {
-      setDueDateError("A due date is required.");
-      hasValidationError = true;
-    } else if (ticket?.created_at) {
+    if (dueDate && ticket?.created_at) {
       const dueErr = validateDueDateAgainstCreated(dueDate, ticket.created_at);
       if (dueErr) {
         setDueDateError(dueErr);
@@ -604,8 +616,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         taxExempt,
         salesPermit,
         requiresShipping,
-        quoteShipping: requiresShipping ? shipping : 0,
-        shipToZip: shipTo.ship_to_zip ?? "",
+        shipToDestinations: shippingDestinations,
         paymentDraft,
       });
       if (missing.length > 0) {
@@ -649,14 +660,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       return;
     }
 
-    const shippingErr = validateShippingCharge(requiresShipping, shipping);
-    if (shippingErr) {
-      setError(shippingErr);
-      setSaving(false);
-      hideLoading();
-      return;
-    }
-    const zipErr = validateShipToZip(shipTo.ship_to_zip);
+    const zipErr = validateShippingDestinationZips(
+      requiresShipping ? shippingDestinations : [],
+    );
     if (zipErr) {
       setError(zipErr);
       setSaving(false);
@@ -675,13 +681,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       special_requirements: specialRequirements || null,
       notes: notes || null,
       line_items: lineItemsToApiPayload(skus),
-      quote_shipping: requiresShipping ? shipping : 0,
-      requires_shipping: requiresShipping,
-      ship_to_line1: requiresShipping ? shipTo.ship_to_line1 || null : null,
-      ship_to_line2: requiresShipping ? shipTo.ship_to_line2 || null : null,
-      ship_to_city: requiresShipping ? shipTo.ship_to_city || null : null,
-      ship_to_state: requiresShipping ? shipTo.ship_to_state || null : null,
-      ship_to_zip: requiresShipping ? shipTo.ship_to_zip || null : null,
+      ...shippingDestinationsToApiFields(requiresShipping, shippingDestinations),
       discount_type: discountType || null,
       discount_value: discountValue || null,
       discount_reason: discountReason || null,
@@ -843,11 +843,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       taxExempt,
       salesPermit,
       requiresShipping,
-      quoteShipping: requiresShipping ? shipping : 0,
-      shipToZip: shipTo.ship_to_zip ?? "",
+      shipToDestinations: shippingDestinations,
       paymentDraft,
     }),
-    [title, dueDate, skus, taxExempt, salesPermit, requiresShipping, shipping, shipTo.ship_to_zip, paymentDraft],
+    [title, dueDate, skus, taxExempt, salesPermit, requiresShipping, shippingDestinations, paymentDraft],
   );
   const sendMissingFields = useMemo(
     () => getQuoteSendMissingFields(sendValidationInput),
@@ -972,7 +971,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const viewTabs = isOverviewLayout
     ? [{ id: "info" as Tab, label: "Overview" }, { id: "history" as Tab, label: "History" }]
     : VIEW_TABS;
-  const showStatsRow = isOverviewLayout && context !== "payment";
+  const showStatsRow = isOverviewLayout;
   const statsTotalLabel = context === "quote" ? "Quote Total" as const : "Order Total" as const;
 
   const canViewPaymentEvidence = userRole === "accountant" || userRole === "admin";
@@ -996,9 +995,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     cancelReasonCategoryForStatus(ticket.ticket_status) === "order_cancel_reason"
       ? cancelReasonLookups.order
       : cancelReasonLookups.quote;
-  const cancelModalTitle = ["order", "in_production", "completed"].includes(ticket.ticket_status)
-    ? "Cancel order"
-    : "Cancel quote";
+  const cancelModalTitle = cancelActionLabel(ticket.ticket_status);
 
   const currentTicket = ticket;
 
@@ -1355,12 +1352,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                         products={products}
                         skuLookups={skuLookups}
                         pricing={pricing}
-                        shipping={shipping}
-                        setShipping={setShipping}
                         requiresShipping={requiresShipping}
                         setRequiresShipping={setRequiresShipping}
-                        shipTo={shipTo}
-                        setShipTo={setShipTo}
+                        shippingDestinations={shippingDestinations}
+                        setShippingDestinations={setShippingDestinations}
                         customerId={ticket.customer_id ?? ticket.customer?.id ?? null}
                         discountType={discountType}
                         setDiscountType={setDiscountType}
@@ -1465,12 +1460,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     products={products}
                     skuLookups={skuLookups}
                     pricing={pricing}
-                    shipping={shipping}
-                    setShipping={setShipping}
                     requiresShipping={requiresShipping}
                     setRequiresShipping={setRequiresShipping}
-                    shipTo={shipTo}
-                    setShipTo={setShipTo}
+                    shippingDestinations={shippingDestinations}
+                    setShippingDestinations={setShippingDestinations}
                     customerId={ticket.customer_id ?? ticket.customer?.id ?? null}
                     discountType={discountType}
                     setDiscountType={setDiscountType}
@@ -1506,15 +1499,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   priorityOpts={quoteLookups.ticket_priority}
                   titleError={titleError}
                   dueDateError={dueDateError}
+                  dueDateRequired={false}
                   minDueDate={ticket.created_at ? localDateStringFromIso(ticket.created_at) : undefined}
                 />
 
-                {/* ── Divider: Line Items ── */}
-                <div>
-                  <div className="flex items-center gap-3 mb-4">
-                    <p className="text-xs font-semibold uppercase tracking-wider shrink-0" style={{ color: "var(--color-text-muted)" }}>Line Items</p>
-                    <div className="flex-1 border-t" style={{ borderColor: "var(--color-border)" }} />
-                  </div>
+                <DetailCollapsibleSection title="Line Items" defaultOpen={editing}>
                   <LineItemsForm
                     editing={editing}
                     skus={skus}
@@ -1524,6 +1513,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     onRemove={(idx) => setSkus((prev) => prev.filter((_, i) => i !== idx))}
                     onAdd={() => setSkus((prev) => [...prev, emptyFormLineItem()])}
                     onVariantsChange={updateVariants}
+                    onLineAttachmentChange={updateLineAttachment}
                     ticketRef={ticket.reference_code ?? ticketId}
                     displayLines={
                       !editing && ticket.line_items?.length
@@ -1531,35 +1521,39 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                         : undefined
                     }
                   />
-                </div>
+                </DetailCollapsibleSection>
 
                 {/* ── Fulfillment ── */}
-                <DetailCollapsibleSection title="Fulfillment">
+                <DetailCollapsibleSection title="Fulfillment" defaultOpen={editing}>
                   <ShippingFulfillmentSection
                     editing={editing}
                     customerId={ticket.customer_id ?? ticket.customer?.id ?? null}
                     requiresShipping={requiresShipping}
                     onRequiresShippingChange={setRequiresShipping}
-                    shipTo={shipTo}
-                    onShipToChange={setShipTo}
-                    shipping={shipping}
-                    onShippingChange={setShipping}
-                    ticket={editing ? undefined : ticket}
+                    destinations={shippingDestinations}
+                    onDestinationsChange={setShippingDestinations}
+                    ticket={
+                      editing
+                        ? undefined
+                        : {
+                            ...ticket,
+                            shipping_destinations: ticket.shipping_destinations,
+                          }
+                    }
                   />
                 </DetailCollapsibleSection>
 
                 {/* ── Quote & Pricing ── */}
-                <DetailCollapsibleSection title="Quote & Pricing">
+                <DetailCollapsibleSection title="Quote & Pricing" defaultOpen={editing}>
                   <QuoteForm
                     editing={editing}
                     hideFulfillment
                     ticket={ticket}
                     pricing={pricing}
-                    shipping={shipping} setShipping={setShipping}
                     requiresShipping={requiresShipping}
                     setRequiresShipping={setRequiresShipping}
-                    shipTo={shipTo}
-                    setShipTo={setShipTo}
+                    shippingDestinations={shippingDestinations}
+                    setShippingDestinations={setShippingDestinations}
                     customerId={ticket.customer_id ?? ticket.customer?.id ?? null}
                     discountType={discountType} setDiscountType={setDiscountType}
                     discountValue={discountValue} setDiscountValue={setDiscountValue}
@@ -1570,6 +1564,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     salesPermitError={salesPermitError}
                     paymentDraft={paymentDraft}
                     onPaymentChange={setPaymentDraft}
+                    customerPhone={ticket.contact_phone ?? ticket.customer?.phone ?? ""}
+                    customerEmail={ticket.contact_email ?? ticket.customer?.email ?? ""}
                   />
                 </DetailCollapsibleSection>
 

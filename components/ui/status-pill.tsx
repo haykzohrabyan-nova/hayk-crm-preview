@@ -19,6 +19,9 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }
   "On Hold": {
     bg: "var(--color-warning-bg)", text: "var(--color-warning)", border: "var(--color-warning-border)",
   },
+  "Follow Up Later": {
+    bg: "var(--color-info-bg)", text: "var(--color-info-text)", border: "var(--color-info-border)",
+  },
   Rejected: {
     bg: "var(--color-danger-bg)", text: "var(--color-danger)", border: "var(--color-danger-border)",
   },

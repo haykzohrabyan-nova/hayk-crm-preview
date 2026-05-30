@@ -9,6 +9,11 @@ export function cancelReasonCategoryForStatus(ticketStatus: string): CancelReaso
   return ORDER_STAGE_STATUSES.has(ticketStatus) ? "order_cancel_reason" : "quote_cancel_reason";
 }
 
+/** Sidebar / modal label — order stages vs quote stages. */
+export function cancelActionLabel(ticketStatus: string): "Cancel Order" | "Cancel Quote" {
+  return ORDER_STAGE_STATUSES.has(ticketStatus) ? "Cancel Order" : "Cancel Quote";
+}
+
 export function isCancelReasonCategory(category: string): category is CancelReasonCategory {
   return category === "quote_cancel_reason" || category === "order_cancel_reason";
 }

@@ -202,12 +202,11 @@ Blocks: `DEFAULT_TAX_RATE` constant removed from `lib/utils/ticket-math.ts`; add
 
 > Owner note: "We will set this value from the admin panel under the company information. If the order total is more than that number then the only action the SDR can take is to send to the Sales Pipeline."
 
-**Implementation:**
-- Remove `HIGH_VALUE_THRESHOLD = 5000` constant; read threshold from company settings
-- When `quoteFinalTotal >= threshold` AND `user_role = 'SDR'`: hide Send Quote button; show "Route to Sales" button only
-- Admin/Sales reps are not blocked
-
-Blocks: `HIGH_VALUE_THRESHOLD` constant removed, warning banner replaced with hard block in OrderDrawer, company settings schema needs `high_value_threshold` field.
+**Implementation (May 2026):**
+- Threshold read from `company_settings.high_value_threshold`
+- When `quoteFinalTotal >= threshold` AND `user_role = 'SDR'`: advancing Line Items → Quote shows blocking modal — route to Sales or edit amount (30s auto-route)
+- SDR may also **voluntarily route below threshold** from Line Items or Quote tab via **Route to Sales** + reason modal (`routed_reason` on ticket)
+- Admin/Sales reps are not blocked on send
 
 ---
 
@@ -263,7 +262,9 @@ Blocks: `HIGH_VALUE_THRESHOLD` constant removed, warning banner replaced with ha
 
 ✅ **ANSWERED from shadow project code — confirmed by owner. Extended May 2026.**
 
-**Answer: Manual entry per quote when shipping is selected.** Default fulfillment is **Pickup** (no shipping charge). When rep selects **Ship to customer**, **Shipping ($)** is required (> 0). Delivery address is **optional** (ZIP validated if entered). Past ship-to addresses for a customer are offered from prior tickets (`GET /api/customers/[id]/shipping-addresses`).
+**Answer: Manual entry per quote when shipping is selected.** Default fulfillment is **Pickup** (no shipping charge). When rep selects **Ship to customer**, rep may add **multiple destinations** (migration **093** — each with optional **Shipping ($)** and optional address; charges sum to `quote_shipping`). Delivery address is **optional** (ZIP validated if entered). Past ship-to addresses come from prior tickets and `ticket_shipping_destinations` (`GET /api/customers/[id]/shipping-addresses`).
+
+**May 2026 update:** Per-destination **Shipping ($)** is **no longer required** (may be `0`). Public quote and PDF use one **Ship To** column or a 2-column address card grid when multiple destinations exist.
 
 > Owner answer: radio selected "Manual entry per quote."
 

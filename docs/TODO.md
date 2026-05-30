@@ -1,6 +1,6 @@
 # BazarCRM — TODO Tracker
 
-**Last updated:** 2026-05-28 (line items migration 089, resend-after-save modal)
+**Last updated:** 2026-05-29 (Payment For column, Route to Sales Quote tab, build fixes)
 
 This file tracks **what is still open** vs **what is already built**. Detailed specs live in `docs/feature-specs/` and `docs/CHANGELOG.md`.
 
@@ -169,7 +169,7 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Mobile list cards (quotes, orders, payments, completed)
 - Quote/order detail overview layout, global loading overlay
 - **May 28:** Collapsible Timeline, Pricing, and Payment & order settings on detail overview (default collapsed)
-- **May 29:** Admin cancel/edit at any stage (incl. completed); expanded collapsibles (Fulfillment, Quote & Pricing, Payment review, etc.); Verify drawer ✕; Add Lead auth cookie refresh; Product Interests row alignment
+- **May 29:** Admin cancel/edit at any stage (incl. completed); expanded collapsibles; Verify drawer ✕; Add Lead auth cookie refresh; Product Interests **Has Design checkbox**; **Cancelled** tab on `/quotes` (quote-stage) vs `/orders` (order-stage only)
 - PDF download (staff + public), print view
 
 ### Infrastructure

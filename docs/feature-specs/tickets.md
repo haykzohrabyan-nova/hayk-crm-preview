@@ -35,7 +35,7 @@
 **Source of truth:** `reference_code` prefix wins over `ticket_kind` in UI helpers (`ticketIsQuoteStage()`, `resolveTicketQuoteStage()` in `lib/utils/reference-codes.ts` and `lib/utils/ticket-lifecycle-timeline.ts`). API create/update enforces alignment via `ticketKindForReference()` on `POST /api/tickets` and `PATCH /api/tickets/[id]`. `maybeConvertQuoteToOrder()` aborts if `ORD-*` assignment fails (no `ticket_kind: order` while reference stays `QUO-*`).
 - `in_production` — released to shop floor (`production_released_at` set). Partial orders may owe balance. **Linked lead `sales_status` → `Won`** via `markLeadWonOnProduction()`.
 - `completed` — finished; customer notified (email/SMS pickup message with same `/q/{token}` URL); public page shows **Ready for pickup**
-- `cancelled` — terminal; no payment recorded
+- `cancelled` — terminal; admin-only cancel with reason. **List placement:** quote-stage (`ticket_kind = 'quote'`) → `/quotes` **Cancelled** tab; order-stage (`ticket_kind = 'order'`) → `/orders` **Cancelled** tab. Record and payment audit fields are retained.
 
 ### Where tickets appear by status
 
@@ -48,7 +48,8 @@
 | `in_production` | `/orders` (In Production tab) |
 | `in_production` + balance evidence pending | `/orders` (Awaiting payment confirmation) **and** `/payments` |
 | `completed` | `/completed` |
-| `cancelled` | `/orders` (Cancelled tab) |
+| `cancelled` (quote-stage, `ticket_kind = 'quote'`) | `/quotes` (**Cancelled** tab) |
+| `cancelled` (order-stage, `ticket_kind = 'order'`) | `/orders` (**Cancelled** tab) |
 
 > **Record Locking:** Once `client_confirmed = true`, the record is locked for SDR/Sales users. Only **admin** can edit or cancel (including **completed** orders). Locking applies to the order detail header buttons, action bar, and editing mode for non-admins. Manual admin convert without customer confirm shows an amber **Admin converted** banner instead of **Confirmed by Customer**.
 
@@ -69,7 +70,7 @@ A new quote can be started from three places. The entry point controls the UI sh
 ## `/quotes` — Quoted Requests page
 
 **Component:** `components/quotes/quotes-page.tsx`  
-**List API:** `GET /api/quotes/page-data` — slim ticket list (no `line_items` on list). Returns `pagination`. Full record on `/quotes/[id]` includes `line_items` tree.
+**List API:** `GET /api/quotes/page-data` — slim ticket list (`ticket_kind = 'quote'`; tabs include **Cancelled** for quote-stage cancellations). Returns `pagination` + tab `counts`. Full record on `/quotes/[id]` includes `line_items` tree.
 
 **Date filter (May 2026):** `DashboardDateRangeFilter` in page header — default **Last 30 Days** (`last_month`); Today / Yesterday / Last 7 Days / Last 30 Days / Custom. Filters rows by `created_at` **server-side** via `date_from` / `date_to`. **Tab badges** from page-data `counts` under the same filters; sidebar `/quotes` badge stays all-time total.
 
@@ -85,7 +86,8 @@ A new quote can be started from three places. The entry point controls the UI sh
 | Draft | `ticket_status = 'draft'` | All roles |
 | Sent | `ticket_status = 'sent'` | All roles |
 | Won | `ticket_status = 'approved'` | All roles |
-| **Routed to Sales** | `ticket_status = 'routed'` | **Sales + Admin** (Claim) · **SDR** (View own HVT quotes only — `created_by_id`) |
+| **Cancelled** | `ticket_kind = 'quote'` + `ticket_status = 'cancelled'` | All roles (SDR/Sales: own `created_by_id` only; Admin: all) |
+| **Routed to Sales** | `ticket_status = 'routed'` | **Sales + Admin** (Claim) · **SDR** (View own routed quotes — `created_by_id`; HVT auto-route or manual Line Items route) |
 
 **Table columns (standard tabs):** Contact, Title, Channel, Total, **Due Now** (partial deposit when configured; `—` otherwise), Status pill, Follow-up (red if overdue), Created
 
@@ -122,7 +124,7 @@ A new quote can be started from three places. The entry point controls the UI sh
 ## `/orders` — Orders page
 
 **Component:** `components/orders/orders-page.tsx`  
-**List API:** `GET /api/orders/page-data` — scoped to `order` + `in_production` + `cancelled`. Returns `pagination`. Includes evidence-pending rows for the ticket owner. **SDR / Sales:** `created_by_id = session user` (see list scope table under `/quotes`).
+**List API:** `GET /api/orders/page-data` — scoped to `ticket_kind = 'order'` and `ticket_status IN ('order', 'in_production', 'cancelled')`. Returns `pagination`. Includes evidence-pending rows for the ticket owner. **SDR / Sales:** `created_by_id = session user` (see list scope table under `/quotes`).
 
 **Date filter (May 2026):** Same `DashboardDateRangeFilter` as Quotes — default **Last 30 Days**; filters by `created_at` **server-side**. **Tab badges** from page-data `counts` under the same filters; sidebar `/orders` badge stays all-time scoped total.
 
@@ -138,10 +140,10 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 | Tab | Filter |
 |-----|--------|
-| All | `order` + `in_production` + `cancelled` — **default tab** |
-| Pending Payment | `ticket_status = 'order'` (includes evidence-pending) |
-| In Production | `ticket_status = 'in_production'` |
-| Cancelled | `ticket_status = 'cancelled'` |
+| All | `ticket_kind = 'order'` + (`order` + `in_production` + `cancelled`) — **default tab** |
+| Pending Payment | `ticket_kind = 'order'` + `ticket_status = 'order'` (includes evidence-pending) |
+| In Production | `ticket_kind = 'order'` + `ticket_status = 'in_production'` |
+| Cancelled | `ticket_kind = 'order'` + `ticket_status = 'cancelled'` |
 
 **Status column:** API `status_label` / `status_tone` from `lib/utils/order-list-status.ts` — e.g. Confirmed by Customer, Converted by {name}, **Awaiting payment confirmation** (evidence pending on `order` **or** `in_production`), In Production, **Admin converted — …** (admin override without confirm/payment).
 
@@ -170,11 +172,22 @@ Two tabs — **Pending approval** and **Approved** — with badge counts on both
 | Pending approval | Evidence + **Confirm** (`PATCH { record_payment: true }`); global loading overlay on confirm |
 | Approved | **View evidence** only; shows `payment_evidence_reviewed_at`; no Confirm |
 
+**Desktop table columns (both tabs):** Order · Customer · Claimed · **Payment For** · Method · Submitted · Actions (Pending) or Approved (Approved tab).
+
+**Payment For** (UI label — distinct from **Method**; same on list, detail review card, and payment summary):
+- **Deposit** — partial strategy, deposit not yet confirmed (`inferPaymentEvidenceMode` → `deposit`); subtitle: *Prepayment due before production*
+- **Balance** — partial strategy, deposit already paid (`balance`); subtitle: *Remaining balance after deposit*
+- **Full payment** — full or net strategy, or evidence amount equals order total (`full`); subtitle: *Full order total*
+
+Inference uses `ticket_payment_strategy`, `deposit_paid_at`, `payment_amount_received`, and `payment_evidence_amount` (`lib/utils/payment-evidence-type.ts`). Badge: `components/orders/payment-type-badge.tsx`. Detail review header uses labeled **Payment for** / **Method** columns (`payment-detail-overview.tsx`).
+
 Evidence files are **retained** after accountant confirm (`payment_evidence_reviewed_at` set; URL not cleared). `isPaymentEvidencePending()` uses reviewed timestamp, not `payment_paid_at` (partial deposit approvals no longer show "Awaiting review" on `/orders`).
 
-**Mobile (< `lg`):** card list per tab (no horizontal table scroll).
+**Mobile (< `lg`):** card list per tab (no horizontal table scroll); includes Payment For row.
 
-**Row click** → `/payments/[id]` (`QuoteDetail` with `context="payment"`). Approved detail: read-only review card + evidence link.
+**Row click** → `/payments/[id]?from=/payments` (`QuoteDetail` with `context="payment"`). Approved detail: read-only review card + evidence link.
+
+**Detail (`/payments/[id]`):** Same overview layout as order detail — **stats row** + **lifecycle timeline** at top, left sidebar (customer/lead + quick actions), Payment review section default **open**. **Back** → `/payments` (context `payment` wins over `in_production` status; see `resolveTicketDetailBackPath()`).
 
 ---
 
@@ -222,7 +235,7 @@ Legacy `components/orders/production-page.tsx` and `/api/production/*` remain in
 
 ## Unified ticket detail (Overview + History)
 
-All post-draft detail routes share the **overview layout** (`isOverviewLayout`):
+All post-draft detail routes share the **overview layout** (`isOverviewLayout`), including **`context="payment"`** on `/payments/[id]`:
 
 | Component | Purpose |
 |-----------|---------|
@@ -287,7 +300,7 @@ When entering from a **linked lead**, source comes from the lead — no Quote so
 
 - Title \* (required)
 - Priority (Low / Normal / High — from `ticket_priority` lookup; **Urgent** is system-set and filtered from user-facing dropdown)
-- Due Date (custom `DatePicker` component — past dates disabled; click anywhere on the input to open)
+- Due Date (optional on create and edit; custom `DatePicker` — past dates disabled when a date is set)
 - Rush toggle — manual only. No automatic connection to the due date (auto-toggle was removed).
 - Special Requirements
 - Internal Notes
@@ -305,7 +318,7 @@ Each SKU row:
 | 5 | Lamination | Roll Direction |
 
 - Add-on Finishings (UV Coating, Foil, Perforation checkboxes — pill/chip style)
-- Design on file + Die Cut checkboxes (pill/chip style)
+- Need a design + Die Cut checkboxes (pill/chip style)
 - **Line Item Comment** (free-text, full-width row)
 - **Line Total ($) override** — input field that overrides qty × unit price calculation. Shown with gold border when active. When blank, calculated value is used.
 - Add Line Item — full-width dashed button; **page auto-scrolls to the new item** on click
@@ -316,16 +329,19 @@ Each SKU row:
 
 **Resend after edit (May 2026):** Saving changes does **not** auto-email the customer. **SDR/Sales** editing a **sent** quote before customer confirm see a modal to **Resend quote**. **Admin** edits on `sent`, `order`, `in_production`, or **completed** tickets see **Send update** (quote resend or invoice link with “revised by our team” copy). Portal `/q/{token}` always shows latest data after save.
 
-**Additional SKUs (per line, May 2026):** Under each catalog line, staff can add zero or more **additional SKUs** — **name** and **quantity** required; optional image/PDF uploaded after save via `POST /api/tickets/{ref}/files`. Stored in `ticket_line_variants` + `ticket_files`; does not affect pricing (`computePricing` uses catalog lines only). Shown on detail, PDF, email, and public quote (name + qty only — **no file download** on `/q/[token]`). Persisted with `line_items` on `POST`/`PATCH /api/tickets`.
+**Line attachment (May 2026):** In **Add-on Finishings**, **Attach file** (image or PDF) when the line has no additional SKUs. After the first **Add SKU**, that file moves to the first SKU; each further SKU has its own attachment. Staff quote/order **Overview** shows **View PDF** / **View image** links.
+
+**Additional SKUs (per line, May 2026):** Under each catalog line, staff can add zero or more **additional SKUs** — **name** and **quantity** required; optional image/PDF uploaded after save via `POST /api/tickets/{ref}/files`. Stored in `ticket_line_variants` + `ticket_files`. **Add SKU** is a primary gold/orange button (no `+` icon). **Quantity sync (May 2026):** With no additional SKUs, line **Quantity *** is entered directly. After **Add SKU**, the first SKU quantity pre-fills from line Quantity; each further SKU pre-fills from the first SKU’s quantity. Line **Quantity *** becomes the **sum** of all SKU quantities (read-only while SKUs exist); changing any SKU quantity updates the line total used for `qty × unit price`. Shown on staff detail, PDF, and email. **Public quote `/q/[token]` (May 2026):** additional SKUs in a **2×2 grid** under each product (`SKU1. name · Qty N`) with image preview or embedded PDF via `GET /api/public/quotes/[token]/files/[fileId]`. Persisted with `line_items` on `POST`/`PATCH /api/tickets`.
 
 ### Quote Tab
 
 - **Pricing Summary** (live — updates as you type): Subtotal → Shipping → Discount → Pre-tax Total → Tax → **Total** (gold)
 - **Fulfillment card** (`ShippingFulfillmentSection`):
   - Segmented control: **Pickup** (default) | **Ship to customer**
-  - When **Ship** selected: **Shipping ($)** required (> 0); optional delivery address (Line 1, Line 2, City, State, ZIP)
-  - When customer is linked: **Previous addresses** dropdown (from `GET /api/customers/[id]/shipping-addresses`) or enter new address
-  - When **Pickup**: shipping charge and address hidden; saved as `requires_shipping = false`, `quote_shipping = 0`
+  - When **Ship** selected: one or more destination blocks — **Shipping ($)** per block (optional, may be `0`) + optional delivery address (Line 1, Line 2, City, State, ZIP)
+  - **Add shipping address** — duplicates the block; `quote_shipping` on save = sum of all `shipping_amount` values
+  - When customer is linked: each destination block has its own **Previous addresses** dropdown (from `GET /api/customers/[id]/shipping-addresses` — deduped history from past tickets for that `customer_id`, including `ticket_shipping_destinations`; not a separate address book). **Enter new address** clears that block’s fields so a fresh address can be typed without snapping back to a prior selection
+  - When **Pickup**: all destination rows cleared; saved as `requires_shipping = false`, `quote_shipping = 0`
 - **Adjustments card**:
   - Single row: Tax Rate (%) + Discount (None / % / $) + Tax Exempt toggle; conditional inputs when active
   - "Sales permit #" input shown when Tax Exempt is selected
@@ -349,6 +365,21 @@ Each SKU row:
 | Line Items | ≥ 1 fully filled item (product + qty + unit price) |
 | Quote | Destination field (email / phone / location) must not be empty |
 
+### Manual Route to Sales (SDR only) — Line Items + Quote tabs
+
+On **Line Items** and **Quote**, SDR users see **Route to Sales** even when the quote is **below** the high-value threshold. Clicking opens `RouteToSalesModal`:
+
+- Reason grid from admin-managed `route_reason` lookups (same category as lead Route to Sales)
+- Optional notes; choosing **Other** requires free-text in **Please specify** (same as hold / cancel flows)
+- Confirm saves via `POST /api/tickets` with `ticket_status = 'routed'`, `routed_reason`, optional `routed_notes`
+- Redirects to `/quotes` (Routed to Sales tab)
+- **Line Items:** requires ≥ 1 complete line item (product + qty + unit price)
+- **Quote tab:** also validates tax-exempt permit, shipping ZIPs, and website when routing from that step — SDR can fill shipping, tax, and payment settings before routing
+
+**Send quote via prefill (May 2026):** When saving (including Route to Sales), `lib/utils/resolve-quote-delivery-from-contact.ts` copies customer phone/email into `ticket_dest_phone` / `ticket_dest_email` and picks SMS vs Email — prevents "Required field missing: Phone number" on routed saves. Quote detail backfills the same on load for edit.
+
+HVT auto-route (below) does **not** prompt for a reason; manual route stores `routed_reason` / `routed_notes` on `job_tickets` (migration **095**).
+
 ### High-Value Threshold (HVT) — SDR only
 
 When an SDR advances from Line Items → Quote tab **and** `pricing.final_total > company_settings.high_value_threshold`:
@@ -370,6 +401,7 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 | Back | Any tab (hidden on first tab if Customer tab is first) | Previous tab |
 | Next | Any tab before Quote | Validate + advance; **inline errors on invalid fields**; scrolls first invalid field into view |
 | Save Draft | Line Items tab onwards | `POST /api/tickets` with `status = 'draft'` |
+| Route to Sales | Line Items or Quote tab, SDR only | Opens reason modal → `POST /api/tickets` with `status = 'routed'` + `routed_reason`; redirects to `/quotes` |
 | Save & Send Quote | Quote tab | `POST /api/tickets` with `status = 'sent'`; blocked until `validateQuoteSend()` passes; global loading overlay; redirects to `/quotes` or quote detail |
 | Cancel | Any | Navigate back |
 
@@ -377,7 +409,7 @@ When an SDR advances from Line Items → Quote tab **and** `pricing.final_total 
 
 Draft saves (`Save Draft`, `Save Changes`) allow incomplete fields. **Send Quote**, **Save & Send Quote**, and **Convert to Order** are disabled until all required send fields pass `lib/utils/validate-quote-send.ts`.
 
-When blocked, an amber banner lists missing fields (e.g. Title, Due date, line items, Sales Permit # when tax exempt, **Shipping ($)** when ship-to-customer is selected, delivery destination, **Receipt ID** when cash/offline deposit or full cash-only payment).
+When blocked, an amber banner lists missing fields (e.g. Title, line items, Sales Permit # when tax exempt, **valid ZIP** on any ship-to destination with a ZIP entered, delivery destination, **Receipt ID** when cash/offline deposit or full cash-only payment). **Shipping ($) is not required** when ship-to-customer is selected (May 2026). Due date is optional on create and edit.
 
 **Tab / field validation (May 2026):** On **Next** or save when a tab field fails (Source, Industry, title, due date, website, etc.), the form shows a **red border + inline message** on that field and **scrolls it into view** via `data-field-anchor` markers and `lib/utils/scroll-field-into-view.ts`.
 
@@ -394,6 +426,38 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
 
 ---
 
+## Public customer portal — `/q/[token]`
+
+**Page:** `app/(public)/q/[token]/page.tsx` · **Document:** `components/public/public-quote-document.tsx`
+
+No login. Staff can open the same URL to preview the customer experience.
+
+### Line items display
+
+- Standard table (desktop) / cards (mobile): product, spec, qty, unit price, line total.
+- When a catalog line has **additional SKUs** (or a line-only attachment), a **full-width block** below that row shows `PublicLineItemSkusGrid`:
+  - **2-column grid** (`repeat(2, 1fr)`) — one cell per SKU (or single cell for line-only attachment labeled **Line attachment**).
+  - Label format: `SKU1. {name} · Qty {quantity}`.
+  - **Image** (JPEG/PNG/WebP): inline `<img>` from public files API.
+  - **PDF:** client `fetch` → `URL.createObjectURL` → `<object type="application/pdf">` (avoids framing CSP issues with redirected Storage URLs).
+  - **Open PDF** — opens inline stream in new tab.
+  - **Download** — `?download=1` on the same files endpoint.
+
+### Public files API
+
+`GET /api/public/quotes/[token]/files/[fileId]` — validates `public_token`, streams bytes with correct `Content-Type`. Not the same as staff `GET /api/tickets/.../files/...` (302 redirect).
+
+**CSP:** Quote page allows `blob:` in `frame-src` and `object-src` for PDF previews (`lib/security/content-security-policy.ts`, `/q/:path*` header rule in `next.config.ts`).
+
+### Shipping addresses (May 2026)
+
+- API returns `shipping_destinations[]` (resolved via `resolveTicketShippingDestinationsForDisplay()`).
+- **One** destination with address or charge → **Ship To** column in the Bill To / Quote Details row (`PublicShippingAddressSingle`).
+- **Multiple** destinations → full-width **2-column card grid** below the parties row (`PublicShippingAddressesList`) — same visual pattern as additional SKUs (per-card shipping amount + address lines).
+- **Download PDF** (`GET /api/public/quotes/[token]/pdf`) uses the same rules: single **Ship To** column vs **Shipping addresses** 50/50 grid in `InvoicePDF`.
+
+---
+
 ## `/quotes/[id]` — Quote / Order Detail
 
 **Component:** `components/quotes/quote-detail.tsx`
@@ -403,7 +467,7 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
 - Back button
 - Title + reference code badge (ORD-YYYY-NNN for orders)
 - Status pill
-- Save PDF link (`/api/tickets/[id]/pdf`) — requires MFA-complete session + ticket read scope (`canAccessTicket()`)
+- Save PDF link (`/api/tickets/[id]/pdf`) — requires MFA-complete session + ticket read scope (`canAccessTicket()`). PDF includes multi-destination shipping (50/50 grid), `SKU{n}.` labels, attachment file names, **Need a design** addon (see `lib/pdf/invoice-pdf.tsx`).
 - **Edit button** — visibility rules:
   - `draft` or `sent` → always shown (non-admin)
   - `order` with `payment_status = 'unpaid'` (or null) → shown (non-admin)
@@ -422,7 +486,8 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
   - **Milestones:** Quote sent/resent · Customer confirmed · Converted to order (`ticket_converted`) · payment proof / recorded · due-date / completion nodes when applicable
   - Detail lines show `QUO-…` / `ORD-…` from activity payload where present
   - Data: `GET /api/activities?ticket_id=…&include_linked_lead=true` (UUID or `QUO-*` / `ORD-*`); refreshes on `bazaar:activities-changed`
-- **Overview tab sections (read-only):** **Line Items** always visible. All other long blocks use **`DetailCollapsibleSection`** (default **collapsed**): **Quote & Pricing**, **Fulfillment**, **Pricing** (summary), **Payment & order settings**, **Quote delivery**, **Follow-up schedule**, **Production & evidence**, **Payment review**, **Payment plan** (when shown). On `/payments/[id]`, **Payment review** defaults **open**.
+- **Overview tab sections (read-only):** **Line Items** and other long blocks use **`DetailCollapsibleSection`** (default **collapsed**): **Line Items**, **Quote & Pricing**, **Fulfillment** (lists all `shipping_destinations` when present — default **open** when destinations exist), **Pricing** (summary), **Payment & order settings**, **Quote delivery**, **Follow-up schedule**, **Production & evidence**, **Payment review**, **Payment plan** (when shown). On `/payments/[id]`, **Payment review** defaults **open**.
+- **Edit mode (May 2026):** Clicking **Edit** sets `defaultOpen={true}` on **Line Items**, **Fulfillment**, and **Quote & Pricing** so all three expand; after **Save**, overview sections return to collapsed.
 - **Two-column grid:**
   - **Left sidebar** (always shown): `LinkedLeadCard` or `CustomerInfoCard`, then **`DetailQuickActions`** (all action buttons)
   - **Right panel:** Overview | History tabs; on desktop (`xl+`) only this panel scrolls
@@ -438,7 +503,7 @@ When **Quote follow-up schedule** is enabled on the Quote tab and the quote is *
 Single scrollable view combining all three edit sections, separated by labelled dividers:
 
 **1. General Info** (top, no divider header)
-- Same fields as new-quote Info tab: Title, Priority, Due Date, Rush, Special Requirements, Internal Notes
+- Same fields as new-quote Info tab: Title, Priority, Due Date (optional), Rush, Special Requirements, Internal Notes
 
 **2. Line Items** (section divider: "LINE ITEMS")
 - Read-only: product, material, size, qty, unit price, line total cards
@@ -478,7 +543,7 @@ Single scrollable view combining all three edit sections, separated by labelled 
 
 All primary actions live **under the customer/lead card** in the left sidebar — not in a bottom bar (overview layout).
 
-Hidden entirely when record is locked (`isLocked = true`) for quote lifecycle actions; production actions follow their own rules. **Cancel Ticket** is **admin-only** at all stages (not shown to SDR/Sales).
+Hidden entirely when record is locked (`isLocked = true`) for quote lifecycle actions; production actions follow their own rules. **Cancel Quote** / **Cancel Order** is **admin-only** at all stages (not shown to SDR/Sales). Label from `cancelActionLabel()` — quote stages (`draft`, `sent`, `routed`) vs order stages (`order`, `in_production`, `completed`).
 
 Send and Convert buttons are **disabled** when send validation fails; same amber missing-fields banner as new-quote form.
 
@@ -498,7 +563,7 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 | Copy Link | Same conditions — copies public URL to clipboard |
 | Mark Completed | `in_production`; admin always; accountant only if paid in full |
 | Resend invoice link | `in_production` or `completed`; sends via ticket outreach channel |
-| Cancel Ticket | **Admin only** — any status except already `cancelled` (includes **completed**, paid or unpaid) — opens cancel modal with **Quote** or **Order Cancellation Reasons** by stage |
+| Cancel Quote / Cancel Order | **Admin only** — any status except already `cancelled` (includes **completed**, paid or unpaid) — button + modal title from `cancelActionLabel()`; reasons from **Quote Cancellation Reasons** or **Order Cancellation Reasons** by stage |
 
 **Cancelled state:** Overview shows red banner with stored reason label + notes. Reason labels are snapshotted on cancel (`cancel_reason_label`) so they remain visible even if the admin later deactivates or deletes the lookup option.
 
@@ -583,14 +648,15 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `GET /api/tickets` | GET | List tickets. `kind=quote` → slim quote-stage list (no `line_items`). **SDR:** `created_by_id` only (same as `/orders`, `/completed`). **Sales/Admin:** own + all `routed`. |
-| `POST /api/tickets/[id]/files` | POST | Multipart upload for additional-SKU attachment (`variant_id`, `file`). Staff only. |
-| `GET/DELETE /api/tickets/[id]/files/[fileId]` | GET/DELETE | Signed URL download / remove file. |
-| `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `order` + `in_production` + `cancelled`; includes evidence-pending for owner; returns `status_label` / `status_tone`. |
+| `POST /api/tickets/[id]/files` | POST | Multipart: `variant_id` + `file` (per additional SKU) **or** `line_item_id` + `file` (line-level when no SKUs). Staff only. |
+| `GET/DELETE /api/tickets/[id]/files/[fileId]` | GET/DELETE | Staff: 302 signed URL. Delete removes Storage + DB row. |
+| `GET /api/public/quotes/[token]/files/[fileId]` | GET (no auth) | Customer: streamed file; `?download=1` for Download. Token must match ticket. |
+| `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `ticket_kind = 'order'` + `order` / `in_production` / `cancelled`; includes evidence-pending for owner; returns `status_label` / `status_tone`. |
 | `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders). Direct Quotes page: stores `quote_source` on ticket (no auto-lead). Lead/CRM flows: may create linked lead with `source`. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket by UUID or reference code (`QUO-*`, `ORD-*`). Sales/Admin can GET `routed` tickets they don't own. **Accountant** can GET any ticket (matches list scoping). |
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |
 | `GET /api/tickets/[id]/evidence` | GET | Signed URL for payment evidence file (Accountant + Admin) |
-| `GET /api/tickets/counts` | GET | Tab badge counts: `{ drafts, sent, approved, orders, in_production, completed, routed, cancelled, total }`. `orders` includes evidence-pending `order` rows. |
+| `GET /api/tickets/counts` | GET | Legacy tab badge counts: `{ drafts, sent, approved, orders, in_production, completed, routed, cancelled, total }`. `cancelled` = quote-stage only; Orders **Cancelled** badge uses `GET /api/orders/page-data` `counts.cancelled`. |
 | `GET /api/payments/page-data` | GET | Pending + approved lists + tab counts (Accountant + Admin) |
 | `GET /api/payments/pending` | GET | Legacy — pending queue only |
 | `GET /api/payments/counts` | GET | Accountant dashboard KPIs (`pending_evidence`, in production, completed this month) |
@@ -702,6 +768,8 @@ Delivery is fire-and-forget: errors are logged to console but never block the re
 Each ticket has a `public_token` (UUID, unique, unguessable). The public URL is `{APP_URL}/q/{public_token}`.
 
 No login required — `proxy.ts` allows `/q/` paths without auth. Staff can preview the same URL while logged in.
+
+**Line items & attachments (May 2026):** Below each product row, `PublicLineItemSkusGrid` shows additional SKUs in a **2-column grid** (`SKU{n}. name · Qty N`) with image inline preview or PDF via `fetch` → `blob:` + `<object>`. **Open PDF** and **Download** (`?download=1`) use `GET /api/public/quotes/[token]/files/[fileId]` (streamed bytes, not Storage redirect). See also **Public customer portal** section above.
 
 **Unified portal (`QuotePortalSection`)** — one permanent link adapts by phase:
 

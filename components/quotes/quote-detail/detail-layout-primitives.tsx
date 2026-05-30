@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 
@@ -67,7 +67,7 @@ export function DetailSectionTitle({ children }: { children: React.ReactNode }) 
   );
 }
 
-/** Collapsible block — default closed. Use for Timeline, Pricing, payment settings on detail pages. */
+/** Collapsible block — default closed in overview; pass `defaultOpen={editing}` to expand all while editing. */
 export function DetailCollapsibleSection({
   title,
   defaultOpen = false,
@@ -80,6 +80,10 @@ export function DetailCollapsibleSection({
   titleClassName?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+
+  useEffect(() => {
+    setOpen(defaultOpen);
+  }, [defaultOpen]);
 
   return (
     <>

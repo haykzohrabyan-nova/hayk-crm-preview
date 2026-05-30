@@ -177,8 +177,9 @@ Left sidebar with categories grouped into **Lead Forms** and **Order / Quote**. 
 | Industries | `industry` | Add Lead, Verify Drawer, Sales Drawer, CRM |
 | Urgency Levels | `urgency` | Add Lead, Verify Drawer, Sales Drawer |
 | Hold Reasons | `hold_reason` | Hold sub-form (SDR + Sales) |
+| Follow Up Later Reasons | `follow_up_reason` | Follow Up Later sub-form (SDR Verify Drawer + Sales modal) |
 | Reject Reasons | `reject_reason` | Reject sub-form (SDR + Sales) |
-| Route Reasons | `route_reason` | Route to Sales sub-form (SDR) |
+| Route Reasons | `route_reason` | Route to Sales sub-form (SDR Verify Drawer) + **Route to Sales** modal on new quote Line Items and Quote tabs — Admin label: **Route to Sales Reasons (Leads & Quotes)** |
 | Drop Reasons | `sales_drop_reason` | Drop deal sub-form (Sales) |
 
 **Order / Quote group:**

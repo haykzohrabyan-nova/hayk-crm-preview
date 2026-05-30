@@ -1,13 +1,174 @@
 # BazarCRM — Session Summary & Complete Plan
 **Last updated:** May 29, 2026
-**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–29: SDR scope/dashboard, leads workspace, ticket line items, admin cancel/edit anytime, collapsible detail sections, auth cookie refresh fix**.
+**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 27–29: payments Payment For UX, quote Route to Sales on Quote tab, leads Follow Up Later, Sales lock simplification, shipping picker UX**.
+
+---
+
+## May 29, 2026 — Payment For column + Route to Sales on Quote tab
+
+### Payments
+- **`/payments`** list column renamed **Payment For** (Deposit / Balance / Full payment) — distinct from Method (Wire, Zelle, etc.)
+- `inferPaymentEvidenceMode()` uses strategy, prior payments, and evidence amount
+- Payment detail review: labeled **Payment for** / **Method** columns (layout fix)
+
+### Quotes / new quote form
+- SDR **Route to Sales** on **Line Items and Quote** tabs (below HVT threshold)
+- Quote tab: SDR can complete shipping, tax, payment before routing
+
+### Build fixes
+- `app/api/leads/[id]/resume/route.ts` — include `sales_status` in select for activity payload
+- `app/api/public/quotes/[token]/files/[fileId]/route.ts` — `Buffer.from()` for NextResponse body
+
+### Docs synced
+- `tickets.md`, `invoice-payment.md`, `navigation.md`, `api-contract.md`, `component-architecture.md`, `rbac.md`, `mvp-scope.md`, `architecture.md`, `types.md`, `integration-plan.md`, `admin.md`, `leads-sdr.md`, `CHANGELOG.md`
+
+---
+
+## May 29, 2026 — Quote routing, shipping picker, follow-up validation
+
+### Database
+- **095** — `job_tickets.routed_reason`, `routed_notes`; expanded seeded `route_reason` lookups (Admin → Dropdown Options)
+
+### Quotes / new quote form
+- SDR **Route to Sales** on Line Items and Quote tabs (below HVT threshold) — reason modal, saves `routed` + redirects to `/quotes`
+- HVT auto-route unchanged (no reason required on countdown path)
+- **Send quote via** prefilled from customer contact when Quote tab skipped (`resolve-quote-delivery-from-contact.ts`)
+- **Add SKU** — primary button styling
+- **Previous addresses** — one dropdown per shipping destination; **Enter new address** clears block fields
+
+### Leads
+- Follow Up Later (SDR + Sales): **Other** requires **Please specify** — client + `POST /follow-up` validation
+
+### Docs synced
+- `tickets.md`, `api-contract.md`, `schema.md`, `types.md`, `admin.md`, `leads-sdr.md`, `leads-sales.md`, `rbac.md`, `component-architecture.md`, `integration-plan.md`, `CHANGELOG.md`
+
+---
+
+## May 29, 2026 — Leads: Follow Up Later + Sales ownership docs
+
+### Database
+- **094** — `follow_up_*` columns on `leads`; seeded `follow_up_reason` lookups (Admin → Dropdown Options)
+
+### SDR `/leads`
+- **Follow Up Later** tab (`?tab=follow-up`), drawer action before On Hold, SDR-only visibility (`sdr_id` + `scope=mine`)
+- Verify drawer: click-outside closes backdrop
+
+### Sales `/sales`
+- **Follow Up Later** tab (owner-only for reps); modal full-screen hold/follow-up forms
+- **Open** on claimed lead skips `POST /lock` — `sales_owner_id` is the exclusive assignment
+- `POST /lock` logs `lead_claimed` for **SDR only** (fixes History spam on Sales reopen)
+
+### Docs synced
+- `lead-locking.md`, `leads-sales.md`, `leads-sdr.md`, `api-contract.md`, `rbac.md`, `schema.md`, `types.md`, `activity.md`, `component-architecture.md`, `navigation.md`, `CHANGELOG.md`
+
+---
+
+## May 29, 2026 — Multi-shipping, PDF parity, edit-mode collapsibles
+
+### Database (apply before deploy)
+- **093** — `ticket_shipping_destinations` (per-ticket rows: `shipping_amount` + `ship_to_*`); backfill from legacy `job_tickets` columns; `quote_shipping` = sum of destination charges
+
+### Fulfillment (quote form + detail)
+- **Add shipping address** — duplicate blocks (Shipping ($) + address); **Shipping ($)** optional when ship-to-customer is on
+- `shipping_destinations[]` on `POST`/`PATCH /api/tickets`; legacy `ship_to_*` on `job_tickets` mirrors primary destination
+- Overview **Fulfillment** lists all destinations; edit on quote (before customer confirm) and order (**admin** after confirm)
+- `GET /api/customers/[id]/shipping-addresses` — past addresses from `job_tickets` **and** `ticket_shipping_destinations`
+
+### Public quote `/q/[token]`
+- One destination → **Ship To** column in Bill To row
+- Multiple → **2-column card grid** (`PublicShippingAddressesList`) — same layout as additional SKUs
+- `GET /api/public/quotes/[token]` returns `shipping_destinations[]`
+
+### PDF download (staff + public)
+- `InvoicePDF` — single **Ship To** column or **Shipping addresses** 50/50 grid; line items show `SKU{n}.` labels + file names; addon **Need a design**
+- Routes load destinations via `fetchTicketShippingDestinations()` + `resolveTicketShippingDestinationsForDisplay()`
+
+### Quote/order detail UX
+- **Edit** opens **Line Items**, **Fulfillment**, **Quote & Pricing** collapsibles; collapsed again after **Save**
+- **Line Items** overview section is collapsible (default collapsed when not editing)
+
+### Key files
+- `lib/utils/ticket-shipping-destinations.ts`, `components/quotes/shared/shipping-fulfillment-section.tsx`
+- `components/public/public-shipping-addresses.tsx`, `components/quotes/ticket-overview-sections.tsx`
+- `lib/pdf/invoice-pdf.tsx`, `app/api/public/quotes/[token]/pdf/route.ts`, `app/api/tickets/[id]/pdf/route.ts`
+
+### Docs synced
+- `CHANGELOG.md`, `session-summary.md`, `schema.md`, `api-contract.md`, `types.md`, `feature-specs/tickets.md`, `component-architecture.md`, `architecture.md`
+
+---
+
+## May 29, 2026 — Quote form: due date, line attachments, quantity sync, public SKU grid
+
+### Database (apply before deploy)
+- **092** — `ticket_files.variant_id` nullable; unique index on `line_item_id` when `variant_id IS NULL` (one line-level file per catalog row)
+
+### New Quote + quote detail edit
+- **Due Date** optional on create and edit (not in `validate-quote-send`; still validated against ticket creation day when set)
+- **Line attachment** — **Attach file** on Add-on Finishings (right) when no additional SKUs; JPEG/PNG/WebP/PDF; uploads via `POST /api/tickets/[id]/files` with `line_item_id`
+- **Additional SKU quantity sync** — line **Quantity *** = sum of SKU qtys when SKUs exist (read-only); first **Add SKU** pre-fills from line qty; further SKUs pre-fill from first SKU qty
+- First line file moves to first SKU when **Add SKU**; `syncTicketLines()` migrates DB line-level files to first variant when variants exist
+
+### Staff detail Overview
+- Line attachment or per-SKU files: **View PDF** / **View image** (`GET /api/tickets/[id]/files/[fileId]`)
+
+### Public quote `/q/[token]`
+- Under each product: **2-column grid** of additional SKUs — `SKU1. name · Qty N`
+- **Image** inline preview; **PDF** preview via `fetch` → `blob:` + `<object>` (CSP: `object-src` / `frame-src` include `blob:` on `/q/*`)
+- **Open PDF** + **Download** per SKU (`GET /api/public/quotes/[token]/files/[fileId]`; `?download=1` for attachment)
+- File API streams bytes (not redirect) so embed works; dedicated CSP headers on `/q/:path*` and file route
+
+### Key files
+- `components/quotes/shared/sku-row.tsx`, `line-item-attachment.tsx`, `line-item-variants.tsx`
+- `components/public/public-line-item-skus-grid.tsx`
+- `lib/utils/line-item-variant-quantity.ts`, `lib/utils/ticket-line-files.ts` (`fetchTicketAttachmentBytes`)
+- `lib/security/content-security-policy.ts`, `next.config.ts` (header order + `/q/:path*`)
+
+### Docs synced
+- `schema.md`, `api-contract.md`, `types.md`, `security.md`, `feature-specs/tickets.md`, `component-architecture.md`, `architecture.md`, `CHANGELOG.md`
+
+---
+
+## May 29, 2026 — SDR dashboard, payments queue, payment detail, cancel labels
+
+### SDR dashboard (owner KPI copy)
+- Nine cards renamed: **Closed Order Value**, **Paid From Closed Orders**, **Remaining Balance for Closed Orders**, **Qty of Claimed Leads**, **Manually Created Leads**, **Unclaimed/Pending Leads**, **Rejected / Not Qualified**, **Pending Follow-Up**, **Qty of Leads Routed to Sales Team**
+- Lead metrics display as `N leads`; help text from owner spec in `lib/utils/kpi-help-text.ts`
+
+### Payments queue (`/payments`)
+- **Payment For** column: Deposit / Balance / Full payment (`lib/utils/payment-evidence-type.ts`, `payment-type-badge.tsx`)
+- List rows open `/payments/[id]?from=/payments`
+
+### Payment detail (`/payments/[id]`)
+- **Stats row** + **lifecycle timeline** (same as order detail — was previously hidden for `context="payment"`)
+- **Back** always → `/payments` (fixed in-production tickets incorrectly returning to `/orders`)
+
+### Admin cancel action
+- Sidebar button + modal: **Cancel Quote** (draft/sent/routed) or **Cancel Order** (order/in_production/completed) via `cancelActionLabel()`
+
+### Docs synced
+- `docs/feature-specs/dashboard.md`, `tickets.md`, `invoice-payment.md`, `navigation.md`, `component-architecture.md`, `api-contract.md`, `types.md`, `CHANGELOG.md`
+
+---
+
+## May 29, 2026 — Cancelled quotes vs orders list split; Product Interests checkbox
+
+### Cancelled list placement
+- **`/quotes` → Cancelled tab** — `ticket_kind = 'quote'` + `ticket_status = 'cancelled'` (quote cancelled before/at quote stage)
+- **`/orders` → Cancelled tab** — `ticket_kind = 'order'` + `ticket_status = 'cancelled'` only (no quote-stage rows)
+- **Scope:** SDR/Sales see own `created_by_id`; Admin sees all (optional team filter on list pages)
+
+### Product Interests (Add Lead + Verify Drawer)
+- **Has Design** — centered checkbox (replaces Yes/No toggle); product column full row width; spacing below section title
+
+### Docs synced
+- `docs/api-contract.md`, `docs/navigation.md`, `docs/feature-specs/tickets.md`, `docs/feature-specs/leads-sdr.md`, `docs/component-architecture.md`, `docs/schema.md`, `docs/rbac.md`, `docs/mvp-scope.md`, `docs/CHANGELOG.md`
 
 ---
 
 ## May 29, 2026 — Admin cancel/edit, collapsibles, leads UX, auth fix
 
 ### Admin ticket lifecycle
-- **Cancel** — admin only at any status except already `cancelled` (includes **completed**, paid or unpaid); required cancellation reason from Admin → Dropdown Options
+- **Cancel** — admin only at any status except already `cancelled` (includes **completed**, paid or unpaid); button **Cancel Quote** or **Cancel Order** by stage; required cancellation reason from Admin → Dropdown Options
 - **Edit** — admin can edit any non-`cancelled` ticket including completed / customer-confirmed records
 - Post-save **Send update** prompt for admin on `sent`, `order`, `in_production`, **completed** (`lib/utils/should-offer-resend-after-save.ts`)
 
@@ -16,7 +177,7 @@
 
 ### Leads UX
 - Verify drawer **✕** always visible — dismiss without saving; soft-lock retained
-- Product Interests — Product, Quantity, Has Design on one aligned row (`product-interest-rows.tsx`)
+- Product Interests — Product, Quantity, **Has Design checkbox** on one aligned row (`product-interest-rows.tsx`)
 
 ### Auth fix
 - `lib/supabase/server.ts` — Route Handler cookie refresh for `requireSession()` (fixes 401 on `POST /api/leads/manual` after token expiry)
@@ -52,7 +213,7 @@
 ### Features
 - Relational line items + **additional SKUs** (name, qty, optional image/PDF per variant)
 - API: `line_items` on POST/PATCH/GET; `POST/GET/DELETE /api/tickets/[id]/files`
-- Public quote shows variant text only (no file download)
+- Public quote: additional SKU grid with image/PDF preview + download (May 29 — see section above)
 - Post-save **Resend** modal (SDR/Sales: sent + unconfirmed; Admin: sent/order/in_production) with `notify_revision` email/SMS copy
 
 ### Docs synced
@@ -402,14 +563,14 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 - `MobileListCard` uses a clickable `div` (not nested `<button>`) so View / Confirm actions are valid HTML
 
 ### Quote & order detail redesign
-- Overview layout (`context` quote sent+, order, payment, production, completed): stats row → left sidebar (customer/lead + **DetailQuickActions**) → right Overview/History panel
+- Overview layout (`context` quote sent+, order, payment, production, completed): stats row → lifecycle timeline → left sidebar (customer/lead + **DetailQuickActions**) → right Overview/History panel — **payment detail includes stats + timeline (May 2026)**
 - Desktop (`xl+`): only the Overview/History panel scrolls; stats + sidebar stay fixed
 - Mobile/tablet: single page scroll (no nested scroll trap); status badges swipe horizontally (`touch-pan-x`)
 - Stats row on mobile: full-width **Order/Quote Total**, then 2×2 grid (Received, Balance Due, Due Date, Payment)
 - `CustomerInfoCard` — industry + quote source resolved via `/api/lookups` labels (not raw `retail_apparel` / `walk_in`)
 
 ### Quote lifecycle actions — sidebar
-- **Cancel Ticket**, **Send/Resend Quote**, **Convert to Order** moved from bottom action bar into `DetailQuickActions` under the customer/lead card (with Customer Link + Copy Link, Mark Completed, Resend Link)
+- **Cancel Quote** / **Cancel Order**, **Send/Resend Quote**, **Convert to Order** moved from bottom action bar into `DetailQuickActions` under the customer/lead card (with Customer Link + Copy Link, Mark Completed, Resend Link)
 - Bottom duplicate action bar removed on overview layout
 
 ### Global loading overlay
@@ -629,7 +790,7 @@ Two root-cause bugs were found and fixed that prevented real-time DB change even
 - `lib/types/index.ts` — fully updated: QuoteSku (15 fields), JobTicket (40+ columns), TicketForm, CompanySettings, LookupCategory union (all categories)
 - `/quotes/new` — `new-quote-form.tsx` — new quote form with up to 4 tabs: Customer (optional, shown for new customers), Line Items, Quote, Settings; the Customer tab is hidden when a lead or CRM customer is pre-selected via URL params
 - `/quotes/[id]` — `quote-detail.tsx` — full detail view + edit mode, 2-tab layout (Info + History); Info tab contains all sections stacked
-- `/quotes` — `quotes-page.tsx` — 4-tab Quoted Requests list with counts, search, sort
+- `/quotes` — `quotes-page.tsx` — Quoted Requests list with tabs (All | Draft | Sent | Won | **Cancelled** | Routed); counts, search, date filter, pagination
 - `/orders` — `orders-page.tsx` — 4-tab Orders list (All | Pending Payment | In Production | Cancelled); includes evidence-pending for owner; API `status_label` / `status_tone`
 - All dropdowns dynamically loaded from `lookup_values` via `/api/lookups`; `renderLookupOptions` helper prevents data loss for deactivated values
 - Sidebar badges for `/quotes` and `/orders`

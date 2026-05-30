@@ -14,13 +14,19 @@ import { EmailInput } from "@/components/ui/email-input";
 import { validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
 import { validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
-import { validateShipToZip, validateShippingCharge } from "@/lib/utils/address";
-import type { ShipToFields } from "@/lib/utils/address";
+import { validateShippingDestinationZips } from "@/lib/utils/address";
+import {
+  emptyShippingDestination,
+  shippingDestinationsToApiFields,
+  sumShippingAmounts,
+  type ShippingDestinationDraft,
+} from "@/lib/utils/ticket-shipping-destinations";
 import { scrollToFirstFormField, scrollToFormField } from "@/lib/utils/scroll-field-into-view";
 import {
   formatQuoteSendMissingMessage,
   getQuoteSendMissingFields,
 } from "@/lib/utils/validate-quote-send";
+import { resolveQuoteDeliveryFromContact } from "@/lib/utils/resolve-quote-delivery-from-contact";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 import { CustomerSidebarCard } from "@/components/quotes/customer-sidebar-card";
 import {
@@ -42,6 +48,7 @@ import {
   uploadPendingVariantFiles,
 } from "@/components/quotes/shared/line-item-variants";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
+import { RouteToSalesModal, type RouteToSalesForm } from "@/components/quotes/route-to-sales-modal";
 import type { LookupOption as SharedLookupOption, SkuLookups as SharedSkuLookups } from "@/components/quotes/shared/types";
 import {
   Select,
@@ -153,8 +160,21 @@ export default function NewQuoteForm() {
   // Clear countdown timer on unmount to prevent state updates on an unmounted component.
   useEffect(() => () => { if (hvTimerRef.current) clearInterval(hvTimerRef.current); }, []);
   // Keep a stable ref to handleSave so the interval always calls the latest version
-  const handleSaveRef = useRef<((status: "draft" | "sent" | "routed") => Promise<void>) | null>(null);
+  const handleSaveRef = useRef<
+    ((
+      status: "draft" | "sent" | "routed",
+      options?: { routedReason?: string; routedNotes?: string },
+    ) => Promise<void>) | null
+  >(null);
   const tabContentRef = useRef<HTMLDivElement>(null);
+
+  // ── Manual route-to-sales modal (SDR, Line Items + Quote tabs) ───────────
+  const [routeModalOpen, setRouteModalOpen] = useState(false);
+  const [routeForm, setRouteForm] = useState<RouteToSalesForm>({
+    routed_reason: "",
+    routed_notes: "",
+  });
+  const [routeReasons, setRouteReasons] = useState<LookupOption[]>([]);
 
   const TAB_FIELD_PRIORITY: Record<Tab, string[]> = {
     customer: ["customerName", "customerContact", "customerSource", "customerIndustry", "customerWebsite"],
@@ -196,14 +216,9 @@ export default function NewQuoteForm() {
 
   // ── Quote tab fields ──────────────────────────────────────────────────────
   const [requiresShipping, setRequiresShipping] = useState(false);
-  const [shipTo, setShipTo] = useState<ShipToFields>({
-    ship_to_line1: "",
-    ship_to_line2: "",
-    ship_to_city: "",
-    ship_to_state: "",
-    ship_to_zip: "",
-  });
-  const [shipping, setShipping] = useState(0);
+  const [shippingDestinations, setShippingDestinations] = useState<ShippingDestinationDraft[]>([
+    emptyShippingDestination(),
+  ]);
   const [discountType, setDiscountType] = useState<"percent" | "fixed" | "">("");
   const [discountValue, setDiscountValue] = useState("");
   const [discountReason, setDiscountReason] = useState("");
@@ -294,13 +309,14 @@ export default function NewQuoteForm() {
       })
       .catch(() => {});
 
-    fetch("/api/lookups?categories=source,industry")
+    fetch("/api/lookups?categories=source,industry,route_reason")
       .then((r) => r.json())
       .then((d: Record<string, LookupOption[]>) => {
         setCustomerLookups({
           source: d.source ?? [],
           industry: d.industry ?? [],
         });
+        setRouteReasons(d.route_reason ?? []);
       })
       .catch(() => {});
 
@@ -337,6 +353,13 @@ export default function NewQuoteForm() {
     setSkus((prev) => prev.map((s, i) => (i === idx ? { ...s, variants } : s)));
   }, []);
 
+  const updateLineAttachment = useCallback(
+    (idx: number, attachment: FormLineItem["lineAttachment"]) => {
+      setSkus((prev) => prev.map((s, i) => (i === idx ? { ...s, lineAttachment: attachment } : s)));
+    },
+    [],
+  );
+
   const addSku = useCallback(() => {
     setSkus((prev) => [...prev, emptyFormLineItem()]);
   }, []);
@@ -345,7 +368,7 @@ export default function NewQuoteForm() {
 
   const pricing = computePricing({
     skus,
-    quote_shipping: requiresShipping ? shipping : 0,
+    quote_shipping: requiresShipping ? sumShippingAmounts(shippingDestinations) : 0,
     discount_type: discountType || null,
     discount_value: discountValue || null,
     quote_tax_rate_percent: taxExempt ? 0 : taxRate,
@@ -385,9 +408,7 @@ export default function NewQuoteForm() {
       if (!title.trim()) {
         errors.title = "A title is required.";
       }
-      if (!dueDate) {
-        errors.dueDate = "A due date is required.";
-      } else {
+      if (dueDate) {
         const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
         if (dueErr) errors.dueDate = dueErr;
       }
@@ -409,9 +430,9 @@ export default function NewQuoteForm() {
       if (taxExempt && !salesPermit.trim()) {
         errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
       }
-      const shippingErr = validateShippingCharge(requiresShipping, shipping);
-      if (shippingErr) errors.shipping = shippingErr;
-      const zipErr = validateShipToZip(shipTo.ship_to_zip);
+      const zipErr = validateShippingDestinationZips(
+        requiresShipping ? shippingDestinations : [],
+      );
       if (zipErr) errors.shipToZip = zipErr;
     }
 
@@ -454,7 +475,10 @@ export default function NewQuoteForm() {
       setTab(nextTab);
   }
 
-  async function handleSave(status: "draft" | "sent" | "routed") {
+  async function handleSave(
+    status: "draft" | "sent" | "routed",
+    options?: { routedReason?: string; routedNotes?: string },
+  ) {
     // Keep the ref current so the HV countdown timer can always call the latest version
     handleSaveRef.current = handleSave;
 
@@ -465,18 +489,14 @@ export default function NewQuoteForm() {
       return;
     }
 
-    if (!dueDate) {
-      setFieldErrors({ dueDate: "A due date is required." });
-      setTab("info");
-      scrollToFormField(tabContentRef, "dueDate");
-      return;
-    }
-    const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
-    if (dueErr) {
-      setFieldErrors({ dueDate: dueErr });
-      setTab("info");
-      scrollToFormField(tabContentRef, "dueDate");
-      return;
+    if (dueDate) {
+      const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
+      if (dueErr) {
+        setFieldErrors({ dueDate: dueErr });
+        setTab("info");
+        scrollToFormField(tabContentRef, "dueDate");
+        return;
+      }
     }
 
     const hasFilledItem = skus.some((s) => s.product_type?.trim());
@@ -495,8 +515,7 @@ export default function NewQuoteForm() {
         taxExempt,
         salesPermit,
         requiresShipping,
-        quoteShipping: requiresShipping ? shipping : 0,
-        shipToZip: shipTo.ship_to_zip ?? "",
+        shipToDestinations: shippingDestinations,
         paymentDraft,
       });
       if (missing.length > 0) {
@@ -513,14 +532,9 @@ export default function NewQuoteForm() {
       return;
     }
 
-    const shippingErr = validateShippingCharge(requiresShipping, shipping);
-    if (shippingErr) {
-      setFieldErrors({ shipping: shippingErr });
-      setTab("quote");
-      scrollToFormField(tabContentRef, "shipping");
-      return;
-    }
-    const zipErr = validateShipToZip(shipTo.ship_to_zip);
+    const zipErr = validateShippingDestinationZips(
+      requiresShipping ? shippingDestinations : [],
+    );
     if (zipErr) {
       setFieldErrors({ shipToZip: zipErr });
       setTab("quote");
@@ -555,6 +569,13 @@ export default function NewQuoteForm() {
     showLoading(loadingMessage);
 
     const contactName = `${contactFirstName} ${contactLastName}`.trim();
+    const resolvedContactPhone = contactPhone || lead?.customer?.phone || "";
+    const resolvedContactEmail = contactEmail || lead?.customer?.email || "";
+    const effectivePaymentDraft = resolveQuoteDeliveryFromContact(
+      paymentDraft,
+      resolvedContactPhone,
+      resolvedContactEmail,
+    );
 
     const body = {
       ticket_kind: "quote",
@@ -565,9 +586,9 @@ export default function NewQuoteForm() {
       contact_name: contactName || (lead?.customer
         ? `${lead.customer.first_name ?? ""} ${lead.customer.last_name ?? ""}`.trim()
         : undefined),
-      contact_email: contactEmail || lead?.customer?.email || undefined,
+      contact_email: resolvedContactEmail || undefined,
       contact_company: contactCompany || lead?.customer?.company || undefined,
-      contact_phone: contactPhone || lead?.customer?.phone || undefined,
+      contact_phone: resolvedContactPhone || undefined,
       industry: contactIndustry || lead?.customer?.industry || undefined,
       website: contactWebsite || lead?.customer?.website || undefined,
       ...(leadId
@@ -583,19 +604,13 @@ export default function NewQuoteForm() {
       due_date: dueDate || undefined,
       rush,
       special_requirements: specialRequirements || undefined,
-      quote_channel: paymentDraft.ticket_quote_channel,
+      quote_channel: effectivePaymentDraft.ticket_quote_channel,
       quote_destination:
-        paymentDraft.ticket_quote_channel === "email"
-          ? paymentDraft.ticket_dest_email
-          : paymentDraft.ticket_dest_phone,
+        effectivePaymentDraft.ticket_quote_channel === "email"
+          ? effectivePaymentDraft.ticket_dest_email
+          : effectivePaymentDraft.ticket_dest_phone,
       quote_subtotal: pricing.subtotal,
-      quote_shipping: requiresShipping ? shipping : 0,
-      requires_shipping: requiresShipping,
-      ship_to_line1: requiresShipping ? shipTo.ship_to_line1 || undefined : undefined,
-      ship_to_line2: requiresShipping ? shipTo.ship_to_line2 || undefined : undefined,
-      ship_to_city: requiresShipping ? shipTo.ship_to_city || undefined : undefined,
-      ship_to_state: requiresShipping ? shipTo.ship_to_state || undefined : undefined,
-      ship_to_zip: requiresShipping ? shipTo.ship_to_zip || undefined : undefined,
+      ...shippingDestinationsToApiFields(requiresShipping, shippingDestinations),
       discount_type: discountType || undefined,
       discount_value: discountValue || undefined,
       discount_reason: discountReason || undefined,
@@ -606,16 +621,22 @@ export default function NewQuoteForm() {
       tax_exempt: taxExempt,
       sales_permit_number: salesPermit || undefined,
       prepayment_type:
-        paymentDraft.ticket_payment_strategy === "full" ? "full"
-        : paymentDraft.ticket_payment_strategy === "net"  ? null
-        : paymentDraft.ticket_deposit_type ?? null,
+        effectivePaymentDraft.ticket_payment_strategy === "full" ? "full"
+        : effectivePaymentDraft.ticket_payment_strategy === "net"  ? null
+        : effectivePaymentDraft.ticket_deposit_type ?? null,
       prepayment_value:
-        paymentDraft.ticket_payment_strategy === "full" ? "100"
-        : paymentDraft.ticket_payment_strategy === "net"  ? null
-        : String(paymentDraft.ticket_deposit_value ?? ""),
+        effectivePaymentDraft.ticket_payment_strategy === "full" ? "100"
+        : effectivePaymentDraft.ticket_payment_strategy === "net"  ? null
+        : String(effectivePaymentDraft.ticket_deposit_value ?? ""),
       // Per-ticket payment config (migration 066) + reminder start date
-      ...paymentDraft,
-      quote_reminder_date: paymentDraft.quote_reminder_date || undefined,
+      ...effectivePaymentDraft,
+      quote_reminder_date: effectivePaymentDraft.quote_reminder_date || undefined,
+      ...(status === "routed" && options?.routedReason
+        ? {
+            routed_reason: options.routedReason,
+            ...(options.routedNotes ? { routed_notes: options.routedNotes } : {}),
+          }
+        : {}),
     };
 
     try {
@@ -658,6 +679,73 @@ export default function NewQuoteForm() {
     }
   }
 
+  function handleRouteToSalesClick() {
+    const errors: Record<string, string> = {};
+
+    if (!title.trim()) {
+      errors.title = "A title is required.";
+    }
+    if (dueDate) {
+      const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
+      if (dueErr) errors.dueDate = dueErr;
+    }
+    if (skipCustomerTab && !leadId && !contactSource.trim()) {
+      errors.customerSource = "Source is required.";
+    }
+
+    const hasFullItem = skus.some(
+      (s) => s.product_type?.trim() && (s.quantity ?? 0) > 0 && (s.unit_price ?? 0) > 0,
+    );
+    if (!hasFullItem) {
+      errors.lineItems = "Please fill in at least one complete line item (product, quantity, and unit price).";
+    }
+
+    if (tab === "quote") {
+      if (taxExempt && !salesPermit.trim()) {
+        errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
+      }
+      const zipErr = validateShippingDestinationZips(
+        requiresShipping ? shippingDestinations : [],
+      );
+      if (zipErr) errors.shipToZip = zipErr;
+    }
+
+    const websiteToValidate = contactWebsite || lead?.customer?.website || "";
+    const websiteErr = validateWebsite(websiteToValidate);
+    if (websiteErr) {
+      errors.customerWebsite = websiteErr;
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      if (errors.salesPermit || errors.shipToZip) {
+        setTab("quote");
+      } else if (errors.lineItems) {
+        setTab("lines");
+      } else if (errors.customerWebsite) {
+        setTab(skipCustomerTab ? "info" : "customer");
+      } else if (errors.title || errors.dueDate || errors.customerSource) {
+        setTab("info");
+      }
+      const errorTab: Tab =
+        errors.salesPermit || errors.shipToZip
+          ? "quote"
+          : errors.lineItems
+            ? "lines"
+            : errors.customerWebsite
+              ? skipCustomerTab
+                ? "info"
+                : "customer"
+              : "info";
+      scrollToValidationError(errors, errorTab);
+      return;
+    }
+
+    setFieldErrors({});
+    setRouteForm({ routed_reason: "", routed_notes: "" });
+    setRouteModalOpen(true);
+  }
+
   const sendMissingFields = useMemo(
     () =>
       getQuoteSendMissingFields({
@@ -667,11 +755,10 @@ export default function NewQuoteForm() {
         taxExempt,
         salesPermit,
         requiresShipping,
-        quoteShipping: requiresShipping ? shipping : 0,
-        shipToZip: shipTo.ship_to_zip ?? "",
+        shipToDestinations: shippingDestinations,
         paymentDraft,
       }),
-    [title, dueDate, skus, taxExempt, salesPermit, requiresShipping, shipping, shipTo.ship_to_zip, paymentDraft],
+    [title, dueDate, skus, taxExempt, salesPermit, requiresShipping, shippingDestinations, paymentDraft],
   );
   const quoteSendReady = sendMissingFields.length === 0;
   const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
@@ -884,6 +971,7 @@ export default function NewQuoteForm() {
                   priorityOpts={quoteLookups.ticket_priority}
                   titleError={fieldErrors.title}
                   dueDateError={fieldErrors.dueDate}
+                  dueDateRequired={false}
                   minDueDate={minDueDateForNewTicket()}
                 />
               </div>
@@ -899,6 +987,7 @@ export default function NewQuoteForm() {
                   onRemove={removeSku}
                   onAdd={addSku}
                   onVariantsChange={updateVariants}
+                  onLineAttachmentChange={updateLineAttachment}
                   error={fieldErrors.lineItems}
                 />
               </div>
@@ -919,13 +1008,11 @@ export default function NewQuoteForm() {
                 )}
                 <QuoteForm
                   pricing={pricing}
-                  shipping={shipping} setShipping={setShipping}
                   requiresShipping={requiresShipping}
                   setRequiresShipping={setRequiresShipping}
-                  shipTo={shipTo}
-                  setShipTo={setShipTo}
+                  shippingDestinations={shippingDestinations}
+                  setShippingDestinations={setShippingDestinations}
                   customerId={selectedCustomerId ?? lead?.customer?.id ?? null}
-                  shippingError={fieldErrors.shipping}
                   zipError={fieldErrors.shipToZip}
                   discountType={discountType} setDiscountType={setDiscountType}
                   discountValue={discountValue} setDiscountValue={setDiscountValue}
@@ -979,6 +1066,21 @@ export default function NewQuoteForm() {
               >
                 Cancel
               </button>
+
+              {userRole === "sdr" && (tab === "lines" || tab === "quote") && (
+                <button
+                  disabled={saving}
+                  onClick={handleRouteToSalesClick}
+                  className="px-4 py-2 text-sm font-medium rounded-md border transition-opacity hover:opacity-80 disabled:opacity-50"
+                  style={{
+                    borderColor: "var(--color-info-border)",
+                    color: "var(--color-info-text-deep)",
+                    background: "var(--color-info-bg)",
+                  }}
+                >
+                  Route to Sales
+                </button>
+              )}
 
               {tab !== "quote" && (
                 <button
@@ -1041,6 +1143,26 @@ export default function NewQuoteForm() {
           onCancel={() => {
             if (hvTimerRef.current) { clearInterval(hvTimerRef.current); hvTimerRef.current = null; }
             setHvModal(false);
+          }}
+        />
+      )}
+
+      {routeModalOpen && (
+        <RouteToSalesModal
+          reasons={routeReasons}
+          form={routeForm}
+          onChange={setRouteForm}
+          saving={saving}
+          onCancel={() => {
+            setRouteModalOpen(false);
+            setRouteForm({ routed_reason: "", routed_notes: "" });
+          }}
+          onConfirm={() => {
+            setRouteModalOpen(false);
+            void handleSave("routed", {
+              routedReason: routeForm.routed_reason,
+              routedNotes: routeForm.routed_notes.trim() || undefined,
+            });
           }}
         />
       )}

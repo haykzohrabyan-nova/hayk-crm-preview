@@ -69,7 +69,12 @@ export async function POST(
     customer_id: lead.customer_id,
     type: "lead_held",
     by_user_id: userId,
-    payload: { reason: hold_reason, notes: hold_notes ?? null, role },
+    payload: {
+      reason: hold_reason,
+      notes: hold_notes ?? null,
+      until: hold_until || null,
+      role,
+    },
   });
 
   return NextResponse.json({ lead });

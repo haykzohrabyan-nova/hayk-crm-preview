@@ -41,7 +41,7 @@ export function ticketLifecycleHrefWithReturn(
 
 export type TicketDetailContext = "quote" | "order" | "production" | "payment" | "completed";
 
-/** Back target: explicit `from` param first, else lifecycle list fallback. */
+/** Back target: explicit `from` param first, else context list fallback, else status fallback. */
 export function resolveTicketDetailBackPath(
   context: TicketDetailContext,
   ticketStatus: string,
@@ -50,12 +50,18 @@ export function resolveTicketDetailBackPath(
   const safe = safeReturnPath(from);
   if (safe) return safe;
 
-  if (context === "production" || ticketStatus === "in_production") {
+  if (context === "payment") return "/payments";
+  if (context === "completed") return "/completed";
+  if (context === "quote") return "/quotes";
+  if (context === "order") return "/orders";
+  if (context === "production") return "/orders?tab=in_production";
+
+  if (ticketStatus === "in_production") {
     return "/orders?tab=in_production";
   }
-  if (context === "completed") return "/completed";
-  if (context === "payment") return "/payments";
-  if (context === "order") return "/orders";
-  if (context === "quote") return "/quotes";
+  if (ticketStatus === "completed") return "/completed";
+  if (ticketStatus === "draft" || ticketStatus === "sent" || ticketStatus === "routed") {
+    return "/quotes";
+  }
   return "/orders";
 }

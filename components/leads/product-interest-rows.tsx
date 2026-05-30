@@ -48,7 +48,7 @@ export function ProductInterestRows({
   bannerError,
 }: ProductInterestRowsProps) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 pt-2">
       {bannerError && (
         <p className="text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">
           {bannerError}
@@ -71,7 +71,7 @@ export function ProductInterestRows({
             return (
               <div
                 key={idx}
-                className="grid grid-cols-[1fr_100px_auto_36px] gap-x-2 gap-y-1"
+                className="grid w-full grid-cols-[minmax(0,1fr)_88px_80px_36px] gap-x-2 gap-y-1"
               >
                 <span className={`${labelCls} min-w-0`} style={labelStyle}>
                   Product
@@ -79,7 +79,7 @@ export function ProductInterestRows({
                 <span className={labelCls} style={labelStyle}>
                   Quantity
                 </span>
-                <span className={labelCls} style={labelStyle}>
+                <span className={`${labelCls} whitespace-nowrap text-center`} style={labelStyle}>
                   Has Design
                 </span>
                 {!readOnly ? (
@@ -146,35 +146,16 @@ export function ProductInterestRows({
                   }}
                 />
 
-                <button
-                  type="button"
-                  onClick={() => !readOnly && onUpdateRow(idx, { has_design: !row.has_design })}
-                  disabled={readOnly}
-                  className="flex h-9 items-center gap-1.5 rounded-[6px] border px-2.5 text-[12px] font-medium transition-colors whitespace-nowrap disabled:cursor-default"
-                  style={
-                    row.has_design
-                      ? {
-                          background: "var(--color-badge-bg)",
-                          borderColor: "var(--color-tab-underline)",
-                          color: "var(--color-tab-active)",
-                        }
-                      : {
-                          background: "var(--color-surface)",
-                          borderColor: "var(--color-border)",
-                          color: "var(--color-text-muted)",
-                        }
-                  }
-                >
-                  <span
-                    className="inline-block h-2 w-2 rounded-full"
-                    style={{
-                      background: row.has_design
-                        ? "var(--color-tab-active)"
-                        : "var(--color-text-muted)",
-                    }}
+                <div className="flex h-9 items-center justify-center">
+                  <input
+                    type="checkbox"
+                    checked={row.has_design}
+                    onChange={(e) => onUpdateRow(idx, { has_design: e.target.checked })}
+                    disabled={readOnly}
+                    className="h-4 w-4 rounded disabled:cursor-default"
+                    aria-label="Has design"
                   />
-                  {row.has_design ? "Yes" : "No"}
-                </button>
+                </div>
 
                 {!readOnly ? (
                   <button

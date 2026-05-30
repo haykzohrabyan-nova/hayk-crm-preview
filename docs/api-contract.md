@@ -50,7 +50,7 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 | `GET /api/production/page-data` | `{ orders, counts, pagination }` | Production — server-side tab, search + pagination |
 | `GET /api/crm/page-data` | `{ customers, pagination }` | CRM page — server-side search, status, heat + pagination |
 | `GET /api/leads/workspace/page-data?…` | `{ leads, counts, pagination, routedSubCounts? }` | Leads page — server-side tab, search, owner scope, routed sub-filter, sort + pagination |
-| `GET /api/leads/sales/page-data?tab=…` | `{ leads, counts }` | Sales page |
+| `GET /api/leads/sales/page-data?tab=…` | `{ leads, counts }` | Sales page — `tab`: `pipeline` \| `follow_up` \| `hold` \| `rejected` |
 
 **Slim count-only routes** (realtime refresh without full list): `GET /api/orders/counts`, `GET /api/quotes/counts`, plus existing `*/counts` routes.
 
@@ -64,8 +64,8 @@ Shared helpers:
 |--------|---------|
 | `lib/utils/pagination.ts` | Parse `limit`/`offset`, meta, localStorage page size |
 | `lib/utils/ticket-list-filters.ts` | Tab, search, date, admin user filters for ticket lists |
-| `lib/utils/fetch-orders-data.ts` | Orders list + counts + sort |
-| `lib/utils/fetch-quotes-data.ts` | Quotes list + counts |
+| `lib/utils/fetch-orders-data.ts` | Orders list + counts + sort (`ticket_kind = 'order'`; cancelled orders only) |
+| `lib/utils/fetch-quotes-data.ts` | Quotes list + counts (`cancelled` tab = quote-stage only) |
 | `lib/utils/fetch-completed-data.ts` | Completed list + counts |
 | `lib/utils/fetch-production-data.ts` | Production list + counts |
 | `lib/utils/fetch-crm-data.ts` | CRM aggregation + filters + slice |
@@ -84,7 +84,7 @@ Shared helpers:
 
 | Param | Default | Description |
 |-------|---------|-------------|
-| `tab` | `all` | `all` \| `pending` \| `in_production` \| `cancelled` — list only; counts return all tabs |
+| `tab` | `all` | `all` \| `pending` \| `in_production` \| `cancelled` — list only; counts return all tabs. **Scope:** `ticket_kind = 'order'` only (cancelled **orders**, not cancelled quotes). |
 | `search` | — | Matches reference, title, customer name/company |
 | `date_from` / `date_to` | — | ISO timestamps; filters `created_at` (inclusive) |
 | `user_id` | — | Admin only — filter by `created_by_id` |
@@ -96,7 +96,7 @@ Shared helpers:
 
 | Param | Default | Description |
 |-------|---------|-------------|
-| `tab` | `all` | `all` \| `draft` \| `sent` \| `won` \| `routed` |
+| `tab` | `all` | `all` \| `draft` \| `sent` \| `approved` \| `cancelled` \| `routed`. **Cancelled tab:** `ticket_kind = 'quote'` + `ticket_status = 'cancelled'`. **All tab:** `draft` + `sent` + `approved` (excludes cancelled). |
 | `search` | — | Reference, title, customer name/company |
 | `date_from` / `date_to` | — | ISO timestamps; filters `created_at` (inclusive) |
 | `user_id` | — | Admin only — filter by `created_by_id` |
@@ -214,7 +214,7 @@ Paginated workspace list + all tab badge counts in one auth pass. Used by `compo
 ```json
 {
   "leads": [ "…Lead[]…" ],
-  "counts": { "all": 0, "hold": 0, "routed": 0, "rejected": 0, "won": 0 },
+  "counts": { "all": 0, "follow_up": 0, "hold": 0, "routed": 0, "rejected": 0, "won": 0 },
   "routedSubCounts": { "all": 0, "awaiting": 0, "in_progress": 0, "quote_sent": 0, "on_hold": 0, "dropped": 0 },
   "pagination": { "limit": 25, "offset": 0, "total": 200, "hasMore": true }
 }
@@ -233,6 +233,7 @@ Returns tab badge counts for the SDR leads workspace. Scoped per role same as th
 {
   "counts": {
     "all": 0,
+    "follow_up": 0,
     "hold": 0,
     "routed": 0,
     "rejected": 0,
@@ -243,6 +244,37 @@ Returns tab badge counts for the SDR leads workspace. Scoped per role same as th
 
 - `won` — count of leads where `sales_status = 'Won'` (SDR sees own; admin sees all)
 - All counts refresh when `bazaar:refresh-counts` fires
+
+---
+
+### `GET /api/leads/sales/page-data`
+
+Combined list + tab badge counts for `/sales`. One `requireSession()` pass.
+
+**Query params:**
+
+| Param | Values | Description |
+|-------|--------|-------------|
+| `tab` | `pipeline` \| `follow_up` \| `hold` \| `rejected` | Active tab list (default `pipeline`) |
+
+**Tab filters (server-side via `lib/utils/leads-workspace-query.ts`):**
+
+| Tab | Filter |
+|-----|--------|
+| `pipeline` | `status = 'Routed to Sales'`, `sales_status IN ('Ongoing', 'Quote Sent', null)` — excludes `Follow Up Later` |
+| `follow_up` | `sales_status = 'Follow Up Later'` — Sales rep: `sales_owner_id = current user` only; Admin: all |
+| `hold` | `sales_status = 'On Hold'` — same ownership rules as pipeline OR filter |
+| `rejected` | `status = 'Rejected'` AND `prev_status = 'Routed to Sales'` |
+
+**Response `200`:**
+```json
+{
+  "leads": ["…slim Lead[]…"],
+  "counts": { "pipeline": 0, "follow_up": 0, "hold": 0, "rejected": 0 }
+}
+```
+
+**Related:** `GET /api/leads/sales-counts` — counts-only refresh (same `counts` shape).
 
 ---
 
@@ -348,9 +380,37 @@ Places a lead on hold. Snapshots current `status` and `sales_status` into `prev_
 
 ---
 
+### `POST /api/leads/[id]/follow-up`
+
+Marks an SDR lead for follow-up later (separate from On Hold). Snapshots current `status` into `prev_status`.
+
+**Body:**
+```json
+{
+  "follow_up_reason": "string",
+  "follow_up_notes": "string | null",
+  "follow_up_until": "ISO date string | null"
+}
+```
+
+**Business rules:**
+- Sets `status = 'Follow Up Later'`
+- Records `follow_up_by_id = current_user`, `follow_up_at = now()`
+- SDR retains `locked_by_id` (same soft-lock behaviour as SDR hold)
+- Sets `sdr_id = current_user` for SDR callers so the lead appears only on that SDR's **Follow Up Later** tab
+- Logs `lead_follow_up_later` activity
+- When `follow_up_reason` is **Other** (case-insensitive), `follow_up_notes` is required — `400` if empty
+
+**With `role: "sales"` in body** (Sales pipeline): sets `sales_status = 'Follow Up Later'`, snapshots `prev_sales_status`, clears temp lock; `status` stays `Routed to Sales`. Requires `sales_owner_id = current_user`.
+
+**Response `200`:** `{ "lead": Lead }`  
+**Response `403`:** SDR — lead owned/locked by another SDR; Sales — lead not assigned to current rep
+
+---
+
 ### `POST /api/leads/[id]/resume`
 
-Restores a lead from hold to its previous status.
+Restores a lead from hold or follow-up later to its previous status. Clears hold and follow-up fields.
 
 **Body:**
 ```json
@@ -359,10 +419,14 @@ Restores a lead from hold to its previous status.
 }
 ```
 
+**Body (sales):** `{ "role": "sales" }` — required for sales pipeline resume scope checks.
+
 **Business rules:**
-- Restores `status` from `prev_status` (SDR) or `sales_status` from `prev_sales_status` (Sales)
-- Clears all hold fields (`hold_reason`, `hold_notes`, `hold_until`, `held_at`, `held_by_id`, `prev_status`, `prev_sales_status`)
-- Logs `lead_resumed` activity
+- Restores `status` from `prev_status` (SDR) or `sales_status` from `prev_sales_status` (Sales, default `Ongoing`)
+- Clears hold fields and follow-up fields (`follow_up_reason`, `follow_up_notes`, `follow_up_until`, `follow_up_at`, `follow_up_by_id`)
+- SDR: `403` if lead is another SDR's hold/follow-up (`sdr_id` scope)
+- Sales: `403` if `sales_owner_id` is not current user (except Admin)
+- Logs `lead_resumed` with `payload.from` = prior state (`On Hold` or `Follow Up Later`)
 
 **Response `200`:**
 ```json
@@ -396,14 +460,29 @@ Partial update of a lead. `created_at` is always stripped from the body (immutab
 
 ---
 
+### `POST /api/leads/[id]/claim`
+
+Sales rep claims an unclaimed routed lead. Sets `sales_owner_id = current_user`, `sales_status = 'Ongoing'`. Logs `lead_sales_claimed`.
+
+**Response `200`:** `{ "lead": Lead }`  
+**Response `409`:** `ALREADY_CLAIMED` if `sales_owner_id` is already set
+
+---
+
 ### `POST /api/leads/[id]/lock`
 
-Acquires a lock on a lead when an SDR clicks **Claim** (or Sales opens a pipeline lead). Sets `locked_by_id = current_user` and `locked_at = now()`. For SDR role, also sets `sdr_id = current_user`.
+Acquires or refreshes `locked_by_id` on a lead.
+
+**Primary callers:**
+- **SDR Claim** (All Leads) — permanent ownership; sets `sdr_id = current_user`; logs **`lead_claimed`** only on first claim (`isNewClaim`)
+- **SDR View** (My Leads) — refreshes `locked_at` for owned lead; no new `lead_claimed`
+- **Sales Open** (edge case only) — normal Open on `sales_owner_id = you` skips this endpoint in `sales-page.tsx`
 
 **Business rules:**
 - If `locked_by_id` is already set to a **different** user → returns `409` with the locker's name (client renders read-only mode)
 - If `locked_by_id` is the **same** user (reconnect / refresh) → refreshes `locked_at` and returns `200`
 - If `locked_by_id` is `null` → acquires lock and returns `200`
+- **Sales** caller: sets `locked_by_id` only — does **not** overwrite `sdr_id` or log `lead_claimed`
 - Admin calling this endpoint on any lead → always acquires lock (overrides existing lock)
 
 **Response `200`:**
@@ -430,10 +509,15 @@ Acquires a lock on a lead when an SDR clicks **Claim** (or Sales opens a pipelin
 
 ### `POST /api/leads/[id]/unlock`
 
-Releases the lock on a lead when the user closes the drawer.
+Clears `locked_by_id` and `locked_at`. Also clears `sdr_id` when used after SDR route/reject (client-called).
+
+**Callers:**
+- **SDR** — after Route to Sales or Reject (releases permanent SDR ownership)
+- **Sales** — on modal close when a temp lock may exist (idempotent when already null)
+- **Admin** — force-release
 
 **Business rules:**
-- Only the current lock holder OR an Admin can unlock
+- Only the current lock holder OR an Admin can unlock when `locked_by_id` is set
 - Non-holder, non-Admin attempting to unlock → returns `403`
 - If lead is not locked → returns `200` (idempotent)
 
@@ -623,7 +707,11 @@ Each lead includes nested **`tickets:job_tickets(...)`** (reference codes only �
 
 ### `GET /api/customers/[id]/shipping-addresses`
 
-Distinct past **ship-to** addresses for a customer, derived from prior `job_tickets` where `requires_shipping = true` and `ship_to_line1 IS NOT NULL`. Used by the New Quote / quote detail **Ship to customer** picker (no separate address book table).
+Distinct past **ship-to** addresses for a customer, derived from:
+- `job_tickets` where `requires_shipping = true` and `ship_to_line1 IS NOT NULL`
+- **`ticket_shipping_destinations`** on that customer’s tickets (migration **093**)
+
+Used by the New Quote / quote detail **Ship to customer** picker — **one Previous addresses dropdown per shipping destination block** (not a global picker). No separate address book table; addresses are deduped from this customer’s past shipped tickets.
 
 **Auth:** `requireSession()`.
 
@@ -768,9 +856,10 @@ Create a new ticket.
   "notes": "string | null",
   "line_items": "LineItemInput[] — catalog lines with optional variants[] (name, quantity required)",
   "quote_subtotal": "number | null",
-  "quote_shipping": "number | null — must be > 0 when requires_shipping is true; forced to 0 when pickup",
+  "quote_shipping": "number | null — server sets to sum of shipping_destinations[].shipping_amount when provided; forced to 0 when pickup",
   "requires_shipping": "boolean — default false (pickup at shop)",
-  "ship_to_line1": "string | null — optional delivery street when requires_shipping",
+  "shipping_destinations": "ShippingDestinationInput[] — optional; each row: shipping_amount (≥ 0), ship_to_line1 … ship_to_zip (address optional)",
+  "ship_to_line1": "string | null — legacy mirror of primary destination (also written on save)",
   "ship_to_line2": "string | null",
   "ship_to_city": "string | null",
   "ship_to_state": "string | null",
@@ -806,13 +895,16 @@ Create a new ticket.
   "ticket_dest_email": "string | null",
   "ticket_follow_up_enabled": "boolean | null",
   "ticket_follow_up_count": "number | null",
-  "ticket_follow_up_freq": "daily | every-3-days | weekly | null"
+  "ticket_follow_up_freq": "daily | every-3-days | weekly | null",
+  "routed_reason": "string | null — admin-managed route_reason lookup value; required when ticket_status = routed (except HVT auto-route may omit)",
+  "routed_notes": "string | null — optional detail; required when routed_reason is Other"
 }
 ```
 
 **Business rules:**
 - `created_by_id = current_user`
-- `ticket_status` defaults to `'draft'` if not provided; `'routed'` is accepted for HVT saves from SDRs
+- `ticket_status` defaults to `'draft'` if not provided; `'routed'` is accepted for HVT saves and SDR manual Route to Sales from Line Items
+- When `ticket_status = 'routed'` with `routed_reason`: validates lookup value; **Other** requires non-empty `routed_notes` (`400` if missing)
 - **`website`** (optional on customer upsert): if non-empty, validated with `validateWebsite()` and stored via `normalizeWebsite()`; `400` if invalid
 - **Customer upsert:** when contact fields are provided and `customer_id` is null, the server matches on email/phone, creates or updates the `customers` row (industry/website), and sets `customer_id`. When `customer_id` is passed (existing customer from lookup), industry/website are updated on that row if provided.
 - **Source handling:**
@@ -824,11 +916,11 @@ Create a new ticket.
 - Logs `order_ticket_created` activity (legacy type name) with payload `{ ticket_kind, title, reference_code }` using the resolved kind
 - Sets `design_required = true` if any SKU has `design_required = true`; same for `die_cut`
 - If `linked_lead_id` is provided, updates the linked lead's `status` to `'Quoted'` or `'Validated'`
-- Sets `routed_by_id = userId` when `ticket_status = 'routed'`
-- Logs `order_ticket_created` activity
+- Sets `routed_by_id = userId` when `ticket_status = 'routed'`; persists `routed_reason` / `routed_notes` when provided (migration **095**)
+- Client may prefill `ticket_dest_phone` / `ticket_dest_email` / `ticket_quote_channel` from customer contact when Quote tab was skipped (`resolveQuoteDeliveryFromContact()`)
 - If `ticket_status = 'sent'` on create (Save & Send): logs `ticket_sent` and triggers `sendQuoteToCustomer()` — same activity shape as PATCH send
 - May auto-record cash deposit/full payment when configured — logs `ticket_payment_recorded` via `lib/utils/log-ticket-payment-recorded.ts` (counts in Reports/dashboard cash); **does not** set `client_confirmed` when `ticket_require_client_confirm = true`
-- **Fulfillment:** when `requires_shipping = false`, server clears `ship_to_*` and sets `quote_shipping = 0`. When `requires_shipping = true`, **`quote_shipping` must be > 0**; address fields are optional (ZIP validated if provided). See `lib/utils/address.ts`.
+- **Fulfillment:** when `requires_shipping = false`, server clears `ship_to_*`, deletes `ticket_shipping_destinations`, and sets `quote_shipping = 0`. When `requires_shipping = true`, accepts **`shipping_destinations[]`** (synced via `syncTicketShippingDestinations()`); per-destination **Shipping ($)** is optional (may be `0`); address fields optional; ZIP validated when non-empty. Legacy `ship_to_*` on `job_tickets` mirrors the primary destination. See `lib/utils/ticket-shipping-destinations.ts` and `lib/utils/address.ts`.
 
 **Response `201`:**
 ```json
@@ -857,7 +949,9 @@ Returns a single ticket with full detail (line items, payment config, linked lea
 { "ticket": Ticket }
 ```
 
-`ticket.line_items` — array of line rows with nested `variants[]`; each variant may include `file: { id, file_name, mime_type, byte_size }` (metadata only; download via files API).
+`ticket.line_items` — array of line rows with nested `variants[]` (each variant may include `file` metadata). When the line has no additional SKUs but has a line-level attachment, `lineFile` is set on the display row (see `lineItemsToDisplayRows()`).
+
+`ticket.shipping_destinations` — array from `ticket_shipping_destinations` (empty when pickup).
 
 **Response `403`:** Ticket exists but caller lacks read access.
 
@@ -867,13 +961,17 @@ Returns a single ticket with full detail (line items, payment config, linked lea
 
 ### `POST /api/tickets/[id]/files`
 
-Upload an attachment for an additional SKU variant (staff only).
+Upload an attachment for a line item or additional SKU (staff only).
 
 **Auth:** `requireSession()` + `canMutateTicket()`.
 
-**Body:** `multipart/form-data` — `variant_id` (uuid), `file` (image or PDF, size/MIME limits in `lib/utils/ticket-line-files.ts`).
+**Body:** `multipart/form-data` — exactly one of:
+- `line_item_id` (uuid) — line-level file when the line has **no** additional SKUs (migration **092**)
+- `variant_id` (uuid) — file for one additional SKU
 
-**Response `200`:** `{ file: TicketFileMeta }`
+Plus `file` (JPEG, PNG, WebP, or PDF; limits in `lib/utils/ticket-line-files.ts`).
+
+**Response `201` / `200`:** `{ file: TicketFileMeta }`
 
 ---
 
@@ -980,7 +1078,7 @@ Body: Any subset of ticket fields plus optional:
 - If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
 - Optional `notify_revision`: `"standard"` (SDR/Sales resend after edit) or `"admin"` — revision banner in quote email / SMS prefix; use with resend (`ticket_status: "sent"`) or `resend_invoice: true`.
 - **`line_items`** in body: upserts `ticket_line_items` + `ticket_line_variants` via `syncTicketLines()`; orphan variants delete Storage files. Variant files uploaded separately via `POST /api/tickets/[id]/files`.
-- **Fulfillment fields** (`requires_shipping`, `ship_to_*`, `quote_shipping`): same validation as POST — shipping charge required when `requires_shipping`; address optional; pickup clears address and zeroes shipping charge.
+- **Fulfillment fields** (`requires_shipping`, `shipping_destinations[]`, `ship_to_*`, `quote_shipping`): same validation as POST — optional per-destination charges; ZIP validation when ship-to-customer; pickup clears destinations and zeroes `quote_shipping`.
 - **Save without resend:** Editing a sent quote updates DB + `/q/{token}` only; UI prompts SDR/Sales (sent, unconfirmed) or Admin (`sent`, `order`, `in_production`, **completed**) to resend after **Save Changes** (`components/quotes/quote-detail/resend-after-save-modal.tsx`; `lib/utils/should-offer-resend-after-save.ts`).
 - If `ticket_status` transitions to `"in_production"` (manual release, payment confirm, net terms auto-release, etc.):
   - Sets `production_released_at`
@@ -1032,7 +1130,9 @@ Renders the ticket as a PDF binary and returns it for direct download.
 - `Content-Disposition: attachment; filename="Quote-REF.pdf"` (or `Invoice-REF.pdf` for orders where `ticket_status` is `order`, `in_production`, or `completed`)
 - Body: raw PDF binary rendered server-side by `@react-pdf/renderer`
 
-PDF sections: company header (logo or name, address, contact), Bill To, **Ship To** (when address entered on a shipping ticket), Prepared By, line items table, pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment methods, special requirements, gold footer.
+PDF sections: company header (logo or name, address, contact), Bill To, **Ship To** (single destination) or **Shipping addresses** (2-column 50/50 card grid when multiple), Prepared By, line items table (catalog specs, **`SKU{n}.`** additional SKUs, line/variant **file names**, addon **Need a design**), pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment schedule when partial, payment methods, special requirements, gold footer. Evidence-pending banner when applicable.
+
+Data: `fetchTicketLinesBundle()` → `lineItemsToDisplayRows()`; `fetchTicketShippingDestinations()` → `resolveTicketShippingDestinationsForDisplay()`.
 
 The "Save PDF" button in `quote-detail.tsx` is an `<a href="/api/tickets/[id]/pdf" download>` link — clicking it triggers a direct file download with no new tab or print dialog.
 
@@ -1088,7 +1188,7 @@ Returns lightweight tab badge counts. Scoped per role. Uses parallel SQL `{ coun
 
 - **SDR:** `routed` = count of own routed tickets (`created_by_id`; shown on SDR Routed tab). Quotes/Orders/Completed lists all use `created_by_id` only.
 - **Sales/Admin:** `routed` = count of ALL routed tickets from any SDR
-- `cancelled` = count of cancelled tickets (used by Orders page "Cancelled" tab badge)
+- `cancelled` = count of cancelled **quote-stage** tickets (`ticket_kind = 'quote'`, `ticket_status = 'cancelled'`) — legacy `/api/tickets/counts` bucket; **Orders** page Cancelled badge comes from `GET /api/orders/page-data` `counts.cancelled` (order-stage only)
 - Orders tab counts exclude tickets with pending payment evidence (`payment_evidence_url` set, `payment_evidence_reviewed_at` null)
 
 ---
@@ -1104,6 +1204,10 @@ Preferred mount endpoint for `/payments`. Returns both tabs in one request.
 **Pending filter:** `payment_evidence_url IS NOT NULL`, `payment_evidence_reviewed_at IS NULL`, `ticket_status IN ('sent', 'order', 'in_production', 'completed')` — ordered by `payment_evidence_submitted_at` asc.
 
 **Approved filter:** `payment_evidence_url IS NOT NULL`, `payment_evidence_reviewed_at IS NOT NULL` — same statuses — ordered by `payment_evidence_reviewed_at` desc.
+
+**UI columns (client):** Order, Customer, Claimed (`payment_evidence_amount` or remainder), **Payment For** (`inferPaymentEvidenceMode` — strategy, prior payments, evidence amount), Method, Submitted, Actions/Approved.
+
+**Row navigation:** `/payments/{id}?from=/payments`.
 
 **Response `200`:**
 ```json
@@ -1176,6 +1280,8 @@ When `values_hidden` is `true`, count queries are skipped. Reads `user_profiles.
 
 Combined paginated list + tab counts for `/orders` (preferred over legacy list + client filter).
 
+**Scope:** `ticket_kind = 'order'` and `ticket_status IN ('order', 'in_production', 'cancelled')`. Cancelled **quotes** (`ticket_kind = 'quote'`) appear on `/quotes` → **Cancelled** tab instead.
+
 **Query params:** See [List pagination](#performance--combined-page-data-may-2026) table (`tab`, `search`, `date_from`, `date_to`, `user_id`, `limit`, `offset`, `sort`).
 
 **Column sort (`sort=`):** Applied server-side across the full filtered set, then paginated.
@@ -1214,7 +1320,7 @@ Combined paginated list + tab counts for `/orders` (preferred over legacy list +
 
 ### `GET /api/orders/orders`
 
-Scoped list for the `/orders` page — **`ticket_status IN ('order', 'in_production', 'cancelled')`**, slim payload (no `line_items`).
+Scoped list for the `/orders` page — **`ticket_kind = 'order'`** and **`ticket_status IN ('order', 'in_production', 'cancelled')`**, slim payload (no `line_items`). Cancelled quote-stage tickets are listed on `/quotes` only.
 
 **Includes** evidence-pending `order` rows for the ticket owner (sales/SDR scoped via `scopeJobTicketsQuery()`). Accountants still confirm on `/payments`; owners see those orders on `/orders` with status **Awaiting payment confirmation**.
 
@@ -1347,7 +1453,7 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
 
 **Auth:** None — public route.
 
-**Response `200`:** Returns safe public ticket fields including pricing (`quote_subtotal`, `quote_shipping`, `requires_shipping`, `ship_to_*`), payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_reviewed_at`, `payment_evidence_amount`), and `production_released_at`. Draft tickets return `404`.
+**Response `200`:** Returns safe public ticket fields including pricing (`quote_subtotal`, `quote_shipping`, `requires_shipping`, `ship_to_*`, **`shipping_destinations[]`**), payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_reviewed_at`, `payment_evidence_amount`), and `production_released_at`. Draft tickets return `404`.
 
 ```json
 {
@@ -1371,6 +1477,38 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
 ```
 
 **Response `404`:** Token not found or ticket in `draft` status.
+
+`ticket.line_items[]` includes `variants[]` (name, quantity, `file` metadata) and optional `lineFile` when the line has no additional SKUs.
+
+`ticket.shipping_destinations[]` — resolved display rows for the public page (one → **Ship To** column; multiple → `PublicShippingAddressesList` 2-column grid).
+
+---
+
+### `GET /api/public/quotes/[token]/pdf`
+
+Renders the same `InvoicePDF` document as staff download — no auth; looked up by `public_token`.
+
+**Response `200`:** `application/pdf` attachment (`Quote-REF.pdf` or `Invoice-REF.pdf` for order-stage statuses).
+
+**Content parity with staff PDF (May 2026):** multi-destination shipping grid, `SKU{n}.` labels, attachment file names, **Need a design** addon label, payment/evidence banners when applicable.
+
+**Client:** `PublicQuoteDocument` — **Save PDF** / download link on `/q/[token]`.
+
+---
+
+### `GET /api/public/quotes/[token]/files/[fileId]`
+
+Serves a line-item or additional-SKU attachment for the public quote page (image or PDF).
+
+**Auth:** None — `public_token` must match the file’s ticket.
+
+**Query:** `download=1` — `Content-Disposition: attachment` (save file). Default — `inline` stream for preview.
+
+**Response `200`:** file bytes proxied from Storage (`Content-Type` from `ticket_files.mime_type`). Response headers include `Content-Security-Policy: frame-ancestors 'self'` and `X-Frame-Options: SAMEORIGIN`.
+
+**Client preview:** `PublicLineItemSkusGrid` fetches this URL, builds a `blob:` URL, and embeds with `<object type="application/pdf">` (parent page CSP must allow `object-src blob:` and `frame-src blob:` — see `docs/security.md`).
+
+**Response `404`:** Invalid token or file not on that ticket.
 
 ---
 
@@ -1610,7 +1748,7 @@ When `user_profiles.dashboard_values_hidden` is `true` for the session user, the
 
 **Admin list filter (Leads / Quotes / Orders / Completed only):** optional `user_id=<uuid>` on page-data and counts routes. Ignored unless session role is `admin`. Filters by lead `sdr_id` (+ `locked_by_id` on All Leads tab) or ticket `created_by_id`.
 
-**Response for SDR `200` (values visible).** Trend metrics include `value`, `prior`, `pct_change` vs prior equivalent period. **Orders** card in UI uses `order_value_breakdown.total` + `order_created.value` in subtext (not separate Total / Order Created cards).
+**Response for SDR `200` (values visible).** Trend metrics include `value`, `prior`, `pct_change` vs prior equivalent period. **UI card labels (May 2026):** Closed Order Value, Paid From Closed Orders, Remaining Balance for Closed Orders, Qty of Claimed Leads, Manually Created Leads, Unclaimed/Pending Leads, Rejected / Not Qualified, Pending Follow-Up, Qty of Leads Routed to Sales Team. Lead counts render as `N leads`. Help text in `lib/utils/kpi-help-text.ts`. API field names unchanged (`order_value_breakdown`, `lead_claimed`, etc.).
 
 ```json
 {
@@ -2185,6 +2323,7 @@ Returns all values (including inactive) for all categories. Admin only — used 
   "industry": [LookupValue],
   "urgency": [LookupValue],
   "hold_reason": [LookupValue],
+  "follow_up_reason": [LookupValue],
   "reject_reason": [LookupValue],
   "route_reason": [LookupValue],
   "sales_drop_reason": [LookupValue],

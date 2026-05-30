@@ -6,13 +6,13 @@ Route: `/sales` (Sales + Admin only)
 
 ## Overview
 
-The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep opens a lead, it is **locked** to them — other Sales reps see it in read-only mode with a "Being worked by [Name]" banner. See `docs/feature-specs/lead-locking.md` for full locking behavior.
+The Sales Pipeline shows leads that have been routed from SDRs. **Assignment** is permanent via **`sales_owner_id`** (`POST /api/leads/[id]/claim`) — other Sales reps do not see claimed leads on their tabs. **Open** on a lead you already own does **not** acquire a session lock; see `docs/feature-specs/lead-locking.md` (Sales vs SDR).
 
- Sales reps work these leads: claim them, update their status, create quotes and orders, and put them on hold. **Won credit** for linked leads is applied when the ticket enters **`in_production`**, not at order conversion.
+Sales reps work these leads: claim them, defer with **Follow Up Later**, update status, create quotes and orders, and put them on hold. **Won credit** for linked leads is applied when the ticket enters **`in_production`**, not at order conversion.
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Sales Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
-> **Page load (2026-05-26):** On mount, `sales-page.tsx` calls **`GET /api/leads/sales/page-data?tab=…`** — one auth pass returns the active tab's slim list **and** all tab badge counts (`pipeline`, `hold`, `rejected`). Lookups and sales user list **lazy-load** when drawer/modal opens.
+> **Page load (2026-05-26):** On mount, `sales-page.tsx` calls **`GET /api/leads/sales/page-data?tab=…`** — one auth pass returns the active tab's slim list **and** all tab badge counts (`pipeline`, `follow_up`, `hold`, `rejected`). Lookups and sales user list **lazy-load** when drawer/modal opens.
 
 ---
 
@@ -37,15 +37,42 @@ The Sales Pipeline shows leads that have been routed from SDRs. When a Sales rep
 ### Behaviors
 
 - **Claim** → `POST /api/leads/[id]/claim` → sets `sales_owner_id = currentUser`, `sales_status = 'Ongoing'`; logs `lead_sales_claimed`; the modal opens immediately so the Sales rep can begin working the lead right away. The lead remains assigned even after the modal is closed or the page is refreshed.
-- **Open** (owned lead) → `POST /api/leads/[id]/lock` → opens Sales Drawer in edit mode; 409 → read-only with banner
+- **Open** (your claimed lead) → opens Sales Drawer in edit mode **without** a session lock (`sales_owner_id` already hides the lead from other reps)
+- **Open** (edge case / stale row) → may call `POST /api/leads/[id]/lock`; 409 → read-only with banner if another user holds a temp lock
 - **View** (Admin) → opens Sales Drawer in read-only mode with **no lock acquired** — active Sales rep is undisturbed
 - **Search:** client-side filter on name, email, phone, company
 
 ---
 
+## Tab: Follow Up Later
+
+**Data:** `GET /api/leads/sales/page-data?tab=follow_up` — `status = 'Routed to Sales'` and `sales_status = 'Follow Up Later'`
+
+- **Sales rep:** only leads they own (`sales_owner_id = currentUserId`) — not visible to other reps
+- **Admin:** all sales follow-up leads
+
+### Table Columns
+
+| Column | Notes |
+|--------|-------|
+| Name | |
+| Company | |
+| Product Interests | `ProductName[quantity]` |
+| Reason | Admin-managed `follow_up_reason` (same list as SDR — Admin → Dropdown Options) |
+| Follow Up On | Optional `follow_up_until` |
+| Marked | Relative `follow_up_at` |
+| Actions | **Resume**, **Open** |
+
+### Behaviors
+
+- **Follow Up Later** (Sales modal, before On Hold) → `POST /api/leads/[id]/follow-up` with `role: 'sales'` → sets `sales_status = 'Follow Up Later'`, releases temp lock; requires lead to be **claimed** (`sales_owner_id` = rep). **Other** reason requires **Please specify** notes (same validation as SDR)
+- **Resume** → `POST /api/leads/[id]/resume` with `role: 'sales'` → restores `prev_sales_status` (typically `Ongoing`)
+
+---
+
 ## Tab: On Hold
 
-**Data:** workspace leads where `sales_status = 'On Hold'` and `sales_owner_id = current_user`
+**Data:** workspace leads where `sales_status = 'On Hold'` and `sales_owner_id = current_user` (Sales rep also sees unclaimed routed leads on Pipeline/Hold per existing OR filter; Follow Up Later tab is **owner-only**)
 
 ### Table Columns
 
@@ -117,14 +144,16 @@ Removed from drawer body: Assigned To, Sales Status, and empty Quote Total rows 
 
 ### Footer Actions
 
-**All action buttons are hidden in read-only mode (lead locked by another Sales rep).**
+**All action buttons are hidden in read-only mode** (edge case: stale row where another user holds a temp `locked_by_id`).
 
 | Action | When Available | What it does |
 |--------|---------------|--------------|
 | **Create Quote / Order** | Edit mode | Saves lead silently → navigates to `/quotes/new?lead_id=<id>`; `sales_status` is updated automatically by the ticket creation API |
-| **On Hold** | Edit mode, status not Rejected | Opens hold sub-form; sets `sales_status = 'On Hold'` |
+| **Follow Up Later** | Edit mode, not On Hold / Follow Up Later / Rejected | Full-screen reason form in modal body (same as SDR); `POST /api/leads/[id]/follow-up` with `role: 'sales'` |
+| **Resume** | Edit mode, `sales_status` is On Hold or Follow Up Later | `POST /api/leads/[id]/resume` with `role: 'sales'` |
+| **On Hold** | Edit mode, status not Rejected | Full-screen hold reason form in modal body; sets `sales_status = 'On Hold'` |
 | **Reject** | Edit mode, status not Rejected | Opens rejection form; sets `status = 'Rejected'`, clears `sales_status = null` + auto-saves `prev_status = 'Routed to Sales'` — **TERMINAL** |
-| **Close** | Always (in same row as other action buttons, just before Save) | Dismisses modal + releases lock |
+| **Close** | Always (in same row as other action buttons, just before Save) | Dismisses modal; calls unlock only if a temp lock was acquired (idempotent when none) |
 | **Save** | Edit mode (far-right of footer) | `PATCH /api/leads/[id]` with changed fields |
 
 **Clicking outside the modal does not close it.** The backdrop is non-interactive. Use Save, On Hold, Reject, or Close to exit.
@@ -168,10 +197,10 @@ Same pattern as SDR pipeline:
 ### ✅ Built and working
 | Feature | Notes |
 |---------|-------|
-| Pipeline / On Hold / Rejected tabs | All three tabs with counts visible before clicking; Rejected shows only sales-pipeline rejections () |
+| Pipeline / Follow Up Later / On Hold / Rejected tabs | All four tabs with counts on mount via page-data; Rejected lazy-fetches list on first open |
 | Product Interests column | All tabs — `ProductName[quantity]` via `format-lead-product-interests.ts`; drawer pills same format |
 | Claim unclaimed lead | `POST /api/leads/[id]/claim` → **modal opens immediately** so Sales rep can start working; row persists assigned even after modal close or page refresh; logs `lead_sales_claimed` activity |
-| Open owned lead (with locking) | Lock acquired on open, released on close (temporary lock — different from SDR soft lock) |
+| Open owned lead | No session lock when `sales_owner_id` is you — claim is the exclusive assignment |
 | Admin View (no lock) | Admin opens any lead read-only without acquiring a lock — Sales rep's edit session undisturbed |
 | Sales Drawer → Sales Modal | Component converted from a right-side slide-in drawer to a centered modal (`780px` max-width, `80vh` height). Close button placed inline with other action buttons just before Save. |
 | Sales Status (Ongoing / Quote Sent) | Editable in drawer |
@@ -180,8 +209,9 @@ Same pattern as SDR pipeline:
 | Resume from hold | Restores to Ongoing |
 | Reject (terminal) | Rejection reason + notes, read-only after |
 | Save | PATCH lead with Sales Status + Quote Total |
-| Close (releases lock) | Unlock API called on close (Sales uses temporary locking — different from SDR soft lock) |
-| Read-only mode (locked by other user) | "Being worked by [Name]" banner |
+| Follow Up Later tab + modal action | Owner-only tab; full-screen reason form; `POST /follow-up` with `role: 'sales'` |
+| Close | Unlock on close only when a temp lock exists (normal Open on owned lead skips lock) |
+| Read-only mode (edge case) | 409 from `POST /lock` on stale row — "Being worked by [Name]" banner |
 | Terminal state banner | Shown for Rejected / Won / Dropped |
 | Rejected tab | Lazy-fetched on first open; fetches ; Phone + Rejection Reason columns; View read-only (no lock) |
 

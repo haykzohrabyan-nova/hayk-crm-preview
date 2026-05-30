@@ -68,6 +68,7 @@ async function buildScopedOrdersQuery(
     filters.adminFilterUserId ?? null,
   );
 
+  query = query.eq("ticket_kind", "order") as TicketSelectQuery;
   query = query.in("ticket_status", tabToTicketStatuses(filters.tab)) as TicketSelectQuery;
   query = applyTicketDateFilter(query, filters.dateFrom, filters.dateTo) as TicketSelectQuery;
   query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds) as TicketSelectQuery;
@@ -96,7 +97,7 @@ async function countFilteredOrdersByStatus(
 ): Promise<number> {
   return countExact(admin, "job_tickets", (q) => {
     let query = scopeJobTicketsQuery(q, roleName, userId, filters.adminFilterUserId ?? null);
-    query = query.eq("ticket_status", status);
+    query = query.eq("ticket_kind", "order").eq("ticket_status", status);
     query = applyTicketDateFilter(query, filters.dateFrom, filters.dateTo);
     query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds);
     return query;

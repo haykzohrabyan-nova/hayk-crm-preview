@@ -16,7 +16,7 @@ import { parseListPaginationParams, type PaginationParams } from "@/lib/utils/pa
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 export const LEAD_WORKSPACE_LIST_SELECT =
-  "id, customer_id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, locked_by_id, sales_owner_id, sdr_id, hold_reason, hold_until, held_at, rejection_reason, prev_status, customer:customers(id, first_name, last_name, company, phone, email, industry, website, authority), sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name), locked_by:user_profiles!leads_locked_by_id_fkey(id, full_name)";
+  "id, customer_id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, locked_by_id, sales_owner_id, sdr_id, hold_reason, hold_until, held_at, follow_up_reason, follow_up_until, follow_up_at, rejection_reason, prev_status, customer:customers(id, first_name, last_name, company, phone, email, industry, website, authority), sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name), locked_by:user_profiles!leads_locked_by_id_fkey(id, full_name)";
 
 const LEAD_ROUTED_LIST_SELECT =
   `${LEAD_WORKSPACE_LIST_SELECT}, tickets:job_tickets(id, reference_code, ticket_kind, ticket_status, client_confirmed, ticket_require_client_confirm, linked_lead_id, updated_at)`;
@@ -77,7 +77,7 @@ export type LeadsWorkspaceQuery = {
   routed?: boolean;
   statuses?: string[];
   /** Sales pipeline tab filter when status is Routed to Sales */
-  salesTab?: "pipeline" | "hold";
+  salesTab?: "pipeline" | "hold" | "follow_up";
   /** Admin-only — filter by team member (`sdr_id` / lock holder) */
   filterUserId?: string | null;
   /** SDR All Leads tab — unclaimed + mine vs mine only */
@@ -283,6 +283,8 @@ export async function fetchLeadsWorkspace(
 
   if (query.salesTab === "hold") {
     dbQuery = dbQuery.eq("sales_status", "On Hold");
+  } else if (query.salesTab === "follow_up") {
+    dbQuery = dbQuery.eq("sales_status", "Follow Up Later");
   } else if (query.salesTab === "pipeline") {
     dbQuery = dbQuery.or("sales_status.eq.Ongoing,sales_status.eq.Quote Sent,sales_status.is.null");
   }
@@ -307,7 +309,11 @@ export async function fetchLeadsWorkspace(
   }
 
   if (roleName === "sales" && userId) {
-    dbQuery = dbQuery.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
+    if (query.salesTab === "follow_up") {
+      dbQuery = dbQuery.eq("sales_owner_id", userId);
+    } else if (query.status === "Routed to Sales") {
+      dbQuery = dbQuery.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
+    }
   }
 
   if (roleName === "sdr" && userId && !query.status && !(query.statuses && query.statuses.length > 0)) {
@@ -331,7 +337,7 @@ export async function fetchLeadsWorkspaceTabCounts(
   const adminFilterUserId = roleName === "admin" && filterUserId ? filterUserId : null;
   const routedOpts = { userId, roleName, adminFilterUserId };
 
-  const [all, hold, routed, rejected, won] = await Promise.all([
+  const [all, follow_up, hold, routed, rejected, won] = await Promise.all([
     countExact(admin, "leads", (q) => {
       let query = q
         .eq("is_inbox", false)
@@ -342,6 +348,16 @@ export async function fetchLeadsWorkspaceTabCounts(
       }
       if (adminFilterUserId) {
         query = applyAdminLeadUserFilter(query, roleName, adminFilterUserId, "all_tab");
+      }
+      return query;
+    }),
+    countExact(admin, "leads", (q) => {
+      let query = q.eq("is_inbox", false).eq("status", "Follow Up Later");
+      if (roleName !== "admin" && userId) {
+        query = query.eq("sdr_id", userId);
+      }
+      if (adminFilterUserId) {
+        query = applyAdminLeadUserFilter(query, roleName, adminFilterUserId, "sdr_id");
       }
       return query;
     }),
@@ -369,7 +385,7 @@ export async function fetchLeadsWorkspaceTabCounts(
     countLeadsWonViaSalesRoute(admin, routedOpts),
   ]);
 
-  return { all, hold, routed, rejected, won };
+  return { all, follow_up, hold, routed, rejected, won };
 }
 
 export async function fetchLeadsSalesTabCounts(
@@ -391,10 +407,24 @@ export async function fetchLeadsSalesTabCounts(
     });
   }
 
-  const [pipeline, hold, rejected] = await Promise.all([
+  function followUpCount() {
+    return countExact(admin, "leads", (q) => {
+      let query = q
+        .eq("is_inbox", false)
+        .eq("status", "Routed to Sales")
+        .eq("sales_status", "Follow Up Later");
+      if (roleName === "sales" && userId) {
+        query = query.eq("sales_owner_id", userId);
+      }
+      return query;
+    });
+  }
+
+  const [pipeline, follow_up, hold, rejected] = await Promise.all([
     routedCount((q) =>
       q.or("sales_status.eq.Ongoing,sales_status.eq.Quote Sent,sales_status.is.null"),
     ),
+    followUpCount(),
     routedCount((q) => q.eq("sales_status", "On Hold")),
     countExact(admin, "leads", (q) =>
       q
@@ -404,5 +434,5 @@ export async function fetchLeadsSalesTabCounts(
     ),
   ]);
 
-  return { pipeline, hold, rejected };
+  return { pipeline, follow_up, hold, rejected };
 }

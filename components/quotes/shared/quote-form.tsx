@@ -8,7 +8,7 @@ import {
   ShippingFulfillmentSection,
   type ShippingFulfillmentDraft,
 } from "@/components/quotes/shared/shipping-fulfillment-section";
-import type { ShipToFields } from "@/lib/utils/address";
+import type { ShippingDestinationDraft } from "@/lib/utils/ticket-shipping-destinations";
 
 export interface QuoteFormTicket extends ShippingFulfillmentDraft {
   quote_subtotal: number | null;
@@ -31,14 +31,13 @@ interface QuoteFormProps {
   ticket?: QuoteFormTicket;
   /** Live pricing computation result (used in edit mode). */
   pricing: ReturnType<typeof computePricing>;
-  shipping: number; setShipping: (v: number) => void;
   requiresShipping: boolean;
   setRequiresShipping: (v: boolean) => void;
-  shipTo: ShipToFields;
-  setShipTo: (fields: ShipToFields) => void;
+  shippingDestinations: ShippingDestinationDraft[];
+  setShippingDestinations: (rows: ShippingDestinationDraft[]) => void;
   customerId?: string | null;
-  shippingError?: string;
   zipError?: string;
+  zipErrors?: Record<number, string>;
   discountType: "percent" | "fixed" | ""; setDiscountType: (v: "percent" | "fixed" | "") => void;
   discountValue: string; setDiscountValue: (v: string) => void;
   discountReason: string; setDiscountReason: (v: string) => void;
@@ -161,12 +160,10 @@ export function QuoteForm(p: QuoteFormProps) {
           customerId={p.customerId}
           requiresShipping={p.requiresShipping}
           onRequiresShippingChange={p.setRequiresShipping}
-          shipTo={p.shipTo}
-          onShipToChange={p.setShipTo}
-          shipping={p.shipping}
-          onShippingChange={p.setShipping}
-          shippingError={p.shippingError}
+          destinations={p.shippingDestinations}
+          onDestinationsChange={p.setShippingDestinations}
           zipError={p.zipError}
+          zipErrors={p.zipErrors}
         />
       )}
 

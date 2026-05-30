@@ -1,9 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Plus, Trash2, Download, Paperclip, Eye, FileText, Image as ImageIcon } from "lucide-react";
+import { Trash2, Download, Paperclip, Eye, FileText, Image as ImageIcon } from "lucide-react";
 import type { TicketFileMeta, TicketLineVariantDisplayRow } from "@/lib/utils/ticket-line-items";
-import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
+import {
+  additionalSkuPrefix,
+  formatAdditionalSkuDisplayName,
+} from "@/lib/utils/format-ticket-line-variants";
+import { defaultNewVariantQuantity } from "@/lib/utils/line-item-variant-quantity";
 
 function viewAttachmentLabel(mime: string | undefined): string {
   if (mime === "application/pdf") return "View PDF";
@@ -61,7 +65,7 @@ export function AdditionalSkusOverviewList({
           >
             <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
               <span className={`${rowTextCls} font-medium shrink-0`} style={{ color: "var(--color-text-primary)" }}>
-                {v.name.trim() || "—"}
+                {formatAdditionalSkuDisplayName(i + 1, v.name)}
               </span>
               {sep}
               <span className={`${rowTextCls} shrink-0 tabular-nums`} style={{ color: "var(--color-text-muted)" }}>
@@ -115,6 +119,8 @@ interface LineItemVariantsProps {
   editing?: boolean;
   lineIdx: number;
   variants: FormLineVariant[];
+  /** Catalog line quantity — used to prefill the first additional SKU. */
+  lineItemQuantity?: number;
   ticketRef?: string | null;
   onChange: (variants: FormLineVariant[]) => void;
   nameError?: string;
@@ -143,6 +149,7 @@ export function LineItemVariants({
   editing = true,
   lineIdx,
   variants,
+  lineItemQuantity,
   ticketRef,
   onChange,
   nameError,
@@ -161,7 +168,8 @@ export function LineItemVariants({
   }
 
   function addVariant() {
-    onChange([...variants, newVariantRow()]);
+    const quantity = defaultNewVariantQuantity(variants, lineItemQuantity);
+    onChange([...variants, { ...newVariantRow(), quantity }]);
   }
 
   function pickFile(idx: number) {
@@ -199,10 +207,13 @@ export function LineItemVariants({
         <button
           type="button"
           onClick={addVariant}
-          className="inline-flex items-center gap-1 text-xs font-medium hover:opacity-70"
-          style={{ color: "var(--color-accent-dark)" }}
+          className="inline-flex items-center rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-opacity hover:opacity-80 active:scale-[0.97]"
+          style={{
+            borderColor: "var(--color-btn-primary-bg)",
+            background: "var(--color-btn-primary-bg)",
+            color: "var(--color-btn-primary-text)",
+          }}
         >
-          <Plus size={14} />
           Add SKU
         </button>
       </div>
@@ -212,7 +223,9 @@ export function LineItemVariants({
         </p>
       )}
       {variants.length === 0 && (
-        <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>Optional — add named SKUs with quantities under this line item.</p>
+        <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
+          Optional — each SKU has its own quantity; line Quantity above is the total of all SKUs.
+        </p>
       )}
       {variants.map((v, vIdx) => (
         <div
@@ -222,7 +235,9 @@ export function LineItemVariants({
         >
           <div className="flex flex-wrap gap-2 items-end">
             <div className="min-w-0 flex-1 basis-[140px]">
-              <label className={labelCls} style={labelStyle}>Name *</label>
+              <label className={labelCls} style={labelStyle}>
+                {additionalSkuPrefix(vIdx + 1)} Name *
+              </label>
               <input
                 type="text"
                 value={v.name}
@@ -310,11 +325,22 @@ export function LineItemVariants({
   );
 }
 
-export async function uploadPendingVariantFiles(
+export async function uploadPendingLineItemFiles(
   ticketRef: string,
-  lines: { variants?: FormLineVariant[] }[],
+  lines: { id?: string; variants?: FormLineVariant[]; lineAttachment?: { pendingFile?: File | null } }[],
 ): Promise<string | null> {
   for (const line of lines) {
+    const lineId = line.id;
+    if (lineId && line.lineAttachment?.pendingFile) {
+      const fd = new FormData();
+      fd.append("line_item_id", lineId);
+      fd.append("file", line.lineAttachment.pendingFile);
+      const res = await fetch(`/api/tickets/${ticketRef}/files`, { method: "POST", body: fd });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        return (j as { error?: string }).error ?? "Failed to upload file.";
+      }
+    }
     for (const v of line.variants ?? []) {
       if (!v.pendingFile) continue;
       const fd = new FormData();
@@ -329,6 +355,9 @@ export async function uploadPendingVariantFiles(
   }
   return null;
 }
+
+/** @deprecated Use uploadPendingLineItemFiles */
+export const uploadPendingVariantFiles = uploadPendingLineItemFiles;
 
 import type { FormLineItem } from "./utils";
 

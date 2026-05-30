@@ -1,5 +1,9 @@
 import type { NextConfig } from "next";
-import { buildContentSecurityPolicy } from "./lib/security/content-security-policy";
+import {
+  buildContentSecurityPolicy,
+  buildPublicQuoteFileContentSecurityPolicy,
+  buildPublicQuotePageContentSecurityPolicy,
+} from "./lib/security/content-security-policy";
 
 const nextConfig: NextConfig = {
   // Using proxy.ts for session gating — do NOT add middleware.ts with auth logic.
@@ -10,7 +14,7 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
-        source: "/(.*)",
+        source: "/((?!api/public/quotes/).*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
           { key: "X-Frame-Options", value: "DENY" },
@@ -20,6 +24,26 @@ const nextConfig: NextConfig = {
           {
             key: "Content-Security-Policy",
             value: buildContentSecurityPolicy(),
+          },
+        ],
+      },
+      // Listed last so these override the catch-all when both match (Next uses last value).
+      {
+        source: "/api/public/quotes/:token/files/:fileId",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          {
+            key: "Content-Security-Policy",
+            value: buildPublicQuoteFileContentSecurityPolicy(),
+          },
+        ],
+      },
+      {
+        source: "/q/:path*",
+        headers: [
+          {
+            key: "Content-Security-Policy",
+            value: buildPublicQuotePageContentSecurityPolicy(),
           },
         ],
       },
