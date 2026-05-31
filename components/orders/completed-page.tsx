@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
-import { Search, Zap, ExternalLink } from "lucide-react";
+import { Search, Zap } from "lucide-react";
 import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import {
@@ -135,15 +135,6 @@ function CompletedMobileCard({
         />
         <MobileListCardRow label="Completed" value={formatDate(o.updated_at)} />
       </MobileListCardFields>
-
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onOpen(); }}
-        className="w-full flex items-center justify-center gap-1 px-2.5 py-2 rounded-md text-xs font-medium border transition-opacity hover:opacity-70"
-        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
-      >
-        <ExternalLink size={11} /> View order
-      </button>
     </MobileListCard>
   );
 }
@@ -311,7 +302,6 @@ export function CompletedPage() {
                     {h}
                   </th>
                 ))}
-                <th className="px-4 py-3 w-16" />
               </tr>
             </thead>
             <tbody>
@@ -401,17 +391,6 @@ export function CompletedPage() {
                       <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {formatDate(o.updated_at)}
                       </span>
-                    </td>
-
-                    {/* Action */}
-                    <td className="px-4 py-3">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); router.push(`/completed/${o.id}`); }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-opacity hover:opacity-70"
-                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
-                      >
-                        <ExternalLink size={11} /> View
-                      </button>
                     </td>
                   </tr>
                 );

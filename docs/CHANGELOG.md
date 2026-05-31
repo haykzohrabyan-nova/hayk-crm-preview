@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-31] — Completed list: row click only (no View button)
+
+### Changed
+- `/completed` — removed redundant **View** / **View order** buttons; table row and mobile card open detail (matches `/orders`)
+
 ## [2026-05-31] — Remove legacy Stripe-only refund route and modal
 
 ### Removed
