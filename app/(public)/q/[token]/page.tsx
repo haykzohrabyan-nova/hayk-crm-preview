@@ -8,7 +8,7 @@ import {
 import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { PublicQuoteDocument } from "@/components/public/public-quote-document";
 import { AddressMapLink, AddressMapText } from "@/components/public/address-map-link";
-import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
+import { computeInvoicePaymentSummary, isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import { companyAddressFull, mapLinkStyle } from "@/lib/utils/maps-link";
 import { digitsOnly } from "@/lib/utils/phone";
 import { createClient } from "@/lib/supabase/client";
@@ -16,6 +16,10 @@ import {
   PUBLIC_QUOTE_BROADCAST_EVENT,
   publicQuoteChannelName,
 } from "@/lib/constants/public-quote-realtime";
+import {
+  hasPublicRefundNotice,
+  publicRefundBannerMessage,
+} from "@/lib/utils/public-quote-refund-state";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -51,11 +55,14 @@ interface PublicTicket {
   payment_evidence_submitted_at: string | null;
   payment_evidence_reviewed_at: string | null;
   payment_evidence_amount: number | null;
+  stripe_payment_intent_id: string | null;
   payment_amount_received: number | null;
   payment_paid_at: string | null;
   deposit_amount: number | null;
   deposit_paid_at: string | null;
   balance_paid_at: string | null;
+  refund_status?: string | null;
+  total_refunded_amount?: number | null;
   // Per-ticket payment config
   ticket_payment_strategy: "full" | "partial" | "net" | null;
   ticket_deposit_type: "percent" | "fixed" | null;
@@ -216,10 +223,7 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
   const priceGateOpen     = customerConfirmed || !requireConfirm;
 
   const evidencePending =
-    !!ticket.payment_evidence_submitted_at &&
-    !!ticket.payment_evidence_url &&
-    !ticket.payment_evidence_reviewed_at &&
-    strategy !== "net";
+    strategy !== "net" && isPaymentEvidencePending(ticket);
 
   const fullyPaid =
     !!ticket.payment_paid_at ||
@@ -663,6 +667,7 @@ function PublicPayModal({
   const [receiptId, setReceiptId]             = useState("");
   const [evidenceFile, setEvidenceFile]       = useState<File | null>(null);
   const [submitting, setSubmitting]           = useState(false);
+  const [stripeLoading, setStripeLoading]     = useState(false);
   const [submitErr, setSubmitErr]             = useState<string | null>(null);
 
   useEffect(() => {
@@ -672,7 +677,27 @@ function PublicPayModal({
     setEvidenceFile(null);
     setSubmitErr(null);
     setSubmitting(false);
+    setStripeLoading(false);
   }, [open, dueAmount, channels]);
+
+  async function handleStripePay() {
+    if (selectedChannel !== "card" || dueAmount <= 0.01) return;
+    setStripeLoading(true);
+    setSubmitErr(null);
+    try {
+      const res = await fetch(`/api/public/quotes/${token}/stripe/create-session`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok || !data.session_url) {
+        setSubmitErr(data.error ?? "Could not start card payment.");
+        setStripeLoading(false);
+        return;
+      }
+      window.location.assign(data.session_url);
+    } catch {
+      setSubmitErr("Network error. Please check your connection and try again.");
+      setStripeLoading(false);
+    }
+  }
 
   const needsEvidence = EVIDENCE_CHANNELS.has(selectedChannel);
   const canSubmit =
@@ -754,8 +779,19 @@ function PublicPayModal({
         </div>
 
         {selectedChannel === "card" && (
-          <div style={{ marginBottom: 16 }}>
-            <CardContactPanel company={company} />
+          <div
+            style={{
+              marginBottom: 16,
+              padding: "14px 16px",
+              borderRadius: 8,
+              background: "#EFF6FF",
+              border: "1px solid #BFDBFE",
+            }}
+          >
+            <p style={{ margin: 0, fontSize: 13, color: TEXT, lineHeight: 1.5 }}>
+              You will be redirected to our secure Stripe checkout to pay {fmt(dueAmount)} by card.
+              After payment, our team will confirm your order — same as other payment methods.
+            </p>
           </div>
         )}
 
@@ -800,7 +836,25 @@ function PublicPayModal({
           >
             Cancel
           </button>
-          {selectedChannel !== "card" && (
+          {selectedChannel === "card" ? (
+            <button
+              type="button"
+              onClick={handleStripePay}
+              disabled={dueAmount <= 0.01 || stripeLoading}
+              style={{
+                flex: 2, padding: "11px 20px",
+                background: (dueAmount <= 0.01 || stripeLoading) ? "#E5E7EB" : GOLD,
+                color: (dueAmount <= 0.01 || stripeLoading) ? "#9CA3AF" : NAVY,
+                border: "none", borderRadius: 8, fontSize: 14, fontWeight: 600,
+                cursor: (dueAmount <= 0.01 || stripeLoading) ? "not-allowed" : "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              }}
+            >
+              {stripeLoading
+                ? <><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> Redirecting…</>
+                : <><CheckCircle2 size={15} /> Pay with card</>}
+            </button>
+          ) : (
             <button
               type="button"
               onClick={handleSubmitPayment}
@@ -1397,6 +1451,17 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
       .catch(() => { setNotFound(true); setLoading(false); });
   }, [token]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const stripeParam = params.get("stripe");
+    if (stripeParam === "success" || stripeParam === "cancel") {
+      refreshTicket();
+      const path = window.location.pathname;
+      window.history.replaceState({}, "", path);
+    }
+  }, [token, refreshTicket]);
+
   if (loading) return <LoadingSkeleton />;
   if (notFound || !ticket) return <NotFound />;
 
@@ -1405,11 +1470,12 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
   const isSent      = ticket.ticket_status === "sent";
   const isOrder     = ticket.ticket_status === "order" || ticket.order_source === "direct";
   const isCancelled = ticket.ticket_status === "cancelled";
+  const isRefunded  = hasPublicRefundNotice(ticket.refund_status);
   const isCompleted = ticket.ticket_status === "completed";
   const isInProd    = ticket.ticket_status === "in_production";
   const isOrderActive = isInProd || isCompleted;
   const portal      = computePortalState(ticket, clientConfirmed || ticket.client_confirmed);
-  const showPortal  = !isCancelled && (isSent || isOrder || isOrderActive);
+  const showPortal  = !isCancelled && !isRefunded && (isSent || isOrder || isOrderActive);
   const paymentSummary = computeInvoicePaymentSummary(ticket);
   const refCode     = finalRef ?? ticket.reference_code ?? ticket.id?.slice(0, 8).toUpperCase() ?? "—";
 
@@ -1442,7 +1508,20 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
           {isCancelled && (
             <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 20, display: "flex", gap: 10 }}>
               <AlertCircle size={16} style={{ color: "#DC2626", flexShrink: 0 }} />
-              <span style={{ fontSize: 14, color: "#DC2626" }}>This quote has been cancelled. Please contact us if you have questions.</span>
+              <span style={{ fontSize: 14, color: "#DC2626" }}>
+                {isOrder || isOrderActive
+                  ? "This order has been cancelled. Please contact your sales representative if you have questions."
+                  : "This quote has been cancelled. Please contact us if you have questions."}
+              </span>
+            </div>
+          )}
+
+          {!isCancelled && isRefunded && (
+            <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 20, display: "flex", gap: 10 }}>
+              <AlertCircle size={16} style={{ color: "#D97706", flexShrink: 0 }} />
+              <span style={{ fontSize: 14, color: "#854D0E", lineHeight: 1.5 }}>
+                {publicRefundBannerMessage(ticket.refund_status)}
+              </span>
             </div>
           )}
 
@@ -1454,6 +1533,8 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
             isOrder={isOrder || isOrderActive}
             isInProduction={isInProd}
             isCompleted={isCompleted}
+            isRefunded={isRefunded}
+            refundStatus={ticket.refund_status}
             refCode={refCode}
             paymentSummary={paymentSummary}
           />

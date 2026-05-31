@@ -19,6 +19,7 @@ import {
   CreditCard,
   Factory,
   Send,
+  RotateCcw,
 } from "lucide-react";
 
 type ActivityRow = {
@@ -52,6 +53,8 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; label: string; co
   ticket_order_ready_failed:   { icon: AlertCircle,   label: "Pickup notification failed", color: "var(--color-warning)" },
   ticket_payment_evidence_submitted: { icon: CreditCard, label: "Customer submitted payment proof", color: "var(--color-warning)" },
   ticket_payment_recorded:     { icon: BadgeCheck,    label: "Payment recorded",           color: "var(--color-success)" },
+  ticket_payment_refund:       { icon: RotateCcw,     label: "Payment refunded",           color: "var(--color-warning)" },
+  ticket_stripe_refund:        { icon: RotateCcw,     label: "Card payment refunded",      color: "var(--color-warning)" },
   ticket_payment_confirmed_sent:{ icon: Send,         label: "Payment confirmation sent",  color: "var(--color-info-text)" },
   ticket_production_released:  { icon: Factory,       label: "Released to production",     color: "var(--color-info-text)" },
   ticket_won:                  { icon: BadgeCheck,    label: "Quote won / converted",      color: "var(--color-success)" },
@@ -162,6 +165,18 @@ function activityDetail(a: ActivityRow): string | null {
       : p.via === "staff_cash_auto" || p.via === "staff_cash_auto_backfill" ? "Cash / offline (staff)"
       : "Staff recorded";
     return [amount, method, via].filter(Boolean).join(" · ");
+  }
+  if (a.type === "ticket_payment_refund" || a.type === "ticket_stripe_refund") {
+    const amount = fmtMoney(p.amount);
+    const mode = p.payment_mode ? String(p.payment_mode) : null;
+    const method = p.refund_method
+      ? (METHOD_LABELS[String(p.refund_method)] ?? String(p.refund_method))
+      : p.method
+        ? (METHOD_LABELS[String(p.method)] ?? String(p.method))
+        : null;
+    const source = p.source === "stripe" ? "Stripe" : p.source === "manual" ? "Manual" : null;
+    const slotType = p.slot_refund_type === "full" ? "Full slot refund" : p.slot_refund_type === "partial" ? "Partial slot refund" : null;
+    return [amount, mode, method, source, slotType].filter(Boolean).join(" · ");
   }
   if (a.type === "ticket_production_released") {
     if (p.via === "public_payment") return "Auto-released after customer payment";

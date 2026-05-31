@@ -1,5 +1,10 @@
 /** Shared payment breakdown for invoice PDF + public quote page. */
 
+import {
+  isPaymentEvidencePending,
+  hasPaymentEvidenceSource,
+} from "@/lib/utils/payment-evidence-pending";
+
 export interface InvoicePaymentSummary {
   strategy: "full" | "partial" | "net";
   depositDue: number;
@@ -26,6 +31,7 @@ export interface TicketPaymentFields {
   payment_evidence_submitted_at?: string | null;
   payment_evidence_amount?: number | null;
   payment_evidence_reviewed_at?: string | null;
+  stripe_payment_intent_id?: string | null;
 }
 
 export function isTicketPaidInFull(
@@ -35,14 +41,7 @@ export function isTicketPaidInFull(
   return computeInvoicePaymentSummary(ticket).fullyPaid;
 }
 
-/** Customer submitted proof; accountant has not confirmed payment yet. */
-export function isPaymentEvidencePending(ticket: TicketPaymentFields): boolean {
-  return (
-    !!ticket.payment_evidence_submitted_at &&
-    !!ticket.payment_evidence_url &&
-    !ticket.payment_evidence_reviewed_at
-  );
-}
+export { isPaymentEvidencePending, hasPaymentEvidenceSource } from "@/lib/utils/payment-evidence-pending";
 
 export function computeDepositDueFromTicket(ticket: TicketPaymentFields): number {
   const total    = Number(ticket.quote_final_total ?? 0);

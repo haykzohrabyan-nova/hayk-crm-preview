@@ -78,6 +78,8 @@ interface Props {
   showPaymentSummary: boolean;
   canViewPaymentEvidence?: boolean;
   totalLabel?: "Order Total" | "Quote Total";
+  /** Order detail — Line Items expanded on load. */
+  lineItemsDefaultOpen?: boolean;
 }
 
 function buildPricingRows(ticket: SectionTicket): { label: string; value: string; muted?: boolean }[] {
@@ -127,6 +129,7 @@ export function TicketOverviewSections({
   showPaymentSummary,
   canViewPaymentEvidence = true,
   totalLabel = "Order Total",
+  lineItemsDefaultOpen = false,
 }: Props) {
   const paymentReviewAbove = isPaymentEvidencePending(ticket);
   const pricingRows = buildPricingRows(ticket);
@@ -141,7 +144,7 @@ export function TicketOverviewSections({
   return (
     <>
       <DetailSection>
-        <DetailCollapsibleSection title="Line Items">
+        <DetailCollapsibleSection title="Line Items" defaultOpen={lineItemsDefaultOpen}>
           <LineItemsForm
             editing={false}
             skus={[]}

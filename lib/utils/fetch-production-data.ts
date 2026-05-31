@@ -1,4 +1,5 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { excludeRefundedTickets } from "@/lib/utils/exclude-refunded-tickets";
 import { countExact } from "@/lib/utils/db-counts";
 import type { PaginationParams } from "@/lib/utils/pagination";
 import {
@@ -32,10 +33,12 @@ async function buildScopedProductionQuery(
     ? await resolveTicketSearchCustomerIds(admin, filters.search)
     : [];
 
-  let query = admin
-    .from("job_tickets")
-    .select(PRODUCTION_ORDER_SELECT, options?.count ? { count: "exact" } : undefined)
-    .eq("ticket_status", "in_production");
+  let query = excludeRefundedTickets(
+    admin
+      .from("job_tickets")
+      .select(PRODUCTION_ORDER_SELECT, options?.count ? { count: "exact" } : undefined)
+      .eq("ticket_status", "in_production"),
+  );
 
   if (filters.tab === "balance_due") {
     query = query.neq("payment_status", "paid").neq("ticket_payment_strategy", "net");
@@ -82,7 +85,7 @@ export async function fetchProductionTabCounts(
     : [];
 
   const baseFilter = (q: ReturnType<ReturnType<AdminClient["from"]>["select"]>) => {
-    let query = q.eq("ticket_status", "in_production");
+    let query = excludeRefundedTickets(q.eq("ticket_status", "in_production"));
     query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds);
     return query;
   };

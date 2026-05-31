@@ -1,5 +1,7 @@
 /** Slim column sets for ticket list APIs — no quote_skus, notes, or payment-config blobs. */
 
+import { PAYMENT_EVIDENCE_PENDING_OR_FILTER } from "@/lib/utils/payment-evidence-pending";
+
 export const QUOTE_LIST_STATUSES = ["draft", "sent", "approved", "routed"] as const;
 
 export const TICKET_QUOTE_LIST_SELECT = `
@@ -18,6 +20,7 @@ export const TICKET_QUOTE_LIST_SELECT = `
   payment_evidence_url,
   payment_evidence_submitted_at,
   payment_evidence_reviewed_at,
+  stripe_payment_intent_id,
   payment_paid_at,
   deposit_paid_at,
   payment_amount_received,
@@ -31,5 +34,4 @@ export const TICKET_QUOTE_LIST_SELECT = `
   customer:customers(id, first_name, last_name, company)
 `.trim();
 
-export const ORDERS_PAYMENT_EVIDENCE_PENDING_FILTER =
-  "payment_evidence_submitted_at.not.is.null,payment_evidence_url.not.is.null,payment_evidence_reviewed_at.is.null";
+export const ORDERS_PAYMENT_EVIDENCE_PENDING_FILTER = PAYMENT_EVIDENCE_PENDING_OR_FILTER;

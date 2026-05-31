@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Phone, Mail, Tag } from "lucide-react";
 import { formatPhone } from "@/lib/utils/phone";
 import { formatDate } from "@/lib/utils/format";
@@ -31,6 +31,27 @@ interface LinkedLeadCardProps {
   lead: LinkedLeadInfo;
   title?: string;
   productionReleasedAt?: string | null;
+  cancelledAt?: string | null;
+}
+
+function LinkedLeadStatusFooter({
+  dotColor,
+  dotRing,
+  children,
+}: {
+  dotColor: string;
+  dotRing: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-xs" style={{ color: "var(--color-text-muted)" }}>
+      <span
+        className="h-2 w-2 rounded-full shrink-0"
+        style={{ background: dotColor, boxShadow: `0 0 0 3px ${dotRing}` }}
+      />
+      {children}
+    </div>
+  );
 }
 
 function initials(name: string): string {
@@ -39,7 +60,12 @@ function initials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-export function LinkedLeadCard({ lead, title = "Linked Lead", productionReleasedAt }: LinkedLeadCardProps) {
+export function LinkedLeadCard({
+  lead,
+  title = "Linked Lead",
+  productionReleasedAt,
+  cancelledAt,
+}: LinkedLeadCardProps) {
   const customer = lead.customer;
   const fullName = customer
     ? `${customer.first_name ?? ""} ${customer.last_name ?? ""}`.trim()
@@ -190,19 +216,27 @@ export function LinkedLeadCard({ lead, title = "Linked Lead", productionReleased
         </div>
       )}
 
-      {productionReleasedAt && (
+      {(productionReleasedAt || cancelledAt) && (
         <div
-          className="flex items-center gap-2 px-5 py-3.5 border-t text-xs"
-          style={{ background: "var(--color-row-alt)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+          className="flex flex-col gap-2.5 px-5 py-3.5 border-t"
+          style={{ background: "var(--color-row-alt)", borderColor: "var(--color-border)" }}
         >
-          <span
-            className="h-2 w-2 rounded-full shrink-0"
-            style={{
-              background: "var(--color-info-text)",
-              boxShadow: "0 0 0 3px var(--color-info-bg)",
-            }}
-          />
-          Production started {formatDate(productionReleasedAt)}
+          {productionReleasedAt && (
+            <LinkedLeadStatusFooter
+              dotColor="var(--color-info-text)"
+              dotRing="var(--color-info-bg)"
+            >
+              Production started {formatDate(productionReleasedAt)}
+            </LinkedLeadStatusFooter>
+          )}
+          {cancelledAt && (
+            <LinkedLeadStatusFooter
+              dotColor="var(--color-danger)"
+              dotRing="var(--color-danger-bg)"
+            >
+              Order cancelled {formatDate(cancelledAt)}
+            </LinkedLeadStatusFooter>
+          )}
         </div>
       )}
     </div>

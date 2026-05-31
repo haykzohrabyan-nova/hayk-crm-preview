@@ -1,4 +1,5 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { excludeRefundedTicketsForOrdersList } from "@/lib/utils/exclude-refunded-tickets";
 import { orderListStatus } from "@/lib/utils/order-list-status";
 import {
   countExact,
@@ -23,9 +24,16 @@ const ORDERS_LIST_SELECT = `
   id, ticket_kind, ticket_status, client_confirmed,
   ticket_require_client_confirm,
   payment_status,
+  refund_status,
   payment_evidence_url,
   payment_evidence_submitted_at,
   payment_evidence_reviewed_at,
+  stripe_payment_intent_id,
+  stripe_amount_cents,
+  payment_evidence_amount,
+  ticket_payment_strategy,
+  ticket_deposit_type,
+  ticket_deposit_value,
   payment_paid_at,
   deposit_paid_at,
   deposit_amount,
@@ -44,6 +52,12 @@ type RawOrderRow = Record<string, unknown> & {
   payment_evidence_url?: string | null;
   payment_evidence_submitted_at?: string | null;
   payment_evidence_reviewed_at?: string | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_amount_cents?: number | null;
+  payment_evidence_amount?: number | null;
+  ticket_payment_strategy?: "partial" | "full" | "net" | null;
+  ticket_deposit_type?: "percent" | "fixed" | null;
+  ticket_deposit_value?: number | null;
   payment_paid_at?: string | null;
   created_by_id?: string | null;
   deposit_paid_at?: string | null;
@@ -72,6 +86,7 @@ async function buildScopedOrdersQuery(
 
   query = query.eq("ticket_kind", "order") as TicketSelectQuery;
   query = query.in("ticket_status", tabToTicketStatuses(filters.tab)) as TicketSelectQuery;
+  query = excludeRefundedTicketsForOrdersList(query, filters.tab) as TicketSelectQuery;
   query = applyTicketDateFilter(query, filters.dateFrom, filters.dateTo) as TicketSelectQuery;
   query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds) as TicketSelectQuery;
 
@@ -100,6 +115,9 @@ async function countFilteredOrdersByStatus(
   return countExact(admin, "job_tickets", (q) => {
     let query = scopeJobTicketsQuery(q, roleName, userId, filters.adminFilterUserId ?? null);
     query = query.eq("ticket_kind", "order").eq("ticket_status", status);
+    if (status !== "cancelled") {
+      query = excludeRefundedTicketsForOrdersList(query, status === "order" ? "pending" : "in_production");
+    }
     query = applyTicketDateFilter(query, filters.dateFrom, filters.dateTo);
     query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds);
     return query;
@@ -180,6 +198,7 @@ async function enrichOrdersPage(admin: AdminClient, orders: RawOrderRow[]) {
       payment_evidence_url: o.payment_evidence_url,
       payment_evidence_submitted_at: o.payment_evidence_submitted_at,
       payment_evidence_reviewed_at: o.payment_evidence_reviewed_at,
+      stripe_payment_intent_id: o.stripe_payment_intent_id,
       payment_paid_at: o.payment_paid_at,
       deposit_paid_at: o.deposit_paid_at,
       payment_amount_received: o.payment_amount_received,

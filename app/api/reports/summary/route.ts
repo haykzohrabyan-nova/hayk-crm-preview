@@ -12,6 +12,10 @@ import { parseEmbeddedRole } from "@/lib/utils/parse-embedded-role";
 import { resolveReportDateRange } from "@/lib/utils/reports-date-range";
 import { roundMoney } from "@/lib/utils/format";
 import { sumProductionReleasedValue } from "@/lib/utils/dashboard-metrics";
+import {
+  excludeFullyRefundedFromRevenue,
+  isFullyRefundedTicket,
+} from "@/lib/utils/exclude-refunded-tickets";
 
 function round1(n: number): number {
   return Math.round(n * 10) / 10;
@@ -173,18 +177,20 @@ export async function GET(request: NextRequest) {
       .lte("created_at", periodEnd)
       .not("by_user_id", "is", null),
 
-    admin
-      .from("job_tickets")
-      .select(
-        `id, reference_code, title, quote_final_total, payment_amount_received, deposit_amount,
-         deposit_paid_at, payment_paid_at, payment_status, ticket_status,
+    excludeFullyRefundedFromRevenue(
+      admin
+        .from("job_tickets")
+        .select(
+          `id, reference_code, title, quote_final_total, payment_amount_received, deposit_amount,
+         deposit_paid_at, payment_paid_at, payment_status, ticket_status, refund_status,
          ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
          payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount,
          linked_lead_id, created_by_id, routed_by_id,
          customer:customers(first_name, last_name, company)`,
-      )
-      .in("ticket_status", ["sent", "order", "in_production", "completed"])
-      .gt("quote_final_total", 0),
+        )
+        .in("ticket_status", ["sent", "order", "in_production", "completed"])
+        .gt("quote_final_total", 0),
+    ),
 
     sumProductionReleasedValue(
       admin,
@@ -203,7 +209,7 @@ export async function GET(request: NextRequest) {
         .from("job_tickets")
         .select(
           `id, reference_code, title, quote_final_total, payment_amount_received, ticket_status,
-           linked_lead_id, created_by_id, routed_by_id,
+           refund_status, linked_lead_id, created_by_id, routed_by_id,
            customer:customers(first_name, last_name, company)`,
         )
         .in("id", ticketIds)
@@ -317,6 +323,7 @@ export async function GET(request: NextRequest) {
     const ticketId = row.ticket_id as string;
     const ticket = ticketMap.get(ticketId);
     if (!ticket) continue;
+    if (isFullyRefundedTicket(ticket.refund_status as string | null)) continue;
 
     const lead = ticket.linked_lead_id
       ? leadMap.get(ticket.linked_lead_id as string)

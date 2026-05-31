@@ -28,6 +28,7 @@ type SortableOrderRow = {
   id: string;
   ticket_status: string;
   payment_status?: string | null;
+  refund_status?: string | null;
   due_date?: string | null;
   quote_final_total?: number | null;
   payment_amount_received?: number | null;
@@ -55,8 +56,11 @@ const PAYMENT_RANK: Record<string, number> = {
   paid: 2,
 };
 
-function paymentRank(status: string | null | undefined): number {
-  return PAYMENT_RANK[status ?? "unpaid"] ?? 99;
+function paymentRank(row: SortableOrderRow): number {
+  const refund = row.refund_status ?? "none";
+  if (refund === "full") return 4;
+  if (refund === "partial") return 3;
+  return PAYMENT_RANK[row.payment_status ?? "unpaid"] ?? 99;
 }
 
 function compareDefault(a: SortableOrderRow, b: SortableOrderRow): number {
@@ -106,7 +110,7 @@ function compareStatus(a: SortableOrderRow, b: SortableOrderRow): number {
 }
 
 function comparePayment(a: SortableOrderRow, b: SortableOrderRow): number {
-  const diff = paymentRank(a.payment_status) - paymentRank(b.payment_status);
+  const diff = paymentRank(a) - paymentRank(b);
   if (diff !== 0) return diff;
   return a.id.localeCompare(b.id);
 }

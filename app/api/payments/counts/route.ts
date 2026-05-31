@@ -34,8 +34,9 @@ export async function GET() {
     admin
       .from("job_tickets")
       .select("id", { count: "exact", head: true })
-      .not("payment_evidence_url", "is", null)
+      .not("payment_evidence_submitted_at", "is", null)
       .is("payment_evidence_reviewed_at", null)
+      .or("payment_evidence_url.not.is.null,stripe_payment_intent_id.not.is.null")
       .in("ticket_status", ["sent", "order", "in_production", "completed"]),
 
     // Orders currently in production

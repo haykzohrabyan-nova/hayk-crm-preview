@@ -76,6 +76,17 @@ import { TicketLifecycleTimeline } from "@/components/quotes/quote-detail/ticket
 import { ticketIsQuoteStage } from "@/lib/utils/reference-codes";
 import { DetailQuickActions } from "@/components/quotes/quote-detail/detail-quick-actions";
 import { CancelTicketModal, type CancelTicketForm } from "@/components/quotes/quote-detail/cancel-ticket-modal";
+import { PartialRefundCancelWarningModal } from "@/components/quotes/quote-detail/partial-refund-cancel-warning-modal";
+import { shouldWarnPartialRefundBeforeCancel } from "@/lib/utils/should-warn-partial-refund-before-cancel";
+import {
+  RecordRefundModal,
+  type RecordRefundForm,
+} from "@/components/quotes/quote-detail/record-refund-modal";
+import {
+  PaymentsReceivedSection,
+  RefundHistorySection,
+} from "@/components/orders/refund-history-section";
+import type { TicketPaymentRefundRecord } from "@/lib/payments/fetch-ticket-refunds";
 import { ResendAfterSaveModal } from "@/components/quotes/quote-detail/resend-after-save-modal";
 import {
   shouldOfferResendAfterSave,
@@ -215,10 +226,26 @@ interface Ticket {
   payment_evidence_submitted_at:  string | null;
   payment_evidence_reviewed_at:   string | null;
   payment_evidence_amount:        number | null;
+  stripe_payment_intent_id?:     string | null;
+  stripe_checkout_session_id?:   string | null;
+  stripe_charge_id?:             string | null;
+  stripe_card_brand?:            string | null;
+  stripe_card_last4?:            string | null;
+  stripe_receipt_url?:           string | null;
+  stripe_customer_email?:      string | null;
+  stripe_amount_cents?:          number | null;
+  stripe_payment_status?:        string | null;
+  stripe_amount_refunded_cents?: number | null;
+  stripe_last_refund_reason?:   string | null;
+  stripe_last_refunded_at?:      string | null;
+  refund_status?:               "none" | "partial" | "full" | null;
+  total_refunded_amount?:       number | null;
+  payment_refunds?:             TicketPaymentRefundRecord[];
   convert_meta?: ManualConvertMeta | null;
   cancel_reason?: string | null;
   cancel_reason_label?: string | null;
   cancel_notes?: string | null;
+  cancelled_at?: string | null;
 }
 
 interface ProductType {
@@ -303,13 +330,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       .then((r) => r.json())
       .then((d) => { if (d.settings?.high_value_threshold != null) setHvThreshold(d.settings.high_value_threshold); })
       .catch(() => {});
-    fetch("/api/lookups?categories=quote_cancel_reason,order_cancel_reason")
+    fetch("/api/lookups?categories=quote_cancel_reason,order_cancel_reason,payment_refund_reason")
       .then((r) => r.json())
       .then((d) => {
         setCancelReasonLookups({
           quote: d.quote_cancel_reason ?? [],
           order: d.order_cancel_reason ?? [],
         });
+        setRefundReasons(d.payment_refund_reason ?? []);
       })
       .catch(() => {});
   }, []);
@@ -323,11 +351,25 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [convertModal, setConvertModal] = useState<ReturnType<typeof buildAdminConvertPreview> | null>(null);
   const [completeModalBalance, setCompleteModalBalance] = useState<number | null>(null);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
+  const [partialRefundCancelWarnOpen, setPartialRefundCancelWarnOpen] = useState(false);
   const [cancelForm, setCancelForm] = useState<CancelTicketForm>({ cancel_reason: "", cancel_notes: "" });
   const [cancelReasonLookups, setCancelReasonLookups] = useState<{
     quote: LookupValue[];
     order: LookupValue[];
   }>({ quote: [], order: [] });
+  const [refundModalOpen, setRefundModalOpen] = useState(false);
+  const [refundForm, setRefundForm] = useState<RecordRefundForm>({
+    payment_mode: "",
+    refund_reason: "",
+    refund_notes: "",
+    refund_method: "cash",
+    amount_mode: "full",
+    amount: "",
+    evidence_file: null,
+  });
+  const [refundReasons, setRefundReasons] = useState<LookupValue[]>([]);
+  const [refundProcessing, setRefundProcessing] = useState(false);
+  const [refundErr, setRefundErr] = useState<string | null>(null);
   const [resendPrompt, setResendPrompt] = useState<ResendPromptKind | null>(null);
   const [resendSending, setResendSending] = useState(false);
   const handleSaveRef = useRef<
@@ -855,9 +897,23 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const quoteSendReady = sendMissingFields.length === 0;
   const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
 
-  function openCancelModal() {
+  function openCancelReasonModal() {
     setCancelForm({ cancel_reason: "", cancel_notes: "" });
     setCancelModalOpen(true);
+  }
+
+  function openCancelModal() {
+    if (!ticket) return;
+    if (shouldWarnPartialRefundBeforeCancel(ticket)) {
+      setPartialRefundCancelWarnOpen(true);
+      return;
+    }
+    openCancelReasonModal();
+  }
+
+  function proceedCancelAfterPartialRefundWarning() {
+    setPartialRefundCancelWarnOpen(false);
+    openCancelReasonModal();
   }
 
   async function handleConfirmCancel() {
@@ -868,6 +924,59 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       cancel_reason: cancelForm.cancel_reason,
       cancel_notes: cancelForm.cancel_notes.trim() || null,
     });
+  }
+
+  function openRecordRefundModal() {
+    if (!ticket) return;
+    setRefundForm({
+      payment_mode: "",
+      refund_reason: "",
+      refund_notes: "",
+      refund_method: "cash",
+      amount_mode: "full",
+      amount: "",
+      evidence_file: null,
+    });
+    setRefundErr(null);
+    setRefundModalOpen(true);
+  }
+
+  async function handleConfirmRecordRefund() {
+    if (!ticket?.id || !refundForm.refund_reason || !refundForm.payment_mode) return;
+    setRefundProcessing(true);
+    setRefundErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("payment_mode", refundForm.payment_mode);
+      fd.append("refund_reason", refundForm.refund_reason);
+      fd.append("refund_notes", refundForm.refund_notes.trim());
+      fd.append("refund_method", refundForm.refund_method);
+      fd.append("amount_mode", refundForm.amount_mode);
+      if (refundForm.amount_mode === "partial") {
+        fd.append("amount", refundForm.amount);
+      }
+      if (refundForm.evidence_file) {
+        fd.append("evidence", refundForm.evidence_file);
+      }
+      const res = await fetch(`/api/tickets/${ticket.id}/refund`, {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRefundErr(data.error ?? "Refund failed.");
+        return;
+      }
+      setRefundModalOpen(false);
+      window.dispatchEvent(new Event("bazaar:tickets-changed"));
+      window.dispatchEvent(new Event("bazaar:refresh-counts"));
+      const refreshed = await fetch(`/api/tickets/${ticket.id}`).then((r) => r.json());
+      if (refreshed?.ticket) setTicket(refreshed.ticket);
+    } catch {
+      setRefundErr("Network error — please try again.");
+    } finally {
+      setRefundProcessing(false);
+    }
   }
 
   function openAdminConvertModal() {
@@ -973,8 +1082,17 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     : VIEW_TABS;
   const showStatsRow = isOverviewLayout;
   const statsTotalLabel = context === "quote" ? "Quote Total" as const : "Order Total" as const;
+  const lineItemsDefaultOpen = context === "order" || context === "completed";
 
   const canViewPaymentEvidence = userRole === "accountant" || userRole === "admin";
+  const hasRefundOnTicket =
+    (ticket.refund_status && ticket.refund_status !== "none") ||
+    (ticket.payment_refunds?.length ?? 0) > 0;
+  const showRefundHistory =
+    canViewPaymentEvidence || hasRefundOnTicket;
+  const refundsAtTopOfPaymentView = isPaymentView && hasRefundOnTicket;
+  const refundsAtTopOfOverview =
+    isOverviewLayout && hasRefundOnTicket && context !== "payment";
 
   const detailQuickActionsProps = {
     ticket,
@@ -982,6 +1100,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     saving,
     onMarkComplete: requestMarkComplete,
     onCancelTicket: openCancelModal,
+    onRecordRefund: openRecordRefundModal,
+    priorRefunds: ticket.payment_refunds?.map((r) => ({
+      payment_mode: r.payment_mode,
+      amount: r.amount,
+    })),
     onSendQuote: () => { void handleSave("sent"); },
     onConvertToOrder: openAdminConvertModal,
     quoteSendReady,
@@ -1297,6 +1420,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   <LinkedLeadCard
                     lead={ticket.lead}
                     productionReleasedAt={ticket.production_released_at}
+                    cancelledAt={
+                      ticket.ticket_status === "cancelled" ? ticket.cancelled_at : null
+                    }
                   />
                 ) : (ticket.customer || ticket.contact_name || ticket.contact_email || ticket.contact_phone) ? (
                   <CustomerInfoCard ticket={ticket} />
@@ -1305,7 +1431,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
               </aside>
 
               <div
-                className="flex flex-col min-w-0 rounded-[14px] border"
+                className="flex flex-col min-w-0 rounded-[14px] border overflow-visible"
                 style={{
                   background: "var(--color-surface)",
                   borderColor: "var(--color-border)",
@@ -1313,7 +1439,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                 }}
               >
                 <div
-                  className="flex shrink-0 overflow-x-auto touch-pan-x border-b px-1"
+                  className="flex shrink-0 border-b px-1"
                   style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
                 >
                   {viewTabs.map((t) => (
@@ -1332,21 +1458,38 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   ))}
                 </div>
 
-                {/* Single page scroll — sidebar actions stay reachable below timeline */}
-                <div>
+                {/* Page scroll is the app main column — no nested scroll on this panel */}
+                <div className="overflow-visible">
                   {tab === "info" && (
                     <>
-                      <div className="px-4 pt-4 pb-2 md:px-7 md:pt-6">
-                        <TicketDetailOverview
+                      {showRefundHistory &&
+                        (refundsAtTopOfPaymentView || refundsAtTopOfOverview) && (
+                        <RefundHistorySection
+                          ticketId={ticketId}
                           ticket={ticket}
-                          context={context}
+                          refunds={ticket.payment_refunds ?? []}
                           userRole={userRole}
-                          saving={saving}
-                          onMarkComplete={requestMarkComplete}
-                          completeNotice={notice}
-                          completeNoticeIsWarning={noticeIsWarning}
+                          defaultOpen
                         />
-                      </div>
+                      )}
+                      {refundsAtTopOfPaymentView && (
+                        <PaymentsReceivedSection
+                          ticket={ticket}
+                          priorRefunds={ticket.payment_refunds?.map((r) => ({
+                            payment_mode: r.payment_mode,
+                            amount: r.amount,
+                          }))}
+                        />
+                      )}
+                      <TicketDetailOverview
+                        ticket={ticket}
+                        context={context}
+                        userRole={userRole}
+                        saving={saving}
+                        onMarkComplete={requestMarkComplete}
+                        completeNotice={notice}
+                        completeNoticeIsWarning={noticeIsWarning}
+                      />
                       <TicketOverviewSections
                         ticket={ticket}
                         products={products}
@@ -1375,7 +1518,36 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                         showPaymentSummary={showPaymentSummary}
                         canViewPaymentEvidence={canViewPaymentEvidence}
                         totalLabel={statsTotalLabel}
+                        lineItemsDefaultOpen={lineItemsDefaultOpen}
                       />
+                      {showPaymentSummary && !refundsAtTopOfPaymentView && !refundsAtTopOfOverview && (
+                        <>
+                          <PaymentsReceivedSection
+                            ticket={ticket}
+                            priorRefunds={ticket.payment_refunds?.map((r) => ({
+                              payment_mode: r.payment_mode,
+                              amount: r.amount,
+                            }))}
+                          />
+                          {showRefundHistory && (
+                            <RefundHistorySection
+                              ticketId={ticketId}
+                              ticket={ticket}
+                              refunds={ticket.payment_refunds ?? []}
+                              userRole={userRole}
+                            />
+                          )}
+                        </>
+                      )}
+                      {showPaymentSummary && refundsAtTopOfOverview && (
+                        <PaymentsReceivedSection
+                          ticket={ticket}
+                          priorRefunds={ticket.payment_refunds?.map((r) => ({
+                            payment_mode: r.payment_mode,
+                            amount: r.amount,
+                          }))}
+                        />
+                      )}
                     </>
                   )}
 
@@ -1389,7 +1561,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             </div>
           </div>
 
-          {!editing && !isStageDetailView && ticket.ticket_status === "completed" ? (
+          {!editing &&
+            !isStageDetailView &&
+            !isPaymentView &&
+            !hasRefundOnTicket &&
+            ticket.ticket_status === "completed" ? (
             <div
               className="mt-4 rounded-xl px-4 py-3 md:px-5 flex items-center gap-2"
               style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" }}
@@ -1423,7 +1599,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         {/* Right: Content */}
         <div className="flex-1 min-w-0">
           {/* Tabs */}
-          <div className="flex overflow-x-auto border-b mb-6 -mx-1 px-1" style={{ borderColor: "var(--color-border)" }}>
+          <div className="flex border-b mb-6 -mx-1 px-1" style={{ borderColor: "var(--color-border)" }}>
             {viewTabs.map((t) => (
               <button
                 key={t.id}
@@ -1482,6 +1658,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     onPaymentChange={setPaymentDraft}
                     showPaymentSummary={showPaymentSummary}
                     canViewPaymentEvidence={canViewPaymentEvidence}
+                    totalLabel={statsTotalLabel}
+                    lineItemsDefaultOpen={lineItemsDefaultOpen}
                   />
                 </div>
               ) : (
@@ -1593,7 +1771,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           </div>
 
           {/* Order lifecycle — completed banner only; quote/order actions live in sidebar quick actions */}
-          {!editing && !isStageDetailView && ticket.ticket_status === "completed" ? (
+          {!editing &&
+            !isStageDetailView &&
+            !isPaymentView &&
+            !hasRefundOnTicket &&
+            ticket.ticket_status === "completed" ? (
               <div
                 className="mt-4 rounded-xl px-4 py-3 md:px-5 flex items-center gap-2"
                 style={{ background: "var(--color-success-bg)", border: "1px solid var(--color-success-border)" }}
@@ -1653,6 +1835,22 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       sending={resendSending || saving}
     />
 
+    <PartialRefundCancelWarningModal
+      open={partialRefundCancelWarnOpen}
+      totalRefunded={ticket?.total_refunded_amount}
+      amountStillOnFile={ticket?.payment_amount_received}
+      onClose={() => setPartialRefundCancelWarnOpen(false)}
+      onProceedToCancel={proceedCancelAfterPartialRefundWarning}
+      onRefundFirst={
+        ticket && canViewPaymentEvidence
+          ? () => {
+              setPartialRefundCancelWarnOpen(false);
+              openRecordRefundModal();
+            }
+          : undefined
+      }
+    />
+
     <CancelTicketModal
       open={cancelModalOpen}
       title={cancelModalTitle}
@@ -1663,6 +1861,36 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       onClose={() => setCancelModalOpen(false)}
       saving={saving}
     />
+
+    {ticket && (
+      <RecordRefundModal
+        open={refundModalOpen}
+        ticket={ticket}
+        priorRefunds={ticket.payment_refunds?.map((r) => ({
+          payment_mode: r.payment_mode,
+          amount: r.amount,
+        }))}
+        reasons={refundReasons}
+        form={refundForm}
+        onChange={setRefundForm}
+        onConfirm={() => { void handleConfirmRecordRefund(); }}
+        onClose={() => setRefundModalOpen(false)}
+        processing={refundProcessing}
+      />
+    )}
+
+    {refundErr && refundModalOpen && (
+      <div
+        className="fixed bottom-4 right-4 z-[60] max-w-sm rounded-lg border px-4 py-3 text-sm"
+        style={{
+          background: "var(--color-danger-bg)",
+          borderColor: "var(--color-danger-border)",
+          color: "var(--color-danger)",
+        }}
+      >
+        {refundErr}
+      </div>
+    )}
 
     {convertModal && (
       <div

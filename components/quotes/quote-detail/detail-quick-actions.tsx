@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CheckCircle2, Loader2, Link as LinkIcon, Copy, Check, Mail, BadgeCheck } from "lucide-react";
+import { CheckCircle2, Loader2, Link as LinkIcon, Copy, Check, Mail, BadgeCheck, RotateCcw } from "lucide-react";
+import { canRecordRefund } from "@/lib/payments/refundable-payment-slots";
 import { OutreachChannelIcons } from "@/components/ui/outreach-channel-icons";
 import { resolveOutreachChannelKind, OUTREACH_CHANNEL_LABEL } from "@/lib/utils/outreach-channel-display";
 import { formatCurrency } from "@/lib/utils/ticket-math";
-import { canAdminCancelTicket } from "@/lib/utils/can-admin-cancel-ticket";
+import { canStaffCancelTicket } from "@/lib/utils/should-warn-partial-refund-before-cancel";
 import { cancelActionLabel } from "@/lib/utils/cancel-reason-category";
 import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
 import { copyTextToClipboard, publicQuoteUrl } from "@/lib/utils/copy-to-clipboard";
@@ -27,6 +28,9 @@ interface QuickActionsTicket {
   payment_evidence_url: string | null;
   payment_evidence_submitted_at: string | null;
   payment_evidence_reviewed_at: string | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_amount_cents?: number | null;
+  stripe_amount_refunded_cents?: number | null;
   ticket_payment_strategy: "partial" | "full" | "net" | null;
   ticket_deposit_type: "percent" | "fixed" | null;
   ticket_deposit_value: number | null;
@@ -42,6 +46,8 @@ export function DetailQuickActions({
   saving,
   onMarkComplete,
   onCancelTicket,
+  onRecordRefund,
+  priorRefunds,
   onSendQuote,
   onConvertToOrder,
   quoteSendReady = true,
@@ -55,6 +61,8 @@ export function DetailQuickActions({
   saving: boolean;
   onMarkComplete: () => void;
   onCancelTicket?: () => void;
+  onRecordRefund?: () => void;
+  priorRefunds?: { payment_mode: string; amount: number | string }[];
   onSendQuote?: () => void;
   onConvertToOrder?: () => void;
   quoteSendReady?: boolean;
@@ -80,13 +88,14 @@ export function DetailQuickActions({
     ticket.ticket_status === "in_production" &&
     (userRole === "admin" || (userRole === "accountant" && paidInFull));
 
-  /** Customer portal (/q/{token}) — available once quote has been sent through lifecycle. */
+  /** Customer portal (/q/{token}) — read-only when cancelled/refunded; active flows when open. */
   const showQuoteLink =
     !!publicUrl &&
     (ticket.ticket_status === "sent" ||
       ticket.ticket_status === "order" ||
       ticket.ticket_status === "in_production" ||
-      ticket.ticket_status === "completed");
+      ticket.ticket_status === "completed" ||
+      ticket.ticket_status === "cancelled");
 
   const showQuoteLifecycle =
     !isLocked &&
@@ -95,10 +104,11 @@ export function DetailQuickActions({
     !isRoutedReadOnly &&
     (ticket.ticket_status === "draft" || ticket.ticket_status === "sent");
 
-  const showAdminCancel =
-    userRole === "admin" &&
-    !!onCancelTicket &&
-    canAdminCancelTicket(ticket);
+  const showStaffCancel =
+    !!onCancelTicket && canStaffCancelTicket(userRole, ticket);
+
+  const showRecordRefund =
+    !!onRecordRefund && canRecordRefund(ticket, priorRefunds, userRole);
 
   const canConvertToOrder =
     userRole === "admin" &&
@@ -143,7 +153,8 @@ export function DetailQuickActions({
 
   const hasActions =
     showQuoteLifecycle ||
-    showAdminCancel ||
+    showStaffCancel ||
+    showRecordRefund ||
     canMarkComplete ||
     canResendInvoice ||
     showQuoteLink;
@@ -196,7 +207,7 @@ export function DetailQuickActions({
         </>
       )}
 
-      {showAdminCancel && (
+      {showStaffCancel && (
         <button
           type="button"
           disabled={saving}
@@ -205,6 +216,23 @@ export function DetailQuickActions({
           style={{ color: "var(--color-danger)", borderColor: "var(--color-danger-border)", background: "var(--color-danger-bg)" }}
         >
           <span className="truncate">{cancelActionLabel(ticket.ticket_status)}</span>
+        </button>
+      )}
+
+      {showRecordRefund && (
+        <button
+          type="button"
+          disabled={saving}
+          onClick={onRecordRefund}
+          className={`${btnBase} w-full border hover:opacity-80`}
+          style={{
+            color: "var(--color-warning-text-deep)",
+            borderColor: "var(--color-warning-border)",
+            background: "var(--color-warning-bg)",
+          }}
+        >
+          <RotateCcw size={14} className="shrink-0" />
+          <span className="truncate">Refund payment</span>
         </button>
       )}
 

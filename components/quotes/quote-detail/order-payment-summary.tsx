@@ -12,6 +12,7 @@ import {
   DetailDataCell,
   DetailFollowUpCard,
 } from "@/components/quotes/quote-detail/detail-layout-primitives";
+import { StripeEvidencePanel } from "@/components/ui/stripe-evidence-panel";
 
 export interface SummaryTicket {
   id?: string;
@@ -50,6 +51,37 @@ export interface SummaryTicket {
   payment_evidence_submitted_at: string | null;
   payment_evidence_reviewed_at?: string | null;
   payment_evidence_amount?: number | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_checkout_session_id?: string | null;
+  stripe_charge_id?: string | null;
+  stripe_card_brand?: string | null;
+  stripe_card_last4?: string | null;
+  stripe_receipt_url?: string | null;
+  stripe_customer_email?: string | null;
+  stripe_amount_cents?: number | null;
+  stripe_payment_status?: string | null;
+  refund_status?: "none" | "partial" | "full" | string | null;
+  total_refunded_amount?: number | null;
+}
+
+function refundPaymentStatusLabel(ticket: Pick<SummaryTicket, "refund_status" | "total_refunded_amount" | "payment_status">): string | null {
+  const status = ticket.refund_status ?? "none";
+  if (status !== "partial" && status !== "full") return null;
+  const refunded = Number(ticket.total_refunded_amount ?? 0);
+  const base = status === "full" ? "Fully refunded" : "Partially refunded";
+  return refunded > 0.01 ? `${base} · ${formatCurrency(refunded)}` : base;
+}
+
+function displayPaymentStatus(
+  ticket: SummaryTicket,
+  opts: { evidencePending?: boolean; reviewPending?: boolean },
+): string {
+  const refund = refundPaymentStatusLabel(ticket);
+  if (refund) return refund;
+  if (opts.evidencePending || opts.reviewPending) {
+    return "Under review — awaiting accountant confirmation";
+  }
+  return PAYMENT_STATUS_LABEL[ticket.payment_status ?? "unpaid"] ?? "Unpaid";
 }
 
 const STRATEGY_LABEL: Record<string, string> = {
@@ -82,6 +114,65 @@ function fmtDate(iso: string | null | undefined): string {
     month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit",
   });
+}
+
+/** `payment_method_used` is set when balance or full payment is recorded (not deposit). */
+function finalPaymentMethodRow(
+  strategy: "partial" | "full" | "net",
+  ticket: Pick<SummaryTicket, "balance_paid_at" | "payment_paid_at" | "payment_method_used">,
+): { label: string; value: string } | null {
+  if (!ticket.payment_method_used) return null;
+  const value = getChannelLabel(ticket.payment_method_used);
+  if (strategy === "partial") {
+    if (!ticket.balance_paid_at) return null;
+    return { label: "Balance method", value };
+  }
+  if (strategy === "full" && (ticket.balance_paid_at || ticket.payment_paid_at)) {
+    return { label: "Payment method", value };
+  }
+  return null;
+}
+
+/** Balance (or full) payment amount — not stored separately; derived from totals minus deposit. */
+function computeBalancePaidAmount(
+  strategy: "partial" | "full" | "net",
+  ticket: Pick<
+    SummaryTicket,
+    "balance_paid_at" | "deposit_amount" | "deposit_paid_at" | "payment_amount_received"
+  >,
+  depositAmt: number,
+): number | null {
+  if (!ticket.balance_paid_at) return null;
+  const received = Number(ticket.payment_amount_received ?? 0);
+  if (received <= 0.01) return null;
+
+  if (strategy === "partial") {
+    if (!ticket.deposit_paid_at) return null;
+    const deposit = Number(ticket.deposit_amount ?? depositAmt ?? 0);
+    return Math.max(0, Math.round((received - deposit) * 100) / 100);
+  }
+
+  if (strategy === "full") {
+    return Math.round(received * 100) / 100;
+  }
+
+  return null;
+}
+
+function balancePaidAmountRow(
+  strategy: "partial" | "full" | "net",
+  ticket: Pick<
+    SummaryTicket,
+    "balance_paid_at" | "deposit_amount" | "deposit_paid_at" | "payment_amount_received"
+  >,
+  depositAmt: number,
+): { label: string; value: string } | null {
+  const amount = computeBalancePaidAmount(strategy, ticket, depositAmt);
+  if (amount == null || amount <= 0.01) return null;
+  return {
+    label: strategy === "partial" ? "Balance paid" : "Amount paid",
+    value: formatCurrency(amount),
+  };
 }
 
 function SummaryRow({
@@ -246,9 +337,7 @@ export function PricingPaymentSummary({
         <SummaryRow
           label="Payment status"
           value={
-            evidencePending || reviewPending
-              ? "Under review — awaiting accountant confirmation"
-              : PAYMENT_STATUS_LABEL[ticket.payment_status ?? "unpaid"] ?? "Unpaid"
+            displayPaymentStatus(ticket, { evidencePending, reviewPending })
           }
           highlight={evidencePending || reviewPending}
         />
@@ -367,9 +456,7 @@ export function PaymentAmountSummary({
       <SummaryRow
         label="Payment status"
         value={
-          evidencePending || reviewPending
-            ? "Under review — awaiting accountant confirmation"
-            : PAYMENT_STATUS_LABEL[ticket.payment_status ?? "unpaid"] ?? "Unpaid"
+          displayPaymentStatus(ticket, { evidencePending, reviewPending })
         }
         highlight={evidencePending || reviewPending}
       />
@@ -437,12 +524,21 @@ export function PaymentAmountSummary({
       {!reviewPending && !evidencePending && ticket.payment_paid_at && (
         <SummaryRow label="Fully paid at" value={fmtDate(ticket.payment_paid_at)} />
       )}
+      {!reviewPending && !evidencePending && (() => {
+        const paidRow = balancePaidAmountRow(strategy, ticket, depositAmt);
+        return paidRow ? (
+          <SummaryRow label={paidRow.label} value={paidRow.value} size="md" />
+        ) : null;
+      })()}
       {!reviewPending && !evidencePending && ticket.balance_paid_at && (
         <SummaryRow label="Balance paid at" value={fmtDate(ticket.balance_paid_at)} />
       )}
-      {!reviewPending && !evidencePending && ticket.payment_method_used && (
-        <SummaryRow label="Last payment method" value={getChannelLabel(ticket.payment_method_used)} />
-      )}
+      {!reviewPending && !evidencePending && (() => {
+        const methodRow = finalPaymentMethodRow(strategy, ticket);
+        return methodRow ? (
+          <SummaryRow label={methodRow.label} value={methodRow.value} />
+        ) : null;
+      })()}
     </Section>
   );
 }
@@ -499,8 +595,9 @@ export function OrderPaymentSummary({
   const netTerms = ticket.ticket_net_terms_label?.replace("-", " ") ?? "Net terms";
   const evidencePending = isPaymentEvidencePending(ticket);
   const showEvidenceLink = canViewPaymentEvidence && !!ticket.payment_evidence_url;
+  const showStripeEvidence = canViewPaymentEvidence && !!ticket.stripe_payment_intent_id;
   const showEvidencePendingNote =
-    evidencePending && !!ticket.payment_evidence_url && !canViewPaymentEvidence;
+    evidencePending && !canViewPaymentEvidence && (showEvidenceLink || showStripeEvidence);
 
   if (paymentReviewAbove && !compact && layout === "grid") {
     return (
@@ -678,10 +775,15 @@ export function OrderPaymentSummary({
           )}
         </Section>
 
-        {(ticket.payment_evidence_url || ticket.production_released_at) && (
+        {(ticket.payment_evidence_url || ticket.stripe_payment_intent_id || ticket.production_released_at) && (
           <Section title="Evidence & Production">
             {ticket.production_released_at && (
               <SummaryRow label="Production started" value={fmtDate(ticket.production_released_at)} />
+            )}
+            {showStripeEvidence && (
+              <div className="pt-2 pb-2">
+                <StripeEvidencePanel ticket={ticket} />
+              </div>
             )}
             {showEvidenceLink && (
               <>
@@ -715,9 +817,7 @@ export function OrderPaymentSummary({
   }
 
   if (layout === "grid") {
-    const statusLabel = evidencePending
-      ? "Under review — awaiting confirmation"
-      : PAYMENT_STATUS_LABEL[ticket.payment_status ?? "unpaid"] ?? "Unpaid";
+    const statusLabel = displayPaymentStatus(ticket, { evidencePending });
 
     return (
       <>
@@ -765,9 +865,25 @@ export function OrderPaymentSummary({
               {ticket.payment_paid_at && (
                 <DetailDataCell label="Fully paid at" value={fmtDate(ticket.payment_paid_at)} />
               )}
+              {(() => {
+                const paidRow = balancePaidAmountRow(strategy, ticket, depositAmt);
+                return paidRow ? (
+                  <DetailDataCell
+                    label={paidRow.label}
+                    value={paidRow.value}
+                    valueColor="var(--color-success)"
+                  />
+                ) : null;
+              })()}
               {ticket.balance_paid_at && (
                 <DetailDataCell label="Balance paid at" value={fmtDate(ticket.balance_paid_at)} />
               )}
+              {(() => {
+                const methodRow = finalPaymentMethodRow(strategy, ticket);
+                return methodRow ? (
+                  <DetailDataCell label={methodRow.label} value={methodRow.value} />
+                ) : null;
+              })()}
               {strategy === "partial" && ticket.ticket_dep_handling && (
                 <DetailDataCell
                   label="Deposit collection"
@@ -878,9 +994,9 @@ export function OrderPaymentSummary({
         <SummaryRow
           label="Payment status"
           value={
-            isPaymentEvidencePending(ticket)
-              ? "Under review — awaiting accountant confirmation"
-              : PAYMENT_STATUS_LABEL[ticket.payment_status ?? "unpaid"] ?? "Unpaid"
+            displayPaymentStatus(ticket, {
+              evidencePending: isPaymentEvidencePending(ticket),
+            })
           }
         />
 
@@ -934,12 +1050,19 @@ export function OrderPaymentSummary({
         {ticket.payment_paid_at && (
           <SummaryRow label="Fully paid at" value={fmtDate(ticket.payment_paid_at)} />
         )}
+        {(() => {
+          const paidRow = balancePaidAmountRow(strategy, ticket, depositAmt);
+          return paidRow ? <SummaryRow label={paidRow.label} value={paidRow.value} /> : null;
+        })()}
         {ticket.balance_paid_at && (
           <SummaryRow label="Balance paid at" value={fmtDate(ticket.balance_paid_at)} />
         )}
-        {ticket.payment_method_used && (
-          <SummaryRow label="Last payment method" value={getChannelLabel(ticket.payment_method_used)} />
-        )}
+        {(() => {
+          const methodRow = finalPaymentMethodRow(strategy, ticket);
+          return methodRow ? (
+            <SummaryRow label={methodRow.label} value={methodRow.value} />
+          ) : null;
+        })()}
 
         <SummaryRow label="Accepted channels" value={channelStr} />
         {strategy === "partial" && ticket.ticket_dep_handling && (

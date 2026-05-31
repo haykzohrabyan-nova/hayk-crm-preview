@@ -170,7 +170,7 @@ Hidden when all work metrics are zero for that user.
 
 ## Accountant Dashboard — `components/admin/accountant-dashboard.tsx`
 
-Payment queue KPIs from `GET /api/payments/counts` — `pending_evidence` counts **unreviewed** proof only (`payment_evidence_reviewed_at` null). Approved evidence history lives on `/payments` → Approved tab (`GET /api/payments/page-data`). See [`invoice-payment.md`](./invoice-payment.md).
+Payment queue KPIs from `GET /api/payments/counts` — `pending_evidence` counts **unreviewed** proof only (`payment_evidence_reviewed_at` null). Approved evidence history lives on `/payments` → Approved tab; refunded orders on **Refunded** tab (`GET /api/payments/page-data`). **Cash collected** and **released order value** exclude tickets with `refund_status = full`. See [`invoice-payment.md`](./invoice-payment.md).
 
 **Privacy:** Same **Hide / Show values** toggle as SDR/Sales. When hidden, KPI cards show masked placeholders; the “Review Now” banner (pending count) is suppressed.
 

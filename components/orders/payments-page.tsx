@@ -4,7 +4,8 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
-import { FileText, CheckCircle2, Clock, Loader2, CreditCard } from "lucide-react";
+import { FileText, CheckCircle2, Clock, Loader2, CreditCard, ExternalLink, RotateCcw } from "lucide-react";
+import { stripePaymentDashboardUrl } from "@/lib/stripe/dashboard-url";
 import {
   GLOBAL_LOADING_MESSAGES,
   useGlobalLoading,
@@ -26,11 +27,17 @@ import {
 import { appendReturnPath } from "@/lib/utils/ticket-detail-href";
 import {
   inferPaymentEvidenceMode,
+  paymentEvidenceTypeLabelForTicket,
 } from "@/lib/utils/payment-evidence-type";
 import { filterPaymentEvidenceRows } from "@/lib/utils/filter-payment-evidence-rows";
+import {
+  summarizePaymentReceived,
+  summarizeRefundIssued,
+} from "@/lib/utils/payment-refund-list-labels";
 import { PaymentTypeBadge } from "@/components/orders/payment-type-badge";
+import { ConfirmPaymentEvidenceModal } from "@/components/orders/confirm-payment-evidence-modal";
 
-type PaymentTab = "pending" | "approved";
+type PaymentTab = "pending" | "approved" | "refunded";
 
 interface PaymentOrder {
   id: string;
@@ -40,10 +47,15 @@ interface PaymentOrder {
   contact_email: string | null;
   quote_final_total: number | null;
   payment_method_used: string | null;
+  deposit_method?: string | null;
+  balance_paid_at?: string | null;
+  payment_paid_at?: string | null;
   payment_evidence_submitted_at: string | null;
   payment_evidence_reviewed_at: string | null;
   payment_evidence_url: string | null;
   payment_evidence_amount: number | null;
+  stripe_payment_intent_id: string | null;
+  stripe_receipt_url: string | null;
   payment_amount_received: number | null;
   payment_status: string | null;
   deposit_paid_at: string | null;
@@ -57,11 +69,19 @@ interface PaymentOrder {
     company: string | null;
   } | null;
   created_by: { id: string; full_name: string | null } | null;
+  refund_status?: "none" | "partial" | "full" | string | null;
+  total_refunded_amount?: number | null;
+  last_refunded_at?: string | null;
+  last_refunded_by?: { id: string; full_name: string | null } | null;
+  last_refund_method?: string | null;
+  last_refund_source?: string | null;
+  last_refund_payment_mode?: string | null;
 }
 
 const TABS: { id: PaymentTab; label: string }[] = [
   { id: "pending", label: "Pending approval" },
   { id: "approved", label: "Approved" },
+  { id: "refunded", label: "Refunded" },
 ];
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -87,6 +107,42 @@ function inferPaymentMode(order: PaymentOrder): "deposit" | "balance" | "full" {
   return inferPaymentEvidenceMode(order);
 }
 
+function refundStatusLabel(status: string | null | undefined): string {
+  if (status === "full") return "Fully refunded";
+  if (status === "partial") return "Partially refunded";
+  return "Refunded";
+}
+
+function RefundTabStatusPills({ order }: { order: PaymentOrder }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold"
+        style={{
+          background: "var(--color-warning-bg)",
+          color: "var(--color-warning-text-deep)",
+          border: "1px solid var(--color-warning-border)",
+        }}
+      >
+        <RotateCcw size={11} />
+        {refundStatusLabel(order.refund_status)}
+      </span>
+      {order.ticket_status === "cancelled" && (
+        <span
+          className="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold"
+          style={{
+            background: "var(--color-danger-bg)",
+            color: "var(--color-danger)",
+            border: "1px solid var(--color-danger-border)",
+          }}
+        >
+          Cancelled
+        </span>
+      )}
+    </div>
+  );
+}
+
 function claimedAmount(order: PaymentOrder): number {
   if (order.payment_evidence_amount != null) return Number(order.payment_evidence_amount);
   const total = Number(order.quote_final_total ?? 0);
@@ -108,8 +164,10 @@ export function PaymentsPage() {
   const [activeTab, setActiveTab] = useState<PaymentTab>("pending");
   const [pendingOrders, setPendingOrders] = useState<PaymentOrder[]>([]);
   const [approvedOrders, setApprovedOrders] = useState<PaymentOrder[]>([]);
-  const [tabCounts, setTabCounts] = useState({ pending: 0, approved: 0 });
+  const [refundedOrders, setRefundedOrders] = useState<PaymentOrder[]>([]);
+  const [tabCounts, setTabCounts] = useState({ pending: 0, approved: 0, refunded: 0 });
   const [loading, setLoading] = useState(true);
+  const [confirmTarget, setConfirmTarget] = useState<PaymentOrder | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -127,7 +185,14 @@ export function PaymentsPage() {
       .then((d) => {
         if (d.orders) setPendingOrders(d.orders);
         if (d.approvedOrders) setApprovedOrders(d.approvedOrders);
-        if (d.counts) setTabCounts(d.counts);
+        if (d.refundedOrders) setRefundedOrders(d.refundedOrders);
+        if (d.counts) {
+          setTabCounts({
+            pending: d.counts.pending ?? 0,
+            approved: d.counts.approved ?? 0,
+            refunded: d.counts.refunded ?? 0,
+          });
+        }
       })
       .catch(() => {})
       .finally(() => { if (!silent) setLoading(false); });
@@ -145,19 +210,47 @@ export function PaymentsPage() {
     () => filterPaymentEvidenceRows(approvedOrders, debouncedSearch),
     [approvedOrders, debouncedSearch],
   );
+  const filteredRefunded = useMemo(
+    () => filterPaymentEvidenceRows(refundedOrders, debouncedSearch),
+    [refundedOrders, debouncedSearch],
+  );
 
   const displayCounts = debouncedSearch.trim()
-    ? { pending: filteredPending.length, approved: filteredApproved.length }
+    ? {
+        pending: filteredPending.length,
+        approved: filteredApproved.length,
+        refunded: filteredRefunded.length,
+      }
     : tabCounts;
 
-  const orders = activeTab === "pending" ? filteredPending : filteredApproved;
+  const orders =
+    activeTab === "pending"
+      ? filteredPending
+      : activeTab === "approved"
+        ? filteredApproved
+        : filteredRefunded;
   const isPendingTab = activeTab === "pending";
-  const desktopCols = 8;
-  const headers = isPendingTab
-    ? ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
-    : ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Approved"];
+  const isApprovedTab = activeTab === "approved";
+  const isRefundedTab = activeTab === "refunded";
+  const desktopCols = isRefundedTab ? 8 : 8;
+  const headers = isRefundedTab
+    ? ["Order", "Customer", "Paid via", "Refunded via", "Status", "Total refunded", "Last refunded", "Refunded by"]
+    : isPendingTab
+      ? ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
+      : ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Approved"];
 
   const paymentsReturnPath = "/payments";
+
+  function openConfirmModal(order: PaymentOrder, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    const amount = claimedAmount(order);
+    if (amount <= 0) {
+      setConfirmErr("No payment amount to confirm.");
+      return;
+    }
+    setConfirmErr(null);
+    setConfirmTarget(order);
+  }
 
   async function handleConfirm(order: PaymentOrder) {
     const amount = claimedAmount(order);
@@ -188,6 +281,7 @@ export function PaymentsPage() {
       }
       window.dispatchEvent(new Event("bazaar:tickets-changed"));
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
+      setConfirmTarget(null);
       fetchPageData(true);
     } catch {
       setConfirmErr("Network error — please try again.");
@@ -201,12 +295,16 @@ export function PaymentsPage() {
     ? "No matches"
     : isPendingTab
       ? "All caught up"
-      : "No approved evidence yet";
+      : isRefundedTab
+        ? "No refunded orders yet"
+        : "No approved evidence yet";
   const emptySubtitle = debouncedSearch.trim()
     ? "No payment evidence matches your search."
     : isPendingTab
       ? "No orders pending payment review."
-      : "Orders appear here after an accountant confirms payment evidence.";
+      : isRefundedTab
+        ? "Orders with partial or full refunds appear here after a refund is recorded."
+        : "Orders appear here after an accountant confirms payment evidence.";
 
   return (
     <div className="space-y-5">
@@ -216,7 +314,7 @@ export function PaymentsPage() {
             Payment Evidence
           </h1>
           <p className="text-sm mt-1 max-w-xl" style={{ color: "var(--color-text-muted)" }}>
-            Review uploaded payment proof on Pending approval, then find past confirmations and evidence files on Approved.
+            Review payment proof on Pending approval, confirmed evidence on Approved, and orders with partial or full refunds on Refunded.
           </p>
         </div>
         {isPendingTab && !loading && !debouncedSearch.trim() && tabCounts.pending > 0 && (
@@ -302,7 +400,88 @@ export function PaymentsPage() {
               {orders.map((order, i) => {
                 const claimed = claimedAmount(order);
                 const relTime = relativeTime(order.payment_evidence_submitted_at);
+                const refundRelTime = relativeTime(order.last_refunded_at);
                 const isConfirming = confirmingId === order.id;
+                const rowBg = i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
+
+                if (isRefundedTab) {
+                  return (
+                    <tr
+                      key={order.id}
+                      className="cursor-pointer"
+                      style={{ borderBottom: "1px solid var(--color-border)", background: rowBg }}
+                      onClick={() =>
+                        router.push(
+                          appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
+                        )
+                      }
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-row-hover)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = rowBg; }}
+                    >
+                      <td className="px-5 py-4 align-middle">
+                        <span className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
+                          {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
+                        </span>
+                        {order.title && (
+                          <div className="text-xs mt-1 max-w-[160px] truncate" style={{ color: "var(--color-text-muted)" }}>
+                            {order.title}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <div className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+                          {customerLabel(order)}
+                        </div>
+                        <div className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                          Order total {fmt(order.quote_final_total)}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <span className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+                          {summarizePaymentReceived(order)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <span className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+                          {summarizeRefundIssued(
+                            order.last_refund_method,
+                            order.last_refund_source,
+                            order.last_refund_payment_mode,
+                          )}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 align-middle whitespace-nowrap">
+                        <RefundTabStatusPills order={order} />
+                      </td>
+                      <td className="px-5 py-4 align-middle text-right whitespace-nowrap">
+                        <div className="text-sm font-semibold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
+                          {fmt(order.total_refunded_amount)}
+                        </div>
+                        {order.refund_status !== "full" &&
+                          Number(order.payment_amount_received ?? 0) > 0.01 && (
+                          <div className="text-[11px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                            {fmt(order.payment_amount_received)} still on file
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 align-middle whitespace-nowrap">
+                        <div className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+                          {formatDateTime(order.last_refunded_at)}
+                        </div>
+                        {refundRelTime && (
+                          <div className="text-[11px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                            {refundRelTime}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 align-middle whitespace-nowrap">
+                        <span className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+                          {order.last_refunded_by?.full_name ?? "—"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                }
 
                 return (
                   <tr
@@ -310,7 +489,7 @@ export function PaymentsPage() {
                     className="cursor-pointer"
                     style={{
                       borderBottom: "1px solid var(--color-border)",
-                      background: i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
+                      background: rowBg,
                     }}
                     onClick={() =>
                       router.push(
@@ -318,9 +497,7 @@ export function PaymentsPage() {
                       )
                     }
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-row-hover)"; }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
-                    }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = rowBg; }}
                   >
                     <td className="px-5 py-4 align-middle">
                       <span
@@ -412,17 +589,38 @@ export function PaymentsPage() {
                               background: "var(--color-surface)",
                               textDecoration: "none",
                             }}
-                            title="View payment evidence"
+                            title="View uploaded file"
                           >
                             <FileText size={14} />
-                            Evidence
+                            File
+                          </a>
+                        )}
+                        {order.stripe_payment_intent_id && (
+                          <a
+                            href={
+                              order.stripe_receipt_url ??
+                              stripePaymentDashboardUrl(order.stripe_payment_intent_id)
+                            }
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                            style={{
+                              borderColor: "var(--color-border)",
+                              color: "var(--color-text-primary)",
+                              background: "var(--color-surface)",
+                              textDecoration: "none",
+                            }}
+                            title="View Stripe payment"
+                          >
+                            <ExternalLink size={14} />
+                            Stripe
                           </a>
                         )}
                         {isPendingTab ? (
                           <button
                             type="button"
                             disabled={isConfirming}
-                            onClick={() => handleConfirm(order)}
+                            onClick={(e) => openConfirmModal(order, e)}
                             className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
                             style={{
                               background: "var(--color-btn-primary-bg)",
@@ -461,7 +659,75 @@ export function PaymentsPage() {
           orders.map((order) => {
             const claimed = claimedAmount(order);
             const relTime = relativeTime(order.payment_evidence_submitted_at);
+            const refundRelTime = relativeTime(order.last_refunded_at);
             const isConfirming = confirmingId === order.id;
+
+            if (isRefundedTab) {
+              return (
+                <MobileListCard
+                  key={order.id}
+                  onClick={() =>
+                    router.push(
+                      appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
+                    )
+                  }
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-sm font-semibold font-mono" style={{ color: "var(--color-text-primary)" }}>
+                        {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
+                      </span>
+                      <p className="text-sm font-medium mt-1.5" style={{ color: "var(--color-text-primary)" }}>
+                        {customerLabel(order)}
+                      </p>
+                    </div>
+                    <span
+                      className="text-sm font-semibold tabular-nums shrink-0"
+                      style={{ color: "var(--color-text-primary)" }}
+                    >
+                      {fmt(order.total_refunded_amount)}
+                    </span>
+                  </div>
+                  <MobileListCardFields>
+                    <MobileListCardRow label="Paid via" value={summarizePaymentReceived(order)} />
+                    <MobileListCardRow
+                      label="Refunded via"
+                      value={summarizeRefundIssued(
+                        order.last_refund_method,
+                        order.last_refund_source,
+                        order.last_refund_payment_mode,
+                      )}
+                    />
+                    <MobileListCardRow
+                      label="Status"
+                      value={
+                        order.ticket_status === "cancelled"
+                          ? `${refundStatusLabel(order.refund_status)} · Cancelled`
+                          : refundStatusLabel(order.refund_status)
+                      }
+                    />
+                    <MobileListCardRow label="Order total" value={fmt(order.quote_final_total)} />
+                    <MobileListCardRow
+                      label="Last refunded"
+                      value={
+                        <>
+                          {formatDateTime(order.last_refunded_at)}
+                          {refundRelTime && (
+                            <span className="block text-[10px] font-normal mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                              {refundRelTime}
+                            </span>
+                          )}
+                        </>
+                      }
+                    />
+                    <MobileListCardRow
+                      label="Refunded by"
+                      value={order.last_refunded_by?.full_name ?? "—"}
+                    />
+                  </MobileListCardFields>
+                </MobileListCard>
+              );
+            }
 
             return (
               <MobileListCard
@@ -523,7 +789,7 @@ export function PaymentsPage() {
                       </>
                     }
                   />
-                  {!isPendingTab && (
+                  {isApprovedTab && (
                     <MobileListCardRow
                       label="Approved"
                       value={formatDateTime(order.payment_evidence_reviewed_at)}
@@ -546,14 +812,34 @@ export function PaymentsPage() {
                       }}
                     >
                       <FileText size={14} />
-                      View Evidence
+                      View file
+                    </a>
+                  )}
+                  {order.stripe_payment_intent_id && (
+                    <a
+                      href={
+                        order.stripe_receipt_url ??
+                        stripePaymentDashboardUrl(order.stripe_payment_intent_id)
+                      }
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
+                      style={{
+                        borderColor: "var(--color-border)",
+                        color: "var(--color-text-primary)",
+                        background: "var(--color-bg)",
+                        textDecoration: "none",
+                      }}
+                    >
+                      <ExternalLink size={14} />
+                      Stripe
                     </a>
                   )}
                   {isPendingTab && (
                     <button
                       type="button"
                       disabled={isConfirming}
-                      onClick={() => handleConfirm(order)}
+                      onClick={(e) => openConfirmModal(order, e)}
                       className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-4 py-2.5 text-[13px] font-medium disabled:opacity-60"
                       style={{
                         background: "var(--color-btn-primary-bg)",
@@ -574,6 +860,32 @@ export function PaymentsPage() {
           })
         )}
       </div>
+
+      <ConfirmPaymentEvidenceModal
+        open={!!confirmTarget}
+        referenceCode={confirmTarget?.reference_code}
+        customerLabel={confirmTarget ? customerLabel(confirmTarget) : undefined}
+        amount={confirmTarget ? claimedAmount(confirmTarget) : 0}
+        paymentForLabel={
+          confirmTarget ? paymentEvidenceTypeLabelForTicket(confirmTarget) : ""
+        }
+        methodLabel={
+          confirmTarget?.payment_method_used
+            ? CHANNEL_LABELS[confirmTarget.payment_method_used] ??
+              confirmTarget.payment_method_used
+            : undefined
+        }
+        confirming={confirmingId === confirmTarget?.id}
+        error={confirmErr}
+        onConfirm={() => {
+          if (confirmTarget) void handleConfirm(confirmTarget);
+        }}
+        onClose={() => {
+          if (confirmingId) return;
+          setConfirmTarget(null);
+          setConfirmErr(null);
+        }}
+      />
     </div>
   );
 }

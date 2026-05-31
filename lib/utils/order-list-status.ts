@@ -1,5 +1,3 @@
-import { isPaymentEvidencePending, type TicketPaymentFields } from "@/lib/utils/invoice-payment-summary";
-
 /** Display label + tone for rows on GET /api/orders/orders */
 
 export type OrderListStatusTone =
@@ -20,6 +18,7 @@ export function orderListStatus(input: {
   payment_evidence_url?: string | null;
   payment_evidence_submitted_at?: string | null;
   payment_evidence_reviewed_at?: string | null;
+  stripe_payment_intent_id?: string | null;
   payment_paid_at?: string | null;
   deposit_paid_at?: string | null;
   payment_amount_received?: number | null;
@@ -29,13 +28,6 @@ export function orderListStatus(input: {
 
   if (ticket_status === "cancelled") {
     return { label: "Cancelled", tone: "cancelled" };
-  }
-
-  if (isPaymentEvidencePending(input as TicketPaymentFields)) {
-    return {
-      label: "Awaiting payment confirmation",
-      tone: "awaiting_confirmation",
-    };
   }
 
   if (ticket_status === "in_production") {

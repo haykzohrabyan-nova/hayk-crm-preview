@@ -143,6 +143,8 @@ export function PublicQuoteDocument({
   isOrder,
   isInProduction,
   isCompleted,
+  isRefunded = false,
+  refundStatus,
   refCode,
   paymentSummary,
 }: {
@@ -152,6 +154,8 @@ export function PublicQuoteDocument({
   isOrder: boolean;
   isInProduction: boolean;
   isCompleted?: boolean;
+  isRefunded?: boolean;
+  refundStatus?: string | null;
   refCode: string;
   paymentSummary: InvoicePaymentSummary;
 }) {
@@ -168,6 +172,8 @@ export function PublicQuoteDocument({
   const docType = isOrder ? "INVOICE" : "QUOTE";
 
   const workflowStatus = (() => {
+    if (isRefunded && refundStatus === "full") return "Refunded";
+    if (isRefunded) return "Partially Refunded";
     if (isCompleted) return "Ready for Pickup";
     if (paymentSummary.evidencePending) return "Payment Under Review";
     if (paymentSummary.fullyPaid) return isInProduction ? "In Production" : "Paid In Full";
@@ -180,7 +186,8 @@ export function PublicQuoteDocument({
   })();
 
   const workflowTone: "navy" | "rush" | "success" | "warning" =
-    isCompleted ? "success"
+    isRefunded ? "warning"
+    : isCompleted ? "success"
     : paymentSummary.evidencePending ? "warning"
     : paymentSummary.fullyPaid ? "success"
     : paymentSummary.depositPaid && paymentSummary.balanceDue > 0.01 ? "warning"

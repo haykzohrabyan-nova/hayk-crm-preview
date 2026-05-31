@@ -325,6 +325,22 @@ export type ShippingDestinationDisplayRow = {
   ship_to_zip: string | null
 }
 
+/** Ledger row — `ticket_payment_refunds` (migration 100) */
+export interface TicketPaymentRefundRow {
+  id: string
+  ticket_id: string
+  amount: number
+  payment_mode: 'deposit' | 'balance' | 'full'
+  method: string
+  source: 'stripe' | 'manual'
+  stripe_refund_id: string | null
+  reason: string
+  notes: string | null
+  evidence_path: string | null
+  refunded_by_id: string | null
+  created_at: string
+}
+
 export interface JobTicket {
   id: string
   ticket_kind: TicketKind
@@ -409,6 +425,13 @@ export interface JobTicket {
   payment_evidence_submitted_at?: string | null
   payment_evidence_reviewed_at?: string | null
   payment_evidence_amount?: number | null
+  // Refunds (migration 100 — see docs/feature-specs/payment-refunds.md)
+  refund_status?: 'none' | 'partial' | 'full'
+  total_refunded_amount?: number
+  last_refunded_at?: string | null
+  cancelled_at?: string | null
+  /** Accountant/Admin detail GET only */
+  payment_refunds?: TicketPaymentRefundRow[]
   /** Set when SDR routes quote to Sales (migration 095) */
   routed_reason?: string | null
   routed_notes?: string | null

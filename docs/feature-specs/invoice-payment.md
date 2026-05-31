@@ -1,6 +1,6 @@
 # Feature Spec — Invoice & Payment Flow
 
-> **Status: Phases A + B + B+ + B++ + accountant review queue + production lifecycle + quote-until-payment built. Phases C–E deferred.**
+> **Status: Phases A–C + B+++ + unified refunds + dashboard/reports revenue built. Zelle inbound (D) and offline-card queue (C-alt) deferred.**
 >
 > | Phase | What | Status |
 > |-------|------|--------|
@@ -13,10 +13,10 @@
 > | B+++ | Production / completed lifecycle + net terms auto-release | ✅ Built (migrations 069, 072) — in-production on **`/orders?tab=in_production`**, `/completed`, `maybe-auto-release-production.ts`, `markLeadWonOnProduction()` |
 > | B+++ | Quote-until-payment + balance on public link | ✅ Built — `maybe-convert-quote-to-order.ts`; confirm sets `client_confirmed` only; balance pay while in production |
 > | B+++ | Customer notifications (payment confirmed, invoice link, pickup ready) | ✅ Built — `payment-confirmed-template.ts`, `invoice-link-template.ts`, `order-ready-template.ts` |
-> | C | Stripe Card payment (online Checkout) | ⏳ Deferred — DB ready, API wiring not started |
+> | C | Stripe Card payment (online Checkout) | ✅ Built — Checkout + webhook evidence; accountant Confirm on `/payments` |
 | C-alt | Offline card via merchant terminal + authorization queue | ⏳ Planned — see [`offline-card-payment.md`](./offline-card-payment.md) |
 > | D | Zelle code matching | ⏳ Deferred |
-> | E | Dashboard revenue KPIs | ⏳ Deferred |
+> | E | Dashboard revenue KPIs | ✅ Built — cash collected + released value; excludes `refund_status = full` |
 
 ---
 
@@ -46,7 +46,7 @@ flowchart TD
     Rep["Rep on /quotes/[id]"]
     Send["Click Send Quote"]
     Token["Generate public_token + zelle_code\nPATCH job_ticket"]
-    InvoicePage["Public /invoice/[token]\n(no auth required)"]
+    InvoicePage["Public /q/[token]\n(no auth required)"]
     Customer["Customer receives link\n(SMS / WhatsApp / Email)"]
 
     subgraph payment [Payment Flow]
@@ -143,6 +143,15 @@ The customer page derives a **portal phase** from ticket status + payment state 
 | `net_terms` | Net strategy, price gate open | Net terms copy; optional early pay |
 | `order_ready` | `ticket_status = completed` | Green **Ready for pickup** banner with shop address + phone |
 
+**Terminal / blocked states (May 2026)** — override payment stepper; invoice remains viewable:
+
+| State | Banner | Payment actions |
+|-------|--------|-----------------|
+| `ticket_status = cancelled` | Red — stored cancel reason | None (read-only) |
+| `refund_status = partial` \| `full` | Amber — contact sales rep | None (read-only) |
+
+See [`payment-refunds.md`](./payment-refunds.md).
+
 **Step 1 (price confirmation) display rules:**
 - **Confirm quote price** + **Customer must confirm the quote** — when approval required and not yet confirmed
 - **Quote price confirmed** + **Confirmed** — only after customer clicks Confirm
@@ -209,7 +218,9 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 | `POST /api/public/quotes/[token]/submit-payment` | None | Customer payment proof / cash submission |
 | `GET /api/public/quotes/[token]/pdf` | None | Customer PDF download — same `InvoicePDF` as staff (multi-shipping grid, SKU labels, file names) |
 | `GET /api/public/quotes/[token]/files/[fileId]` | None | Line/variant attachment stream for preview + download |
-| `GET /api/payments/page-data` | Accountant + Admin | Pending + approved evidence lists + tab counts |
+| `GET /api/payments/page-data` | Accountant + Admin | Pending + approved + **refunded** lists + tab counts |
+| `POST /api/tickets/[id]/refund` | Accountant + Admin | Unified refund (manual + Stripe per payment slot) |
+| `GET /api/tickets/[id]/refund-evidence/[refundId]` | Accountant + Admin | Signed refund evidence file |
 | `GET /api/payments/pending` | Accountant + Admin | Legacy — pending queue only |
 | `GET /api/payments/counts` | Accountant + Admin | Accountant dashboard KPIs |
 | `GET /api/production/orders` | Authenticated | Legacy — prefer `GET /api/orders/orders` |
@@ -246,50 +257,25 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 
 ---
 
-## Phase C — Stripe Card Payment
+## Phase C — Stripe Card Payment ✅ BUILT
 
-### Dependencies
+### Dependencies & env
 
-```
-npm install stripe @stripe/stripe-js
-```
+`stripe` npm package. Server: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`. Public page uses hosted Checkout (no `@stripe/stripe-js` required on `/q/[token]`).
 
-### Environment variables
+### API routes (as built)
 
-```
-STRIPE_SECRET_KEY=sk_live_...          # server only
-STRIPE_WEBHOOK_SECRET=whsec_...        # server only
-NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_...
-```
+| Route | Auth | Behaviour |
+|-------|------|-----------|
+| `POST /api/public/quotes/[token]/stripe/create-session` | None (token) | Creates Checkout for server-computed deposit/balance/full; blocked when cancelled or refunded |
+| `POST /api/payments/stripe/webhook` | Stripe signature | `checkout.session.completed` → sets Stripe PI/evidence fields; **does not** auto-record payment — accountant **Confirm** on `/payments` |
 
-### API routes
+Migration `097_stripe_payment_columns.sql` stores session/PI/charge metadata on `job_tickets`.
 
-**`POST /api/payments/stripe/create-session`**
+### Public page
 
-- Creates a Stripe Checkout Session from the ticket's line items and total
-- `metadata: { ticket_id, public_token }` — used by webhook to match the payment
-- Success URL: `/invoice/[token]?paid=1`
-- Cancel URL: `/invoice/[token]`
-- Returns `{ session_url }` — invoice page redirects the customer there
-
-**`POST /api/payments/stripe/webhook`**
-
-- Receives `checkout.session.completed` event from Stripe
-- Verifies signature with `STRIPE_WEBHOOK_SECRET`
-- Matches ticket via `metadata.ticket_id`
-- Updates `job_tickets`:
-  - `payment_status = 'paid'`
-  - `payment_amount_received` (from Stripe amount)
-  - `payment_paid_at = now()`
-  - `payment_method_used = 'card_default'`
-  - `stripe_session_id`
-  - `ticket_status = 'approved'` (quote auto-converts to order on payment)
-- Logs `activity: order_payment_received`
-
-### Invoice page
-
-- "Pay Now" button calls `create-session` → redirects to Stripe Checkout URL
-- On return with `?paid=1` query param: show a green success banner *"Payment received — thank you!"*
+- **Pay with card** on `/q/[token]` → redirect to Checkout; return `?stripe=success` refetches portal
+- Refunds: `POST /api/tickets/[id]/refund` (staff) — manual + Stripe per payment slot
 
 ---
 
@@ -334,11 +320,32 @@ In `components/quotes/quote-detail.tsx` action bar:
 
 ---
 
+## Payment refunds (unified) ✅
+
+> **Full spec:** [`payment-refunds.md`](./payment-refunds.md)
+
+**Migrations:** `097`–`102` (Stripe columns, refund ledger, evidence bucket, `cancelled_at`).
+
+| Concept | Behavior |
+|---------|----------|
+| **Slots** | Partial-payment orders: **Deposit** (always manual) + **Balance** (Stripe if card PI confirmed, else manual). Full-pay: one **Full payment** slot. |
+| **Full order refund** | Two CRM actions when deposit was cash and balance was Stripe — one refund per slot. |
+| **Stripe** | `processStripeRefund` → `stripe.refunds.create({ payment_intent, amount })` → `applyTicketRefund` (`source: stripe`). Requires `payment_evidence_reviewed_at`. |
+| **Manual** | `applyTicketRefund` only; optional evidence upload → `refund-evidence` bucket. |
+| **Lists** | `refund_status` partial/full → Payment Evidence **Refunded** tab (Paid via / Refunded via columns); excluded from Production, Completed, active order tabs. **Cancelled** orders stay on Orders → Cancelled and on **Refunded** (Refunded + Cancelled badges). |
+| **Public `/q/{token}`** | Partial/full refund → amber banner; cancelled → red banner; no pay/confirm/Stripe. **Customer Link** + **Copy Link** on staff detail when `cancelled` + `public_token`. No customer refund-receipt confirmation in v1. |
+| **Revenue KPIs** | `refund_status = full` excluded from cash collected, released order value, reports awaiting collection (`excludeFullyRefundedFromRevenue`). Partial refunds still count until fully refunded. |
+| **Cancel** | Admin + Accountant; partial-refund warning modal before cancel-reason flow; `cancelled_at` on ticket. |
+
+**UI:** **Refund payment** (`record-refund-modal.tsx`), **Refunds** first in Overview, **Open in Stripe** on ledger rows, refund-aware stats row. Lookup reasons: `payment_refund_reason`.
+
+---
+
 ## Phase E — Dashboard & Reports Revenue Integration ✅
 
 **Built (May 2026):**
 
-- `lib/utils/dashboard-metrics.ts` — `sumCashCollectedInPeriod`, `sumProductionReleasedValue`
+- `lib/utils/dashboard-metrics.ts` — `sumCashCollectedInPeriod`, `sumProductionReleasedValue` (excludes `refund_status = full`)
 - `lib/utils/team-dashboard-metrics.ts` — per-user metrics on admin Team cards
 - `GET /api/dashboard/kpis` — **Cash Collected** from `ticket_payment_recorded`; production metrics use `production_released_at`
 - `GET /api/reports/summary` — cash collected, released order value, awaiting collection, rep scorecards, payment ledger
@@ -349,7 +356,7 @@ In `components/quotes/quote-detail.tsx` action bar:
 - **Pipeline Value** — draft/sent quote totals (live snapshot)
 - Admin **Team** cards — Collected / Released / Balance due (sales) · Handled / Routed / Sourced (SDR)
 
-**Deferred:** Revenue by payment method chart on dashboard; Stripe integration unchanged.
+**Deferred:** Revenue by payment method chart on dashboard.
 
 ---
 
@@ -392,7 +399,16 @@ In `components/quotes/quote-detail.tsx` action bar:
 | `app/(app)/production/[id]/page.tsx` | B+++ | ⚠ Legacy | Redirects to `/orders/[id]` |
 | `app/(app)/completed/page.tsx` | B+++ | ✅ Built | Completed orders list |
 | `app/(app)/completed/[id]/page.tsx` | B+++ | ✅ Built | Completed order detail |
-| `components/orders/payments-page.tsx` | B+++ | ✅ Built | Pending + Approved tabs; evidence retained after confirm |
+| `components/orders/payments-page.tsx` | B+++ | ✅ Built | Pending + Approved + **Refunded** tabs; evidence retained after confirm |
+| `supabase/migrations/097_stripe_payment_columns.sql` | C | ✅ Built | Stripe PI/session columns on `job_tickets` |
+| `supabase/migrations/100_payment_refunds.sql` | — | ✅ Built | `ticket_payment_refunds` ledger + `refund_status` |
+| `supabase/migrations/101_refund_evidence_storage.sql` | — | ✅ Built | `refund-evidence` bucket |
+| `supabase/migrations/102_ticket_cancelled_at.sql` | — | ✅ Built | `cancelled_at` on cancel |
+| `docs/feature-specs/payment-refunds.md` | — | ✅ Built | Refunds + post-refund lifecycle spec |
+| `lib/payments/apply-ticket-refund.ts` | — | ✅ Built | Ledger + ticket summary |
+| `lib/utils/exclude-refunded-tickets.ts` | — | ✅ Built | Ops list + revenue exclusion |
+| `components/orders/record-refund-modal.tsx` | — | ✅ Built | Refund payment modal |
+| `components/orders/refund-history-section.tsx` | — | ✅ Built | Overview refunds block |
 | `components/orders/payment-detail-overview.tsx` | B+++ | ✅ Built | Payment review collapsible; default open on payment context, collapsed on order detail; read-only when `payment_evidence_reviewed_at` set |
 | `components/admin/sms-templates-section.tsx` | — | ✅ Built | Admin → Settings → SMS Templates |
 | `app/api/admin/sms-templates/route.ts` | — | ✅ Built | GET/PATCH editable SMS bodies |
@@ -412,8 +428,9 @@ In `components/quotes/quote-detail.tsx` action bar:
 | `components/quotes/quote-detail/ticket-detail-overview.tsx` | B+++ | ✅ Built | Context-aware overview router |
 | `components/quotes/quote-detail/quote-stage-overview.tsx` | B+++ | ✅ Built | Customer link + Copy on quote stage |
 | `components/quotes/new-quote-form.tsx` | B+ | ✅ Built | Full/Partial prepayment toggle |
-| `app/api/payments/stripe/create-session/route.ts` | C | ⏳ Deferred | Stripe Checkout session |
-| `app/api/payments/stripe/webhook/route.ts` | C | ⏳ Deferred | Stripe payment confirmation |
+| `app/api/public/quotes/[token]/stripe/create-session/route.ts` | C | ✅ Built | Public Stripe Checkout session |
+| `app/api/payments/stripe/webhook/route.ts` | C | ✅ Built | Stripe webhook → evidence pending |
+| `app/api/tickets/[id]/refund/route.ts` | — | ✅ Built | Unified refund (manual + Stripe per slot) |
 | `app/api/payments/zelle/inbound/route.ts` | D | ⏳ Deferred | Inbound email parsing |
 | `app/api/dashboard/kpis/route.ts` | E | ✅ Built | Cash collected + production release metrics; team_member_metrics |
 | `app/api/reports/summary/route.ts` | E | ✅ Built | Full reporting + rep scorecards |

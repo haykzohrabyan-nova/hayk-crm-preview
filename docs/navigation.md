@@ -255,9 +255,10 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 /orders?tab=in_production  → In Production
 /orders?tab=cancelled       → Cancelled
 
-/payments             → Payment evidence (Pending approval | Approved tabs)
+/payments             → Payment evidence (Pending | Approved | Refunded tabs)
 /payments?tab=pending   → default — unreviewed evidence
 /payments?tab=approved  → reviewed evidence (file still viewable)
+/payments?tab=refunded  → partial/full refund_status orders
 
 /completed            → Completed orders (date filter + search, no tabs)
 ```
@@ -351,14 +352,17 @@ Row click → `/orders/[id]`.
 
 ### `/payments` — Payment evidence (Accountant + Admin)
 
-**Mount:** `GET /api/payments/page-data` — returns pending list, approved list, and tab counts in one response.
+**Mount:** `GET /api/payments/page-data` — returns pending list, approved list, refunded list, and tab counts in one response.
 
 | Tab | Content | Badge | Filter |
 |-----|---------|-------|--------|
-| Pending approval | Customer proof awaiting accountant confirm | `counts.pending` | `payment_evidence_url` set, `payment_evidence_reviewed_at` null |
-| Approved | Evidence already reviewed — **View evidence** only (no Confirm) | `counts.approved` | `payment_evidence_url` set, `payment_evidence_reviewed_at` set |
+| Pending approval | Customer proof awaiting accountant confirm | `counts.pending` | Unreviewed evidence/Stripe; `refund_status` none |
+| Approved | Evidence already reviewed — **View evidence** only (no Confirm) | `counts.approved` | Reviewed; `refund_status` none |
+| **Refunded** | Orders with partial/full refunds | `counts.refunded` | `refund_status IN ('partial','full')` — includes **Cancelled** badge when applicable; **Paid via** / **Refunded via** columns |
 
-Both tabs include **`sent`**, **`order`**, **`in_production`**, and **`completed`** tickets.
+Pending and Approved tabs include **`sent`**, **`order`**, **`in_production`**, and **`completed`** tickets. Refunded tab lists all matching refund_status rows (may include cancelled orders).
+
+> Spec: [`feature-specs/payment-refunds.md`](feature-specs/payment-refunds.md)
 
 **List columns:** Order · Customer · Claimed · **Payment For** (Deposit / Balance / Full payment + short description) · Method · Submitted · Actions or Approved date.
 

@@ -3,6 +3,210 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-05-31] — Remove legacy Stripe-only refund route and modal
+
+### Removed
+- `app/api/tickets/[id]/stripe/refund/route.ts` — superseded by `POST /api/tickets/[id]/refund`
+- `components/quotes/quote-detail/stripe-refund-modal.tsx` — unused; UI uses `record-refund-modal.tsx`
+
+### Changed
+- `docs/api-contract.md`, `payment-refunds.md`, `invoice-payment.md`, `security.md` — drop legacy endpoint references
+
+## [2026-05-31] — Documentation audit (refunds / Stripe / security)
+
+### Changed
+- Second pass: fixed stale **admin-only cancel**, two-tab `/payments`, deferred Stripe paths, `/invoice/` URLs; added `security.md` public payment guards + staff refund auth; `rbac.md` refund/cancel rows; `session-summary.md` historical disclaimer
+- `payment-refunds.md` — canonical refunds spec (UI uses unified `/refund` only)
+
+## [2026-05-31] — Payment refunds documentation
+
+### Added
+- `docs/feature-specs/payment-refunds.md` — unified refunds spec (ledger, UI, lists, public portal, cancel, reports)
+
+### Changed
+- `docs/feature-specs/invoice-payment.md`, `tickets.md`, `api-contract.md`, `schema.md`, `rbac.md`, `navigation.md`, `reports.md` — aligned with May 2026 refund/cancel/Stripe work
+
+## [2026-05-31] — Customer link on cancelled orders
+
+### Fixed
+- Order detail sidebar — **Customer Link** and **Copy Link** show for `ticket_status = cancelled` (portal stays read-only)
+
+## [2026-05-31] — Public portal message when order is refunded
+
+### Added
+- `/q/[token]` — amber banner when `refund_status` is partial/full; payment/confirm/Stripe blocked (read-only invoice)
+- `GET /api/public/quotes/[token]` exposes `refund_status`, `total_refunded_amount`
+
+## [2026-05-31] — Partial refund warning before cancel order
+
+### Added
+- Cancel order on partially refunded tickets — warning modal (refund first or **Proceed to cancel**), then existing cancel-reason modal
+- Accountants may cancel quotes/orders (same as admin); API `PATCH` cancel allows accountant role
+
+## [2026-05-31] — Linked Lead shows order cancelled date
+
+### Added
+- `LinkedLeadCard` — **Order cancelled {date}** footer when the ticket is cancelled (alongside Production started)
+- Migration `102_ticket_cancelled_at.sql` — `job_tickets.cancelled_at`; set on cancel; GET resolves from column or `ticket_cancelled` activity
+
+## [2026-05-31] — Refunds at top of Overview tab
+
+### Changed
+- Order/production/completed detail — **Refunds** is the first block inside the **Overview** tab (not above stats on the page)
+
+## [2026-05-31] — Orders list payment pill shows refund status
+
+### Fixed
+- Orders table **Payment** column shows **Fully refunded** / **Partially refunded** when `refund_status` is set (was showing Unpaid after refund)
+
+## [2026-05-31] — Refunded + cancelled orders visible again
+
+### Fixed
+- Fully refunded then **cancelled** orders disappeared (Refunded tab omitted `cancelled` status; Cancelled tab excluded refunded rows)
+- Payment Evidence **Refunded** includes `ticket_status = cancelled` with **Cancelled** badge
+- Orders **Cancelled** and **All** tabs include refunded cancelled orders
+
+## [2026-05-31] — Open in Stripe on Refunds section
+
+### Added
+- `RefundHistorySection` — **Open payment in Stripe** (Payment Intent) and **Open refund in Stripe** per Stripe ledger row
+- `lib/stripe/dashboard-url.ts` — `stripeRefundDashboardUrl`; shared `OpenInStripeLink` component
+
+## [2026-05-31] — Reports exclude fully refunded revenue
+
+### Changed
+- `dashboard-metrics.ts`, `GET /api/reports/summary` — cash collected, released order value, and awaiting collection skip tickets with `refund_status = full` (partial refunds still count until fully refunded)
+- `exclude-refunded-tickets.ts` — `excludeFullyRefundedFromRevenue`, `isFullyRefundedTicket`
+- `docs/api-contract.md`, `docs/feature-specs/invoice-payment.md`, `docs/feature-specs/dashboard.md` — unified refunds API and revenue rules
+
+## [2026-05-31] — Refunded tab: paid via and refunded via columns
+
+### Changed
+- Payment Evidence **Refunded** tab — shows how the order was **paid** and how the **refund** was issued (channel + Stripe/manual + deposit/balance/full slot)
+- `fetch-payments-data.ts` — enriches refunded rows from `ticket_payment_refunds` ledger
+
+## [2026-05-31] — Refunded stat card shows refund amount
+
+### Fixed
+- `ticket-stats-row.tsx` — **Refunded** card main value is total refunded (e.g. $500.00), not $0.00, when order is fully refunded
+
+## [2026-05-31] — Quote/order detail: remove Overview panel scroll
+
+### Fixed
+- `quote-detail.tsx` — Overview/History tab strip no longer uses horizontal overflow scroll; panel content uses page scroll only (no inner scrollbar on the tab card)
+
+## [2026-05-31] — Refunded orders only on Payment Evidence Refunded tab
+
+### Changed
+- `lib/utils/exclude-refunded-tickets.ts` — shared filter; refunded orders excluded from **Orders**, **Production**, and **Completed** lists and sidebar counts
+- `/payments/[id]` — hide bottom **Order completed** banner; refunded orders stay on Payment Evidence **Refunded** only
+
+## [2026-05-31] — Refunds and payment evidence match overview sections
+
+### Changed
+- `refund-history-section.tsx`, `payment-detail-overview.tsx` — use shared `DetailSection` + `DetailCollapsibleSection` (no extra card border) like Line Items and other overview rows
+
+## [2026-05-31] — Refunds at top on payment review detail
+
+### Changed
+- `/payments/[id]` — when the order has refunds, **Refunds** (+ payments received) render at the top of Overview, above payment review
+
+## [2026-05-31] — Refund-aware order stats and Payment Evidence queues
+
+### Changed
+- `ticket-stats-row.tsx` — after a refund, stats show **Collected** (paid before refunds), **Refunded** amount, and **Fully/Partially refunded** instead of misleading **Unpaid** / full balance due
+- `fetch-payments-data.ts` — orders with `refund_status` partial/full appear **only** on Payment Evidence **Refunded** tab (removed from Pending/Approved)
+- `quote-detail.tsx` — **Payments received** + **Refunds** sections on order overview
+- `order-payment-summary.tsx`, `history-section.tsx` — refund status labels and history entries for `ticket_payment_refund`
+
+## [2026-05-31] — Refund payment label
+
+### Changed
+- Order detail quick action and refund modal — **Record refund** renamed to **Refund payment**
+
+## [2026-05-31] — Record refund evidence upload button
+
+### Changed
+- `record-refund-modal.tsx` — optional evidence uses a primary **Upload image or PDF** button (dashed drop zone, filename + remove) instead of the native file input
+
+## [2026-05-31] — Payment Evidence Refunded tab
+
+### Added
+- `components/orders/payments-page.tsx` — third **Refunded** tab (partial/full `refund_status`) with counts from page-data
+
+### Changed
+- `lib/utils/filter-payment-evidence-rows.ts` — search includes refund status, total refunded, refunded-by name
+
+## [2026-05-31] — Order & completed detail: Line Items expanded by default
+
+### Changed
+- `/orders/[id]` and `/completed/[id]` overview — **Line Items** section starts open (still collapsible)
+
+## [2026-05-31] — Payment settings: balance paid amount
+
+### Added
+- **Payment & order settings** — **Balance paid** amount (total received minus deposit) when balance was recorded; pay-in-full shows **Amount paid**
+
+## [2026-05-31] — Payment settings: balance payment method
+
+### Added
+- **Payment & order settings** (and payment summary blocks) — **Balance method** when balance was recorded (`payment_method_used`); full-pay orders show **Payment method**
+
+## [2026-05-31] — Confirm payment evidence: sure-step modal
+
+### Added
+- `components/orders/confirm-payment-evidence-modal.tsx` — accountant/admin must confirm before `record_payment` runs (**Payments** queue + payment detail overview)
+
+## [2026-05-31] — Orders list: row click only (no View button)
+
+### Changed
+- `/orders` — removed redundant **View** / **View order** buttons; entire table row and mobile card open order detail (no per-row actions for any role)
+
+## [2026-05-31] — Clearer awaiting-payment labels (… confirmation)
+
+### Changed
+- Pending payment labels — **Awaiting deposit confirmation**, **Awaiting balance confirmation**, **Awaiting full payment confirmation** (orders list + order detail stats)
+
+## [2026-05-31] — Orders list: In Production + specific payment-awaiting label
+
+### Changed
+- `/orders` status column stays **In Production** (or other workflow status) when payment evidence is pending; payment column still shows **Awaiting deposit** / **Awaiting balance** / **Awaiting full payment** (order detail stats row unchanged — **Under review** there)
+
+## [2026-05-31] — Specific awaiting-payment labels (deposit / balance / full)
+
+### Changed
+- Orders list payment column and order detail stats subtitle — pending confirmation uses **Awaiting deposit**, **Awaiting balance**, or **Awaiting full payment** via `inferPaymentEvidenceMode`
+
+## [2026-05-31] — Orders list: payment-under-review status for Stripe evidence
+
+### Fixed
+- `/orders` list — includes `stripe_payment_intent_id` so card payments awaiting accountant confirm show **Under review** / type-specific awaiting label instead of **In Production** + **Partial** (matches order detail and stats row)
+
+## [2026-05-31] — Stripe card refunds (accountant / admin)
+
+### Added
+- `POST /api/tickets/[id]/stripe/refund` — full or partial refund after card payment is confirmed; validates amount ≤ Stripe charge minus prior refunds
+- `StripeRefundModal` — two-step confirmation (“100% sure”) + refund reason (Admin → Dropdown Options → **Stripe Refund Reasons**), full/partial amount
+- **Refund card payment** quick action (below Cancel order) for accountant and admin when refundable balance remains
+- Migrations `098_stripe_refund_tracking.sql`, `099_seed_stripe_refund_reasons.sql`
+
+### Changed
+- `components/ui/stripe-evidence-panel.tsx` — shows refunded amount when applicable
+
+## [2026-05-31] — Stripe Checkout on public quote link
+
+### Added
+- `supabase/migrations/097_stripe_payment_columns.sql` — Stripe session/PI/charge IDs, amount, card brand/last4, receipt URL on `job_tickets`
+- `app/api/public/quotes/[token]/stripe/create-session/route.ts` — hosted Checkout for deposit/balance/full (server-computed amount)
+- `app/api/payments/stripe/webhook/route.ts` — `checkout.session.completed` → payment evidence pending (no auto-record)
+- `lib/stripe/*`, `lib/utils/payment-evidence-pending.ts`, `components/ui/stripe-evidence-panel.tsx`
+- Public `/q/[token]` — **Pay with card** redirects to Stripe; `?stripe=success` refreshes portal
+
+### Changed
+- `/payments` and payment detail — Stripe evidence links (receipt + Dashboard); pending queue includes Stripe rows without uploaded files
+- `record_payment` marks evidence reviewed when `stripe_payment_intent_id` is set
+- `npm` dependency: `stripe`
+
 ## [2026-05-30] — Orders list: fix stale “Awaiting review” after evidence approved
 
 ### Fixed

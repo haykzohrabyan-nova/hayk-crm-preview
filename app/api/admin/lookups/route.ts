@@ -23,6 +23,8 @@ export const CATEGORY_META: Record<string, { label: string; section: "leads" | "
   ticket_payment:   { label: "Payment Methods",      section: "order" },
   quote_cancel_reason: { label: "Quote Cancellation Reasons", section: "order" },
   order_cancel_reason: { label: "Order Cancellation Reasons", section: "order" },
+  stripe_refund_reason: { label: "Stripe Refund Reasons", section: "order" },
+  payment_refund_reason: { label: "Payment Refund Reasons", section: "order" },
   color_mode:       { label: "Color Mode",            section: "order" },
   sides:            { label: "Sides",                  section: "order" },
   roll_direction:   { label: "Roll Direction",         section: "order" },

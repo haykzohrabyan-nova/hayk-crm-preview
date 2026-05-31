@@ -4,6 +4,7 @@ import {
   scopedCompletedTicketCount,
   scopedTicketCount,
 } from "@/lib/utils/db-counts";
+import { excludeRefundedTickets } from "@/lib/utils/exclude-refunded-tickets";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -99,7 +100,7 @@ export async function fetchSidebarCounts(
       ? Promise.all([
           scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "order")),
           scopedTicketCount(admin, roleName, userId, (q) =>
-            q.eq("ticket_status", "in_production"),
+            excludeRefundedTickets(q.eq("ticket_status", "in_production")),
           ),
         ]).then(([pendingOrders, inProduction]) => {
           counts["/orders"] = pendingOrders + inProduction;
@@ -109,10 +110,13 @@ export async function fetchSidebarCounts(
     (roleName === "accountant" || roleName === "admin") &&
     shouldCount("/payments", visibleRoutes)
       ? countExact(admin, "job_tickets", (q) =>
-          q
-            .not("payment_evidence_url", "is", null)
-            .is("payment_evidence_reviewed_at", null)
-            .in("ticket_status", ["sent", "order", "in_production", "completed"]),
+          excludeRefundedTickets(
+            q
+              .not("payment_evidence_submitted_at", "is", null)
+              .is("payment_evidence_reviewed_at", null)
+              .or("payment_evidence_url.not.is.null,stripe_payment_intent_id.not.is.null")
+              .in("ticket_status", ["sent", "order", "in_production", "completed"]),
+          ),
         ).then((n) => {
           counts["/payments"] = n;
         })
@@ -121,9 +125,11 @@ export async function fetchSidebarCounts(
     (roleName === "accountant" || roleName === "admin" || roleName === "sdr") &&
     shouldCount("/completed", visibleRoutes)
       ? (roleName === "admin" || roleName === "accountant"
-          ? countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "completed"))
+          ? countExact(admin, "job_tickets", (q) =>
+              excludeRefundedTickets(q.eq("ticket_status", "completed")),
+            )
           : scopedCompletedTicketCount(admin, roleName, userId, (q) =>
-              q.eq("ticket_status", "completed"),
+              excludeRefundedTickets(q.eq("ticket_status", "completed")),
             )
         ).then((n) => {
           counts["/completed"] = n;
@@ -131,7 +137,9 @@ export async function fetchSidebarCounts(
       : Promise.resolve(),
 
     shouldCount("/production", visibleRoutes)
-      ? countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "in_production")).then(
+      ? countExact(admin, "job_tickets", (q) =>
+          excludeRefundedTickets(q.eq("ticket_status", "in_production")),
+        ).then(
           (n) => {
             counts["/production"] = n;
           },

@@ -77,11 +77,14 @@ export async function GET(_request: NextRequest, { params }: Params) {
        payment_evidence_submitted_at,
        payment_evidence_reviewed_at,
        payment_evidence_amount,
+       stripe_payment_intent_id,
        payment_amount_received,
        payment_paid_at,
        deposit_amount,
        deposit_paid_at,
-       balance_paid_at`
+       balance_paid_at,
+       refund_status,
+       total_refunded_amount`
     )
     .eq("public_token", token)
     .single();

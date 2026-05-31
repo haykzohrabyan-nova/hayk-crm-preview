@@ -3,6 +3,7 @@
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { computeCheckout, getChannelLabel } from "@/lib/utils/compute-checkout";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { paymentEvidenceAwaitingConfirmationLabel } from "@/lib/utils/payment-evidence-type";
 import { formatDate, formatDateTime, isOverdue } from "@/lib/utils/format";
 import type { PaymentConfig } from "@/lib/types";
 import type { QuoteSku } from "@/lib/utils/ticket-math";
@@ -32,8 +33,14 @@ export interface StatsTicket {
   ticket_net_terms_label: string | null;
   payment_evidence_url: string | null;
   payment_evidence_submitted_at: string | null;
+  payment_evidence_reviewed_at?: string | null;
+  payment_evidence_amount?: number | null;
+  stripe_payment_intent_id?: string | null;
+  stripe_amount_cents?: number | null;
   payment_method_used: string | null;
   deposit_method: string | null;
+  refund_status?: "none" | "partial" | "full" | string | null;
+  total_refunded_amount?: number | null;
 }
 
 function buildConfig(t: StatsTicket): PaymentConfig {
@@ -85,7 +92,31 @@ export function TicketStatsRow({
     ticket_deposit_value: ticket.ticket_deposit_value,
   });
 
-  const balanceDue = Math.max(0, Math.round((total - checkout.amountPaid) * 100) / 100);
+  const amountOnFile = checkout.amountPaid;
+  const totalRefunded = Number(ticket.total_refunded_amount ?? 0);
+  const refundStatus = ticket.refund_status ?? "none";
+  const hasRefund = refundStatus === "partial" || refundStatus === "full";
+  const lifetimeCollected = Math.round((amountOnFile + totalRefunded) * 100) / 100;
+
+  const balanceDue = Math.max(0, Math.round((total - amountOnFile) * 100) / 100);
+  let balanceLabel = "Balance Due";
+  let balanceValue = formatCurrency(balanceDue);
+  let balanceSub = balanceDue > 0.01 ? "Outstanding" : "Paid in full";
+  let balanceColor: string | undefined =
+    balanceDue > 0.01 ? "var(--color-danger)" : "var(--color-success)";
+
+  if (hasRefund && refundStatus === "full") {
+    balanceLabel = "Refunded";
+    balanceValue = formatCurrency(totalRefunded);
+    balanceSub =
+      amountOnFile > 0.01
+        ? `Fully refunded · ${formatCurrency(amountOnFile)} on file`
+        : "Fully refunded · nothing owed";
+    balanceColor = "var(--color-warning-text-deep)";
+  } else if (hasRefund && totalRefunded > 0.01) {
+    balanceSub = `${formatCurrency(totalRefunded)} refunded · ${balanceSub.toLowerCase()}`;
+  }
+
   const ps = ticket.payment_status ?? "unpaid";
   const evidencePending = isPaymentEvidencePending(ticket);
   const overdue = isOverdue(ticket.due_date);
@@ -98,9 +129,16 @@ export function TicketStatsRow({
       : undefined;
   let paymentColor: string | undefined;
 
-  if (evidencePending) {
+  if (hasRefund && !evidencePending) {
+    paymentValue = refundStatus === "full" ? "Fully refunded" : "Partially refunded";
+    paymentSub =
+      totalRefunded > 0.01
+        ? `${formatCurrency(totalRefunded)} refunded`
+        : undefined;
+    paymentColor = "var(--color-warning-text-deep)";
+  } else if (evidencePending) {
     paymentValue = "Under review";
-    paymentSub = "Awaiting confirmation";
+    paymentSub = paymentEvidenceAwaitingConfirmationLabel(ticket);
     paymentColor = "var(--color-warning-text-deep)";
   } else if (strategy === "net" && ps !== "paid") {
     paymentValue = ticket.ticket_net_terms_label?.replace("-", " ") ?? "Net terms";
@@ -114,12 +152,25 @@ export function TicketStatsRow({
     paymentColor = "var(--color-danger)";
   }
 
-  const receivedSub =
-    checkout.depositPaid && strategy === "partial"
+  const receivedValue = hasRefund && lifetimeCollected > 0.01
+    ? formatCurrency(lifetimeCollected)
+    : formatCurrency(amountOnFile);
+
+  const receivedSub = hasRefund
+    ? totalRefunded > 0.01
+      ? `${formatCurrency(totalRefunded)} refunded · ${formatCurrency(amountOnFile)} on file`
+      : `${formatCurrency(amountOnFile)} on file`
+    : checkout.depositPaid && strategy === "partial"
       ? "Deposit paid"
-      : checkout.amountPaid > 0
+      : amountOnFile > 0
         ? "Payment received"
         : "None yet";
+
+  const receivedColor = hasRefund
+    ? "var(--color-warning-text-deep)"
+    : amountOnFile > 0
+      ? "var(--color-success)"
+      : undefined;
 
   const dueDateFormatted = ticket.due_date ? formatDate(ticket.due_date) : "—";
   const dueYear = ticket.due_date
@@ -139,17 +190,17 @@ export function TicketStatsRow({
     },
     {
       key: "received",
-      label: "Received",
-      value: formatCurrency(checkout.amountPaid),
+      label: hasRefund ? "Collected" : "Received",
+      value: receivedValue,
       subValue: receivedSub,
-      valueColor: checkout.amountPaid > 0 ? "var(--color-success)" : undefined,
+      valueColor: receivedColor,
     },
     {
       key: "balance",
-      label: "Balance Due",
-      value: formatCurrency(balanceDue),
-      subValue: balanceDue > 0.01 ? "Outstanding" : "Paid in full",
-      valueColor: balanceDue > 0.01 ? "var(--color-danger)" : "var(--color-success)",
+      label: balanceLabel,
+      value: balanceValue,
+      subValue: balanceSub,
+      valueColor: balanceColor,
     },
     completedAt
       ? {

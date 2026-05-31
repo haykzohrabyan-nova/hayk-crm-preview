@@ -4,7 +4,11 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { FileText, CheckCircle2, Loader2, CreditCard } from "lucide-react";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
-import { inferPaymentEvidenceMode } from "@/lib/utils/payment-evidence-type";
+import {
+  inferPaymentEvidenceMode,
+  paymentEvidenceTypeLabelForTicket,
+} from "@/lib/utils/payment-evidence-type";
+import { ConfirmPaymentEvidenceModal } from "@/components/orders/confirm-payment-evidence-modal";
 import { formatDateTime } from "@/lib/utils/format";
 import { PaymentTypeBadge } from "@/components/orders/payment-type-badge";
 import {
@@ -12,7 +16,11 @@ import {
   type SummaryTicket,
   type PricingTicketFields,
 } from "@/components/quotes/quote-detail/order-payment-summary";
-import { DetailCollapsibleSection } from "@/components/quotes/quote-detail/detail-layout-primitives";
+import {
+  DetailCollapsibleSection,
+  DetailSection,
+} from "@/components/quotes/quote-detail/detail-layout-primitives";
+import { StripeEvidencePanel } from "@/components/ui/stripe-evidence-panel";
 
 const CHANNEL_LABELS: Record<string, string> = {
   wire:    "Wire Transfer",
@@ -47,12 +55,22 @@ export function PaymentDetailOverview({
   defaultOpen?: boolean;
 }) {
   const router = useRouter();
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
 
   const evidencePending = isPaymentEvidencePending(ticket);
   const canConfirm = !readOnly && evidencePending;
   const claimed = submittedAmount(ticket);
+
+  function openConfirmModal() {
+    if (claimed <= 0) {
+      setConfirmErr("No payment amount to confirm.");
+      return;
+    }
+    setConfirmErr(null);
+    setConfirmModalOpen(true);
+  }
 
   async function handleConfirm() {
     if (claimed <= 0) {
@@ -82,6 +100,7 @@ export function PaymentDetailOverview({
       }
       window.dispatchEvent(new Event("bazaar:tickets-changed"));
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
+      setConfirmModalOpen(false);
       router.push("/payments");
     } catch {
       setConfirmErr("Network error — please try again.");
@@ -89,13 +108,14 @@ export function PaymentDetailOverview({
     }
   }
 
+  const methodLabel = ticket.payment_method_used
+    ? CHANNEL_LABELS[ticket.payment_method_used] ?? ticket.payment_method_used
+    : undefined;
+
   const sectionTitle = evidencePending ? "Payment review" : "Payment evidence";
 
   return (
-    <div
-      className="rounded-xl border px-5 py-5"
-      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-    >
+    <DetailSection>
       <DetailCollapsibleSection title={sectionTitle} defaultOpen={defaultOpen}>
         <div className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -144,14 +164,14 @@ export function PaymentDetailOverview({
                   }}
                 >
                   <FileText size={14} />
-                  View evidence
+                  View file
                 </a>
               )}
               {canConfirm && (
                 <button
                   type="button"
                   disabled={confirming}
-                  onClick={handleConfirm}
+                  onClick={openConfirmModal}
                   className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60"
                   style={{
                     background: "var(--color-btn-primary-bg)",
@@ -169,6 +189,10 @@ export function PaymentDetailOverview({
             <p className="text-sm" style={{ color: "var(--color-success)" }}>
               Approved {formatDateTime(ticket.payment_evidence_reviewed_at)}
             </p>
+          )}
+
+          {ticket.stripe_payment_intent_id && (
+            <StripeEvidencePanel ticket={ticket} />
           )}
 
           {confirmErr && (
@@ -191,10 +215,26 @@ export function PaymentDetailOverview({
               ? readOnly
                 ? "An accountant must confirm this payment before production can start. Contact your accountant if this order is urgent."
                 : "Confirming records the submitted amount and releases the order to production when payment gates are met."
-              : "Payment evidence was reviewed and recorded. The file remains available for audit."}
+              : "Payment evidence was reviewed and recorded. File and Stripe details remain available for audit."}
           </p>
         </div>
       </DetailCollapsibleSection>
-    </div>
+
+      <ConfirmPaymentEvidenceModal
+        open={confirmModalOpen}
+        referenceCode={ticket.reference_code}
+        amount={claimed}
+        paymentForLabel={paymentEvidenceTypeLabelForTicket(ticket)}
+        methodLabel={methodLabel}
+        confirming={confirming}
+        error={confirmErr}
+        onConfirm={() => void handleConfirm()}
+        onClose={() => {
+          if (confirming) return;
+          setConfirmModalOpen(false);
+          setConfirmErr(null);
+        }}
+      />
+    </DetailSection>
   );
 }

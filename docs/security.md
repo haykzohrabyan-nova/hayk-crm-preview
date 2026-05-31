@@ -167,6 +167,29 @@ These endpoints verify the caller has access to the specific object before retur
 
 ---
 
+## Public payment and confirm guards
+
+Staff-authenticated routes are unchanged. **Public** write routes gate on `public_token` only (no session):
+
+| Route | Blocked when |
+|-------|----------------|
+| `POST /api/public/quotes/[token]/confirm` | `refund_status` partial/full (`409 REFUNDED`); `ticket_status !== sent` (`409 INVALID_STATUS`) — includes **cancelled** |
+| `POST /api/public/quotes/[token]/submit-payment` | Not in `sent`/`order`/`in_production`/`completed` (`400 INVALID_STATUS`) — includes **cancelled**; partial/full refund (`409 REFUNDED`) |
+| `POST /api/public/quotes/[token]/stripe/create-session` | Same as submit-payment (`publicQuotePaymentBlockedResponse`) |
+
+`GET /api/public/quotes/[token]` remains available for read-only invoice view when cancelled or refunded.
+
+### Staff refund routes (authenticated)
+
+| Route | Auth |
+|-------|------|
+| `POST /api/tickets/[id]/refund` | MFA session; `roleName` accountant or admin; ticket resolved by id/reference |
+| `GET /api/tickets/[id]/refund-evidence/[refundId]` | Same; evidence row must belong to ticket |
+
+No public unauthenticated refund endpoint.
+
+---
+
 ## Public payment file upload
 
 `POST /api/public/quotes/[token]/submit-payment` accepts an optional evidence file with these guards:

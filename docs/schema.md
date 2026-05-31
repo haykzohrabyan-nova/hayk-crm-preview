@@ -478,6 +478,34 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 
 When evidence is pending (`payment_evidence_url` set, `payment_evidence_reviewed_at` null), the ticket appears on `/payments` → Pending approval — excluded from `/orders` list counts. After review, it appears on `/payments` → Approved with evidence still viewable.
 
+**Stripe card payments** *(migration 097)*
+
+| Column | Notes |
+|--------|-------|
+| `stripe_checkout_session_id` | Hosted Checkout session |
+| `stripe_payment_intent_id` | Used for refunds and Dashboard links |
+| `stripe_charge_id`, `stripe_amount_cents` | Charge metadata |
+| `stripe_amount_refunded_cents` | Running Stripe refund total (098) |
+| `stripe_card_brand`, `stripe_card_last4`, `stripe_receipt_url` | Display on evidence panel |
+
+**Refunds** *(migration 100; spec: `docs/feature-specs/payment-refunds.md`)*
+
+| Column | Notes |
+|--------|-------|
+| `refund_status` | `'none'` \| `'partial'` \| `'full'` |
+| `total_refunded_amount` | Sum of ledger refunds |
+| `last_refunded_at`, `last_refunded_by_id` | Latest refund audit |
+
+**Cancellation timestamp** *(migration 102)*
+
+| Column | Notes |
+|--------|-------|
+| `cancelled_at` | Set when `ticket_status` → `cancelled`; shown on linked lead card and detail GET |
+
+### `ticket_payment_refunds`
+
+Ledger of each refund event (deposit / balance / full slot). See migration `100_payment_refunds.sql`. Evidence files in `refund-evidence` bucket (`101_refund_evidence_storage.sql`). Staff API: `POST /api/tickets/[id]/refund`, `GET …/refund-evidence/[refundId]`.
+
 **Legacy columns** *(preserved as nullable for backwards compatibility — do not use in new code)*
 
 | Column | Type |
@@ -561,7 +589,7 @@ Each catalog line conforms to:
 - `rejected` — client declined
 - `in_production` — order in production
 - `completed` — fulfilled
-- `cancelled` — terminal; admin-only cancel with required reason. Quote-stage cancellations list on `/quotes`; order-stage on `/orders`. Payment/audit fields retained on the row.
+- `cancelled` — terminal; **Admin + Accountant** cancel with required reason (`cancelled_at`). Quote-stage cancellations list on `/quotes`; order-stage on `/orders`. Payment/audit fields retained on the row.
 
 #### RLS (migrations 042, 043, **086**)
 

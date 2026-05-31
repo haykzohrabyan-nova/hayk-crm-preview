@@ -48,7 +48,7 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 |-------|----------|---------|
 | `GET /api/orders/page-data` | `{ orders, counts, pagination }` | Orders page — **server-side** tab, search, date, admin user filter + pagination (default `limit=25`) |
 | `GET /api/quotes/page-data` | `{ tickets, counts, pagination }` | Quotes page — server-side tab, search, date, admin user + pagination |
-| `GET /api/payments/page-data` | `{ orders, approvedOrders, counts: { pending, approved } }` | Payments page (Pending + Approved tabs) |
+| `GET /api/payments/page-data` | `{ orders, approvedOrders, refundedOrders, counts: { pending, approved, refunded } }` | Payments page (Pending + Approved + Refunded tabs) |
 | `GET /api/completed/page-data` | `{ orders, counts, pagination }` | Completed — server-side search, date on `updated_at`, admin user + pagination |
 | `GET /api/production/page-data` | `{ orders, counts, pagination }` | Production — server-side tab, search + pagination |
 | `GET /api/crm/page-data` | `{ customers, pagination }` | CRM page — server-side search, status, heat + pagination |
@@ -1109,7 +1109,7 @@ Body: Any subset of ticket fields plus optional:
 - `payment_status` and `prepayment_status` can be updated on `order` status tickets even by non-admins (special relaxed guard)
 - **Accountants** may update payment fields on any ticket; non-admins on locked `order` tickets may only update payment-related fields
 
-**Mode 6 — Cancel ticket (Admin only):**
+**Mode 6 — Cancel ticket (Admin + Accountant):**
 ```json
 {
   "ticket_status": "cancelled",
@@ -1117,7 +1117,8 @@ Body: Any subset of ticket fields plus optional:
   "cancel_notes": "string | null"
 }
 ```
-- Caller must have `roleName === 'admin'` — non-admin receives `403`
+- Caller must have `roleName === 'admin'` or `roleName === 'accountant'` — others receive `403`
+- Sets `cancelled_at` on the ticket; GET resolves `cancelled_at` from column or `ticket_cancelled` activity
 - Allowed from any status except already **`cancelled`** (includes **draft**, **sent**, **order**, **in_production**, **completed** — paid or unpaid)
 - `cancel_reason` must be an active lookup in **Quote Cancellation Reasons** (draft/sent) or **Order Cancellation Reasons** (order / in_production / completed); label snapshotted to `cancel_reason_label`
 - **Other** reason requires non-empty `cancel_notes`
@@ -1215,13 +1216,15 @@ Returns lightweight tab badge counts. Scoped per role. Uses parallel SQL `{ coun
 
 ### `GET /api/payments/page-data`
 
-Preferred mount endpoint for `/payments`. Returns both tabs in one request.
+Preferred mount endpoint for `/payments`. Returns all three tabs in one request.
 
 **Auth:** Accountant or Admin only.
 
-**Pending filter:** `payment_evidence_url IS NOT NULL`, `payment_evidence_reviewed_at IS NULL`, `ticket_status IN ('sent', 'order', 'in_production', 'completed')` — ordered by `payment_evidence_submitted_at` asc.
+**Pending filter:** Evidence or Stripe PI submitted, not yet reviewed; `refund_status` none/null; ordered by `payment_evidence_submitted_at` asc.
 
-**Approved filter:** `payment_evidence_url IS NOT NULL`, `payment_evidence_reviewed_at IS NOT NULL` — same statuses — ordered by `payment_evidence_reviewed_at` desc.
+**Approved filter:** Reviewed evidence or Stripe; `refund_status` none/null; ordered by `payment_evidence_reviewed_at` desc.
+
+**Refunded filter:** `refund_status IN ('partial', 'full')`; includes latest ledger row fields (`last_refund_method`, `last_refund_source`, `last_refund_payment_mode`) for list labels.
 
 **UI columns (client):** Order, Customer, Claimed (`payment_evidence_amount` or remainder), **Payment For** (`inferPaymentEvidenceMode` — strategy, prior payments, evidence amount), Method, Submitted, Actions/Approved.
 
@@ -1244,9 +1247,38 @@ Preferred mount endpoint for `/payments`. Returns both tabs in one request.
       "customer": { "first_name": "string", "last_name": "string", "company": "string" }
     }
   ],
-  "counts": { "pending": 2, "approved": 15 }
+  "refundedOrders": [ /* partial/full refund_status — paid via / refunded via columns */ ],
+  "counts": { "pending": 2, "approved": 15, "refunded": 1 }
 }
 ```
+
+---
+
+### `POST /api/tickets/[id]/refund`
+
+Unified refund (manual + Stripe). **Auth:** Accountant or Admin only.
+
+**Body:** `multipart/form-data` or JSON:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `payment_mode` | yes | `deposit` \| `balance` \| `full` — which recorded payment slot |
+| `refund_reason` | yes | Lookup `payment_refund_reason` |
+| `refund_notes` | no | |
+| `refund_method` | manual slots | `cash`, `wire`, `zelle`, etc. — ignored for Stripe (forced `card`) |
+| `amount_mode` | yes | `full` \| `partial` |
+| `amount` | partial only | Dollars, capped per slot |
+| `evidence` | no | Image/PDF → `refund-evidence` storage |
+
+**Stripe balance/full slots:** calls `stripe.refunds.create` on `stripe_payment_intent_id`, then `applyTicketRefund` with `source: stripe`.
+
+**Manual deposit slots:** `applyTicketRefund` only (`source: manual`).
+
+**Response `200`:** `{ ok: true, refund_id, amount_cents }`
+
+**Evidence download:** `GET /api/tickets/[id]/refund-evidence/[refundId]` — signed URL for ledger row.
+
+**Ticket GET:** Accountant/Admin responses include `payment_refunds[]` on the ticket payload.
 
 ---
 
@@ -1471,7 +1503,9 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
 
 **Auth:** None — public route.
 
-**Response `200`:** Returns safe public ticket fields including pricing (`quote_subtotal`, `quote_shipping`, `requires_shipping`, `ship_to_*`, **`shipping_destinations[]`**), payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_reviewed_at`, `payment_evidence_amount`), and `production_released_at`. Draft tickets return `404`.
+**Response `200`:** Returns safe public ticket fields including pricing (`quote_subtotal`, `quote_shipping`, `requires_shipping`, `ship_to_*`, **`shipping_destinations[]`**), payment config columns, evidence state (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_reviewed_at`, `payment_evidence_amount`), `production_released_at`, and refund summary (`refund_status`, `total_refunded_amount`). Draft tickets return `404`.
+
+**Portal blocks (server + client):** When `ticket_status = cancelled` or `refund_status` is `partial`/`full`, confirm, submit-payment, and Stripe session creation are rejected; UI shows cancellation or refund banner (read-only invoice). See `lib/utils/public-quote-payment-blocked.ts`, `public-quote-refund-state.ts`, and [`feature-specs/payment-refunds.md`](feature-specs/payment-refunds.md).
 
 ```json
 {
@@ -1482,6 +1516,8 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
     "quote_final_total": "number | null",
     "client_confirmed": "boolean",
     "payment_amount_received": "number | null",
+    "refund_status": "none | partial | full",
+    "total_refunded_amount": "number",
     "payment_evidence_url": "string | null",
     "payment_evidence_submitted_at": "ISO | null",
     "payment_evidence_reviewed_at": "ISO | null",

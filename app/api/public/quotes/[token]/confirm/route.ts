@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket } from "@/lib/utils/maybe-auto-release-production";
 import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
 import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
+import { hasPublicRefundNotice } from "@/lib/utils/public-quote-refund-state";
 
 // POST /api/public/quotes/[token]/confirm
 // No auth required — customer clicks "Confirm & Accept" on the public quote page.
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: ticket, error: fetchErr } = await admin
     .from("job_tickets")
-    .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " "))
+    .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " ") + ", refund_status")
     .eq("public_token", token)
     .single();
 
@@ -32,7 +33,18 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Quote not found." }, { status: 404 });
   }
 
-  const row = ticket as unknown as AutoReleaseTicket;
+  const row = ticket as unknown as AutoReleaseTicket & { refund_status?: string | null };
+
+  if (hasPublicRefundNotice(row.refund_status)) {
+    return NextResponse.json(
+      {
+        error:
+          "This order has a refund on file. Please contact your sales representative for assistance.",
+        code: "REFUNDED",
+      },
+      { status: 409 },
+    );
+  }
 
   if (row.client_confirmed) {
     return NextResponse.json({

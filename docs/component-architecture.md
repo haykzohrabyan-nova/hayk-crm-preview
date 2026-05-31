@@ -506,8 +506,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │      **Quote & Pricing**, **Fulfillment**, **Pricing**, **Payment & order settings**,
         │      **Quote delivery**, **Follow-up**, **Production & evidence**, **Payment review**, **Payment plan**
         │    Payment context (`/payments/[id]`): Payment review defaults **open**; Back → `/payments` via `resolveTicketDetailBackPath()`
-        │    Desktop xl+: fixed viewport height; only right panel scrolls
-        │    Mobile/tablet: single page scroll (no nested scroll on Overview panel)
+        │    Single page scroll (app main column) — Overview/History panel has no nested scroll
         │
         ├── Context prop routes overview card:
         │    context="quote" | "order" | "payment" | "production" | "completed"
@@ -520,8 +519,8 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         │    CustomerInfoCard — if customer/contact exists (lookup labels for industry + quote_source)
         │    DetailQuickActions — all lifecycle actions stacked below card:
         │      Quote: Send/Resend Quote, Convert to Order (admin)
-        │      All stages: **Cancel Quote** / **Cancel Order** (**admin only** — `cancelActionLabel()` by stage; any non-cancelled status incl. completed)
-        │      Order+: row 1 Mark Completed | Resend Link; row 2 Customer Link | Copy Link (public `/q/{token}`)
+        │      All stages: **Cancel Quote** / **Cancel Order** (**admin + accountant** — `cancelActionLabel()`; partial-refund warning when applicable)
+        │      Order+: **Refund payment** (admin + accountant); row 1 Mark Completed | Resend Link; row 2 Customer Link | Copy Link (`sent`/`order`/`in_production`/`completed`/`cancelled`)
         │
         ├── 2-tab view: Overview | History  (draft edit mode may show full form instead)
         │    Overview tab: context-specific snapshot + read-only line items / pricing / payment config

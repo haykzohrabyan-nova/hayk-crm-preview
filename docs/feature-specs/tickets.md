@@ -35,7 +35,7 @@
 **Source of truth:** `reference_code` prefix wins over `ticket_kind` in UI helpers (`ticketIsQuoteStage()`, `resolveTicketQuoteStage()` in `lib/utils/reference-codes.ts` and `lib/utils/ticket-lifecycle-timeline.ts`). API create/update enforces alignment via `ticketKindForReference()` on `POST /api/tickets` and `PATCH /api/tickets/[id]`. `maybeConvertQuoteToOrder()` aborts if `ORD-*` assignment fails (no `ticket_kind: order` while reference stays `QUO-*`).
 - `in_production` — released to shop floor (`production_released_at` set). Partial orders may owe balance. **Linked lead `sales_status` → `Won`** via `markLeadWonOnProduction()`.
 - `completed` — finished; customer notified (email/SMS pickup message with same `/q/{token}` URL); public page shows **Ready for pickup**
-- `cancelled` — terminal; admin-only cancel with reason. **List placement:** quote-stage (`ticket_kind = 'quote'`) → `/quotes` **Cancelled** tab; order-stage (`ticket_kind = 'order'`) → `/orders` **Cancelled** tab. Record and payment audit fields are retained.
+- `cancelled` — terminal; **Admin + Accountant** cancel with reason (`cancelled_at` set). **List placement:** quote-stage (`ticket_kind = 'quote'`) → `/quotes` **Cancelled** tab; order-stage (`ticket_kind = 'order'`) → `/orders` **Cancelled** tab (includes fully refunded then cancelled). Record and payment audit fields are retained.
 
 ### Where tickets appear by status
 
@@ -140,10 +140,12 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 | Tab | Filter |
 |-----|--------|
-| All | `ticket_kind = 'order'` + (`order` + `in_production` + `cancelled`) — **default tab** |
+| All | `ticket_kind = 'order'` + (`order` + `in_production` + `cancelled`) — **default tab**; excludes `refund_status = full` from active rows (still on Cancelled when also cancelled) |
 | Pending Payment | `ticket_kind = 'order'` + `ticket_status = 'order'` (includes evidence-pending) |
 | In Production | `ticket_kind = 'order'` + `ticket_status = 'in_production'` |
 | Cancelled | `ticket_kind = 'order'` + `ticket_status = 'cancelled'` |
+
+Fully/partially refunded orders (not cancelled) appear on **`/payments` → Refunded** only — not on All / In Production / **Completed**.
 
 **Status column:** API `status_label` / `status_tone` from `lib/utils/order-list-status.ts` — e.g. Confirmed by Customer, Converted by {name}, **Awaiting payment confirmation** (evidence pending on `order` **or** `in_production`), In Production, **Admin converted — …** (admin override without confirm/payment).
 
@@ -165,12 +167,13 @@ When customer submitted payment evidence:
 
 **Component:** `components/orders/payments-page.tsx`
 
-Two tabs — **Pending approval** and **Approved** — with badge counts on both (`GET /api/payments/page-data`).
+Three tabs — **Pending approval**, **Approved**, and **Refunded** — with badge counts on all (`GET /api/payments/page-data`). See [`payment-refunds.md`](./payment-refunds.md).
 
 | Tab | UX |
 |-----|-----|
 | Pending approval | Evidence + **Confirm** (`PATCH { record_payment: true }`); global loading overlay on confirm |
 | Approved | **View evidence** only; shows `payment_evidence_reviewed_at`; no Confirm |
+| Refunded | Read-only list; **Paid via** / **Refunded via** columns; may show **Cancelled** badge |
 
 **Desktop table columns (both tabs):** Order · Customer · Claimed · **Payment For** · Method · Submitted · Actions (Pending) or Approved (Approved tab).
 
@@ -248,7 +251,9 @@ All post-draft detail routes share the **overview layout** (`isOverviewLayout`),
 | `detail-layout-primitives.tsx` | Stat cards, section titles, `DetailCollapsibleSection` |
 | `history-section.tsx` | Full activity trail |
 
-**Customer link** (when `public_token` is set): **Customer Link** + **Copy Link** as two 50/50 buttons on their own row in `DetailQuickActions` — opens `/q/{token}` in new tab; copy with **Copied!** feedback. Shown for `sent`, `order`, `in_production`, and `completed` (balance payments on public portal).
+**Customer link** (when `public_token` is set): **Customer Link** + **Copy Link** as two 50/50 buttons on their own row in `DetailQuickActions` — opens `/q/{token}` in new tab; copy with **Copied!** feedback. Shown for `sent`, `order`, `in_production`, `completed`, and **`cancelled`** (portal read-only with cancellation banner). See [`payment-refunds.md`](./payment-refunds.md) for refund-blocked portal behavior.
+
+**Refunds (May 2026):** When payments were recorded, Overview leads with **Refunds** (`refund-history-section.tsx`) — ledger rows, optional evidence, **Open in Stripe** links. Stats row shows **Collected** / **Refunded** / refund status instead of misleading **Unpaid** after refund. Sidebar **Refund payment** (Admin + Accountant) when a slot remains. Orders list **Payment** column shows **Fully refunded** / **Partially refunded** when applicable. Fully refunded orders appear only on Payment Evidence **Refunded** tab (not active Orders/Completed lists) unless also cancelled (then visible on Orders → Cancelled too).
 
 **Global loading:** slow PATCH/POST actions use `useGlobalLoading()` full-screen overlay (send quote, convert, confirm payment, etc.).
 
@@ -563,7 +568,7 @@ Single scrollable view combining all three edit sections, separated by labelled 
 
 All primary actions live **under the customer/lead card** in the left sidebar — not in a bottom bar (overview layout).
 
-Hidden entirely when record is locked (`isLocked = true`) for quote lifecycle actions; production actions follow their own rules. **Cancel Quote** / **Cancel Order** is **admin-only** at all stages (not shown to SDR/Sales). Label from `cancelActionLabel()` — quote stages (`draft`, `sent`, `routed`) vs order stages (`order`, `in_production`, `completed`).
+Hidden entirely when record is locked (`isLocked = true`) for quote lifecycle actions; production actions follow their own rules. **Cancel Quote** / **Cancel Order** is **Admin + Accountant** at all stages (not shown to SDR/Sales). If the ticket has partial refunds, a **partial refund warning** modal runs before the cancel-reason modal. Label from `cancelActionLabel()` — quote stages (`draft`, `sent`, `routed`) vs order stages (`order`, `in_production`, `completed`).
 
 Send and Convert buttons are **disabled** when send validation fails; same amber missing-fields banner as new-quote form.
 
@@ -579,13 +584,14 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 
 | Action | Condition |
 |--------|-----------|
-| Customer Link | `public_token` set; status `sent`, `order`, `in_production`, or `completed` — opens `/q/{token}` in new tab |
+| Customer Link | `public_token` set; status `sent`, `order`, `in_production`, `completed`, or **`cancelled`** — opens `/q/{token}` in new tab |
 | Copy Link | Same conditions — copies public URL to clipboard |
+| Refund payment | **Admin + Accountant** — when a refundable payment slot remains (`record-refund-modal.tsx`) |
 | Mark Completed | `in_production`; admin always; accountant only if paid in full |
 | Resend invoice link | `in_production` or `completed`; sends via ticket outreach channel |
-| Cancel Quote / Cancel Order | **Admin only** — any status except already `cancelled` (includes **completed**, paid or unpaid) — button + modal title from `cancelActionLabel()`; reasons from **Quote Cancellation Reasons** or **Order Cancellation Reasons** by stage |
+| Cancel Quote / Cancel Order | **Admin + Accountant** — any status except already `cancelled` (includes **completed**, paid or unpaid); partial-refund warning first when applicable |
 
-**Cancelled state:** Overview shows red banner with stored reason label + notes. Reason labels are snapshotted on cancel (`cancel_reason_label`) so they remain visible even if the admin later deactivates or deletes the lookup option.
+**Cancelled state:** Overview shows red banner with stored reason label + notes (`cancelled-reason-banner.tsx`). **Linked lead** card footer shows **Order cancelled {date}** (`cancelled_at` on ticket or from `ticket_cancelled` activity). Reason labels are snapshotted on cancel (`cancel_reason_label`) so they remain visible even if the admin later deactivates or deletes the lookup option.
 
 **Admin-managed reasons:** `/admin/settings/dropdowns` → Order / Quote section → **Quote Cancellation Reasons** / **Order Cancellation Reasons**. In-use reasons cannot be hard-deleted (409) — deactivate instead. **Other** requires free-text detail in the cancel modal (saved in `cancel_notes`).
 
@@ -678,7 +684,9 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |
 | `GET /api/tickets/[id]/evidence` | GET | Signed URL for payment evidence file (Accountant + Admin) |
 | `GET /api/tickets/counts` | GET | Legacy tab badge counts: `{ drafts, sent, approved, orders, in_production, completed, routed, cancelled, total }`. `cancelled` = quote-stage only; Orders **Cancelled** badge uses `GET /api/orders/page-data` `counts.cancelled`. |
-| `GET /api/payments/page-data` | GET | Pending + approved lists + tab counts (Accountant + Admin) |
+| `GET /api/payments/page-data` | GET | Pending + approved + refunded lists + tab counts (Accountant + Admin) |
+| `POST /api/tickets/[id]/refund` | POST | Unified refund — Accountant + Admin (`record-refund-modal.tsx`) |
+| `GET /api/tickets/[id]/refund-evidence/[refundId]` | GET | Signed refund evidence URL — Accountant + Admin |
 | `GET /api/payments/pending` | GET | Legacy — pending queue only |
 | `GET /api/payments/counts` | GET | Accountant dashboard KPIs (`pending_evidence`, in production, completed this month) |
 | `GET /api/production/orders` | GET | Legacy in-production list (UI uses `/orders` tab) |

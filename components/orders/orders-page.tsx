@@ -18,7 +18,7 @@ import {
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
-import { Zap, ExternalLink, ListFilter } from "lucide-react";
+import { Zap, ListFilter } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import {
   displayContactName,
@@ -28,6 +28,7 @@ import {
   relativeTime,
 } from "@/lib/utils/format";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { paymentEvidenceAwaitingConfirmationLabel } from "@/lib/utils/payment-evidence-type";
 import type { OrderListStatusTone } from "@/lib/utils/order-list-status";
 import { createClient } from "@/lib/supabase/client";
 import { AdminUserFilter } from "@/components/ui/admin-user-filter";
@@ -50,10 +51,18 @@ interface OrderTicket {
   status_label: string;
   status_tone: OrderListStatusTone;
   payment_status: "unpaid" | "partial" | "paid" | null;
+  refund_status?: "none" | "partial" | "full" | string | null;
   payment_evidence_url: string | null;
   payment_evidence_submitted_at: string | null;
   payment_evidence_reviewed_at: string | null;
+  stripe_payment_intent_id: string | null;
+  stripe_amount_cents: number | null;
+  payment_evidence_amount: number | null;
+  ticket_payment_strategy: "partial" | "full" | "net" | null;
+  ticket_deposit_type: "percent" | "fixed" | null;
+  ticket_deposit_value: number | null;
   payment_paid_at: string | null;
+  deposit_paid_at: string | null;
   title: string | null;
   reference_code: string | null;
   quote_final_total: number | null;
@@ -77,12 +86,29 @@ const PAYMENT_STYLE: Record<string, { bg: string; text: string; label: string }>
   paid:    { bg: "var(--color-success-bg)", text: "var(--color-success)", label: "Paid" },
 };
 
+const REFUND_PAYMENT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
+  partial: {
+    bg: "var(--color-warning-bg)",
+    text: "var(--color-warning-text-deep)",
+    label: "Partially refunded",
+  },
+  full: {
+    bg: "var(--color-warning-bg)",
+    text: "var(--color-warning-text-deep)",
+    label: "Fully refunded",
+  },
+};
+
 function paymentDisplay(o: OrderTicket): { bg: string; text: string; label: string } {
+  const refundStatus = o.refund_status ?? "none";
+  if (refundStatus === "partial" || refundStatus === "full") {
+    return REFUND_PAYMENT_STYLE[refundStatus] ?? PAYMENT_STYLE.unpaid;
+  }
   if (isPaymentEvidencePending(o)) {
     return {
       bg: "var(--color-warning-bg)",
       text: "var(--color-warning-text-deep)",
-      label: "Awaiting review",
+      label: paymentEvidenceAwaitingConfirmationLabel(o),
     };
   }
   return PAYMENT_STYLE[o.payment_status ?? "unpaid"] ?? PAYMENT_STYLE.unpaid;
@@ -278,15 +304,6 @@ function OrderMobileCard({
         />
         <MobileListCardRow label="Created" value={relativeTime(o.created_at)} />
       </MobileListCardFields>
-
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onOpen(); }}
-        className="w-full flex items-center justify-center gap-1 px-2.5 py-2 rounded-md text-xs font-medium border transition-opacity hover:opacity-70"
-        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
-      >
-        <ExternalLink size={11} /> View order
-      </button>
     </MobileListCard>
   );
 }
@@ -373,7 +390,6 @@ function OrdersTableDesktop({
               </th>
             );
           })}
-          <th className="px-4 py-3 w-16" />
         </tr>
       </thead>
       <tbody>
@@ -525,16 +541,6 @@ function OrdersTableDesktop({
                 <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                   {relativeTime(o.created_at)}
                 </span>
-              </td>
-              <td className="px-4 py-3" style={cellStyle}>
-                <button
-                  type="button"
-                  onClick={(e) => { e.stopPropagation(); onOpen(o.id); }}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-opacity hover:opacity-70"
-                  style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
-                >
-                  <ExternalLink size={11} /> View
-                </button>
               </td>
             </tr>
           );

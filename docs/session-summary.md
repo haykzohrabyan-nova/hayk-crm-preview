@@ -1,5 +1,8 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 29, 2026
+**Last updated:** May 29, 2026 (narrative log — not auto-synced)
+
+> **Authoritative specs (May 2026):** Payment refunds, Stripe Checkout, cancel rules, and public portal blocks → [`feature-specs/payment-refunds.md`](feature-specs/payment-refunds.md), [`feature-specs/invoice-payment.md`](feature-specs/invoice-payment.md), [`api-contract.md`](api-contract.md). This file is a **historical build diary**; older sections may describe pre-refund behaviour.
+
 **Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 29: security hardening (API auth, RLS 096, rate limits)** + line attachment lifecycle, public portal Realtime, file preview modal.
 
 ---
@@ -218,7 +221,7 @@
 ## May 29, 2026 — Admin cancel/edit, collapsibles, leads UX, auth fix
 
 ### Admin ticket lifecycle
-- **Cancel** — admin only at any status except already `cancelled` (includes **completed**, paid or unpaid); button **Cancel Quote** or **Cancel Order** by stage; required cancellation reason from Admin → Dropdown Options
+- **Cancel** — admin + accountant at any status except already `cancelled` (includes **completed**, paid or unpaid); button **Cancel Quote** or **Cancel Order** by stage; required cancellation reason from Admin → Dropdown Options
 - **Edit** — admin can edit any non-`cancelled` ticket including completed / customer-confirmed records
 - Post-save **Send update** prompt for admin on `sent`, `order`, `in_production`, **completed** (`lib/utils/should-offer-resend-after-save.ts`)
 

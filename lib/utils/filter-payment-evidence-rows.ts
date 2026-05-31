@@ -5,6 +5,11 @@ import {
   paymentEvidenceTypeLabel,
   type PaymentEvidenceModeFields,
 } from "@/lib/utils/payment-evidence-type";
+import {
+  summarizePaymentReceived,
+  summarizeRefundIssued,
+} from "@/lib/utils/payment-refund-list-labels";
+import { getChannelLabel } from "@/lib/utils/compute-checkout";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   wire: "Wire Transfer",
@@ -32,6 +37,17 @@ export type PaymentEvidenceSearchRow = PaymentEvidenceModeFields & {
     company?: string | null;
   } | null;
   created_by?: { full_name?: string | null } | null;
+  refund_status?: string | null;
+  total_refunded_amount?: number | null;
+  last_refunded_by?: { full_name?: string | null } | null;
+  deposit_method?: string | null;
+  balance_paid_at?: string | null;
+  payment_paid_at?: string | null;
+  stripe_payment_intent_id?: string | null;
+  deposit_paid_at?: string | null;
+  last_refund_method?: string | null;
+  last_refund_source?: string | null;
+  last_refund_payment_mode?: string | null;
 };
 
 function amountTokens(value: number | null | undefined): string[] {
@@ -67,6 +83,22 @@ function buildPaymentEvidenceHaystack(row: PaymentEvidenceSearchRow): string {
     ...amountTokens(row.quote_final_total),
     ...amountTokens(row.payment_evidence_amount),
     ...amountTokens(row.payment_amount_received),
+    ...amountTokens(row.total_refunded_amount),
+    row.refund_status ?? "",
+    row.ticket_status === "cancelled" ? "cancelled" : "",
+    row.last_refunded_by?.full_name ?? "",
+    row.deposit_method ?? "",
+    getChannelLabel(row.deposit_method ?? ""),
+    summarizePaymentReceived(row),
+    summarizeRefundIssued(
+      row.last_refund_method,
+      row.last_refund_source,
+      row.last_refund_payment_mode,
+    ),
+    row.last_refund_method ?? "",
+    row.last_refund_source ?? "",
+    row.last_refund_payment_mode ?? "",
+    row.stripe_payment_intent_id ? "stripe" : "",
   ];
 
   return parts

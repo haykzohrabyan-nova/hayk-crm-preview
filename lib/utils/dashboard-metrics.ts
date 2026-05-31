@@ -6,6 +6,10 @@ import {
   type TicketAttribution,
 } from "@/lib/utils/reports-attribution";
 import { roundMoney } from "@/lib/utils/format";
+import {
+  excludeFullyRefundedFromRevenue,
+  isFullyRefundedTicket,
+} from "@/lib/utils/exclude-refunded-tickets";
 
 /** Sum recorded payment amounts in a date window (matches Reports cash collected). */
 export async function sumCashCollectedInPeriod(
@@ -27,7 +31,7 @@ export async function sumCashCollectedInPeriod(
   const ticketIds = [...new Set(payments.map((p) => p.ticket_id as string).filter(Boolean))];
   const { data: tickets } = await admin
     .from("job_tickets")
-    .select("id, linked_lead_id, created_by_id, routed_by_id")
+    .select("id, linked_lead_id, created_by_id, routed_by_id, refund_status")
     .in("id", ticketIds);
 
   const leadIds = [
@@ -53,6 +57,7 @@ export async function sumCashCollectedInPeriod(
 
     const ticket = ticketMap.get(row.ticket_id as string);
     if (!ticket) continue;
+    if (isFullyRefundedTicket(ticket.refund_status as string | null)) continue;
 
     if (filter?.userId) {
       const lead = ticket.linked_lead_id ? leadMap.get(ticket.linked_lead_id as string) : null;
@@ -90,7 +95,7 @@ export async function sumProductionReleasedValue(
   periodEndIso: string,
   filterUserId?: string | null,
 ): Promise<{ value: number; received: number; balance: number; count: number }> {
-  const { data: tickets } = await admin
+  let releasedQuery = admin
     .from("job_tickets")
     .select(
       "id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id, created_by_id, routed_by_id",
@@ -99,6 +104,8 @@ export async function sumProductionReleasedValue(
     .not("production_released_at", "is", null)
     .gte("production_released_at", periodStartIso)
     .lte("production_released_at", periodEndIso);
+  releasedQuery = excludeFullyRefundedFromRevenue(releasedQuery);
+  const { data: tickets } = await releasedQuery;
 
   if (!tickets?.length) return { value: 0, received: 0, balance: 0, count: 0 };
 

@@ -34,6 +34,8 @@ import {
 } from "@/lib/utils/ticket-shipping-destinations";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
+import { fetchTicketPaymentRefunds } from "@/lib/payments/fetch-ticket-refunds";
+import { resolveTicketCancelledAt } from "@/lib/utils/fetch-ticket-cancelled-at";
 import {
   aggregateLineFlags,
   fetchTicketLinesBundle,
@@ -100,9 +102,28 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const convert_meta = await fetchManualConvertMeta(admin, ticketId, ticket);
   const line_items = await fetchTicketLinesBundle(admin, ticketId);
   const shipping_destinations = await fetchTicketShippingDestinations(admin, ticketId);
+  const payment_refunds =
+    roleName === "accountant" || roleName === "admin"
+      ? await fetchTicketPaymentRefunds(admin, ticketId)
+      : [];
+
+  const cancelled_at = await resolveTicketCancelledAt(
+    admin,
+    ticketId,
+    ticket.ticket_status as string,
+    (ticket as { cancelled_at?: string | null }).cancelled_at,
+  );
 
   return NextResponse.json({
-    ticket: { ...ticket, created_by, convert_meta, line_items, shipping_destinations },
+    ticket: {
+      ...ticket,
+      cancelled_at,
+      created_by,
+      convert_meta,
+      line_items,
+      shipping_destinations,
+      payment_refunds,
+    },
   });
 }
 
@@ -375,7 +396,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .select(`id, ticket_status, quote_final_total, payment_amount_received, deposit_amount, deposit_paid_at,
                balance_paid_at, payment_paid_at, client_confirmed, production_released_at,
                payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at,
-               payment_evidence_amount,
+               payment_evidence_amount, stripe_payment_intent_id,
                public_token, reference_code, quote_channel, quote_destination, title,
                ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
                ticket_dep_handling, ticket_full_channels, ticket_partial_channels,
@@ -422,8 +443,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       payPatch.payment_status = "partial";
     }
 
-    // Mark evidence reviewed — keep URL and submitted_at for accountant/admin audit
-    if (cur?.payment_evidence_url && !cur?.payment_evidence_reviewed_at) {
+    // Mark evidence reviewed — keep URL / Stripe IDs and submitted_at for audit
+    if (
+      (cur?.payment_evidence_url || cur?.stripe_payment_intent_id) &&
+      !cur?.payment_evidence_reviewed_at
+    ) {
       payPatch.payment_evidence_reviewed_at = now;
     }
 
@@ -438,7 +462,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       return NextResponse.json({ error: payErr.message, code: "DB_ERROR" }, { status: 500 });
     }
 
-    const hadPendingEvidence = !!cur?.payment_evidence_submitted_at && !!cur?.payment_evidence_url;
+    const hadPendingEvidence =
+      !!cur?.payment_evidence_submitted_at &&
+      !!(cur?.payment_evidence_url || cur?.stripe_payment_intent_id);
 
     const { data: freshRow } = await admin
       .from("job_tickets")
@@ -714,9 +740,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     body.ticket_status === "cancelled" &&
     existing.ticket_status !== "cancelled"
   ) {
-    if (roleName !== "admin") {
+    if (roleName !== "admin" && roleName !== "accountant") {
       return NextResponse.json(
-        { error: "Only administrators can cancel quotes and orders.", code: "FORBIDDEN" },
+        { error: "Only administrators and accountants can cancel quotes and orders.", code: "FORBIDDEN" },
         { status: 403 },
       );
     }
@@ -762,6 +788,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       );
     }
     patch.cancel_notes = notesRaw || null;
+    patch.cancelled_at = now;
   }
 
   // When manually converting a quote to an order (not via customer public link),

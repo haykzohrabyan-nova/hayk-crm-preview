@@ -43,12 +43,14 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 ### Accountant
 - Default pages: `/dashboard`, `/payments`, `/orders`, `/completed`, `/settings`
 - Default home after login: `/payments`
-- Review customer-submitted payment evidence on `/payments`
+- Review customer-submitted payment evidence on `/payments` (Pending · Approved · **Refunded** tabs)
 - **Confirm payment** via `record_payment` PATCH action
-- View orders, production, and completed orders (read-only except mark complete)
-- **GET any ticket** via `/api/tickets/[id]` — matches list scoping so order detail pages do not 403
+- **Refund payment** via `POST /api/tickets/[id]/refund` (manual + Stripe per slot) — same as Admin
+- **Cancel quote/order** via `PATCH /api/tickets/[id]` (`ticket_status: cancelled`) — same as Admin; partial-refund warning in UI first when applicable
+- View orders, production, and completed orders (read-only except mark complete, refund, cancel)
+- **GET any ticket** via `/api/tickets/[id]` — matches list scoping so order detail pages do not 403; responses include `payment_refunds[]` and `cancelled_at`
 - **Mark Completed** on in-production orders **only when paid in full** (`isTicketPaidInFull()`)
-- Cannot edit quote line items or change ticket status otherwise
+- Cannot edit quote line items or change ticket status otherwise (except cancel, payment confirm, refund)
 
 ### Custom Roles (Admin-created)
 - Admin gives the role a name and display label
@@ -117,6 +119,10 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | Accountant: evidence review OR in_production/completed |
 | `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ (incl. manual convert to order) | Accountant: payment fields + `record_payment`; mark `completed` when paid in full |
 | `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin only |
+| `PATCH … { ticket_status: 'cancelled' }` | ✗ | ✗ | ✓ | ✓ | Admin + Accountant — reason + notes required |
+| `POST /api/tickets/[id]/refund` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — unified manual + Stripe |
+| `GET /api/tickets/[id]/refund-evidence/[refundId]` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
+| `GET /api/payments/page-data` | ✗ | ✗ | ✓ | ✓ | Pending + Approved + Refunded tabs |
 | `PATCH … { resend_invoice: true }` | ✗ | ✗ | ✓ | ✓ | Admin + Accountant (order/completed detail) |
 | `PATCH … { release_production: true }` | ✗ | ✗ | ✓ | Admin |
 | `GET /api/payments/pending` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |

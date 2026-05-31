@@ -1,4 +1,5 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { PAYMENT_EVIDENCE_NOT_PENDING_OR_FILTER } from "@/lib/utils/payment-evidence-pending";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 export type CountQuery = ReturnType<ReturnType<AdminClient["from"]>["select"]>;
@@ -72,12 +73,10 @@ export function scopedCompletedTicketCount(
 }
 
 /** Orders-page exclusion: evidence submitted but not yet reviewed by accountant. */
-export const ORDERS_VISIBLE_PAYMENT_FILTER =
-  "payment_evidence_submitted_at.is.null,payment_evidence_url.is.null,payment_evidence_reviewed_at.not.is.null";
+export const ORDERS_VISIBLE_PAYMENT_FILTER = PAYMENT_EVIDENCE_NOT_PENDING_OR_FILTER;
 
 /** Tab/count badge exclusion (evidence awaiting review). */
-export const ORDERS_COUNT_PAYMENT_FILTER =
-  "payment_evidence_url.is.null,payment_evidence_reviewed_at.not.is.null";
+export const ORDERS_COUNT_PAYMENT_FILTER = PAYMENT_EVIDENCE_NOT_PENDING_OR_FILTER;
 
 /** Build a scoped job_tickets count query. */
 export function scopedTicketCount(

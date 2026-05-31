@@ -136,9 +136,10 @@ MVP and day-to-day shop operations are **built**. Summary by area:
 - Order lifecycle: release to production, mark completed, pickup notifications
 - Record locking after customer confirm; payment link bar
 
-### Payments *(offline — no online processor)*
+### Payments
 - Per-ticket payment config, deposit/partial/full/net terms
-- Payment evidence (`/payments` Pending + Approved tabs), evidence retained after `record_payment`, accountant role
+- Stripe Checkout on `/q/[token]` + webhook → accountant Confirm
+- Payment evidence (`/payments` Pending + Approved + **Refunded** tabs), unified refunds — see `docs/feature-specs/payment-refunds.md`
 - Admin SMS templates (`/admin/settings/sms-templates`, `sms_templates` table)
 - **May 26:** Public payment modal — fixed amount due (server-computed); client cannot override on submit
 - Admin remittance settings (wire/ACH/Zelle on company + public page)

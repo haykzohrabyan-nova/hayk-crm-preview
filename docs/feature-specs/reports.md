@@ -41,15 +41,17 @@ Period end is **end of today** for presets; custom ranges use inclusive local da
 
 All money totals use `roundMoney()` (2 decimal places) — matches dashboard **Cash Collected**.
 
+**Refunded orders (May 2026):** Tickets with `refund_status = 'full'` are **excluded** from `cash_collected`, `released_order_value`, and `awaiting_collection` (`lib/utils/exclude-refunded-tickets.ts` → `excludeFullyRefundedFromRevenue`). Partial refunds still count toward revenue until the ticket is fully refunded. See [`payment-refunds.md`](./payment-refunds.md).
+
 ### Response sections
 
 | Section | Metrics | Data source |
 |---------|---------|-------------|
-| `cash_collected` | Total, by method, timeline, payment_events | `ticket_payment_recorded` in period |
-| `released_order_value` | Total + order_count | `quote_final_total` where `production_released_at` in period |
+| `cash_collected` | Total, by method, timeline, payment_events | `ticket_payment_recorded` in period; excludes `refund_status = full` |
+| `released_order_value` | Total + order_count | `quote_final_total` where `production_released_at` in period; excludes fully refunded |
 | `sales_scorecard` | Cash, payments, orders, booked value, collection % | Rep attribution on payments |
 | `sdr_scorecard` | Sourced cash + leads routed | SDR attribution on payments |
-| `awaiting_collection` | Balance still due (live snapshot) | Open tickets, `computeInvoicePaymentSummary` |
+| `awaiting_collection` | Balance still due (live snapshot) | Open tickets, `computeInvoicePaymentSummary`; excludes fully refunded |
 | `payment_ledger` | Order rows with payment line items | Payments in period |
 | `win_rate` | Lead/quote win %, avg days to production | Cohort tickets + releases |
 | `funnel` | Quote lifecycle drop-off | Tickets created in period |

@@ -1,4 +1,5 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
+import { excludeRefundedTickets } from "@/lib/utils/exclude-refunded-tickets";
 import {
   countExact,
   scopeCompletedTicketsQuery,
@@ -49,6 +50,7 @@ async function buildScopedCompletedQuery(
   );
 
   query = query.eq("ticket_status", "completed") as TicketSelectQuery;
+  query = excludeRefundedTickets(query) as TicketSelectQuery;
   query = applyTicketDateFilter(query, filters.dateFrom, filters.dateTo, "updated_at") as TicketSelectQuery;
   query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds) as TicketSelectQuery;
 
@@ -118,13 +120,16 @@ export async function fetchCompletedTabCounts(
     countExact(admin, "job_tickets", (q) => {
       let query = scopeCompletedTicketsQuery(q, roleName, userId, filters.adminFilterUserId ?? null);
       query = query.eq("ticket_status", "completed");
+      query = excludeRefundedTickets(query);
       query = applyTicketDateFilter(query, filters.dateFrom, filters.dateTo, "updated_at");
       query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds);
       return query;
     });
 
   if (roleName === "admin" && !filters.adminFilterUserId && !filters.search && !filters.dateFrom && !filters.dateTo) {
-    const completed = await countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "completed"));
+    const completed = await countExact(admin, "job_tickets", (q) =>
+      excludeRefundedTickets(q.eq("ticket_status", "completed")),
+    );
     return { completed };
   }
 

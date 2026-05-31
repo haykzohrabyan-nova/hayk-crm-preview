@@ -6,13 +6,14 @@ import { computePublicPaymentDueAmount } from "@/lib/utils/invoice-payment-summa
 import { notifyPublicQuoteUpdated } from "@/lib/integrations/notify-public-quote-updated";
 import { randomUUID } from "crypto";
 import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
+import { publicQuotePaymentBlockedResponse } from "@/lib/utils/public-quote-payment-blocked";
 
 // POST /api/public/quotes/[token]/submit-payment
 // Quote stays quote until payment is recorded (cash) or accountant confirms (evidence).
 
 type Params = { params: Promise<{ token: string }> };
 
-const EVIDENCE_REQUIRED_CHANNELS = new Set(["wire", "ach", "zelle", "check", "card"]);
+const EVIDENCE_REQUIRED_CHANNELS = new Set(["wire", "ach", "zelle", "check"]);
 
 export async function POST(request: NextRequest, { params }: Params) {
   const rateLimited = enforcePublicQuoteRateLimit(request, "submit-payment");
@@ -27,7 +28,10 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: ticket, error: fetchErr } = await admin
     .from("job_tickets")
-    .select(AUTO_RELEASE_SELECT.replace(/\s+/g, " ") + ", payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_receipt_id")
+    .select(
+      AUTO_RELEASE_SELECT.replace(/\s+/g, " ") +
+        ", payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_receipt_id, refund_status",
+    )
     .eq("public_token", token)
     .single();
 
@@ -41,8 +45,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     ticket_receipt_id: string | null;
   };
 
-  if (!["sent", "order", "in_production", "completed"].includes(row.ticket_status)) {
-    return NextResponse.json({ error: "This quote is not open for payment." }, { status: 400 });
+  const blocked = publicQuotePaymentBlockedResponse(
+    row as AutoReleaseTicket & { refund_status?: string | null },
+  );
+  if (blocked) {
+    return NextResponse.json(blocked.body, { status: blocked.status });
   }
 
   const quoteTotal  = Number(row.quote_final_total ?? 0);

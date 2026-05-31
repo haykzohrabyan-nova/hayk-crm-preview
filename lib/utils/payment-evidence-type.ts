@@ -4,7 +4,19 @@ import { computeDepositDueFromTicket, type TicketPaymentFields } from "@/lib/uti
 
 export type PaymentEvidenceMode = "deposit" | "balance" | "full";
 
-export type PaymentEvidenceModeFields = TicketPaymentFields;
+export type PaymentEvidenceModeFields = TicketPaymentFields & {
+  stripe_amount_cents?: number | null;
+};
+
+function evidenceAmountDollars(ticket: PaymentEvidenceModeFields): number | null {
+  if (ticket.payment_evidence_amount != null) {
+    return Number(ticket.payment_evidence_amount);
+  }
+  if (ticket.stripe_amount_cents != null) {
+    return Number(ticket.stripe_amount_cents) / 100;
+  }
+  return null;
+}
 
 export function inferPaymentEvidenceMode(
   ticket: PaymentEvidenceModeFields,
@@ -15,10 +27,7 @@ export function inferPaymentEvidenceMode(
 
   const total = Number(ticket.quote_final_total ?? 0);
   const received = Number(ticket.payment_amount_received ?? 0);
-  const evidenceAmt =
-    ticket.payment_evidence_amount != null
-      ? Number(ticket.payment_evidence_amount)
-      : null;
+  const evidenceAmt = evidenceAmountDollars(ticket);
 
   const depositAlreadyPaid = !!ticket.deposit_paid_at || received > 0.01;
   if (depositAlreadyPaid) return "balance";
@@ -57,4 +66,17 @@ export function paymentEvidenceTypeLabelForTicket(
   ticket: PaymentEvidenceModeFields,
 ): string {
   return paymentEvidenceTypeLabel(inferPaymentEvidenceMode(ticket));
+}
+
+/** Orders list / stats row — which payment is awaiting accountant confirm. */
+export const PAYMENT_EVIDENCE_AWAITING_LABELS: Record<PaymentEvidenceMode, string> = {
+  deposit: "Awaiting deposit confirmation",
+  balance: "Awaiting balance confirmation",
+  full: "Awaiting full payment confirmation",
+};
+
+export function paymentEvidenceAwaitingConfirmationLabel(
+  ticket: PaymentEvidenceModeFields,
+): string {
+  return PAYMENT_EVIDENCE_AWAITING_LABELS[inferPaymentEvidenceMode(ticket)];
 }
