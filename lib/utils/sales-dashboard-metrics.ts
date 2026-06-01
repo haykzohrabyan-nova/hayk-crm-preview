@@ -1,5 +1,6 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { sumProductionReleasedValue } from "@/lib/utils/dashboard-metrics";
+import { isExcludedFromRevenueKpis } from "@/lib/utils/exclude-refunded-tickets";
 import {
   pctChange,
   type SdrMetricTrend as DashboardMetricTrend,
@@ -69,12 +70,19 @@ async function countQuotesCreated(
   const ticketIds = [...new Set(acts.map((a) => a.ticket_id as string))];
   const { data: tickets } = await admin
     .from("job_tickets")
-    .select("id, ticket_kind")
+    .select("id, ticket_kind, ticket_status, refund_status")
     .in("id", ticketIds);
 
   const quoteIds = new Set(
     (tickets ?? [])
-      .filter((t) => t.ticket_kind === "quote")
+      .filter(
+        (t) =>
+          t.ticket_kind === "quote" &&
+          !isExcludedFromRevenueKpis({
+            ticket_status: t.ticket_status as string | null,
+            refund_status: t.refund_status as string | null,
+          }),
+      )
       .map((t) => t.id as string),
   );
 
@@ -101,7 +109,7 @@ async function countOrdersCreated(
   const ticketIds = [...new Set(converts.map((c) => c.ticket_id as string))];
   const { data: tickets } = await admin
     .from("job_tickets")
-    .select("id, linked_lead_id, created_by_id, routed_by_id")
+    .select("id, linked_lead_id, created_by_id, routed_by_id, ticket_status, refund_status")
     .in("id", ticketIds);
 
   const leadIds = [
@@ -125,6 +133,14 @@ async function countOrdersCreated(
     if (seen.has(ticketId)) continue;
     const ticket = (tickets ?? []).find((t) => t.id === ticketId);
     if (!ticket) continue;
+    if (
+      isExcludedFromRevenueKpis({
+        ticket_status: ticket.ticket_status as string | null,
+        refund_status: ticket.refund_status as string | null,
+      })
+    ) {
+      continue;
+    }
     const lead = ticket.linked_lead_id
       ? leadMap.get(ticket.linked_lead_id as string)
       : null;

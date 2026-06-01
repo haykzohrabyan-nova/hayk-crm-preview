@@ -13,8 +13,8 @@ import { resolveReportDateRange } from "@/lib/utils/reports-date-range";
 import { roundMoney } from "@/lib/utils/format";
 import { sumProductionReleasedValue } from "@/lib/utils/dashboard-metrics";
 import {
-  excludeFullyRefundedFromRevenue,
-  isFullyRefundedTicket,
+  excludeRefundedTickets,
+  isExcludedFromRevenueKpis,
 } from "@/lib/utils/exclude-refunded-tickets";
 
 function round1(n: number): number {
@@ -177,7 +177,7 @@ export async function GET(request: NextRequest) {
       .lte("created_at", periodEnd)
       .not("by_user_id", "is", null),
 
-    excludeFullyRefundedFromRevenue(
+    excludeRefundedTickets(
       admin
         .from("job_tickets")
         .select(
@@ -323,7 +323,7 @@ export async function GET(request: NextRequest) {
     const ticketId = row.ticket_id as string;
     const ticket = ticketMap.get(ticketId);
     if (!ticket) continue;
-    if (isFullyRefundedTicket(ticket.refund_status as string | null)) continue;
+    if (isExcludedFromRevenueKpis(ticket)) continue;
 
     const lead = ticket.linked_lead_id
       ? leadMap.get(ticket.linked_lead_id as string)

@@ -7,6 +7,7 @@ import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireTicketDetailPageAccess } from "@/lib/auth/require-page-access";
 import { canAccessTicket } from "@/lib/utils/ticket-access";
 
 function fmtDate(iso: string) {
@@ -35,6 +36,10 @@ export async function GET(
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) {
     return new NextResponse("Unauthorized", { status: errorResponse.status });
+  }
+  const pageDeny = await requireTicketDetailPageAccess(userId!, roleName);
+  if (pageDeny) {
+    return new NextResponse("Forbidden", { status: pageDeny.status });
   }
 
   const admin = createAdminClient();

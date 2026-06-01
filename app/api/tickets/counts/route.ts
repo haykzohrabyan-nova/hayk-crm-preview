@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireAnyPageAccess } from "@/lib/auth/require-page-access";
+import { isAccountantQuoteWorkflowDenied } from "@/lib/utils/ticket-access";
 import {
   countExact,
   scopedTicketCount,
@@ -14,6 +16,11 @@ import {
 export async function GET() {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  if (isAccountantQuoteWorkflowDenied(roleName)) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
+  const pageDeny = await requireAnyPageAccess(userId!, roleName, ["/quotes", "/orders"]);
+  if (pageDeny) return pageDeny;
 
   const admin = createAdminClient();
 
@@ -41,7 +48,7 @@ export async function GET() {
       ),
       scopedTicketCount(admin, roleName, userId, (q) => q.eq("ticket_status", "routed")),
       scopedTicketCount(admin, roleName, userId, (q) => q),
-      roleName === "sales" || roleName === "admin" || roleName === "accountant"
+      roleName === "sales" || roleName === "admin"
         ? countExact(admin, "job_tickets", (q) => q.eq("ticket_status", "routed"))
         : Promise.resolve(0),
     ]);
@@ -55,10 +62,7 @@ export async function GET() {
       completed,
       cancelled,
       total: scopedTotal,
-      routed:
-        roleName === "sales" || roleName === "admin" || roleName === "accountant"
-          ? globalRouted
-          : scopedRouted,
+      routed: roleName === "sales" || roleName === "admin" ? globalRouted : scopedRouted,
     };
 
     return NextResponse.json({ counts });

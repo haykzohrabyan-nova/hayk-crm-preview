@@ -43,6 +43,10 @@ interface AdminKpis {
   pipeline_leads: number;
   quoted_leads: number;
   ordered_leads: number;
+  rejected_leads: number;
+  cancelled_leads: number;
+  refunded_leads: number;
+  inbox_leads_period?: number;
   inbox_leads: number;
   routed_leads: number;
   won_leads: number;
@@ -70,6 +74,42 @@ interface SessionSummary {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const TOTAL_LEADS_SUBSTAT_COLORS = {
+  open: "var(--color-success)",
+  claimed: "var(--color-accent-dark)",
+  pipeline: "var(--color-warning)",
+  quoted: "var(--color-info-text)",
+  ordered: "var(--color-btn-verify-bg)",
+  rejected: "var(--color-danger)",
+  cancelled: "var(--color-text-muted)",
+  refunded: "var(--color-warning-text-deep)",
+  inbox: "var(--color-info-text-deep)",
+} as const;
+
+function buildTotalLeadsSubStats(data: AdminKpis): { label: string; value: number; color: string }[] {
+  const stats: { label: string; value: number; color: string }[] = [
+    { label: "Open", value: data.open_leads ?? 0, color: TOTAL_LEADS_SUBSTAT_COLORS.open },
+    { label: "Claimed", value: data.claimed_leads ?? 0, color: TOTAL_LEADS_SUBSTAT_COLORS.claimed },
+    { label: "In Pipeline", value: data.pipeline_leads ?? 0, color: TOTAL_LEADS_SUBSTAT_COLORS.pipeline },
+    { label: "Quoted", value: data.quoted_leads ?? 0, color: TOTAL_LEADS_SUBSTAT_COLORS.quoted },
+    { label: "Ordered", value: data.ordered_leads ?? 0, color: TOTAL_LEADS_SUBSTAT_COLORS.ordered },
+    { label: "Rejected", value: data.rejected_leads ?? 0, color: TOTAL_LEADS_SUBSTAT_COLORS.rejected },
+    { label: "Cancelled", value: data.cancelled_leads ?? 0, color: TOTAL_LEADS_SUBSTAT_COLORS.cancelled },
+    { label: "Refunded", value: data.refunded_leads ?? 0, color: TOTAL_LEADS_SUBSTAT_COLORS.refunded },
+  ];
+
+  const inboxInPeriod = data.inbox_leads_period;
+  if (inboxInPeriod && inboxInPeriod > 0) {
+    stats.unshift({
+      label: "Inbox",
+      value: inboxInPeriod,
+      color: TOTAL_LEADS_SUBSTAT_COLORS.inbox,
+    });
+  }
+
+  return stats;
+}
 
 function formatCurrency(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -572,10 +612,9 @@ export function AdminDashboard() {
 
   useEffect(() => { fetchKpis(); }, [fetchKpis]);
 
-  // Silent re-fetch when any lead changes (Realtime → sidebar → bazaar:leads-changed).
-  // Does NOT set loading=true so the cards don't flash skeleton.
+  // Silent re-fetch when leads or tickets change (cancel/refund updates breakdown).
   useEffect(() => {
-    function onLeadsChanged() {
+    function onRefresh() {
       fetch(`/api/dashboard/kpis?${buildQuery(filter)}`)
         .then((r) => r.json())
         .then((json) => {
@@ -586,8 +625,12 @@ export function AdminDashboard() {
         })
         .catch(() => {});
     }
-    window.addEventListener("bazaar:leads-changed", onLeadsChanged);
-    return () => window.removeEventListener("bazaar:leads-changed", onLeadsChanged);
+    window.addEventListener("bazaar:leads-changed", onRefresh);
+    window.addEventListener("bazaar:tickets-changed", onRefresh);
+    return () => {
+      window.removeEventListener("bazaar:leads-changed", onRefresh);
+      window.removeEventListener("bazaar:tickets-changed", onRefresh);
+    };
   }, [filter, buildQuery, privacy.syncFromApi]);
 
   const periodLabel = data?.range?.label ?? "Last 7 Days";
@@ -647,23 +690,7 @@ export function AdminDashboard() {
               subtext={periodLabel.toLowerCase()}
               help={KPI_HELP.total_leads}
               icon={<Users className="h-4 w-4" />}
-              subStats={
-                metricsHidden
-                  ? undefined
-                  : [
-                      { label: "Open", value: data.open_leads, color: "var(--color-success)" },
-                      { label: "Claimed", value: data.claimed_leads, color: "var(--color-accent-dark)" },
-                      ...(data.pipeline_leads > 0
-                        ? [{ label: "In Pipeline", value: data.pipeline_leads, color: "var(--color-warning)" }]
-                        : []),
-                      ...(data.quoted_leads > 0
-                        ? [{ label: "Quoted", value: data.quoted_leads, color: "var(--color-info-text)" }]
-                        : []),
-                      ...(data.ordered_leads > 0
-                        ? [{ label: "Ordered", value: data.ordered_leads, color: "var(--color-btn-verify-bg)" }]
-                        : []),
-                    ]
-              }
+              subStats={metricsHidden ? undefined : buildTotalLeadsSubStats(data)}
             />
             <KpiCard
               label="In Inbox"

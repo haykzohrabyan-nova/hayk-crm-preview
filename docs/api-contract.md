@@ -1057,6 +1057,14 @@ Partial ticket update. Six distinct operation modes:
 - When confirming customer-submitted evidence: sends **payment confirmed** email/SMS (balance on in-production orders: **paid in full** messaging); logs `ticket_payment_confirmed_sent`
 - Logs `ticket_payment_recorded` activity via `lib/utils/log-ticket-payment-recorded.ts`
 
+**Legacy — `release_production` (prefer auto-release on payment confirm):**
+```json
+{ "release_production": true }
+```
+- Stamps `production_released_at` and logs `ticket_production_released` — does **not** set `ticket_status = in_production` or run full `maybeAutoReleaseProduction()` gates
+- Auth: after `canMutateTicket()` — admin, accountant, or ticket owner (`created_by_id`)
+- **No UI button wired** (May 2026); production release in practice happens via `record_payment` / public cash / net terms → `maybeAutoReleaseProduction()`
+
 **Mode 4 — Claim (Sales/Admin only):**
 ```json
 {
@@ -1279,6 +1287,20 @@ Unified refund (manual + Stripe). **Auth:** Accountant or Admin only.
 **Evidence download:** `GET /api/tickets/[id]/refund-evidence/[refundId]` — signed URL for ledger row.
 
 **Ticket GET:** Accountant/Admin responses include `payment_refunds[]` on the ticket payload.
+
+---
+
+### `POST /api/payments/stripe/webhook`
+
+Stripe Checkout webhook (Phase C). **No staff session** — authenticated via Stripe signature.
+
+**Auth:** `Stripe-Signature` header verified with `STRIPE_WEBHOOK_SECRET`.
+
+**Events handled:** `checkout.session.completed` — sets Stripe evidence columns on `job_tickets`, queues ticket on `/payments` pending review.
+
+**Response `200`:** `{ "received": true }` on success.
+
+See `docs/feature-specs/invoice-payment.md` Phase C and `app/api/payments/stripe/webhook/route.ts`.
 
 ---
 
@@ -1665,54 +1687,7 @@ Returns the full activity timeline for a single lead, newest first. Joins `user_
 
 This is what the **Sales Drawer History tab** uses. Each entry includes `by_user.full_name` and `payload` (event-specific data — e.g. `{ from, reason, notes }` for `lead_rejected`).
 
----
-
-### `GET /api/activity`
-
-Query the unified timeline. Returns activities matching any of the provided identifiers, ordered by `created_at DESC`.
-
-**Query params (at least one required):**
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `contact_id` | `uuid` | Activities for this contact |
-| `lead_id` | `uuid` | Activities for this lead |
-| `phone` | `string` | Resolves contact by phone, returns all their activities |
-| `email` | `string` | Resolves contact by email |
-
-**Cross-lead resolution:** When `phone` or `email` is provided, the server looks up all leads sharing that identifier and returns activities across all of them.
-
-**Response `200`:**
-```json
-{
-  "activities": [Activity]
-}
-```
-
----
-
-### `POST /api/activity`
-
-Append a client-side activity event. Used when the browser knows the context (e.g. user logs a manual call).
-
-**Body:**
-```json
-{
-  "type": "string",
-  "contact_id": "uuid | null",
-  "lead_id": "uuid | null",
-  "ticket_id": "uuid | null",
-  "channel": "string | null",
-  "payload": "object"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "activity": Activity
-}
-```
+> **Not implemented:** `GET /api/activity` and `POST /api/activity` (legacy spec — no Route Handler). Use **`GET /api/activities`** (`lead_id` / `ticket_id`) or **`GET /api/leads/[id]/activities`**. Manual “Log Call” UI is not built.
 
 ---
 
@@ -1862,6 +1837,10 @@ When `user_profiles.dashboard_values_hidden` is `true` for the session user, the
   "pipeline_leads": "number",
   "quoted_leads": "number",
   "ordered_leads": "number",
+  "rejected_leads": "number",
+  "cancelled_leads": "number",
+  "refunded_leads": "number",
+  "inbox_leads_period": "number",
   "inbox_leads": "number",
   "routed_leads": "number",
   "won_leads": "number",
@@ -1899,10 +1878,11 @@ When `user_profiles.dashboard_values_hidden` is `true` for the session user, the
 - `cash_collected` — sum of `ticket_payment_recorded` amounts in period (matches Reports)
 - `pipeline_value` — sum of `quote_final_total` on draft/sent tickets (live snapshot, not date-filtered)
 - `won_leads` — count of production releases in period (`production_released_at`)
-- `inbox_leads`, `routed_leads`, `open_leads`, `claimed_leads` — live snapshots (not date-filtered)
-- `total_leads`, `pipeline_leads`, `quoted_leads`, `ordered_leads` — filtered by `created_at` in period
+- `inbox_leads`, `routed_leads` — live snapshots (not date-filtered)
+- `total_leads` and all Total Leads sub-badges — filtered by `created_at` in period; buckets are **mutually exclusive** and sum to `total_leads`
+- Sub-counts: `open_leads`, `claimed_leads`, `pipeline_leads`, `quoted_leads`, `ordered_leads`, `rejected_leads`, `cancelled_leads`, `refunded_leads`; `inbox_leads_period` when leads created in period are still in inbox
+- `inbox_leads` (separate card) — live snapshot of all inbox leads, not period-scoped
 - `team_member_metrics` — per-user work stats for Team cards (SDR activity + sales money metrics)
-- Sub-counts on Total Leads card: `open_leads`, `claimed_leads`, `pipeline_leads`, `quoted_leads`, `ordered_leads`
 
 **Field notes (SDR / Sales):**
 - Period-scoped metrics use `range.start_iso` / `range.end_iso`; trend cards compare to `prior_label` period
@@ -1983,35 +1963,11 @@ Admin only. Full reporting payload — see [`feature-specs/reports.md`](feature-
 
 ---
 
-## Outreach
+## Outreach (server-side only — no REST endpoint)
 
-### `POST /api/outreach/send`
+Quote/order email and SMS/WhatsApp are sent from ticket and lead Route Handlers via **`lib/integrations/send-quote.ts`** (Twilio, Instantly). There is **no** `POST /api/outreach/send` Route Handler.
 
-Provider-agnostic outreach endpoint. The concrete email/SMS provider is resolved at runtime from env vars.
-
-**Body:**
-```json
-{
-  "channel": "email | sms | whatsapp",
-  "to": "string",
-  "subject": "string | null",
-  "body": "string",
-  "lead_id": "uuid | null",
-  "contact_id": "uuid | null"
-}
-```
-
-**Business rules:**
-- In dev (`OUTREACH_EMAIL_PROVIDER=console`, `OUTREACH_SMS_PROVIDER=console`): logs to server console, returns success
-- Logs `outreach_sent` activity with channel and recipient in payload
-
-**Response `200`:**
-```json
-{
-  "sent": true,
-  "provider": "string"
-}
-```
+Activity type **`outreach_sent`** may appear in timelines when integrations log sends.
 
 ---
 

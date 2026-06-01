@@ -4,6 +4,7 @@ import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT, type AutoReleaseTicket
 import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-order";
 import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
 import { hasPublicRefundNotice } from "@/lib/utils/public-quote-refund-state";
+import { notifyPublicQuoteUpdated } from "@/lib/integrations/notify-public-quote-updated";
 
 // POST /api/public/quotes/[token]/confirm
 // No auth required — customer clicks "Confirm & Accept" on the public quote page.
@@ -103,6 +104,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     now,
     { via: "public_confirm" },
   );
+
+  notifyPublicQuoteUpdated(token);
 
   return NextResponse.json({
     ok: true,

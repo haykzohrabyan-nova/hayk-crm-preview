@@ -5,16 +5,22 @@
 Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are seeded and cannot be deleted. Admin can create additional custom roles and assign page access to each via the Settings → Roles tab.
 
 **Enforcement layers:**
-1. **`proxy.ts`** — reads role permissions from DB on every **page** request; redirects unauthorized roles
-2. **Route Handlers** — `requireSession()` / `requireAdmin()` + object checks (`canReadLead`, `canAccessTicket`, …) + **`requirePageAccess()`** mirroring page RBAC on sensitive APIs
+1. **`proxy.ts`** — reads role permissions from DB on every **page** request; redirects unauthorized roles; hard-blocks **`/settings`**, **`/reports`**, and **`/activity-log`** for non-admins
+2. **Route Handlers** — `requireSession()` / `requireAdmin()` + object checks (`canReadLead`, `canAccessTicket`, …) + page gates:
+   - **`requirePageAccess(route)`** — single page route (lists, CRM, payments, …)
+   - **`requireAnyPageAccess(routes)`** — ticket detail, shipping addresses, contextual ticket APIs
+   - **`requireLeadApiPageAccess()`** — lead drawer/mutation APIs (`/leads` or `/sales`)
+   - **`requireTicketDetailPageAccess()`** — PDF, print, and ticket detail page routes
 3. **Supabase RLS** — database-level row filtering for direct browser/realtime Supabase client access
+
+**Helper modules:** `lib/auth/require-page-access.ts`, `lib/auth/role-checks.ts` (`isAdminRole`, `isPaymentStaffRole`), `lib/auth/admin-only-pages.ts`, `lib/utils/ticket-access.ts`, `lib/utils/lead-access.ts`, `lib/utils/db-counts.ts` (`scopeJobTicketsQuery`).
 
 ---
 
 ## Role Definitions
 
 ### SDR (Sales Development Representative)
-- Default pages: `/dashboard`, `/leads`, `/crm`, `/quotes`, `/orders`, `/completed`, `/settings`
+- Default pages: `/dashboard`, `/leads`, `/crm`, `/quotes`, `/orders`, `/completed` (+ universal `/profile`)
 - Triage the AI inbox: validate, quote, route, reject, hold leads
 - Add leads manually
 - View and manage CRM contacts
@@ -27,7 +33,7 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - **Voluntary route below threshold:** on new quote **Line Items** or **Quote** tab, SDR may click **Route to Sales** (reason modal + optional notes) — same `routed` status and Sales claim queue as HVT. Quote tab allows completing shipping, tax, and payment settings before routing.
 
 ### Sales
-- Default pages: `/dashboard`, `/sales`, `/crm`, `/quotes`, `/orders`, `/settings`
+- Default pages: `/dashboard`, `/sales`, `/crm`, `/quotes`, `/orders` (+ universal `/profile`)
 - Work leads routed to them
 - Manage sales pipeline (claim, update status, hold, create orders)
 - See "Routed to Sales" tab on `/quotes` page — quotes routed from SDR HVT block
@@ -41,14 +47,15 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - **Resend invoice link** on production/completed detail
 
 ### Accountant
-- Default pages: `/dashboard`, `/payments`, `/orders`, `/completed`, `/settings`
+- Default pages: `/dashboard`, `/payments`, `/orders`, `/completed` (+ universal `/profile`)
 - Default home after login: `/payments`
+- **No quote workflow** — `/quotes` not in default pages; `GET /api/quotes/*` and quote-list `GET /api/tickets?kind=quote` return `403`
 - Review customer-submitted payment evidence on `/payments` (Pending · Approved · **Refunded** tabs)
 - **Confirm payment** via `record_payment` PATCH action
 - **Refund payment** via `POST /api/tickets/[id]/refund` (manual + Stripe per slot) — same as Admin
 - **Cancel quote/order** via `PATCH /api/tickets/[id]` (`ticket_status: cancelled`) — same as Admin; partial-refund warning in UI first when applicable
 - View orders, production, and completed orders (read-only except mark complete, refund, cancel)
-- **GET any ticket** via `/api/tickets/[id]` — matches list scoping so order detail pages do not 403; responses include `payment_refunds[]` and `cancelled_at`
+- **GET ticket** via `/api/tickets/[id]` only for `sent` / `order` / `in_production` / `completed` / `cancelled` — not draft/routed/approved quote editing
 - **Mark Completed** on in-production orders **only when paid in full** (`isTicketPaidInFull()`)
 - Cannot edit quote line items or change ticket status otherwise (except cancel, payment confirm, refund)
 
@@ -56,9 +63,9 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - Admin gives the role a name and display label
 - Admin then checks which pages from the `pages` table this role can access
 - Users can be assigned to custom roles exactly like system roles
-- Custom roles cannot access `/admin/*` pages unless explicitly granted
+- Custom roles cannot access `/admin/*`, `/reports`, or `/activity-log` — locked in Roles UI; grant API returns `403`; proxy hard-blocks non-admins
 
-> **Note — System role permissions are locked in the UI.** The Admin panel displays the three system roles (Admin, SDR, Sales) in the Roles tab but their page-permission checkboxes are read-only. The "New Role" button is currently hidden (owner decision). Permissions for system roles are fixed and can only be changed via a database migration.
+> **Note — System role permissions are locked in the UI.** SDR, Sales, Accountant, and Admin page-permission checkboxes are read-only. Permissions for system roles are fixed and can only be changed via a database migration. Custom roles remain editable; admin-only pages (`/admin`, `/reports`, `/activity-log`) show a lock badge and cannot be granted.
 
 ---
 
@@ -80,13 +87,16 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/production` | — | — | — | — | **Removed from nav** — redirects to `/orders?tab=in_production` |
 | `/production/[id]` | — | — | — | — | Redirects to `/orders/[id]` |
 | `/completed` | ✓ (created) | ✗ | ✓ | ✓ | SDR: only tickets they created — not Sales-completed routed hand-offs |
-| `/completed/[id]` | ✓ (created) | ✗ | ✓ | ✓ | Resend invoice link (admin/accountant only) |
+| `/completed/[id]` | ✓ (created) | ✗ | ✓ | ✓ | Resend invoice: admin any ticket; others own tickets only |
 | `/q/[token]` | ✓ | ✓ | ✓ | ✓ | Public — staff preview while logged in |
-| `/settings` | ✓ | ✓ | ✓ | ✓ | Personal profile only |
+| `/settings` | ✗ | ✗ | ✓ | ✗ | Admin-only — redirects to `/admin/settings/users` |
+| `/profile` | ✓ | ✓ | ✓ | ✓ | Personal profile stub — **universal** in `proxy.ts` (not `role_permissions`) |
 | `/admin` | ✗ | ✗ | ✓ | ✗ | |
 | `/admin/users` | ✗ | ✗ | ✓ | ✗ | |
 | `/admin/settings` | ✗ | ✗ | ✓ | ✗ | |
 | `/admin/audit` | ✗ | ✗ | ✓ | ✗ | |
+| `/reports` | ✗ | ✗ | ✓ | ✗ | Admin-only — proxy hard-block even if granted in DB |
+| `/activity-log` | ✗ | ✗ | ✓ | ✗ | Admin-only — proxy hard-block even if granted in DB |
 
 Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of all leads in those sections.
 
@@ -94,56 +104,60 @@ Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of al
 
 ## API Endpoint Access Matrix
 
-All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Admin-only routes also call **`requireAdmin()`**. CRM, leads workspace, and sales pipeline routes also call **`requirePageAccess()`** for the matching page route. See **`docs/security.md`**.
+All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Admin-only routes also call **`requireAdmin()`**. List endpoints call **`requirePageAccess()`**; lead drawer routes call **`requireLeadApiPageAccess()`** (`/leads` or `/sales`); ticket detail/PDF/print call **`requireTicketDetailPageAccess()`**. See **`docs/security.md`**.
 
 | Endpoint | SDR | Sales | Admin | Notes |
 |----------|:---:|:-----:|:-----:|-------|
 | `GET /api/leads/workspace/*` | ✓ | ✗ | ✓ | Requires `/leads` page permission |
 | `GET /api/leads/sales/*` | ✗ | ✓ | ✓ | Requires `/sales` page permission |
 | `POST /api/leads/manual` | ✓ | ✗ | ✓ | SDR/admin only + `/leads` permission |
-| `GET /api/leads/[id]` | ✓ | ✓ | ✓ | `canReadLead()` |
-| `PATCH /api/leads/[id]` | ✓ | ✓ | ✓ | `canMutateLead()` + lock/rejected guards |
-| `POST /api/leads/[id]/lock` | ✓ | ✓ | ✓ | `canAcquireLeadLock()`; admin no lock in UI |
-| `POST /api/leads/[id]/unlock` | ✓ (own lock) | ✓ (own lock) | ✓ (any lock) | |
-| `POST /api/leads/[id]/hold` | ✓ | ✓ | ✓ | Scoped-tab helpers (SDR/Sales) |
-| `POST /api/leads/[id]/resume` | ✓ | ✓ | ✓ | Scoped-tab helpers |
+| `GET /api/leads/[id]` | ✓ | ✓ | ✓ | `requireLeadApiPageAccess()` + `canReadLead()` |
+| `PATCH /api/leads/[id]` | ✓ | ✓ | ✓ | `requireLeadApiPageAccess()` + `canMutateLead()` |
+| `POST /api/leads/[id]/lock` | ✓ | ✓ | ✓ | `requireLeadApiPageAccess()` + `canAcquireLeadLock()` |
+| `POST /api/leads/[id]/unlock` | ✓ (own lock) | ✓ (own lock) | ✓ (any lock) | `requireLeadApiPageAccess()` |
+| `POST /api/leads/[id]/hold` | ✓ | ✓ | ✓ | `requireLeadApiPageAccess()` + scoped-tab helpers |
+| `POST /api/leads/[id]/resume` | ✓ | ✓ | ✓ | `requireLeadApiPageAccess()` + scoped-tab helpers |
+| `POST /api/leads/[id]/follow-up` | ✓ | ✓ | ✓ | `requireLeadApiPageAccess()` + scoped-tab helpers |
 | `POST /api/leads/[id]/claim` | ✗ | ✓ | ✓ | `canClaimLead()` + `/sales` permission |
 | `POST /api/leads/[id]/reassign` | ✗ | ✗ | ✓ | |
 | `GET /api/crm/page-data` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
 | `GET /api/customers`, lookup, `[id]` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
-| `GET /api/customers/[id]/shipping-addresses` | ✓ | ✓ | ✓ | Requires `/crm` or `/quotes` permission |
+| `GET /api/customers/[id]/shipping-addresses` | ✓ | ✓ | ✓ | `/crm` or `/quotes`; **`scopeJobTicketsQuery()`** on ticket ids |
 | `PATCH /api/customers/[id]` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
-| `POST /api/customers/[id]/merge` | ✗ | ✓ | ✓ | |
-| `GET /api/tickets` | ✓ (own) | ✓ (own + all routed) | ✓ (all) |
-| `POST /api/tickets` | ✓ | ✓ | ✓ |
-| `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | Accountant: evidence review OR in_production/completed |
-| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ (incl. manual convert to order) | Accountant: payment fields + `record_payment`; mark `completed` when paid in full |
-| `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin only |
-| `PATCH … { ticket_status: 'cancelled' }` | ✗ | ✗ | ✓ | ✓ | Admin + Accountant — reason + notes required |
+| `POST /api/customers/[id]/merge` | ✗ | ✓ | ✓ | Requires `/crm` page permission |
+| `GET /api/tickets` | ✓ (own) | ✓ (own + all routed) | ✓ (all) | Accountant: ✗ quote list (`kind=quote`) |
+| `GET /api/quotes/page-data` | ✓ | ✓ | ✓ | Accountant → `403` |
+| `GET /api/quotes/counts` | ✓ | ✓ | ✓ | Accountant → `403` |
+| `POST /api/tickets` | ✓ | ✓ | ✓ | Accountant → `403` |
+| `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | `canAccessTicket()` + ticket-detail page access |
+| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ (all) | `canPatchTicket()` — accountant: payment/cancel/complete/refund only |
+| `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | Accountant + Admin only |
+| `PATCH … { ticket_status: 'cancelled' }` | ✗ | ✗ | ✓ | Admin + Accountant — reason + notes required |
 | `POST /api/tickets/[id]/refund` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — unified manual + Stripe |
 | `GET /api/tickets/[id]/refund-evidence/[refundId]` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
 | `GET /api/payments/page-data` | ✗ | ✗ | ✓ | ✓ | Pending + Approved + Refunded tabs |
-| `PATCH … { resend_invoice: true }` | ✗ | ✗ | ✓ | ✓ | Admin + Accountant (order/completed detail) |
-| `PATCH … { release_production: true }` | ✗ | ✗ | ✓ | Admin |
+| `PATCH … { send_payment_reminder: true }` | ✓ (own) | ✓ (own) | ✓ (all) | Admin any ticket; others `created_by_id` only |
+| `PATCH … { resend_invoice: true }` | ✓ (own) | ✓ (own) | ✓ (all) | Same ownership rule as payment reminder |
+| `PATCH … { release_production: true }` | ✓ (own) | ✓ (own) | ✓ | Legacy — stamps `production_released_at` only; ticket owners + admin via `canMutateTicket()`. Prefer `maybeAutoReleaseProduction()` on payment confirm. No UI wired (May 2026). |
 | `GET /api/payments/pending` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
 | `GET /api/payments/counts` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
-| `GET /api/production/orders` | ✗ | ✗ | ✓ | ✓ | Legacy — prefer `GET /api/orders/orders` |
-| `GET /api/completed/orders` | ✓ (created) | ✗ | ✓ | ✓ | SDR: `created_by_id` only — excludes Sales-completed routed hand-offs |
+| `GET /api/production/*` | ✓ (scoped) | ✓ (scoped) | ✓ | Legacy — `scopeJobTicketsQuery()` + `/orders` permission |
+| `GET /api/orders/page-data` | ✓ (own) | ✓ (own + routed) | ✓ | Requires `/orders` page permission |
+| `GET /api/completed/orders` | ✓ (created) | ✗ | ✓ | Legacy — scoped + page permission |
 | `GET /api/completed/counts` | ✓ (created) | ✗ | ✓ | ✓ | Same scope as completed list |
 | `GET /api/completed/page-data` | ✓ (created) | ✗ | ✓ | ✓ | List + counts in one request |
-| `GET /api/tickets/[id]/pdf` | ✓ (own scope) | ✓ (own + routed) | ✓ | Accountant: own scope via ticket access helper |
+| `GET /api/tickets/[id]/pdf` | ✓ (own scope) | ✓ (own + routed) | ✓ | `requireTicketDetailPageAccess()` + `canAccessTicket()` |
 | `GET /api/tickets/[id]/print` | ✓ (own scope) | ✓ (own + routed) | ✓ | Same as PDF |
-| `GET /api/tickets/[id]/evidence` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — signed URL |
-| `GET /api/tickets/counts` | ✓ | ✓ | ✓ |
+| `GET /api/tickets/[id]/evidence` | ✗ | ✗ | ✓ | Accountant + Admin — signed URL |
+| `GET /api/tickets/counts` | ✓ | ✓ | ✓ | Requires `/quotes` or `/orders`; accountant blocked |
+| `GET /api/sidebar-counts` | ✓ | ✓ | ✓ | Server resolves allowed routes — no client `?routes=` forgery |
 | `GET /api/lookups` | ✓ | ✓ | ✓ |
 | `GET /api/lookups/products` | ✓ | ✓ | ✓ |
-| `GET /api/activities` | ✓ | ✓ | ✓ |
-| `GET /api/activity` | ✓ | ✓ | ✓ |
-| `POST /api/activity` | ✓ | ✓ | ✓ |
+| `GET /api/activities` | ✓ | ✓ | ✓ | Lead/ticket scope; `requireSession()` + lead/ticket access checks |
+| `GET /api/leads/[id]/activities` | ✓ | ✓ | ✓ | `requireLeadApiPageAccess()` + `canReadLead()` |
 | `GET /api/dashboard/kpis` | ✓ | ✓ | ✓ | ✗ | SDR/Sales/Admin branches only; accountant → `403` (uses `/api/payments/counts`) |
 | `GET /api/user/dashboard-privacy` | ✓ | ✓ | ✓ | ✓ | Own profile — read hide/show preference |
 | `PATCH /api/user/dashboard-privacy` | ✓ | ✓ | ✓ | ✓ | Own profile — toggle dashboard values privacy |
-| `POST /api/outreach/send` | ✓ | ✓ | ✓ |
 | `GET /api/admin/company` | ✓ (safe fields) | ✓ (safe fields) | ✓ (full row) | Non-admin: tax rate, thresholds, idle timeout only |
 | `PATCH /api/admin/company` | ✗ | ✗ | ✓ | Includes bank/Zelle remittance fields |
 | `GET /api/admin/product-types` | ✓ | ✓ | ✓ | Authenticated + MFA; inactive types included |
@@ -189,7 +203,7 @@ The existing `proxy.ts` enforces on **pages** (not `/api/*`):
 2. No TOTP enrolled → redirect to `/setup-2fa` *(skipped when `user_profiles.mfa_required = false`)*
 3. Session not AAL2 → redirect to `/verify-2fa` *(skipped when trusted-device cookie valid or `mfa_required = false`)*
 
-**API routes** mirror steps 1–3 via `requireSession()` in every Route Handler, plus **`requirePageAccess()`** on CRM/leads/sales list endpoints. See **`docs/security.md`**.
+**API routes** mirror steps 1–3 via `requireSession()` in every Route Handler, plus page gates (`requirePageAccess`, `requireLeadApiPageAccess`, `requireTicketDetailPageAccess`). Non-admins are hard-blocked from **`/reports`** and **`/activity-log`** even if stale `role_permissions` rows exist. See **`docs/security.md`**.
 
 Admins can toggle **`mfa_required`** per user on **Admin → Users** (confirmation dialog). Default is `true` for all users. Admins cannot disable their own 2FA.
 
@@ -232,7 +246,7 @@ const isAllowed = allowedRoutes.some(route =>
 
 if (!isAllowed) {
   // Redirect to the first allowed page (or /dashboard as fallback)
-  const firstAllowed = allowedRoutes.find(r => r !== '/settings') ?? '/dashboard'
+  const firstAllowed = allowedRoutes.find(r => r !== '/profile') ?? '/dashboard'
   return NextResponse.redirect(new URL(firstAllowed, request.url))
 }
 ```
@@ -363,15 +377,24 @@ Role is read directly from Supabase (`user_profiles.roles(name)`) in each compon
 
 ## Default Post-Login Destination
 
-`lib/auth/resolve-default-home.ts` — currently hardcoded to `/dashboard`. No change needed; all roles land on `/dashboard` after auth.
+`lib/auth/resolve-default-home.ts` — role-specific first page after auth (also used when `proxy.ts` redirects unauthorized routes):
+
+| Role | Path |
+|------|------|
+| SDR | `/leads` |
+| Sales | `/sales` |
+| Accountant | `/payments` |
+| Admin (and other roles) | `/dashboard` |
+
+After MFA setup or password change, users land on their role home — not always `/dashboard`.
 
 ---
 
 ## User Lifecycle
 
-1. Admin invites user via `/admin/users` → Supabase sends invite email
-2. User clicks invite link → sets password (Supabase magic link flow)
-3. On first login, `proxy.ts` detects no TOTP → redirects to `/setup-2fa`
-4. After TOTP setup, redirected to `/dashboard`
-5. Admin can deactivate user (`is_active = false`) → `proxy.ts` checks `is_active` and redirects to `/login` with error message
-6. Deactivated users' sessions remain valid in Supabase Auth but `proxy.ts` rejects them at the application level
+1. Admin creates user via **Admin → Settings → Users** → **Add User** (`POST /api/admin/users/create`) with email, role, and temporary password
+2. Admin shares credentials with the user (optional Instantly welcome email when configured)
+3. User logs in with temp password → `proxy.ts` redirects to `/change-password` when `must_change_password = true`
+4. After password change → `/setup-2fa` if no TOTP enrolled, else role home via `resolveDefaultHomePath()`
+5. Admin can deactivate user (`is_active = false`) → `proxy.ts` redirects to `/login?error=deactivated`
+6. Deactivated users' Supabase Auth sessions may still exist; `proxy.ts` rejects them at the application layer

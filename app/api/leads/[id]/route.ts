@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireLeadApiPageAccess } from "@/lib/auth/require-page-access";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
 import { canReadLead, canMutateLead } from "@/lib/utils/lead-access";
@@ -16,6 +17,8 @@ export async function GET(
 ) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requireLeadApiPageAccess(userId!, roleName);
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const admin = createAdminClient();
@@ -64,6 +67,8 @@ export async function PATCH(
 ) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requireLeadApiPageAccess(userId!, roleName);
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));

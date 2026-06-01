@@ -7,8 +7,8 @@ import {
 } from "@/lib/utils/reports-attribution";
 import { roundMoney } from "@/lib/utils/format";
 import {
-  excludeFullyRefundedFromRevenue,
-  isFullyRefundedTicket,
+  excludeRefundedTickets,
+  isExcludedFromRevenueKpis,
 } from "@/lib/utils/exclude-refunded-tickets";
 
 /** Sum recorded payment amounts in a date window (matches Reports cash collected). */
@@ -31,7 +31,7 @@ export async function sumCashCollectedInPeriod(
   const ticketIds = [...new Set(payments.map((p) => p.ticket_id as string).filter(Boolean))];
   const { data: tickets } = await admin
     .from("job_tickets")
-    .select("id, linked_lead_id, created_by_id, routed_by_id, refund_status")
+    .select("id, linked_lead_id, created_by_id, routed_by_id, refund_status, ticket_status")
     .in("id", ticketIds);
 
   const leadIds = [
@@ -57,7 +57,7 @@ export async function sumCashCollectedInPeriod(
 
     const ticket = ticketMap.get(row.ticket_id as string);
     if (!ticket) continue;
-    if (isFullyRefundedTicket(ticket.refund_status as string | null)) continue;
+    if (isExcludedFromRevenueKpis(ticket)) continue;
 
     if (filter?.userId) {
       const lead = ticket.linked_lead_id ? leadMap.get(ticket.linked_lead_id as string) : null;
@@ -88,6 +88,23 @@ export async function sumCashCollectedInPeriod(
   return { total: roundMoney(total), payment_count: count };
 }
 
+/** Sum of active draft/sent quote totals — excludes cancelled and refunded tickets. */
+export async function sumPipelineQuoteValue(admin: SupabaseClient): Promise<number> {
+  let query = admin
+    .from("job_tickets")
+    .select("quote_final_total")
+    .eq("ticket_kind", "quote")
+    .in("ticket_status", ["draft", "sent"]);
+  query = excludeRefundedTickets(query);
+  const { data, error } = await query;
+  if (error) throw error;
+  const total = (data ?? []).reduce(
+    (sum, row) => sum + Number(row.quote_final_total ?? 0),
+    0,
+  );
+  return roundMoney(total);
+}
+
 /** Order value for tickets released to production in the period. */
 export async function sumProductionReleasedValue(
   admin: SupabaseClient,
@@ -104,7 +121,7 @@ export async function sumProductionReleasedValue(
     .not("production_released_at", "is", null)
     .gte("production_released_at", periodStartIso)
     .lte("production_released_at", periodEndIso);
-  releasedQuery = excludeFullyRefundedFromRevenue(releasedQuery);
+  releasedQuery = excludeRefundedTickets(releasedQuery);
   const { data: tickets } = await releasedQuery;
 
   if (!tickets?.length) return { value: 0, received: 0, balance: 0, count: 0 };

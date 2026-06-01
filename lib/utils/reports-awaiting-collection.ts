@@ -9,7 +9,7 @@ import {
   type LeadAttribution,
   type TicketAttribution,
 } from "@/lib/utils/reports-attribution";
-import { isFullyRefundedTicket } from "@/lib/utils/exclude-refunded-tickets";
+import { isExcludedFromRevenueKpis } from "@/lib/utils/exclude-refunded-tickets";
 
 const STATUS_LABELS: Record<string, string> = {
   sent: "Quote sent",
@@ -94,7 +94,7 @@ export function buildAwaitingCollection(
       customer: unknown;
     };
 
-    if (isFullyRefundedTicket(fields.refund_status)) continue;
+    if (isExcludedFromRevenueKpis(fields)) continue;
     if (Number(fields.quote_final_total ?? 0) <= 0.01) continue;
     if (isTicketPaidInFull(fields)) continue;
 

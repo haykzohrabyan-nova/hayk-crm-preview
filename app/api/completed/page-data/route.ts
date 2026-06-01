@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import {
   fetchCompletedOrders,
   fetchCompletedTabCounts,
@@ -12,6 +13,8 @@ import { parseCompletedListFilters } from "@/lib/utils/ticket-list-filters";
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requirePageAccess(userId!, roleName, "/completed");
+  if (pageDeny) return pageDeny;
 
   const filters = parseCompletedListFilters(request.nextUrl.searchParams, roleName);
   const pagination = parseListPaginationParams(request.nextUrl.searchParams);

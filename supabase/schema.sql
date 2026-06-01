@@ -269,6 +269,31 @@ create table if not exists public.job_tickets (
   cancel_reason                      text,
   cancel_reason_label                text,
   cancel_notes                       text,
+  cancelled_at                       timestamptz,
+
+  -- Stripe Checkout (097)
+  stripe_checkout_session_id         text,
+  stripe_payment_intent_id           text,
+  stripe_charge_id                   text,
+  stripe_payment_status              text,
+  stripe_amount_cents                integer,
+  stripe_card_brand                  text,
+  stripe_card_last4                  text,
+  stripe_receipt_url                 text,
+  stripe_customer_email              text,
+
+  -- Stripe refund tracking (098)
+  stripe_amount_refunded_cents       integer        not null default 0,
+  stripe_last_refund_reason          text,
+  stripe_last_refund_notes           text,
+  stripe_last_refunded_at            timestamptz,
+
+  -- Unified payment refunds (100)
+  refund_status                      text           not null default 'none'
+                                       check (refund_status in ('none', 'partial', 'full')),
+  total_refunded_amount              numeric        not null default 0,
+  last_refunded_at                   timestamptz,
+  last_refunded_by_id                uuid           references auth.users(id),
 
   notes                              text,
   created_at                         timestamptz    not null default now(),
@@ -326,6 +351,23 @@ create table if not exists public.ticket_files (
   uploaded_by_id  uuid        references auth.users(id),
   created_at      timestamptz not null default now(),
   constraint ticket_files_variant_id_key unique (variant_id)
+);
+
+-- ── ticket_payment_refunds (migration 100) ────────────────────────────────────
+
+create table if not exists public.ticket_payment_refunds (
+  id               uuid        primary key default gen_random_uuid(),
+  ticket_id        uuid        not null references public.job_tickets(id) on delete cascade,
+  amount           numeric     not null check (amount > 0),
+  payment_mode     text        not null check (payment_mode in ('deposit', 'balance', 'full')),
+  method           text        not null,
+  source           text        not null check (source in ('stripe', 'manual')),
+  stripe_refund_id text,
+  reason           text        not null,
+  notes            text,
+  evidence_path    text,
+  refunded_by_id   uuid        references auth.users(id),
+  created_at       timestamptz not null default now()
 );
 
 -- ── activities ────────────────────────────────────────────────────────────────
@@ -540,6 +582,24 @@ create index if not exists job_tickets_in_production_released_idx
 create index if not exists job_tickets_order_status_idx
   on public.job_tickets(created_at desc)
   where ticket_status in ('order', 'cancelled');
+
+create unique index if not exists job_tickets_stripe_checkout_session_id_key
+  on public.job_tickets (stripe_checkout_session_id)
+  where stripe_checkout_session_id is not null;
+
+create index if not exists job_tickets_stripe_payment_intent_id_idx
+  on public.job_tickets (stripe_payment_intent_id)
+  where stripe_payment_intent_id is not null;
+
+create index if not exists job_tickets_refund_status_idx
+  on public.job_tickets (refund_status)
+  where refund_status <> 'none';
+
+create index if not exists ticket_payment_refunds_ticket_id_idx
+  on public.ticket_payment_refunds (ticket_id);
+
+create index if not exists ticket_payment_refunds_refunded_by_id_idx
+  on public.ticket_payment_refunds (refunded_by_id);
 
 -- activities
 create index if not exists activities_customer_id_idx on public.activities(customer_id);
@@ -1181,7 +1241,7 @@ select r.id, p.id
 from public.roles r
 cross join public.pages p
 where r.name = 'sales'
-  and p.route in ('/dashboard', '/sales', '/crm')
+  and p.route in ('/dashboard', '/sales', '/crm', '/quotes', '/orders')
 on conflict do nothing;
 
 -- Admin gets all pages
@@ -1354,7 +1414,21 @@ insert into public.lookup_values (category, value, label, sort_order) values
   ('roll_direction', 'top_off_first',    'Top Off First',    1),
   ('roll_direction', 'bottom_off_first', 'Bottom Off First', 2),
   ('roll_direction', 'right_off_first',  'Right Off First',  3),
-  ('roll_direction', 'left_off_first',   'Left Off First',   4)
+  ('roll_direction', 'left_off_first',   'Left Off First',   4),
+
+  -- ── Stripe refund reasons (099) ────────────────────────────────────────────
+  ('stripe_refund_reason', 'refund_order_issue',        'Order / production issue', 0),
+  ('stripe_refund_reason', 'refund_customer_request', 'Customer requested refund',  1),
+  ('stripe_refund_reason', 'refund_duplicate',          'Duplicate payment',          2),
+  ('stripe_refund_reason', 'refund_pricing_error',      'Pricing / quote error',      3),
+  ('stripe_refund_reason', 'refund_other',              'Other',                      4),
+
+  -- ── payment refund reasons (100) ───────────────────────────────────────────
+  ('payment_refund_reason', 'refund_order_issue',        'Order / production issue', 0),
+  ('payment_refund_reason', 'refund_customer_request', 'Customer requested refund',  1),
+  ('payment_refund_reason', 'refund_duplicate',          'Duplicate payment',          2),
+  ('payment_refund_reason', 'refund_pricing_error',      'Pricing / quote error',      3),
+  ('payment_refund_reason', 'refund_other',              'Other',                      4)
 
 on conflict (category, value) do nothing;
 
@@ -1614,7 +1688,22 @@ on conflict do nothing;
 
 
 -- =============================================================================
--- 16. SEED — COMPANY SETTINGS
+-- 16. SEED — STORAGE BUCKETS (101)
+-- =============================================================================
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'refund-evidence',
+  'refund-evidence',
+  false,
+  10485760,
+  array['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+)
+on conflict (id) do nothing;
+
+
+-- =============================================================================
+-- 17. SEED — COMPANY SETTINGS
 -- =============================================================================
 
 insert into public.company_settings (id) values (1)

@@ -1,6 +1,6 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { excludeRefundedTickets } from "@/lib/utils/exclude-refunded-tickets";
-import { countExact } from "@/lib/utils/db-counts";
+import { countExact, scopeJobTicketsQuery, type TicketSelectQuery } from "@/lib/utils/db-counts";
 import type { PaginationParams } from "@/lib/utils/pagination";
 import {
   applyTicketSearchFilterWithCustomerIds,
@@ -26,6 +26,8 @@ const PRODUCTION_ORDER_SELECT = `
 
 async function buildScopedProductionQuery(
   admin: AdminClient,
+  roleName: string,
+  userId: string,
   filters: ProductionListFilters,
   options?: { count?: "exact"; pagination?: PaginationParams },
 ) {
@@ -33,12 +35,16 @@ async function buildScopedProductionQuery(
     ? await resolveTicketSearchCustomerIds(admin, filters.search)
     : [];
 
-  let query = excludeRefundedTickets(
+  let query = scopeJobTicketsQuery(
     admin
       .from("job_tickets")
-      .select(PRODUCTION_ORDER_SELECT, options?.count ? { count: "exact" } : undefined)
-      .eq("ticket_status", "in_production"),
+      .select(PRODUCTION_ORDER_SELECT, options?.count ? { count: "exact" } : undefined) as TicketSelectQuery,
+    roleName,
+    userId,
   );
+
+  query = query.eq("ticket_status", "in_production") as TicketSelectQuery;
+  query = excludeRefundedTickets(query) as TicketSelectQuery;
 
   if (filters.tab === "balance_due") {
     query = query.neq("payment_status", "paid").neq("ticket_payment_strategy", "net");
@@ -58,11 +64,15 @@ async function buildScopedProductionQuery(
 
 export async function fetchProductionOrders(
   admin: AdminClient,
+  roleName: string,
+  userId: string,
   filters: ProductionListFilters = {},
   pagination?: PaginationParams,
 ) {
   const query = await buildScopedProductionQuery(
     admin,
+    roleName,
+    userId,
     filters,
     pagination ? { count: "exact", pagination } : undefined,
   );
@@ -78,6 +88,8 @@ export async function fetchProductionOrders(
 
 export async function fetchProductionTabCounts(
   admin: AdminClient,
+  roleName: string,
+  userId: string,
   filters: ProductionListFilters = {},
 ) {
   const searchCustomerIds = filters.search?.trim()
@@ -85,7 +97,8 @@ export async function fetchProductionTabCounts(
     : [];
 
   const baseFilter = (q: ReturnType<ReturnType<AdminClient["from"]>["select"]>) => {
-    let query = excludeRefundedTickets(q.eq("ticket_status", "in_production"));
+    let query = scopeJobTicketsQuery(q, roleName, userId).eq("ticket_status", "in_production");
+    query = excludeRefundedTickets(query);
     query = applyTicketSearchFilterWithCustomerIds(query, filters.search, searchCustomerIds);
     return query;
   };

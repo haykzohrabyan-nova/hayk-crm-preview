@@ -1,14 +1,21 @@
 # Supabase database
 
-## Single schema file
+## Schema sources
 
-All database DDL lives in **`schema.sql`** — one idempotent file for fresh installs.
+| Source | Use |
+|--------|-----|
+| **`schema.sql`** | Fresh installs — idempotent full DDL + seeds in Supabase SQL Editor |
+| **`migrations/`** | Incremental deltas for **existing** production DBs (currently `077`–`102`) |
 
-**New project:** open the Supabase SQL Editor → paste/run `schema.sql`.
+**New project:** run `schema.sql` once.
 
-**Existing production DB:** do **not** re-run the full file. Apply only the delta you need, or use the Supabase dashboard. The old numbered migrations folder has been removed; `schema.sql` is the canonical source going forward.
+**Existing production DB:** apply only new migration files you have not run yet. Do **not** re-run the full `schema.sql` on a live database. Sales `/quotes` + `/orders` on live DBs: grant via **Admin → Roles** (or already present in `role_permissions`).
 
-**May 2026 delta (if upgrading):** run `supabase/migrations/077_drop_initial_interest.sql` to remove deprecated `leads.initial_interest` (product `interests` jsonb is used instead). Then run `078_backfill_staff_cash_payment_recorded.sql` so Reports cash totals include past staff cash/offline deposits.
+## Recent migrations (reference)
+
+| Migration | Purpose |
+|-----------|---------|
+| `081_grant_sdr_completed_page.sql` | SDR `/quotes`, `/orders`, `/completed` |
 
 ## Local test reset
 

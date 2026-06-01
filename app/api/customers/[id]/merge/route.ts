@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 
 export async function POST(
   request: NextRequest,
@@ -12,6 +13,8 @@ export async function POST(
   if (roleName !== "admin" && roleName !== "sales") {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
+  const pageDeny = await requirePageAccess(userId!, roleName, "/crm");
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));

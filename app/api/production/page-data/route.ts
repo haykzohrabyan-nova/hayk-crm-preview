@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import {
   fetchProductionOrders,
   fetchProductionTabCounts,
@@ -8,10 +9,12 @@ import {
 import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 import { parseProductionListFilters } from "@/lib/utils/ticket-list-filters";
 
-/** GET /api/production/page-data — paginated production list + tab counts in one auth pass. */
+/** GET /api/production/page-data — legacy; prefer GET /api/orders/page-data?tab=in_production */
 export async function GET(request: NextRequest) {
-  const { errorResponse } = await requireSession();
+  const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requirePageAccess(userId!, roleName, "/orders");
+  if (pageDeny) return pageDeny;
 
   const filters = parseProductionListFilters(request.nextUrl.searchParams);
   const pagination = parseListPaginationParams(request.nextUrl.searchParams);
@@ -19,8 +22,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const [{ rows, total }, counts] = await Promise.all([
-      fetchProductionOrders(admin, filters, pagination),
-      fetchProductionTabCounts(admin, filters),
+      fetchProductionOrders(admin, roleName, userId!, filters, pagination),
+      fetchProductionTabCounts(admin, roleName, userId!, filters),
     ]);
     return NextResponse.json({
       orders: rows,

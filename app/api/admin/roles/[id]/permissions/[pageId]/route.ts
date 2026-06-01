@@ -12,6 +12,14 @@ export async function DELETE(
   const { id: role_id, pageId: page_id } = await params;
   const admin = createAdminClient();
 
+  const { data: role } = await admin.from("roles").select("is_system").eq("id", role_id).single();
+  if (role?.is_system) {
+    return NextResponse.json(
+      { error: "System role permissions cannot be modified.", code: "FORBIDDEN" },
+      { status: 403 },
+    );
+  }
+
   const { error } = await admin
     .from("role_permissions")
     .delete()

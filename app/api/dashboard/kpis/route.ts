@@ -3,9 +3,11 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import {
   sumCashCollectedInPeriod,
+  sumPipelineQuoteValue,
   sumProductionReleasedValue,
 } from "@/lib/utils/dashboard-metrics";
 import { buildTeamMemberMetrics } from "@/lib/utils/team-dashboard-metrics";
+import { buildAdminLeadBreakdown } from "@/lib/utils/admin-lead-breakdown";
 import { resolveSdrDashboardDateRange } from "@/lib/utils/sdr-dashboard-date-range";
 import { buildSdrDashboardMetrics } from "@/lib/utils/sdr-dashboard-metrics";
 import { buildSalesDashboardMetrics } from "@/lib/utils/sales-dashboard-metrics";
@@ -158,38 +160,15 @@ export async function GET(request: NextRequest) {
   const periodStartIso = range.startIso;
   const periodEndIso = range.endIso;
   const [
-    totalLeads,
-    openLeads,
-    claimedLeads,
+    leadBreakdown,
     inboxLeads,
     routedLeads,
-    pipelineLeads,
-    pipelineLeads2,
-    quotedLeads,
-    orderedLeads,
+    pipelineValue,
     cashCollected,
     released,
     teamMemberMetrics,
   ] = await Promise.all([
-    admin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .gte("created_at", periodStartIso)
-      .lte("created_at", periodEndIso),
-
-    admin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("is_inbox", false)
-      .in("status", ["Pending", "Validated"])
-      .is("locked_by_id", null),
-
-    admin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("is_inbox", false)
-      .in("status", ["Pending", "Validated"])
-      .not("locked_by_id", "is", null),
+    buildAdminLeadBreakdown(admin, periodStartIso, periodEndIso),
 
     admin
       .from("leads")
@@ -201,32 +180,7 @@ export async function GET(request: NextRequest) {
       .select("id", { count: "exact", head: true })
       .eq("status", "Routed to Sales"),
 
-    admin
-      .from("job_tickets")
-      .select("quote_final_total")
-      .in("ticket_status", ["draft", "sent"]),
-
-    admin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "Routed to Sales")
-      .eq("sales_status", "Ongoing")
-      .gte("created_at", periodStartIso)
-      .lte("created_at", periodEndIso),
-
-    admin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("sales_status", "Quote Sent")
-      .gte("created_at", periodStartIso)
-      .lte("created_at", periodEndIso),
-
-    admin
-      .from("leads")
-      .select("id", { count: "exact", head: true })
-      .eq("sales_status", "Won")
-      .gte("created_at", periodStartIso)
-      .lte("created_at", periodEndIso),
+    sumPipelineQuoteValue(admin),
 
     sumCashCollectedInPeriod(admin, periodStartIso, periodEndIso),
 
@@ -234,11 +188,6 @@ export async function GET(request: NextRequest) {
 
     buildTeamMemberMetrics(admin, periodStartIso, periodEndIso),
   ]);
-
-  const pipeline = pipelineLeads.data ?? [];
-  const pipeline_leads_count = pipelineLeads2.count ?? 0;
-  const quoted_leads_count = quotedLeads.count ?? 0;
-  const ordered_leads_count = orderedLeads.count ?? 0;
 
   return NextResponse.json({
     values_hidden: false,
@@ -249,17 +198,21 @@ export async function GET(request: NextRequest) {
       start_iso: range.startIso,
       end_iso: range.endIso,
     },
-    total_leads: totalLeads.count ?? 0,
-    open_leads: openLeads.count ?? 0,
-    claimed_leads: claimedLeads.count ?? 0,
-    pipeline_leads: pipeline_leads_count,
-    quoted_leads: quoted_leads_count,
-    ordered_leads: ordered_leads_count,
+    total_leads: leadBreakdown.total_leads,
+    open_leads: leadBreakdown.open_leads,
+    claimed_leads: leadBreakdown.claimed_leads,
+    pipeline_leads: leadBreakdown.pipeline_leads,
+    quoted_leads: leadBreakdown.quoted_leads,
+    ordered_leads: leadBreakdown.ordered_leads,
+    rejected_leads: leadBreakdown.rejected_leads,
+    cancelled_leads: leadBreakdown.cancelled_leads,
+    refunded_leads: leadBreakdown.refunded_leads,
+    inbox_leads_period: leadBreakdown.inbox_leads,
     inbox_leads: inboxLeads.count ?? 0,
     routed_leads: routedLeads.count ?? 0,
     won_leads: released.count,
     cash_collected: cashCollected.total,
-    pipeline_value: pipeline.reduce((s, t) => s + ((t.quote_final_total as number) ?? 0), 0),
+    pipeline_value: pipelineValue,
     team_member_metrics: teamMemberMetrics,
   });
 }

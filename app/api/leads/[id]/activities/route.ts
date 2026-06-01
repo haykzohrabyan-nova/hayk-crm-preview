@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireLeadApiPageAccess } from "@/lib/auth/require-page-access";
 import { canReadLead } from "@/lib/utils/lead-access";
 
 /**
@@ -14,6 +15,8 @@ export async function GET(
 ) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requireLeadApiPageAccess(userId!, roleName);
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const admin = createAdminClient();

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireLeadApiPageAccess } from "@/lib/auth/require-page-access";
 import { sdrScopedLeadActionError } from "@/lib/utils/lead-sdr-scoped-tab";
 import { salesScopedLeadActionError } from "@/lib/utils/lead-sales-scoped-tab";
 
@@ -10,6 +11,8 @@ export async function POST(
 ) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requireLeadApiPageAccess(userId!, roleName);
+  if (pageDeny) return pageDeny;
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));

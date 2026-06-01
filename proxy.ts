@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
+import { isAdminOnlyPagePath } from "@/lib/auth/admin-only-pages";
 import { resolveDefaultHomePath } from "@/lib/auth/resolve-default-home";
 import { isMfaRequired } from "@/lib/auth/mfa-required";
 import { hasValidMfaTrust } from "@/lib/auth/mfa-trust";
@@ -168,9 +169,21 @@ export async function proxy(request: NextRequest) {
         return NextResponse.redirect(url);
       }
 
+      const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
+
+      // /settings is admin-only; all users use /profile for personal account info.
+      if (pathname.startsWith("/settings") && roleName !== "admin") {
+        return NextResponse.redirect(new URL("/profile", request.nextUrl.origin));
+      }
+
+      // Admin Panel, Reports, Activity Log — admin-only regardless of legacy role_permissions rows.
+      if (roleName !== "admin" && isAdminOnlyPagePath(pathname)) {
+        const dest = await resolveDefaultHomePath(supabase);
+        return NextResponse.redirect(new URL(dest, request.nextUrl.origin));
+      }
+
       // Role-based route access (skip admin role — they get everything)
       const universalRoutes = ["/profile", "/dashboard"];
-      const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
       if (roleName && roleName !== "admin" && !universalRoutes.some((r) => pathname.startsWith(r))) {
         const { data: permissions } = await supabase
           .from("role_permissions")

@@ -246,6 +246,26 @@ export function SalesDashboard() {
     fetchKpis();
   }, [fetchKpis]);
 
+  useEffect(() => {
+    function onRefresh() {
+      fetch(`/api/dashboard/kpis?${buildQuery(filter)}`)
+        .then((r) => r.json())
+        .then((json) => {
+          setData(json as SalesKpis);
+          if (typeof json.values_hidden === "boolean") {
+            privacy.syncFromApi(json.values_hidden);
+          }
+        })
+        .catch(() => {});
+    }
+    window.addEventListener("bazaar:leads-changed", onRefresh);
+    window.addEventListener("bazaar:tickets-changed", onRefresh);
+    return () => {
+      window.removeEventListener("bazaar:leads-changed", onRefresh);
+      window.removeEventListener("bazaar:tickets-changed", onRefresh);
+    };
+  }, [filter, buildQuery, privacy.syncFromApi]);
+
   const metricsHidden = privacy.valuesHidden;
   const priorLabel = data?.range.prior_label ?? "vs prior period";
   const rangeLabel = data?.range.label ?? SDR_DASHBOARD_PRESET_LABELS.today;

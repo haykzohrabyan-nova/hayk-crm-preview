@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireTicketDetailPageAccess } from "@/lib/auth/require-page-access";
 import {
   sendQuoteToCustomer,
   sendPaymentReminder,
@@ -33,7 +34,8 @@ import {
   syncTicketShippingDestinations,
 } from "@/lib/utils/ticket-shipping-destinations";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
-import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
+import { isPaymentStaffRole } from "@/lib/auth/role-checks";
+import { canAccessTicket, canPatchTicket, canAccountantMutateTicket, canResendTicketNotifications } from "@/lib/utils/ticket-access";
 import { fetchTicketPaymentRefunds } from "@/lib/payments/fetch-ticket-refunds";
 import { resolveTicketCancelledAt } from "@/lib/utils/fetch-ticket-cancelled-at";
 import {
@@ -56,6 +58,8 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const { id: rawId } = await params;
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requireTicketDetailPageAccess(userId, roleName);
+  if (pageDeny) return pageDeny;
 
   const admin = createAdminClient();
   const ticketId = await resolveTicketId(admin, rawId);
@@ -81,9 +85,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  // Scope check: reps can only view their own tickets.
-  // Exception: sales/admin can view 'routed' tickets (SDR hand-offs awaiting claim).
-  // Exception: accountant can view any ticket (matches scopeJobTicketsQuery on list routes).
+  // Scope check: reps can only view their own tickets (accountants: order/payment stages only).
   if (!canAccessTicket(ticket, userId, roleName)) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
@@ -102,8 +104,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const convert_meta = await fetchManualConvertMeta(admin, ticketId, ticket);
   const line_items = await fetchTicketLinesBundle(admin, ticketId);
   const shipping_destinations = await fetchTicketShippingDestinations(admin, ticketId);
-  const payment_refunds =
-    roleName === "accountant" || roleName === "admin"
+  const payment_refunds = isPaymentStaffRole(roleName)
       ? await fetchTicketPaymentRefunds(admin, ticketId)
       : [];
 
@@ -133,6 +134,8 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const { id: rawId } = await params;
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requireTicketDetailPageAccess(userId, roleName);
+  if (pageDeny) return pageDeny;
 
   const body = await request.json().catch(() => null);
   if (!body) {
@@ -148,7 +151,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_at, created_by_id, ticket_status, ticket_kind, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at, requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip, quote_shipping")
+    .select("id, created_at, created_by_id, ticket_status, ticket_kind, routed_by_id, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at, requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip, quote_shipping")
     .eq("id", ticketId)
     .single();
 
@@ -158,6 +161,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // ── Payment reminder: send payment link via selected channel ───────────────
   if (body.send_payment_reminder === true) {
+    if (!canResendTicketNotifications(existing, userId, roleName)) {
+      return NextResponse.json(
+        { error: "You can only send payment reminders for your own quotes and orders.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
     const now = new Date().toISOString();
     const reminderChannel     = (body.reminder_channel as string | undefined) ?? existing.quote_channel ?? "email";
     const reminderDestination = (body.reminder_destination as string | undefined) ?? existing.quote_destination ?? null;
@@ -210,6 +219,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   // ── Resend invoice: customer portal link (works paid / unpaid / in production) ─
   if (body.resend_invoice === true) {
+    if (!canResendTicketNotifications(existing, userId, roleName)) {
+      return NextResponse.json(
+        { error: "You can only resend invoices for your own quotes and orders.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
     const now = new Date().toISOString();
 
     const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
@@ -292,9 +307,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ ticket: claimed });
   }
 
-  // Normal update — enforce ownership (non-admins can only update their own tickets).
-  // Accountants are allowed to record payment on any ticket (they have no created tickets).
-  if (!canMutateTicket(existing, userId, roleName)) {
+  // Normal update — read access + ownership / accountant payment lifecycle only.
+  const accountantPrivileged =
+    roleName === "accountant" && canAccountantMutateTicket(body, existing);
+
+  if (!canAccessTicket(existing, userId, roleName) && !accountantPrivileged) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  if (!canPatchTicket(body, existing, userId, roleName)) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
@@ -369,7 +390,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Body: { record_payment: true, payment_mode: "deposit"|"balance"|"full",
   //         payment_method: string, payment_amount: number, receipt_id?: string }
   if (body.record_payment === true) {
-    if (roleName !== "admin" && roleName !== "accountant") {
+    if (!isPaymentStaffRole(roleName)) {
       return NextResponse.json(
         { error: "Only accountants can confirm submitted payments.", code: "FORBIDDEN" },
         { status: 403 },
@@ -740,7 +761,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     body.ticket_status === "cancelled" &&
     existing.ticket_status !== "cancelled"
   ) {
-    if (roleName !== "admin" && roleName !== "accountant") {
+    if (!isPaymentStaffRole(roleName)) {
       return NextResponse.json(
         { error: "Only administrators and accountants can cancel quotes and orders.", code: "FORBIDDEN" },
         { status: 403 },

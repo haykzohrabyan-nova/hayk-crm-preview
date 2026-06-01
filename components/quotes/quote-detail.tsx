@@ -37,6 +37,7 @@ import { EmailInput } from "@/components/ui/email-input";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 
 import { createClient } from "@/lib/supabase/client";
+import { useTicketRealtimeSync } from "@/hooks/use-ticket-realtime-sync";
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
 import { localDateStringFromIso, validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { validateShippingDestinationZips } from "@/lib/utils/address";
@@ -509,17 +510,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ticketId]);
 
-  // ─── Realtime: re-fetch on any job_tickets or leads change ───────────────
-  useEffect(() => {
-    function onTicketChange() { fetchTicket(true); }
-    function onLeadChange()   { fetchTicket(true); } // linked lead card refreshes via ticket join
+  useTicketRealtimeSync(ticketId, () => fetchTicket(true), { enabled: !editing });
 
-    window.addEventListener("bazaar:tickets-changed", onTicketChange);
-    window.addEventListener("bazaar:leads-changed",   onLeadChange);
-    return () => {
-      window.removeEventListener("bazaar:tickets-changed", onTicketChange);
-      window.removeEventListener("bazaar:leads-changed",   onLeadChange);
-    };
+  useEffect(() => {
+    function onLeadChange() {
+      fetchTicket(true);
+    }
+    window.addEventListener("bazaar:leads-changed", onLeadChange);
+    return () => window.removeEventListener("bazaar:leads-changed", onLeadChange);
   }, [fetchTicket]);
 
   // ─── SKU helpers ──────────────────────────────────────────────────────────
@@ -1097,6 +1095,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const detailQuickActionsProps = {
     ticket,
     userRole,
+    userId,
     saving,
     onMarkComplete: requestMarkComplete,
     onCancelTicket: openCancelModal,

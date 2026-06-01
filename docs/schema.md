@@ -56,13 +56,14 @@ create table public.roles (
 );
 ```
 
-**System roles (seeded in `011_seed_system_roles.sql`):**
+**System roles (seeded in `011_seed_system_roles.sql` + `schema.sql`):**
 
 | `name` | `display_name` | `is_system` |
 |--------|---------------|-------------|
 | `sdr` | SDR | true |
 | `sales` | Sales Rep | true |
 | `admin` | Administrator | true |
+| `accountant` | Accountant | true |
 
 ---
 
@@ -102,11 +103,13 @@ create table public.pages (
 | `/crm` | CRM | `BookUser` | main | 3 |
 | `/quotes` | Quoted Requests | `MessageSquareQuote` | main | 5 |
 | `/orders` | Orders | `ClipboardList` | main | 6 |
-| ~~`/statistics`~~ | ~~Statistics~~ | ~~`BarChart3`~~ | ~~main~~ | — | Removed — Dashboard handles all analytics |
-| `/settings` | Settings | `Settings` | bottom | 0 |
-| `/admin/users` | Users | `Users` | admin | 0 |
-| `/admin/settings` | System Settings | `SlidersHorizontal` | admin | 1 |
-| `/admin/audit` | Audit Log | `ClipboardList` | admin | 2 |
+| `/completed` | Completed | `PackageCheck` | main | 7 |
+| `/activity-log` | Activity Log | `ClipboardList` | main | 8 |
+| `/reports` | Reports | `BarChart3` | main | 9 |
+| `/admin` | Admin Panel | `ShieldCheck` | admin | 0 |
+| `/admin/settings/users` | Users | `Users` | admin-sub | 10 |
+
+> **Removed from `pages`:** `/settings` (migration 025), `/production` (079), `/tickets`, `/statistics`, `/overview`. Personal profile uses **`/profile`** — universal in `proxy.ts`, not stored in `pages`.
 
 ---
 
@@ -127,15 +130,16 @@ create table public.role_permissions (
 );
 ```
 
-**Seeded default permissions (`013_seed_role_permissions.sql`):**
+**Seeded default permissions (`schema.sql` + migration `081` for SDR):**
 
 | Role | Allowed pages |
 |------|--------------|
 | `sdr` | /dashboard, /leads, /crm, /quotes, /orders, /completed |
-| `sales` | /dashboard, /sales, /crm, /quotes, /orders, /settings |
-| `admin` | All pages |
+| `sales` | /dashboard, /sales, /crm, /quotes, /orders |
+| `accountant` | /dashboard, /payments, /orders, /completed |
+| `admin` | All pages in `pages` table |
 
-When Admin grants `/sales` access to a custom `'manager'` role, a new row is inserted here.
+Universal routes (not in `role_permissions`): **`/profile`**, **`/dashboard`** (admin bypasses permission check for all routes).
 
 ---
 

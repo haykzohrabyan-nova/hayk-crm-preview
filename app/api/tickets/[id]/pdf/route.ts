@@ -14,6 +14,7 @@ import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summar
 import { getChannelLabel } from "@/lib/utils/compute-checkout";
 import { resolveTicketId, ticketDisplayReference } from "@/lib/utils/reference-codes";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireTicketDetailPageAccess } from "@/lib/auth/require-page-access";
 import { canAccessTicket } from "@/lib/utils/ticket-access";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,10 @@ export async function GET(
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) {
     return new NextResponse("Unauthorized", { status: errorResponse.status });
+  }
+  const pageDeny = await requireTicketDetailPageAccess(userId!, roleName);
+  if (pageDeny) {
+    return new NextResponse("Forbidden", { status: pageDeny.status });
   }
 
   const admin = createAdminClient();

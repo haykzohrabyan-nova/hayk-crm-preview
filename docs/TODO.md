@@ -80,16 +80,15 @@ Production is on **Vercel Hobby (free)**. Automatic daily cron requires **Vercel
 
 ## Out of scope — current application stage
 
-**No online payment integrations** in this phase. Offline payment recording (cash, wire, ACH, Zelle, check) + accountant evidence review **is built** and stays.
+Offline payment recording (cash, wire, ACH, Zelle, check) + accountant evidence review **is built**.
 
 | Item | Notes |
 |------|--------|
-| Stripe Checkout (online card) | Deferred — see `invoice-payment.md` Phase C |
-| Zelle auto-matching (email parse) | Deferred — Phase D |
+| Zelle auto-matching (email parse) | Deferred — Phase D in `invoice-payment.md` |
 | Offline merchant-terminal card queue | Planned spec only — `offline-card-payment.md` |
-| Stripe/Zelle admin integration cards | Removed from UI (2026-05-24) |
+| Stripe/Zelle admin integration cards | Removed from UI (2026-05-24); Stripe Checkout **is built** (Phase C) |
 
-Revisit when product stage explicitly includes online payments.
+**Built (Phase C):** Stripe Checkout on `/q/[token]`, `POST /api/public/quotes/[token]/stripe/create-session`, `POST /api/payments/stripe/webhook` — see `invoice-payment.md`.
 
 ---
 

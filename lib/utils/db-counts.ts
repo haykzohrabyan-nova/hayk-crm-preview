@@ -28,7 +28,11 @@ export function scopeJobTicketsQuery<T extends CountQuery>(
   if (roleName === "admin" && adminFilterUserId) {
     return query.eq("created_by_id", adminFilterUserId) as T;
   }
-  if (roleName === "admin" || roleName === "accountant") return query;
+  if (roleName === "admin") return query;
+  /** Payment/order visibility only — not quote pipeline (draft / routed / approved). */
+  if (roleName === "accountant") {
+    return query.in("ticket_status", ["sent", "order", "in_production", "completed", "cancelled"]) as T;
+  }
   if (roleName === "sales" && userId) {
     return query.or(`created_by_id.eq.${userId},ticket_status.eq.routed`) as T;
   }

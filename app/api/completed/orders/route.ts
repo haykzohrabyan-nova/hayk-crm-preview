@@ -1,11 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { fetchCompletedOrders } from "@/lib/utils/fetch-completed-data";
 
+/** GET /api/completed/orders — legacy; prefer GET /api/completed/page-data */
 export async function GET() {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requirePageAccess(userId!, roleName, "/completed");
+  if (pageDeny) return pageDeny;
 
   const admin = createAdminClient();
 

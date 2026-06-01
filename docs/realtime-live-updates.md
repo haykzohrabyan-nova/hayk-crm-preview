@@ -471,9 +471,15 @@ app/(public)/q/[token]/page.tsx hears event "updated"
 | `POST /api/tickets` | Create ticket (e.g. first send) |
 | `POST /api/tickets/[id]/files` | Line-item attachment upload/replace |
 | `DELETE /api/tickets/[id]/files/[fileId]` | Attachment removed |
+| `POST /api/public/quotes/[token]/confirm` | Customer confirms quote (direct token broadcast) |
 | `POST /api/public/quotes/[token]/submit-payment` | Customer payment submit (direct token broadcast) |
+| Stripe webhook → `applyStripeCheckoutSession` | Customer Stripe checkout (direct token broadcast) |
 
 When adding a new mutation that changes customer-visible ticket data, call `notifyPublicQuoteUpdatedByTicketId` after a successful write.
+
+**Staff app ← customer public portal:** Customer actions update `job_tickets` and insert `activities` rows (service role). The sidebar relays `postgres_changes` → `bazaar:tickets-changed`. Ticket detail pages also subscribe directly via `hooks/use-ticket-realtime-sync.ts` (filtered by ticket id + activities) so accountants and other roles refresh even when `job_tickets` RLS hides the row from Realtime.
+
+**Customer portal ← staff CRM:** Staff mutations call `notifyPublicQuoteUpdatedByTicketId` → Supabase broadcast on `public-quote:{token}` → `/q/[token]` debounced refetch.
 
 ---
 

@@ -1,6 +1,10 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { roundMoney } from "@/lib/utils/format";
 import { leadIdsRoutedToSales } from "@/lib/utils/lead-sdr-won-filter";
+import {
+  excludeRefundedTickets,
+  isExcludedFromRevenueKpis,
+} from "@/lib/utils/exclude-refunded-tickets";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -12,6 +16,8 @@ type SelfHandledTicket = {
   linked_lead_id: string | null;
   created_by_id: string | null;
   routed_by_id: string | null;
+  ticket_status?: string | null;
+  refund_status?: string | null;
 };
 
 export interface SdrMetricTrend {
@@ -109,6 +115,7 @@ async function filterSelfHandledTickets(
     : new Set<string>();
 
   return ownQuotes.filter((t) => {
+    if (isExcludedFromRevenueKpis(t)) return false;
     if (t.linked_lead_id && routedLeadIds.has(t.linked_lead_id)) return false;
     return paidAmount(t) > 0;
   });
@@ -135,7 +142,7 @@ async function countOrdersCreatedSelfHandled(
   const { data: tickets, error: ticketError } = await admin
     .from("job_tickets")
     .select(
-      "id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id, created_by_id, routed_by_id",
+      "id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id, created_by_id, routed_by_id, ticket_status, refund_status",
     )
     .in("id", ticketIds);
 
@@ -165,10 +172,10 @@ async function productionReleasedSelfHandled(
   startIso: string,
   endIso: string,
 ): Promise<{ count: number; value: number; received: number; balance: number }> {
-  const { data: tickets, error } = await admin
+  let releasedQuery = admin
     .from("job_tickets")
     .select(
-      "id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id, created_by_id, routed_by_id",
+      "id, quote_final_total, payment_amount_received, deposit_amount, linked_lead_id, created_by_id, routed_by_id, ticket_status, refund_status",
     )
     .in("ticket_status", ["in_production", "completed"])
     .not("production_released_at", "is", null)
@@ -176,6 +183,9 @@ async function productionReleasedSelfHandled(
     .lte("production_released_at", endIso)
     .eq("created_by_id", userId)
     .is("routed_by_id", null);
+  releasedQuery = excludeRefundedTickets(releasedQuery);
+
+  const { data: tickets, error } = await releasedQuery;
 
   if (error) throw error;
   if (!tickets?.length) return { count: 0, value: 0, received: 0, balance: 0 };

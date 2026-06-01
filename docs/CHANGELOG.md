@@ -3,6 +3,135 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+### Changed
+- `lib/utils/sdr-dashboard-metrics.ts` — self-closed order value, received, balance, and order-created counts exclude cancelled/refunded tickets
+- `lib/utils/sales-dashboard-metrics.ts` — order value (via shared helper), quotes created, and orders converted exclude cancelled/refunded
+- `components/sales/sdr-dashboard.tsx` and `sales-dashboard.tsx` — silent KPI refresh on `bazaar:tickets-changed` (cancel/refund)
+
+## [2026-05-31] — Bidirectional public portal ↔ staff realtime sync
+
+### Added
+- `hooks/use-ticket-realtime-sync.ts` — ticket-scoped `postgres_changes` on `job_tickets` + `activities`, plus window event relay
+
+### Changed
+- `POST /api/public/quotes/[token]/confirm` — broadcasts `notifyPublicQuoteUpdated` so open public tabs and staff-linked flows refresh
+- `components/quotes/quote-detail.tsx` — uses `useTicketRealtimeSync` (pauses while editing) for customer payment/confirm updates without relying on sidebar alone
+
+## [2026-05-31] — Dashboard revenue KPIs exclude cancelled and refunded
+
+### Changed
+- `lib/utils/exclude-refunded-tickets.ts` — `isExcludedFromRevenueKpis()` for cancelled tickets and partial/full refunds
+- `lib/utils/dashboard-metrics.ts` — **Cash Collected** and **Pipeline Value** exclude cancelled/refunded tickets; new `sumPipelineQuoteValue()` helper
+- `GET /api/reports/summary` — cash collected aligned with dashboard (cancelled + refunded excluded)
+- `lib/utils/team-dashboard-metrics.ts` — team card cash/pipeline/awaiting metrics use same exclusions
+
+## [2026-05-31] — Admin Total Leads breakdown: rejected, cancelled, refunded
+
+### Added
+- `lib/utils/admin-lead-breakdown.ts` — period-scoped, mutually exclusive lead status buckets for the admin dashboard
+
+### Changed
+- `GET /api/dashboard/kpis` (admin) — Total Leads sub-counts now include **Rejected**, **Cancelled**, and **Refunded**; Open/Claimed are period-scoped (not live snapshots); breakdown sums to `total_leads`
+- `components/admin/admin-dashboard.tsx` — all status badges always visible; listens to `bazaar:tickets-changed` for cancel/refund updates
+
+## [2026-05-31] — Lock system roles + Admin Panel in Roles UI
+
+### Changed
+- `components/admin/roles-section.tsx` — SDR, Sales, and Accountant page permissions are read-only again (same as Admin); only custom roles are editable
+- `lib/auth/admin-only-pages.ts` — added `/admin` to admin-only routes; `filterPagesForRole()` strips admin-only nav for non-admins
+- `components/layout/sidebar.tsx` and `mobile-nav.tsx` — Admin Panel hidden for non-admin roles even with stale DB grants
+- `lib/auth/require-page-access.ts` — admin-only routes blocked for non-admins in page-access checks
+- `POST/DELETE /api/admin/roles/[id]/permissions/*` — returns `403` when modifying system role permissions
+
+## [2026-05-31] — RBAC audit pass 5 (lead APIs, shipping scope, docs)
+
+### Fixed
+- **Lead `[id]` routes** — `GET/PATCH /api/leads/[id]`, activities, lock/unlock, hold, resume, follow-up now call **`requireLeadApiPageAccess()`** (`/leads` or `/sales`) before object checks
+- **`GET /api/customers/[id]/shipping-addresses`** — returns ship-to addresses only from tickets visible via **`scopeJobTicketsQuery()`** (no CRM-wide leak of other reps' ticket addresses)
+
+### Added
+- `requireLeadApiPageAccess()` in `lib/auth/require-page-access.ts`
+
+### Changed
+- `docs/rbac.md` — enforcement layers, `/reports` + `/activity-log` routes, API matrix sync (lead gates, sidebar-counts, production scope, shipping scoping, ticket detail gates)
+
+## [2026-05-31] — RBAC audit pass 4 (production API, sidebar, legacy routes)
+
+### Fixed
+- **`/api/production/*`** — was returning all in-production orders to any authenticated user; now uses `scopeJobTicketsQuery()` + `requirePageAccess('/orders')`
+- **`GET /api/sidebar-counts`** — no longer trusts client `?routes=` param; counts only pages the user is allowed (via `resolveAllowedPageRoutes()`)
+- Legacy routes **`/api/orders/orders`**, **`/api/completed/orders`** — added `requirePageAccess`
+- **`GET/PATCH /api/tickets/[id]`** — `requireAnyPageAccess` on ticket-detail page routes
+- **`GET /api/tickets/counts`** — requires `/quotes` or `/orders` page permission
+- **`POST /api/customers/[id]/merge`** — requires `/crm` page permission (sales)
+- **`GET /api/tickets/[id]/pdf`** and **`/print`** — `requireTicketDetailPageAccess()`
+
+### Added
+- `resolveAllowedPageRoutes()` and `requireTicketDetailPageAccess()` in `lib/auth/require-page-access.ts`
+
+## [2026-05-31] — RBAC audit pass 3 (100% hardening)
+
+### Added
+- `lib/auth/role-checks.ts` — `isAdminRole()`, `isPaymentStaffRole()`
+- `lib/auth/admin-only-pages.ts` — `isAdminOnlyPagePath()` for proxy hard-block
+
+### Changed
+- `proxy.ts` — `/reports` and `/activity-log` admin-only at proxy layer (ignores stale `role_permissions`)
+- `fetch-quotes-data.ts` — `applyTicketScope()` delegates to `scopeJobTicketsQuery()` (single scoping source)
+- Ticket list APIs — `requirePageAccess()` on quotes, orders, payments, completed, and contextual `GET/POST /api/tickets`
+- Payment routes — `isPaymentStaffRole()` + `/payments` page permission
+- Refund/evidence routes — `canAccessTicket()` before signed URL or refund POST
+- `detail-quick-actions.tsx` — Resend Link hidden unless `canResendTicketNotifications()` (matches server)
+- `GET /api/tickets/counts` — blocked for accountants
+
+## [2026-05-31] — RBAC audit hardening (second pass)
+
+### Fixed
+- `lib/utils/db-counts.ts` — accountant counts scoped to payment/order stages only (no global draft/routed quote counts)
+- `app/api/tickets/[id]/route.ts` — PATCH requires `canAccessTicket` unless accountant on allowed lifecycle action (cancel/confirm on draft quotes)
+- `lib/utils/ticket-access.ts` — added `canPatchTicket()` helper; renamed quote-workflow guard to `isAccountantQuoteWorkflowDenied`
+- `lib/auth/admin-only-pages.ts` — single source for `/reports` and `/activity-log` lock (UI + grant API)
+- `app/api/tickets/counts/route.ts` — removed accountant from global routed count
+
+## [2026-05-31] — RBAC enforcement (accountant, resend, settings, roles lock)
+
+### Changed
+- `lib/utils/ticket-access.ts` — accountants blocked from quote list APIs; GET limited to payment/order stages; PATCH limited to payment/cancel/complete/refund; resend requires ownership (admin bypasses)
+- `app/api/quotes/page-data`, `app/api/quotes/counts`, `GET /api/tickets?kind=quote` — return `403` for accountant role
+- `app/api/tickets/[id]/route.ts` — `send_payment_reminder` and `resend_invoice` enforce owner-or-admin
+- `proxy.ts` — `/settings` admin-only; non-admins redirected to `/profile`
+- `app/(app)/settings/page.tsx` — admin redirect to `/admin/settings/users`
+- `lib/auth/require-page-access.ts` — removed `/settings` from universal routes (only `/dashboard`, `/profile`)
+- `components/admin/roles-section.tsx` — `/reports` and `/activity-log` locked as admin-only in Roles UI
+- `app/api/admin/roles/[id]/permissions/route.ts` — server-side block granting admin-only pages
+- `supabase/schema.sql` — merged migrations 097–102 (Stripe columns, refunds table, lookup seeds, `refund-evidence` bucket, `cancelled_at`)
+- `docs/rbac.md` — updated route/API matrix for decisions A–F
+
+## [2026-05-31] — Deep doc audit (phantom APIs, CRM, sales, Stripe TODO)
+
+### Changed
+- `docs/api-contract.md` — removed unimplemented `GET/POST /api/activity`; outreach is server-side only; documented `POST /api/payments/stripe/webhook`
+- `docs/feature-specs/crm.md` — removed false Activity Timeline / `HistoryTimeline` section
+- `docs/feature-specs/leads-sales.md` — pipeline uses `GET /api/leads/sales/page-data`
+- `docs/feature-specs/activity.md` — manual Log Call marked not built
+- `docs/TODO.md` — Stripe Checkout marked built (Phase C)
+- `docs/rbac.md` — removed phantom activity/outreach API rows
+
+## [2026-05-31] — Documentation sync (full audit pass)
+
+### Changed
+- `supabase/schema.sql` — Sales seed includes `/quotes`, `/orders` (existing prod: grant via Admin → Roles or already configured)
+- `docs/architecture.md` — user create flow, API paths (`/api/quotes/page-data`), Twilio env vars, design tokens, migration range, profile vs settings, orphaned `production-page.tsx`
+- `docs/rbac.md` — role home paths, user lifecycle, `/profile` universal route, `release_production` auth notes
+- `docs/navigation.md` — sidebar `/profile`, Rejected tab badge, Completed Sales scope, Activity Log admin-only
+- `docs/schema.md` — accountant system role, current pages/permissions seeds, `/settings` removed
+- `docs/api-contract.md` — legacy `release_production` PATCH mode documented
+- `docs/component-architecture.md` — six SDR tabs, ticket detail contexts, production page orphaned
+- `docs/mvp-scope.md` — historical banner pointing to current specs
+- `docs/feature-specs/admin.md` — permission matrix uses `/profile`
+- `.cursor/rules/ui-design-system.mdc` — token values match `app/globals.css`
+- `.cursor/rules/tab-counts.mdc` — in-production via orders page; follow_up in sales counts examples
+
 ## [2026-05-31] — Completed list: row click only (no View button)
 
 ### Changed

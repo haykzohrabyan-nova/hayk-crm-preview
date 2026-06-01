@@ -64,7 +64,8 @@ app/
     │
     ├── reports/page.tsx              ✓ EXISTS — Admin reports (cash, scorecards, ledger, awaiting collection; see feature-specs/reports.md)
     │
-    ├── settings/page.tsx             → TO BUILD (currently stub — personal profile)
+    ├── settings/page.tsx             ✓ Stub — “coming soon” (not in sidebar nav)
+    ├── profile/page.tsx              ✓ Stub — sidebar user card links here (universal route)
     │
     └── admin/
         ├── layout.tsx                ✓ EXISTS — border-b sub-nav strip (Overview / Settings)
@@ -100,7 +101,7 @@ BAZAARPRINTING                      ← brand logo text (accent color)
 ✓ Completed                        /completed      (badge — see Sidebar badge counts)
 
 ─── Bottom ─────────────────────
-✓ Settings                         /settings
+✓ My Profile                       /profile
 ✓ [Dark mode toggle]
 ✓ [Sign out]
 ✓ [Collapse]
@@ -119,7 +120,7 @@ BAZAARPRINTING
 ✓ Orders                           /orders         (badge — see Sidebar badge counts)
 
 ─── Bottom ─────────────────────
-✓ Settings                         /settings
+✓ My Profile                       /profile
 ✓ [Dark mode toggle]
 ✓ [Sign out]
 ✓ [Collapse]
@@ -137,7 +138,7 @@ BAZAARPRINTING
 ✓ Completed                        /completed        (badge — see Sidebar badge counts)
 
 ─── Bottom ─────────────────────
-✓ Settings                         /settings
+✓ My Profile                       /profile
 ✓ [Dark mode toggle]
 ✓ [Sign out]
 ✓ [Collapse]
@@ -164,7 +165,7 @@ BAZAARPRINTING
 ✓ Admin Panel                      /admin
 
 ─── Bottom ─────────────────────
-✓ Settings                         /settings
+✓ My Profile                       /profile
 ✓ [Dark mode toggle]
 ✓ [Sign out]
 ✓ [Collapse]
@@ -182,6 +183,8 @@ Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0*
 
 **Important:** Sidebar badges are **all-time** totals with **no date filter**. Page tab badges may differ — Quotes, Orders, and Completed list pages apply `DashboardDateRangeFilter` (default Last 30 Days) to tab counts only.
 
+**Personal profile:** Sidebar bottom user card → `/profile` (universal in `proxy.ts`, not `role_permissions`). `/settings` exists as a legacy stub but is not linked from nav.
+
 | Route | Shown on roles | What the number counts |
 |-------|----------------|------------------------|
 | `/leads` | SDR, Admin | `is_inbox = false` · `status IN ('Pending', 'Validated')` · `locked_by_id IS NULL` (unclaimed pool). **SDR:** matches **All Leads** tab. **Admin:** sidebar is unclaimed-only; Admin **All Leads** tab includes claimed rows too. |
@@ -193,7 +196,7 @@ Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0*
 
 † Accountant has `/orders` and `/completed` in the default permission seed but not `/quotes`; if granted via a custom role, quote badge logic applies the same scoping rules.
 
-**Display rules:** Badge hidden when count is 0. No badge on Dashboard, CRM, Reports, Activity Log, Admin Panel, or Settings.
+**Display rules:** Badge hidden when count is 0. No badge on Dashboard, CRM, Reports, Activity Log, Admin Panel, or Profile.
 
 **Legacy:** `/production` badge (in-production only, unscoped) still exists in the counts helper but that route redirects to `/orders?tab=in_production` and is not in the sidebar.
 
@@ -212,7 +215,7 @@ Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0*
 | Payments (`/payments`) | `CreditCard` |
 | Completed (`/completed`) | `PackageCheck` |
 | Activity Log (`/activity-log`) | `ClipboardList` |
-| Settings (personal) | `Settings` |
+| Settings (personal) | `Settings` | Sidebar user card → `/profile` |
 | Admin Panel | `ShieldCheck` |
 | Users (admin section) | `Users` |
 | Roles & Permissions | `KeyRound` |
@@ -294,7 +297,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | Follow Up Later | `status = 'Follow Up Later'` (SDR own; admin all) | count |
 | On Hold | `status = 'On Hold'` | count |
 | Directed to Sales | `routed=true` — all leads SDR routed to Sales (`lead_routed_to_sales` activity) | count |
-| Rejected | `status = 'Rejected'` | — |
+| Rejected | `status = 'Rejected'` | count |
 | Won | `sales_status = 'Won'` **and** SDR routed lead to Sales first — linked ticket entered production. Shared **Lead History** table (`LeadHistoryTable`): Status, Source, **Product Interests**, Urgency, Quote/Order refs, Created. **SDR row click → read-only Verify Drawer.** | count |
 
 **List API:** `GET /api/leads/workspace/page-data` — paginated (default 25 rows); server-side search, SDR owner scope, routed sub-filters, sort. Tab badges from `counts` (not limited by page). Routed tab stage pills use `routedSubCounts` from API.
@@ -372,7 +375,7 @@ Row click → `/payments/[id]?from=/payments`. Detail uses full overview layout 
 
 | Content | Filter |
 |---------|--------|
-| All completed | `ticket_status = 'completed'` — SDR / Sales: `created_by_id` matches session user only |
+| All completed | `ticket_status = 'completed'` — **SDR:** own `created_by_id` only. **Admin + Accountant:** all. **Sales:** no default nav item (no `/completed` in seed permissions). |
 
 **Date filter:** `DashboardDateRangeFilter` — default **Last 30 Days**; filters list **server-side** by completion date (`updated_at`); sidebar completed badge stays all-time total.
 
@@ -421,7 +424,7 @@ No sub-tabs. Single table view with filters (search, role filter, show inactive 
 
 ## Activity Log — `/activity-log`
 
-Built, accessible to roles granted `/activity-log` in the permission matrix (admin has it by default).
+Built, accessible to **Admin** by default (`/activity-log` in `pages`; API `GET /api/admin/activity-log` requires admin). Custom roles need both page permission and a future non-admin API if extended.
 
 - **`/notifications`** redirects here (legacy URL). Route **`/notifications`** is reserved for a future per-user notification bell.
 
@@ -460,7 +463,8 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/reports` | Reports |
 | `/crm/customers/[id]` | Customer Profile |
 | `/q/[token]` | Customer portal (public) — quote/order checklist, payment, line items with additional-SKU grid + file preview/download; **shipping** (single Ship To column or 2-col address cards); PDF download (`GET /api/public/quotes/[token]/pdf`) |
-| `/settings` | Account Settings |
+| `/profile` | My Profile |
+| `/settings` | Account Settings (legacy stub — use `/profile`) |
 | `/admin` | Admin (Overview) |
 | `/admin/settings/users` | Users |
 | `/admin/settings/roles` | Roles & Permissions |

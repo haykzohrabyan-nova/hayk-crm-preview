@@ -2,7 +2,9 @@ import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { isPaymentStaffRole } from "@/lib/auth/role-checks";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
+import { canAccessTicket } from "@/lib/utils/ticket-access";
 import { applyTicketRefund } from "@/lib/payments/apply-ticket-refund";
 import { processStripeRefund } from "@/lib/stripe/process-refund";
 import {
@@ -54,8 +56,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
-  if (roleName !== "accountant" && roleName !== "admin") {
-    return NextResponse.json({ error: "Forbidden." }, { status: 403 });
+  if (!isPaymentStaffRole(roleName)) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
   const { id: rawId } = await params;
@@ -95,7 +97,8 @@ export async function POST(request: NextRequest, { params }: Params) {
   const { data: ticket } = await admin
     .from("job_tickets")
     .select(
-      `id, quote_final_total, payment_amount_received, deposit_paid_at, deposit_amount, deposit_method,
+      `id, created_by_id, ticket_status, routed_by_id,
+       quote_final_total, payment_amount_received, deposit_paid_at, deposit_amount, deposit_method,
        balance_paid_at, payment_paid_at, payment_method_used, ticket_payment_strategy,
        stripe_payment_intent_id, stripe_amount_cents, stripe_amount_refunded_cents,
        payment_evidence_reviewed_at`,
@@ -104,7 +107,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     .single();
 
   if (!ticket) {
-    return NextResponse.json({ error: "Ticket not found." }, { status: 404 });
+    return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
+  }
+
+  if (!canAccessTicket(ticket, userId!, roleName)) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
   const priorRefunds = await fetchTicketRefunds(admin, ticketId);

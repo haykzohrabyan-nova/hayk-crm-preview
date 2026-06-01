@@ -10,7 +10,7 @@ The Sales Pipeline shows leads that have been routed from SDRs. **Assignment** i
 
 Sales reps work these leads: claim them, defer with **Follow Up Later**, update status, create quotes and orders, and put them on hold. **Won credit** for linked leads is applied when the ticket enters **`in_production`**, not at order conversion.
 
-> **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Sales Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
+> **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from **`GET /api/leads/sales/page-data`**. Opening the Sales Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
 > **Page load (2026-05-26):** On mount, `sales-page.tsx` calls **`GET /api/leads/sales/page-data?tab=…`** — one auth pass returns the active tab's slim list **and** all tab badge counts (`pipeline`, `follow_up`, `hold`, `rejected`). Lookups and sales user list **lazy-load** when drawer/modal opens.
 
@@ -18,7 +18,7 @@ Sales reps work these leads: claim them, defer with **Follow Up Later**, update 
 
 ## Tab: Pipeline
 
-**Data:** `GET /api/leads/workspace?status=Routed to Sales` — leads with `sales_status IN ('Ongoing', 'Quote Sent', null)`, filtered server-side to `sales_owner_id IS NULL OR sales_owner_id = currentUserId` for Sales reps. Admins see all.
+**Data:** `GET /api/leads/sales/page-data?tab=pipeline` — server filters: `status = 'Routed to Sales'`, `sales_status IN ('Ongoing', 'Quote Sent', null)`, `sales_owner_id IS NULL OR sales_owner_id = currentUserId` for Sales reps. Admins see all. Optional `?search=` for server-side name/company/phone filter.
 
 ### Table Columns
 

@@ -10,6 +10,10 @@ import {
   isTicketPaidInFull,
   type TicketPaymentFields,
 } from "@/lib/utils/invoice-payment-summary";
+import {
+  excludeRefundedTickets,
+  isExcludedFromRevenueKpis,
+} from "@/lib/utils/exclude-refunded-tickets";
 import { roundMoney } from "@/lib/utils/format";
 
 const SDR_ACTION_TYPES = [
@@ -84,29 +88,36 @@ export async function buildTeamMemberMetrics(
         .lte("created_at", periodEndIso)
         .not("ticket_id", "is", null),
 
-      admin
-        .from("job_tickets")
-        .select("id, quote_final_total, linked_lead_id, created_by_id, routed_by_id")
-        .in("ticket_status", ["in_production", "completed"])
-        .not("production_released_at", "is", null)
-        .gte("production_released_at", periodStartIso)
-        .lte("production_released_at", periodEndIso),
+      excludeRefundedTickets(
+        admin
+          .from("job_tickets")
+          .select("id, quote_final_total, linked_lead_id, created_by_id, routed_by_id")
+          .in("ticket_status", ["in_production", "completed"])
+          .not("production_released_at", "is", null)
+          .gte("production_released_at", periodStartIso)
+          .lte("production_released_at", periodEndIso),
+      ),
 
-      admin
-        .from("job_tickets")
-        .select("id, quote_final_total, linked_lead_id, created_by_id, routed_by_id")
-        .in("ticket_status", ["draft", "sent"]),
+      excludeRefundedTickets(
+        admin
+          .from("job_tickets")
+          .select("id, quote_final_total, linked_lead_id, created_by_id, routed_by_id")
+          .eq("ticket_kind", "quote")
+          .in("ticket_status", ["draft", "sent"]),
+      ),
 
-      admin
-        .from("job_tickets")
-        .select(
-          `id, quote_final_total, payment_amount_received, deposit_amount, deposit_paid_at,
+      excludeRefundedTickets(
+        admin
+          .from("job_tickets")
+          .select(
+            `id, quote_final_total, payment_amount_received, deposit_amount, deposit_paid_at,
            payment_paid_at, payment_status, ticket_status, ticket_payment_strategy,
            ticket_deposit_type, ticket_deposit_value, payment_evidence_url,
-           payment_evidence_submitted_at, linked_lead_id, created_by_id, routed_by_id`,
-        )
-        .in("ticket_status", ["sent", "order", "in_production", "completed"])
-        .gt("quote_final_total", 0),
+           payment_evidence_submitted_at, linked_lead_id, created_by_id, routed_by_id, refund_status`,
+          )
+          .in("ticket_status", ["sent", "order", "in_production", "completed"])
+          .gt("quote_final_total", 0),
+      ),
     ]);
 
   for (const act of sdrActs.data ?? []) {
@@ -128,7 +139,7 @@ export async function buildTeamMemberMetrics(
   const { data: ticketRows } = ticketIds.length
     ? await admin
         .from("job_tickets")
-        .select("id, linked_lead_id, created_by_id, routed_by_id, quote_final_total")
+        .select("id, linked_lead_id, created_by_id, routed_by_id, quote_final_total, refund_status, ticket_status")
         .in("id", ticketIds)
     : { data: [] as Record<string, unknown>[] };
 
@@ -178,6 +189,7 @@ export async function buildTeamMemberMetrics(
     if (!Number.isFinite(amount) || amount <= 0) continue;
     const ticket = mergedTicketMap.get(row.ticket_id as string);
     if (!ticket) continue;
+    if (isExcludedFromRevenueKpis(ticket)) continue;
     const { salesId, sdrId } = repIds(ticket);
     if (salesId) ensure(metrics, salesId).cash_collected += amount;
     if (sdrId) ensure(metrics, sdrId).sourced_cash += amount;
@@ -185,6 +197,7 @@ export async function buildTeamMemberMetrics(
 
   for (const t of releasedTickets.data ?? []) {
     const row = t as Record<string, unknown>;
+    if (isExcludedFromRevenueKpis(row)) continue;
     const value = Number(row.quote_final_total ?? 0);
     const { salesId } = repIds(row);
     if (salesId) ensure(metrics, salesId).released_order_value += value;
@@ -192,6 +205,7 @@ export async function buildTeamMemberMetrics(
 
   for (const t of pipelineTickets.data ?? []) {
     const row = t as Record<string, unknown>;
+    if (isExcludedFromRevenueKpis(row)) continue;
     const value = Number(row.quote_final_total ?? 0);
     const { salesId } = repIds(row);
     if (salesId) ensure(metrics, salesId).pipeline_value += value;
@@ -199,6 +213,14 @@ export async function buildTeamMemberMetrics(
 
   for (const row of openTickets.data ?? []) {
     const fields = row as unknown as TicketPaymentFields & Record<string, unknown>;
+    if (
+      isExcludedFromRevenueKpis({
+        ticket_status: fields.ticket_status as string | null | undefined,
+        refund_status: fields.refund_status as string | null | undefined,
+      })
+    ) {
+      continue;
+    }
     if (isTicketPaidInFull(fields)) continue;
     const summary = computeInvoicePaymentSummary(fields);
     if (summary.balanceDue <= 0.01) continue;

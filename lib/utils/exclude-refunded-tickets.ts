@@ -39,3 +39,13 @@ export function isFullyRefundedTicket(
 ): boolean {
   return refundStatus === "full";
 }
+
+/** Cash collected, pipeline value, and related KPIs — skip cancelled or refunded tickets. */
+export function isExcludedFromRevenueKpis(ticket: {
+  ticket_status?: string | null;
+  refund_status?: string | null;
+}): boolean {
+  if (ticket.ticket_status === "cancelled") return true;
+  const rs = ticket.refund_status;
+  return rs === "partial" || rs === "full";
+}

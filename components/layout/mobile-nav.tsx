@@ -29,6 +29,7 @@ import {
 import { useTheme } from "@/components/layout/theme-provider";
 import { createClient } from "@/lib/supabase/client";
 import { revokeMfaTrustOnSignOut } from "@/lib/auth/remember-mfa-client";
+import { filterPagesForRole } from "@/lib/auth/admin-only-pages";
 import type { Page } from "@/lib/types";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -86,11 +87,13 @@ export function MobileNav() {
           .sort((a, b) => a.sort_order - b.sort_order);
       }
 
+      const navPages = filterPagesForRole(allPages, roleName);
+
       // Mirror sidebar exactly: main + bottom sections, plus only the top-level
       // /admin link. Pages with section='admin-sub' are internal sub-pages
       // navigated via the /admin tab layout — never shown in nav.
       setPages(
-        allPages.filter(
+        navPages.filter(
           (p) =>
             p.section === "main" ||
             p.section === "bottom" ||

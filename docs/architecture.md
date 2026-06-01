@@ -37,7 +37,8 @@
 | `RESEND_API_KEY` | Server only | Email provider key (when `OUTREACH_EMAIL_PROVIDER=resend`) |
 | `TWILIO_ACCOUNT_SID` | Server only | Twilio SID (when `OUTREACH_SMS_PROVIDER=twilio`) |
 | `TWILIO_AUTH_TOKEN` | Server only | Twilio auth token |
-| `TWILIO_FROM_NUMBER` | Server only | Twilio sender number |
+| `TWILIO_PHONE_NUMBER` | Server only | Twilio SMS sender number |
+| `TWILIO_WHATSAPP_FROM` | Server only | Twilio WhatsApp sender (e.g. `whatsapp:+1…`) |
 
 Copy `.env.local.example` → `.env.local` and fill in values from **Supabase → Project Settings → API**. Email/SMS keys are optional until Phase 10.
 
@@ -77,7 +78,7 @@ Copy `.env.local.example` → `.env.local` and fill in values from **Supabase �
 | Redirect URLs | `https://bazar-crm-eta.vercel.app/**`, `http://localhost:3000/**` |
 
 ### Creating users
-Users are invited by an Admin via `/admin/users` → "Invite User". This triggers `inviteUserByEmail` in Supabase Auth and immediately creates a `user_profiles` row with the assigned role. No self-registration.
+Users are created by an Admin via **Admin → Settings → Users** (`/admin/settings/users`) → **Add User**. This calls `POST /api/admin/users/create`: `supabase.auth.admin.createUser({ email, password: temp_password, email_confirm: true })` plus a `user_profiles` row with `must_change_password: true`. Optional branded welcome email via Instantly when `send_welcome_email: true`. No self-registration.
 
 ---
 
@@ -139,8 +140,8 @@ BazarCRM/
 │   │   │   ├── page.tsx                  ✓ Overview card grid
 │   │   │   ├── loading.tsx               ✓ Route-level skeleton
 │   │   │   └── settings/[tab]/page.tsx   ✓ users | roles | dropdowns | products | company | integrations | sms-templates | payment
-│   │   ├── settings/page.tsx             ✓ Personal profile settings
-│   │   └── profile/page.tsx              ✓ Personal profile settings (alias)
+│   │   ├── settings/page.tsx             ✓ Stub — redirects conceptually to profile (not in nav)
+│   │   └── profile/page.tsx              ✓ Personal profile stub (sidebar user card → /profile; universal in proxy.ts)
 │   ├── api/
 │   │   ├── auth/change-password/         ✓ POST — password update
 │   │   ├── leads/
@@ -170,8 +171,10 @@ BazarCRM/
 │   │   ├── tickets/
 │   │   │   ├── route.ts                  ✓ GET list (slim quote payload when kind=quote) / POST create
 │   │   │   ├── counts/route.ts           ✓ GET — tab badge counts (SQL head counts)
-│   │   │   ├── quotes/page-data/route.ts ✓ GET — quote list + quote-stage counts
 │   │   │   └── [id]/route.ts             ✓ GET single / PATCH update (supports claim_ownership)
+│   │   ├── quotes/
+│   │   │   ├── page-data/route.ts        ✓ GET — quote list + quote-stage counts
+│   │   │   └── counts/route.ts           ✓ GET — quote tab badge counts only
 │   │   ├── orders/
 │   │   │   ├── orders/route.ts           ✓ GET — slim orders list (`ticket_kind = order`; order/in_production/cancelled, no line_items)
 │   │   │   ├── tickets/[id]/files/       ✓ POST/GET/DELETE — variant attachments (ticket-attachments bucket)
@@ -179,7 +182,7 @@ BazarCRM/
 │   │   │   └── counts/route.ts           ✓ GET — orders tab badge counts only
 │   │   ├── payments/
 │   │   │   ├── pending/route.ts          ✓ GET — payment evidence queue
-│   │   │   ├── page-data/route.ts        ✓ GET — pending list (single-tab page)
+│   │   │   ├── page-data/route.ts        ✓ GET — pending + approved + refunded lists + tab counts
 │   │   │   └── counts/route.ts           ✓ GET — payments tab badge counts
 │   │   ├── production/
 │   │   │   ├── orders/route.ts           ✓ GET — in_production list
@@ -254,7 +257,7 @@ BazarCRM/
 │   ├── orders/
 │   │   ├── orders-page.tsx               ✓ Orders list (All / Pending Payment / In Production / Cancelled)
 │   │   ├── payments-page.tsx             ✓ Accountant queue — Payment For column; opens /payments/[id]?from=/payments
-│   │   ├── production-page.tsx           ✓ Legacy — redirects to /orders?tab=in_production
+│   │   ├── production-page.tsx           ⚠ Orphaned legacy component — route redirects to `/orders?tab=in_production`; not mounted
 │   │   └── completed-page.tsx            ✓ Completed orders list
 │   ├── quotes/
 │   │   ├── new-quote-form.tsx            ✓ 4-tab New Quote form (Customer optional); direct quote source on ticket
@@ -365,7 +368,7 @@ BazarCRM/
 │   └── use-coalesced-refresh.ts          ✓ Debounced mount + realtime refetch for list pages
 ├── supabase/
 │   ├── schema.sql                        ✓ Consolidated DDL + seeds (single file — run on fresh projects)
-│   ├── migrations/                       ✓ Incremental deltas (001–096)
+│   ├── migrations/                       ✓ Incremental deltas (077–102; see also consolidated `schema.sql`)
 │   └── README.md                         ✓ Setup notes
 ├── docs/                                 ✓ Feature specs + architecture + security.md
 ├── proxy.ts                              ✓ AAL2 + RBAC session enforcement (returns 503 when SUPABASE_URL missing)
@@ -389,7 +392,7 @@ List pages fetch **scoped, slim payloads** — no `line_items` on table views. F
 | `/quotes` | `GET /api/quotes/page-data` | `GET /api/tickets?kind=quote` + `/api/quotes/counts` |
 | `/orders` | `GET /api/orders/page-data` | `GET /api/orders/orders` + `/api/orders/counts` |
 | `/payments` | `GET /api/payments/page-data` (`orders`, `approvedOrders`, `counts`) | `GET /api/payments/pending` (pending only) |
-| `/production` | `GET /api/production/page-data` | `GET /api/production/orders` + `/api/production/counts` |
+| `/production` | `GET /api/production/page-data` *(legacy API)* | Redirects to `/orders?tab=in_production` — use `GET /api/orders/page-data` |
 | `/completed` | `GET /api/completed/page-data` | `GET /api/completed/orders` + `/api/completed/counts` |
 | `/leads` | `GET /api/leads/workspace/page-data` | `GET /api/leads/workspace` + `/api/leads/workspace/counts` |
 | `/sales` | `GET /api/leads/sales/page-data` | workspace list + `/api/leads/sales-counts` |
@@ -449,13 +452,14 @@ All colors are CSS custom properties defined in `app/globals.css`. **Never hardc
 
 | Token | Light | Dark |
 |---|---|---|
-| `--color-bg` | `#F8F7F4` | `#18181B` |
-| `--color-surface` | `#FFFFFF` | `#27272A` |
+| `--color-bg` | `#FFFFFF` | `#18181B` |
+| `--color-surface` | `#FAFAFA` | `#27272A` |
 | `--color-topbar` | `#1B2B4B` (navy) | `#27272A` |
 | `--color-accent` | `#E8C97A` (gold) | `#F97316` (orange) |
 | `--color-text-primary` | `#333333` | `#F4F4F5` |
-| `--color-text-muted` | `#888888` | `#71717A` |
+| `--color-text-muted` | `#666666` | `#71717A` |
 | `--color-border` | `#E5E7EB` | `#3F3F46` |
+| `--color-row-alt` | `#F8F7F4` | `#27272A` |
 
 See `.cursor/rules/ui-design-system.mdc` for the full token table and component rules.
 

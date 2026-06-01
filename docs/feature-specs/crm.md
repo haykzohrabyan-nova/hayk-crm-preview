@@ -100,20 +100,10 @@ List of all `job_tickets` for this customer. Each row shows reference, date, **s
 
 > **Lead History** was removed from the customer profile (May 2026). SDRs view routed/won lead details from the **Leads** workspace (Directed to Sales / Won tabs → read-only Verify Drawer).
 
-### Section: Order History
-Table of all `job_tickets` linked to this customer.
+### Section: Quotes & Orders
+Table of tickets for this customer via **`GET /api/tickets?customer_id=[id]`** (scoped by role). **Lead History** was removed (May 2026).
 
-| Column | Notes |
-|--------|-------|
-| Type | Quote / Order pill |
-| Status | Ticket status pill |
-| Total | Formatted currency |
-| Created By | |
-| Created | Relative time |
-| Action | **View** → opens ticket/order drawer |
-
-### Section: Activity Timeline
-`HistoryTimeline` component — queries `GET /api/activity?customer_id=[id]` which returns all activity across all linked leads and tickets for this customer.
+> **Activity timeline on profile:** Not built. Ticket/lead history lives on **Quote/Order detail → History** (`GET /api/activities?ticket_id=…`) and **Verify/Sales drawer → History** (`GET /api/leads/[id]/activities`).
 
 ---
 

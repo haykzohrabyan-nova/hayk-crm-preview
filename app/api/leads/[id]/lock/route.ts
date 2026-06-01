@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requireLeadApiPageAccess } from "@/lib/auth/require-page-access";
 import { canAcquireLeadLock } from "@/lib/utils/lead-access";
 
 export async function POST(
@@ -9,6 +10,8 @@ export async function POST(
 ) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requireLeadApiPageAccess(userId!, roleName);
+  if (pageDeny) return pageDeny;
 
   if (roleName !== "sdr" && roleName !== "sales" && roleName !== "admin") {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });

@@ -50,7 +50,7 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 |-------|----------|------|
 | Routes | `app/(app)/{feature}/` | Thin Server Components only; paired with `loading.tsx` for route-level skeletons |
 | List pages | `components/{feature}/{feature}-page.tsx` | One client page per route |
-| Ticket detail | `components/quotes/quote-detail.tsx` | Single component; `context` prop for quote/order/payment/production/completed |
+| Ticket detail | `components/quotes/quote-detail.tsx` | Single component; `context` prop for `quote` \| `order` \| `payment` \| `completed` (`production` legacy in types; route redirects to `order`) |
 | Detail sections | `components/quotes/quote-detail/*`, `components/orders/*-detail-overview.tsx` | Extract shared blocks here |
 | Shared form blocks | `components/quotes/shared/` | Used by new-quote-form + quote-detail edit mode; includes `shipping-fulfillment-section.tsx`, `quote-form.tsx` |
 | Pure helpers | `lib/utils/format.ts`, `ticket-math.ts`, etc. | **Never copy** `relativeTime` / date formatters into components |
@@ -75,8 +75,10 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
   └── components/leads/leads-page.tsx               └── components/sales/sales-page.tsx
         │                                                  │
-        ├── Tabs: All Leads | On Hold |                    ├── Tabs: Pipeline | On Hold |
-        │         Directed to Sales | Rejected | Won       │         Rejected
+        ├── Tabs: All Leads | Follow Up Later | On Hold |
+        │         Directed to Sales | Rejected | Won
+        │                                                  ├── Tabs: Pipeline | Follow Up Later |
+        │                                                  │         On Hold | Rejected
         │                                                  │
         ├── Inline table (per tab)                         ├── Inline table (per tab)
         │     Columns vary per tab                         │     Columns vary per tab
@@ -104,7 +106,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending / Approved tabs; **Payment For** column; rows open `/payments/[id]?from=/payments` |
 | `PaymentTypeBadge` | `components/orders/payment-type-badge.tsx` | Deposit / Balance / Full payment pill with optional description (list + detail) |
 | `SmsTemplatesSection` | `components/admin/sms-templates-section.tsx` | Admin — SMS/WhatsApp template editor |
-| `ProductionPage` | `components/orders/production-page.tsx` | Legacy — UI redirects to `/orders?tab=in_production` |
+| `ProductionPage` | `components/orders/production-page.tsx` | **Orphaned** — full list component not mounted; `/production` route redirects to `/orders?tab=in_production` |
 | `CompletedPage` | `components/orders/completed-page.tsx` | SDR (own created only), Accountant + Admin (all) |
 | `AccountantDashboard` | `components/admin/accountant-dashboard.tsx` | Accountant only |
 | `NewQuoteForm` | `components/quotes/new-quote-form.tsx` | Sales + SDR (create), Admin |
@@ -121,7 +123,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `StatusPill` | `components/ui/status-pill.tsx` | Tables, drawers |
 | `UrgencyPill` | `components/ui/urgency-pill.tsx` | Tables, drawers |
 | `TableRowsSkeleton` | `components/ui/table-skeleton.tsx` | Inside `<tbody>` on leads-page, sales-page, payments-page — renders `<tr>` rows. Props: `rows` (default 5), `cols`. |
-| `TableDivSkeleton` | `components/ui/table-skeleton.tsx` | Standalone div-based table shimmer on orders-page, production-page, completed-page, quotes-page, all `loading.tsx` files. Props: `rows` (default 5), `cols`. |
+| `TableDivSkeleton` | `components/ui/table-skeleton.tsx` | Standalone div-based table shimmer on orders-page, completed-page, quotes-page, all `loading.tsx` files. Props: `rows` (default 5), `cols`. |
 | `ErrorBoundary` | `components/layout/error-boundary.tsx` | Wraps `{children}` in `app/(app)/layout.tsx`. Catches unhandled runtime errors and shows a "Try again" button instead of a blank page. |
 | `LeadHistoryTable` | `components/leads/lead-history-table.tsx` | Leads **Won** tab only (not customer profile) |
 | `DashboardDateRangeFilter` | `components/ui/dashboard-date-range-filter.tsx` | SDR/Sales/Admin dashboards, Orders, Quotes, Completed list pages |
@@ -717,7 +719,7 @@ Browser events dispatched by `components/layout/sidebar.tsx` on Supabase Realtim
 | `components/sales/sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open; full lead on drawer open |
 | `components/crm/crm-page.tsx` | Coalesced refetch on `bazaar:customers-changed`, `bazaar:leads-changed`, `bazaar:tickets-changed` |
 | `components/admin/admin-dashboard.tsx` | Silent re-fetch of all KPIs (no skeleton flash) |
-| `components/orders/production-page.tsx` | Coalesced refetch on mount + `bazaar:tickets-changed` |
+| `components/orders/orders-page.tsx` | In-production tab (`?tab=in_production`) + coalesced refetch on `bazaar:tickets-changed` |
 
 See `docs/realtime-live-updates.md` for full architecture and implementation guide.
 

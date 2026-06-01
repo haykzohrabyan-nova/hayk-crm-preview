@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/layout/theme-provider";
 import { createClient } from "@/lib/supabase/client";
 import { revokeMfaTrustOnSignOut } from "@/lib/auth/remember-mfa-client";
+import { filterPagesForRole } from "@/lib/auth/admin-only-pages";
 import type { Page } from "@/lib/types";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -197,10 +198,13 @@ export function Sidebar() {
           .from("role_permissions")
           .select("pages(*)")
           .eq("role_id", profile!.role_id);
-        pages = (data ?? [])
-          .map((row: unknown) => (row as { pages: Page }).pages)
-          .filter((p): p is Page => p !== null && typeof p === "object")
-          .sort((a, b) => a.sort_order - b.sort_order);
+        pages = filterPagesForRole(
+          (data ?? [])
+            .map((row: unknown) => (row as { pages: Page }).pages)
+            .filter((p): p is Page => p !== null && typeof p === "object")
+            .sort((a, b) => a.sort_order - b.sort_order),
+          roleName,
+        );
       }
 
       // Only show the top-level /admin link in the sidebar, not sub-pages like

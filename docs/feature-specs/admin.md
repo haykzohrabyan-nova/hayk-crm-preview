@@ -143,7 +143,7 @@ Pages                           [Role: Manager]
 ☐ Roles & Permissions (Admin)  /admin/settings/roles
 ☐ Dropdown Options (Admin)     /admin/settings/dropdowns
 ☐ Notifications (Admin)        /admin/settings/notifications
-☑ Settings (Personal)          /settings
+☑ Profile (Personal)           /profile   ← universal in proxy.ts, not in pages table
 ```
 
 - Checking a box → `POST /api/admin/roles/[id]/permissions` with `{ page_id }`

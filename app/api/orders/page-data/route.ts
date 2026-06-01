@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { fetchOrdersList, fetchOrdersTabCounts } from "@/lib/utils/fetch-orders-data";
 import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 import { parseOrdersListFilters } from "@/lib/utils/ticket-list-filters";
@@ -9,6 +10,8 @@ import { parseOrdersListFilters } from "@/lib/utils/ticket-list-filters";
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  const pageDeny = await requirePageAccess(userId!, roleName, "/orders");
+  if (pageDeny) return pageDeny;
 
   const { searchParams } = request.nextUrl;
   const filters = parseOrdersListFilters(searchParams, roleName);

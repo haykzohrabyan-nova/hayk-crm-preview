@@ -1,6 +1,7 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import {
   countExact,
+  scopeJobTicketsQuery,
   scopedTicketCount,
   type TicketSelectQuery,
 } from "@/lib/utils/db-counts";
@@ -19,26 +20,14 @@ import {
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
-function applyTicketScope<T extends { or: (filter: string) => T; eq: (col: string, val: string) => T }>(
+/** Delegates to `scopeJobTicketsQuery` — single source of truth for ticket list scoping. */
+export function applyTicketScope<T extends TicketSelectQuery>(
   query: T,
   roleName: string,
   userId: string | null,
   adminFilterUserId?: string | null,
 ): T {
-  if (roleName === "admin" && adminFilterUserId) {
-    return query.eq("created_by_id", adminFilterUserId);
-  }
-  if (roleName === "admin" || roleName === "accountant") return query;
-  if (roleName === "sales" && userId) {
-    return query.or(`created_by_id.eq.${userId},ticket_status.eq.routed`) as T;
-  }
-  if (roleName === "sdr" && userId) {
-    return query.eq("created_by_id", userId);
-  }
-  if (userId) {
-    return query.or(`created_by_id.eq.${userId},routed_by_id.eq.${userId}`) as T;
-  }
-  return query;
+  return scopeJobTicketsQuery(query, roleName, userId, adminFilterUserId ?? null);
 }
 
 async function buildScopedQuotesQuery(
@@ -173,7 +162,7 @@ export async function fetchQuotesTabCounts(
   ]);
 
   const globalRouted =
-    roleName === "sales" || roleName === "admin" || roleName === "accountant"
+    roleName === "sales" || roleName === "admin"
       ? await countExact(admin, "job_tickets", (q) => {
           let query = q.eq("ticket_status", "routed");
           if (roleName === "admin" && filters.adminFilterUserId) {
@@ -186,9 +175,7 @@ export async function fetchQuotesTabCounts(
       : scopedRouted;
 
   const routed =
-    roleName === "sales" || roleName === "admin" || roleName === "accountant"
-      ? globalRouted
-      : scopedRouted;
+    roleName === "sales" || roleName === "admin" ? globalRouted : scopedRouted;
 
   return {
     all: draft + sent + approved,
@@ -201,4 +188,4 @@ export async function fetchQuotesTabCounts(
 }
 
 /** Scope helper exported for tickets route non-quote-list queries. */
-export { applyTicketScope, QUOTE_LIST_STATUSES };
+export { QUOTE_LIST_STATUSES };

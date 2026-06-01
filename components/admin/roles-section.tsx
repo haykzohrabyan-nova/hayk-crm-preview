@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Trash2, Lock, X, Shield } from "lucide-react";
+import { isAdminOnlyPageRoute } from "@/lib/auth/admin-only-pages";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -14,14 +15,14 @@ interface Role {
   created_at: string;
 }
 
-interface Page {
+type Page = {
   id: string;
   route: string;
   display_name: string;
   icon: string | null;
   section: string;
   sort_order: number;
-}
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -156,22 +157,24 @@ export function RolesSection() {
   const selectedRole = roles.find((r) => r.id === selectedRoleId) ?? null;
   const isAdmin = selectedRole?.name === "admin";
   const isSystemRole = selectedRole?.is_system ?? false;
-  // Only Admin is truly permission-locked. Other system roles (SDR, Sales, Accountant, etc.)
-  // can have their page permissions edited by an Admin — they just cannot be deleted.
-  const isPermissionLocked = isAdmin;
+  const isPermissionLocked = isSystemRole;
 
   // ── Toggle permission ─────────────────────────────────────────────────────
 
-  async function handleToggle(pageId: string, currentlyGranted: boolean) {
+  async function handleToggle(page: Page, currentlyGranted: boolean) {
     if (!selectedRole || isPermissionLocked) return;
-    setTogglingPageId(pageId);
+    if (!currentlyGranted && isAdminOnlyPageRoute(page.route)) {
+      showToast("Admin-only pages cannot be assigned to other roles.", "error");
+      return;
+    }
+    setTogglingPageId(page.id);
 
     if (currentlyGranted) {
-      const res = await fetch(`/api/admin/roles/${selectedRole.id}/permissions/${pageId}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/roles/${selectedRole.id}/permissions/${page.id}`, { method: "DELETE" });
       if (res.ok) {
         setRoles((prev) => prev.map((r) =>
           r.id === selectedRole.id
-            ? { ...r, permitted_page_ids: r.permitted_page_ids.filter((id) => id !== pageId) }
+            ? { ...r, permitted_page_ids: r.permitted_page_ids.filter((id) => id !== page.id) }
             : r
         ));
       } else {
@@ -181,12 +184,12 @@ export function RolesSection() {
       const res = await fetch(`/api/admin/roles/${selectedRole.id}/permissions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ page_id: pageId }),
+        body: JSON.stringify({ page_id: page.id }),
       });
       if (res.ok) {
         setRoles((prev) => prev.map((r) =>
           r.id === selectedRole.id
-            ? { ...r, permitted_page_ids: [...r.permitted_page_ids, pageId] }
+            ? { ...r, permitted_page_ids: [...r.permitted_page_ids, page.id] }
             : r
         ));
       } else {
@@ -294,7 +297,9 @@ export function RolesSection() {
                 className="rounded-[10px] border p-4 text-sm"
                 style={{ background: "color-mix(in srgb, var(--color-accent) 8%, var(--color-surface))", borderColor: "color-mix(in srgb, var(--color-accent) 25%, var(--color-border))", color: "var(--color-text-muted)" }}
               >
-                Admin has unrestricted access to all pages. Permissions cannot be modified.
+                {isAdmin
+                  ? "Admin has unrestricted access to all pages. Permissions cannot be modified."
+                  : "System role page permissions are fixed and cannot be changed here. Update defaults via a database migration if needed."}
               </div>
             ) : (
               <div
@@ -307,6 +312,8 @@ export function RolesSection() {
                   pages.map((page, idx) => {
                     const granted = selectedRole.permitted_page_ids.includes(page.id);
                     const toggling = togglingPageId === page.id;
+                    const isAdminOnlyPage = isAdminOnlyPageRoute(page.route);
+                    const checkboxDisabled = toggling || (isAdminOnlyPage && !granted);
                     return (
                       <label
                         key={page.id}
@@ -321,15 +328,27 @@ export function RolesSection() {
                         <input
                           type="checkbox"
                           checked={granted}
-                          disabled={toggling}
-                          onChange={() => handleToggle(page.id, granted)}
+                          disabled={checkboxDisabled}
+                          onChange={() => handleToggle(page, granted)}
                           className="rounded accent-[var(--color-accent)]"
                           style={{ width: 15, height: 15 }}
                         />
-                        <div className="flex-1 min-w-0">
+                        <div className="flex-1 min-w-0 flex items-center gap-2">
                           <span className="text-[13px] font-medium" style={{ color: "var(--color-text-primary)" }}>
                             {page.display_name}
                           </span>
+                          {isAdminOnlyPage && (
+                            <span
+                              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium"
+                              style={{
+                                background: "var(--color-badge-bg)",
+                                color: "var(--color-badge-text)",
+                              }}
+                            >
+                              <Lock className="h-3 w-3" />
+                              Admin only
+                            </span>
+                          )}
                         </div>
                         <span className="text-[11px] font-mono shrink-0" style={{ color: "var(--color-text-muted)" }}>
                           {page.route}

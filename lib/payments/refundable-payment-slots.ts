@@ -1,5 +1,6 @@
 /** Payments recorded on a ticket that can be selected for refund. */
 
+import { isPaymentStaffRole } from "@/lib/auth/role-checks";
 import { stripeRefundableCents } from "@/lib/stripe/refund-eligibility";
 import type { PaymentEvidenceMode } from "@/lib/utils/payment-evidence-type";
 
@@ -160,6 +161,6 @@ export function canRecordRefund(
   priorRefunds?: TicketRefundRow[],
   roleName?: string | null,
 ): boolean {
-  if (roleName !== "accountant" && roleName !== "admin") return false;
+  if (!isPaymentStaffRole(roleName)) return false;
   return listRefundablePaymentSlots(ticket, priorRefunds).length > 0;
 }

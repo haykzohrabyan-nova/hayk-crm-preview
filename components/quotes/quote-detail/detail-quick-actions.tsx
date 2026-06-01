@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CheckCircle2, Loader2, Link as LinkIcon, Copy, Check, Mail, BadgeCheck, RotateCcw } from "lucide-react";
 import { canRecordRefund } from "@/lib/payments/refundable-payment-slots";
+import { canResendTicketNotifications } from "@/lib/utils/ticket-access";
 import { OutreachChannelIcons } from "@/components/ui/outreach-channel-icons";
 import { resolveOutreachChannelKind, OUTREACH_CHANNEL_LABEL } from "@/lib/utils/outreach-channel-display";
 import { formatCurrency } from "@/lib/utils/ticket-math";
@@ -13,6 +14,7 @@ import { copyTextToClipboard, publicQuoteUrl } from "@/lib/utils/copy-to-clipboa
 
 interface QuickActionsTicket {
   id: string;
+  created_by_id?: string | null;
   ticket_status: string;
   public_token: string | null;
   ticket_quote_channel: "sms" | "email" | "both" | null;
@@ -43,6 +45,7 @@ const btnBase =
 export function DetailQuickActions({
   ticket,
   userRole,
+  userId,
   saving,
   onMarkComplete,
   onCancelTicket,
@@ -58,6 +61,7 @@ export function DetailQuickActions({
 }: {
   ticket: QuickActionsTicket;
   userRole: string | null;
+  userId: string | null;
   saving: boolean;
   onMarkComplete: () => void;
   onCancelTicket?: () => void;
@@ -82,7 +86,13 @@ export function DetailQuickActions({
 
   const canResendInvoice =
     !!ticket.public_token &&
-    (ticket.ticket_status === "in_production" || ticket.ticket_status === "completed");
+    (ticket.ticket_status === "in_production" || ticket.ticket_status === "completed") &&
+    !!userId &&
+    canResendTicketNotifications(
+      { created_by_id: ticket.created_by_id ?? null },
+      userId,
+      userRole ?? "",
+    );
 
   const canMarkComplete =
     ticket.ticket_status === "in_production" &&

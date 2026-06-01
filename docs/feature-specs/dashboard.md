@@ -89,7 +89,7 @@ KPIs scoped to the current SDR with **date filters**: Today, Yesterday, Last 7 D
 | **Pending Follow-Up** | Leads that could not be reached or are waiting for a status update | ✓ | ✓ |
 | **Qty of Leads Routed to Sales Team** | Leads forwarded to sales because they were outside the SDR's quoting criteria | ✓ | ✓ |
 
-**Orders** credit requires: you created the quote (`created_by_id`), did **not** route it to Sales (`routed_by_id` null, lead not routed), converted to order, and recorded payment. Routed hand-offs where Sales closes the deal are excluded.
+**Orders** credit requires: you created the quote (`created_by_id`), did **not** route it to Sales (`routed_by_id` null, lead not routed), converted to order, recorded payment, and the ticket is **not cancelled or refunded**. Routed hand-offs where Sales closes the deal are excluded.
 
 > **List pages vs dashboard:** `/quotes`, `/orders`, and `/completed` show all tickets where `created_by_id = you` (including unpaid or in-progress). Dashboard **Closed Order Value / Paid From Closed Orders / Remaining Balance** apply the stricter self-closed + paid filter above — do not expect dollar totals to match the Orders page row count one-to-one.
 
@@ -134,7 +134,7 @@ KPIs are **company-wide**. **Date filter:** same presets as Orders/Quotes/Comple
 |------|-------|---------|--------|
 | **Cash Collected** | All recorded payments in period | ✓ | ✓ |
 | **Pipeline Value** | Sum of draft/sent `quote_final_total` | snapshot | |
-| Total Leads | Leads created in period (+ Open/Claimed/… sub-badges) | ✓ | |
+| Total Leads | Leads created in period (+ Open/Claimed/In Pipeline/Quoted/Ordered/Rejected/Cancelled/Refunded sub-badges — mutually exclusive, sum to total) | ✓ | |
 | In Inbox | Inbox leads (`is_inbox = true`) | snapshot | |
 | Routed to Sales | Current Routed to Sales count | snapshot | |
 | Won | Orders released to production in period (count) | ✓ | |

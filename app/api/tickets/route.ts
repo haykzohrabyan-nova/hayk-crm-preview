@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { requirePageAccess, requireAnyPageAccess } from "@/lib/auth/require-page-access";
 import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
+import { fetchQuotesList } from "@/lib/utils/fetch-quotes-data";
+import { scopeJobTicketsQuery } from "@/lib/utils/db-counts";
+import { isAccountantQuoteWorkflowDenied } from "@/lib/utils/ticket-access";
 import { notifyPublicQuoteUpdatedByTicketId } from "@/lib/integrations/notify-public-quote-updated";
 import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { maybeAutoRecordCashPayment } from "@/lib/utils/maybe-auto-record-cash-payment";
 import { maybeAutoReleaseProduction, AUTO_RELEASE_SELECT } from "@/lib/utils/maybe-auto-release-production";
-import { applyTicketScope, fetchQuotesList } from "@/lib/utils/fetch-quotes-data";
 import {
   formatOrderReference,
   formatQuoteReference,
@@ -59,6 +62,11 @@ export async function GET(request: NextRequest) {
     kind === "quote" && !linkedLeadId && !customerId && !period;
 
   if (isQuoteList) {
+    if (isAccountantQuoteWorkflowDenied(roleName)) {
+      return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+    }
+    const pageDeny = await requirePageAccess(userId!, roleName, "/quotes");
+    if (pageDeny) return pageDeny;
     try {
       const { rows } = await fetchQuotesList(admin, roleName, userId!, { search });
       return NextResponse.json({ tickets: rows });
@@ -68,19 +76,36 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  type ScopeFn = <T extends { or: (filter: string) => T; eq: (col: string, val: string) => T }>(
-    q: T,
-  ) => T;
-  const applyScope: ScopeFn = (q) => applyTicketScope(q, roleName, userId);
+  const listPageDeny = customerId
+    ? await requirePageAccess(userId!, roleName, "/crm")
+    : linkedLeadId
+      ? await requireAnyPageAccess(userId!, roleName, ["/leads", "/crm"])
+      : kind === "order"
+        ? await requirePageAccess(userId!, roleName, "/orders")
+        : kind === "quote"
+          ? await requirePageAccess(userId!, roleName, "/quotes")
+          : await requireAnyPageAccess(userId!, roleName, [
+              "/quotes",
+              "/orders",
+              "/crm",
+              "/leads",
+              "/payments",
+              "/completed",
+            ]);
+  if (listPageDeny) return listPageDeny;
 
-  let q = admin
-    .from("job_tickets")
-    .select(
-      `*,
+  let q = scopeJobTicketsQuery(
+    admin
+      .from("job_tickets")
+      .select(
+        `*,
        customer:customers(id, first_name, last_name, company, phone, email),
        lead:leads(id, status, sales_status, urgency, source)`,
-    )
-    .order("created_at", { ascending: false });
+      )
+      .order("created_at", { ascending: false }),
+    roleName,
+    userId,
+  );
 
   if (kind) q = q.eq("ticket_kind", kind);
   if (linkedLeadId) q = q.eq("linked_lead_id", linkedLeadId);
@@ -91,7 +116,7 @@ export async function GET(request: NextRequest) {
     q = q.gte("created_at", since);
   }
 
-  const { data, error } = await applyScope(q);
+  const { data, error } = await q;
 
   if (error) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
@@ -105,6 +130,11 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
+  if (isAccountantQuoteWorkflowDenied(roleName)) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
+  const createPageDeny = await requireAnyPageAccess(userId!, roleName, ["/quotes", "/orders"]);
+  if (createPageDeny) return createPageDeny;
 
   const body = await request.json().catch(() => null);
   if (!body) {

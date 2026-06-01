@@ -12,13 +12,13 @@ Always use these variables. **Never hardcode hex values in components.**
 
 | Token | Light | Dark |
 |---|---|---|
-| `--color-bg` | `#f8fafc` | `#18181B` |
-| `--color-surface` | `#FFFFFF` | `#27272A` |
+| `--color-bg` | `#FFFFFF` | `#18181B` |
+| `--color-surface` | `#FAFAFA` | `#27272A` |
 | `--color-topbar` | `#1B2B4B` | `#27272A` |
 | `--color-accent` | `#E8C97A` | `#F97316` |
 | `--color-accent-dark` | `#C9A84C` | `#FB923C` |
 | `--color-text-primary` | `#333333` | `#F4F4F5` |
-| `--color-text-muted` | `#888888` | `#71717A` |
+| `--color-text-muted` | `#666666` | `#71717A` |
 | `--color-border` | `#E5E7EB` | `#3F3F46` |
 | `--color-badge-bg` | `#EAF0FB` | `#2D1F0E` |
 | `--color-badge-text` | `#1B2B4B` | `#FB923C` |

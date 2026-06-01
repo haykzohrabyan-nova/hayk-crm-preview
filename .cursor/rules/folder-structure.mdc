@@ -37,7 +37,7 @@ List pages live in `components/{feature}/{feature}-page.tsx`. Detail routes that
 | `/quotes/[id]` | `QuoteDetail` | `"quote"` |
 | `/orders/[id]` | `QuoteDetail` | `"order"` |
 | `/payments/[id]` | `QuoteDetail` | `"payment"` |
-| `/production/[id]` | `QuoteDetail` | `"production"` |
+| `/production/[id]` | Redirects to `/orders/[id]` — use `QuoteDetail` with `context="order"` |
 | `/completed/[id]` | `QuoteDetail` | `"completed"` |
 
 New lifecycle stages → add a `context` + overview sub-component under `components/quotes/quote-detail/` or `components/orders/`, not a new `*-detail.tsx` page clone.

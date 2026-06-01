@@ -1,5 +1,7 @@
 # BazarCRM — MVP Scope
 
+> **Historical document.** MVP shipped 2026-05-07. For current behaviour see `docs/navigation.md`, `docs/rbac.md`, `docs/api-contract.md`, and `docs/feature-specs/`.
+
 **Status: MVP COMPLETE ✓ — In testing as of 2026-05-07**
 
 This file defines the boundary of the first production build.
