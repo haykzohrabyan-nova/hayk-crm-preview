@@ -5,6 +5,93 @@ import { Download, Paperclip, FileText, Image as ImageIcon, Eye, Trash2 } from "
 import type { TicketFileMeta } from "@/lib/utils/ticket-line-items";
 import { LineItemFilePreviewModal } from "./line-item-file-preview-modal";
 
+/**
+ * Clickable thumbnail shown in read-only overview — images render inline,
+ * PDFs show an icon card. Clicking opens the full `LineItemFilePreviewModal`.
+ */
+export function LineItemFileThumbnail({
+  file,
+  ticketRef,
+  size = 72,
+  fill = false,
+}: {
+  file: TicketFileMeta;
+  ticketRef?: string | null;
+  /** px — outer width/height of the thumbnail square. Ignored when fill=true. Default 72. */
+  size?: number;
+  /**
+   * When true the button stretches to fill its container (w-full h-full) — use this when
+   * the parent element controls sizing, e.g. the right-side panel of DetailLineItemCard.
+   */
+  fill?: boolean;
+}) {
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const canAccess = Boolean(file.id && ticketRef);
+  if (!canAccess) return null;
+
+  const href     = `/api/tickets/${ticketRef}/files/${file.id}`;
+  const isImage  = Boolean(file.mime_type?.startsWith("image/"));
+  const fileName = file.file_name ?? "Attachment";
+
+  const buttonCls = fill
+    ? "block w-full h-full transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2"
+    : "shrink-0 rounded-lg border overflow-hidden transition-opacity hover:opacity-80 focus:outline-none focus-visible:ring-2";
+
+  const buttonStyle = fill
+    ? { background: "var(--color-row-alt)" }
+    : {
+        width:       size,
+        height:      size,
+        borderColor: "var(--color-border)",
+        background:  "var(--color-row-alt)",
+      };
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setPreviewOpen(true)}
+        title={`Preview ${fileName}`}
+        aria-label={`Preview ${fileName}`}
+        className={buttonCls}
+        style={buttonStyle}
+      >
+        {isImage ? (
+          <img
+            src={href}
+            alt={fileName}
+            className="w-full h-full object-cover"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-1.5">
+            <FileText size={fill || size >= 64 ? 22 : 16} style={{ color: "var(--color-text-muted)" }} />
+            <span
+              className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+              style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)" }}
+            >
+              PDF
+            </span>
+            <span
+              className="text-[9px] truncate w-full text-center px-1 leading-none"
+              style={{ color: "var(--color-text-muted)" }}
+            >
+              {fileName}
+            </span>
+          </div>
+        )}
+      </button>
+      <LineItemFilePreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        fileName={fileName}
+        mimeType={file.mime_type}
+        previewUrl={href}
+      />
+    </>
+  );
+}
+
 export type FormLineAttachment = {
   pendingFile?: File | null;
   file?: TicketFileMeta | null;
@@ -237,36 +324,56 @@ export function LineItemAttachmentControl({
   );
 }
 
-/** Read-only attachment row for quote/order overview. */
+/** Read-only attachment row for quote/order overview — shows a thumbnail instead of a button. */
 export function LineItemAttachmentOverview({
   file,
   ticketRef,
   label = "Line attachment",
+  size = 216,
 }: {
   file: TicketFileMeta;
   ticketRef?: string | null;
   label?: string;
+  size?: number;
 }) {
   const canAccess = Boolean(file.id && ticketRef);
+  const href = canAccess ? `/api/tickets/${ticketRef}/files/${file.id}` : undefined;
 
   return (
     <div
-      className="border-t px-3.5 py-3 md:px-5 md:py-3.5 flex flex-wrap items-center justify-between gap-2"
+      className="border-t px-3.5 py-3 md:px-5 md:py-3.5 flex items-center gap-3"
       style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
     >
-      <div className="min-w-0">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] mb-1" style={{ color: "var(--color-text-muted)" }}>
-          {label}
-        </p>
-        <p className="text-sm truncate" style={{ color: "var(--color-text-primary)" }} title={file.file_name}>
-          {file.file_name}
-        </p>
-      </div>
+      {/* Thumbnail — clickable, opens full modal */}
       {canAccess && (
-        <div className="flex flex-wrap items-center gap-2">
-          <LineItemSavedFileActions file={file} ticketRef={ticketRef!} variant="overview" />
-        </div>
+        <LineItemFileThumbnail file={file} ticketRef={ticketRef} size={size} />
       )}
+
+      {/* File info + download */}
+      <div className="flex-1 min-w-0 flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] mb-0.5" style={{ color: "var(--color-text-muted)" }}>
+            {label}
+          </p>
+          <p className="text-sm truncate" style={{ color: "var(--color-text-primary)" }} title={file.file_name}>
+            {file.file_name}
+          </p>
+        </div>
+        {href && (
+          <a
+            href={href}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+            title={`Download ${file.file_name ?? "file"}`}
+            aria-label={`Download ${file.file_name ?? "file"}`}
+            className={`${iconActionCls} shrink-0`}
+            style={iconActionStyle}
+          >
+            <Download size={16} />
+          </a>
+        )}
+      </div>
     </div>
   );
 }

@@ -3,10 +3,48 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-01] — Line item thumbnail moved to card right panel
+
+### Changed
+- `components/quotes/quote-detail/detail-layout-primitives.tsx` — `DetailLineItemCard` accepts new optional `thumbnail` prop; card layout switches to `flex items-stretch` so the thumbnail fills the full card height as a right-side panel with a left border
+- `components/quotes/shared/line-item-attachment.tsx` — `LineItemFileThumbnail` gains a `fill` prop: when true the button stretches to `w-full h-full` (no fixed square), designed for use inside the `DetailLineItemCard` thumbnail panel
+- `components/quotes/shared/line-items-form.tsx` — line-level file attachment rendered as `<LineItemFileThumbnail fill />` passed to `DetailLineItemCard.thumbnail` (after the price) instead of a separate `LineItemAttachmentOverview` footer row
+
 ### Changed
 - `lib/utils/sdr-dashboard-metrics.ts` — self-closed order value, received, balance, and order-created counts exclude cancelled/refunded tickets
 - `lib/utils/sales-dashboard-metrics.ts` — order value (via shared helper), quotes created, and orders converted exclude cancelled/refunded
 - `components/sales/sdr-dashboard.tsx` and `sales-dashboard.tsx` — silent KPI refresh on `bazaar:tickets-changed` (cancel/refund)
+
+## [2026-06-01] — Line item file thumbnails in overview
+
+### Changed
+- Line item attachments in read-only overview now show a **clickable thumbnail** instead of a "View image"/"View PDF" button
+  - Images: inline `<img>` thumbnail (72 px for line-level, 52 px for variant rows)
+  - PDFs: icon card with red "PDF" badge and truncated filename
+  - Clicking the thumbnail opens the same full-screen preview modal as before
+  - Download icon button is still available alongside the thumbnail
+- `components/quotes/shared/line-item-attachment.tsx` — new `LineItemFileThumbnail` component; `LineItemAttachmentOverview` updated
+- `components/quotes/shared/line-item-variants.tsx` — `AdditionalSkusOverviewList` uses thumbnail for per-variant files
+
+## [2026-06-01] — "More details" collapsible group in order/quote overview
+
+### Changed
+- Quote/order detail overview now shows only **Line Items** by default; all other sections (Fulfillment, Quote & Pricing, Payment Plan, Quote Delivery, Follow-up Schedule, Production & Evidence, Payments Received, Refund History) are collapsed under a **"More details"** toggle row
+- Clicking "More details" expands the group and reveals each section individually collapsible; clicking "Less" re-collapses all of them
+- `components/quotes/quote-detail/detail-layout-primitives.tsx` — added `MoreSectionGroup` component
+- `components/quotes/quote-detail/ticket-overview-sections.tsx` — wraps detail sections in `MoreSectionGroup`; accepts `extraMoreContent` prop for payment/refund sections
+- `components/quotes/quote-detail.tsx` — passes `PaymentsReceivedSection` + `RefundHistorySection` as `extraMoreContent`
+
+## [2026-06-01] — Send/Resend quote modal with prefilled contact
+
+### Changed
+- **"Send Quote" / "Resend Quote" buttons** now open a modal instead of sending immediately — user can pick channel (Email / SMS / Both) and edit the destination email/phone before sending; fields are prefilled from the saved payment config
+- **"Resend Link" button** (orders in production / completed) similarly opens the same modal so staff can adjust channel/destination per resend
+- `components/quotes/quote-detail/detail-quick-actions.tsx` — wires both buttons to `ResendQuoteModal`
+- `components/quotes/quote-detail.tsx` — `handleSave` accepts `channelOverride` opts; `onSendQuote` forwards modal selections; passes `sendChannel/sendEmail/sendPhone` prefill props
+
+### Added
+- `components/quotes/quote-detail/resend-quote-modal.tsx` — reusable channel picker modal (Email / SMS / Both, phone + email inputs, inline validation)
 
 ## [2026-05-31] — Bidirectional public portal ↔ staff realtime sync
 

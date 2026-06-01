@@ -8,7 +8,7 @@ import {
   formatAdditionalSkuDisplayName,
 } from "@/lib/utils/format-ticket-line-variants";
 import { defaultNewVariantQuantity } from "@/lib/utils/line-item-variant-quantity";
-import { LineItemSavedFileActions } from "./line-item-attachment";
+import { LineItemFileThumbnail, LineItemSavedFileActions } from "./line-item-attachment";
 
 /** Read-only additional SKUs block for quote/order detail Overview. */
 export function AdditionalSkusOverviewList({
@@ -49,10 +49,11 @@ export function AdditionalSkusOverviewList({
         return (
           <div
             key={`${v.name}-${i}`}
-            className="flex items-center gap-2 rounded-md border px-3 py-2.5 min-w-0"
+            className="flex items-stretch rounded-md border overflow-hidden min-w-0"
             style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}
           >
-            <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
+            {/* SKU label row */}
+            <div className="flex-1 min-w-0 px-3 py-2.5 flex items-center gap-2 overflow-hidden">
               <span className={`${rowTextCls} font-medium shrink-0`} style={{ color: "var(--color-text-primary)" }}>
                 {formatAdditionalSkuDisplayName(i + 1, v.name)}
               </span>
@@ -60,7 +61,7 @@ export function AdditionalSkusOverviewList({
               <span className={`${rowTextCls} shrink-0 tabular-nums`} style={{ color: "var(--color-text-muted)" }}>
                 Qty {qtyLabel}
               </span>
-              {file?.file_name && (
+              {file?.file_name && !canView && (
                 <>
                   {sep}
                   <span
@@ -73,8 +74,15 @@ export function AdditionalSkusOverviewList({
                 </>
               )}
             </div>
+
+            {/* Thumbnail panel — right side, fills row height */}
             {canView && file && (
-              <LineItemSavedFileActions file={file} ticketRef={ticketRef!} variant="overview" />
+              <div
+                className="shrink-0 border-l overflow-hidden"
+                style={{ borderColor: "var(--color-border)", width: 100 }}
+              >
+                <LineItemFileThumbnail file={file} ticketRef={ticketRef} fill />
+              </div>
             )}
           </div>
         );

@@ -89,6 +89,7 @@ import {
 } from "@/components/orders/refund-history-section";
 import type { TicketPaymentRefundRecord } from "@/lib/payments/fetch-ticket-refunds";
 import { ResendAfterSaveModal } from "@/components/quotes/quote-detail/resend-after-save-modal";
+import type { SendChannelOpts } from "@/components/quotes/quote-detail/resend-quote-modal";
 import {
   shouldOfferResendAfterSave,
   resendDeliveryMode,
@@ -577,6 +578,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       skipSendValidation?: boolean;
       notifyRevision?: "standard" | "admin";
       skipResendPrompt?: boolean;
+      /** Channel/destination chosen in the resend modal — overrides paymentDraft values. */
+      channelOverride?: SendChannelOpts;
     },
   ) {
     // Keep ref current for the HV countdown timer
@@ -647,6 +650,16 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       return;
     }
 
+    // Apply channel override (from resend modal) on top of paymentDraft
+    const effectiveDraft = opts?.channelOverride
+      ? {
+          ...paymentDraft,
+          ticket_quote_channel: opts.channelOverride.channel,
+          ticket_dest_email:    opts.channelOverride.email,
+          ticket_dest_phone:    opts.channelOverride.phone,
+        }
+      : paymentDraft;
+
     const isSendAction = newStatus === "sent" || newStatus === "order";
     if (isSendAction && !opts?.skipSendValidation) {
       const missing = getQuoteSendMissingFields({
@@ -657,7 +670,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         salesPermit,
         requiresShipping,
         shipToDestinations: shippingDestinations,
-        paymentDraft,
+        paymentDraft: effectiveDraft,
       });
       if (missing.length > 0) {
         setError(formatQuoteSendMissingMessage(missing));
@@ -732,16 +745,16 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       quote_final_total: pricing.final_total,
       tax_exempt: taxExempt,
       sales_permit_number: salesPermit || null,
-      // Per-ticket payment config (migration 066)
-      ...paymentDraft,
-      quote_reminder_date: paymentDraft.quote_reminder_date || null,
-      quote_channel: paymentDraft.ticket_quote_channel === "email" ? "Email"
-        : paymentDraft.ticket_quote_channel === "sms" ? "SMS"
-        : paymentDraft.ticket_quote_channel === "both" ? "SMS"
+      // Per-ticket payment config (migration 066) — channelOverride from resend modal wins
+      ...effectiveDraft,
+      quote_reminder_date: effectiveDraft.quote_reminder_date || null,
+      quote_channel: effectiveDraft.ticket_quote_channel === "email" ? "Email"
+        : effectiveDraft.ticket_quote_channel === "sms" ? "SMS"
+        : effectiveDraft.ticket_quote_channel === "both" ? "SMS"
         : undefined,
-      quote_destination: paymentDraft.ticket_quote_channel === "email"
-        ? paymentDraft.ticket_dest_email
-        : paymentDraft.ticket_dest_phone,
+      quote_destination: effectiveDraft.ticket_quote_channel === "email"
+        ? effectiveDraft.ticket_dest_email
+        : effectiveDraft.ticket_dest_phone,
     };
 
     if (newStatus) body.ticket_status = newStatus;
@@ -1104,13 +1117,18 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       payment_mode: r.payment_mode,
       amount: r.amount,
     })),
-    onSendQuote: () => { void handleSave("sent"); },
+    onSendQuote: (channelOpts?: SendChannelOpts) => {
+      void handleSave("sent", undefined, channelOpts ? { channelOverride: channelOpts } : undefined);
+    },
     onConvertToOrder: openAdminConvertModal,
     quoteSendReady,
     sendMissingMessage,
     isLocked,
     isRoutedReadOnly,
     clientConfirmed: !!ticket.client_confirmed,
+    sendChannel: paymentDraft.ticket_quote_channel,
+    sendEmail:   paymentDraft.ticket_dest_email,
+    sendPhone:   paymentDraft.ticket_dest_phone,
   };
 
   const activeCancelReasons =
@@ -1518,35 +1536,36 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                         canViewPaymentEvidence={canViewPaymentEvidence}
                         totalLabel={statsTotalLabel}
                         lineItemsDefaultOpen={lineItemsDefaultOpen}
-                      />
-                      {showPaymentSummary && !refundsAtTopOfPaymentView && !refundsAtTopOfOverview && (
-                        <>
-                          <PaymentsReceivedSection
-                            ticket={ticket}
-                            priorRefunds={ticket.payment_refunds?.map((r) => ({
-                              payment_mode: r.payment_mode,
-                              amount: r.amount,
-                            }))}
-                          />
-                          {showRefundHistory && (
-                            <RefundHistorySection
-                              ticketId={ticketId}
+                        extraMoreContent={
+                          showPaymentSummary && !refundsAtTopOfPaymentView && !refundsAtTopOfOverview ? (
+                            <>
+                              <PaymentsReceivedSection
+                                ticket={ticket}
+                                priorRefunds={ticket.payment_refunds?.map((r) => ({
+                                  payment_mode: r.payment_mode,
+                                  amount: r.amount,
+                                }))}
+                              />
+                              {showRefundHistory && (
+                                <RefundHistorySection
+                                  ticketId={ticketId}
+                                  ticket={ticket}
+                                  refunds={ticket.payment_refunds ?? []}
+                                  userRole={userRole}
+                                />
+                              )}
+                            </>
+                          ) : showPaymentSummary && refundsAtTopOfOverview ? (
+                            <PaymentsReceivedSection
                               ticket={ticket}
-                              refunds={ticket.payment_refunds ?? []}
-                              userRole={userRole}
+                              priorRefunds={ticket.payment_refunds?.map((r) => ({
+                                payment_mode: r.payment_mode,
+                                amount: r.amount,
+                              }))}
                             />
-                          )}
-                        </>
-                      )}
-                      {showPaymentSummary && refundsAtTopOfOverview && (
-                        <PaymentsReceivedSection
-                          ticket={ticket}
-                          priorRefunds={ticket.payment_refunds?.map((r) => ({
-                            payment_mode: r.payment_mode,
-                            amount: r.amount,
-                          }))}
-                        />
-                      )}
+                          ) : undefined
+                        }
+                      />
                     </>
                   )}
 

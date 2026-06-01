@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
 import { ShippingFulfillmentSection } from "@/components/quotes/shared/shipping-fulfillment-section";
@@ -21,6 +22,7 @@ import {
   DetailCollapsibleSection,
   DetailNotesBox,
   DetailPricingTable,
+  MoreSectionGroup,
 } from "@/components/quotes/quote-detail/detail-layout-primitives";
 
 function emptySkuRow(): QuoteSku {
@@ -80,6 +82,8 @@ interface Props {
   totalLabel?: "Order Total" | "Quote Total";
   /** Order detail — Line Items expanded on load. */
   lineItemsDefaultOpen?: boolean;
+  /** Extra sections (e.g. PaymentsReceived, RefundHistory) rendered inside the More group. */
+  extraMoreContent?: ReactNode;
 }
 
 function buildPricingRows(ticket: SectionTicket): { label: string; value: string; muted?: boolean }[] {
@@ -130,6 +134,7 @@ export function TicketOverviewSections({
   canViewPaymentEvidence = true,
   totalLabel = "Order Total",
   lineItemsDefaultOpen = false,
+  extraMoreContent,
 }: Props) {
   const paymentReviewAbove = isPaymentEvidencePending(ticket);
   const pricingRows = buildPricingRows(ticket);
@@ -143,6 +148,7 @@ export function TicketOverviewSections({
 
   return (
     <>
+      {/* ── Always visible ── */}
       <DetailSection>
         <DetailCollapsibleSection title="Line Items" defaultOpen={lineItemsDefaultOpen}>
           <LineItemsForm
@@ -161,89 +167,94 @@ export function TicketOverviewSections({
         </DetailCollapsibleSection>
       </DetailSection>
 
-      <DetailSection>
-        <DetailCollapsibleSection title="Fulfillment">
-          <ShippingFulfillmentSection
-            editing={false}
-            requiresShipping={fulfillmentRequiresShipping}
-            onRequiresShippingChange={() => {}}
-            destinations={shippingDestinations}
-            onDestinationsChange={() => {}}
-            ticket={{
-              ...ticket,
-              requires_shipping: fulfillmentRequiresShipping,
-              quote_shipping: ticket.quote_shipping,
-              shipping_destinations: ticket.shipping_destinations,
-            }}
-          />
-        </DetailCollapsibleSection>
-      </DetailSection>
-
-      <DetailSection>
-        <DetailCollapsibleSection title={paymentReviewAbove ? "Quote details" : "Quote & Pricing"}>
-          {!paymentReviewAbove && (
-            <DetailPricingTable rows={pricingRows} totalLabel={totalLabel} />
-          )}
-          <div className={paymentReviewAbove ? "" : "mt-5"}>
-            <QuoteForm
-              editing={false}
-              ticket={ticket}
-              hidePricingSummary
-              hideFulfillment
-              pricing={pricing}
-              requiresShipping={requiresShipping}
-              setRequiresShipping={setRequiresShipping}
-              shippingDestinations={shippingDestinations}
-              setShippingDestinations={setShippingDestinations}
-              customerId={customerId}
-              discountType={discountType}
-              setDiscountType={setDiscountType}
-              discountValue={discountValue}
-              setDiscountValue={setDiscountValue}
-              discountReason={discountReason}
-              setDiscountReason={setDiscountReason}
-              taxRate={taxRate}
-              setTaxRate={setTaxRate}
-              taxExempt={taxExempt}
-              setTaxExempt={setTaxExempt}
-              salesPermit={salesPermit}
-              setSalesPermit={setSalesPermit}
-              salesPermitError={salesPermitError}
-              paymentDraft={paymentDraft}
-              onPaymentChange={onPaymentChange}
-            />
-          </div>
-        </DetailCollapsibleSection>
-      </DetailSection>
-
-      {(ticket.special_requirements || ticket.notes) && (
+      {/* ── Collapsed under "More details" by default ── */}
+      <MoreSectionGroup>
         <DetailSection>
-          <DetailSectionTitle>Notes &amp; Requirements</DetailSectionTitle>
-          <div className="space-y-4">
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                Special Requirements
-              </p>
-              <DetailNotesBox>{ticket.special_requirements}</DetailNotesBox>
-            </div>
-            <div>
-              <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                Internal Notes
-              </p>
-              <DetailNotesBox>{ticket.notes}</DetailNotesBox>
-            </div>
-          </div>
+          <DetailCollapsibleSection title="Fulfillment">
+            <ShippingFulfillmentSection
+              editing={false}
+              requiresShipping={fulfillmentRequiresShipping}
+              onRequiresShippingChange={() => {}}
+              destinations={shippingDestinations}
+              onDestinationsChange={() => {}}
+              ticket={{
+                ...ticket,
+                requires_shipping: fulfillmentRequiresShipping,
+                quote_shipping: ticket.quote_shipping,
+                shipping_destinations: ticket.shipping_destinations,
+              }}
+            />
+          </DetailCollapsibleSection>
         </DetailSection>
-      )}
 
-      {showPaymentSummary && (
-        <OrderPaymentSummary
-          ticket={ticket}
-          canViewPaymentEvidence={canViewPaymentEvidence}
-          paymentReviewAbove={paymentReviewAbove}
-          layout="grid"
-        />
-      )}
+        <DetailSection>
+          <DetailCollapsibleSection title={paymentReviewAbove ? "Quote details" : "Quote & Pricing"}>
+            {!paymentReviewAbove && (
+              <DetailPricingTable rows={pricingRows} totalLabel={totalLabel} />
+            )}
+            <div className={paymentReviewAbove ? "" : "mt-5"}>
+              <QuoteForm
+                editing={false}
+                ticket={ticket}
+                hidePricingSummary
+                hideFulfillment
+                pricing={pricing}
+                requiresShipping={requiresShipping}
+                setRequiresShipping={setRequiresShipping}
+                shippingDestinations={shippingDestinations}
+                setShippingDestinations={setShippingDestinations}
+                customerId={customerId}
+                discountType={discountType}
+                setDiscountType={setDiscountType}
+                discountValue={discountValue}
+                setDiscountValue={setDiscountValue}
+                discountReason={discountReason}
+                setDiscountReason={setDiscountReason}
+                taxRate={taxRate}
+                setTaxRate={setTaxRate}
+                taxExempt={taxExempt}
+                setTaxExempt={setTaxExempt}
+                salesPermit={salesPermit}
+                setSalesPermit={setSalesPermit}
+                salesPermitError={salesPermitError}
+                paymentDraft={paymentDraft}
+                onPaymentChange={onPaymentChange}
+              />
+            </div>
+          </DetailCollapsibleSection>
+        </DetailSection>
+
+        {(ticket.special_requirements || ticket.notes) && (
+          <DetailSection>
+            <DetailSectionTitle>Notes &amp; Requirements</DetailSectionTitle>
+            <div className="space-y-4">
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                  Special Requirements
+                </p>
+                <DetailNotesBox>{ticket.special_requirements}</DetailNotesBox>
+              </div>
+              <div>
+                <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                  Internal Notes
+                </p>
+                <DetailNotesBox>{ticket.notes}</DetailNotesBox>
+              </div>
+            </div>
+          </DetailSection>
+        )}
+
+        {showPaymentSummary && (
+          <OrderPaymentSummary
+            ticket={ticket}
+            canViewPaymentEvidence={canViewPaymentEvidence}
+            paymentReviewAbove={paymentReviewAbove}
+            layout="grid"
+          />
+        )}
+
+        {extraMoreContent}
+      </MoreSectionGroup>
     </>
   );
 }

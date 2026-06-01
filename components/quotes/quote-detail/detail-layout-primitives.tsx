@@ -154,34 +154,50 @@ export function DetailLineItemCard({
   specs,
   price,
   footer,
+  thumbnail,
 }: {
   name: string;
   specs: string[];
   price: number;
   footer?: React.ReactNode;
+  /** Optional file thumbnail shown as a right-side panel filling the card height. */
+  thumbnail?: React.ReactNode;
 }) {
   return (
     <div
       className="rounded-lg border overflow-hidden"
       style={{ background: "var(--color-row-alt)", borderColor: "var(--color-border)" }}
     >
-      <div className="px-3.5 py-3.5 md:px-5 md:py-4 flex flex-col gap-2 sm:grid sm:grid-cols-[1fr_auto] sm:gap-2 sm:items-center">
-        <div className="min-w-0">
-          <p className="text-sm md:text-[15px] font-semibold leading-snug" style={{ color: "var(--color-text-primary)" }}>
-            {name}
-          </p>
-          {specs.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
-              {specs.map((s) => (
-                <DetailSpecPill key={s}>{s}</DetailSpecPill>
-              ))}
-            </div>
+      <div className="flex items-stretch">
+        {/* Main content: name, specs, price */}
+        <div className="flex-1 min-w-0 px-3.5 py-3.5 md:px-5 md:py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <div className="min-w-0">
+            <p className="text-sm md:text-[15px] font-semibold leading-snug" style={{ color: "var(--color-text-primary)" }}>
+              {name}
+            </p>
+            {specs.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {specs.map((s) => (
+                  <DetailSpecPill key={s}>{s}</DetailSpecPill>
+                ))}
+              </div>
+            )}
+          </div>
+          {price > 0 && (
+            <p className="text-lg md:text-xl font-semibold tabular-nums sm:text-right shrink-0" style={{ color: "var(--color-text-primary)" }}>
+              {formatCurrency(price)}
+            </p>
           )}
         </div>
-        {price > 0 && (
-          <p className="text-lg md:text-xl font-semibold tabular-nums sm:text-right shrink-0" style={{ color: "var(--color-text-primary)" }}>
-            {formatCurrency(price)}
-          </p>
+
+        {/* Thumbnail panel — fills card height, fixed width */}
+        {thumbnail && (
+          <div
+            className="shrink-0 border-l overflow-hidden"
+            style={{ borderColor: "var(--color-border)", width: 160 }}
+          >
+            {thumbnail}
+          </div>
         )}
       </div>
       {footer}
@@ -269,6 +285,51 @@ export function DetailFollowUpCard({ label, value, valueColor }: { label: string
         {value}
       </p>
     </div>
+  );
+}
+
+/**
+ * Wraps a group of `DetailSection` blocks under a "More details" / "Less" toggle row.
+ * The toggle row is always visible; children are shown/hidden as a unit.
+ * Children should be complete `<DetailSection>` elements.
+ */
+export function MoreSectionGroup({
+  children,
+  label = "More details",
+}: {
+  children: React.ReactNode;
+  label?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <>
+      <DetailSection>
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex w-full items-center gap-2 text-left rounded-[6px] -mx-1 px-1 py-0.5 transition-opacity hover:opacity-80"
+          aria-expanded={expanded}
+        >
+          <span
+            className="shrink-0 text-xs font-semibold uppercase tracking-[0.08em]"
+            style={{ color: "var(--color-tab-active)" }}
+          >
+            {expanded ? "Less" : label}
+          </span>
+          <div className="flex-1 h-px" style={{ background: "var(--color-border)" }} />
+          <ChevronDown
+            size={16}
+            className="shrink-0 transition-transform duration-200"
+            style={{
+              color: "var(--color-tab-active)",
+              transform: expanded ? "rotate(0deg)" : "rotate(-90deg)",
+            }}
+          />
+        </button>
+      </DetailSection>
+      {expanded && children}
+    </>
   );
 }
 

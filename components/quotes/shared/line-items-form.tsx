@@ -5,7 +5,7 @@ import { AlertCircle } from "lucide-react";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { AdditionalSkusOverviewList } from "./line-item-variants";
-import { LineItemAttachmentOverview } from "./line-item-attachment";
+import { LineItemFileThumbnail } from "./line-item-attachment";
 import type { TicketFileMeta } from "@/lib/utils/ticket-line-items";
 import { emptySkuRow, emptyFormLineItem, type FormLineItem } from "./utils";
 import { SkuRow } from "./sku-row";
@@ -82,20 +82,12 @@ export function LineItemsForm({
               ? (sku.lineFile as TicketFileMeta)
               : null;
           const footer =
-            variants.length > 0 || lineFile ? (
-              <div className="space-y-0">
-                {lineFile ? (
-                  <div
-                    className="border-b px-3.5 py-3 md:px-5 md:py-3.5"
-                    style={{ borderColor: "var(--color-border)" }}
-                  >
-                    <LineItemAttachmentOverview file={lineFile} ticketRef={ticketRef} />
-                  </div>
-                ) : null}
-                {variants.length > 0 ? (
-                  <AdditionalSkusOverviewList variants={variants} ticketRef={ticketRef} />
-                ) : null}
-              </div>
+            variants.length > 0 ? (
+              <AdditionalSkusOverviewList variants={variants} ticketRef={ticketRef} />
+            ) : undefined;
+          const thumbnail =
+            lineFile ? (
+              <LineItemFileThumbnail file={lineFile} ticketRef={ticketRef} fill />
             ) : undefined;
           return (
             <DetailLineItemCard
@@ -104,6 +96,7 @@ export function LineItemsForm({
               specs={specs}
               price={lineTotal}
               footer={footer}
+              thumbnail={thumbnail}
             />
           );
         })}
