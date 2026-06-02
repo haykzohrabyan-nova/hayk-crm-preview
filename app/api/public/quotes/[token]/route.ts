@@ -48,6 +48,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
        quote_tax_amount,
        quote_final_total,
        tax_exempt,
+       sales_permit_reviewed_at,
        quote_payment_types,
        quote_channel,
        prepayment_type,
@@ -64,7 +65,7 @@ export async function GET(_request: NextRequest, { params }: Params) {
        contact_email,
        contact_company,
        created_at,
-       customer:customers(id, first_name, last_name, company, email, phone),
+       customer:customers!job_tickets_customer_id_fkey(id, first_name, last_name, company, email, phone),
        ticket_payment_strategy,
        ticket_deposit_type,
        ticket_deposit_value,
@@ -104,8 +105,17 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const line_items = lineItemsToDisplayRows(await fetchTicketLinesBundle(admin, ticketId));
   const shipping_destinations = await fetchTicketShippingDestinations(admin, ticketId);
 
+  const reviewedAt = (ticket as { sales_permit_reviewed_at?: string | null }).sales_permit_reviewed_at;
+  const storagePath = (ticket as { sales_permit_storage_path?: string | null }).sales_permit_storage_path;
+
   return NextResponse.json({
-    ticket: { ...ticket, line_items, shipping_destinations },
+    ticket: {
+      ...ticket,
+      line_items,
+      shipping_destinations,
+      tax_exempt_review_pending:
+        !!ticket.tax_exempt && !!storagePath && !reviewedAt,
+    },
     company: company ?? null,
   });
 }

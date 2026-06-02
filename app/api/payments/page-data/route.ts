@@ -1,12 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { isPaymentStaffRole } from "@/lib/auth/role-checks";
-import { fetchPaymentsPageData } from "@/lib/utils/fetch-payments-data";
+import {
+  fetchPaymentsPageData,
+  type PaymentsPageTab,
+} from "@/lib/utils/fetch-payments-data";
+import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 
-/** GET /api/payments/page-data — pending + approved payment evidence lists and tab counts. */
-export async function GET() {
+const PAYMENTS_TABS: PaymentsPageTab[] = ["pending", "tax_exempt", "approved", "refunded"];
+
+/** GET /api/payments/page-data — active tab list (paginated) + all tab counts in one auth pass. */
+export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
@@ -16,11 +22,35 @@ export async function GET() {
   const pageDeny = await requirePageAccess(userId!, roleName, "/payments");
   if (pageDeny) return pageDeny;
 
+  const { searchParams } = request.nextUrl;
+  const tabParam = searchParams.get("tab") ?? "pending";
+  const tab: PaymentsPageTab = PAYMENTS_TABS.includes(tabParam as PaymentsPageTab)
+    ? (tabParam as PaymentsPageTab)
+    : "pending";
+  const pagination = parseListPaginationParams(searchParams);
+  const search = searchParams.get("search")?.trim() ?? "";
+
   const admin = createAdminClient();
 
   try {
-    const pageData = await fetchPaymentsPageData(admin);
-    return NextResponse.json(pageData);
+    const pageData = await fetchPaymentsPageData(admin, tab, { search, pagination });
+    const rowCount =
+      tab === "pending"
+        ? pageData.orders.length
+        : tab === "tax_exempt"
+          ? pageData.taxExemptOrders.length
+          : tab === "approved"
+            ? pageData.approvedOrders.length
+            : pageData.refundedOrders.length;
+
+    return NextResponse.json({
+      ...pageData,
+      pagination: toPaginatedMeta({
+        ...pagination,
+        total: pageData.total,
+        rowCount,
+      }),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load payments data.";
     return NextResponse.json({ error: message }, { status: 500 });

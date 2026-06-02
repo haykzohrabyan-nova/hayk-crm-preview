@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
-import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { useListPageData } from "@/hooks/use-list-page-data";
+import { ListRefreshingNotice } from "@/components/ui/mobile-list-card";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search, RefreshCw, X, Clock, ArrowUpDown, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 import { UrgencyPill } from "@/components/ui/urgency-pill";
@@ -227,8 +228,6 @@ export function LeadsPage() {
     total: 0,
     hasMore: false,
   });
-  const [loading, setLoading] = useState(true);
-  const fetchGenerationRef = useRef(0);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [offset, setOffset] = useState(0);
@@ -402,9 +401,7 @@ export function LeadsPage() {
 
   // ── Fetch leads ───────────────────────────────────────────────────────────
 
-  const fetchPageData = useCallback(async (silent = false) => {
-    const generation = ++fetchGenerationRef.current;
-    if (!silent) setLoading(true);
+  const pageDataUrl = useMemo(() => {
     const tabConf = TAB_CONFIG.find((t) => t.id === activeTab)!;
     const params = new URLSearchParams();
     if (tabConf.status) params.set("status", tabConf.status);
@@ -420,26 +417,7 @@ export function LeadsPage() {
     params.set("limit", String(pageSize));
     params.set("offset", String(offset));
     appendAdminFilterUserId(params, isAdmin ? "admin" : null, filterUserId);
-
-    const res = await fetch(`/api/leads/workspace/page-data?${params}`);
-    const data = await res.json();
-    if (generation !== fetchGenerationRef.current) return;
-
-    const rows = Array.isArray(data.leads) ? data.leads : [];
-    setLeads(rows);
-    if (data.counts) setTabCounts(data.counts);
-    if (data.pagination) {
-      setPagination(data.pagination);
-      if (
-        data.pagination.total > 0 &&
-        offset >= data.pagination.total
-      ) {
-        setOffset(0);
-        return;
-      }
-    }
-    if (data.routedSubCounts) setRoutedSubCounts(data.routedSubCounts);
-    if (!silent) setLoading(false);
+    return `/api/leads/workspace/page-data?${params}`;
   }, [
     activeTab,
     debouncedSearch,
@@ -453,25 +431,34 @@ export function LeadsPage() {
     sortDir,
   ]);
 
-  useCoalescedRefresh(
-    fetchPageData,
-    [
-      activeTab,
-      debouncedSearch,
-      filterUserId,
-      isAdmin,
-      ownerFilter,
-      routedFilter,
-      offset,
-      pageSize,
-      sortField,
-      sortDir,
-    ],
-    {
-      events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
-      enabled: !drawerLead || drawerReadOnly,
-    },
-  );
+  const { data: pageData, loading, refreshing, refresh: refreshPageData } = useListPageData<{
+    leads?: Lead[];
+    counts?: Record<string, number>;
+    pagination?: PaginationMeta;
+    routedSubCounts?: Record<string, number>;
+  }>({
+    prefix: "leads",
+    url: pageDataUrl,
+    events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
+    enabled: !drawerLead || drawerReadOnly,
+  });
+
+  useEffect(() => {
+    if (!pageData) {
+      setLeads([]);
+      return;
+    }
+    setLeads(Array.isArray(pageData.leads) ? pageData.leads : []);
+    if (pageData.counts) setTabCounts(pageData.counts);
+    if (pageData.pagination) {
+      setPagination(pageData.pagination);
+      if (pageData.pagination.total > 0 && offset >= pageData.pagination.total) {
+        setOffset(0);
+        return;
+      }
+    }
+    if (pageData.routedSubCounts) setRoutedSubCounts(pageData.routedSubCounts);
+  }, [pageData, offset]);
 
   // ── Open drawer ───────────────────────────────────────────────────────────
 
@@ -689,7 +676,8 @@ export function LeadsPage() {
           </div>
         )}
 
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void fetchPageData(false)} title="Refresh">
+        <ListRefreshingNotice refreshing={refreshing} />
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => void refreshPageData(false)} title="Refresh">
           <RefreshCw className="h-4 w-4" />
         </Button>
       </div>

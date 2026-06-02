@@ -115,6 +115,13 @@ export interface Customer {
   website: string | null
   authority: string | null   // 'yes' | 'no' — decision maker
   heat_tag: HeatTag | null
+  tax_exempt_last_permit_number?: string | null
+  tax_exempt_last_storage_path?: string | null
+  tax_exempt_last_file_name?: string | null
+  tax_exempt_last_mime_type?: string | null
+  tax_exempt_last_reviewed_at?: string | null
+  tax_exempt_last_reviewed_by_id?: string | null
+  tax_exempt_last_source_ticket_id?: string | null
   created_at: string
   updated_at: string
 }
@@ -390,6 +397,10 @@ export interface JobTicket {
   sales_permit_storage_path: string | null
   sales_permit_file_name: string | null
   sales_permit_mime_type: string | null
+  sales_permit_submitted_at: string | null
+  sales_permit_reviewed_at: string | null
+  sales_permit_reviewed_by_id: string | null
+  sales_permit_reused_from_customer: boolean
   quote_payment_types: string[]     // from `ticket_payment` lookup (multi-select)
   prepayment_type: 'full' | 'percent' | 'fixed' | null
   prepayment_value: string | null   // '100' for full; parsed at runtime for percent/fixed
@@ -793,7 +804,12 @@ export interface TicketForm {
 | `normalizeShipToPayload()` | `lib/utils/address.ts` | Clears address + zeroes shipping when pickup |
 | `fetchTicketShippingDestinations()` / `syncTicketShippingDestinations()` / `resolveTicketShippingDestinationsForDisplay()` | `lib/utils/ticket-shipping-destinations.ts` | CRUD + display rows for overview, public page, PDF |
 | `sumShippingAmounts()` / `buildLegacyShipToFromDestinations()` | `lib/utils/ticket-shipping-destinations.ts` | Form → `quote_shipping` + legacy `ship_to_*` mirror |
-| `getQuoteSendMissingFields()` | `lib/utils/validate-quote-send.ts` | Send validation — ZIP on destinations when shipping; **Shipping ($) not required**; **Due date not required** |
+| `getQuoteSendMissingFields()` | `lib/utils/validate-quote-send.ts` | Send validation — ZIP on destinations when shipping; **Shipping ($) not required**; **Due date not required**; tax-exempt: permit # + file |
+| `requiresTaxExemptAccountantReview()` / `isTaxExemptApprovalPending()` | `lib/utils/tax-exempt-approval.ts` | File on ticket + not reviewed; gates `record_payment` / completion |
+| `isLegacyTaxExemptMissingPermitFile()` / `isTaxExemptReviewQueueItem()` | `lib/utils/tax-exempt-approval.ts` | Pre-103 rows (permit #, no file) on Payments tax-exempt tab |
+| `computeTotalsIfTaxExemptDenied()` | `lib/utils/tax-exempt-approval.ts` | Deny tax-exempt: apply sales tax to pre-tax total |
+| `ticketIsOrderStage()` / `ticketIsQuoteStage()` | `lib/utils/reference-codes.ts` | `ORD-*` / `QUO-*` over `ticket_kind` for labels (public INVOICE when cancelled) |
+| `customerDocumentBanner()` / `shouldHidePricingOnCustomerDocument()` / `customerDocumentPaymentSummary()` | `lib/utils/public-invoice-document.ts` | Public portal + customer PDF banners and pricing visibility |
 | `sumVariantQuantities()` / `lineQuantityFromVariants()` | `lib/utils/line-item-variant-quantity.ts` | Additional SKU qty → catalog line `quantity` |
 | `additionalSkuPrefix()` / `formatAdditionalSkuDisplayName()` / `formatTicketLineVariantLabel()` | `lib/utils/format-ticket-line-variants.ts` | `SKU1. {name} · Qty N` display labels |
 | `uploadPendingLineItemFiles()` | `components/quotes/shared/line-item-variants.tsx` | After save: `line_item_id` + `variant_id` multipart uploads |
@@ -826,11 +842,18 @@ Markup pattern: wrap each validatable field in `<div data-field-anchor="source">
 
 ---
 
-## Performance helpers (list pages — May 2026)
+## Performance helpers (list pages — May–Jun 2026)
 
 | Helper | Module | Purpose |
 |--------|--------|---------|
-| `useCoalescedRefresh()` | `hooks/use-coalesced-refresh.ts` | Debounce mount + `bazaar:*-changed` refetch; `enabled` pause for editable modals; **silent resume** when re-enabled; read-only drawers on leads page use `enabled: !drawerLead \|\| drawerReadOnly` |
+| `useListPageData()` | `hooks/use-list-page-data.ts` | Tabbed list pages: SWR cache per page-data URL + realtime refetch (`REALTIME_REFETCH_MS = 0`); nav revalidate 300ms when cache hit |
+| `useStaleWhileRevalidate()` | `hooks/use-stale-while-revalidate.ts` | Core SWR: in-flight dedupe, tab-key reset, queued follow-up fetch |
+| `readListPageCache()` / `writeListPageCache()` | `lib/client/list-page-cache.ts` | In-memory cache (5 min TTL, max 48 keys) |
+| `REALTIME_REFETCH_MS` / `LIST_NAV_REVALIDATE_MS` | `lib/constants/realtime-refetch.ts` | **0** on window events; **300** on cached nav remount only |
+| `notifyListDataChanged()` | `lib/client/notify-list-data-changed.ts` | Post-mutation: optional cache prefix clear + `bazaar:tickets-changed` |
+| `ListRefreshingNotice` | `components/ui/mobile-list-card.tsx` | Subtle “Updating” during background list refetch |
+| `useCoalescedRefresh()` | `hooks/use-coalesced-refresh.ts` | **Legacy** — list pages migrated Jun 2026; default `eventDelay` now 0 |
+| `fetchTicketDetailPayload()` | `lib/utils/fetch-ticket-detail.ts` | Shared loader for `GET /api/tickets/[id]` and `page-data` |
 | `ListPagination` | `components/ui/list-pagination.tsx` | Showing X–Y of Z, prev/next, rows-per-page selector |
 | `DetailCollapsibleSection` | `components/quotes/quote-detail/detail-layout-primitives.tsx` | Collapsible detail sections; `defaultOpen` prop; quote/order **Edit** expands Line Items + Fulfillment + Quote & Pricing |
 | `parseListPaginationParams()` / `toPaginatedMeta()` / `readStoredListPageSize()` | `lib/utils/pagination.ts` | Shared pagination parse, meta, localStorage page size (key `bazaar-list-page-size`) |

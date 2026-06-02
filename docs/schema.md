@@ -210,6 +210,13 @@ Customers whose leads are still Pending/On Hold/Rejected and who have no tickets
 | `website` | `text` | Optional URL; validated/normalized via `lib/utils/website.ts` on lead create, customer PATCH, `POST /api/customers`, and `POST /api/tickets` customer upsert. User may enter without `http(s)://`; stored with `https://` prefix when omitted. |
 | `authority` | `text` | Decision maker for this customer (`'yes'` \| `'no'` \| `null`) |
 | `heat_tag` | `text` | `'hot'` \| `'warm'` \| `'cold'` \| `null` |
+| `tax_exempt_last_permit_number` | `text` | Last accountant-approved permit # (migration **105**) |
+| `tax_exempt_last_storage_path` | `text` | Storage path for reuse on new quotes |
+| `tax_exempt_last_file_name` | `text` | |
+| `tax_exempt_last_mime_type` | `text` | |
+| `tax_exempt_last_reviewed_at` | `timestamptz` | |
+| `tax_exempt_last_reviewed_by_id` | `uuid` FK → `user_profiles` | |
+| `tax_exempt_last_source_ticket_id` | `uuid` FK → `job_tickets` | Source ticket — creates second FK from `customers` to `job_tickets`; ticket list queries must use `customers!job_tickets_customer_id_fkey` |
 | `created_at` | `timestamptz` DEFAULT `now()` | |
 | `updated_at` | `timestamptz` DEFAULT `now()` | |
 
@@ -409,9 +416,13 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `quote_final_total` | `numeric` | pre_tax_total + tax_amount |
 | `tax_exempt` | `boolean` NOT NULL DEFAULT `false` | |
 | `sales_permit_number` | `text` | Required when tax_exempt = true |
-| `sales_permit_storage_path` | `text` | Supabase Storage path in `ticket-attachments` (migration **103**) |
+| `sales_permit_storage_path` | `text` | Supabase Storage path in `ticket-attachments` (migration **103**); null on pre-103 tax-exempt rows until staff uploads — see legacy queue in `fetchPendingTaxExemptOrders` |
 | `sales_permit_file_name` | `text` | Original filename for staff UI / download |
 | `sales_permit_mime_type` | `text` | MIME type of permit file |
+| `sales_permit_submitted_at` | `timestamptz` | When permit file was uploaded (migration **106**); Payments tax-exempt tab **Submitted** column |
+| `sales_permit_reviewed_at` | `timestamptz` | Accountant approve/deny stamp (migration **104**) |
+| `sales_permit_reviewed_by_id` | `uuid` FK → `user_profiles` | Reviewer |
+| `sales_permit_reused_from_customer` | `boolean` NOT NULL DEFAULT `false` | Set when permit copied from customer last file (migration **104**) |
 | `quote_payment_types` | `text[]` NOT NULL DEFAULT `'{}'` | `'card_default'` \| `'zelle'` \| `'offline'` *(legacy — use `ticket_*` columns for new payment config)* |
 | `prepayment_type` | `text` | `'full'` \| `'percent'` \| `'fixed'` |
 | `prepayment_value` | `text` | Stored as text; parsed at runtime |
@@ -910,7 +921,7 @@ create unique index tickets_reference_code_idx on public.job_tickets(reference_c
   where reference_code is not null;
 create index tickets_created_by_idx    on public.job_tickets(created_by_id);
 
--- added migration 073 (performance — partial indexes for list/count queries)
+-- added migration 073 (documented); shipped in repo as 107_performance_indexes.sql (same definitions)
 create index job_tickets_payment_evidence_pending_idx on public.job_tickets(ticket_status)
   where payment_evidence_url is not null and payment_evidence_reviewed_at is null;
 create index job_tickets_in_production_released_idx on public.job_tickets(production_released_at desc)

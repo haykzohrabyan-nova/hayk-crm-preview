@@ -1,9 +1,20 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** May 29, 2026 (narrative log — not auto-synced)
+**Last updated:** June 2, 2026 (narrative log — not auto-synced)
 
 > **Authoritative specs (May 2026):** Payment refunds, Stripe Checkout, cancel rules, and public portal blocks → [`feature-specs/payment-refunds.md`](feature-specs/payment-refunds.md), [`feature-specs/invoice-payment.md`](feature-specs/invoice-payment.md), [`api-contract.md`](api-contract.md). This file is a **historical build diary**; older sections may describe pre-refund behaviour.
 
-**Status:** MVP complete + performance Phase 3 + security audit (May 26) + **May 29: security hardening (API auth, RLS 096, rate limits)** + line attachment lifecycle, public portal Realtime, file preview modal.
+**Status:** MVP complete + performance Phase 3 + **Jun 2026: list SWR cache, detail bootstrap APIs, Sales/Payments pagination, realtime 0ms** + security audit (May 26) + **May 29: security hardening** + line attachment lifecycle, public portal Realtime.
+
+---
+
+## June 2, 2026 — Perceived performance + list UX
+
+- **List SWR:** `useListPageData` on all tabbed list pages — in-memory cache (`list-page-cache`, 5 min TTL); instant tab/back navigation; realtime refetch **0ms**; nav cache revalidate **300ms** only
+- **Bootstrap APIs:** `GET /api/tickets/[id]/page-data`, `GET /api/quotes/form-bootstrap` — QuoteDetail + NewQuoteForm single mount fetch
+- **Sales + Payments pagination** — server `limit`/`offset` on page-data (25/50/100)
+- **UX:** `ListRefreshingNotice`; tab-switch flash fix; routed claim **409** `ALREADY_CLAIMED`; no Sales/Admin banner on Quotes Routed tab
+- **Indexes:** `107_performance_indexes.sql` (documents 073 definitions)
+- Docs: `CHANGELOG.md`, `api-contract.md`, `TECHNICAL_REFERENCE.md`, `architecture.md`, `realtime-live-updates.md`, performance roadmap, feature specs
 
 ---
 
@@ -463,7 +474,7 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 - **Server-side filters:** search, date range, admin team filter, CRM status/heat, Leads owner scope + routed sub-filters + sort
 - **APIs:** page-data routes return `pagination: { limit, offset, total, hasMore }`; tab `counts` exclude pagination
 - **New route:** `GET /api/crm/page-data`; `GET /api/customers` for merge/search callers only
-- **Still full-list:** Sales pipeline, Payments
+- **Still full-list (May 28):** Sales pipeline, Payments — **paginated Jun 2, 2026**
 - Docs synced: `api-contract.md`, `architecture.md`, `component-architecture.md`, `navigation.md`, `types.md`, feature specs, performance roadmap
 
 ---
@@ -472,7 +483,7 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 
 - Combined **`GET /api/{feature}/page-data`** — one auth pass returns list + tab counts (Production, Orders, Quotes, Payments, Completed, Leads, Sales)
 - `lib/auth/session-cache.ts` — 3 s `requireSession()` memoization during burst loads
-- `hooks/use-coalesced-refresh.ts` — debounced mount + realtime refetch on all tabbed list pages
+- `hooks/use-coalesced-refresh.ts` — mount + realtime refetch on tabbed list pages (**superseded Jun 2026 by `useListPageData`**)
 - `GET /api/sidebar-counts?routes=…` — badge counts scoped to visible nav items only
 - Leads/Sales: lookups + admin user lists lazy-load when modal/drawer opens
 - Spec: **`docs/FuturePlan/Performance/performance-optimization.md`**
@@ -1192,7 +1203,8 @@ SALES PIPELINE (Routed to Sales)
 | ~~Integrations — Twilio + Instantly~~ | ✅ Done | Live in Integrations tab |
 | Online payments (Stripe / Zelle auto-match) | ⏸ Out of scope | Current stage — offline payment recording only; see `docs/TODO.md` |
 | Follow-up reminders cron | ⏳ Partial (2026-05-26) | **Code built**; schedule saved on send; **auto-run needs Vercel Pro** — Hobby uses manual trigger — `docs/cron-follow-ups.md` |
-| Performance Phase 3 (page-data) | ✅ Done (2026-05-26) | Combined list+counts endpoints, session cache, coalesced refetch — `docs/FuturePlan/Performance/performance-optimization.md` |
+| Performance Phase 3 (page-data) | ✅ Done (2026-05-26) | Combined list+counts endpoints, session cache — `docs/FuturePlan/Performance/performance-optimization.md` |
+| List SWR + detail bootstrap | ✅ Done (2026-06-02) | `useListPageData`, ticket `page-data`, `form-bootstrap`, realtime 0ms, migration 107 |
 | ~~Reports~~ | ✅ Done (2026-05-24) | Phase 1 + 2 — cash, scorecards, ledger, awaiting collection |
 | Notification bell | ⏳ Next | Per-user notification feed; bell icon in header/sidebar. |
 | AI / webhook lead ingestion | ⏳ Future | Auto-create leads from web form or external webhook. |

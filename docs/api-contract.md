@@ -48,18 +48,29 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 |-------|----------|---------|
 | `GET /api/orders/page-data` | `{ orders, counts, pagination }` | Orders page — **server-side** tab, search, date, admin user filter + pagination (default `limit=25`) |
 | `GET /api/quotes/page-data` | `{ tickets, counts, pagination }` | Quotes page — server-side tab, search, date, admin user + pagination |
-| `GET /api/payments/page-data` | `{ orders, approvedOrders, refundedOrders, counts: { pending, approved, refunded } }` | Payments page (Pending + Approved + Refunded tabs) |
+| `GET /api/payments/page-data` | `{ orders \| taxExemptOrders \| approvedOrders \| refundedOrders (one list by `tab`), counts, pagination }` | Payments page — `?tab=pending\|tax_exempt\|approved\|refunded`, `limit`, `offset`, optional `search` |
+| `GET /api/leads/sales/page-data` | `{ leads, counts, pagination }` | Sales pipeline — `?tab=`, `limit`, `offset`, optional `search` |
 | `GET /api/completed/page-data` | `{ orders, counts, pagination }` | Completed — server-side search, date on `updated_at`, admin user + pagination |
 | `GET /api/production/page-data` | `{ orders, counts, pagination }` | Production — server-side tab, search + pagination |
 | `GET /api/crm/page-data` | `{ customers, pagination }` | CRM page — server-side search, status, heat + pagination |
 | `GET /api/leads/workspace/page-data?…` | `{ leads, counts, pagination, routedSubCounts? }` | Leads page — server-side tab, search, owner scope, routed sub-filter, sort + pagination |
-| `GET /api/leads/sales/page-data?tab=…` | `{ leads, counts }` | Sales page — `tab`: `pipeline` \| `follow_up` \| `hold` \| `rejected` |
 
 **Slim count-only routes** (realtime refresh without full list): `GET /api/orders/counts`, `GET /api/quotes/counts`, plus existing `*/counts` routes.
 
 **List pagination (May 2026):** Paginated page-data routes return `pagination: { limit, offset, total, hasMore }`. Default **25** rows; allowed **25 / 50 / 100** (`lib/utils/pagination.ts`). Page size persists in browser `localStorage` key `bazaar-list-page-size`. Tab badge `counts` reflect all tabs under the same filters but **exclude** `limit`/`offset`. Shared UI: `components/ui/list-pagination.tsx`.
 
-**Paginated list pages (May 2026):** Orders (template), Quotes, Completed, Production, CRM, Leads workspace. **Not yet paginated:** Sales pipeline, Payments.
+**Paginated list pages:** Orders, Quotes, Payments, Sales pipeline, Completed, Production, CRM, Leads workspace — all use `limit`/`offset` on page-data (default **25**).
+
+**Detail / form bootstrap (Jun 2026)** — one auth pass instead of multiple parallel GETs on mount:
+
+| Route | Response | Used by |
+|-------|----------|---------|
+| `GET /api/tickets/[id]/page-data` | `{ ticket, company, lookups_edit, lookups_actions, products }` | `QuoteDetail` initial load (`/quotes/[id]`, `/orders/[id]`, …) |
+| `GET /api/quotes/form-bootstrap` | `{ company, lookups, products }` | `NewQuoteForm` (`/quotes/new`) |
+
+Silent ticket refresh after save still uses lighter `GET /api/tickets/[id]` only.
+
+**Client list cache (Jun 2026):** Tabbed list pages use `hooks/use-list-page-data.ts` → in-memory cache per full page-data URL (`lib/client/list-page-cache.ts`, 5 min TTL). Realtime window events refetch with **no** intentional delay (`lib/constants/realtime-refetch.ts`). Post-mutation helper: `lib/client/notify-list-data-changed.ts` (optional `cachePrefix` clear + `bazaar:tickets-changed`).
 
 Shared helpers:
 
@@ -259,6 +270,11 @@ Combined list + tab badge counts for `/sales`. One `requireSession()` pass.
 | Param | Values | Description |
 |-------|--------|-------------|
 | `tab` | `pipeline` \| `follow_up` \| `hold` \| `rejected` | Active tab list (default `pipeline`) |
+| `limit` | `25` \| `50` \| `100` | Page size (default 25) |
+| `offset` | number | Row offset (default 0) |
+| `search` | string | Optional customer/name/company filter |
+
+**Response `200`:** `{ leads, counts: { pipeline, follow_up, hold, rejected }, pagination }`
 
 **Tab filters (server-side via `lib/utils/leads-workspace-query.ts`):**
 
@@ -563,6 +579,41 @@ Paginated CRM customer list. Used by `components/crm/crm-page.tsx`.
   "pagination": { "limit": 25, "offset": 0, "total": 200, "hasMore": true }
 }
 ```
+
+---
+
+### `GET /api/crm/customers/[id]/tax-exempt-history`
+
+Tax-exempt permit history for CRM **See more** (`components/crm/customer-tax-exempt-modal.tsx`).
+
+**Auth:** `requireSession()` + `requirePageAccess('/crm')`.
+
+**Response `200`:**
+```json
+{
+  "customer_last": {
+    "permit_number": "string | null",
+    "file_name": "string | null",
+    "reviewed_at": "ISO | null",
+    "reviewed_by_name": "string | null",
+    "has_file": true
+  },
+  "rows": [
+    {
+      "id": "uuid",
+      "reference_code": "QUO-2026-001",
+      "has_file": true,
+      "sales_permit_file_name": "permit.pdf",
+      "sales_permit_reviewed_at": "ISO | null",
+      "approval_status": "approved | pending",
+      "reviewed_by_name": "string | null",
+      "created_at": "ISO"
+    }
+  ]
+}
+```
+
+Staff permit download uses `GET /api/tickets/{reference_code}/sales-permit` (accountant/admin only).
 
 ---
 
@@ -1018,7 +1069,7 @@ Upload or replace the tax-exempt **sales permit document** (staff only). Stored 
 
 **Storage:** bucket `ticket-attachments`, path `{ticketId}/sales-permit/{uuid}-{sanitizedFileName}`.
 
-**Replace:** Deletes previous object if present, then updates `sales_permit_storage_path`, `sales_permit_file_name`, `sales_permit_mime_type`.
+**Replace:** Deletes previous object if present, then updates `sales_permit_storage_path`, `sales_permit_file_name`, `sales_permit_mime_type`, `sales_permit_submitted_at` (and clears `sales_permit_reviewed_*` when replacing an already-reviewed permit).
 
 **Response `200`:** `{ ok: true, file_name, mime_type }`
 
@@ -1026,7 +1077,21 @@ Upload or replace the tax-exempt **sales permit document** (staff only). Stored 
 
 ### `GET /api/tickets/[id]/sales-permit`
 
-**Auth:** `canAccessTicket()`. **Response `302`:** redirect to 60-second signed Storage URL. **404** when no file on ticket.
+**Auth:** `isPaymentStaffRole()` (accountant or admin only — same policy as payment evidence file). **Response `302`:** redirect to 60-second signed Storage URL. **404** when no file on ticket.
+
+---
+
+### `POST /api/tickets/[id]/sales-permit/reuse-from-customer`
+
+Copy the customer’s last approved tax-exempt permit (`customers.tax_exempt_last_*`) onto this ticket.
+
+**Auth:** `requireSession()` + `requireTicketDetailPageAccess()` + `canMutateTicket()`.
+
+**Preconditions:** Ticket has `customer_id`; customer has stored last permit path.
+
+**Side effects:** Sets ticket `sales_permit_*`, `sales_permit_reused_from_customer = true`, `sales_permit_submitted_at`; clears `sales_permit_reviewed_*`; `notifyPublicQuoteUpdated`.
+
+**Response `200`:** `{ ok: true }`
 
 ---
 
@@ -1089,6 +1154,36 @@ Partial ticket update. Six distinct operation modes:
 - Runs `maybeConvertQuoteToOrder()` then `maybeAutoReleaseProduction()` when gates pass
 - When confirming customer-submitted evidence: sends **payment confirmed** email/SMS (balance on in-production orders: **paid in full** messaging); logs `ticket_payment_confirmed_sent`
 - Logs `ticket_payment_recorded` activity via `lib/utils/log-ticket-payment-recorded.ts`
+- **Blocked** while tax-exempt permit review is pending (`isTaxExemptApprovalPending`) — `400` `TAX_EXEMPT_APPROVAL_REQUIRED` (“Approve tax-exempt documentation before confirming payment.”)
+
+**Mode 3b — Approve tax-exempt (Accountant + Admin only):**
+```json
+{
+  "approve_tax_exempt": true,
+  "quote_final_total": 1234.56,
+  "quote_pre_tax_total": "optional",
+  "quote_tax_rate_percent": "optional",
+  "quote_tax_amount": "optional",
+  "quote_subtotal": "optional",
+  "quote_shipping": "optional",
+  "discount_type": "optional",
+  "discount_value": "optional"
+}
+```
+- Ticket must have `tax_exempt = true` and `sales_permit_storage_path` set, with no prior `sales_permit_reviewed_at` (legacy permit-#-only tickets must upload via `POST …/sales-permit` first)
+- Sets `sales_permit_reviewed_at` / `sales_permit_reviewed_by_id`; updates totals when provided
+- Syncs `customers.tax_exempt_last_*` when customer linked; `sendTaxExemptApproved` + activities `ticket_tax_exempt_approved`, `ticket_tax_exempt_confirmed_sent`
+- Returns `{ ticket }` with customer embed
+
+**Mode 3c — Deny tax-exempt (Accountant + Admin only):**
+```json
+{ "deny_tax_exempt": true }
+```
+- Sets `tax_exempt: false`, recomputes tax on current `quote_pre_tax_total` via `computeTotalsIfTaxExemptDenied`, stamps `sales_permit_reviewed_*`
+- Activity `ticket_tax_exempt_denied` (no customer-facing denial note column in v1)
+- Returns `{ ticket }`
+
+**Normal PATCH invalidation:** Changing fields in `TAX_EXEMPT_APPROVAL_INVALIDATING_FIELDS` clears `sales_permit_reviewed_at` / `sales_permit_reviewed_by_id` when a review existed.
 
 **Legacy — `release_production` (prefer auto-release on payment confirm):**
 ```json
@@ -1105,12 +1200,13 @@ Partial ticket update. Six distinct operation modes:
   "claim_ownership": true
 }
 ```
-- Ticket must currently have `ticket_status = 'routed'`
+- Ticket must currently have `ticket_status = 'routed'` (checked on read **and** `UPDATE … WHERE ticket_status = 'routed'`)
 - Caller must be `sales` or `admin`
 - Sets `ticket_status = 'draft'` and `created_by_id = callerUserId`
+- **`409` `ALREADY_CLAIMED`** if another rep claimed first (no row updated)
 - Logs `order_ticket_status_changed` activity with `payload: { from: "routed", to: "draft", action: "claimed" }` — triggers **live refresh** for other Sales on `/quotes` (Routed tab) via `activities` Realtime → `bazaar:tickets-changed`
 - Bypasses the normal ownership check (`created_by_id = userId`); uses admin client for the update
-- Successful claimant client also dispatches `bazaar:tickets-changed` and `bazaar:refresh-counts`
+- Successful claimant client: `notifyListDataChanged({ cachePrefix: "quotes" })` or equivalent `bazaar:tickets-changed` + `bazaar:refresh-counts`
 
 **Mode 5 — Normal update:**
 
@@ -1126,6 +1222,7 @@ Body: Any subset of ticket fields plus optional:
 **Business rules (Mode 5):**
 - If `ticket_status` transitions to `"completed"` from `"in_production"`: sends order-ready notification via `sendOrderReadyToCustomer()` (pickup copy or **shipped to [address]** when `requires_shipping`; same `/q/{public_token}` URL); logs `ticket_order_ready_sent` or `ticket_order_ready_failed`
 - **Accountant** may set `ticket_status = "completed"` only on in-production orders that are **paid in full** (`isTicketPaidInFull()`)
+- **Tax-exempt pending** blocks completion unless **Admin** passes `acknowledge_tax_exempt_unapproved: true` (same pattern as outstanding balance)
 - **Admin** may mark completed with outstanding balance only when body includes `acknowledge_outstanding_balance: true` (UI shows confirmation modal); see **TODO-009**
 - If `ticket_status` transitions to `"order"` (manual "Convert to Order"):
   - **Admin only** — non-admin receives `403`
@@ -1257,41 +1354,49 @@ Returns lightweight tab badge counts. Scoped per role. Uses parallel SQL `{ coun
 
 ### `GET /api/payments/page-data`
 
-Preferred mount endpoint for `/payments`. Returns all three tabs in one request.
+Preferred mount endpoint for `/payments`. Returns **one active tab list** + **all tab counts** per request.
 
-**Auth:** Accountant or Admin only.
+**Auth:** Accountant or Admin only (`isPaymentStaffRole` + `/payments` page access).
 
-**Pending filter:** Offline payment evidence submitted, not yet reviewed (`payment_evidence_reviewed_at` null); `refund_status` none/null; ordered by `payment_evidence_submitted_at` asc. **Stripe card payments are auto-approved** in the webhook and do not appear here.
+**Query params:**
 
-**Approved filter:** Reviewed evidence or Stripe; `refund_status` none/null; ordered by `payment_evidence_reviewed_at` desc.
+| Param | Values | Description |
+|-------|--------|-------------|
+| `tab` | `pending` \| `tax_exempt` \| `approved` \| `refunded` | Active tab (default `pending`) |
+| `limit` | `25` \| `50` \| `100` | Page size (default 25) |
+| `offset` | number | Row offset (default 0) |
+| `search` | string | Optional — filters active tab rows (client haystack parity with list UI) |
 
-**Refunded filter:** `refund_status IN ('partial', 'full')`; includes latest ledger row fields (`last_refund_method`, `last_refund_source`, `last_refund_payment_mode`) for list labels.
+**Response `200`:** One of `orders`, `taxExemptOrders`, `approvedOrders`, or `refundedOrders` (matching `tab`), plus `counts` and `pagination`. Tab badge counts use SQL head counts (`fetchPaymentsTabCounts`), not loaded row length.
 
-**UI columns (client):** Order, Customer, Claimed (`payment_evidence_amount` or remainder), **Payment For** (`inferPaymentEvidenceMode` — strategy, prior payments, evidence amount), Method, Submitted, Actions/Approved.
+**Pending filter (`orders`):** Offline payment evidence submitted, not yet reviewed (`payment_evidence_reviewed_at` null); `refund_status` none/null; ordered by `payment_evidence_submitted_at` asc. **Stripe card payments are auto-approved** in the webhook and do not appear here.
 
-**Row navigation:** `/payments/{id}?from=/payments`.
+**Tax-exempt pending filter (`taxExemptOrders`):** `tax_exempt = true`, `sales_permit_reviewed_at` null, `ticket_status IN ('sent', 'order', 'in_production', 'completed')`. `fetchPendingTaxExemptOrders` merges:
 
-**Response `200`:**
+1. **With file** — `sales_permit_storage_path` not null; ordered by `sales_permit_submitted_at` asc.
+2. **Legacy (pre–migration 103)** — no `sales_permit_storage_path`, `sales_permit_number` not null; ordered by `created_at` asc.
+
+Deduped by ticket id. Same row shape as pending evidence. UI: Submitted column; **View file** when file present; **File required** + **Upload file** (link to `/orders/[ref]`) for legacy; inline **Confirm** disabled until file uploaded → `ApproveTaxExemptModal`.
+
+**Approved filter (`approvedOrders`):** Merged list — tickets with reviewed offline/Stripe evidence **or** reviewed tax-exempt permit (deduped by ticket id, sorted by max of `payment_evidence_reviewed_at` and `sales_permit_reviewed_at` desc).
+
+**Refunded filter (`refundedOrders`):** `refund_status IN ('partial', 'full')`; includes latest ledger row fields (`last_refund_method`, `last_refund_source`, `last_refund_payment_mode`) for list labels.
+
+**UI columns (evidence tabs):** Order, Customer, Claimed (`payment_evidence_amount` or remainder), **Payment For** (`inferPaymentEvidenceMode`), Method, Submitted, Actions/Approved.
+
+**Row navigation:** `/payments/{id}?from=/payments` (payment detail uses `QuoteDetail` with `context="payment"`).
+
+**Example (`?tab=pending&limit=25&offset=0`):**
 ```json
 {
-  "orders": [ /* pending approval — same shape as legacy pending list */ ],
-  "approvedOrders": [
-    {
-      "id": "uuid",
-      "reference_code": "ORD-2026-042",
-      "payment_evidence_url": "path/in/storage",
-      "payment_evidence_submitted_at": "ISO",
-      "payment_evidence_reviewed_at": "ISO",
-      "payment_evidence_amount": 500.00,
-      "payment_amount_received": 500.00,
-      "payment_status": "partial",
-      "customer": { "first_name": "string", "last_name": "string", "company": "string" }
-    }
-  ],
-  "refundedOrders": [ /* partial/full refund_status — paid via / refunded via columns */ ],
-  "counts": { "pending": 2, "approved": 15, "refunded": 1 }
+  "orders": [ /* pending payment evidence — current page */ ],
+  "counts": { "pending": 2, "tax_exempt": 1, "approved": 15, "refunded": 1 },
+  "pagination": { "limit": 25, "offset": 0, "total": 2, "hasMore": false },
+  "tab": "pending"
 }
 ```
+
+**Customer embed:** List selects use `customers!job_tickets_customer_id_fkey` via `jobTicketCustomerEmbed()` (migration **105** added a second `job_tickets` FK on `customers.tax_exempt_last_source_ticket_id`).
 
 ---
 
@@ -1579,11 +1684,15 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
     "payment_evidence_amount": "number | null",
     "production_released_at": "ISO | null",
     "ticket_payment_strategy": "full | partial | net",
-    "ticket_require_client_confirm": "boolean"
+    "ticket_require_client_confirm": "boolean",
+    "tax_exempt": "boolean",
+    "tax_exempt_review_pending": "boolean — true when tax_exempt, sales_permit_storage_path set, and sales_permit_reviewed_at null (not set for legacy permit-#-only tickets)"
   },
   "company": { "company_name": "string", "phone": "string", "address_line1": "string" }
 }
 ```
+
+Permit file is **not** exposed on the public API. Customer may still confirm and pay while review is pending (when flag is true). **Display:** cancelled tickets hide full pricing; partial/full refund shows refund amount only (`total_refunded_amount`) — see `lib/utils/public-invoice-document.ts`. Public PDF (`GET …/pdf`) uses the same `tax_exempt_review_pending` and document-banner rules.
 
 **Response `404`:** Token not found or ticket in `draft` status.
 
@@ -1735,7 +1844,7 @@ Notifications in BazaarCRM are delivered via **Supabase Realtime**, not HTTP pol
   - **`activities-realtime`** — watches any INSERT on `public.activities` → dispatches `bazaar:activities-changed` browser event
   - **`tickets-realtime`** — watches any INSERT/UPDATE/DELETE on `public.job_tickets` → refreshes sidebar badge counts + dispatches `bazaar:tickets-changed` browser event
   - **`customers-realtime`** — watches any INSERT/UPDATE/DELETE on `public.customers` → dispatches `bazaar:customers-changed` browser event (migration `083_enable_customers_realtime.sql`)
-- **Sidebar badge counts** are fetched via `GET /api/sidebar-counts?routes=…` (scoped to visible nav items; debounced ~300 ms on Realtime). Count queries use SQL `{ count: "exact", head: true }` via `lib/utils/sidebar-counts-query.ts`.
+- **Sidebar badge counts** are fetched via `GET /api/sidebar-counts?routes=…` (scoped to visible nav items; refetches **immediately** on `bazaar:refresh-counts`). Count queries use SQL `{ count: "exact", head: true }` via `lib/utils/sidebar-counts-query.ts`.
 - **Activity log** (admin `/activity-log` page) is fetched via `GET /api/admin/activity-log` and auto-refreshes when `bazaar:activities-changed` fires
 - **`/notifications`** — legacy redirect to `/activity-log`; reserved for future V2 bell (no REST endpoints yet)
 

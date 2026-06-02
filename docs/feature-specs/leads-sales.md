@@ -12,7 +12,7 @@ Sales reps work these leads: claim them, defer with **Follow Up Later**, update 
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from **`GET /api/leads/sales/page-data`**. Opening the Sales Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
-> **Page load (2026-05-26):** On mount, `sales-page.tsx` calls **`GET /api/leads/sales/page-data?tab=…`** — one auth pass returns the active tab's slim list **and** all tab badge counts (`pipeline`, `follow_up`, `hold`, `rejected`). Lookups and sales user list **lazy-load** when drawer/modal opens.
+> **Page load (2026-05-26 / 2026-06-02):** `sales-page.tsx` uses **`useListPageData`** → **`GET /api/leads/sales/page-data?tab=…&limit=&offset=`** — slim list, all tab counts, and `pagination`. Realtime refetch is immediate (`REALTIME_REFETCH_MS = 0`). Lookups and sales user list **lazy-load** when drawer/modal opens. `enabled: !drawerLead` while Sales drawer is open.
 
 ---
 

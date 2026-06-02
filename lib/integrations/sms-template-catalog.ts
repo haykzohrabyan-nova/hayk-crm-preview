@@ -15,6 +15,8 @@ export type SmsTemplateKey =
   | "payment_confirmed_in_production"
   | "payment_confirmed_full"
   | "payment_confirmed"
+  | "tax_exempt_approved"
+  | "tax_exempt_approved_total_unchanged"
   | "quote_follow_up"
   | "quote_follow_up_no_total";
 
@@ -144,6 +146,24 @@ export const SMS_TEMPLATE_DEFINITIONS: SmsTemplateDefinition[] = [
     placeholders: ["firstName", "amount", "ref", "companyName", "link"],
     defaultBody:
       "Hi {firstName}, your payment of {amount} for order {ref} from {companyName} is confirmed. View your order: {link}",
+  },
+  {
+    key: "tax_exempt_approved",
+    label: "Tax-exempt verified (total updated)",
+    group: "payment",
+    description: "Accountant approved tax-exempt permit; order total may have changed.",
+    placeholders: ["firstName", "amount", "ref", "companyName", "link"],
+    defaultBody:
+      "Hi {firstName}, tax-exempt documentation for order {ref} from {companyName} is verified. Your updated total is {amount}. View your order: {link}",
+  },
+  {
+    key: "tax_exempt_approved_total_unchanged",
+    label: "Tax-exempt verified (total unchanged)",
+    group: "payment",
+    description: "Accountant approved tax-exempt permit; total unchanged.",
+    placeholders: ["firstName", "amount", "ref", "companyName", "link"],
+    defaultBody:
+      "Hi {firstName}, tax-exempt documentation for order {ref} from {companyName} is verified. Your order total is {amount}. View your order: {link}",
   },
   {
     key: "quote_follow_up",

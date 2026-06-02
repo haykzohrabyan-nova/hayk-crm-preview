@@ -50,8 +50,10 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - Default pages: `/dashboard`, `/payments`, `/orders`, `/completed` (+ universal `/profile`)
 - Default home after login: `/payments`
 - **No quote workflow** — `/quotes` not in default pages; `GET /api/quotes/*` and quote-list `GET /api/tickets?kind=quote` return `403`
-- Review customer-submitted payment evidence on `/payments` (Pending · Approved · **Refunded** tabs)
-- **Confirm payment** via `record_payment` PATCH action
+- Review customer-submitted payment evidence on `/payments` (Pending · **Tax-exempt pending** · Approved · **Refunded** tabs)
+- **Confirm payment** via `record_payment` PATCH action (blocked while tax-exempt permit review pending)
+- **Approve / deny tax-exempt** via `approve_tax_exempt` / `deny_tax_exempt` PATCH actions; view permit file via `GET /api/tickets/[id]/sales-permit` (accountant/admin only)
+- **Legacy tax-exempt (permit #, no file):** any role with `canMutateTicket` may upload permit on the order (`POST /api/tickets/[id]/sales-permit`); accountant approves on `/payments` after file exists
 - **Refund payment** via `POST /api/tickets/[id]/refund` (manual + Stripe per slot) — same as Admin
 - **Cancel quote/order** via `PATCH /api/tickets/[id]` (`ticket_status: cancelled`) — same as Admin; partial-refund warning in UI first when applicable
 - View orders, production, and completed orders (read-only except mark complete, refund, cancel)
@@ -83,7 +85,7 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/orders` | ✓ | ✓ | ✓ | ✓ | Orders list: pending payment, in production, cancelled **orders** (`ticket_kind = 'order'` only; cancelled quotes on `/quotes`) |
 | `/orders/[id]` | ✓ | ✓ | ✓ | ✓ | Order / in-production detail via `GET /api/tickets/[id]` — sales/SDR read-only during payment review; accountant confirms on `/payments` or here |
 | `/payments` | ✗ | ✗ | ✓ | ✓ | Payment review queue |
-| `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment review detail — Confirm payment, view evidence |
+| `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment / tax-exempt review detail — Confirm payment or tax-exempt; view evidence/permit (accountant/admin) |
 | `/production` | — | — | — | — | **Removed from nav** — redirects to `/orders?tab=in_production` |
 | `/production/[id]` | — | — | — | — | Redirects to `/orders/[id]` |
 | `/completed` | ✓ (created) | ✗ | ✓ | ✓ | SDR: only tickets they created — not Sales-completed routed hand-offs |
@@ -132,10 +134,14 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | `canAccessTicket()` + ticket-detail page access |
 | `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ (all) | `canPatchTicket()` — accountant: payment/cancel/complete/refund only |
 | `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | Accountant + Admin only |
+| `PATCH … { approve_tax_exempt: true }` | ✗ | ✗ | ✓ | Accountant + Admin only |
+| `PATCH … { deny_tax_exempt: true }` | ✗ | ✗ | ✓ | Accountant + Admin only |
+| `GET /api/tickets/[id]/sales-permit` | ✗ | ✗ | ✓ | Accountant + Admin only (signed URL) |
+| `GET /api/crm/customers/[id]/tax-exempt-history` | ✓ | ✓ | ✓ | CRM page access — tax-exempt See more modal |
 | `PATCH … { ticket_status: 'cancelled' }` | ✗ | ✗ | ✓ | Admin + Accountant — reason + notes required |
 | `POST /api/tickets/[id]/refund` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — unified manual + Stripe |
 | `GET /api/tickets/[id]/refund-evidence/[refundId]` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
-| `GET /api/payments/page-data` | ✗ | ✗ | ✓ | ✓ | Pending + Approved + Refunded tabs |
+| `GET /api/payments/page-data` | ✗ | ✗ | ✓ | Pending + Tax-exempt pending + Approved + Refunded tabs (Accountant + Admin) |
 | `PATCH … { send_payment_reminder: true }` | ✓ (own) | ✓ (own) | ✓ (all) | Admin any ticket; others `created_by_id` only |
 | `PATCH … { resend_invoice: true }` | ✓ (own) | ✓ (own) | ✓ (all) | Same ownership rule as payment reminder |
 | `PATCH … { release_production: true }` | ✓ (own) | ✓ (own) | ✓ | Legacy — stamps `production_released_at` only; ticket owners + admin via `canMutateTicket()`. Prefer `maybeAutoReleaseProduction()` on payment confirm. No UI wired (May 2026). |

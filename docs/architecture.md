@@ -171,9 +171,12 @@ BazarCRM/
 │   │   ├── tickets/
 │   │   │   ├── route.ts                  ✓ GET list (slim quote payload when kind=quote) / POST create
 │   │   │   ├── counts/route.ts           ✓ GET — tab badge counts (SQL head counts)
-│   │   │   └── [id]/route.ts             ✓ GET single / PATCH update (supports claim_ownership)
+│   │   │   └── [id]/
+│   │   │       ├── route.ts              ✓ GET single / PATCH (claim_ownership, 409 ALREADY_CLAIMED)
+│   │   │       └── page-data/route.ts    ✓ GET — ticket + company + lookups + products (detail bootstrap)
 │   │   ├── quotes/
 │   │   │   ├── page-data/route.ts        ✓ GET — quote list + quote-stage counts
+│   │   │   ├── form-bootstrap/route.ts   ✓ GET — company + lookups + products (new quote mount)
 │   │   │   └── counts/route.ts           ✓ GET — quote tab badge counts only
 │   │   ├── orders/
 │   │   │   ├── orders/route.ts           ✓ GET — slim orders list (`ticket_kind = order`; order/in_production/cancelled, no line_items)
@@ -391,18 +394,18 @@ List pages fetch **scoped, slim payloads** — no `line_items` on table views. F
 |------|----------------|----------------------------------|
 | `/quotes` | `GET /api/quotes/page-data` | `GET /api/tickets?kind=quote` + `/api/quotes/counts` |
 | `/orders` | `GET /api/orders/page-data` | `GET /api/orders/orders` + `/api/orders/counts` |
-| `/payments` | `GET /api/payments/page-data` (`orders`, `approvedOrders`, `counts`) | `GET /api/payments/pending` (pending only) |
+| `/payments` | `GET /api/payments/page-data` (`orders`, `taxExemptOrders`, `approvedOrders`, `refundedOrders`, `counts`) | `GET /api/payments/pending` (pending evidence only) |
 | `/production` | `GET /api/production/page-data` *(legacy API)* | Redirects to `/orders?tab=in_production` — use `GET /api/orders/page-data` |
 | `/completed` | `GET /api/completed/page-data` | `GET /api/completed/orders` + `/api/completed/counts` |
 | `/leads` | `GET /api/leads/workspace/page-data` | `GET /api/leads/workspace` + `/api/leads/workspace/counts` |
 | `/sales` | `GET /api/leads/sales/page-data` | workspace list + `/api/leads/sales-counts` |
 | `/crm` | `GET /api/crm/page-data` | `GET /api/customers` (merge search / full list callers only) |
 
-**List pagination (May 2026):** Orders, Quotes, Completed, Production, CRM, and Leads use server-side filters + `ListPagination` (default 25 rows). Shared: `lib/utils/pagination.ts`, `components/ui/list-pagination.tsx`. Sales and Payments still load full tab lists.
+**List pagination (May–Jun 2026):** All tabbed list pages — Orders, Quotes, Payments, Sales, Completed, Production, CRM, Leads — use server-side `limit`/`offset` + `ListPagination` (default 25). Shared: `lib/utils/pagination.ts`, `components/ui/list-pagination.tsx`.
 
 **Tab/sidebar counts:** Leads, Sales, Payments, Completed, and **sidebar nav** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`. **Quotes & Orders tab badges** on list pages come from page-data `counts` under the same search/date/admin filters (not limited by pagination). **SDR** Quotes/Orders/Completed counts use `created_by_id` only (`scopeJobTicketsQuery` / `scopeCompletedTicketsQuery`).
 
-**Ticket references:** `lib/utils/reference-codes.ts` — `QUO-YYYY-NNNN` / `ORD-YYYY-NNN`, `ticketKindForReference()`, `ticketIsQuoteStage()`. Lifecycle timeline labels in `lib/utils/ticket-lifecycle-timeline.ts` (creation from activity payload; reference prefix over `ticket_kind`).
+**Ticket references:** `lib/utils/reference-codes.ts` — `QUO-YYYY-NNNN` / `ORD-YYYY-NNN`, `ticketKindForReference()`, `ticketIsQuoteStage()`, `ticketIsOrderStage()`. Lifecycle timeline labels in `lib/utils/ticket-lifecycle-timeline.ts` (creation from activity payload; reference prefix over `ticket_kind`). Public portal/PDF use `ticketIsOrderStage()` so `ORD-*` stays **INVOICE** when cancelled.
 
 **Routed quotes Realtime (086):** `job_tickets` RLS `sales_read_routed_tickets` so Sales browsers receive Realtime for SDR-owned `ticket_status = routed` rows; claim removal for other reps uses `activities` INSERT. List query: `lib/utils/fetch-quotes-data.ts` (`applyTicketScope`).
 
@@ -410,19 +413,23 @@ List pages fetch **scoped, slim payloads** — no `line_items` on table views. F
 
 **Session cache:** `lib/auth/session-cache.ts` memoizes `requireSession()` for ~3 s during burst loads.
 
-**Coalesced refetch:** `hooks/use-coalesced-refresh.ts` on all tabbed list pages — debounces mount + `bazaar:*-changed` so Strict Mode does not double-fetch. **Important:** pass a stable refresh callback (or use the hook's ref pattern); inline callbacks in effect deps caused a leads-page infinite reload loop (fixed May 2026).
+**List SWR cache (Jun 2026):** `hooks/use-list-page-data.ts` + `lib/client/list-page-cache.ts` — instant tab/back navigation from in-memory cache (5 min TTL). Realtime refetch: **0ms** (`REALTIME_REFETCH_MS`); nav return with cache: background revalidate after 300ms (`LIST_NAV_REVALIDATE_MS`) unless realtime already ran. In-flight dedupe per URL; `ListRefreshingNotice` on list toolbars.
 
-**Realtime:** Single sidebar subscription per table → `bazaar:*-changed` window events. Sidebar badge refetch debounced ~300 ms; optional `?routes=` limits count queries to visible nav items.
+**Detail bootstrap (Jun 2026):** `GET /api/tickets/[id]/page-data`, `GET /api/quotes/form-bootstrap` — one auth pass for QuoteDetail / NewQuoteForm mount.
+
+**Legacy hook:** `hooks/use-coalesced-refresh.ts` — superseded on list pages by `useListPageData`; pass stable `useCallback` refresh if used elsewhere.
+
+**Realtime:** Single sidebar subscription per table → `bazaar:*-changed` window events. Sidebar badges refetch **immediately** on `bazaar:refresh-counts`; optional `?routes=` limits count queries to visible nav items.
 
 **Lazy bootstrap (Leads/Sales):** Lookups, product types, and admin user lists load when Add Lead / Reassign / drawer opens — not on page mount.
 
 **Dynamic imports:** Heavy modals and drawers (`VerifyDrawer`, `AddLeadModal`, `SalesDrawer`) are loaded via `next/dynamic` — deferred from the initial page bundle until first interaction.
 
-**Indexes:** `073_performance_indexes.sql` — partial indexes on orders, production, leads.
+**Indexes:** `supabase/migrations/107_performance_indexes.sql` — partial indexes on orders, production, leads (same definitions as documented 073; file 073 was never in repo).
 
-**Completed:** [performance-optimization.md](./FuturePlan/Performance/performance-optimization.md) (Phase 1–3 core)
+**Completed:** [performance-optimization.md](./FuturePlan/Performance/performance-optimization.md) (Phase 1–3 core + SWR + Sales/Payments pagination)
 
-**Optional remainder:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md) (SWR, Sales/Payments pagination, CRM aggregate caching at scale)
+**Optional remainder:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md) (CRM aggregate caching at scale, infra keep-warm)
 
 ---
 

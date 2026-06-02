@@ -1,4 +1,4 @@
-import { isPaymentEvidencePending, type TicketPaymentFields } from "@/lib/utils/invoice-payment-summary";
+import { isPaymentEvidencePending, isTaxExemptApprovalPending, type TicketPaymentFields } from "@/lib/utils/invoice-payment-summary";
 
 export type QuoteListStatusTone =
   | "draft"
@@ -21,8 +21,20 @@ export function quoteListStatus(ticket: TicketPaymentFields & {
   ticket_status: string;
   client_confirmed?: boolean | null;
   ticket_require_client_confirm?: boolean | null;
+  tax_exempt?: boolean;
+  sales_permit_storage_path?: string | null;
+  sales_permit_reviewed_at?: string | null;
 }): { label: string; tone: QuoteListStatusTone; bg: string; text: string } {
   const base = STATUS_STYLE[ticket.ticket_status] ?? STATUS_STYLE.draft;
+
+  if (isTaxExemptApprovalPending(ticket)) {
+    return {
+      label: "Awaiting tax-exempt approval",
+      tone: "awaiting_payment",
+      bg: "var(--color-warning-bg)",
+      text: "var(--color-warning-text-deep)",
+    };
+  }
 
   if (isPaymentEvidencePending(ticket)) {
     return {

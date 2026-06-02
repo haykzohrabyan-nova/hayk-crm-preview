@@ -29,6 +29,14 @@ export function ticketKindForReference(
   return null;
 }
 
+/** True for ORD-* (or ticket_kind order) — used for INVOICE label on public PDF/page even when status is cancelled. */
+export function ticketIsOrderStage(ticket: {
+  reference_code?: string | null;
+  ticket_kind?: string | null;
+}): boolean {
+  return !ticketIsQuoteStage(ticket);
+}
+
 /** True while the ticket is still a quote (QUO-*), not a converted order (ORD-*). Reference wins over ticket_kind. */
 export function ticketIsQuoteStage(ticket: {
   reference_code?: string | null;

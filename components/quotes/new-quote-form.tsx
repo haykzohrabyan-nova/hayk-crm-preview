@@ -27,6 +27,10 @@ import {
   getQuoteSendMissingFields,
 } from "@/lib/utils/validate-quote-send";
 import { resolveQuoteDeliveryFromContact } from "@/lib/utils/resolve-quote-delivery-from-contact";
+import {
+  customerHasTaxExemptOnFile,
+  type CustomerTaxExemptLastFields,
+} from "@/lib/utils/customer-tax-exempt";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 import { CustomerSidebarCard } from "@/components/quotes/customer-sidebar-card";
 import {
@@ -226,6 +230,8 @@ export default function NewQuoteForm() {
   const [taxExempt, setTaxExempt] = useState(false);
   const [salesPermit, setSalesPermit] = useState("");
   const [salesPermitFile, setSalesPermitFile] = useState<File | null>(null);
+  const [customerTaxExemptLast, setCustomerTaxExemptLast] = useState<CustomerTaxExemptLastFields | null>(null);
+  const [taxExemptReuseChoice, setTaxExemptReuseChoice] = useState<"none" | "reuse" | "upload" | "ignore">("none");
   const [paymentDraft, setPaymentDraft] = useState<TicketPaymentDraft>(PAYMENT_CONFIG_DEFAULTS);
 
   // ─── Load lead + products + company settings ────────────────────────────
@@ -254,8 +260,12 @@ export default function NewQuoteForm() {
   }, [fetchLead]);
 
   useEffect(() => {
-    const id = selectedCustomerId;
-    if (!id) return;
+    const id = selectedCustomerId ?? lead?.customer?.id ?? null;
+    if (!id) {
+      setCustomerTaxExemptLast(null);
+      setTaxExemptReuseChoice("none");
+      return;
+    }
     fetch(`/api/customers/${id}`)
       .then((r) => r.json())
       .then((d) => {
@@ -264,9 +274,20 @@ export default function NewQuoteForm() {
         if (c.company) setContactCompany((prev) => prev || c.company || "");
         if (c.website) setContactWebsite((prev) => prev || c.website || "");
         if (c.authority) setContactAuthority((prev) => prev || c.authority || "");
+        const last: CustomerTaxExemptLastFields = {
+          tax_exempt_last_permit_number: c.tax_exempt_last_permit_number,
+          tax_exempt_last_storage_path: c.tax_exempt_last_storage_path,
+          tax_exempt_last_file_name: c.tax_exempt_last_file_name,
+          tax_exempt_last_mime_type: c.tax_exempt_last_mime_type,
+          tax_exempt_last_reviewed_at: c.tax_exempt_last_reviewed_at,
+        };
+        setCustomerTaxExemptLast(last);
+        if (!customerHasTaxExemptOnFile(last)) {
+          setTaxExemptReuseChoice("none");
+        }
       })
       .catch(() => {});
-  }, [selectedCustomerId]);
+  }, [selectedCustomerId, lead?.customer?.id]);
 
   // Silently refresh lead card if lead is updated elsewhere (another tab / another user)
   useEffect(() => {
@@ -286,47 +307,36 @@ export default function NewQuoteForm() {
   });
 
   useEffect(() => {
-    fetch("/api/lookups/products")
-      .then((r) => r.json())
-      .then((d) => { if (d.products) setProducts(d.products); })
-      .catch(() => {});
-
-    fetch("/api/lookups?categories=lamination,color_mode,sides,roll_direction,finishing,ticket_priority,quote_channel,ticket_payment,follow_up_freq")
-      .then((r) => r.json())
-      .then((d: Record<string, LookupOption[]>) => {
-        setSkuLookups({
-          lamination:     d.lamination     ?? [],
-          color_mode:     d.color_mode     ?? [],
-          sides:          d.sides          ?? [],
-          roll_direction: d.roll_direction ?? [],
-          finishing:      d.finishing      ?? [],
-        });
-        setQuoteLookups({
-          ticket_priority: d.ticket_priority ?? [],
-          quote_channel:   d.quote_channel   ?? [],
-          ticket_payment:  d.ticket_payment  ?? [],
-          follow_up_freq:  d.follow_up_freq  ?? [],
-        });
-      })
-      .catch(() => {});
-
-    fetch("/api/lookups?categories=source,industry,route_reason")
-      .then((r) => r.json())
-      .then((d: Record<string, LookupOption[]>) => {
-        setCustomerLookups({
-          source: d.source ?? [],
-          industry: d.industry ?? [],
-        });
-        setRouteReasons(d.route_reason ?? []);
-      })
-      .catch(() => {});
-
-    fetch("/api/admin/company")
+    fetch("/api/quotes/form-bootstrap")
       .then((r) => r.json())
       .then((d) => {
-        if (d.settings) {
-          setCompanyCfg(d.settings);
-          if (d.settings.default_tax_rate != null) setTaxRate(d.settings.default_tax_rate);
+        if (d.products) setProducts(d.products);
+        if (d.company?.settings) {
+          setCompanyCfg(d.company.settings);
+          if (d.company.settings.default_tax_rate != null) {
+            setTaxRate(d.company.settings.default_tax_rate);
+          }
+        }
+        const lookups = d.lookups as Record<string, LookupOption[]> | undefined;
+        if (lookups) {
+          setSkuLookups({
+            lamination: lookups.lamination ?? [],
+            color_mode: lookups.color_mode ?? [],
+            sides: lookups.sides ?? [],
+            roll_direction: lookups.roll_direction ?? [],
+            finishing: lookups.finishing ?? [],
+          });
+          setQuoteLookups({
+            ticket_priority: lookups.ticket_priority ?? [],
+            quote_channel: lookups.quote_channel ?? [],
+            ticket_payment: lookups.ticket_payment ?? [],
+            follow_up_freq: lookups.follow_up_freq ?? [],
+          });
+          setCustomerLookups({
+            source: lookups.source ?? [],
+            industry: lookups.industry ?? [],
+          });
+          setRouteReasons(lookups.route_reason ?? []);
         }
       })
       .catch(() => {});
@@ -375,6 +385,14 @@ export default function NewQuoteForm() {
     quote_tax_rate_percent: taxExempt ? 0 : taxRate,
     tax_exempt: taxExempt,
   });
+
+  const reusingCustomerPermit = taxExemptReuseChoice === "reuse";
+  const hasSalesPermitFile = !!salesPermitFile || reusingCustomerPermit;
+  const showCustomerTaxExemptBanner =
+    taxExempt &&
+    customerTaxExemptLast != null &&
+    customerHasTaxExemptOnFile(customerTaxExemptLast) &&
+    taxExemptReuseChoice !== "ignore";
 
   // ─── Save ─────────────────────────────────────────────────────────────────
 
@@ -431,7 +449,7 @@ export default function NewQuoteForm() {
       if (taxExempt && !salesPermit.trim()) {
         errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
       }
-      if (taxExempt && !salesPermitFile) {
+      if (taxExempt && !hasSalesPermitFile) {
         errors.salesPermitFile = "Permit file is required when Tax Exempt is selected.";
       }
       const zipErr = validateShippingDestinationZips(
@@ -518,7 +536,7 @@ export default function NewQuoteForm() {
         skus,
         taxExempt,
         salesPermit,
-        hasSalesPermitFile: !!salesPermitFile,
+        hasSalesPermitFile,
         requiresShipping,
         shipToDestinations: shippingDestinations,
         paymentDraft,
@@ -530,10 +548,10 @@ export default function NewQuoteForm() {
       }
     }
 
-    if (taxExempt && (!salesPermit.trim() || !salesPermitFile)) {
+    if (taxExempt && (!salesPermit.trim() || !hasSalesPermitFile)) {
       setFieldErrors({
         ...(!salesPermit.trim() ? { salesPermit: "Sales Permit # is required when Tax Exempt is selected." } : {}),
-        ...(!salesPermitFile ? { salesPermitFile: "Permit file is required when Tax Exempt is selected." } : {}),
+        ...(!hasSalesPermitFile ? { salesPermitFile: "Permit file is required when Tax Exempt is selected." } : {}),
       });
       setTab("quote");
       scrollToFormField(tabContentRef, "salesPermit");
@@ -669,7 +687,16 @@ export default function NewQuoteForm() {
           return;
         }
 
-        if (salesPermitFile) {
+        if (reusingCustomerPermit) {
+          const reuseRes = await fetch(`/api/tickets/${ticketRef}/sales-permit/reuse-from-customer`, {
+            method: "POST",
+          });
+          if (!reuseRes.ok) {
+            const reuseJson = await reuseRes.json().catch(() => ({}));
+            setError(reuseJson.error ?? "Failed to copy customer tax-exempt permit.");
+            return;
+          }
+        } else if (salesPermitFile) {
           const fd = new FormData();
           fd.append("file", salesPermitFile);
           const permitRes = await fetch(`/api/tickets/${ticketRef}/sales-permit`, { method: "POST", body: fd });
@@ -723,7 +750,7 @@ export default function NewQuoteForm() {
       if (taxExempt && !salesPermit.trim()) {
         errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
       }
-      if (taxExempt && !salesPermitFile) {
+      if (taxExempt && !hasSalesPermitFile) {
         errors.salesPermitFile = "Permit file is required when Tax Exempt is selected.";
       }
       const zipErr = validateShippingDestinationZips(
@@ -776,12 +803,12 @@ export default function NewQuoteForm() {
         skus,
         taxExempt,
         salesPermit,
-        hasSalesPermitFile: !!salesPermitFile,
+        hasSalesPermitFile,
         requiresShipping,
         shipToDestinations: shippingDestinations,
         paymentDraft,
       }),
-    [title, dueDate, skus, taxExempt, salesPermit, salesPermitFile, requiresShipping, shippingDestinations, paymentDraft],
+    [title, dueDate, skus, taxExempt, salesPermit, hasSalesPermitFile, requiresShipping, shippingDestinations, paymentDraft],
   );
   const quoteSendReady = sendMissingFields.length === 0;
   const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
@@ -1029,6 +1056,75 @@ export default function NewQuoteForm() {
                     </span>
                   </div>
                 )}
+                {showCustomerTaxExemptBanner && (
+                  <div
+                    className="mb-4 rounded-lg border px-4 py-3 text-sm space-y-3"
+                    style={{
+                      background: "var(--color-info-bg)",
+                      borderColor: "var(--color-info-border)",
+                      color: "var(--color-info-text-deep)",
+                    }}
+                  >
+                    <p>
+                      This customer has a tax-exempt permit on file
+                      {customerTaxExemptLast?.tax_exempt_last_file_name
+                        ? ` (${customerTaxExemptLast.tax_exempt_last_file_name})`
+                        : ""}.
+                      Reusing copies it to this quote; <strong>accountant approval is still required per quote</strong> after you send.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium"
+                        style={{
+                          background: reusingCustomerPermit
+                            ? "var(--color-btn-primary-bg)"
+                            : "var(--color-surface)",
+                          color: reusingCustomerPermit
+                            ? "var(--color-btn-primary-text)"
+                            : "var(--color-text-primary)",
+                          border: "1px solid var(--color-border)",
+                        }}
+                        onClick={() => {
+                          setTaxExemptReuseChoice("reuse");
+                          setSalesPermit(customerTaxExemptLast?.tax_exempt_last_permit_number ?? "");
+                          setSalesPermitFile(null);
+                          setFieldErrors((e) => ({ ...e, salesPermit: "", salesPermitFile: "" }));
+                        }}
+                      >
+                        Reuse customer permit
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium border"
+                        style={{
+                          borderColor: "var(--color-border)",
+                          color: "var(--color-text-primary)",
+                          background: taxExemptReuseChoice === "upload" ? "var(--color-row-alt)" : "var(--color-surface)",
+                        }}
+                        onClick={() => {
+                          setTaxExemptReuseChoice("upload");
+                          setSalesPermitFile(null);
+                        }}
+                      >
+                        Upload new file
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium"
+                        style={{ color: "var(--color-text-muted)" }}
+                        onClick={() => setTaxExemptReuseChoice("ignore")}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    {reusingCustomerPermit && (
+                      <p className="text-[12px]" style={{ color: "var(--color-info-text)" }}>
+                        Permit # prefilled. File will be attached when you save the quote.
+                      </p>
+                    )}
+                  </div>
+                )}
                 <QuoteForm
                   pricing={pricing}
                   requiresShipping={requiresShipping}
@@ -1041,11 +1137,19 @@ export default function NewQuoteForm() {
                   discountValue={discountValue} setDiscountValue={setDiscountValue}
                   discountReason={discountReason} setDiscountReason={setDiscountReason}
                   taxRate={taxRate} setTaxRate={setTaxRate}
-                  taxExempt={taxExempt} setTaxExempt={setTaxExempt}
+                  taxExempt={taxExempt}
+                  setTaxExempt={(v) => {
+                    setTaxExempt(v);
+                    if (!v) setTaxExemptReuseChoice("none");
+                  }}
                   salesPermit={salesPermit} setSalesPermit={(v) => { setSalesPermit(v); setFieldErrors((e) => ({ ...e, salesPermit: "" })); }}
                   salesPermitError={fieldErrors.salesPermit}
                   salesPermitPendingFile={salesPermitFile}
-                  setSalesPermitPendingFile={(f) => { setSalesPermitFile(f); setFieldErrors((e) => ({ ...e, salesPermitFile: "" })); }}
+                  setSalesPermitPendingFile={(f) => {
+                    setSalesPermitFile(f);
+                    if (f) setTaxExemptReuseChoice("upload");
+                    setFieldErrors((e) => ({ ...e, salesPermitFile: "" }));
+                  }}
                   salesPermitFileError={fieldErrors.salesPermitFile}
                   paymentDraft={paymentDraft}
                   onPaymentChange={setPaymentDraft}

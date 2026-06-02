@@ -10,10 +10,11 @@
 > | B++ | Per-ticket payment config (`QuotePaymentConfig`) + checkout stepper + payment recording | ✅ Built (migrations 065, 066) |
 > | B++ | Admin → Payment tab (Wire/ACH/Zelle remittance settings) | ✅ Built — `components/admin/payment-section.tsx`, migration 065 |
 > | B+++ | Payment evidence queue + accountant role | ✅ Built (migrations 068, 071) — `/payments`, `record_payment`, customer proof upload |
+> | B++++ | Tax-exempt permit accountant approval | ✅ Built (migrations 103–106) — `/payments` tax-exempt tab, `approve_tax_exempt` / `deny_tax_exempt`, CRM history, public `tax_exempt_review_pending` when permit **file** on ticket; legacy permit-#-only queue on Payments |
 > | B+++ | Production / completed lifecycle + net terms auto-release | ✅ Built (migrations 069, 072) — in-production on **`/orders?tab=in_production`**, `/completed`, `maybe-auto-release-production.ts`, `markLeadWonOnProduction()` |
 > | B+++ | Quote-until-payment + balance on public link | ✅ Built — `maybe-convert-quote-to-order.ts`; confirm sets `client_confirmed` only; balance pay while in production |
 > | B+++ | Customer notifications (payment confirmed, invoice link, pickup ready) | ✅ Built — `payment-confirmed-template.ts`, `invoice-link-template.ts`, `order-ready-template.ts` |
-> | C | Stripe Card payment (online Checkout) | ✅ Built — Checkout + webhook evidence; accountant Confirm on `/payments` |
+> | C | Stripe Card payment (online Checkout) | ✅ Built — Checkout + webhook auto-approve (no `/payments` pending step) |
 | C-alt | Offline card via merchant terminal + authorization queue | ⏳ Planned — see [`offline-card-payment.md`](./offline-card-payment.md) |
 > | D | Zelle code matching | ⏳ Deferred |
 > | E | Dashboard revenue KPIs | ✅ Built — cash collected + released value; excludes `refund_status = full` |
@@ -147,10 +148,12 @@ The customer page derives a **portal phase** from ticket status + payment state 
 
 | State | Banner | Payment actions |
 |-------|--------|-----------------|
-| `ticket_status = cancelled` | Red — stored cancel reason | None (read-only) |
-| `refund_status = partial` \| `full` | Amber — contact sales rep | None (read-only) |
+| `ticket_status = cancelled` | Red — stored cancel reason | None (read-only); **full pricing hidden** on portal/PDF |
+| `refund_status = partial` \| `full` | Amber — contact sales rep | None (read-only); **refund amount only** (`total_refunded_amount`), no deposit/balance breakdown |
 
-See [`payment-refunds.md`](./payment-refunds.md).
+See [`payment-refunds.md`](./payment-refunds.md). Helpers: `lib/utils/public-invoice-document.ts`. **`ORD-*`** documents label as **INVOICE** even when cancelled (`ticketIsOrderStage`).
+
+**Tax-exempt under review:** Banner only when `tax_exempt_review_pending` from API (permit **file** on ticket, not reviewed). Legacy permit-#-only tickets do not show the banner until staff uploads the file.
 
 **Step 1 (price confirmation) display rules:**
 - **Confirm quote price** + **Customer must confirm the quote** — when approval required and not yet confirmed
@@ -174,6 +177,23 @@ Additional UX:
 5. `PATCH /api/tickets/[id]` with `{ record_payment: true, payment_mode: "deposit"|"balance"|"full", … }` — **accountant + admin only**; `payment_mode` inferred via `inferPaymentEvidenceMode()` (same rules as list **Payment For** column). Runs `maybeConvertQuoteToOrder()` then `maybeAutoReleaseProduction()`; sets `payment_evidence_reviewed_at` and **keeps** evidence URL/amount for audit; sends **payment confirmed** email/SMS. Order moves to **`/payments`** → **Approved** tab (evidence still viewable). **Back** on payment detail always returns to **`/payments`**. Open customer tabs on `/q/{token}` update via **Realtime broadcast** (no 30s polling).
 6. **Staff cash / offline auto-record** (receipt ID on ticket create/update): records payment immediately via `lib/utils/maybe-auto-record-cash-payment.ts` and logs **`ticket_payment_recorded`** (not `ticket_payment_evidence_submitted`) — counts toward Reports/dashboard **Cash Collected**. May auto-release when gates pass (respecting `ticket_require_client_confirm`).
 7. **Public cash** without evidence file may still auto-record and auto-release when gates pass (same activity type as staff cash when payment is immediate)
+
+### Tax-exempt permit workflow (Accountant) ✅
+
+Applies when the rep marks the quote **tax exempt** (migrations **103–106**). Separate from payment evidence — a ticket can appear on both queues.
+
+1. Rep attaches permit # + file on quote create/detail (`POST /api/tickets/[id]/sales-permit`); send validation requires both (`validate-quote-send.ts`).
+2. Ticket appears on **`/payments`** → **Tax-exempt pending** (`taxExemptOrders` in page-data). List UX mirrors evidence pending: **Submitted** (`sales_permit_submitted_at`), **View file**, inline **Confirm**.
+3. Accountant confirms in **`ApproveTaxExemptModal`** — side-by-side **If approved** vs **If denied** totals; optional collapsible total adjustments on approve; **Deny tax-exempt** (double-click) calls `deny_tax_exempt` (applies sales tax, clears exempt flag); **Approve** calls `approve_tax_exempt` and emails customer via `sendTaxExemptApproved`.
+4. Reviewed tickets merge into **`/payments`** → **Approved** tab (with payment-evidence-approved rows).
+5. **`record_payment`** and accountant **Mark completed** are blocked until permit **file** is on ticket and reviewed (`isTaxExemptApprovalPending`; admin may complete with `acknowledge_tax_exempt_unapproved: true`).
+6. **Public `/q/{token}`:** `tax_exempt_review_pending` only when exempt, permit **file** on ticket, and not reviewed; confirm/pay still allowed. Permit file is never exposed on the portal.
+7. **CRM:** customer profile **See more** → `GET /api/crm/customers/[id]/tax-exempt-history`. New quotes can reuse customer last permit (`POST .../sales-permit/reuse-from-customer`).
+8. Activities: `ticket_tax_exempt_approved`, `ticket_tax_exempt_denied`, `ticket_tax_exempt_confirmed_sent` (History + CRM).
+
+**Legacy orders (permit # only, no file):** Tickets created before migration **103** may have `sales_permit_number` without `sales_permit_storage_path`. They list on **Tax-exempt pending** with **File required**; staff upload on **Orders → [ref]** (Quote tab), then accountant **Confirm**. Public link does not show “under review” until a file exists. Helpers: `isLegacyTaxExemptMissingPermitFile`, `isTaxExemptReviewQueueItem` in `lib/utils/tax-exempt-approval.ts`.
+
+**Future (not built):** OTP resubmit portal, staff replace on payments, internal denial notes — [`docs/FuturePlan/tax-exempt-resubmit-portal/`](../FuturePlan/tax-exempt-resubmit-portal/README.md).
 
 ### Net terms auto-production
 
@@ -218,7 +238,10 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 | `POST /api/public/quotes/[token]/submit-payment` | None | Customer payment proof / cash submission |
 | `GET /api/public/quotes/[token]/pdf` | None | Customer PDF download — same `InvoicePDF` as staff (multi-shipping grid, SKU labels, file names) |
 | `GET /api/public/quotes/[token]/files/[fileId]` | None | Line/variant attachment stream for preview + download |
-| `GET /api/payments/page-data` | Accountant + Admin | Pending + approved + **refunded** lists + tab counts |
+| `GET /api/payments/page-data` | Accountant + Admin | Pending evidence + **tax-exempt pending** + merged approved + refunded + tab counts |
+| `GET /api/tickets/[id]/sales-permit` | Accountant + Admin | Signed URL for tax-exempt permit file |
+| `POST /api/tickets/[id]/sales-permit/reuse-from-customer` | Staff (`canMutateTicket`) | Copy customer last permit onto ticket |
+| `GET /api/crm/customers/[id]/tax-exempt-history` | CRM page access | Customer tax-exempt ticket history |
 | `POST /api/tickets/[id]/refund` | Accountant + Admin | Unified refund (manual + Stripe per payment slot) |
 | `GET /api/tickets/[id]/refund-evidence/[refundId]` | Accountant + Admin | Signed refund evidence file |
 | `GET /api/payments/pending` | Accountant + Admin | Legacy — pending queue only |
@@ -268,7 +291,7 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 | Route | Auth | Behaviour |
 |-------|------|-----------|
 | `POST /api/public/quotes/[token]/stripe/create-session` | None (token) | Creates Checkout for server-computed deposit/balance/full; blocked when cancelled or refunded |
-| `POST /api/payments/stripe/webhook` | Stripe signature | `checkout.session.completed` → sets Stripe PI/evidence fields; **does not** auto-record payment — accountant **Confirm** on `/payments` |
+| `POST /api/payments/stripe/webhook` | Stripe signature | `checkout.session.completed` → `applyStripeCheckoutSession` auto-approves payment (`payment_evidence_reviewed_at` set); updates totals; convert/release; **does not** queue on `/payments` pending |
 
 Migration `097_stripe_payment_columns.sql` stores session/PI/charge metadata on `job_tickets`.
 
@@ -333,7 +356,7 @@ In `components/quotes/quote-detail.tsx` action bar:
 | **Stripe** | `processStripeRefund` → `stripe.refunds.create({ payment_intent, amount })` → `applyTicketRefund` (`source: stripe`). Requires `payment_evidence_reviewed_at`. |
 | **Manual** | `applyTicketRefund` only; optional evidence upload → `refund-evidence` bucket. |
 | **Lists** | `refund_status` partial/full → Payment Evidence **Refunded** tab (Paid via / Refunded via columns); excluded from Production, Completed, active order tabs. **Cancelled** orders stay on Orders → Cancelled and on **Refunded** (Refunded + Cancelled badges). |
-| **Public `/q/{token}`** | Partial/full refund → amber banner; cancelled → red banner; no pay/confirm/Stripe. **Customer Link** + **Copy Link** on staff detail when `cancelled` + `public_token`. No customer refund-receipt confirmation in v1. |
+| **Public `/q/{token}`** | Partial/full refund → amber banner + refund-only totals; cancelled → red banner, pricing hidden; no pay/confirm/Stripe. **`ORD-*`** stays INVOICE label when cancelled. **Customer Link** + **Copy Link** on staff detail when `cancelled` + `public_token`. No customer refund-receipt confirmation in v1. |
 | **Revenue KPIs** | `refund_status = full` excluded from cash collected, released order value, reports awaiting collection (`excludeFullyRefundedFromRevenue`). Partial refunds still count until fully refunded. |
 | **Cancel** | Admin + Accountant; partial-refund warning modal before cancel-reason flow; `cancelled_at` on ticket. |
 
@@ -370,6 +393,13 @@ In `components/quotes/quote-detail.tsx` action bar:
 | `supabase/migrations/069_production_and_completed_pages.sql` | B+++ | ✅ Built | Production/completed page permissions |
 | `supabase/migrations/071_payment_evidence_amount.sql` | B+++ | ✅ Built | `payment_evidence_amount` while pending review |
 | `supabase/migrations/085_payment_evidence_reviewed_at.sql` | B+++ | ✅ Built | `payment_evidence_reviewed_at`; evidence retained after confirm; Payments Approved tab |
+| `supabase/migrations/103_sales_permit_file.sql` | B++++ | ✅ Built | Permit file columns on `job_tickets` |
+| `supabase/migrations/104_tax_exempt_approval.sql` | B++++ | ✅ Built | `sales_permit_reviewed_*`, `sales_permit_reused_from_customer` |
+| `supabase/migrations/105_customer_tax_exempt_last.sql` | B++++ | ✅ Built | Customer last permit for reuse + CRM |
+| `supabase/migrations/106_sales_permit_submitted_at.sql` | B++++ | ✅ Built | Submitted timestamp for Payments tax-exempt tab |
+| `lib/utils/tax-exempt-approval.ts` | B++++ | ✅ Built | Pending/review helpers + deny totals |
+| `lib/integrations/send-quote.ts` | B++++ | ✅ Built | `sendTaxExemptApproved` customer notification |
+| `components/orders/approve-tax-exempt-modal.tsx` | B++++ | ✅ Built | Approve/deny UI on `/payments` |
 | `supabase/migrations/084_sms_templates.sql` | — | ✅ Built | Admin-editable SMS/WhatsApp bodies (`sms_templates` table) |
 | `supabase/migrations/072_net_terms_auto_production.sql` | B+++ | ✅ Built | Net terms auto-release support |
 | `lib/integrations/send-quote.ts` | A | ✅ Built | Channel router — loads SMS bodies from DB (`load-sms-templates.ts`) |

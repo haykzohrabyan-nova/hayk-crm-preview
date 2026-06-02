@@ -77,6 +77,7 @@ Customer → Public Portal (/q/[token])
 Accountant → Payments (/payments)
   ├── Review offline payment evidence (wire, ACH, Zelle, check)
   ├── Confirm received amount → may trigger quote→order + production release
+  ├── Review tax-exempt sales permit (separate tab; approve or deny totals)
   (Stripe card payments auto-approve on webhook — no accountant step)
     │
     ▼
@@ -604,6 +605,10 @@ sales_permit_number text
 sales_permit_storage_path text   -- Supabase path in ticket-attachments bucket
 sales_permit_file_name text
 sales_permit_mime_type text
+sales_permit_submitted_at timestamptz   -- migration 106; set on POST sales-permit
+sales_permit_reviewed_at timestamptz    -- migration 104; accountant approve/deny stamp
+sales_permit_reviewed_by_id uuid FK → user_profiles
+sales_permit_reused_from_customer boolean NOT NULL DEFAULT false  -- migration 104
 quote_pre_tax_total numeric
 quote_tax_rate_percent numeric
 quote_tax_amount numeric
@@ -1309,6 +1314,46 @@ The permit file is **not** sent in `POST /api/tickets` body. It is uploaded afte
 
 Migration: `supabase/migrations/103_sales_permit_file.sql`.
 
+### Tax-exempt accountant approval (migrations 104–106)
+
+**When review is required:** `tax_exempt = true` and `sales_permit_storage_path` is set (`requiresTaxExemptAccountantReview` in `lib/utils/tax-exempt-approval.ts`). **Pending** until `sales_permit_reviewed_at` is set (`isTaxExemptApprovalPending`).
+
+**Legacy tickets (pre–migration 103):** `tax_exempt = true` with `sales_permit_number` but **no** `sales_permit_storage_path` (`isLegacyTaxExemptMissingPermitFile`). These appear on **Payments → Tax-exempt pending** with **File required**; **Confirm** is disabled until staff uploads via **Orders → [ref]** (Quote tab → Permit File, `POST /api/tickets/[id]/sales-permit`). `record_payment` / completion gates use `isTaxExemptApprovalPending` only (file required), so legacy rows are not blocked by `TAX_EXEMPT_APPROVAL_REQUIRED` until a file exists. Public portal does **not** show `tax_exempt_review_pending` without a file.
+
+| Migration | Adds |
+|-----------|------|
+| `104_tax_exempt_approval.sql` | `sales_permit_reviewed_at`, `sales_permit_reviewed_by_id`, `sales_permit_reused_from_customer` on `job_tickets` |
+| `105_customer_tax_exempt_last.sql` | `tax_exempt_last_*` + `tax_exempt_last_source_ticket_id` on `customers` (second FK to `job_tickets` — see embed note below) |
+| `106_sales_permit_submitted_at.sql` | `sales_permit_submitted_at` on `job_tickets` (set on permit upload; backfilled for existing files) |
+
+**Customer last permit (105):** On `approve_tax_exempt`, `syncCustomerTaxExemptFromApprovedTicket` copies the approved ticket’s permit metadata to `customers.tax_exempt_last_*`. New quotes can **reuse** via `POST /api/tickets/[id]/sales-permit/reuse-from-customer` (`lib/utils/customer-tax-exempt.ts`).
+
+**Invalidation:** A normal `PATCH` that changes any field in `TAX_EXEMPT_APPROVAL_INVALIDATING_FIELDS` (totals, `tax_exempt`, `sales_permit_number`, etc.) clears `sales_permit_reviewed_at` / `sales_permit_reviewed_by_id` when a prior review existed.
+
+**Accountant actions** (`PATCH /api/tickets/[id]`, `isPaymentStaffRole` only):
+
+| Body flag | Effect |
+|-----------|--------|
+| `approve_tax_exempt: true` | Sets `sales_permit_reviewed_*`, optional adjusted totals (`quote_final_total` required), syncs customer last permit, activity `ticket_tax_exempt_approved`, `sendTaxExemptApproved` + `ticket_tax_exempt_confirmed_sent`, `notifyPublicQuoteUpdated` |
+| `deny_tax_exempt: true` | Sets `tax_exempt: false`, recomputes tax via `computeTotalsIfTaxExemptDenied`, stamps `sales_permit_reviewed_*`, activity `ticket_tax_exempt_denied`, `notifyPublicQuoteUpdated` |
+
+**Gates (blocked while tax-exempt pending):**
+
+- `record_payment: true` → `400` `TAX_EXEMPT_APPROVAL_REQUIRED`
+- `ticket_status: "completed"` → same unless admin passes `acknowledge_tax_exempt_unapproved: true` (UI modal)
+
+**Payments UI (`/payments`):** Fourth tab **Tax-exempt pending** — same queue pattern as offline evidence (Submitted column, View file or **Upload file** link for legacy rows, inline Confirm → `ApproveTaxExemptModal`). `fetchPendingTaxExemptOrders` merges file-present rows (ordered by `sales_permit_submitted_at`) with legacy rows (ordered by `created_at`). **Approved** tab merges payment-evidence-approved rows with tax-exempt-reviewed rows (`fetchPaymentsPageData` in `lib/utils/fetch-payments-data.ts`). Detail: `TaxExemptReviewSection` on payment/order contexts (legacy warning + link to order); `context=payment` returns to `/payments` after confirm.
+
+**Staff file access:** `GET /api/tickets/[id]/sales-permit` — **accountant/admin only** (same policy as payment evidence). Sales/SDR use read-only banners on detail; no signed URL.
+
+**Public portal:** `GET /api/public/quotes/[token]` sets `tax_exempt_review_pending` when `tax_exempt`, `sales_permit_storage_path` is set, and `sales_permit_reviewed_at` is null. Customer can still confirm/pay; PDF uses the same rule (`taxExemptReviewPending` on public PDF route). No permit file on portal. Cancelled/refunded documents: `lib/utils/public-invoice-document.ts` (`ticketIsOrderStage`, `customerDocumentBanner`, `shouldHidePricingOnCustomerDocument`, `customerDocumentPaymentSummary`).
+
+**CRM:** `GET /api/crm/customers/[id]/tax-exempt-history` — tickets with `tax_exempt = true` + customer `tax_exempt_last_*` for **See more** modal (`components/crm/customer-tax-exempt-modal.tsx`).
+
+**PostgREST embed (migration 105):** Ticket list/detail queries must use `customer:customers!job_tickets_customer_id_fkey(...)` via `jobTicketCustomerEmbed()` — otherwise `PGRST201` (ambiguous FK). Nested `lead.customer` on `GET /api/tickets/[id]` uses unqualified `customers(...)` only.
+
+**Future (not shipped):** OTP resubmit portal, staff replace on payments tab, internal denial notes — [`docs/FuturePlan/tax-exempt-resubmit-portal/`](./FuturePlan/tax-exempt-resubmit-portal/README.md).
+
 ### `POST /api/tickets`
 
 Required: `ticket_kind`, `title`
@@ -1424,13 +1469,16 @@ Stripe payments therefore do **not** appear on the Payments **Pending** tab (onl
 
 ### Payments list (`/payments`)
 
-`GET /api/payments/page-data` — accountant/admin only
+`GET /api/payments/page-data` — accountant/admin only (`lib/utils/fetch-payments-data.ts`)
 
-| Tab | Filter |
-|-----|--------|
-| `pending` | Offline evidence submitted (`payment_evidence_submitted_at` set), not reviewed — excludes auto-approved Stripe |
-| `approved` | Evidence reviewed (`payment_evidence_reviewed_at` set) |
-| `refunded` | `refund_status` is partial or full |
+| Tab | Response key | Filter |
+|-----|----------------|--------|
+| Pending approval | `orders` | Offline evidence submitted, `payment_evidence_reviewed_at` null — excludes auto-approved Stripe |
+| Tax-exempt pending | `taxExemptOrders` | `tax_exempt`, `sales_permit_reviewed_at` null — **with file** (`sales_permit_storage_path` set) **or legacy** (no file, `sales_permit_number` set); merged in `fetchPendingTaxExemptOrders` |
+| Approved | `approvedOrders` | Merged: evidence reviewed **or** tax-exempt reviewed (deduped by ticket id, sorted by latest review time) |
+| Refunded | `refundedOrders` | `refund_status` partial or full |
+
+`counts`: `{ pending, tax_exempt, approved, refunded }` — badge on every tab.
 
 ### Refunds
 
@@ -1601,7 +1649,7 @@ Auth: session + `/crm` page permission
 
 **CRM visibility rule:** Only customers that have a qualifying lead (`leadQualifiesForCrm`: sales_status set OR `status = Routed to Sales`) OR any job ticket are shown. Pure unqualified leads are excluded.
 
-**Refresh:** `useCoalescedRefresh` on `bazaar:customers-changed`, `bazaar:leads-changed`, `bazaar:tickets-changed`
+**Refresh:** `useListPageData` — `bazaar:customers-changed`, `bazaar:leads-changed`, `bazaar:tickets-changed`; `ListRefreshingNotice` during background sync
 
 ### Customer status
 
@@ -1718,6 +1766,8 @@ Token: `job_tickets.public_token` (UUID on ticket creation)
 
 `GET /api/public/quotes/[token]` — rate-limited. Returns:
 - Safe ticket fields (no staff notes, no user IDs)
+- `tax_exempt_review_pending` — `tax_exempt` + permit file on ticket + not reviewed (banner only; confirm/pay not blocked)
+- **Cancelled / refunded display:** full pricing hidden when cancelled; refund-only block when `refund_status` partial/full (`shouldHidePricingOnCustomerDocument`); document label **INVOICE** for `ORD-*` even when `ticket_status = cancelled` (`ticketIsOrderStage`)
 - `line_items` (display rows: name, specs, price)
 - `shipping_destinations`
 - `company_settings` (name, logo, address, bank/Zelle for payment panel)
@@ -1761,13 +1811,14 @@ The portal shows different UI based on the ticket's current state:
 
 **PDF download:** `GET /api/public/quotes/[token]/pdf`
 - Same rendering as staff PDF, token auth, rate limited
+- Shares `public-invoice-document.ts` rules: no tax-exempt-under-review footnote without permit file; no payment-evidence-pending on cancelled/refunded; pricing/refund display aligned with portal
 
 ### Realtime updates (public portal)
 
 Uses **Supabase broadcast** (not `postgres_changes` — anonymous users can't access RLS-gated channels):
 
 - **Server side:** `notifyPublicQuoteUpdated(token)` — called after staff saves, payment flows, file uploads
-- **Client side:** subscribes to channel `public-quote:{token}`, event `updated` → debounces 300ms → refetch `GET /api/public/quotes/[token]`
+- **Client side:** subscribes to channel `public-quote:{token}`, event `updated` → refetch `GET /api/public/quotes/[token]` immediately (`setTimeout(0)` coalesce only)
 
 This ensures the portal auto-updates when:
 - Staff sends the quote (status → `sent`)
@@ -1795,7 +1846,7 @@ This ensures the portal auto-updates when:
 | GET | `/api/tickets/[id]/files/[fileId]` | `canAccessTicket` | 302 redirect to 60-second signed URL |
 | DELETE | `/api/tickets/[id]/files/[fileId]` | `canMutateTicket` | Deletes from storage + DB row |
 | POST | `/api/tickets/[id]/sales-permit` | `canMutateTicket` | Multipart `file`; replaces prior permit; updates `sales_permit_*` columns |
-| GET | `/api/tickets/[id]/sales-permit` | `canAccessTicket` | 302 redirect to 60-second signed URL (accepts reference code or UUID) |
+| GET | `/api/tickets/[id]/sales-permit` | `isPaymentStaffRole` | 302 redirect to 60-second signed URL (accepts reference code or UUID) |
 | DELETE | `/api/tickets/[id]/sales-permit` | `canMutateTicket` | Removes storage object + clears `sales_permit_*` columns |
 
 Line/variant file mutations call `notifyPublicQuoteUpdatedByTicketId` to refresh the public portal. Sales permit is staff-only (not shown on the customer portal).
@@ -1824,36 +1875,48 @@ The sidebar subscribes to Supabase `postgres_changes` on `leads`, `job_tickets`,
 | `bazaar:customers-changed` | `customers` |
 | `bazaar:refresh-counts` | After any mutation (sidebar + action handlers) |
 
-List pages use `useCoalescedRefresh` to subscribe to these events and trigger debounced data fetches.
+List pages use **`useListPageData`** (`hooks/use-list-page-data.ts` → `useStaleWhileRevalidate`) to subscribe to these events and refetch the active `GET …/page-data` URL.
 
-**Layer 2 — Detail pages (direct postgres_changes for specific ticket):**
+**Layer 2 — Detail pages:**
 
-`useTicketRealtimeSync(ticketId, onRefresh)`:
-- Supabase `postgres_changes` filtered to `id=eq.{ticketId}` on `job_tickets`
-- Supabase `postgres_changes` INSERT on `activities` for this ticket
-- Also listens: `bazaar:tickets-changed`, `bazaar:activities-changed` window events
-- Triggers debounced `onRefresh` callback (default 500ms debounce)
+- **Initial load:** `GET /api/tickets/[id]/page-data` — ticket + company settings + edit/action lookups + product catalog in one request (`lib/utils/fetch-ticket-detail.ts`).
+- **Silent refresh:** `GET /api/tickets/[id]` only (lighter than full bootstrap).
+- **`useTicketRealtimeSync(ticketId, onRefresh)`** — `postgres_changes` on this ticket + `activities` INSERT; also `bazaar:tickets-changed` / `bazaar:activities-changed`. Refetch delay **`REALTIME_REFETCH_MS` (0)**.
 
 **Layer 3 — Public portal (broadcast channel):**
 
 Admin client broadcasts to `public-quote:{token}` channel; anonymous browser subscribes. Used for portal updates without requiring RLS-gated postgres_changes access.
 
-### `useCoalescedRefresh` hook
+### `useListPageData` / `useStaleWhileRevalidate` (list pages — Jun 2026)
 
-```ts
-useCoalescedRefresh(
-  onRefresh: () => void,      // stable useCallback
-  deps: any[],
-  options: {
-    events: string[],         // window event names to subscribe to
-    mountDelay?: number,      // ms delay on initial mount fetch (default 50)
-    eventDelay?: number,      // debounce ms for event-triggered refresh (default 300)
-    enabled?: boolean
-  }
-)
-```
+| Module | Role |
+|--------|------|
+| `lib/client/list-page-cache.ts` | In-memory cache keyed by `prefix:url` (5 min TTL, max 48 entries) |
+| `lib/constants/realtime-refetch.ts` | `REALTIME_REFETCH_MS = 0`, `LIST_NAV_REVALIDATE_MS = 300` |
+| `hooks/use-stale-while-revalidate.ts` | SWR logic: per-key cache, in-flight dedupe, one queued follow-up fetch |
+| `hooks/use-list-page-data.ts` | Thin wrapper for `GET …/page-data` |
+| `lib/client/notify-list-data-changed.ts` | After mutation: optional prefix invalidate + window events |
+| `components/ui/mobile-list-card.tsx` | `ListRefreshingNotice` — “Updating” during silent refetch |
 
-Pattern used on all list pages for mount + event-driven silent refresh (no loading spinner flash).
+**Two refresh paths (do not mix):**
+
+| Trigger | Delay | UX |
+|---------|-------|-----|
+| Mount / tab switch **with cache hit** | `LIST_NAV_REVALIDATE_MS` (300ms) | Show cached rows immediately; background sync (skipped if realtime already fired) |
+| `bazaar:tickets-changed`, `bazaar:leads-changed`, `bazaar:customers-changed`, etc. | **0ms** | Start fetch immediately; cancel pending nav revalidate timer |
+| Mount **without cache** | `mountDelay` (~50ms) | Skeleton until first response |
+
+**Tab switch:** `useLayoutEffect` clears in-hook data when `cacheKey` changes so another tab’s rows never flash. List components clear local row state when `pageData` is null.
+
+**In-flight dedupe:** Only one `page-data` request per cache key at a time; burst realtime queues at most one extra silent refetch when the current request finishes.
+
+**Pause while editing:** Leads/Sales pass `enabled: !drawerLead` (Leads read-only drawer: `enabled: !drawerLead || drawerReadOnly`).
+
+### `useCoalescedRefresh` (legacy)
+
+`hooks/use-coalesced-refresh.ts` remains for reference; **tabbed list pages migrated to `useListPageData` (Jun 2026).** Default `eventDelay` is now **0** if used elsewhere.
+
+Table updates when the API returns (network latency still applies). Realtime means **no intentional app delay** before starting the request—not “zero network time.”
 
 ---
 
@@ -2107,6 +2170,12 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 | `format.ts` | `fmtDate`, `relativeTime`, `formatCurrency`, `digitsOnly` |
 | `pagination.ts` | Shared pagination helpers |
 | `validate-quote-send.ts` | `canSendQuote`, `getQuoteSendMissingFields` (tax-exempt: permit # + `hasSalesPermitFile`) |
+| `tax-exempt-approval.ts` | `requiresTaxExemptAccountantReview`, `isTaxExemptApprovalPending`, `isLegacyTaxExemptMissingPermitFile`, `isTaxExemptReviewQueueItem`, `canMarkTicketCompleted`, `computeTotalsIfTaxExemptDenied` |
+| `public-invoice-document.ts` | Customer portal/PDF banners, refund-only pricing, `ticketIsOrderStage`, evidence-pending suppression when cancelled/refunded |
+| `reference-codes.ts` | `ticketIsOrderStage` / `ticketIsQuoteStage` — `ORD-*` / `QUO-*` authoritative over `ticket_kind` for labels |
+| `customer-tax-exempt.ts` | Customer last permit sync, reuse copy to ticket |
+| `fetch-payments-data.ts` | Payments page-data: evidence + tax-exempt queues and merged approved list |
+| `ticket-list-select.ts` | `jobTicketCustomerEmbed()` — disambiguated customer embed after migration 105 |
 | `fetch-crm-data.ts` | CRM list with aggregated lead/ticket counts |
 
 ### Stripe (`lib/stripe/`)
@@ -2129,7 +2198,13 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 | `components/quotes/shared/line-item-attachment.tsx` | `LineItemFileThumbnail`, `LineItemAttachmentControl` |
 | `components/quotes/shared/quote-form.tsx` | Quote tab pricing/tax; sales permit # + file attachment UI |
 | `components/quotes/new-quote-form.tsx` | `/quotes/new` 4-tab wizard |
-| `app/api/tickets/[id]/sales-permit/route.ts` | Sales permit file GET/POST/DELETE |
+| `app/api/tickets/[id]/sales-permit/route.ts` | Sales permit file GET (accountant/admin) / POST / DELETE |
+| `app/api/tickets/[id]/sales-permit/reuse-from-customer/route.ts` | Copy customer last permit onto ticket |
+| `app/api/crm/customers/[id]/tax-exempt-history/route.ts` | CRM tax-exempt history for See more modal |
+| `components/orders/payments-page.tsx` | Payments tabs including tax-exempt pending |
+| `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny totals + optional adjust |
+| `components/orders/tax-exempt-review-section.tsx` | Payment/order detail tax-exempt review card |
+| `components/crm/customer-tax-exempt-modal.tsx` | CRM customer tax-exempt history |
 | `components/leads/verify-drawer.tsx` | SDR lead verification modal |
 | `components/sales/sales-drawer.tsx` | Sales pipeline lead modal |
 | `components/layout/sidebar.tsx` | Nav, badges, realtime subscriptions |
@@ -2163,9 +2238,14 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 
 | File | Purpose |
 |------|---------|
-| `hooks/use-coalesced-refresh.ts` | Debounced list page realtime refresh |
-| `hooks/use-ticket-realtime-sync.ts` | Ticket detail postgres_changes subscription |
+| `hooks/use-list-page-data.ts` | Tabbed list pages — SWR cache + page-data fetch |
+| `hooks/use-stale-while-revalidate.ts` | Core list SWR (in-flight dedupe, tab-key reset) |
+| `lib/client/list-page-cache.ts` | In-memory list cache (5 min TTL) |
+| `lib/client/notify-list-data-changed.ts` | Post-mutation cache clear + window events |
+| `lib/constants/realtime-refetch.ts` | `REALTIME_REFETCH_MS`, `LIST_NAV_REVALIDATE_MS` |
+| `hooks/use-coalesced-refresh.ts` | Legacy — superseded on list pages (Jun 2026) |
+| `hooks/use-ticket-realtime-sync.ts` | Ticket detail postgres_changes (0ms debounce) |
 
 ---
 
-*Last updated: 2026-06-02. Cross-reference `supabase/schema.sql`, `supabase/migrations/` (e.g. `103_sales_permit_file.sql`), and `docs/api-contract.md` for authoritative schema and API contracts.*
+*Last updated: 2026-06-02 (list SWR, detail bootstrap APIs, realtime 0ms, migration 107). Cross-reference `supabase/schema.sql`, `supabase/migrations/` (`103`–`107`), and `docs/api-contract.md`. Future resubmit portal: `docs/FuturePlan/tax-exempt-resubmit-portal/`.*

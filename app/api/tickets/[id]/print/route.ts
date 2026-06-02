@@ -5,7 +5,7 @@ import { fetchTicketLinesBundle, lineItemsToDisplayRows } from "@/lib/utils/tick
 import { formatShipToAddress } from "@/lib/utils/address";
 import { formatPhone } from "@/lib/utils/phone";
 import type { CompanySettings } from "@/lib/types";
-import { resolveTicketId } from "@/lib/utils/reference-codes";
+import { resolveTicketId, ticketIsOrderStage } from "@/lib/utils/reference-codes";
 import { requireSession } from "@/lib/auth/require-session";
 import { requireTicketDetailPageAccess } from "@/lib/auth/require-page-access";
 import { canAccessTicket } from "@/lib/utils/ticket-access";
@@ -59,7 +59,7 @@ export async function GET(
          discount_type, discount_value, discount_reason,
          quote_pre_tax_total, quote_tax_rate_percent, quote_tax_amount, quote_final_total,
          tax_exempt, quote_payment_types, quote_channel, quote_reminder_date, created_by_id,
-         customer:customers(first_name, last_name, company, email, phone)`
+         customer:customers!job_tickets_customer_id_fkey(first_name, last_name, company, email, phone)`
       )
       .eq("id", ticketId)
       .single(),
@@ -77,10 +77,10 @@ export async function GET(
   const company = rawCompany as CompanySettings | null;
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const isOrder =
-    ticket.ticket_status === "order" ||
-    ticket.ticket_status === "in_production" ||
-    ticket.ticket_status === "completed";
+  const isOrder = ticketIsOrderStage({
+    reference_code: ticket.reference_code as string | null,
+    ticket_kind: ticket.ticket_kind as string | null,
+  });
   const docType = isOrder ? "INVOICE" : "QUOTE";
 
   const cust = ticket.customer as unknown as {

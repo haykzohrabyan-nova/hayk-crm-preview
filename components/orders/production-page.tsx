@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Zap, ExternalLink } from "lucide-react";
-import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { useListPageData } from "@/hooks/use-list-page-data";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import {
   MobileListCard,
@@ -194,7 +194,6 @@ export function ProductionPage() {
     total: 0,
     hasMore: false,
   });
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
@@ -211,28 +210,35 @@ export function ProductionPage() {
     setOffset(0);
   }, [tab, debouncedSearch, pageSize]);
 
-  const fetchPageData = useCallback((silent = false) => {
-    if (!silent) setLoading(true);
+  const pageDataUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (tab !== "all") params.set("tab", tab);
     if (debouncedSearch) params.set("search", debouncedSearch);
     params.set("limit", String(pageSize));
     params.set("offset", String(offset));
     const qs = params.toString();
-    fetch(`/api/production/page-data${qs ? `?${qs}` : ""}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.orders) setOrders(d.orders);
-        if (d.counts) setTabCounts(d.counts);
-        if (d.pagination) setPagination(d.pagination);
-      })
-      .catch(() => {})
-      .finally(() => { if (!silent) setLoading(false); });
+    return `/api/production/page-data${qs ? `?${qs}` : ""}`;
   }, [tab, debouncedSearch, offset, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [tab, debouncedSearch, offset, pageSize], {
+  const { data: pageData, loading, refreshing } = useListPageData<{
+    orders?: ProductionOrder[];
+    counts?: Record<string, number>;
+    pagination?: PaginationMeta;
+  }>({
+    prefix: "production",
+    url: pageDataUrl,
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
+
+  useEffect(() => {
+    if (!pageData) {
+      setOrders([]);
+      return;
+    }
+    if (pageData.orders) setOrders(pageData.orders);
+    if (pageData.counts) setTabCounts(pageData.counts);
+    if (pageData.pagination) setPagination(pageData.pagination);
+  }, [pageData]);
 
   function handlePageSizeChange(size: ListPageSize) {
     writeStoredListPageSize(size);
@@ -276,6 +282,7 @@ export function ProductionPage() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search orders…"
+        refreshing={refreshing}
       />
 
       {/* Desktop table */}

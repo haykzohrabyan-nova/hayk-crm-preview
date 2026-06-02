@@ -56,6 +56,9 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; label: string; co
   ticket_payment_refund:       { icon: RotateCcw,     label: "Payment refunded",           color: "var(--color-warning)" },
   ticket_stripe_refund:        { icon: RotateCcw,     label: "Card payment refunded",      color: "var(--color-warning)" },
   ticket_payment_confirmed_sent:{ icon: Send,         label: "Payment confirmation sent",  color: "var(--color-info-text)" },
+  ticket_tax_exempt_approved:    { icon: BadgeCheck,   label: "Tax-exempt approved",        color: "var(--color-success)" },
+  ticket_tax_exempt_denied:      { icon: XCircle,      label: "Tax-exempt denied",          color: "var(--color-danger)" },
+  ticket_tax_exempt_confirmed_sent:{ icon: Send,       label: "Tax-exempt approval sent",   color: "var(--color-info-text)" },
   ticket_production_released:  { icon: Factory,       label: "Released to production",     color: "var(--color-info-text)" },
   ticket_won:                  { icon: BadgeCheck,    label: "Quote won / converted",      color: "var(--color-success)" },
   ticket_cancelled:            { icon: XCircle,       label: "Ticket cancelled",           color: "var(--color-danger)" },
@@ -156,6 +159,33 @@ function activityDetail(a: ActivityRow): string | null {
     const amount = fmtMoney(p.amount);
     const method = p.method ? (METHOD_LABELS[String(p.method)] ?? String(p.method)) : null;
     return [amount, method].filter(Boolean).join(" · ") || "Awaiting accountant review";
+  }
+  if (a.type === "ticket_tax_exempt_approved") {
+    const pl = p as Record<string, unknown>;
+    const total = fmtMoney(pl.quote_final_total);
+    const prev = fmtMoney(pl.previous_final_total);
+    const reviewer = pl.reviewed_by_name ? String(pl.reviewed_by_name) : null;
+    return [total && prev && total !== prev ? `${prev} → ${total}` : total, reviewer ? `by ${reviewer}` : null]
+      .filter(Boolean)
+      .join(" · ") || null;
+  }
+  if (a.type === "ticket_tax_exempt_denied") {
+    const pl = p as Record<string, unknown>;
+    const total = fmtMoney(pl.quote_final_total);
+    const prev = fmtMoney(pl.previous_final_total);
+    const rate = pl.quote_tax_rate_percent != null ? `${pl.quote_tax_rate_percent}% tax applied` : null;
+    const reviewer = pl.reviewed_by_name ? String(pl.reviewed_by_name) : null;
+    return [
+      prev && total ? `${prev} → ${total}` : total,
+      rate,
+      reviewer ? `by ${reviewer}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ") || null;
+  }
+  if (a.type === "ticket_tax_exempt_confirmed_sent") {
+    const total = fmtMoney((p as Record<string, unknown>).new_final_total);
+    return total ? `Notified customer · ${total}` : "Customer notified";
   }
   if (a.type === "ticket_payment_recorded") {
     const amount = fmtMoney(p.amount);

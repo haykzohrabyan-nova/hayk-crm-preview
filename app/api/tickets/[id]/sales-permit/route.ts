@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { requireTicketDetailPageAccess } from "@/lib/auth/require-page-access";
+import { isPaymentStaffRole } from "@/lib/auth/role-checks";
 import { canAccessTicket, canMutateTicket } from "@/lib/utils/ticket-access";
 import { resolveTicketId } from "@/lib/utils/reference-codes";
 import {
@@ -12,6 +13,8 @@ import {
   deleteTicketAttachment,
   createTicketAttachmentSignedUrl,
 } from "@/lib/utils/ticket-line-files";
+import { notifyPublicQuoteUpdatedByTicketId } from "@/lib/integrations/notify-public-quote-updated";
+import { refreshCustomerTaxExemptFileFromTicket } from "@/lib/utils/customer-tax-exempt";
 
 export const runtime = "nodejs";
 
@@ -28,8 +31,10 @@ export async function GET(_request: NextRequest, { params }: Params) {
   const { id: rawId } = await params;
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
-  const pageDeny = await requireTicketDetailPageAccess(userId, roleName);
-  if (pageDeny) return pageDeny;
+
+  if (!isPaymentStaffRole(roleName)) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
 
   const admin = createAdminClient();
   const ticketId = await resolveTicketId(admin, rawId);
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   const { data: ticket } = await admin
     .from("job_tickets")
-    .select("id, created_by_id, sales_permit_storage_path")
+    .select("id, created_by_id, customer_id, sales_permit_storage_path, sales_permit_number")
     .eq("id", ticketId)
     .maybeSingle();
 
@@ -113,6 +118,10 @@ export async function POST(request: NextRequest, { params }: Params) {
       sales_permit_storage_path: storagePath,
       sales_permit_file_name: file.name,
       sales_permit_mime_type: mimeType,
+      sales_permit_submitted_at: now,
+      sales_permit_reviewed_at: null,
+      sales_permit_reviewed_by_id: null,
+      sales_permit_reused_from_customer: false,
       updated_at: now,
     })
     .eq("id", ticketId);
@@ -120,6 +129,17 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
   }
+
+  if (ticket.customer_id) {
+    await refreshCustomerTaxExemptFileFromTicket(admin, ticket.customer_id, {
+      sales_permit_storage_path: storagePath,
+      sales_permit_file_name: file.name,
+      sales_permit_mime_type: mimeType,
+      sales_permit_number: ticket.sales_permit_number,
+    });
+  }
+
+  notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
 
   return NextResponse.json({ ok: true, file_name: file.name, mime_type: mimeType });
 }
@@ -139,7 +159,7 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
 
   const { data: ticket } = await admin
     .from("job_tickets")
-    .select("id, created_by_id, sales_permit_storage_path")
+    .select("id, created_by_id, customer_id, sales_permit_storage_path, sales_permit_number")
     .eq("id", ticketId)
     .maybeSingle();
 
@@ -159,6 +179,9 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
       sales_permit_storage_path: null,
       sales_permit_file_name: null,
       sales_permit_mime_type: null,
+      sales_permit_submitted_at: null,
+      sales_permit_reviewed_at: null,
+      sales_permit_reviewed_by_id: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", ticketId);
@@ -166,6 +189,8 @@ export async function DELETE(_request: NextRequest, { params }: Params) {
   if (updateErr) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
   }
+
+  notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
 
   return NextResponse.json({ ok: true });
 }

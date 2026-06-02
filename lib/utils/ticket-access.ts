@@ -77,6 +77,7 @@ const ACCOUNTANT_PAYMENT_PATCH_KEYS = new Set([
   "cancel_reason",
   "cancel_notes",
   "acknowledge_outstanding_balance",
+  "acknowledge_tax_exempt_unapproved",
   "activity_by_role",
 ]);
 
@@ -86,6 +87,8 @@ export function canAccountantMutateTicket(
   existing: { ticket_status: string },
 ): boolean {
   if (body.record_payment === true) return true;
+  if (body.approve_tax_exempt === true) return true;
+  if (body.deny_tax_exempt === true) return true;
   if (body.ticket_status === "cancelled" && existing.ticket_status !== "cancelled") return true;
   if (body.ticket_status === "completed" && existing.ticket_status === "in_production") return true;
 

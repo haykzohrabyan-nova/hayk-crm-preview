@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package, FilePlus, UserPlus } from "lucide-react";
+import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package, FilePlus, UserPlus, ScrollText } from "lucide-react";
+import { CustomerTaxExemptModal } from "@/components/crm/customer-tax-exempt-modal";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
@@ -590,6 +591,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
   const [sourceLabels, setSourceLabels] = useState<Record<string, string>>({});
   const [industries, setIndustries] = useState<LookupOption[]>([]);
   const [editOpen, setEditOpen] = useState(false);
+  const [taxExemptModalOpen, setTaxExemptModalOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [isSdr, setIsSdr] = useState(false);
@@ -746,6 +748,14 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
             >
               <FilePlus className="h-3.5 w-3.5" />
               Add Quote
+            </button>
+            <button
+              onClick={() => setTaxExemptModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80"
+              style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+            >
+              <ScrollText className="h-3.5 w-3.5" />
+              See more
             </button>
             <button
               onClick={() => setEditOpen(true)}
@@ -907,6 +917,12 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
           showToast={showToast}
         />
       )}
+
+      <CustomerTaxExemptModal
+        customerId={customerId}
+        open={taxExemptModalOpen}
+        onClose={() => setTaxExemptModalOpen(false)}
+      />
 
       {toast && <ToastBanner message={toast.message} type={toast.type} onDismiss={() => setToast(null)} />}
     </div>

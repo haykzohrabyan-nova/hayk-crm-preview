@@ -32,7 +32,7 @@
 | `QUO-YYYY-NNNN` | Quote-stage record | `quote` |
 | `ORD-YYYY-NNN` | Order-stage record | `order` |
 
-**Source of truth:** `reference_code` prefix wins over `ticket_kind` in UI helpers (`ticketIsQuoteStage()`, `resolveTicketQuoteStage()` in `lib/utils/reference-codes.ts` and `lib/utils/ticket-lifecycle-timeline.ts`). API create/update enforces alignment via `ticketKindForReference()` on `POST /api/tickets` and `PATCH /api/tickets/[id]`. `maybeConvertQuoteToOrder()` aborts if `ORD-*` assignment fails (no `ticket_kind: order` while reference stays `QUO-*`).
+**Source of truth:** `reference_code` prefix wins over `ticket_kind` in UI helpers (`ticketIsQuoteStage()`, `ticketIsOrderStage()`, `resolveTicketQuoteStage()` in `lib/utils/reference-codes.ts` and `lib/utils/ticket-lifecycle-timeline.ts`). Public customer portal/PDF use `ticketIsOrderStage()` so cancelled `ORD-*` tickets still display as **INVOICE**. API create/update enforces alignment via `ticketKindForReference()` on `POST /api/tickets` and `PATCH /api/tickets/[id]`. `maybeConvertQuoteToOrder()` aborts if `ORD-*` assignment fails (no `ticket_kind: order` while reference stays `QUO-*`).
 - `in_production` — released to shop floor (`production_released_at` set). Partial orders may owe balance. **Linked lead `sales_status` → `Won`** via `markLeadWonOnProduction()`.
 - `completed` — finished; customer notified (email/SMS pickup message with same `/q/{token}` URL); public page shows **Ready for pickup**
 - `cancelled` — terminal; **Admin + Accountant** cancel with reason (`cancelled_at` set). **List placement:** quote-stage (`ticket_kind = 'quote'`) → `/quotes` **Cancelled** tab; order-stage (`ticket_kind = 'order'`) → `/orders` **Cancelled** tab (includes fully refunded then cancelled). Record and payment audit fields are retained.
@@ -96,13 +96,13 @@ A new quote can be started from three places. The entry point controls the UI sh
 **Routed to Sales tab columns:** Contact, Title, Total (warning color), Routed By (SDR name), Date, Action button
 
 **Action button in Routed tab:**
-- **Sales / Admin** — "Claim" button → `PATCH /api/tickets/[id]` with `{ claim_ownership: true }` → sets `ticket_status = 'draft'`, `created_by_id = claimant`, redirects to quote detail
+- **Sales / Admin** — "Claim" button → `PATCH /api/tickets/[id]` with `{ claim_ownership: true }` → sets `ticket_status = 'draft'`, `created_by_id = claimant`, redirects to quote detail. **`409` `ALREADY_CLAIMED`** if another rep claimed first (`UPDATE … WHERE ticket_status = 'routed'`). Success clears quotes list cache via `notifyListDataChanged`.
 - **Live refresh (May 2026):** Other Sales users on this tab refresh when a colleague claims or when an SDR routes a new HVT quote — requires migration **`086_job_tickets_routed_realtime_rls.sql`** (`sales_read_routed_tickets` RLS + Realtime-safe `admin_read_all_tickets`). `quotes-page.tsx` also subscribes to `job_tickets` + `activities` INSERT; sidebar dispatches `bazaar:tickets-changed` on claim activities. **Why it broke:** `job_tickets` RLS only allowed `created_by_id = auth.uid()`, so non-owner Sales never received Realtime for SDR-owned routed rows; post-claim UPDATE is still invisible to others (row no longer `routed`) — claim is signaled via `activities` INSERT (`order_ticket_status_changed`, `action: claimed`).
 - **SDR** — "View" button → navigates to `/quotes/[id]` in read-only mode with a yellow banner
 
 **Routed tab banner:**
-- **Sales / Admin:** "These quotes were created by SDR users but exceed the high-value threshold. Claim one to take ownership and complete it."
-- **SDR:** "These quotes exceeded the high-value threshold and were handed off to Sales. You can view them in read-only mode."
+- **SDR:** optional amber banner — "These quotes exceeded the high-value threshold and were handed off to Sales. You can view them in read-only mode."
+- **Sales/Admin:** no tab-level explainer banner (Jun 2026)
 
 ### Sidebar badge (`/quotes`)
 
@@ -473,6 +473,12 @@ No login. Staff can open the same URL to preview the customer experience.
 ### Live updates (May 29)
 
 Customer tabs on `/q/[token]` subscribe to Supabase **Realtime broadcast** on channel `public-quote:{public_token}` (event `updated`). Staff saves, payment confirm, file upload/delete, and customer payment submit trigger `notifyPublicQuoteUpdatedByTicketId()` — debounced silent `GET /api/public/quotes/{token}` refetch. **No HTTP polling.** See `docs/realtime-live-updates.md`.
+
+### Document type, tax-exempt, cancelled/refunded (Jun 2026)
+
+- **Quote vs invoice label:** `ticketIsOrderStage()` — `ORD-*` shows **INVOICE** even when `ticket_status = cancelled` (reference prefix over `ticket_kind`).
+- **Tax-exempt review banner:** Shown only when API `tax_exempt_review_pending` is true (`tax_exempt` + permit file on ticket + not reviewed). Pre–migration 103 tickets with permit # only do not show “under review” until staff uploads a file.
+- **Cancelled / refunded pricing:** `shouldHidePricingOnCustomerDocument()` — cancelled hides full totals; partial/full refund shows **Amount Refunded** only. Payment-evidence “under review” suppressed when cancelled/refunded (`customerDocumentPaymentSummary`). Shared with `GET /api/public/quotes/[token]/pdf`.
 
 ### Shipping addresses (May 2026)
 

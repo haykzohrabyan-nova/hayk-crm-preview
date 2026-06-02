@@ -21,6 +21,8 @@ import {
   DetailSection,
 } from "@/components/quotes/quote-detail/detail-layout-primitives";
 import { StripeEvidencePanel } from "@/components/ui/stripe-evidence-panel";
+import { TaxExemptReviewSection, type TaxExemptReviewTicket } from "@/components/orders/tax-exempt-review-section";
+import { isTaxExemptApprovalPending } from "@/lib/utils/invoice-payment-summary";
 
 const CHANNEL_LABELS: Record<string, string> = {
   wire:    "Wire Transfer",
@@ -48,11 +50,14 @@ export function PaymentDetailOverview({
   ticket,
   readOnly = false,
   defaultOpen = false,
+  afterApprovePath = null,
 }: {
   ticket: SummaryTicket & PricingTicketFields & { id: string };
   readOnly?: boolean;
   /** When false, payment review starts collapsed (order detail). Payments queue passes true. */
   defaultOpen?: boolean;
+  /** Navigate after tax-exempt confirm (e.g. `/payments` on payment detail). */
+  afterApprovePath?: string | null;
 }) {
   const router = useRouter();
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
@@ -60,7 +65,8 @@ export function PaymentDetailOverview({
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
 
   const evidencePending = isPaymentEvidencePending(ticket);
-  const canConfirm = !readOnly && evidencePending;
+  const taxExemptPending = isTaxExemptApprovalPending(ticket);
+  const canConfirm = !readOnly && evidencePending && !taxExemptPending;
   const claimed = submittedAmount(ticket);
 
   function openConfirmModal() {
@@ -116,6 +122,16 @@ export function PaymentDetailOverview({
 
   return (
     <DetailSection>
+      <TaxExemptReviewSection
+        ticket={ticket as TaxExemptReviewTicket}
+        readOnly={readOnly}
+        defaultOpen={defaultOpen}
+        embedded
+        afterApprovePath={afterApprovePath}
+        onApproved={() => {
+          if (!afterApprovePath) router.refresh();
+        }}
+      />
       <DetailCollapsibleSection title={sectionTitle} defaultOpen={defaultOpen}>
         <div className="space-y-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -208,7 +224,7 @@ export function PaymentDetailOverview({
             </div>
           )}
 
-          <PricingPaymentSummary ticket={ticket} reviewPending={evidencePending} />
+          <PricingPaymentSummary ticket={ticket} reviewPending={evidencePending || taxExemptPending} />
 
           <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
             {evidencePending

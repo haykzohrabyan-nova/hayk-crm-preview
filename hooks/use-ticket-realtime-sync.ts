@@ -2,10 +2,12 @@
 
 import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { REALTIME_REFETCH_MS } from "@/lib/constants/realtime-refetch";
 
 type TicketRealtimeSyncOptions = {
   /** When false, subscriptions are torn down (e.g. while user is editing). */
   enabled?: boolean;
+  /** Burst coalesce only; default 0 — no delay before refresh. */
   debounceMs?: number;
 };
 
@@ -22,7 +24,7 @@ export function useTicketRealtimeSync(
   onRefreshRef.current = onRefresh;
 
   const enabled = options?.enabled ?? true;
-  const debounceMs = options?.debounceMs ?? 300;
+  const debounceMs = options?.debounceMs ?? REALTIME_REFETCH_MS;
 
   useEffect(() => {
     if (!ticketId || !enabled) return;

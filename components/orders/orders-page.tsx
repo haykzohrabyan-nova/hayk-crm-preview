@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { useListPageData } from "@/hooks/use-list-page-data";
 import {
   MobileListCard,
   MobileListCardRow,
@@ -28,6 +28,7 @@ import {
   relativeTime,
 } from "@/lib/utils/format";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { taxExemptListLabel, taxExemptListStyle } from "@/lib/utils/tax-exempt-list-label";
 import { paymentEvidenceAwaitingConfirmationLabel } from "@/lib/utils/payment-evidence-type";
 import type { OrderListStatusTone } from "@/lib/utils/order-list-status";
 import { createClient } from "@/lib/supabase/client";
@@ -67,6 +68,9 @@ interface OrderTicket {
   reference_code: string | null;
   quote_final_total: number | null;
   payment_amount_received: number | null;
+  tax_exempt?: boolean;
+  sales_permit_storage_path?: string | null;
+  sales_permit_reviewed_at?: string | null;
   priority: string | null;
   due_date: string | null;
   rush: boolean;
@@ -103,6 +107,11 @@ function paymentDisplay(o: OrderTicket): { bg: string; text: string; label: stri
   const refundStatus = o.refund_status ?? "none";
   if (refundStatus === "partial" || refundStatus === "full") {
     return REFUND_PAYMENT_STYLE[refundStatus] ?? PAYMENT_STYLE.unpaid;
+  }
+  const taxLabel = taxExemptListLabel(o);
+  if (taxLabel) {
+    const style = taxExemptListStyle(o)!;
+    return { bg: style.bg, text: style.text, label: taxLabel };
   }
   if (isPaymentEvidencePending(o)) {
     return {
@@ -563,7 +572,6 @@ export default function OrdersPage() {
     total: 0,
     hasMore: false,
   });
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
@@ -625,8 +633,7 @@ export default function OrdersPage() {
     setOffset(0);
   }
 
-  const fetchPageData = useCallback((silent = false) => {
-    if (!silent) setLoading(true);
+  const pageDataUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (tab !== "all") params.set("tab", tab);
     if (debouncedSearch) params.set("search", debouncedSearch);
@@ -639,20 +646,28 @@ export default function OrdersPage() {
     params.set("offset", String(offset));
     appendAdminFilterUserId(params, isAdmin ? "admin" : null, filterUserId);
     const qs = params.toString();
-    fetch(`/api/orders/page-data${qs ? `?${qs}` : ""}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.orders) setOrders(d.orders);
-        if (d.counts) setTabCounts(d.counts);
-        if (d.pagination) setPagination(d.pagination);
-      })
-      .catch(() => {})
-      .finally(() => { if (!silent) setLoading(false); });
+    return `/api/orders/page-data${qs ? `?${qs}` : ""}`;
   }, [filterUserId, isAdmin, tab, debouncedSearch, dateRange, offset, pageSize, sortField]);
 
-  useCoalescedRefresh(fetchPageData, [filterUserId, isAdmin, tab, debouncedSearch, dateFilter, offset, pageSize, sortField], {
+  const { data: pageData, loading, refreshing } = useListPageData<{
+    orders?: OrderTicket[];
+    counts?: Record<string, number>;
+    pagination?: PaginationMeta;
+  }>({
+    prefix: "orders",
+    url: pageDataUrl,
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
+
+  useEffect(() => {
+    if (!pageData) {
+      setOrders([]);
+      return;
+    }
+    if (pageData.orders) setOrders(pageData.orders);
+    if (pageData.counts) setTabCounts(pageData.counts);
+    if (pageData.pagination) setPagination(pageData.pagination);
+  }, [pageData]);
 
   function handlePageSizeChange(size: ListPageSize) {
     writeStoredListPageSize(size);
@@ -689,6 +704,7 @@ export default function OrdersPage() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search orders…"
+        refreshing={refreshing}
         endAdornment={
           isAdmin ? (
             <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />

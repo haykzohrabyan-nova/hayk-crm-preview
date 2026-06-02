@@ -2,7 +2,7 @@
 
 > **Audience:** Any developer picking up the next round of performance work.
 > **Status:** Planning doc — P0/P1 items marked ✅ below were implemented 2026-05-26 (see [performance-optimization.md](./performance-optimization.md)).
-> **Last updated:** 2026-05-26
+> **Last updated:** 2026-06-02
 
 ---
 
@@ -30,15 +30,18 @@ See [performance-optimization.md](./performance-optimization.md) for full detail
 | ✅ Scoped slim list APIs | `/orders`, `/quotes`, `/production`, `/payments`, `/completed` |
 | ✅ SQL `{ count: "exact", head: true }` | All tab + sidebar count routes |
 | ✅ Sidebar-only Realtime for tickets | All ticket list pages |
-| ✅ Debounced sidebar badges (~300 ms) | Global |
+| ✅ Sidebar badges — immediate on `bazaar:refresh-counts` | Global (Jun 2026) |
 | ✅ Slim leads workspace + full lead on drawer open | `/leads`, `/sales` |
 | ✅ Slim CRM list + silent realtime refresh | `/crm` |
-| ✅ Coalesced mount + realtime refetch (`useCoalescedRefresh`) | All ticket + lead list pages |
+| ✅ List SWR + immediate realtime (`useListPageData`) | All tabbed list pages |
 | ✅ Combined `page-data` endpoints | Production, Orders, Quotes, Payments, Completed, Leads, Sales |
 | ✅ Session memoization (~3 s) | `lib/auth/session-cache.ts` |
 | ✅ Role-scoped sidebar counts (`?routes=`) | Global sidebar |
 | ✅ Lazy modal bootstrap (lookups, admin users) | Leads, Sales |
-| ✅ Migration `073_performance_indexes.sql` | Orders, production, leads counts |
+| ✅ Migration `107_performance_indexes.sql` | Orders, production, leads counts (073 documented but never in repo) |
+| ✅ In-memory stale-while-revalidate list cache | All tabbed list pages (`useListPageData`, `lib/client/list-page-cache.ts`) |
+| ✅ Ticket detail + new-quote bootstrap APIs | `GET /api/tickets/[id]/page-data`, `GET /api/quotes/form-bootstrap` |
+| ✅ Sales + Payments server pagination | `/sales`, `/payments` |
 
 ---
 
@@ -75,7 +78,7 @@ One auth pass, one serverless invocation, parallel DB queries inside the handler
 
 ---
 
-### P0 — Coalesced refetch on all ticket list pages ✅ Done 2026-05-26
+### P0 — List SWR + coalesced refetch on all list pages ✅ Done 2026-05-26 / SWR Jun 2026
 
 **Problem:** React Strict Mode double-mounts effects in dev → duplicate list + counts fetches.
 
@@ -187,7 +190,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 
 | On load / Realtime | Endpoint | Notes |
 |--------------------|----------|-------|
-| Mount + Realtime (debounced) | `GET /api/sidebar-counts?routes=…` | Role-scoped subset of visible nav routes only |
+| Mount + Realtime (immediate) | `GET /api/sidebar-counts?routes=…` | Role-scoped subset of visible nav routes only |
 
 **Any-doer tasks:**
 
@@ -205,7 +208,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 **Any-doer tasks:**
 
 - [x] **P0** `GET /api/production/page-data` → `{ orders, counts, pagination }`
-- [x] Coalesced refetch (`useCoalescedRefresh`)
+- [x] List SWR (`useListPageData`) — `/production` UI redirects to `/orders?tab=in_production`
 - [x] **P2** List pagination + server-side tab/search filters
 
 ---
@@ -219,7 +222,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 **Any-doer tasks:**
 
 - [x] **P0** `GET /api/orders/page-data`
-- [x] **P0** Coalesced refetch pattern
+- [x] **P0** `useListPageData` (SWR + realtime)
 - [x] **P1** Dedicated `GET /api/orders/counts`
 - [x] **P2** List pagination + column sort
 
@@ -234,7 +237,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 **Any-doer tasks:**
 
 - [x] **P0** `GET /api/quotes/page-data` with quote-stage counts only
-- [x] **P0** Coalesced refetch
+- [x] **P0** `useListPageData`
 - [x] Split `GET /api/quotes/counts` (quote-stage counts only)
 - [x] **P2** List pagination + server-side filters
 
@@ -249,7 +252,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 **Any-doer tasks:**
 
 - [x] **P0** `page-data` endpoint
-- [x] Coalesced refetch
+- [x] `useListPageData`
 - [ ] **P2** Share cache key with accountant dashboard if using SWR
 
 ---
@@ -262,7 +265,7 @@ Do **not** expect RAM upgrade alone to fix ~750 ms on 1 kB responses.
 
 **Any-doer tasks:**
 
-- [x] **P0** Coalesced refetch
+- [x] **P0** `useListPageData`
 - [x] `GET /api/completed/page-data`
 - [x] **P2** Pagination + server-side search/date filters
 
@@ -377,7 +380,7 @@ Multiple sections each fetch independently on tab open. Lower priority (admin-on
 | Priority | Item | Impact | Effort | Status |
 |----------|------|--------|--------|--------|
 | **P0** | Combined `page-data` endpoints | High (~40% load time) | Medium | ✅ Done |
-| **P0** | Coalesced refetch | Medium (dev + mount) | Low | ✅ Done |
+| **P0** | List SWR (`useListPageData`) | High (nav + realtime) | Medium | ✅ Done |
 | **P1** | Dedicated per-page count routes | Medium | Low | ✅ Done (orders, quotes) |
 | **P1** | Lazy-load modal/drawer bootstrap data | Medium | Low | ✅ Done (leads, sales) |
 | **P1** | Session memoization | Medium–High (burst) | Medium | ✅ Done |
@@ -435,15 +438,14 @@ Run in **production build** (`npm run build && npm start`) — dev Strict Mode e
 
 - [performance-optimization.md](./performance-optimization.md) — Phase 1–3 core (complete)
 - [../../architecture.md](../../architecture.md) — Scoped list + page-data table
-- [../../realtime-live-updates.md](../../realtime-live-updates.md) — Event bus + `useCoalescedRefresh`
+- [../../realtime-live-updates.md](../../realtime-live-updates.md) — Event bus + `useListPageData`
 - [../../TODO.md](../../TODO.md) — [TODO-007 Phase 3 core DONE](../../TODO.md#todo-007--performance-phase-3-optional-remainder)
 
 ---
 
 ## Suggested implementation order (remaining work)
 
-1. **SWR / React Query** — cache list page-data for back-navigation
-2. **Pagination** — **Orders, Quotes, Completed, Production shipped (May 2026)**; extend to Leads, Sales, CRM, Payments when lists grow
-3. **CRM server search** — `?search=` + pagination on `GET /api/customers`
-4. **Detail bootstrap bundle** — ticket + company in one request for first paint
-5. **Infra** — Vercel Pro, Supabase pooler if concurrent load grows
+1. **CRM materialized aggregates** — when customer count > ~1000
+2. **TanStack Query** — optional; behavior equivalent to custom SWR today
+3. **Wire `notifyListDataChanged`** after more mutations (beyond routed claim)
+4. **Infra** — Vercel Pro keep-warm, Supabase pooler if concurrent load grows

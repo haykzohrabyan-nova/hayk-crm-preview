@@ -28,3 +28,11 @@ export const mapLinkStyle = {
   textDecoration: "none",
   cursor: "pointer",
 } as const;
+
+/** Public quote contact row — one line per link; hit target is text width only. */
+export const publicContactLinkStyle = {
+  ...mapLinkStyle,
+  display: "block",
+  width: "fit-content",
+  maxWidth: "100%",
+} as const;

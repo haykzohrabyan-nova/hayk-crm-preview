@@ -12,7 +12,12 @@ import type { CompanySettings } from "@/lib/types";
 import { InvoicePDF } from "@/lib/pdf/invoice-pdf";
 import { computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { getChannelLabel } from "@/lib/utils/compute-checkout";
-import { resolveTicketId, ticketDisplayReference } from "@/lib/utils/reference-codes";
+import { resolveTicketId, ticketDisplayReference, ticketIsOrderStage } from "@/lib/utils/reference-codes";
+import {
+  customerDocumentPaymentSummary,
+  customerDocumentBanner,
+  shouldHidePricingOnCustomerDocument,
+} from "@/lib/utils/public-invoice-document";
 import { requireSession } from "@/lib/auth/require-session";
 import { requireTicketDetailPageAccess } from "@/lib/auth/require-page-access";
 import { canAccessTicket } from "@/lib/utils/ticket-access";
@@ -50,12 +55,14 @@ export async function GET(
          requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip,
          discount_type, discount_value, discount_reason,
          quote_pre_tax_total, quote_tax_rate_percent, quote_tax_amount, quote_final_total,
-         tax_exempt, quote_payment_types, quote_channel, created_by_id,
+         tax_exempt, sales_permit_storage_path, sales_permit_reviewed_at,
+         quote_payment_types, quote_channel, created_by_id,
          ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
          ticket_partial_channels, ticket_full_channels,
          payment_amount_received, deposit_amount, deposit_paid_at, payment_paid_at,
-         payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount,
-         customer:customers(first_name, last_name, company, email, phone)`
+         payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at,
+         payment_evidence_amount, refund_status, total_refunded_amount,
+         customer:customers!job_tickets_customer_id_fkey(first_name, last_name, company, email, phone)`
       )
       .eq("id", ticketId)
       .single(),
@@ -84,10 +91,10 @@ export async function GET(
   }
 
   // ── Derived values ─────────────────────────────────────────────────────────
-  const isOrder =
-    ticket.ticket_status === "order" ||
-    ticket.ticket_status === "in_production" ||
-    ticket.ticket_status === "completed";
+  const isOrder = ticketIsOrderStage({
+    reference_code: ticket.reference_code as string | null,
+    ticket_kind: ticket.ticket_kind as string | null,
+  });
 
   const cust = ticket.customer as unknown as {
     first_name: string | null; last_name: string | null;
@@ -148,7 +155,7 @@ export async function GET(
     : ((ticket.ticket_full_channels as string[]) ?? (ticket.quote_payment_types as string[]) ?? []);
   const paymentMethods = channelKeys.map((k) => paymentLabels[k] ?? getChannelLabel(k)).join(", ");
 
-  const paymentSummary = computeInvoicePaymentSummary({
+  const paymentFields = {
     quote_final_total: ticket.quote_final_total as number | null,
     ticket_payment_strategy: ticket.ticket_payment_strategy as "full" | "partial" | "net" | null,
     ticket_deposit_type: ticket.ticket_deposit_type as "percent" | "fixed" | null,
@@ -159,8 +166,18 @@ export async function GET(
     payment_paid_at: ticket.payment_paid_at as string | null,
     payment_evidence_url: ticket.payment_evidence_url as string | null,
     payment_evidence_submitted_at: ticket.payment_evidence_submitted_at as string | null,
+    payment_evidence_reviewed_at: ticket.payment_evidence_reviewed_at as string | null,
     payment_evidence_amount: ticket.payment_evidence_amount as number | null,
-  });
+    ticket_status: ticket.ticket_status as string,
+    refund_status: ticket.refund_status as string | null,
+    total_refunded_amount: ticket.total_refunded_amount as number | null,
+  };
+  const paymentSummary = customerDocumentPaymentSummary(
+    computeInvoicePaymentSummary(paymentFields),
+    paymentFields,
+  );
+  const documentBanner = customerDocumentBanner(paymentFields);
+  const hidePricingSummary = shouldHidePricingOnCustomerDocument(paymentFields);
 
   // ── Render PDF ────────────────────────────────────────────────────────────
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -192,6 +209,12 @@ export async function GET(
       quoteTaxAmount: ticket.quote_tax_amount as number | null,
       quoteFinalTotal: ticket.quote_final_total as number | null,
       taxExempt: ticket.tax_exempt as boolean | null,
+      taxExemptReviewPending:
+        !!(ticket.tax_exempt as boolean) &&
+        !!(ticket.sales_permit_storage_path as string | null) &&
+        !(ticket.sales_permit_reviewed_at as string | null),
+      refundStatus: ticket.refund_status as string | null,
+      totalRefundedAmount: ticket.total_refunded_amount as number | null,
       quoteChannel: ticket.quote_channel as string | null,
       requiresShipping: Boolean(ticket.requires_shipping),
       shippingDestinations,
@@ -202,6 +225,8 @@ export async function GET(
     discountAmt: discountAmt ?? null,
     paymentMethods,
     paymentSummary,
+    documentBanner,
+    hidePricingSummary,
   });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

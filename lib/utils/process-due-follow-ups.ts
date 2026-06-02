@@ -30,7 +30,7 @@ const CANDIDATE_SELECT = `
   customer_id,
   created_by_id,
   contact_name,
-  customer:customers(first_name, last_name, email, phone)
+  customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)
 `;
 
 export interface FollowUpCronResult {

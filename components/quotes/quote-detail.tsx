@@ -29,7 +29,12 @@ import {
 import { resolveQuoteDeliveryFromContact } from "@/lib/utils/resolve-quote-delivery-from-contact";
 import { buildAdminConvertPreview } from "@/lib/utils/admin-convert-preview";
 import type { ManualConvertMeta } from "@/lib/utils/manual-convert-meta";
-import { isPaymentEvidencePending, isTicketPaidInFull, computeInvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
+import {
+  isPaymentEvidencePending,
+  isTaxExemptApprovalPending,
+  isTicketPaidInFull,
+  computeInvoicePaymentSummary,
+} from "@/lib/utils/invoice-payment-summary";
 import { formatPhone, digitsOnly } from "@/lib/utils/phone";
 import { resolveTicketDetailBackPath } from "@/lib/utils/ticket-detail-href";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -175,6 +180,9 @@ interface Ticket {
   sales_permit_number: string | null;
   sales_permit_file_name: string | null;
   sales_permit_storage_path: string | null;
+  sales_permit_reviewed_at: string | null;
+  sales_permit_reviewed_by_id: string | null;
+  sales_permit_reviewed_by: { id: string; full_name: string | null } | null;
   quote_payment_types: string[];
   payment_status: "unpaid" | "partial" | "paid" | null;
   prepayment_type: string | null;
@@ -330,20 +338,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         setUserRole(roleName);
       }
     });
-    fetch("/api/admin/company")
-      .then((r) => r.json())
-      .then((d) => { if (d.settings?.high_value_threshold != null) setHvThreshold(d.settings.high_value_threshold); })
-      .catch(() => {});
-    fetch("/api/lookups?categories=quote_cancel_reason,order_cancel_reason,payment_refund_reason")
-      .then((r) => r.json())
-      .then((d) => {
-        setCancelReasonLookups({
-          quote: d.quote_cancel_reason ?? [],
-          order: d.order_cancel_reason ?? [],
-        });
-        setRefundReasons(d.payment_refund_reason ?? []);
-      })
-      .catch(() => {});
   }, []);
 
   // ── High-value threshold modal ────────────────────────────────────────────
@@ -354,6 +348,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   useEffect(() => () => { if (hvTimerRef.current) clearInterval(hvTimerRef.current); }, []);
   const [convertModal, setConvertModal] = useState<ReturnType<typeof buildAdminConvertPreview> | null>(null);
   const [completeModalBalance, setCompleteModalBalance] = useState<number | null>(null);
+  const [completeModalTaxExempt, setCompleteModalTaxExempt] = useState(false);
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [partialRefundCancelWarnOpen, setPartialRefundCancelWarnOpen] = useState(false);
   const [cancelForm, setCancelForm] = useState<CancelTicketForm>({ cancel_reason: "", cancel_notes: "" });
@@ -489,34 +484,54 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       .finally(() => { if (!silent) setLoading(false); });
   }, [ticketId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    fetchTicket();
-    fetch("/api/lookups/products")
+  const loadPageBootstrap = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
+    fetch(`/api/tickets/${ticketId}/page-data`)
       .then((r) => r.json())
-      .then((d: { products?: ProductType[] }) => { if (d.products) setProducts(d.products); })
-      .catch(() => {});
-
-    fetch("/api/lookups?categories=lamination,color_mode,sides,roll_direction,finishing,ticket_priority,quote_channel,ticket_payment,follow_up_freq")
-      .then((r) => r.json())
-      .then((d: Record<string, LookupOption[]>) => {
-        setSkuLookups({
-          lamination:     d.lamination     ?? [],
-          color_mode:     d.color_mode     ?? [],
-          sides:          d.sides          ?? [],
-          roll_direction: d.roll_direction ?? [],
-          finishing:      d.finishing      ?? [],
-        });
-        setQuoteLookups({
-          ticket_priority: d.ticket_priority ?? [],
-          quote_channel:   d.quote_channel   ?? [],
-          ticket_payment:  d.ticket_payment  ?? [],
-          follow_up_freq:  d.follow_up_freq  ?? [],
-        });
+      .then((d) => {
+        if (d.ticket) {
+          setTicket(d.ticket);
+          if (!editingRef.current) populateEditState(d.ticket);
+        } else {
+          setError("Ticket not found.");
+        }
+        const settings = d.company?.settings;
+        if (settings?.high_value_threshold != null) {
+          setHvThreshold(settings.high_value_threshold);
+        }
+        const actions = d.lookups_actions as Record<string, LookupValue[]> | undefined;
+        if (actions) {
+          setCancelReasonLookups({
+            quote: actions.quote_cancel_reason ?? [],
+            order: actions.order_cancel_reason ?? [],
+          });
+          setRefundReasons(actions.payment_refund_reason ?? []);
+        }
+        if (d.products) setProducts(d.products);
+        const edit = d.lookups_edit as Record<string, LookupOption[]> | undefined;
+        if (edit) {
+          setSkuLookups({
+            lamination: edit.lamination ?? [],
+            color_mode: edit.color_mode ?? [],
+            sides: edit.sides ?? [],
+            roll_direction: edit.roll_direction ?? [],
+            finishing: edit.finishing ?? [],
+          });
+          setQuoteLookups({
+            ticket_priority: edit.ticket_priority ?? [],
+            quote_channel: edit.quote_channel ?? [],
+            ticket_payment: edit.ticket_payment ?? [],
+            follow_up_freq: edit.follow_up_freq ?? [],
+          });
+        }
       })
-      .catch(() => {});
-  // products only need to load once
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticketId]);
+      .catch(() => { if (!silent) setError("Failed to load ticket."); })
+      .finally(() => { if (!silent) setLoading(false); });
+  }, [ticketId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    loadPageBootstrap(false);
+  }, [loadPageBootstrap]);
 
   useTicketRealtimeSync(ticketId, () => fetchTicket(true), { enabled: !editing });
 
@@ -623,7 +638,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             }
           }
         } else {
-          setError(json.error ?? "Failed to update.");
+          if (json.code === "TAX_EXEMPT_APPROVAL_REQUIRED" && userRole === "admin" && ticket) {
+            if (!isTicketPaidInFull(ticket)) {
+              setCompleteModalBalance(computeInvoicePaymentSummary(ticket).balanceDue);
+            }
+            setCompleteModalTaxExempt(true);
+          } else {
+            setError(json.error ?? "Failed to update.");
+          }
         }
       } catch {
         setError("Network error. Please try again.");
@@ -1057,6 +1079,13 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
   function requestMarkComplete() {
     if (!ticket) return;
+    if (userRole === "admin" && isTaxExemptApprovalPending(ticket)) {
+      if (!isTicketPaidInFull(ticket)) {
+        setCompleteModalBalance(computeInvoicePaymentSummary(ticket).balanceDue);
+      }
+      setCompleteModalTaxExempt(true);
+      return;
+    }
     if (isTicketPaidInFull(ticket)) {
       void handleSave(undefined, { ticket_status: "completed" });
       return;
@@ -1073,6 +1102,19 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       ticket_status: "completed",
       acknowledge_outstanding_balance: true,
     });
+  }
+
+  function confirmMarkCompleteWithTaxExemptOverride() {
+    setCompleteModalTaxExempt(false);
+    const extra: Record<string, unknown> = {
+      ticket_status: "completed",
+      acknowledge_tax_exempt_unapproved: true,
+    };
+    if (ticket && !isTicketPaidInFull(ticket)) {
+      extra.acknowledge_outstanding_balance = true;
+    }
+    setCompleteModalBalance(null);
+    void handleSave(undefined, extra);
   }
 
   const adminConvertBanner = ticket?.convert_meta?.by_admin &&
@@ -2047,8 +2089,89 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       </div>
     )}
 
+    {/* ── Admin mark complete without tax-exempt approval ─────────────────── */}
+    {completeModalTaxExempt && (
+      <div
+        style={{
+          position: "fixed", inset: 0, zIndex: 9999,
+          background: "rgba(0,0,0,0.55)",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        <div
+          style={{
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: 12,
+            padding: 28,
+            maxWidth: 520,
+            width: "90%",
+          }}
+        >
+          <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+            <AlertTriangle size={28} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: 2 }} />
+            <div>
+              <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 8 }}>
+                Mark completed without tax-exempt approval?
+              </h2>
+              <p style={{ fontSize: 14, color: "var(--color-text-muted)", margin: 0, lineHeight: 1.55 }}>
+                Sales permit documentation has not been approved by an accountant. Prefer approving on{" "}
+                <strong>Payments → Tax-exempt pending</strong> before completing.
+                {completeModalBalance != null && (
+                  <>
+                    {" "}This order also has{" "}
+                    <strong style={{ color: "var(--color-warning-text-deep)" }}>
+                      {formatCurrency(completeModalBalance)}
+                    </strong>{" "}
+                    outstanding.
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => {
+                setCompleteModalTaxExempt(false);
+                setCompleteModalBalance(null);
+              }}
+              style={{
+                background: "transparent",
+                color: "var(--color-text-muted)",
+                border: "1px solid var(--color-border)",
+                borderRadius: 6,
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmMarkCompleteWithTaxExemptOverride}
+              style={{
+                background: "var(--color-btn-primary-bg)",
+                color: "var(--color-btn-primary-text)",
+                border: "none",
+                borderRadius: 6,
+                padding: "8px 16px",
+                fontSize: 14,
+                fontWeight: 500,
+                cursor: "pointer",
+              }}
+            >
+              Yes, mark completed
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     {/* ── Admin mark complete with outstanding balance ───────────────────── */}
-    {completeModalBalance != null && (
+    {completeModalBalance != null && !completeModalTaxExempt && (
       <div
         style={{
           position: "fixed", inset: 0, zIndex: 9999,

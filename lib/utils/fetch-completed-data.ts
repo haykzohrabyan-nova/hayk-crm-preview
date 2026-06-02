@@ -13,6 +13,7 @@ import {
   resolveTicketSearchCustomerIds,
   type CompletedListFilters,
 } from "@/lib/utils/ticket-list-filters";
+import { jobTicketCustomerEmbed } from "@/lib/utils/ticket-list-select";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -26,7 +27,7 @@ const COMPLETED_ORDER_SELECT = `
   priority, due_date, rush,
   updated_at, created_at,
   created_by_id,
-  customer:customers(id, first_name, last_name, company)
+  ${jobTicketCustomerEmbed("id, first_name, last_name, company")}
 `.trim();
 
 async function buildScopedCompletedQuery(

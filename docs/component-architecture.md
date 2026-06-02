@@ -103,7 +103,10 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `DashboardPage` | `components/admin/dashboard-page.tsx` | Role router — all roles |
 | `QuotesPage` | `components/quotes/quotes-page.tsx` | All roles |
 | `OrdersPage` | `components/orders/orders-page.tsx` | All roles |
-| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending / Approved tabs; **Payment For** column; rows open `/payments/[id]?from=/payments` |
+| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending / **Tax-exempt pending** / Approved / Refunded tabs; **Payment For** column on evidence tabs; inline tax-exempt Confirm (legacy rows: File required, Upload file link, Confirm disabled until upload) |
+| `ApproveTaxExemptModal` | `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny tax-exempt totals (side-by-side preview) |
+| `TaxExemptReviewSection` | `components/orders/tax-exempt-review-section.tsx` | Payment/order detail tax-exempt review card; legacy missing-file warning + link to order upload |
+| `CustomerTaxExemptModal` | `components/crm/customer-tax-exempt-modal.tsx` | CRM customer profile — tax-exempt history **See more** |
 | `PaymentTypeBadge` | `components/orders/payment-type-badge.tsx` | Deposit / Balance / Full payment pill with optional description (list + detail) |
 | `SmsTemplatesSection` | `components/admin/sms-templates-section.tsx` | Admin — SMS/WhatsApp template editor |
 | `ProductionPage` | `components/orders/production-page.tsx` | **Orphaned** — full list component not mounted; `/production` route redirects to `/orders?tab=in_production` |
@@ -139,7 +142,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `validateWebsite()` / `normalizeWebsite()` | `lib/utils/website.ts` | Optional website/social URL; scheme not required in UI |
 | `scrollToFormField()` | `lib/utils/scroll-field-into-view.ts` | Scroll `[data-field-anchor]` into view + focus on validation failure |
 | `scrollToFirstFormField()` | `lib/utils/scroll-field-into-view.ts` | First error in priority order (New Quote tabs) |
-| `ticketKindForReference()` / `ticketIsQuoteStage()` | `lib/utils/reference-codes.ts` | Align `ticket_kind` with `QUO-*` / `ORD-*`; quote vs order UI labels |
+| `ticketKindForReference()` / `ticketIsQuoteStage()` / `ticketIsOrderStage()` | `lib/utils/reference-codes.ts` | Align `ticket_kind` with `QUO-*` / `ORD-*`; quote vs order UI labels (public portal/PDF: `ORD-*` → INVOICE even when cancelled) |
 | `buildTicketLifecycleTimeline()` | `lib/utils/ticket-lifecycle-timeline.ts` | Quote/order detail milestone row (creation from activity payload) |
 
 > **Rule:** Validatable fields in scrollable modals/drawers use `data-field-anchor="…"` on a wrapper `div` and call `scrollToFormField(containerRef, anchor)` when setting an error — so off-screen fields (e.g. Source) are visible after failed submit.
@@ -229,7 +232,8 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
         ├── Mount: GET /api/leads/workspace/page-data?… → { leads, counts, pagination, routedSubCounts? }
         ├── Lookups / product-types / SDR users: lazy on Add Lead or Reassign open
         ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
-        ├── Refetch: useCoalescedRefresh + bazaar:refresh-counts (counts-only or full page-data)
+        ├── List data: `useListPageData` — SWR cache + immediate realtime; `ListRefreshingNotice` when syncing
+        ├── Refetch: `bazaar:leads-changed`, `bazaar:refresh-counts` (counts-only or full page-data); `enabled: !drawerLead || drawerReadOnly`
         ├── Search: server-side (debounced 300 ms) via `?search=`
         ├── Sort: server-side — `?sort=created|urgency&sort_dir=`
         ├── Owner filter (SDR only): All Leads / My Leads → `?owner_scope=all|mine` (all = unclaimed pool; mine = claimed by me)
@@ -271,11 +275,11 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
   └── components/sales/sales-page.tsx  [Client Component "use client"]
         ├── Tabs: Pipeline | Follow Up Later | On Hold | Rejected
         ├── Tab state: local useState
-        ├── Mount: GET /api/leads/sales/page-data?tab=… → { leads, counts } (pipeline | follow_up | hold | rejected)
-        ├── Tab switch / lazy tabs: GET /api/leads/workspace?status=... (slim list)
+        ├── Mount: GET /api/leads/sales/page-data?tab=…&limit=&offset= → { leads, counts, pagination }
         ├── Lookups / sales users: lazy on drawer/modal open
         ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
-        ├── Refetch: useCoalescedRefresh + bazaar:refresh-counts
+        ├── List data: `useListPageData`; `enabled: !drawerLead` while Sales drawer open
+        ├── Refetch: `bazaar:leads-changed`, `bazaar:refresh-counts`; `ListRefreshingNotice`
         └── components/sales/sales-drawer.tsx (opens on Claim / Open / View click)
 ```
 
@@ -314,16 +318,17 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
         │         * "Routed to Sales" only visible to Sales + Admin + SDR roles
         │         Cancelled = quote-stage cancellations only (`ticket_kind = 'quote'`)
         ├── Mount: GET /api/quotes/page-data → { tickets, counts, pagination }
-        ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed | refresh-counts | activities-changed
+        ├── List data: `useListPageData` — `bazaar:tickets-changed` | `refresh-counts` | `activities-changed` (immediate refetch)
         │    Sidebar: job_tickets + activities INSERT (claim) → tickets-changed
-        │    Page (Sales/Admin/SDR with Routed tab): channel quotes-page-routed-sync on job_tickets + activities INSERT → silent page-data refetch
-        │    Requires supabase migration 086_job_tickets_routed_realtime_rls.sql (sales_read_routed_tickets RLS)
+        │    Page (Sales/Admin/SDR with Routed tab): channel `quotes-page-routed-sync` on job_tickets + activities INSERT
+        │    Requires migration 086_job_tickets_routed_realtime_rls.sql (sales_read_routed_tickets RLS)
         ├── Slim list — no line_items on table rows
         ├── Columns: Contact, Title, Channel, Total, Due Now, Status pill, Follow-up, Created
         ├── Search: server-side (debounced) via `?search=`
-        ├── ListPagination (25 default)
+        ├── ListPagination (25 default); `ListRefreshingNotice` during background sync
         ├── Mobile (< lg): `MobileListCard` per row + `TicketListToolbar`; desktop: table
-        ├── Claim action (Routed tab): PATCH /api/tickets/[id] { claim_ownership: true }
+        ├── Claim (Routed tab): PATCH /api/tickets/[id] `{ claim_ownership: true }` — **409** `ALREADY_CLAIMED` if another rep claimed first; success → `notifyListDataChanged({ cachePrefix: "quotes" })`
+        ├── No Sales/Admin explainer banner on Routed tab (SDR read-only banner only)
         └── Row click → /quotes/[id]
 ```
 
@@ -340,7 +345,7 @@ app/(app)/orders/page.tsx  [Server Component — thin wrapper]
         ├── Mount: GET /api/orders/page-data → { orders, counts, pagination }
         ├── Slim list from page-data — status_label / status_tone from API
         ├── Column sort: server-side `?sort=` (Created by, Balance Due, Due Date, Status, Payment)
-        ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed
+        ├── List data: `useListPageData` — `bazaar:tickets-changed`; `ListRefreshingNotice`
         ├── Columns: Order #, Contact, Title (⚡ Rush), Total, Status pill (from status_label), Payment status pill, Priority, Due Date, Created
         ├── No "New Order" button — orders created only through Quotes flow
         ├── Search: server-side (debounced) via `?search=`
@@ -364,7 +369,7 @@ app/(app)/orders/[id]/page.tsx  [Server Component — thin wrapper]
 app/(app)/completed/page.tsx  [Server Component — thin wrapper]
   └── components/orders/completed-page.tsx  [Client Component "use client"]
         ├── Mount: GET /api/completed/page-data → { orders, counts, pagination }
-        ├── Realtime: useCoalescedRefresh on bazaar:tickets-changed + bazaar:refresh-counts
+        ├── List data: `useListPageData` — `bazaar:tickets-changed`, `bazaar:refresh-counts`
         ├── Search + date filter: server-side on page-data
         ├── ListPagination (25 default)
         ├── Mobile (< lg): MobileListCard per row; desktop: table
@@ -465,7 +470,7 @@ app/(app)/quotes/new/page.tsx  [Server Component — thin wrapper]
         │    Cancel — Edit Amount or OK — Route to Sales; 30s countdown → saves as 'routed' → redirect to /quotes
         │    Delivery fields prefilled from customer contact when Quote tab skipped (`lib/utils/resolve-quote-delivery-from-contact.ts`)
         │
-        ├── Data: GET /api/lookups, GET /api/lookups/products, GET /api/admin/company
+        ├── Mount: GET /api/quotes/form-bootstrap → { company, lookups, products } (one auth pass)
         ├── Save Draft: POST /api/tickets { status: 'draft' } — available from Line Items onwards
         ├── Save & Send: POST /api/tickets { status: 'sent', from_quote_page?, quote_source? } → triggers delivery
         │    Shows global loading overlay ("Sending quote…") via `useGlobalLoading()`
@@ -563,7 +568,8 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         ├── Payment review (order context): PricingPaymentSummary read-only for sales/SDR; evidence hidden
         ├── TicketLifecycleTimeline: GET /api/activities?ticket_id=… (same id resolution); buildTicketLifecycleTimeline() — creation label from activity payload (QUO-*), not post-convert ORD-*
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true (ticket_id = UUID or ORD-* / QUO-*)
-        ├── Realtime: direct Supabase channel + bazaar:tickets-changed + bazaar:leads-changed
+        ├── Mount: GET /api/tickets/[id]/page-data → ticket + company + lookups + products; silent refresh → GET /api/tickets/[id]
+        ├── Realtime: `useTicketRealtimeSync` (0ms debounce) + `bazaar:tickets-changed` + `bazaar:leads-changed`
         └── Rendered at:
              /quotes/[id]  (context="quote")
              /orders/[id]  (context="order" — includes in_production)
@@ -649,7 +655,7 @@ app/(app)/crm/page.tsx  [Server Component — thin wrapper]
         ├── Search/status/heat: server-side; debounced search (300 ms)
         ├── ListPagination (25 default; 25/50/100)
         ├── AddCustomerModal → POST /api/customers
-        ├── useCoalescedRefresh: bazaar:customers-changed, leads-changed, tickets-changed
+        ├── List data: `useListPageData` — bazaar:customers-changed, leads-changed, tickets-changed; `ListRefreshingNotice`
         ├── Industry column (lookup labels); company → profile; tel:/mailto: links
         └── View / Add Quote actions (row not clickable)
 
@@ -717,9 +723,11 @@ Browser events dispatched by `components/layout/sidebar.tsx` on Supabase Realtim
 |-----------|---------|
 | `components/leads/leads-page.tsx` | Silent re-fetch; `enabled: !drawerLead \|\| drawerReadOnly` (read-only drawer does not pause refresh); editable drawer close resumes silently |
 | `components/sales/sales-page.tsx` | Silent re-fetch of routed leads + tab counts; defers if drawer is open; full lead on drawer open |
-| `components/crm/crm-page.tsx` | Coalesced refetch on `bazaar:customers-changed`, `bazaar:leads-changed`, `bazaar:tickets-changed` |
+| `components/crm/crm-page.tsx` | `useListPageData` — `bazaar:customers-changed`, `bazaar:leads-changed`, `bazaar:tickets-changed` |
 | `components/admin/admin-dashboard.tsx` | Silent re-fetch of all KPIs (no skeleton flash) |
-| `components/orders/orders-page.tsx` | In-production tab (`?tab=in_production`) + coalesced refetch on `bazaar:tickets-changed` |
+| `components/orders/orders-page.tsx` | `useListPageData` — In Production tab + immediate refetch on `bazaar:tickets-changed` |
+| `components/quotes/quotes-page.tsx` | `useListPageData` + optional `quotes-page-routed-sync` channel |
+| `components/orders/payments-page.tsx` | `useListPageData` — four tabs, paginated page-data |
 
 See `docs/realtime-live-updates.md` for full architecture and implementation guide.
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { useListPageData } from "@/hooks/use-list-page-data";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
 import { FileText, CheckCircle2, Clock, Loader2, CreditCard, ExternalLink, RotateCcw } from "lucide-react";
 import { stripePaymentDashboardUrl } from "@/lib/stripe/dashboard-url";
@@ -29,15 +29,26 @@ import {
   inferPaymentEvidenceMode,
   paymentEvidenceTypeLabelForTicket,
 } from "@/lib/utils/payment-evidence-type";
-import { filterPaymentEvidenceRows } from "@/lib/utils/filter-payment-evidence-rows";
 import {
   summarizePaymentReceived,
   summarizeRefundIssued,
 } from "@/lib/utils/payment-refund-list-labels";
 import { PaymentTypeBadge } from "@/components/orders/payment-type-badge";
 import { ConfirmPaymentEvidenceModal } from "@/components/orders/confirm-payment-evidence-modal";
+import {
+  ApproveTaxExemptModal,
+  type TaxExemptApproveTicket,
+} from "@/components/orders/approve-tax-exempt-modal";
+import { isLegacyTaxExemptMissingPermitFile } from "@/lib/utils/tax-exempt-approval";
+import { ListPagination } from "@/components/ui/list-pagination";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+  type PaginationMeta,
+} from "@/lib/utils/pagination";
 
-type PaymentTab = "pending" | "approved" | "refunded";
+type PaymentTab = "pending" | "tax_exempt" | "approved" | "refunded";
 
 interface PaymentOrder {
   id: string;
@@ -63,6 +74,19 @@ interface PaymentOrder {
   ticket_deposit_type: "percent" | "fixed" | null;
   ticket_deposit_value: number | null;
   ticket_status: string;
+  tax_exempt?: boolean;
+  sales_permit_number?: string | null;
+  sales_permit_file_name?: string | null;
+  sales_permit_storage_path?: string | null;
+  sales_permit_submitted_at?: string | null;
+  sales_permit_reviewed_at?: string | null;
+  quote_pre_tax_total?: number | null;
+  quote_tax_rate_percent?: number | null;
+  quote_tax_amount?: number | null;
+  quote_subtotal?: number | null;
+  quote_shipping?: number | null;
+  discount_type?: string | null;
+  discount_value?: string | null;
   customer: {
     first_name: string | null;
     last_name: string | null;
@@ -80,6 +104,7 @@ interface PaymentOrder {
 
 const TABS: { id: PaymentTab; label: string }[] = [
   { id: "pending", label: "Pending approval" },
+  { id: "tax_exempt", label: "Tax-exempt pending" },
   { id: "approved", label: "Approved" },
   { id: "refunded", label: "Refunded" },
 ];
@@ -162,14 +187,21 @@ export function PaymentsPage() {
   const router = useRouter();
   const { showLoading, hideLoading } = useGlobalLoading();
   const [activeTab, setActiveTab] = useState<PaymentTab>("pending");
-  const [pendingOrders, setPendingOrders] = useState<PaymentOrder[]>([]);
-  const [approvedOrders, setApprovedOrders] = useState<PaymentOrder[]>([]);
-  const [refundedOrders, setRefundedOrders] = useState<PaymentOrder[]>([]);
-  const [tabCounts, setTabCounts] = useState({ pending: 0, approved: 0, refunded: 0 });
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState<PaymentOrder[]>([]);
+  const [tabCounts, setTabCounts] = useState({ pending: 0, tax_exempt: 0, approved: 0, refunded: 0 });
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    limit: 25,
+    offset: 0,
+    total: 0,
+    hasMore: false,
+  });
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
   const [confirmTarget, setConfirmTarget] = useState<PaymentOrder | null>(null);
+  const [taxExemptTarget, setTaxExemptTarget] = useState<PaymentOrder | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
+  const [taxExemptConfirmErr, setTaxExemptConfirmErr] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
 
@@ -178,66 +210,90 @@ export function PaymentsPage() {
     return () => clearTimeout(t);
   }, [search]);
 
-  const fetchPageData = useCallback((silent = false) => {
-    if (!silent) setLoading(true);
-    fetch("/api/payments/page-data")
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.orders) setPendingOrders(d.orders);
-        if (d.approvedOrders) setApprovedOrders(d.approvedOrders);
-        if (d.refundedOrders) setRefundedOrders(d.refundedOrders);
-        if (d.counts) {
-          setTabCounts({
-            pending: d.counts.pending ?? 0,
-            approved: d.counts.approved ?? 0,
-            refunded: d.counts.refunded ?? 0,
-          });
-        }
-      })
-      .catch(() => {})
-      .finally(() => { if (!silent) setLoading(false); });
-  }, []);
+  useEffect(() => {
+    setOffset(0);
+  }, [activeTab, debouncedSearch, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [], {
+  const pageDataUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      tab: activeTab,
+      limit: String(pageSize),
+      offset: String(offset),
+    });
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    return `/api/payments/page-data?${params}`;
+  }, [activeTab, debouncedSearch, offset, pageSize]);
+
+  const {
+    data: pageData,
+    loading,
+    refreshing,
+    refresh: refreshPageData,
+  } = useListPageData<{
+    orders?: PaymentOrder[];
+    taxExemptOrders?: PaymentOrder[];
+    approvedOrders?: PaymentOrder[];
+    refundedOrders?: PaymentOrder[];
+    counts?: { pending?: number; tax_exempt?: number; approved?: number; refunded?: number };
+    pagination?: PaginationMeta;
+  }>({
+    prefix: "payments",
+    url: pageDataUrl,
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
 
-  const filteredPending = useMemo(
-    () => filterPaymentEvidenceRows(pendingOrders, debouncedSearch),
-    [pendingOrders, debouncedSearch],
-  );
-  const filteredApproved = useMemo(
-    () => filterPaymentEvidenceRows(approvedOrders, debouncedSearch),
-    [approvedOrders, debouncedSearch],
-  );
-  const filteredRefunded = useMemo(
-    () => filterPaymentEvidenceRows(refundedOrders, debouncedSearch),
-    [refundedOrders, debouncedSearch],
-  );
-
-  const displayCounts = debouncedSearch.trim()
-    ? {
-        pending: filteredPending.length,
-        approved: filteredApproved.length,
-        refunded: filteredRefunded.length,
+  useEffect(() => {
+    if (!pageData) {
+      setOrders([]);
+      return;
+    }
+    const rows =
+      activeTab === "pending"
+        ? pageData.orders
+        : activeTab === "tax_exempt"
+          ? pageData.taxExemptOrders
+          : activeTab === "approved"
+            ? pageData.approvedOrders
+            : pageData.refundedOrders;
+    setOrders(Array.isArray(rows) ? rows : []);
+    if (pageData.counts) {
+      setTabCounts({
+        pending: pageData.counts.pending ?? 0,
+        tax_exempt: pageData.counts.tax_exempt ?? 0,
+        approved: pageData.counts.approved ?? 0,
+        refunded: pageData.counts.refunded ?? 0,
+      });
+    }
+    if (pageData.pagination) {
+      setPagination(pageData.pagination);
+      if (pageData.pagination.total > 0 && offset >= pageData.pagination.total) {
+        setOffset(0);
       }
-    : tabCounts;
+    }
+  }, [pageData, activeTab, offset]);
 
-  const orders =
-    activeTab === "pending"
-      ? filteredPending
-      : activeTab === "approved"
-        ? filteredApproved
-        : filteredRefunded;
+  function handlePageSizeChange(size: ListPageSize) {
+    writeStoredListPageSize(size);
+    setPageSize(size);
+    setOffset(0);
+  }
+
+  function selectTab(next: PaymentTab) {
+    setActiveTab(next);
+    setOffset(0);
+  }
   const isPendingTab = activeTab === "pending";
+  const isTaxExemptTab = activeTab === "tax_exempt";
   const isApprovedTab = activeTab === "approved";
   const isRefundedTab = activeTab === "refunded";
-  const desktopCols = isRefundedTab ? 8 : 8;
+  const desktopCols = isRefundedTab ? 8 : isTaxExemptTab ? 7 : 8;
   const headers = isRefundedTab
     ? ["Order", "Customer", "Paid via", "Refunded via", "Status", "Total refunded", "Last refunded", "Refunded by"]
-    : isPendingTab
-      ? ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
-      : ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Approved"];
+    : isTaxExemptTab
+      ? ["Order", "Customer", "Created by", "Total", "Permit #", "Submitted", "Actions"]
+      : isPendingTab
+        ? ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
+        : ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Approved"];
 
   const paymentsReturnPath = "/payments";
 
@@ -250,6 +306,37 @@ export function PaymentsPage() {
     }
     setConfirmErr(null);
     setConfirmTarget(order);
+  }
+
+  function openTaxExemptModal(order: PaymentOrder, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    if (isLegacyTaxExemptMissingPermitFile(order)) {
+      setTaxExemptConfirmErr(
+        "Upload the sales permit file on the order first (Quote tab → Permit File).",
+      );
+      return;
+    }
+    setTaxExemptConfirmErr(null);
+    setTaxExemptTarget(order);
+  }
+
+  function paymentOrderToTaxExemptTicket(order: PaymentOrder): TaxExemptApproveTicket {
+    return {
+      id: order.id,
+      reference_code: order.reference_code,
+      tax_exempt: !!order.tax_exempt,
+      quote_subtotal: order.quote_subtotal ?? null,
+      quote_shipping: order.quote_shipping ?? null,
+      discount_type: order.discount_type,
+      discount_value: order.discount_value,
+      quote_tax_rate_percent: order.quote_tax_rate_percent,
+      quote_pre_tax_total: order.quote_pre_tax_total ?? null,
+      quote_tax_amount: order.quote_tax_amount ?? null,
+      quote_final_total: order.quote_final_total,
+      sales_permit_number: order.sales_permit_number ?? null,
+      sales_permit_file_name: order.sales_permit_file_name ?? null,
+      customer: order.customer,
+    };
   }
 
   async function handleConfirm(order: PaymentOrder) {
@@ -282,7 +369,7 @@ export function PaymentsPage() {
       window.dispatchEvent(new Event("bazaar:tickets-changed"));
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
       setConfirmTarget(null);
-      fetchPageData(true);
+      void refreshPageData(true);
     } catch {
       setConfirmErr("Network error — please try again.");
     } finally {
@@ -295,16 +382,22 @@ export function PaymentsPage() {
     ? "No matches"
     : isPendingTab
       ? "All caught up"
-      : isRefundedTab
-        ? "No refunded orders yet"
-        : "No approved evidence yet";
+      : isTaxExemptTab
+        ? "All caught up"
+        : isRefundedTab
+          ? "No refunded orders yet"
+          : "No approved evidence yet";
   const emptySubtitle = debouncedSearch.trim()
-    ? "No payment evidence matches your search."
+    ? isTaxExemptTab
+      ? "No tax-exempt tickets match your search."
+      : "No payment evidence matches your search."
     : isPendingTab
       ? "No orders pending payment review."
-      : isRefundedTab
-        ? "Orders with partial or full refunds appear here after a refund is recorded."
-        : "Orders appear here after an accountant confirms payment evidence.";
+      : isTaxExemptTab
+        ? "No orders awaiting tax-exempt documentation approval."
+        : isRefundedTab
+          ? "Orders with partial or full refunds appear here after a refund is recorded."
+          : "Orders appear here after an accountant confirms payment evidence.";
 
   return (
     <div className="space-y-5">
@@ -314,9 +407,22 @@ export function PaymentsPage() {
             Payment Evidence
           </h1>
           <p className="text-sm mt-1 max-w-xl" style={{ color: "var(--color-text-muted)" }}>
-            Review payment proof on Pending approval, confirmed evidence on Approved, and orders with partial or full refunds on Refunded.
+            Review payment proof on Pending approval, tax-exempt permits on Tax-exempt pending, confirmed evidence on Approved, and refunds on Refunded.
           </p>
         </div>
+        {isTaxExemptTab && !loading && !debouncedSearch.trim() && tabCounts.tax_exempt > 0 && (
+          <div
+            className="flex items-center gap-2 rounded-[10px] border px-4 py-2.5 text-sm"
+            style={{
+              borderColor: "var(--color-warning-border)",
+              background: "var(--color-warning-bg)",
+              color: "var(--color-warning-text-deep)",
+            }}
+          >
+            <Clock size={15} style={{ flexShrink: 0 }} />
+            <span>View permit before confirming — customer is notified after approval.</span>
+          </div>
+        )}
         {isPendingTab && !loading && !debouncedSearch.trim() && tabCounts.pending > 0 && (
           <div
             className="flex items-center gap-2 rounded-[10px] border px-4 py-2.5 text-sm"
@@ -335,14 +441,15 @@ export function PaymentsPage() {
       <TicketListToolbar
         tabs={TABS}
         activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as PaymentTab)}
-        tabCounts={displayCounts}
+        onTabChange={(id) => selectTab(id as PaymentTab)}
+        tabCounts={tabCounts}
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search order, customer, creator, amount…"
+        refreshing={refreshing}
       />
 
-      {confirmErr && (
+      {(confirmErr || taxExemptConfirmErr) && (
         <div
           className="rounded-[10px] border px-4 py-3 text-sm"
           style={{
@@ -351,7 +458,7 @@ export function PaymentsPage() {
             color: "var(--color-danger)",
           }}
         >
-          {confirmErr}
+          {confirmErr ?? taxExemptConfirmErr}
         </div>
       )}
 
@@ -403,6 +510,136 @@ export function PaymentsPage() {
                 const refundRelTime = relativeTime(order.last_refunded_at);
                 const isConfirming = confirmingId === order.id;
                 const rowBg = i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
+
+                if (isTaxExemptTab) {
+                  const permitHref = `/api/tickets/${order.id}/sales-permit`;
+                  const legacyMissing = isLegacyTaxExemptMissingPermitFile(order);
+                  const submittedAt = order.sales_permit_submitted_at;
+                  const submittedRel = relativeTime(submittedAt);
+                  const orderHref = appendReturnPath(
+                    `/orders/${order.reference_code ?? order.id}`,
+                    paymentsReturnPath,
+                  );
+                  return (
+                    <tr
+                      key={order.id}
+                      className="cursor-pointer"
+                      style={{ borderBottom: "1px solid var(--color-border)", background: rowBg }}
+                      onClick={() =>
+                        router.push(
+                          appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
+                        )
+                      }
+                      onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-row-hover)"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = rowBg; }}
+                    >
+                      <td className="px-5 py-4 align-middle">
+                        <span className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
+                          {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
+                        </span>
+                        {order.title && (
+                          <div className="text-xs mt-1 max-w-[160px] truncate" style={{ color: "var(--color-text-muted)" }}>
+                            {order.title}
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 align-middle">
+                        <div className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+                          {customerLabel(order)}
+                        </div>
+                        <div className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                          Total {fmt(order.quote_final_total)}
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 align-middle whitespace-nowrap">
+                        <span className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+                          {order.created_by?.full_name ?? "—"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 align-middle text-right whitespace-nowrap">
+                        <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
+                          {fmt(order.quote_final_total)}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 align-middle whitespace-nowrap">
+                        <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+                          {order.sales_permit_number ?? "—"}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 align-middle whitespace-nowrap">
+                        {legacyMissing ? (
+                          <span className="text-sm font-medium" style={{ color: "var(--color-warning)" }}>
+                            File required
+                          </span>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <Clock size={13} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
+                            <div>
+                              <div className="text-sm" style={{ color: "var(--color-text-primary)" }}>
+                                {formatDateTime(submittedAt)}
+                              </div>
+                              {submittedRel && (
+                                <div className="text-[11px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                                  {submittedRel}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2 flex-nowrap">
+                          {legacyMissing ? (
+                            <a
+                              href={orderHref}
+                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                              style={{
+                                borderColor: "var(--color-warning-border)",
+                                color: "var(--color-warning-text-deep)",
+                                background: "var(--color-warning-bg)",
+                                textDecoration: "none",
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              Upload file
+                            </a>
+                          ) : null}
+                          {order.sales_permit_storage_path && (
+                            <a
+                              href={permitHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                              style={{
+                                borderColor: "var(--color-border)",
+                                color: "var(--color-text-primary)",
+                                background: "var(--color-surface)",
+                                textDecoration: "none",
+                              }}
+                              title="View uploaded permit"
+                            >
+                              <FileText size={14} />
+                              File
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            disabled={legacyMissing}
+                            onClick={(e) => openTaxExemptModal(order, e)}
+                            className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium whitespace-nowrap disabled:opacity-50"
+                            style={{
+                              background: "var(--color-btn-primary-bg)",
+                              color: "var(--color-btn-primary-text)",
+                            }}
+                          >
+                            <CheckCircle2 size={14} />
+                            Confirm
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                }
 
                 if (isRefundedTab) {
                   return (
@@ -636,7 +873,9 @@ export function PaymentsPage() {
                           </button>
                         ) : (
                           <span className="text-sm whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
-                            {formatDateTime(order.payment_evidence_reviewed_at)}
+                            {formatDateTime(
+                              order.payment_evidence_reviewed_at ?? order.sales_permit_reviewed_at,
+                            )}
                           </span>
                         )}
                       </div>
@@ -661,6 +900,106 @@ export function PaymentsPage() {
             const relTime = relativeTime(order.payment_evidence_submitted_at);
             const refundRelTime = relativeTime(order.last_refunded_at);
             const isConfirming = confirmingId === order.id;
+
+            if (isTaxExemptTab) {
+              const permitHref = `/api/tickets/${order.id}/sales-permit`;
+              const legacyMissing = isLegacyTaxExemptMissingPermitFile(order);
+              const submittedRel = relativeTime(order.sales_permit_submitted_at);
+              const orderHref = appendReturnPath(
+                `/orders/${order.reference_code ?? order.id}`,
+                paymentsReturnPath,
+              );
+              return (
+                <MobileListCard
+                  key={order.id}
+                  onClick={() =>
+                    router.push(
+                      appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
+                    )
+                  }
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-sm font-semibold font-mono" style={{ color: "var(--color-text-primary)" }}>
+                        {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
+                      </span>
+                      <p className="text-sm font-medium mt-1.5" style={{ color: "var(--color-text-primary)" }}>
+                        {customerLabel(order)}
+                      </p>
+                    </div>
+                    <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: "var(--color-text-primary)" }}>
+                      {fmt(order.quote_final_total)}
+                    </span>
+                  </div>
+                  <MobileListCardFields>
+                    <MobileListCardRow label="Permit #" value={order.sales_permit_number ?? "—"} />
+                    <MobileListCardRow
+                      label="Submitted"
+                      value={
+                        legacyMissing ? (
+                          <span style={{ color: "var(--color-warning)" }}>File required (legacy order)</span>
+                        ) : (
+                          <>
+                            {formatDateTime(order.sales_permit_submitted_at)}
+                            {submittedRel && (
+                              <span className="block text-[11px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                                {submittedRel}
+                              </span>
+                            )}
+                          </>
+                        )
+                      }
+                    />
+                  </MobileListCardFields>
+                  <div className="flex flex-col gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                    {legacyMissing && (
+                      <a
+                        href={orderHref}
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
+                        style={{
+                          borderColor: "var(--color-warning-border)",
+                          color: "var(--color-warning-text-deep)",
+                          background: "var(--color-warning-bg)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        Upload file on order
+                      </a>
+                    )}
+                    {order.sales_permit_storage_path && (
+                      <a
+                        href={permitHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
+                        style={{
+                          borderColor: "var(--color-border)",
+                          color: "var(--color-text-primary)",
+                          background: "var(--color-bg)",
+                          textDecoration: "none",
+                        }}
+                      >
+                        <FileText size={14} />
+                        View file
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      disabled={legacyMissing}
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-4 py-2.5 text-[13px] font-medium disabled:opacity-50"
+                      style={{
+                        background: "var(--color-btn-primary-bg)",
+                        color: "var(--color-btn-primary-text)",
+                      }}
+                      onClick={(e) => openTaxExemptModal(order, e)}
+                    >
+                      <CheckCircle2 size={14} />
+                      Confirm tax-exempt
+                    </button>
+                  </div>
+                </MobileListCard>
+              );
+            }
 
             if (isRefundedTab) {
               return (
@@ -861,6 +1200,15 @@ export function PaymentsPage() {
         )}
       </div>
 
+      <ListPagination
+        total={pagination.total}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
+
       <ConfirmPaymentEvidenceModal
         open={!!confirmTarget}
         referenceCode={confirmTarget?.reference_code}
@@ -886,6 +1234,24 @@ export function PaymentsPage() {
           setConfirmErr(null);
         }}
       />
+
+      {taxExemptTarget && (
+        <ApproveTaxExemptModal
+          open={!!taxExemptTarget}
+          ticket={paymentOrderToTaxExemptTicket(taxExemptTarget)}
+          permitViewHref={`/api/tickets/${taxExemptTarget.id}/sales-permit`}
+          error={taxExemptConfirmErr}
+          onClose={() => {
+            setTaxExemptTarget(null);
+            setTaxExemptConfirmErr(null);
+          }}
+          onApproved={() => {
+            setTaxExemptTarget(null);
+            setTaxExemptConfirmErr(null);
+            void refreshPageData(true);
+          }}
+        />
+      )}
     </div>
   );
 }

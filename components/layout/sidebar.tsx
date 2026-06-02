@@ -237,19 +237,11 @@ export function Sidebar() {
         .catch(() => {});
     }
 
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function debouncedFetchBadges() {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(fetchBadges, 300);
-    }
-
     fetchBadges();
-    window.addEventListener("bazaar:refresh-counts", debouncedFetchBadges);
+    window.addEventListener("bazaar:refresh-counts", fetchBadges);
 
     return () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      window.removeEventListener("bazaar:refresh-counts", debouncedFetchBadges);
+      window.removeEventListener("bazaar:refresh-counts", fetchBadges);
     };
   }, [sections]);
 

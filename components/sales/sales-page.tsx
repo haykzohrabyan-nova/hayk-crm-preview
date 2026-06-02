@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import dynamic from "next/dynamic";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
-import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { useListPageData } from "@/hooks/use-list-page-data";
+import { ListRefreshingNotice } from "@/components/ui/mobile-list-card";
 import { Search, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,13 @@ import { formatPhone } from "@/lib/utils/phone";
 import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-interests";
 import { createClient } from "@/lib/supabase/client";
+import { ListPagination } from "@/components/ui/list-pagination";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+  type PaginationMeta,
+} from "@/lib/utils/pagination";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,18 +60,6 @@ function leadName(lead: Lead): string {
   const c = lead.customer;
   const name = [c?.first_name, c?.last_name].filter(Boolean).join(" ");
   return name || "—";
-}
-
-function matchesSearch(lead: Lead, q: string): boolean {
-  const c = lead.customer;
-  return (
-    c?.first_name?.toLowerCase().includes(q) ||
-    c?.last_name?.toLowerCase().includes(q) ||
-    c?.email?.toLowerCase().includes(q) ||
-    (c?.phone?.includes(q) ?? false) ||
-    c?.company?.toLowerCase().includes(q) ||
-    false
-  );
 }
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
@@ -100,8 +96,16 @@ function ToastBanner({ message, type, onDismiss }: Toast & { onDismiss: () => vo
 export function SalesPage() {
   const [activeTab, setActiveTab] = useState<Tab>("pipeline");
   const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [pagination, setPagination] = useState<PaginationMeta>({
+    limit: 25,
+    offset: 0,
+    total: 0,
+    hasMore: false,
+  });
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
   const [toast, setToast] = useState<Toast | null>(null);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [drawerReadOnly, setDrawerReadOnly] = useState(false);
@@ -163,23 +167,57 @@ export function SalesPage() {
       .then((d) => setSalesUserList(d.users ?? []));
   }, [isAdmin, reassignLead, salesUserList.length]);
 
-  const fetchPageData = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    const params = new URLSearchParams({ tab: activeTab });
-    if (search) params.set("search", search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-    const res = await fetch(`/api/leads/sales/page-data?${params}`);
-    const data = await res.json();
-    if (Array.isArray(data.leads)) setLeads(data.leads);
-    else if (!res.ok) setLeads([]);
-    if (data.counts) setTabCounts(data.counts);
-    if (!silent) setLoading(false);
-  }, [activeTab, search]);
+  useEffect(() => {
+    setOffset(0);
+  }, [activeTab, debouncedSearch, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [activeTab, search], {
+  const pageDataUrl = useMemo(() => {
+    const params = new URLSearchParams({
+      tab: activeTab,
+      limit: String(pageSize),
+      offset: String(offset),
+    });
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    return `/api/leads/sales/page-data?${params}`;
+  }, [activeTab, debouncedSearch, offset, pageSize]);
+
+  const { data: pageData, loading, refreshing, refresh: refreshPageData } = useListPageData<{
+    leads?: Lead[];
+    counts?: Record<string, number>;
+    pagination?: PaginationMeta;
+  }>({
+    prefix: "sales",
+    url: pageDataUrl,
     events: ["bazaar:leads-changed", "bazaar:refresh-counts"],
     enabled: !drawerLead,
   });
+
+  useEffect(() => {
+    if (!pageData) {
+      setLeads([]);
+      return;
+    }
+    if (Array.isArray(pageData.leads)) setLeads(pageData.leads);
+    if (pageData.counts) {
+      setTabCounts({
+        pipeline: pageData.counts.pipeline ?? 0,
+        follow_up: pageData.counts.follow_up ?? 0,
+        hold: pageData.counts.hold ?? 0,
+        rejected: pageData.counts.rejected ?? 0,
+      });
+    }
+    if (pageData.pagination) {
+      setPagination(pageData.pagination);
+      if (pageData.pagination.total > 0 && offset >= pageData.pagination.total) {
+        setOffset(0);
+      }
+    }
+  }, [pageData, offset]);
 
   // Defer refresh while drawer is open; run when drawer closes
   const pendingLeadsRefresh = useRef(false);
@@ -191,9 +229,9 @@ export function SalesPage() {
     }
     if (pendingLeadsRefresh.current) {
       pendingLeadsRefresh.current = false;
-      void fetchPageData(true);
+      void refreshPageData(true);
     }
-  }, [drawerLead, fetchPageData]);
+  }, [drawerLead, refreshPageData]);
 
   function showToast(message: string, type: "success" | "error" = "success") {
     setToast({ message, type });
@@ -217,9 +255,28 @@ export function SalesPage() {
     showToast(newUser ? "Sales rep reassigned." : "Sales rep unassigned.");
   }
 
-  const q = search.toLowerCase();
-  const activeLeads = (Array.isArray(leads) ? leads : []).filter((l) => !q || matchesSearch(l, q));
   const isLoading = loading;
+
+  function handlePageSizeChange(size: ListPageSize) {
+    writeStoredListPageSize(size);
+    setPageSize(size);
+    setOffset(0);
+  }
+
+  function selectTab(next: Tab) {
+    setActiveTab(next);
+    setOffset(0);
+  }
+
+  const emptyMessage = debouncedSearch.trim()
+    ? "No leads match your search."
+    : activeTab === "pipeline"
+      ? "No leads in pipeline."
+      : activeTab === "follow_up"
+        ? "No follow-up leads."
+        : activeTab === "hold"
+          ? "No leads on hold."
+          : "No rejected leads.";
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -287,7 +344,7 @@ export function SalesPage() {
   }
 
   function handleRefresh() {
-    void fetchPageData(false);
+    void refreshPageData(false);
     window.dispatchEvent(new Event("bazaar:refresh-counts"));
   }
 
@@ -333,7 +390,7 @@ export function SalesPage() {
         {TABS.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => selectTab(tab.id)}
             className="whitespace-nowrap px-4 py-2.5 text-[13px] font-medium transition-colors"
             style={{
               borderBottom: activeTab === tab.id ? "2px solid var(--color-tab-underline)" : "2px solid transparent",
@@ -358,6 +415,7 @@ export function SalesPage() {
 
       {/* Search + Refresh */}
       <div className="flex items-center gap-2">
+        <ListRefreshingNotice refreshing={refreshing} />
         <div className="relative flex-1" style={{ maxWidth: 320 }}>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -390,14 +448,14 @@ export function SalesPage() {
               <tbody>
                 {loading ? (
                   <TableRowsSkeleton cols={9} />
-                ) : activeLeads.length === 0 ? (
+                ) : leads.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads in pipeline.
                     </td>
                   </tr>
                 ) : (
-                  activeLeads.map((lead, idx) => (
+                  leads.map((lead, idx) => (
                     <tr
                       key={lead.id}
                       className="transition-colors"
@@ -492,12 +550,12 @@ export function SalesPage() {
                   <div className="h-3 w-24 rounded" style={{ background: "var(--color-border)" }} />
                 </div>
               ))
-            ) : activeLeads.length === 0 ? (
+            ) : leads.length === 0 ? (
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
                 No leads in pipeline.
               </div>
             ) : (
-              activeLeads.map((lead) => (
+              leads.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -578,14 +636,14 @@ export function SalesPage() {
               <tbody>
                 {loading ? (
                   <TableRowsSkeleton cols={7} />
-                ) : activeLeads.length === 0 ? (
+                ) : leads.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads scheduled for follow-up.
                     </td>
                   </tr>
                 ) : (
-                  activeLeads.map((lead, idx) => (
+                  leads.map((lead, idx) => (
                     <tr
                       key={lead.id}
                       className="transition-colors"
@@ -648,12 +706,12 @@ export function SalesPage() {
                   <div className="h-4 w-32 rounded" style={{ background: "var(--color-border)" }} />
                 </div>
               ))
-            ) : activeLeads.length === 0 ? (
+            ) : leads.length === 0 ? (
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
                 No leads scheduled for follow-up.
               </div>
             ) : (
-              activeLeads.map((lead) => (
+              leads.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{leadName(lead)}</p>
@@ -704,14 +762,14 @@ export function SalesPage() {
               <tbody>
                 {loading ? (
                   <TableRowsSkeleton cols={7} />
-                ) : activeLeads.length === 0 ? (
+                ) : leads.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads on hold.
                     </td>
                   </tr>
                 ) : (
-                  activeLeads.map((lead, idx) => (
+                  leads.map((lead, idx) => (
                     <tr
                       key={lead.id}
                       className="transition-colors"
@@ -775,12 +833,12 @@ export function SalesPage() {
                   <div className="h-4 w-32 rounded" style={{ background: "var(--color-border)" }} />
                 </div>
               ))
-            ) : activeLeads.length === 0 ? (
+            ) : leads.length === 0 ? (
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
                 No leads on hold.
               </div>
             ) : (
-              activeLeads.map((lead) => (
+              leads.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{leadName(lead)}</p>
@@ -836,14 +894,14 @@ export function SalesPage() {
               <tbody>
                 {isLoading ? (
                   <TableRowsSkeleton cols={7} />
-                ) : activeLeads.length === 0 ? (
+                ) : leads.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No rejected leads.
                     </td>
                   </tr>
                 ) : (
-                  activeLeads.map((lead, idx) => (
+                  leads.map((lead, idx) => (
                     <tr
                       key={lead.id}
                       className="transition-colors"
@@ -899,12 +957,12 @@ export function SalesPage() {
                   <div className="h-4 w-32 rounded" style={{ background: "var(--color-border)" }} />
                 </div>
               ))
-            ) : activeLeads.length === 0 ? (
+            ) : leads.length === 0 ? (
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
                 No rejected leads.
               </div>
             ) : (
-              activeLeads.map((lead) => (
+              leads.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{leadName(lead)}</p>
@@ -934,6 +992,15 @@ export function SalesPage() {
           </div>
         </>
       )}
+
+      <ListPagination
+        total={pagination.total}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
 
       {/* Reassign modal (admin only) */}
       <Dialog open={!!reassignLead} onOpenChange={(o) => { if (!o) setReassignLead(null); }}>

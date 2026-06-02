@@ -42,6 +42,11 @@ export function isTicketPaidInFull(
 }
 
 export { isPaymentEvidencePending, hasPaymentEvidenceSource } from "@/lib/utils/payment-evidence-pending";
+export {
+  isTaxExemptApprovalPending,
+  requiresTaxExemptAccountantReview,
+  canMarkTicketCompleted,
+} from "@/lib/utils/tax-exempt-approval";
 
 export function computeDepositDueFromTicket(ticket: TicketPaymentFields): number {
   const total    = Number(ticket.quote_final_total ?? 0);

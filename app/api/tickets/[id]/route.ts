@@ -6,6 +6,7 @@ import {
   sendQuoteToCustomer,
   sendPaymentReminder,
   sendPaymentConfirmed,
+  sendTaxExemptApproved,
   sendInvoiceLinkToCustomer,
   sendOrderReadyToCustomer,
   resolveTicketOutreach,
@@ -20,7 +21,17 @@ import { maybeConvertQuoteToOrder } from "@/lib/utils/maybe-convert-quote-to-ord
 import { markLinkedLeadWonOnProduction } from "@/lib/utils/mark-lead-won-on-production";
 import { canAdminCancelTicket } from "@/lib/utils/can-admin-cancel-ticket";
 import { cancelReasonCategoryForStatus, isOtherCancelReason } from "@/lib/utils/cancel-reason-category";
-import { isTicketPaidInFull } from "@/lib/utils/invoice-payment-summary";
+import {
+  canMarkTicketCompleted,
+  isTaxExemptApprovalPending,
+  isTicketPaidInFull,
+} from "@/lib/utils/invoice-payment-summary";
+import {
+  computeTotalsIfTaxExemptDenied,
+  requiresTaxExemptAccountantReview,
+  TAX_EXEMPT_APPROVAL_INVALIDATING_FIELDS,
+} from "@/lib/utils/tax-exempt-approval";
+import { syncCustomerTaxExemptFromApprovedTicket } from "@/lib/utils/customer-tax-exempt";
 import {
   assignOrderReferenceCode,
   resolveTicketId,
@@ -44,6 +55,7 @@ import {
   parseLineItemsFromBody,
   syncTicketLines,
 } from "@/lib/utils/ticket-line-items";
+import { fetchTicketDetailPayload } from "@/lib/utils/fetch-ticket-detail";
 type Params = { params: Promise<{ id: string }> };
 
 function parseNotifyRevision(raw: unknown, roleName: string | null): OutreachRevisionNotice | undefined {
@@ -62,70 +74,17 @@ export async function GET(_request: NextRequest, { params }: Params) {
   if (pageDeny) return pageDeny;
 
   const admin = createAdminClient();
-  const ticketId = await resolveTicketId(admin, rawId);
-  if (!ticketId) {
-    return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
+  const detail = await fetchTicketDetailPayload(admin, rawId, userId!, roleName);
+
+  if (!detail.ok) {
+    const status = detail.code === "FORBIDDEN" ? 403 : 404;
+    return NextResponse.json(
+      { error: detail.code === "FORBIDDEN" ? "Forbidden." : "Ticket not found.", code: detail.code },
+      { status },
+    );
   }
 
-  const { data: ticket, error } = await admin
-    .from("job_tickets")
-    .select(
-      `*,
-       customer:customers(id, first_name, last_name, company, phone, email, industry, website, created_at),
-       lead:leads(
-         id, created_at, status, sales_status, urgency, source,
-         sdr_comment, hold_reason, rejection_reason, is_returning_customer, interests, quantities,
-         customer:customers(id, first_name, last_name, company, phone, email, industry)
-       )`
-    )
-    .eq("id", ticketId)
-    .single();
-
-  if (error || !ticket) {
-    return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
-  }
-
-  // Scope check: reps can only view their own tickets (accountants: order/payment stages only).
-  if (!canAccessTicket(ticket, userId, roleName)) {
-    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
-  }
-
-  // Fetch creator name separately (created_by_id → auth.users, not user_profiles FK)
-  let created_by: { id: string; full_name: string } | null = null;
-  if (ticket.created_by_id) {
-    const { data: profile } = await admin
-      .from("user_profiles")
-      .select("id, full_name")
-      .eq("id", ticket.created_by_id)
-      .single();
-    created_by = profile ?? null;
-  }
-
-  const convert_meta = await fetchManualConvertMeta(admin, ticketId, ticket);
-  const line_items = await fetchTicketLinesBundle(admin, ticketId);
-  const shipping_destinations = await fetchTicketShippingDestinations(admin, ticketId);
-  const payment_refunds = isPaymentStaffRole(roleName)
-      ? await fetchTicketPaymentRefunds(admin, ticketId)
-      : [];
-
-  const cancelled_at = await resolveTicketCancelledAt(
-    admin,
-    ticketId,
-    ticket.ticket_status as string,
-    (ticket as { cancelled_at?: string | null }).cancelled_at,
-  );
-
-  return NextResponse.json({
-    ticket: {
-      ...ticket,
-      cancelled_at,
-      created_by,
-      convert_meta,
-      line_items,
-      shipping_destinations,
-      payment_refunds,
-    },
-  });
+  return NextResponse.json({ ticket: detail.ticket });
 }
 
 // ─── PATCH /api/tickets/[id] ──────────────────────────────────────────────────
@@ -151,7 +110,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Load existing ticket to check ownership and current status
   const { data: existing, error: fetchErr } = await admin
     .from("job_tickets")
-    .select("id, created_at, created_by_id, ticket_status, ticket_kind, routed_by_id, linked_lead_id, customer_id, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_final_total, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at, payment_evidence_amount, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at, requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip, quote_shipping")
+    .select("id, created_at, created_by_id, ticket_status, ticket_kind, routed_by_id, linked_lead_id, customer_id, public_token, quote_channel, quote_destination, contact_name, contact_email, client_confirmed, ticket_require_client_confirm, ticket_full_channels, ticket_partial_channels, ticket_dep_handling, payment_status, quote_subtotal, quote_final_total, quote_pre_tax_total, quote_tax_rate_percent, quote_tax_amount, discount_type, discount_value, payment_amount_received, payment_paid_at, deposit_amount, deposit_paid_at, payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at, payment_evidence_amount, stripe_payment_intent_id, ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value, reference_code, production_released_at, balance_paid_at, requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip, quote_shipping, tax_exempt, sales_permit_number, sales_permit_storage_path, sales_permit_file_name, sales_permit_mime_type, sales_permit_reviewed_at, sales_permit_reviewed_by_id")
     .eq("id", ticketId)
     .single();
 
@@ -175,7 +134,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
         admin
           .from("job_tickets")
-          .select("*, customer:customers(first_name, last_name, email, phone)")
+          .select("*, customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)")
           .eq("id", ticketId)
           .single(),
         admin.from("company_settings").select("*").eq("id", 1).single(),
@@ -230,7 +189,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
       admin
         .from("job_tickets")
-        .select("*, customer:customers(first_name, last_name, email, phone)")
+        .select("*, customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)")
         .eq("id", ticketId)
         .single(),
       admin.from("company_settings").select("*").eq("id", 1).single(),
@@ -287,11 +246,19 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       .from("job_tickets")
       .update({ ticket_status: "draft", created_by_id: userId, updated_at: now })
       .eq("id", ticketId)
+      .eq("ticket_status", "routed")
       .select()
-      .single();
+      .maybeSingle();
 
     if (claimErr) {
       return NextResponse.json({ error: claimErr.message, code: "DB_ERROR" }, { status: 500 });
+    }
+
+    if (!claimed) {
+      return NextResponse.json(
+        { error: "This quote was already claimed or is no longer routed.", code: "ALREADY_CLAIMED" },
+        { status: 409 },
+      );
     }
 
     await admin.from("activities").insert({
@@ -348,6 +315,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Accountants may mark in-production orders complete only when paid in full.
   // Admins may complete with outstanding balance only after explicit acknowledgment.
   if ("ticket_status" in body && body.ticket_status === "completed" && existing.ticket_status === "in_production") {
+    const taxPending = isTaxExemptApprovalPending(existing);
+    const acknowledgeTax = body.acknowledge_tax_exempt_unapproved === true;
+
     if (roleName === "accountant") {
       if (!isTicketPaidInFull(existing)) {
         return NextResponse.json(
@@ -355,6 +325,25 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           { status: 400 },
         );
       }
+      if (!canMarkTicketCompleted(existing, { acknowledgeTaxExemptUnapproved: false })) {
+        return NextResponse.json(
+          {
+            error: taxPending
+              ? "Approve tax-exempt documentation before marking this order completed."
+              : "Resolve pending payment review before marking completed.",
+            code: taxPending ? "TAX_EXEMPT_APPROVAL_REQUIRED" : "PAYMENT_REVIEW_REQUIRED",
+          },
+          { status: 400 },
+        );
+      }
+    } else if (taxPending && !acknowledgeTax) {
+      return NextResponse.json(
+        {
+          error: "Tax-exempt documentation must be approved before marking completed, or confirm override.",
+          code: "TAX_EXEMPT_APPROVAL_REQUIRED",
+        },
+        { status: 400 },
+      );
     } else if (roleName === "admin" && !isTicketPaidInFull(existing) && body.acknowledge_outstanding_balance !== true) {
       const total = Number(existing.quote_final_total ?? 0);
       const paid = Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0);
@@ -384,6 +373,200 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         { status: 403 },
       );
     }
+  }
+
+  // ── approve_tax_exempt action ─────────────────────────────────────────────
+  if (body.approve_tax_exempt === true) {
+    if (!isPaymentStaffRole(roleName)) {
+      return NextResponse.json(
+        { error: "Only accountants can approve tax-exempt documentation.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+
+    if (!requiresTaxExemptAccountantReview(existing)) {
+      return NextResponse.json(
+        { error: "This ticket does not require tax-exempt approval.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const finalTotal = Number(body.quote_final_total);
+    if (!Number.isFinite(finalTotal) || finalTotal <= 0) {
+      return NextResponse.json(
+        { error: "quote_final_total must be a positive number.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const now = new Date().toISOString();
+    const previousFinalTotal = Number(existing.quote_final_total ?? 0);
+
+    const approvePatch: Record<string, unknown> = {
+      updated_at: now,
+      sales_permit_reviewed_at: now,
+      sales_permit_reviewed_by_id: userId,
+      quote_pre_tax_total: body.quote_pre_tax_total ?? existing.quote_pre_tax_total,
+      quote_tax_rate_percent: body.quote_tax_rate_percent ?? existing.quote_tax_rate_percent,
+      quote_tax_amount: body.quote_tax_amount ?? existing.quote_tax_amount,
+      quote_final_total: finalTotal,
+    };
+    if ("quote_subtotal" in body) approvePatch.quote_subtotal = body.quote_subtotal;
+    if ("quote_shipping" in body) approvePatch.quote_shipping = body.quote_shipping;
+    if ("discount_type" in body) approvePatch.discount_type = body.discount_type;
+    if ("discount_value" in body) approvePatch.discount_value = body.discount_value;
+
+    const { data: approved, error: approveErr } = await admin
+      .from("job_tickets")
+      .update(approvePatch)
+      .eq("id", ticketId)
+      .select(
+        `*, customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)`,
+      )
+      .single();
+
+    if (approveErr || !approved) {
+      return NextResponse.json({ error: approveErr?.message ?? "Update failed.", code: "DB_ERROR" }, { status: 500 });
+    }
+
+    const { data: reviewerProfile } = await admin
+      .from("user_profiles")
+      .select("full_name")
+      .eq("id", userId)
+      .single();
+
+    await admin.from("activities").insert({
+      type: "ticket_tax_exempt_approved",
+      lead_id: existing.linked_lead_id ?? null,
+      customer_id: existing.customer_id ?? null,
+      ticket_id: ticketId,
+      by_user_id: userId,
+      payload: {
+        quote_final_total: finalTotal,
+        previous_final_total: previousFinalTotal,
+        reviewed_by_name: reviewerProfile?.full_name ?? null,
+      },
+      created_at: now,
+    });
+
+    if (existing.customer_id && approved.sales_permit_storage_path) {
+      await syncCustomerTaxExemptFromApprovedTicket(admin, existing.customer_id, {
+        id: ticketId,
+        sales_permit_storage_path: approved.sales_permit_storage_path as string,
+        sales_permit_file_name: approved.sales_permit_file_name as string | null,
+        sales_permit_mime_type: approved.sales_permit_mime_type as string | null,
+        sales_permit_number: approved.sales_permit_number as string | null,
+        sales_permit_reviewed_at: now,
+        sales_permit_reviewed_by_id: userId,
+      });
+    }
+
+    if (approved.reference_code && approved.public_token) {
+      const { data: companyRow } = await admin.from("company_settings").select("*").eq("id", 1).single();
+      if (companyRow) {
+        sendTaxExemptApproved(
+          {
+            reference_code: approved.reference_code as string,
+            public_token: approved.public_token as string,
+            quote_channel: approved.quote_channel as string | null,
+            quote_destination: approved.quote_destination as string | null,
+            customer: Array.isArray(approved.customer) ? approved.customer[0] : approved.customer,
+          },
+          companyRow,
+          { previousFinalTotal, newFinalTotal: finalTotal },
+        ).then((result) => {
+          if (!result.ok) {
+            console.error("[tax-exempt-approved] delivery failed:", result.error, { ticketId });
+          }
+        });
+
+        await admin.from("activities").insert({
+          type: "ticket_tax_exempt_confirmed_sent",
+          lead_id: existing.linked_lead_id ?? null,
+          customer_id: existing.customer_id ?? null,
+          ticket_id: ticketId,
+          by_user_id: userId,
+          payload: {
+            new_final_total: finalTotal,
+            previous_final_total: previousFinalTotal,
+          },
+          created_at: now,
+        });
+      }
+    }
+
+    notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
+
+    return NextResponse.json({ ticket: approved });
+  }
+
+  // ── deny_tax_exempt action ────────────────────────────────────────────────
+  if (body.deny_tax_exempt === true) {
+    if (!isPaymentStaffRole(roleName)) {
+      return NextResponse.json(
+        { error: "Only accountants can deny tax-exempt documentation.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+
+    if (!requiresTaxExemptAccountantReview(existing)) {
+      return NextResponse.json(
+        { error: "This ticket does not require tax-exempt review.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const preTax = Number(existing.quote_pre_tax_total ?? 0);
+    const taxRate = Number(existing.quote_tax_rate_percent ?? 0);
+    const { tax_amount: taxAmount, final_total: finalTotal } = computeTotalsIfTaxExemptDenied(
+      preTax,
+      taxRate,
+    );
+    const previousFinalTotal = Number(existing.quote_final_total ?? 0);
+    const now = new Date().toISOString();
+
+    const { data: denied, error: denyErr } = await admin
+      .from("job_tickets")
+      .update({
+        updated_at: now,
+        tax_exempt: false,
+        quote_tax_amount: taxAmount,
+        quote_final_total: finalTotal,
+        sales_permit_reviewed_at: now,
+        sales_permit_reviewed_by_id: userId,
+      })
+      .eq("id", ticketId)
+      .select()
+      .single();
+
+    if (denyErr || !denied) {
+      return NextResponse.json({ error: denyErr?.message ?? "Update failed.", code: "DB_ERROR" }, { status: 500 });
+    }
+
+    const { data: reviewerProfile } = await admin
+      .from("user_profiles")
+      .select("full_name")
+      .eq("id", userId)
+      .single();
+
+    await admin.from("activities").insert({
+      type: "ticket_tax_exempt_denied",
+      lead_id: existing.linked_lead_id ?? null,
+      customer_id: existing.customer_id ?? null,
+      ticket_id: ticketId,
+      by_user_id: userId,
+      payload: {
+        quote_final_total: finalTotal,
+        previous_final_total: previousFinalTotal,
+        quote_tax_rate_percent: taxRate,
+        reviewed_by_name: reviewerProfile?.full_name ?? null,
+      },
+      created_at: now,
+    });
+
+    notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
+
+    return NextResponse.json({ ticket: denied });
   }
 
   // ── record_payment action ────────────────────────────────────────────────
@@ -418,13 +601,24 @@ export async function PATCH(request: NextRequest, { params }: Params) {
                balance_paid_at, payment_paid_at, client_confirmed, production_released_at,
                payment_evidence_url, payment_evidence_submitted_at, payment_evidence_reviewed_at,
                payment_evidence_amount, stripe_payment_intent_id,
+               tax_exempt, sales_permit_storage_path, sales_permit_reviewed_at,
                public_token, reference_code, quote_channel, quote_destination, title,
                ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
                ticket_dep_handling, ticket_full_channels, ticket_partial_channels,
                ticket_require_client_confirm, linked_lead_id, customer_id,
-               customer:customers(first_name, last_name, email, phone)`)
+               customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)`)
       .eq("id", ticketId)
       .single();
+
+    if (cur && isTaxExemptApprovalPending(cur)) {
+      return NextResponse.json(
+        {
+          error: "Approve tax-exempt documentation before confirming payment.",
+          code: "TAX_EXEMPT_APPROVAL_REQUIRED",
+        },
+        { status: 400 },
+      );
+    }
 
     const quoteTotal    = Number(cur?.quote_final_total ?? 0);
     const alreadyPaid   = Number(cur?.payment_amount_received ?? 0);
@@ -852,6 +1046,23 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   const syncedKind = ticketKindForReference(mergedRef, mergedKind);
   if (syncedKind) patch.ticket_kind = syncedKind;
 
+  if (
+    !body.approve_tax_exempt &&
+    !body.deny_tax_exempt &&
+    (existing as { sales_permit_reviewed_at?: string | null }).sales_permit_reviewed_at
+  ) {
+    const invalidates = TAX_EXEMPT_APPROVAL_INVALIDATING_FIELDS.some((key) => {
+      if (!(key in body)) return false;
+      const next = body[key];
+      const prev = (existing as Record<string, unknown>)[key];
+      return String(next ?? "") !== String(prev ?? "");
+    });
+    if (invalidates) {
+      patch.sales_permit_reviewed_at = null;
+      patch.sales_permit_reviewed_by_id = null;
+    }
+  }
+
   const { data: updated, error: updateErr } = await admin
     .from("job_tickets")
     .update(patch)
@@ -984,7 +1195,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
         admin
           .from("job_tickets")
-          .select("*, customer:customers(first_name, last_name, email, phone)")
+          .select("*, customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)")
           .eq("id", ticketId)
           .single(),
         admin.from("company_settings").select("*").eq("id", 1).single(),
@@ -1041,7 +1252,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const [{ data: fullTicket }, { data: companyRow }] = await Promise.all([
         admin
           .from("job_tickets")
-          .select("*, customer:customers(first_name, last_name, email, phone)")
+          .select("*, customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)")
           .eq("id", ticketId)
           .single(),
         admin.from("company_settings").select("*").eq("id", 1).single(),

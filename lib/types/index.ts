@@ -101,6 +101,13 @@ export interface Customer {
   website: string | null
   authority: string | null
   heat_tag: HeatTag | null
+  tax_exempt_last_permit_number: string | null
+  tax_exempt_last_storage_path: string | null
+  tax_exempt_last_file_name: string | null
+  tax_exempt_last_mime_type: string | null
+  tax_exempt_last_reviewed_at: string | null
+  tax_exempt_last_reviewed_by_id: string | null
+  tax_exempt_last_source_ticket_id: string | null
   created_at: string
   updated_at: string
 }
@@ -330,6 +337,10 @@ export interface JobTicket {
   sales_permit_storage_path: string | null
   sales_permit_file_name: string | null
   sales_permit_mime_type: string | null
+  sales_permit_submitted_at: string | null
+  sales_permit_reviewed_at: string | null
+  sales_permit_reviewed_by_id: string | null
+  sales_permit_reused_from_customer: boolean
 
   // Payment
   quote_payment_types: PaymentTypeKey[]

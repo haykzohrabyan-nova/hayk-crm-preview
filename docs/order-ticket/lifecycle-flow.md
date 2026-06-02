@@ -257,4 +257,4 @@ On `/quotes/[id]`, `/orders/[id]`, `/payments/[id]`, `/completed/[id]`:
 | Quote sent | `ticket_sent` activity | Always **Quote sent** |
 | Converted | `ticket_converted` activity | **Converted to order** + `ORD-*` in detail |
 
-`reference_code` prefix is authoritative over `ticket_kind` in helpers (`lib/utils/reference-codes.ts`). API keeps them aligned via `ticketKindForReference()` on create/update.
+`reference_code` prefix is authoritative over `ticket_kind` in helpers (`lib/utils/reference-codes.ts` — `ticketIsQuoteStage`, `ticketIsOrderStage`). Public portal/PDF use `ticketIsOrderStage()` for document labels. API keeps them aligned via `ticketKindForReference()` on create/update.

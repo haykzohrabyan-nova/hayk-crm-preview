@@ -7,6 +7,7 @@ import {
   resolveTicketSearchCustomerIds,
   type ProductionListFilters,
 } from "@/lib/utils/ticket-list-filters";
+import { jobTicketCustomerEmbed } from "@/lib/utils/ticket-list-select";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -21,7 +22,7 @@ const PRODUCTION_ORDER_SELECT = `
   priority, due_date, rush,
   production_released_at,
   created_at,
-  customer:customers(id, first_name, last_name, company)
+  ${jobTicketCustomerEmbed("id, first_name, last_name, company")}
 `.trim();
 
 async function buildScopedProductionQuery(

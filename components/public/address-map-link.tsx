@@ -6,6 +6,7 @@ import {
   companyAddressLines,
   googleMapsSearchUrl,
   mapLinkStyle,
+  publicContactLinkStyle,
   type CompanyAddressFields,
 } from "@/lib/utils/maps-link";
 
@@ -40,7 +41,7 @@ export function AddressMapLink({
       target="_blank"
       rel="noopener noreferrer"
       aria-label={`Open ${companyAddressFull(company)} in Google Maps`}
-      style={{ ...mapLinkStyle, display: "block", ...blockStyle }}
+      style={{ ...publicContactLinkStyle, ...blockStyle }}
     >
       {lines.map((line, i) => (
         <div key={i} style={lineStyle}>{line}</div>

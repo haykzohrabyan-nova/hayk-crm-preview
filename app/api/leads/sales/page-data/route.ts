@@ -8,8 +8,9 @@ import {
   parseLeadsWorkspaceQuery,
   type LeadsWorkspaceQuery,
 } from "@/lib/utils/leads-workspace-query";
+import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 
-/** GET /api/leads/sales/page-data — sales pipeline list + tab counts in one auth pass. */
+/** GET /api/leads/sales/page-data — paginated sales pipeline list + tab counts in one auth pass. */
 export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
@@ -19,6 +20,7 @@ export async function GET(request: NextRequest) {
 
   const params = request.nextUrl.searchParams;
   const tab = params.get("tab") ?? "pipeline";
+  const pagination = parseListPaginationParams(params);
   const base = parseLeadsWorkspaceQuery(params);
 
   let workspaceQuery: LeadsWorkspaceQuery;
@@ -46,10 +48,18 @@ export async function GET(request: NextRequest) {
 
   try {
     const [result, counts] = await Promise.all([
-      fetchLeadsWorkspace(admin, workspaceQuery, userId!, roleName),
+      fetchLeadsWorkspace(admin, { ...workspaceQuery, pagination }, userId!, roleName),
       fetchLeadsSalesTabCounts(admin, userId!, roleName),
     ]);
-    return NextResponse.json({ leads: result.rows, counts });
+    return NextResponse.json({
+      leads: result.rows,
+      counts,
+      pagination: toPaginatedMeta({
+        ...pagination,
+        total: result.total,
+        rowCount: result.rows.length,
+      }),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to load sales data.";
     return NextResponse.json({ error: message, code: "DB_ERROR" }, { status: 500 });

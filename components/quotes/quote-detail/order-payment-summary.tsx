@@ -62,6 +62,12 @@ export interface SummaryTicket {
   stripe_payment_status?: string | null;
   refund_status?: "none" | "partial" | "full" | string | null;
   total_refunded_amount?: number | null;
+  tax_exempt?: boolean;
+  sales_permit_number?: string | null;
+  sales_permit_file_name?: string | null;
+  sales_permit_storage_path?: string | null;
+  sales_permit_reviewed_at?: string | null;
+  sales_permit_reviewed_by?: { id: string; full_name: string | null } | null;
 }
 
 function refundPaymentStatusLabel(ticket: Pick<SummaryTicket, "refund_status" | "total_refunded_amount" | "payment_status">): string | null {

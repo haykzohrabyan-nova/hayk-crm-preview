@@ -33,7 +33,7 @@ User B's browser (admin watching the leads page)
   └── sidebar.tsx holds the WebSocket subscription
         │
         ├── fetchBadges() → GET /api/sidebar-counts → updates sidebar badge
-        │     (debounced ~300 ms to coalesce burst events)
+        │     (refetch immediately — `REALTIME_REFETCH_MS = 0`; navigation list cache may revalidate after 300ms on remount only)
         └── dispatchEvent("bazaar:leads-changed")
               │
               └── leads-page.tsx (and sales-page.tsx) hear the event
@@ -528,42 +528,43 @@ useEffect(() => {
 
 ---
 
-## Coalesced refetch (mount + realtime)
+## List page refetch (SWR + realtime — Jun 2026)
 
-When mount fetch and a realtime handler fire close together (common in **React Strict Mode** during `npm run dev`), schedule a single refetch instead of two parallel calls.
+Tabbed list pages use **`useListPageData`** (`hooks/use-list-page-data.ts` → `useStaleWhileRevalidate`).
 
-**Shared hook (May 2026):** `hooks/use-coalesced-refresh.ts` — used on Production, Orders, Quotes, Payments, Completed, Leads, and Sales list pages.
+| Trigger | Delay | Behavior |
+|---------|-------|----------|
+| `bazaar:tickets-changed`, `bazaar:leads-changed`, etc. | **0ms** (`REALTIME_REFETCH_MS`) | Start `GET …/page-data` immediately; cancel pending nav revalidate timer |
+| Mount / tab switch **with cache hit** | **300ms** (`LIST_NAV_REVALIDATE_MS`) | Show cached rows; background sync (skipped if realtime already refetched) |
+| Mount **without cache** | ~50ms `mountDelay` | Skeleton until first response |
+
+**In-flight dedupe:** One active fetch per cache key; burst realtime queues at most one follow-up silent refetch.
+
+**Tab switch:** `useLayoutEffect` clears hook data when `cacheKey` changes so another tab’s rows never flash.
+
+**Pause while editing:** Sales: `enabled: !drawerLead`. Leads: `enabled: !drawerLead || drawerReadOnly` (read-only drawer keeps realtime on).
+
+**UX:** `ListRefreshingNotice` on list toolbars during silent refetch (not full skeleton).
+
+**Post-mutation:** `notifyListDataChanged({ cachePrefix: "quotes" })` — optional cache prefix clear + window events (e.g. routed quote claim).
 
 ```typescript
-// Typical usage in a list page
-useCoalescedRefresh({
-  onRefresh: fetchPageData, // MUST be stable (useCallback) or the hook's ref pattern
+// Typical list page
+const { data: pageData, isLoading, isRevalidating } = useListPageData({
+  cacheKey: `orders:${tab}:${filters}`,
+  url: `/api/orders/page-data?${params}`,
   events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
-  mountDelayMs: 50,
-  eventDelayMs: 300,
+  enabled: true,
 });
 ```
 
-**Important:** Do not pass an inline refresh function that changes every render into effect dependencies — that caused an infinite reload loop on `/leads` (fixed May 2026). The hook stores the latest callback in a ref; page components should pass a stable `fetchPageData` from `useCallback`.
+**Sidebar badges:** `bazaar:refresh-counts` → **immediate** `fetchBadges()` (no 300ms debounce).
 
-**Pause / resume (May 2026):** Pass `enabled: false` while an **editable** modal/drawer is open (e.g. sales pipeline). When `enabled` flips back to `true`, the hook refetches **silently** (no loading skeleton). On `/leads`, read-only Verify Drawer uses `enabled: !drawerLead || drawerReadOnly` so closing a routed/won lead view does not trigger any refetch flash.
+**Detail pages:** `useTicketRealtimeSync(ticketId, onRefresh)` — default debounce **0**. Initial mount: `GET /api/tickets/[id]/page-data`; silent refresh: `GET /api/tickets/[id]`.
 
-Legacy inline timer pattern (pre-hook) remains documented below for reference:
+**Legacy:** `hooks/use-coalesced-refresh.ts` — superseded on list pages; default `eventDelay` is now 0 if used elsewhere.
 
-```typescript
-// Pattern used in production-page.tsx (2026-05-22, superseded by useCoalescedRefresh)
-const refetchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-function scheduleRefetch(delayMs: number) {
-  if (refetchTimer.current) clearTimeout(refetchTimer.current);
-  refetchTimer.current = setTimeout(() => {
-    refetchTimer.current = null;
-    void fetchPageData(true);
-  }, delayMs);
-}
-```
-
-Prefer **`GET /api/{feature}/page-data`** on mount so coalesced refetch updates list + counts in one request. Counts-only routes remain for lightweight realtime refresh when the list payload is unchanged.
+Prefer **`GET /api/{feature}/page-data`** so one refetch updates list + tab counts. Counts-only routes remain for lightweight refresh when only badges changed.
 
 ---
 

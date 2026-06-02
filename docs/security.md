@@ -177,7 +177,7 @@ Staff-authenticated routes are unchanged. **Public** write routes gate on `publi
 | `POST /api/public/quotes/[token]/submit-payment` | Not in `sent`/`order`/`in_production`/`completed` (`400 INVALID_STATUS`) — includes **cancelled**; partial/full refund (`409 REFUNDED`) |
 | `POST /api/public/quotes/[token]/stripe/create-session` | Same as submit-payment (`publicQuotePaymentBlockedResponse`) |
 
-`GET /api/public/quotes/[token]` remains available for read-only invoice view when cancelled or refunded.
+`GET /api/public/quotes/[token]` remains available for read-only invoice view when cancelled or refunded. Response may include `tax_exempt_review_pending` only when a permit **file** exists on the ticket and is not yet reviewed (not for legacy permit-#-only rows). Pricing fields remain in JSON but portal/PDF hide full breakdown per `lib/utils/public-invoice-document.ts`.
 
 ### Staff refund routes (authenticated)
 

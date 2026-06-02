@@ -3,6 +3,166 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-02] — Docs: performance, realtime, list SWR, bootstrap APIs
+
+### Changed
+- `docs/api-contract.md`, `docs/TECHNICAL_REFERENCE.md`, `docs/architecture.md`, `docs/component-architecture.md`, `docs/types.md`, `docs/realtime-live-updates.md`, `docs/realtime-agent-setup-guide.md`, `docs/navigation.md`, `docs/feature-specs/tickets.md`, `docs/feature-specs/leads-sdr.md`, `docs/FuturePlan/Performance/*`, `docs/schema.md`, `docs/TODO.md`, `docs/session-summary.md` — align with `useListPageData`, zero-delay realtime, `107_performance_indexes`, ticket `page-data` + `form-bootstrap`, Sales/Payments pagination, routed claim **409**, `ListRefreshingNotice`, `notifyListDataChanged`
+
+## [2026-06-02] — List UX polish: coalesced fetch, claim safety, updating indicator
+
+### Added
+- `ListRefreshingNotice` on all tabbed list pages — subtle “Updating” during background refetch
+- `lib/client/notify-list-data-changed.ts` — post-mutation cache prefix clear + realtime events
+- `supabase/migrations/107_performance_indexes.sql` — restores documented partial indexes (073 was never in repo)
+
+### Changed
+- `hooks/use-stale-while-revalidate.ts` — one in-flight request per cache key; realtime cancels pending nav revalidate timer; queue one follow-up fetch after burst
+- `PATCH` routed quote claim — `WHERE ticket_status = 'routed'` + **409** `ALREADY_CLAIMED`; quotes UI shows error banner
+
+### Not in this pass (low ROI or already done)
+- TanStack Query migration (behavior equivalent today)
+- Derive all list rows directly from `pageData` (local state clear on tab change is sufficient)
+- CRM/Leads/Sales already use SQL `limit`/`offset` on page-data APIs
+
+## [2026-06-02] — Remove 300ms delay from all realtime refetch paths
+
+### Changed
+- `lib/constants/realtime-refetch.ts` — `REALTIME_REFETCH_MS = 0`, `LIST_NAV_REVALIDATE_MS = 300` (navigation cache only)
+- List pages, `use-ticket-realtime-sync`, sidebar `bazaar:refresh-counts`, public `/q/[token]` broadcast, `use-coalesced-refresh` default event delay — realtime refetches start immediately; 300ms remains only for optional background sync when reopening a cached list URL
+
+## [2026-06-02] — Remove Routed to Sales tab banner for Sales/Admin
+
+### Changed
+- `components/quotes/quotes-page.tsx` — drop high-value explainer banner on **Routed to Sales** for Sales and Admin; SDR read-only hint remains
+
+## [2026-06-02] — Fix tab switch showing previous tab rows
+
+### Fixed
+- Tabbed list pages (Orders, Payments, Quotes, etc.) — switching to an empty tab no longer flashes the previous tab’s rows; SWR resets per-tab cache key before paint and clears list state while loading
+
+### Changed
+- `hooks/use-stale-while-revalidate.ts` — `useLayoutEffect` on cache key change; ignore in-flight fetches for stale keys
+
+## [2026-06-02] — Perceived performance (SWR cache + detail bootstrap)
+
+### Added
+- `hooks/use-stale-while-revalidate.ts`, `hooks/use-list-page-data.ts`, `lib/client/list-page-cache.ts` — in-memory stale-while-revalidate for list `page-data` (5 min TTL, instant tab/back navigation)
+- `GET /api/tickets/[id]/page-data` — ticket + company settings + edit/action lookups + product catalog in one auth pass
+- `GET /api/quotes/form-bootstrap` — company + lookups + products for `/quotes/new`
+- `lib/utils/fetch-ticket-detail.ts`, `lib/utils/fetch-lookup-categories.ts`, `lib/utils/fetch-products-catalog.ts` — shared server loaders
+
+### Changed
+- All tabbed list pages (Orders, Quotes, Payments, Sales, Leads, CRM, Completed, Production) — `useListPageData` instead of refetch-only `useCoalescedRefresh`
+- `components/quotes/quote-detail.tsx` — initial load via `page-data`; silent ticket refresh still uses `GET /api/tickets/[id]`
+- `components/quotes/new-quote-form.tsx` — single `form-bootstrap` request replaces 4 parallel fetches
+- `GET /api/tickets/[id]` — delegates to `fetchTicketDetailPayload`
+
+## [2026-06-02] — Sales + Payments list pagination
+
+### Added
+- **`/sales`** — server-side pagination (`limit`/`offset` on `GET /api/leads/sales/page-data`); `ListPagination` 25/50/100; debounced search on server
+- **`/payments`** — active tab only per request (`?tab=` + pagination); tab counts via SQL head counts (`fetchPaymentsTabCounts`); pending/refunded use DB `range` when not searching
+
+### Changed
+- `components/sales/sales-page.tsx`, `components/orders/payments-page.tsx` — match Orders page pagination UX
+- `lib/utils/fetch-payments-data.ts` — paginated `fetchPaymentsPageData(admin, tab, { search, pagination })`
+- `docs/TODO.md` — remove Sales/Payments pagination from TODO-007 optional list
+
+## [2026-06-02] — TODO.md: open items only
+
+### Changed
+- `docs/TODO.md` — removed completed-work summary (see `CHANGELOG.md`); kept TODO-009, TODO-006 (Vercel Pro cron), TODO-007 optional scale items, and Future / not started table
+
+## [2026-06-02] — Legacy tax-exempt orders (permit # without file)
+
+### Fixed
+- Orders like **ORD-2026-013** (tax exempt before permit-file migration) — appear on **Payments → Tax-exempt pending** with **File required**; public link no longer shows “under review” without an uploaded file
+- Staff: upload permit on **Orders → ORD-…** (Quote tab → Permit File), then confirm on Payments tab
+
+### Changed
+- `fetchPendingTaxExemptOrders` — includes legacy rows (`sales_permit_number` set, no `sales_permit_storage_path`)
+- `tax_exempt_review_pending` on public API only when a permit **file** exists and is not yet reviewed
+- `docs/TECHNICAL_REFERENCE.md`, `docs/api-contract.md`, `docs/schema.md`, `docs/types.md`, `docs/feature-specs/invoice-payment.md`, `docs/navigation.md`, `docs/rbac.md`, `docs/component-architecture.md`, `docs/architecture.md` — legacy tax-exempt queue, public document helpers (`public-invoice-document.ts`), public `tax_exempt_review_pending` rule
+
+## [2026-06-02] — Public link contact links hit target
+
+### Fixed
+- Company address, phone, email, and website on `/q/[token]` — clickable area is text width only (`publicContactLinkStyle`), not full column
+
+## [2026-06-02] — Hide pricing on public link for cancelled/refunded orders
+
+### Changed
+- Public `/q/[token]` and customer PDF — **cancelled only**: no pricing; **refunded** (with or without cancel): **Amount Refunded** / **Refunded to Date** only (`total_refunded_amount`), no full breakdown
+
+## [2026-06-02] — Fix public invoice/PDF for cancelled refunded ORD tickets
+
+### Fixed
+- Public portal + PDF showed **QUOTE** for `ORD-*` when status was `cancelled` — now uses `ticketIsOrderStage()` (reference prefix wins)
+- PDF still showed **Payment under review** after refund/cancel — hides that banner when `cancelled` or `refund_status` partial/full; shows cancelled/refund notice instead
+- Public PDF route omitted `payment_evidence_reviewed_at` — included so reviewed evidence is not mislabeled as pending
+
+### Added
+- `lib/utils/public-invoice-document.ts` — shared customer-document helpers (`customerDocumentPaymentSummary`, `customerDocumentBanner`)
+
+## [2026-06-02] — Docs: tax-exempt approval (103–106)
+
+### Changed
+- `docs/TECHNICAL_REFERENCE.md` — tax-exempt accountant approval, payments four-tab page-data, sales-permit GET auth, `jobTicketCustomerEmbed`, key file index
+- `docs/api-contract.md` — `taxExemptOrders`, `approve_tax_exempt` / `deny_tax_exempt`, reuse + CRM tax-exempt-history routes, public embed note
+- `docs/schema.md`, `docs/types.md` — migrations 104–106 columns on `job_tickets` and `customers`
+- `docs/feature-specs/invoice-payment.md` — B++++ tax-exempt workflow; Stripe webhook auto-approve alignment
+- `docs/navigation.md`, `docs/rbac.md`, `docs/component-architecture.md`, `docs/architecture.md`, `docs/email-template-guide.md` — four-tab `/payments`, accountant approve/deny, related components and templates
+- `docs/TODO.md`, `docs/CHANGELOG.md`, `docs/FuturePlan/tax-exempt-resubmit-portal/README.md` — correct `FuturePlan/` paths
+
+## [2026-06-02] — Future plan: tax-exempt resubmit portal
+
+### Added
+- `docs/FuturePlan/tax-exempt-resubmit-portal/` — [README](FuturePlan/tax-exempt-resubmit-portal/README.md) + [tax-exempt-resubmit-portal.md](FuturePlan/tax-exempt-resubmit-portal/tax-exempt-resubmit-portal.md) (staff replace, OTP customer upload, missing docs, internal denial notes, email templates)
+- `docs/TODO.md` — link to future plans folder
+
+## [2026-06-02] — Tax-exempt approve/deny modal totals
+
+### Added
+- `deny_tax_exempt` PATCH action — turns off tax-exempt, applies sales tax to pre-tax total, logs `ticket_tax_exempt_denied`
+- Modal side-by-side totals: **If approved** vs **If denied** (with tax at quote rate)
+
+### Changed
+- Tax-exempt review modal: **Deny tax-exempt** (double-click confirm), approve button shows exempt total; adjust totals in collapsible section
+
+## [2026-06-02] — Tax-exempt review aligned with payment evidence
+
+### Added
+- Migration `106_sales_permit_submitted_at.sql` — `sales_permit_submitted_at` on `job_tickets` (mirrors `payment_evidence_submitted_at`)
+
+### Changed
+- **Payments** tax-exempt tab: same queue UX as pending payment evidence — Submitted column, View file, inline **Confirm** modal (not review-only navigation)
+- **Approved** tab includes tax-exempt permits already reviewed (merged with payment-evidence approved rows)
+- `TaxExemptReviewSection` / `ApproveTaxExemptModal` — layout and confirmation flow match payment evidence review
+- `GET /api/tickets/[id]/sales-permit` — accountant/admin only (same as payment evidence file route)
+- Payment detail (`context=payment`) navigates back to `/payments` after tax-exempt confirm, like payment confirm
+
+## [2026-06-02] — Fix job_tickets customer embed after migration 105
+
+### Fixed
+- PostgREST `PGRST201` on orders/quotes/payments lists — `customer:customers(...)` now uses `customers!job_tickets_customer_id_fkey` because migration 105 added a second FK via `customers.tax_exempt_last_source_ticket_id`
+- Shared helper `jobTicketCustomerEmbed()` in `lib/utils/ticket-list-select.ts`
+- `GET /api/tickets/[id]` 404 — nested `lead.customer` embed no longer uses the job_tickets FK hint (only ticket-level customer does)
+
+## [2026-06-02] — Tax-exempt accountant approval (UI + payments tab)
+
+### Added
+- Migrations `104_tax_exempt_approval.sql`, `105_customer_tax_exempt_last.sql` — per-ticket review fields + customer last-permit reuse hints
+- `approve_tax_exempt` PATCH action, payment/complete gates, `POST .../sales-permit/reuse-from-customer`, CRM tax-exempt history API
+- **Payments** page tab **Tax-exempt pending** with counts and review queue
+- `TaxExemptReviewSection` / `ApproveTaxExemptModal` on payment and order detail views
+- CRM customer profile **See more** → `CustomerTaxExemptModal` (per-quote approval history + customer last permit)
+- New quote: banner to **reuse / upload / dismiss** customer’s last tax-exempt permit; calls reuse API after create
+
+### Changed
+- **Orders** list and **Quotes** list badges show tax-exempt pending/approved in payment status column
+- Order/quote detail: banners for SDR/sales; stats row shows tax-exempt status; admin complete override for unapproved permit
+- Public quote API/document + invoice PDF: pending tax-exempt footnote/banner (confirm/pay still allowed)
+
 ## [2026-06-02] — Technical reference: add-quote sales permit + Stripe auto-approve
 
 ### Changed

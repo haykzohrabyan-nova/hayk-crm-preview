@@ -15,6 +15,7 @@ import { buildQuoteEmail } from "./quote-email-template";
 import { buildQuoteFollowUpEmail } from "./quote-follow-up-template";
 import { buildPaymentReminderEmail } from "./payment-reminder-template";
 import { buildPaymentConfirmedEmail } from "./payment-confirmed-template";
+import { buildTaxExemptApprovedEmail } from "./tax-exempt-approved-template";
 import { buildInvoiceLinkEmail } from "./invoice-link-template";
 import { buildOrderReadyEmail, formatPickupAddress } from "./order-ready-template";
 import { formatShipToAddress, formatShipToAddressInline } from "@/lib/utils/address";
@@ -683,6 +684,82 @@ export async function sendPaymentConfirmed(
     const body = renderStoredSms(templates, templateKey, {
       firstName: firstNameFromTicket(ticket),
       amount: fmtUsd(opts.amountConfirmed),
+      ref: ticket.reference_code,
+      companyName,
+      link: orderUrl,
+    });
+    const normalised = toE164(destination);
+    const toFormatted = channel === "whatsapp" ? `whatsapp:${normalised}` : normalised;
+
+    try {
+      const client = twilio(accountSid, authToken);
+      await client.messages.create({ from, to: toFormatted, body });
+      return { ok: true, channel };
+    } catch (err) {
+      return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
+    }
+  }
+
+  return { ok: true, channel: channel || "in-person" };
+}
+
+// ─── Tax-exempt approved (after accountant review) ─────────────────────────
+
+export async function sendTaxExemptApproved(
+  ticket: PaymentConfirmedTicket,
+  company: CompanyForSend,
+  opts: {
+    previousFinalTotal: number;
+    newFinalTotal: number;
+  },
+): Promise<SendResult> {
+  const channel = (ticket.quote_channel ?? "").toLowerCase();
+  const destination = ticket.quote_destination ?? null;
+  const orderUrl = publicUrl(ticket.public_token);
+  const customerName = customerDisplayName(ticket);
+  const companyName = company.company_name ?? "BazaarPrinting";
+  const totalChanged = Math.abs(opts.newFinalTotal - opts.previousFinalTotal) > 0.01;
+
+  if (channel === "email") {
+    if (!destination) return { ok: false, channel: "email", error: "No destination email address." };
+
+    const { subject, html } = buildTaxExemptApprovedEmail({
+      customerName,
+      referenceCode: ticket.reference_code,
+      previousFinalTotal: opts.previousFinalTotal,
+      newFinalTotal: opts.newFinalTotal,
+      totalChanged,
+      orderUrl,
+      company,
+    });
+
+    return instantlySend(destination, subject, html);
+  }
+
+  if (channel === "sms" || channel === "whatsapp") {
+    const templates = await loadTemplatesForSend();
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumber = process.env.TWILIO_PHONE_NUMBER;
+    const whatsappFrom = process.env.TWILIO_WHATSAPP_FROM;
+    if (!accountSid || !authToken) return { ok: false, channel, error: "Twilio credentials not configured." };
+    if (!destination) return { ok: false, channel, error: "No destination phone number." };
+
+    const from = channel === "whatsapp" ? whatsappFrom : phoneNumber;
+    if (!from) {
+      return {
+        ok: false,
+        channel,
+        error: `Twilio ${channel === "whatsapp" ? "TWILIO_WHATSAPP_FROM" : "TWILIO_PHONE_NUMBER"} not configured.`,
+      };
+    }
+
+    const templateKey: SmsTemplateKey = totalChanged
+      ? "tax_exempt_approved"
+      : "tax_exempt_approved_total_unchanged";
+    const body = renderStoredSms(templates, templateKey, {
+      firstName: firstNameFromTicket(ticket),
+      amount: fmtUsd(opts.newFinalTotal),
       ref: ticket.reference_code,
       companyName,
       link: orderUrl,

@@ -258,10 +258,11 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 /orders?tab=in_production  → In Production
 /orders?tab=cancelled       → Cancelled
 
-/payments             → Payment evidence (Pending | Approved | Refunded tabs)
-/payments?tab=pending   → default — unreviewed evidence
-/payments?tab=approved  → reviewed evidence (file still viewable)
-/payments?tab=refunded  → partial/full refund_status orders
+/payments             → Payment evidence + tax-exempt permits (4 tabs)
+/payments?tab=pending     → default — unreviewed payment evidence
+/payments?tab=tax_exempt  → tax-exempt permit awaiting accountant review
+/payments?tab=approved    → reviewed evidence and/or tax-exempt permit
+/payments?tab=refunded    → partial/full refund_status orders
 
 /completed            → Completed orders (date filter + search, no tabs)
 ```
@@ -311,7 +312,7 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | On Hold | `sales_status = 'On Hold'` | count |
 | Rejected | `status = 'Rejected'` and `prev_status = 'Routed to Sales'` — leads rejected from the sales pipeline. Admin sees all; Sales rep sees only their own. | count |
 
-**List API:** `GET /api/leads/sales/page-data?tab=…` — list + tab counts. **Claim** → `POST /claim`; **Open** (owned) → no `POST /lock`. See `docs/feature-specs/lead-locking.md`.
+**List API:** `GET /api/leads/sales/page-data?tab=…&limit=&offset=` — paginated list + tab counts (`ListPagination` 25/50/100). **Claim** → `POST /claim`; **Open** (owned) → no `POST /lock`. See `docs/feature-specs/lead-locking.md`.
 
 **Sales list columns (all tabs):** Name, Company, **Product Interests** (`ProductName[quantity]`), then tab-specific fields (Phone, Sales Status, Hold Reason, etc.).
 
@@ -353,23 +354,26 @@ List API: `GET /api/orders/page-data` → `{ orders, counts, pagination }`. Tab 
 
 Row click → `/orders/[id]`.
 
-### `/payments` — Payment evidence (Accountant + Admin)
+### `/payments` — Payment evidence + tax-exempt permits (Accountant + Admin)
 
-**Mount:** `GET /api/payments/page-data` — returns pending list, approved list, refunded list, and tab counts in one response.
+**Mount:** `GET /api/payments/page-data?tab=…&limit=&offset=` — active tab list + all tab counts + `pagination` (same pattern as Orders). Client: `useListPageData` + `ListRefreshingNotice` on realtime refetch.
 
 | Tab | Content | Badge | Filter |
 |-----|---------|-------|--------|
-| Pending approval | Customer proof awaiting accountant confirm | `counts.pending` | Unreviewed evidence/Stripe; `refund_status` none |
-| Approved | Evidence already reviewed — **View evidence** only (no Confirm) | `counts.approved` | Reviewed; `refund_status` none |
+| Pending approval | Customer proof awaiting accountant confirm | `counts.pending` | Unreviewed offline evidence; `refund_status` none (Stripe auto-approves in webhook) |
+| **Tax-exempt pending** | Sales permit awaiting approve/deny (file on ticket or legacy permit # only) | `counts.tax_exempt` | `tax_exempt`, `sales_permit_reviewed_at` null — file present **or** legacy (`sales_permit_number`, no file) |
+| Approved | Evidence and/or tax-exempt already reviewed | `counts.approved` | Merged reviewed rows (deduped by ticket) |
 | **Refunded** | Orders with partial/full refunds | `counts.refunded` | `refund_status IN ('partial','full')` — includes **Cancelled** badge when applicable; **Paid via** / **Refunded via** columns |
 
-Pending and Approved tabs include **`sent`**, **`order`**, **`in_production`**, and **`completed`** tickets. Refunded tab lists all matching refund_status rows (may include cancelled orders).
+Pending, Tax-exempt pending, and Approved tabs include **`sent`**, **`order`**, **`in_production`**, and **`completed`** tickets. Refunded tab lists all matching refund_status rows (may include cancelled orders).
 
-> Spec: [`feature-specs/payment-refunds.md`](feature-specs/payment-refunds.md)
+> Spec: [`feature-specs/invoice-payment.md`](feature-specs/invoice-payment.md) (tax-exempt workflow) · [`feature-specs/payment-refunds.md`](feature-specs/payment-refunds.md)
 
-**List columns:** Order · Customer · Claimed · **Payment For** (Deposit / Balance / Full payment + short description) · Method · Submitted · Actions or Approved date.
+**List columns (evidence tabs):** Order · Customer · Claimed · **Payment For** · Method · Submitted · Actions or Approved date.
 
-Row click → `/payments/[id]?from=/payments`. Detail uses full overview layout (stats row + lifecycle timeline + Payment review). **Back** → `/payments` (`resolveTicketDetailBackPath` — payment context before ticket status). Sidebar badge = pending count only (`GET /api/sidebar-counts`). Accountant dashboard KPI: `GET /api/payments/counts` → `pending_evidence`.
+**Tax-exempt tab:** Order · Customer · Submitted (`sales_permit_submitted_at`) · **View file** or **File required** + **Upload file** (legacy) · inline **Confirm** → `ApproveTaxExemptModal` (Confirm disabled until file uploaded for legacy rows).
+
+Row click → `/payments/[id]?from=/payments`. Detail: stats row + lifecycle timeline + **Payment review** and/or **Tax-exempt review** (`TaxExemptReviewSection`). **Back** → `/payments`. Sidebar badge = **payment evidence pending only** (`GET /api/sidebar-counts` — tax-exempt count is on page tab badges). Accountant dashboard KPI: `GET /api/payments/counts` → `pending_evidence`.
 
 ### `/completed` — Completed (SDR own scope; Accountant + Admin all)
 
@@ -387,7 +391,7 @@ Row click → `/completed/[id]`. Mount: `GET /api/completed/page-data`; counts-o
 
 **List API:** `GET /api/crm/page-data` — paginated (default 25 rows); server-side search, status, heat filters; requires `/crm` page permission. **`GET /api/customers`** used only for merge search and Add Customer (same permission).
 
-**Header:** **Add Customer** button (modal → `POST /api/customers`, no lead). Live updates via Realtime — no manual Refresh button. **Pagination:** `ListPagination` at bottom (25 / 50 / 100).
+**Header:** **Add Customer** button (modal → `POST /api/customers`, no lead). Live updates via Realtime — no manual Refresh button. **List:** `useListPageData` + `ListRefreshingNotice`. **Pagination:** `ListPagination` at bottom (25 / 50 / 100).
 
 | Column | Notes |
 |--------|-------|

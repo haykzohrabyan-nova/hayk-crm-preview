@@ -186,7 +186,7 @@ export async function GET(request: NextRequest) {
          ticket_payment_strategy, ticket_deposit_type, ticket_deposit_value,
          payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount,
          linked_lead_id, created_by_id, routed_by_id,
-         customer:customers(first_name, last_name, company)`,
+         customer:customers!job_tickets_customer_id_fkey(first_name, last_name, company)`,
         )
         .in("ticket_status", ["sent", "order", "in_production", "completed"])
         .gt("quote_final_total", 0),
@@ -210,7 +210,7 @@ export async function GET(request: NextRequest) {
         .select(
           `id, reference_code, title, quote_final_total, payment_amount_received, ticket_status,
            refund_status, linked_lead_id, created_by_id, routed_by_id,
-           customer:customers(first_name, last_name, company)`,
+           customer:customers!job_tickets_customer_id_fkey(first_name, last_name, company)`,
         )
         .in("id", ticketIds)
     : { data: [] as Record<string, unknown>[] };

@@ -401,7 +401,7 @@ function useDebouncedCallback(fn: () => void, delayMs = 300) {
 debouncedRefetch();  // not fetchOrders() directly
 ```
 
-A reusable hook (e.g. `useCoalescedRefresh`) can combine: mount fetch + event listeners + debounce + optional “pause while user is editing a modal”. Implement one in your project or copy the logic — do not depend on a reference repo’s file paths.
+A reusable hook (e.g. `useListPageData` / stale-while-revalidate) can combine: mount fetch + in-memory cache + window event listeners + **separate delays** for navigation cache (e.g. 300ms) vs realtime (0ms) + optional “pause while user is editing a modal”. Implement one in your project or copy the logic — do not depend on a reference repo’s file paths.
 
 ---
 

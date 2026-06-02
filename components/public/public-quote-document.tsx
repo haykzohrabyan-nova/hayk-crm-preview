@@ -6,7 +6,7 @@ import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { PublicLineItemSkusGrid, publicSkuGridItems } from "@/components/public/public-line-item-skus-grid";
 import type { InvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
 import { AddressMapLink } from "@/components/public/address-map-link";
-import { mapLinkStyle } from "@/lib/utils/maps-link";
+import { publicContactLinkStyle } from "@/lib/utils/maps-link";
 import {
   PublicShippingAddressSingle,
   PublicShippingAddressesList,
@@ -57,6 +57,9 @@ interface PublicTicketDoc {
   quote_tax_amount: number | null;
   quote_final_total: number | null;
   tax_exempt: boolean;
+  tax_exempt_review_pending?: boolean;
+  refund_status?: string | null;
+  total_refunded_amount?: number | null;
   contact_name?: string | null;
   contact_email?: string | null;
   contact_company?: string | null;
@@ -143,6 +146,7 @@ export function PublicQuoteDocument({
   isOrder,
   isInProduction,
   isCompleted,
+  isCancelled = false,
   isRefunded = false,
   refundStatus,
   refCode,
@@ -154,6 +158,7 @@ export function PublicQuoteDocument({
   isOrder: boolean;
   isInProduction: boolean;
   isCompleted?: boolean;
+  isCancelled?: boolean;
   isRefunded?: boolean;
   refundStatus?: string | null;
   refCode: string;
@@ -172,6 +177,11 @@ export function PublicQuoteDocument({
   const docType = isOrder ? "INVOICE" : "QUOTE";
 
   const workflowStatus = (() => {
+    if (isCancelled && isRefunded) {
+      const refundLabel = refundStatus === "full" ? "Refunded" : "Partially Refunded";
+      return isOrder ? `Cancelled · ${refundLabel}` : `Quote Cancelled · ${refundLabel}`;
+    }
+    if (isCancelled) return isOrder ? "Cancelled" : "Quote Cancelled";
     if (isRefunded && refundStatus === "full") return "Refunded";
     if (isRefunded) return "Partially Refunded";
     if (isCompleted) return "Ready for Pickup";
@@ -186,7 +196,8 @@ export function PublicQuoteDocument({
   })();
 
   const workflowTone: "navy" | "rush" | "success" | "warning" =
-    isRefunded ? "warning"
+    isCancelled ? "warning"
+    : isRefunded ? "warning"
     : isCompleted ? "success"
     : paymentSummary.evidencePending ? "warning"
     : paymentSummary.fullyPaid ? "success"
@@ -213,17 +224,17 @@ export function PublicQuoteDocument({
             lineStyle={{ fontSize: 12, color: MUTED, lineHeight: 1.6 }}
           />
           {company.phone && (
-            <a href={`tel:${String(company.phone).replace(/\s/g, "")}`} style={{ ...mapLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.6, display: "block" }}>
+            <a href={`tel:${String(company.phone).replace(/\s/g, "")}`} style={{ ...publicContactLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
               {company.phone}
             </a>
           )}
           {company.email && (
-            <a href={`mailto:${company.email}`} style={{ ...mapLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.6, display: "block" }}>
+            <a href={`mailto:${company.email}`} style={{ ...publicContactLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
               {company.email}
             </a>
           )}
           {company.website && (
-            <a href={company.website.startsWith("http") ? company.website : `https://${company.website}`} target="_blank" rel="noopener noreferrer" style={{ ...mapLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.6, display: "block" }}>
+            <a href={company.website.startsWith("http") ? company.website : `https://${company.website}`} target="_blank" rel="noopener noreferrer" style={{ ...publicContactLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.6 }}>
               {company.website}
             </a>
           )}
@@ -359,6 +370,28 @@ export function PublicQuoteDocument({
         </div>
       )}
 
+      {isRefunded && (ticket.total_refunded_amount ?? 0) > 0 ? (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
+          <div style={{ width: "100%", maxWidth: 280, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
+            <div style={{
+              display: "flex", justifyContent: "space-between", alignItems: "center",
+              padding: "10px 0",
+            }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: "#D97706" }}>
+                {refundStatus === "full" ? "Amount Refunded" : "Refunded to Date"}
+              </span>
+              <span style={{ fontSize: 18, fontWeight: 600, color: "#D97706" }}>
+                {fmt(ticket.total_refunded_amount)}
+              </span>
+            </div>
+            {refundStatus === "partial" ? (
+              <p style={{ margin: 0, fontSize: 12, color: MUTED, lineHeight: 1.5 }}>
+                A partial refund has been issued on this order.
+              </p>
+            ) : null}
+          </div>
+        </div>
+      ) : isCancelled && !isRefunded ? null : (
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
         <div style={{ width: "100%", maxWidth: 280, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
           {[
@@ -417,7 +450,21 @@ export function PublicQuoteDocument({
             </div>
           )}
 
-          {paymentSummary.evidencePending && (
+          {ticket.tax_exempt_review_pending && (
+            <div style={{
+              marginTop: 12, marginBottom: 4, padding: "10px 12px",
+              background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 6,
+            }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: "#92400E", marginBottom: 4, letterSpacing: "0.04em" }}>
+                TAX-EXEMPT DOCUMENTATION UNDER REVIEW
+              </div>
+              <div style={{ fontSize: 12, color: "#92400E", lineHeight: 1.5 }}>
+                Your sales permit is being verified. Totals on this document may change after approval. You may still confirm or pay; final tax-exempt pricing applies once approved.
+              </div>
+            </div>
+          )}
+
+          {!isCancelled && !isRefunded && paymentSummary.evidencePending && (
             <div style={{
               marginTop: 12, marginBottom: 4, padding: "10px 12px",
               background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 6,
@@ -431,7 +478,7 @@ export function PublicQuoteDocument({
             </div>
           )}
 
-          {paymentSummary.evidencePending && (
+          {!isCancelled && !isRefunded && paymentSummary.evidencePending && (
             <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${BORDER}` }}>
               <div style={{ display: "flex", justifyContent: "space-between", padding: "4px 0" }}>
                 <span style={{ fontSize: 13, fontWeight: 600, color: "#92400E" }}>Amount Submitted</span>
@@ -465,6 +512,7 @@ export function PublicQuoteDocument({
           )}
         </div>
       </div>
+      )}
 
       {(ticket.quote_channel || ticket.special_requirements) && (
         <div style={{

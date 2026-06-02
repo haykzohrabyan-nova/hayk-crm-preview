@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
       .from("job_tickets")
       .select(
         `*,
-       customer:customers(id, first_name, last_name, company, phone, email),
+       customer:customers!job_tickets_customer_id_fkey(id, first_name, last_name, company, phone, email),
        lead:leads(id, status, sales_status, urgency, source)`,
       )
       .order("created_at", { ascending: false }),
@@ -600,7 +600,7 @@ export async function POST(request: NextRequest) {
   if (ticket_status === "sent") {
     const { data: fullTicket } = await admin
       .from("job_tickets")
-      .select("*, customer:customers(first_name, last_name, email, phone)")
+      .select("*, customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)")
       .eq("id", ticket.id)
       .single();
     const { data: companyRow } = await admin

@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { useListPageData } from "@/hooks/use-list-page-data";
+import { notifyListDataChanged } from "@/lib/client/notify-list-data-changed";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import { Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
 import {
@@ -275,7 +276,6 @@ export default function QuotesPage() {
     total: 0,
     hasMore: false,
   });
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
@@ -284,6 +284,7 @@ export default function QuotesPage() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
+  const [claimNotice, setClaimNotice] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
     defaultDashboardDateRangeFilterValue("last_month"),
   );
@@ -324,8 +325,7 @@ export default function QuotesPage() {
   const canSeeRouted = userRole === "sales" || userRole === "admin" || userRole === "sdr";
   const TABS = canSeeRouted ? [...BASE_TABS, ROUTED_TAB] : BASE_TABS;
 
-  const fetchPageData = useCallback((silent = false) => {
-    if (!silent) setLoading(true);
+  const pageDataUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (tab !== "all") params.set("tab", tab);
     if (debouncedSearch) params.set("search", debouncedSearch);
@@ -337,20 +337,28 @@ export default function QuotesPage() {
     params.set("offset", String(offset));
     appendAdminFilterUserId(params, isAdmin ? "admin" : null, filterUserId);
     const qs = params.toString();
-    fetch(`/api/quotes/page-data${qs ? `?${qs}` : ""}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.tickets) setQuotes(d.tickets);
-        if (d.counts) setTabCounts(d.counts);
-        if (d.pagination) setPagination(d.pagination);
-      })
-      .catch(() => {})
-      .finally(() => { if (!silent) setLoading(false); });
+    return `/api/quotes/page-data${qs ? `?${qs}` : ""}`;
   }, [filterUserId, isAdmin, tab, debouncedSearch, dateRange, offset, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [filterUserId, isAdmin, tab, debouncedSearch, dateFilter, offset, pageSize], {
+  const { data: pageData, loading, refreshing, refresh: refreshPageData } = useListPageData<{
+    tickets?: QuoteTicket[];
+    counts?: Record<string, number>;
+    pagination?: PaginationMeta;
+  }>({
+    prefix: "quotes",
+    url: pageDataUrl,
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts", "bazaar:activities-changed"],
   });
+
+  useEffect(() => {
+    if (!pageData) {
+      setQuotes([]);
+      return;
+    }
+    if (pageData.tickets) setQuotes(pageData.tickets);
+    if (pageData.counts) setTabCounts(pageData.counts);
+    if (pageData.pagination) setPagination(pageData.pagination);
+  }, [pageData]);
 
   // Routed tab: job_tickets Realtime needs sales_read_routed_tickets RLS (migration 086).
   // Claim UPDATE often invisible to other reps (row no longer routed); activities INSERT covers that.
@@ -358,7 +366,7 @@ export default function QuotesPage() {
     if (!canSeeRouted) return;
 
     const supabase = createClient();
-    const silentRefresh = () => fetchPageData(true);
+    const silentRefresh = () => void refreshPageData(true);
 
     const channel = supabase
       .channel("quotes-page-routed-sync")
@@ -386,13 +394,14 @@ export default function QuotesPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [canSeeRouted, fetchPageData]);
+  }, [canSeeRouted, refreshPageData]);
 
   // ─── Claim action ────────────────────────────────────────────────────────
 
   async function handleClaim(q: QuoteTicket) {
     if (!userId) return;
     setClaimingId(q.id);
+    setClaimNotice(null);
     const pathSeg = ticketPathSegment(q);
     try {
       const res = await fetch(`/api/tickets/${pathSeg}`, {
@@ -400,11 +409,15 @@ export default function QuotesPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticket_status: "draft", claim_ownership: true }),
       });
-      if (res.ok) {
-        window.dispatchEvent(new Event("bazaar:refresh-counts"));
-        window.dispatchEvent(new Event("bazaar:tickets-changed"));
-        router.push(quoteDetailPath(q));
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setClaimNotice(
+          (data as { error?: string }).error ?? "This quote could not be claimed. It may already be assigned.",
+        );
+        return;
       }
+      notifyListDataChanged({ cachePrefix: "quotes" });
+      router.push(quoteDetailPath(q));
     } finally {
       setClaimingId(null);
     }
@@ -458,17 +471,28 @@ export default function QuotesPage() {
         </div>
       </div>
 
-      {/* Routed tab banner */}
-      {isRoutedTab && (
+      {claimNotice && (
+        <div
+          className="rounded-lg px-4 py-3 text-sm"
+          style={{
+            background: "var(--color-danger-bg)",
+            border: "1px solid var(--color-danger-border)",
+            color: "var(--color-danger-text-deep)",
+          }}
+          role="alert"
+        >
+          {claimNotice}
+        </div>
+      )}
+
+      {isRoutedTab && userRole === "sdr" && (
         <div
           className="flex items-start gap-3 rounded-lg px-4 py-3 text-sm"
           style={{ background: "var(--color-warning-bg)", border: "1px solid var(--color-warning-border)" }}
         >
           <AlertTriangle size={15} className="mt-0.5 shrink-0" style={{ color: "var(--color-warning)" }} />
           <p style={{ color: "var(--color-warning-text-deep)" }}>
-            {userRole === "sdr"
-              ? "These quotes exceeded the high-value threshold and were handed off to Sales. You can view them in read-only mode."
-              : "These quotes were created by SDR users but exceed the high-value threshold. Claim one to take ownership and complete it."}
+            These quotes exceeded the high-value threshold and were handed off to Sales. You can view them in read-only mode.
           </p>
         </div>
       )}
@@ -481,6 +505,7 @@ export default function QuotesPage() {
         search={search}
         onSearchChange={setSearch}
         searchPlaceholder="Search quotes…"
+        refreshing={refreshing}
         endAdornment={
           isAdmin ? (
             <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />

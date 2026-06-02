@@ -10,7 +10,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from `GET /api/leads/workspace`. Opening the Verify Drawer fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
-> **Page load (2026-05-26):** On mount, `leads-page.tsx` calls **`GET /api/leads/workspace/page-data?…`** — one auth pass returns the active tab's paginated slim list, all tab badge counts, and (on Routed tab) `routedSubCounts`. Realtime / `bazaar:refresh-counts` may refetch counts-only or full page-data. Lookups, product types, and SDR user list **lazy-load** when Add Lead or Reassign opens.
+> **Page load (2026-05-26 / 2026-06-02):** `leads-page.tsx` uses **`useListPageData`** → **`GET /api/leads/workspace/page-data?…`** — paginated slim list, all tab counts, and (on Routed tab) `routedSubCounts`. Realtime refetch is immediate; `ListRefreshingNotice` during background sync. `enabled: !drawerLead || drawerReadOnly`. Lookups, product types, and SDR user list **lazy-load** when Add Lead or Reassign opens.
 
 > **Pagination (May 2026):** Default **25** rows per page; selector 25 / 50 / 100. Search, SDR owner scope, routed sub-filters, and column sort are **server-side**. Reset to page 1 when any filter changes.
 
@@ -154,7 +154,7 @@ Pills always visible; count badge when that stage has leads. **Stage** badge and
 
 - **Rows are clickable** — clicking any row opens the Verify Drawer in **read-only mode** (no lock acquired). SDR can view all lead details and history but cannot save, route, hold, or reject.
 - **No action buttons in the drawer** — footer shows only "Close".
-- **Closing the drawer** does not reload the list (read-only path keeps `useCoalescedRefresh` enabled).
+- **Closing the drawer** does not reload the list (read-only path keeps `useListPageData` enabled: `enabled: !drawerLead || drawerReadOnly`).
 - **Sub-filter pills** persist until the SDR navigates away; pills reset to "All" when switching tabs.
 - **Search** applies server-side (`?search=` on page-data).
 

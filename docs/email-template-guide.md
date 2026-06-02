@@ -383,7 +383,9 @@ Unlike HTML emails, SMS and WhatsApp bodies are **plain text** stored in `sms_te
 | `lib/integrations/render-sms-template.ts` | Replaces `{placeholder}` at send time |
 | `GET` / `PATCH` `/api/admin/sms-templates` | Admin CRUD |
 
-**Template keys (examples):** `quote_sent`, `order_sent`, `payment_reminder`, `payment_confirmed`, `order_ready_pickup`, `quote_follow_up`, …
+**Template keys (examples):** `quote_sent`, `order_sent`, `payment_reminder`, `payment_confirmed`, `order_ready_pickup`, `quote_follow_up`, `tax_exempt_approved`, `tax_exempt_approved_total_unchanged`, …
+
+**Tax-exempt approved email:** `lib/integrations/tax-exempt-approved-template.ts` — sent from `sendTaxExemptApproved()` after accountant `approve_tax_exempt` (SMS uses the keys above).
 
 **Do not** edit SMS copy in `send-quote.ts` for production changes — use the admin UI so ops can tune wording without deploys.
 

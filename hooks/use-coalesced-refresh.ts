@@ -24,7 +24,7 @@ export function useCoalescedRefresh(
   options?: CoalescedRefreshOptions,
 ) {
   const mountDelay = options?.mountDelay ?? 50;
-  const eventDelay = options?.eventDelay ?? 300;
+  const eventDelay = options?.eventDelay ?? 0;
   const events = options?.events ?? DEFAULT_EVENTS;
   const enabled = options?.enabled ?? true;
 

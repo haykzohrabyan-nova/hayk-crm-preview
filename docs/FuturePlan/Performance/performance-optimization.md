@@ -13,8 +13,8 @@
 | **1A** | `GET /api/orders/orders` — scoped orders list; `orders-page.tsx` wired |
 | **1B** | SQL head counts in all tab/sidebar count routes via `lib/utils/db-counts.ts` |
 | **1C** | Removed duplicate Supabase channel on `quotes-page.tsx` (sidebar broadcasts `bazaar:tickets-changed`) |
-| **1D** | Debounced sidebar badge refetch (~300 ms) in `sidebar.tsx` |
-| **1E** | Migration `073_performance_indexes.sql` — partial indexes on orders, production, leads |
+| **1D** | Sidebar badge refetch — **immediate** on `bazaar:refresh-counts` (Jun 2026; was ~300 ms debounce) |
+| **1E** | Migration `107_performance_indexes.sql` — partial indexes (same as documented 073) |
 | **2A** | `lib/utils/ticket-list-select.ts`, `lib/utils/lead-list-select.ts` — shared column definitions |
 | **2B** | Slim quote list in `GET /api/tickets?kind=quote` (no `quote_skus` / notes on list) |
 | **2C** | Slim leads workspace list + full lead fetch on drawer open (`lib/utils/fetch-lead.ts`) |
@@ -22,7 +22,9 @@
 | **Extra** | `production-page.tsx` coalesced refetch (fixes duplicate `orders` + `counts` in dev Strict Mode) |
 | **3A** | Combined `GET /api/{feature}/page-data` — list + counts in one auth pass |
 | **3B** | `lib/auth/session-cache.ts` — 3 s `requireSession()` memoization |
-| **3C** | `hooks/use-coalesced-refresh.ts` on all tabbed list pages |
+| **3C** | `hooks/use-list-page-data.ts` (SWR) on all tabbed list pages (Jun 2026; superseded coalesced-refresh on lists) |
+| **3G** | `GET /api/tickets/[id]/page-data`, `GET /api/quotes/form-bootstrap` — detail/new-quote bootstrap |
+| **3H** | Sales + Payments server pagination (Jun 2026) |
 | **3D** | `GET /api/orders/counts`, `GET /api/quotes/counts` — slim per-page count routes |
 | **3E** | Role-scoped `GET /api/sidebar-counts?routes=…` |
 | **3F** | Leads/Sales lazy-load lookups + admin user lists on modal/drawer open |
@@ -88,11 +90,11 @@ Refactored to parallel `{ count: "exact", head: true }` via `lib/utils/db-counts
 - Removed page-level Supabase channel from `quotes-page.tsx`
 - Cross-session updates via sidebar `tickets-realtime` → `bazaar:tickets-changed`
 
-### 1D. Debounced sidebar badges
+### 1D. Sidebar badges
 
-- `components/layout/sidebar.tsx` — `fetchBadges()` debounced ~300 ms on realtime bursts
+- `components/layout/sidebar.tsx` — `fetchBadges()` runs immediately on `bazaar:refresh-counts` (Jun 2026)
 
-### 1E. DB indexes — migration `073_performance_indexes.sql`
+### 1E. DB indexes — migration `107_performance_indexes.sql`
 
 ```sql
 CREATE INDEX IF NOT EXISTS job_tickets_payment_evidence_pending_idx
@@ -157,10 +159,9 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 
 ## Phase 3 — Optional (defer unless lists exceed ~500 rows)
 
-- SWR / React Query for deduped fetches and back-navigation cache
-- Sales pipeline + Payments tab pagination
 - CRM materialized aggregates when customer count > ~1000
-- Bundle ticket + company into a detail bootstrap endpoint for first paint
+- TanStack Query migration (optional — custom SWR covers back-navigation today)
+- Wire `notifyListDataChanged` after more list mutations
 
 ---
 
@@ -168,7 +169,7 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 
 | Observation | Cause |
 |-------------|--------|
-| Duplicate API calls on page open in `npm run dev` | React Strict Mode double-mounts effects — **mitigated** by `useCoalescedRefresh` on all tabbed list pages |
+| Duplicate API calls on page open in `npm run dev` | React Strict Mode — **mitigated** by in-flight dedupe in `useStaleWhileRevalidate` |
 | ~400–600 ms per API call on Supabase free tier | Normal — auth + serverless + shared DB CPU; indexes + page-data bundling help |
 | Production build (`npm run build && npm start`) | Mount effects run once; generally faster than dev |
 | `/leads` infinite reload loop (fixed May 2026) | Unstable inline callback in coalesced-refresh effect deps — use stable `fetchPageData` + hook ref pattern |
@@ -183,7 +184,7 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 - [ ] Order with pending payment evidence appears on `/payments`, not `/orders`
 - [ ] `npm run build` passes
 - [ ] Network tab: list pages use ≤2 API calls on cold load (ideally 1 `page-data` + scoped sidebar-counts)
-- [ ] Migration `073` applied in Supabase
+- [ ] Migration `107_performance_indexes` applied in Supabase
 
 ---
 
@@ -196,8 +197,9 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 | Remove quotes duplicate channel | ~50% fewer refetches on `/quotes` |
 | Debounced sidebar | Fewer concurrent `/api/sidebar-counts` |
 | Slim quotes/leads/CRM | 50–70% smaller list JSON |
-| Indexes (073) | Faster filtered queries as tables grow |
-| Production + all list pages coalesced refetch | 1× page-data per mount in dev |
+| Indexes (107) | Faster filtered queries as tables grow |
+| List SWR + in-flight dedupe | 1× page-data per key; instant tab/back from cache |
+| Detail bootstrap APIs | Fewer parallel auth round-trips on quote detail / new quote |
 | Page-data bundling | ~40% fewer auth round-trips on tabbed pages |
 | Session cache | Dedupes `requireSession()` during burst loads |
 
@@ -207,10 +209,11 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 
 - [x] **Phase 1A–E**
 - [x] **Phase 2A–D**
-- [x] **Phase 3 core** — page-data routes, session cache, coalesced refetch on all tabbed list pages
+- [x] **Phase 3 core** — page-data routes, session cache, list SWR on all tabbed list pages
 - [x] **List pagination** — Orders, Quotes, Completed, Production, CRM, Leads (May 2026)
 - [x] **Build passes**
-- [ ] **Phase 3 optional** — SWR / Sales+Payments pagination (only if needed at scale)
+- [x] **Phase 3 optional (Jun 2026)** — list SWR, Sales/Payments pagination, detail bootstrap APIs
+- [ ] **Scale optional** — CRM aggregates, TanStack Query, infra keep-warm
 
 ---
 

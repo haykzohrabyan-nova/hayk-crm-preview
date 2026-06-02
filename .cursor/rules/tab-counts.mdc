@@ -43,8 +43,9 @@ async function fetchPageData() {
   if (d.leads) setLeads(d.leads);
 }
 
-useCoalescedRefresh({
-  onRefresh: fetchPageData, // stable useCallback
+useListPageData({
+  cacheKey: `sales:${activeTab}:${filters}`,
+  url: `/api/leads/sales/page-data?tab=${activeTab}&…`,
   events: ["bazaar:refresh-counts", "bazaar:leads-changed"],
 });
 
@@ -96,4 +97,4 @@ The sidebar, tab counts, and all pages listen to this event and update immediate
 - `components/orders/completed-page.tsx` + `app/api/completed/page-data/route.ts`
 - `components/crm/crm-page.tsx` + `app/api/crm/page-data/route.ts`
 - In-production list: **`/orders?tab=in_production`** via `components/orders/orders-page.tsx` + `GET /api/orders/page-data` (legacy `/production` route redirects; `components/orders/production-page.tsx` is orphaned)
-- `hooks/use-coalesced-refresh.ts` — debounced mount + realtime refetch
+- `hooks/use-list-page-data.ts` — SWR cache + immediate realtime refetch (`REALTIME_REFETCH_MS = 0`)

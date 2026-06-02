@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { useListPageData } from "@/hooks/use-list-page-data";
+import { ListRefreshingNotice } from "@/components/ui/mobile-list-card";
 import { Search, Zap } from "lucide-react";
 import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
@@ -150,7 +151,6 @@ export function CompletedPage() {
     total: 0,
     hasMore: false,
   });
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [offset, setOffset] = useState(0);
@@ -190,8 +190,7 @@ export function CompletedPage() {
 
   const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
 
-  const fetchPageData = useCallback((silent = false) => {
-    if (!silent) setLoading(true);
+  const pageDataUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (dateRange) {
@@ -202,20 +201,28 @@ export function CompletedPage() {
     params.set("offset", String(offset));
     appendAdminFilterUserId(params, isAdmin ? "admin" : null, filterUserId);
     const qs = params.toString();
-    fetch(`/api/completed/page-data${qs ? `?${qs}` : ""}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (d.orders) setOrders(d.orders);
-        if (d.pagination) setPagination(d.pagination);
-        if (d.counts?.completed != null) setListTotalUnfiltered(d.counts.completed);
-      })
-      .catch(() => {})
-      .finally(() => { if (!silent) setLoading(false); });
+    return `/api/completed/page-data${qs ? `?${qs}` : ""}`;
   }, [filterUserId, isAdmin, debouncedSearch, dateRange, offset, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [filterUserId, isAdmin, debouncedSearch, dateFilter, offset, pageSize], {
+  const { data: pageData, loading, refreshing } = useListPageData<{
+    orders?: CompletedOrder[];
+    pagination?: PaginationMeta;
+    counts?: { completed?: number };
+  }>({
+    prefix: "completed",
+    url: pageDataUrl,
     events: ["bazaar:tickets-changed", "bazaar:refresh-counts"],
   });
+
+  useEffect(() => {
+    if (!pageData) {
+      setOrders([]);
+      return;
+    }
+    if (pageData.orders) setOrders(pageData.orders);
+    if (pageData.pagination) setPagination(pageData.pagination);
+    if (pageData.counts?.completed != null) setListTotalUnfiltered(pageData.counts.completed);
+  }, [pageData]);
 
   function handlePageSizeChange(size: ListPageSize) {
     writeStoredListPageSize(size);
@@ -244,6 +251,7 @@ export function CompletedPage() {
         </div>
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 shrink-0">
+          <ListRefreshingNotice refreshing={refreshing} />
           <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
           {isAdmin && (
             <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />

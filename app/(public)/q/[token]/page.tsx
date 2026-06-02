@@ -9,7 +9,7 @@ import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { PublicQuoteDocument } from "@/components/public/public-quote-document";
 import { AddressMapLink, AddressMapText } from "@/components/public/address-map-link";
 import { computeInvoicePaymentSummary, isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
-import { companyAddressFull, mapLinkStyle } from "@/lib/utils/maps-link";
+import { companyAddressFull, mapLinkStyle, publicContactLinkStyle } from "@/lib/utils/maps-link";
 import { digitsOnly } from "@/lib/utils/phone";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -20,6 +20,10 @@ import {
   hasPublicRefundNotice,
   publicRefundBannerMessage,
 } from "@/lib/utils/public-quote-refund-state";
+import {
+  ticketIsOrderStage,
+  customerDocumentPaymentSummary,
+} from "@/lib/utils/public-invoice-document";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -1411,7 +1415,7 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
 
     function scheduleRefresh() {
       if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => refreshTicketRef.current(), 300);
+      debounceTimer = setTimeout(() => refreshTicketRef.current(), 0);
     }
 
     const channel = supabase
@@ -1468,6 +1472,10 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
   const companyName  = company?.company_name ?? "BazaarPrinting";
 
   const isSent      = ticket.ticket_status === "sent";
+  const isOrderDoc  = ticketIsOrderStage({
+    reference_code: ticket.reference_code,
+    ticket_kind: ticket.ticket_kind,
+  });
   const isOrder     = ticket.ticket_status === "order" || ticket.order_source === "direct";
   const isCancelled = ticket.ticket_status === "cancelled";
   const isRefunded  = hasPublicRefundNotice(ticket.refund_status);
@@ -1476,7 +1484,10 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
   const isOrderActive = isInProd || isCompleted;
   const portal      = computePortalState(ticket, clientConfirmed || ticket.client_confirmed);
   const showPortal  = !isCancelled && !isRefunded && (isSent || isOrder || isOrderActive);
-  const paymentSummary = computeInvoicePaymentSummary(ticket);
+  const paymentSummary = customerDocumentPaymentSummary(
+    computeInvoicePaymentSummary(ticket),
+    ticket,
+  );
   const refCode     = finalRef ?? ticket.reference_code ?? ticket.id?.slice(0, 8).toUpperCase() ?? "—";
 
   return (
@@ -1506,17 +1517,17 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
           </div>
 
           {isCancelled && (
-            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: 20, display: "flex", gap: 10 }}>
+            <div style={{ background: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 8, padding: "12px 16px", marginBottom: isRefunded ? 12 : 20, display: "flex", gap: 10 }}>
               <AlertCircle size={16} style={{ color: "#DC2626", flexShrink: 0 }} />
               <span style={{ fontSize: 14, color: "#DC2626" }}>
-                {isOrder || isOrderActive
+                {isOrderDoc
                   ? "This order has been cancelled. Please contact your sales representative if you have questions."
                   : "This quote has been cancelled. Please contact us if you have questions."}
               </span>
             </div>
           )}
 
-          {!isCancelled && isRefunded && (
+          {isRefunded && (
             <div style={{ background: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "12px 16px", marginBottom: 20, display: "flex", gap: 10 }}>
               <AlertCircle size={16} style={{ color: "#D97706", flexShrink: 0 }} />
               <span style={{ fontSize: 14, color: "#854D0E", lineHeight: 1.5 }}>
@@ -1530,7 +1541,8 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
             company={company ?? {}}
             ticket={ticket}
             token={token}
-            isOrder={isOrder || isOrderActive}
+            isOrder={isOrderDoc}
+            isCancelled={isCancelled}
             isInProduction={isInProd}
             isCompleted={isCompleted}
             isRefunded={isRefunded}
@@ -1571,21 +1583,21 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
             lineStyle={{ fontSize: 12, color: MUTED, lineHeight: 1.8 }}
           />
           {company?.phone && (
-            <a href={`tel:${String(company.phone).replace(/\s/g, "")}`} style={{ ...mapLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.8, display: "block" }}>
+            <a href={`tel:${String(company.phone).replace(/\s/g, "")}`} style={{ ...publicContactLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.8 }}>
               Tel: {company.phone}
             </a>
           )}
           {company?.email && (
-            <div style={{ fontSize: 12, lineHeight: 1.8 }}>
-              <a href={`mailto:${company.email}`} style={{ color: NAVY, textDecoration: "none" }}>{company.email}</a>
-            </div>
+            <a href={`mailto:${company.email}`} style={{ ...publicContactLinkStyle, fontSize: 12, color: NAVY, lineHeight: 1.8 }}>
+              {company.email}
+            </a>
           )}
           {company?.website && (
             <a
               href={company.website.startsWith("http") ? company.website : `https://${company.website}`}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ ...mapLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.8, display: "block" }}
+              style={{ ...publicContactLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.8 }}
             >
               {company.website}
             </a>

@@ -15,6 +15,7 @@ import {
   type TicketListFilters,
 } from "@/lib/utils/ticket-list-filters";
 import { sortOrdersRows } from "@/lib/utils/orders-list-sort";
+import { jobTicketCustomerEmbed } from "@/lib/utils/ticket-list-select";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -38,10 +39,13 @@ const ORDERS_LIST_SELECT = `
   deposit_paid_at,
   deposit_amount,
   payment_amount_received,
+  tax_exempt,
+  sales_permit_storage_path,
+  sales_permit_reviewed_at,
   title, reference_code, quote_final_total,
   priority, due_date, rush, created_at, production_released_at,
   created_by_id,
-  customer:customers(id, first_name, last_name, company)
+  ${jobTicketCustomerEmbed("id, first_name, last_name, company")}
 `.trim();
 
 type RawOrderRow = Record<string, unknown> & {

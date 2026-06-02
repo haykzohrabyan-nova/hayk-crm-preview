@@ -127,6 +127,7 @@ export const GLOBAL_LOADING_MESSAGES = {
   routingQuote: "Routing quote to Sales…",
   convertingOrder: "Converting to order…",
   confirmingPayment: "Confirming payment…",
+  confirmingTaxExempt: "Confirming tax-exempt…",
   releasingProduction: "Releasing to production…",
   completingOrder: "Completing order…",
   openingLead: "Opening lead…",

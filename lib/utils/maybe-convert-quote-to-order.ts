@@ -3,12 +3,14 @@ import { computeCheckout } from "@/lib/utils/compute-checkout";
 import {
   computeDepositDueFromTicket,
   isPaymentEvidencePending,
+  isTaxExemptApprovalPending,
   type TicketPaymentFields,
 } from "@/lib/utils/invoice-payment-summary";
+import type { TaxExemptApprovalFields } from "@/lib/utils/tax-exempt-approval";
 import { assignOrderReferenceCode, isQuoteReferenceCode } from "@/lib/utils/reference-codes";
 import type { PaymentConfig } from "@/lib/types";
 
-export interface ConvertQuoteTicket extends TicketPaymentFields {
+export interface ConvertQuoteTicket extends TicketPaymentFields, TaxExemptApprovalFields {
   id: string;
   ticket_status: string;
   ticket_kind?: string | null;
@@ -79,6 +81,10 @@ export function canConvertQuoteToOrder(
   }
 
   if (isPaymentEvidencePending(ticket)) {
+    return false;
+  }
+
+  if (isTaxExemptApprovalPending(ticket)) {
     return false;
   }
 

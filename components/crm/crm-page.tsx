@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import { useCoalescedRefresh } from "@/hooks/use-coalesced-refresh";
+import { useListPageData } from "@/hooks/use-list-page-data";
+import { ListRefreshingNotice } from "@/components/ui/mobile-list-card";
 import { Search, X, FilePlus, UserPlus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AddCustomerModal } from "@/components/crm/add-customer-modal";
@@ -182,7 +183,6 @@ export function CRMPage() {
     total: 0,
     hasMore: false,
   });
-  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
@@ -202,40 +202,34 @@ export function CRMPage() {
     setOffset(0);
   }, [debouncedSearch, statusFilter, heatFilter, pageSize]);
 
-  const fetchPageData = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (debouncedSearch) params.set("search", debouncedSearch);
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (heatFilter !== "all") params.set("heat", heatFilter);
-      params.set("limit", String(pageSize));
-      params.set("offset", String(offset));
-      const qs = params.toString();
-      const res = await fetch(`/api/crm/page-data${qs ? `?${qs}` : ""}`);
-      const data = await res.json();
-      if (!res.ok) {
-        if (!silent) {
-          setToast({ message: data.error ?? "Failed to load customers.", type: "error" });
-          setCustomers([]);
-        }
-        return;
-      }
-      setCustomers(data.customers ?? []);
-      if (data.pagination) setPagination(data.pagination);
-    } catch {
-      if (!silent) {
-        setToast({ message: "Failed to load customers.", type: "error" });
-        setCustomers([]);
-      }
-    } finally {
-      if (!silent) setLoading(false);
-    }
+  const pageDataUrl = useMemo(() => {
+    const params = new URLSearchParams();
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (heatFilter !== "all") params.set("heat", heatFilter);
+    params.set("limit", String(pageSize));
+    params.set("offset", String(offset));
+    const qs = params.toString();
+    return `/api/crm/page-data${qs ? `?${qs}` : ""}`;
   }, [debouncedSearch, statusFilter, heatFilter, offset, pageSize]);
 
-  useCoalescedRefresh(fetchPageData, [debouncedSearch, statusFilter, heatFilter, offset, pageSize], {
+  const { data: pageData, loading, refreshing, refresh: refreshPageData } = useListPageData<{
+    customers?: CrmCustomer[];
+    pagination?: PaginationMeta;
+  }>({
+    prefix: "crm",
+    url: pageDataUrl,
     events: ["bazaar:customers-changed", "bazaar:leads-changed", "bazaar:tickets-changed"],
   });
+
+  useEffect(() => {
+    if (!pageData) {
+      setCustomers([]);
+      return;
+    }
+    setCustomers(pageData.customers ?? []);
+    if (pageData.pagination) setPagination(pageData.pagination);
+  }, [pageData]);
 
   useEffect(() => {
     fetch("/api/lookups?categories=industry")
@@ -297,6 +291,7 @@ export function CRMPage() {
 
       {/* Search + Filters */}
       <div className="flex flex-wrap items-center gap-3">
+        <ListRefreshingNotice refreshing={refreshing} />
         <div className="relative" style={{ minWidth: 260 }}>
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
           <Input
@@ -536,7 +531,7 @@ export function CRMPage() {
         onClose={() => setAddCustomerOpen(false)}
         onCreated={(customerId) => {
           window.dispatchEvent(new Event("bazaar:customers-changed"));
-          void fetchPageData(true);
+          void refreshPageData(true);
           setToast({ message: "Customer added.", type: "success" });
           router.push(`/crm/customers/${customerId}`);
         }}

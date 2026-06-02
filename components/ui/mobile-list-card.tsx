@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { Search } from "lucide-react";
+import { Loader2, Search } from "lucide-react";
 
 /** Card shell for mobile table rows — matches leads-page + mobile-table-cards rule. */
 export function MobileListCard({
@@ -92,6 +92,21 @@ export function MobileListCardEmpty({ message }: { message: string }) {
   );
 }
 
+/** Shown during silent background refetch (realtime / revalidate). */
+export function ListRefreshingNotice({ refreshing }: { refreshing?: boolean }) {
+  if (!refreshing) return null;
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 text-xs font-medium shrink-0"
+      style={{ color: "var(--color-text-muted)" }}
+      aria-live="polite"
+    >
+      <Loader2 size={13} className="animate-spin" style={{ color: "var(--color-accent)" }} />
+      Updating
+    </span>
+  );
+}
+
 /** Scrollable tabs + full-width search on mobile (ticket list pages). */
 export function TicketListToolbar({
   tabs,
@@ -102,6 +117,7 @@ export function TicketListToolbar({
   onSearchChange,
   searchPlaceholder,
   endAdornment,
+  refreshing,
 }: {
   tabs: { id: string; label: string }[];
   activeTab: string;
@@ -111,6 +127,7 @@ export function TicketListToolbar({
   onSearchChange: (value: string) => void;
   searchPlaceholder: string;
   endAdornment?: React.ReactNode;
+  refreshing?: boolean;
 }) {
   return (
     <div
@@ -155,6 +172,7 @@ export function TicketListToolbar({
       </div>
 
       <div className="flex flex-col gap-2 mb-2 w-full lg:w-auto shrink-0 sm:flex-row sm:items-center">
+        <ListRefreshingNotice refreshing={refreshing} />
         {endAdornment}
         <div className="relative w-full lg:w-52 shrink-0">
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />

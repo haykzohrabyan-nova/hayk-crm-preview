@@ -13,6 +13,7 @@ import { formatShipToAddress } from "@/lib/utils/address";
 import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
 import type { ShippingDestinationDisplayRow } from "@/lib/utils/ticket-shipping-destinations";
 import type { InvoicePaymentSummary } from "@/lib/utils/invoice-payment-summary";
+import type { CustomerDocumentBanner } from "@/lib/utils/public-invoice-document";
 
 // ── Colors ──────────────────────────────────────────────────────────────────
 const NAVY = "#1B2B4B";
@@ -209,6 +210,26 @@ const s = StyleSheet.create({
     color: "#92400E",
     lineHeight: 1.5,
   },
+  cancelledBanner: {
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderStyle: "solid",
+    borderRadius: 4,
+    padding: 10,
+    marginBottom: 14,
+  },
+  cancelledBannerTitle: {
+    fontSize: 10,
+    fontFamily: "Helvetica-Bold",
+    color: "#DC2626",
+    marginBottom: 4,
+  },
+  cancelledBannerText: {
+    fontSize: 9,
+    color: "#DC2626",
+    lineHeight: 1.5,
+  },
   paymentNote: { fontSize: 8, color: MUTED, fontStyle: "italic", marginTop: 2 },
 
   // Details section
@@ -268,6 +289,9 @@ export interface InvoicePDFProps {
     quoteTaxAmount: number | null;
     quoteFinalTotal: number | null;
     taxExempt: boolean | null;
+    taxExemptReviewPending?: boolean;
+    refundStatus?: string | null;
+    totalRefundedAmount?: number | null;
     quoteChannel: string | null;
     requiresShipping?: boolean | null;
     /** @deprecated Prefer shippingDestinations */
@@ -280,6 +304,10 @@ export interface InvoicePDFProps {
   discountAmt: number | null;
   paymentMethods: string;
   paymentSummary?: InvoicePaymentSummary | null;
+  /** Cancelled / refund notice — suppresses misleading payment-under-review copy */
+  documentBanner?: CustomerDocumentBanner;
+  /** Omit totals / deposit / balance (cancelled or refunded customer documents) */
+  hidePricingSummary?: boolean;
 }
 
 function fmtDate(iso: string) {
@@ -337,8 +365,11 @@ export function InvoicePDF({
   discountAmt,
   paymentMethods,
   paymentSummary,
+  documentBanner = null,
+  hidePricingSummary = false,
 }: InvoicePDFProps) {
   const docType = isOrder ? "INVOICE" : "QUOTE";
+  const isOrderDoc = isOrder;
   const shippingRows = ticket.shippingDestinations ?? [];
   const singleShipping =
     shippingRows.length === 1 ? shippingRows[0] : null;
@@ -407,7 +438,47 @@ export function InvoicePDF({
           </View>
         </View>
 
-        {paymentSummary?.evidencePending ? (
+        {documentBanner === "cancelled" ||
+        documentBanner === "cancelled_refunded_full" ||
+        documentBanner === "cancelled_refunded_partial" ? (
+          <View style={s.cancelledBanner}>
+            <Text style={s.cancelledBannerTitle}>
+              {isOrderDoc ? "ORDER CANCELLED" : "QUOTE CANCELLED"}
+            </Text>
+            <Text style={s.cancelledBannerText}>
+              {isOrderDoc
+                ? "This order has been cancelled. Please contact your sales representative if you have questions."
+                : "This quote has been cancelled. Please contact us if you have questions."}
+            </Text>
+          </View>
+        ) : null}
+        {documentBanner === "cancelled_refunded_full" ||
+        documentBanner === "cancelled_refunded_partial" ? (
+          <View style={[s.paymentReviewBanner, { marginTop: documentBanner.startsWith("cancelled") ? 8 : 0 }]}>
+            <Text style={s.paymentReviewBannerTitle}>
+              {documentBanner === "cancelled_refunded_full" ? "FULLY REFUNDED" : "PARTIALLY REFUNDED"}
+            </Text>
+            <Text style={s.paymentReviewBannerText}>
+              {documentBanner === "cancelled_refunded_full"
+                ? "Payment received on this order has been fully refunded."
+                : "A partial refund has been issued on this order."}
+            </Text>
+          </View>
+        ) : documentBanner === "refunded_full" ? (
+          <View style={s.paymentReviewBanner}>
+            <Text style={s.paymentReviewBannerTitle}>FULLY REFUNDED</Text>
+            <Text style={s.paymentReviewBannerText}>
+              This order has been fully refunded. Please contact your sales representative if you have any questions.
+            </Text>
+          </View>
+        ) : documentBanner === "refunded_partial" ? (
+          <View style={s.paymentReviewBanner}>
+            <Text style={s.paymentReviewBannerTitle}>PARTIALLY REFUNDED</Text>
+            <Text style={s.paymentReviewBannerText}>
+              A partial refund has been issued on this order. Please contact your sales representative for further assistance.
+            </Text>
+          </View>
+        ) : paymentSummary?.evidencePending ? (
           <View style={s.paymentReviewBanner}>
             <Text style={s.paymentReviewBannerTitle}>PAYMENT UNDER REVIEW — NOT PAID</Text>
             <Text style={s.paymentReviewBannerText}>
@@ -539,6 +610,22 @@ export function InvoicePDF({
         ) : null}
 
         {/* ── Pricing Summary ── */}
+        {hidePricingSummary &&
+        ticket.refundStatus &&
+        (ticket.totalRefundedAmount ?? 0) > 0 ? (
+          <View style={s.pricingWrap}>
+            <View style={s.pricingBox}>
+              <View style={s.totalRow}>
+                <Text style={[s.totalLabel, { color: "#D97706", fontSize: 12 }]}>
+                  {ticket.refundStatus === "full" ? "Amount Refunded" : "Refunded to Date"}
+                </Text>
+                <Text style={[s.totalValue, { color: "#D97706", fontSize: 16 }]}>
+                  {formatCurrency(ticket.totalRefundedAmount!)}
+                </Text>
+              </View>
+            </View>
+          </View>
+        ) : !hidePricingSummary ? (
         <View style={s.pricingWrap}>
           <View style={s.pricingBox}>
             {ticket.quoteSubtotal != null ? (
@@ -675,11 +762,12 @@ export function InvoicePDF({
             ) : null}
           </View>
         </View>
+        ) : null}
 
         {/* ── Details (payment, channel, special requirements) ── */}
-        {(paymentMethods || ticket.quoteChannel || ticket.specialRequirements) ? (
+        {((!hidePricingSummary && paymentMethods) || ticket.quoteChannel || ticket.specialRequirements) ? (
           <View style={s.detailsWrap}>
-            {paymentMethods ? (
+            {!hidePricingSummary && paymentMethods ? (
               <View style={s.detailBlock}>
                 <Text style={s.sectionLabel}>Payment Methods</Text>
                 <Text style={s.detailValue}>{paymentMethods}</Text>
@@ -697,6 +785,14 @@ export function InvoicePDF({
                 <Text style={s.detailValue}>{ticket.specialRequirements}</Text>
               </View>
             ) : null}
+          </View>
+        ) : null}
+
+        {ticket.taxExempt && ticket.taxExemptReviewPending ? (
+          <View style={[s.paymentDivider, { marginTop: 8 }]}>
+            <Text style={[s.paymentNote, { color: "#92400E" }]}>
+              Tax-exempt documentation is pending verification. Totals on this document may change after accountant approval.
+            </Text>
           </View>
         ) : null}
 

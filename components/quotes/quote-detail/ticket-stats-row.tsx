@@ -2,7 +2,8 @@
 
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { computeCheckout, getChannelLabel } from "@/lib/utils/compute-checkout";
-import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { isPaymentEvidencePending, isTaxExemptApprovalPending } from "@/lib/utils/invoice-payment-summary";
+import { taxExemptListLabel } from "@/lib/utils/tax-exempt-list-label";
 import { paymentEvidenceAwaitingConfirmationLabel } from "@/lib/utils/payment-evidence-type";
 import { formatDate, formatDateTime, isOverdue } from "@/lib/utils/format";
 import type { PaymentConfig } from "@/lib/types";
@@ -41,6 +42,9 @@ export interface StatsTicket {
   deposit_method: string | null;
   refund_status?: "none" | "partial" | "full" | string | null;
   total_refunded_amount?: number | null;
+  tax_exempt?: boolean;
+  sales_permit_storage_path?: string | null;
+  sales_permit_reviewed_at?: string | null;
 }
 
 function buildConfig(t: StatsTicket): PaymentConfig {
@@ -119,6 +123,8 @@ export function TicketStatsRow({
 
   const ps = ticket.payment_status ?? "unpaid";
   const evidencePending = isPaymentEvidencePending(ticket);
+  const taxExemptPending = isTaxExemptApprovalPending(ticket);
+  const taxExemptLabel = taxExemptListLabel(ticket);
   const overdue = isOverdue(ticket.due_date);
 
   let paymentValue = ps === "paid" ? "Paid in full" : ps === "partial" ? "Partial" : "Unpaid";
@@ -129,13 +135,21 @@ export function TicketStatsRow({
       : undefined;
   let paymentColor: string | undefined;
 
-  if (hasRefund && !evidencePending) {
+  if (hasRefund && !evidencePending && !taxExemptPending) {
     paymentValue = refundStatus === "full" ? "Fully refunded" : "Partially refunded";
     paymentSub =
       totalRefunded > 0.01
         ? `${formatCurrency(totalRefunded)} refunded`
         : undefined;
     paymentColor = "var(--color-warning-text-deep)";
+  } else if (taxExemptLabel) {
+    paymentValue = taxExemptLabel;
+    paymentSub = taxExemptPending
+      ? "Accountant review required"
+      : "Permit approved for this order";
+    paymentColor = taxExemptPending
+      ? "var(--color-warning-text-deep)"
+      : "var(--color-success)";
   } else if (evidencePending) {
     paymentValue = "Under review";
     paymentSub = paymentEvidenceAwaitingConfirmationLabel(ticket);
