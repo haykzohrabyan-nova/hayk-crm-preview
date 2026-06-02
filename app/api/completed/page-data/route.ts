@@ -8,6 +8,11 @@ import {
 } from "@/lib/utils/fetch-completed-data";
 import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 import { parseCompletedListFilters } from "@/lib/utils/ticket-list-filters";
+import {
+  attachLinePreviews,
+  fetchTicketLinePreviewsBatch,
+  toTicketRefRows,
+} from "@/lib/utils/fetch-ticket-line-previews-batch";
 
 /** GET /api/completed/page-data — paginated completed list + count in one auth pass. */
 export async function GET(request: NextRequest) {
@@ -25,8 +30,15 @@ export async function GET(request: NextRequest) {
       fetchCompletedOrders(admin, roleName!, userId!, filters, pagination),
       fetchCompletedTabCounts(admin, roleName!, userId!, filters),
     ]);
+
+    const refs = toTicketRefRows(
+      rows as Array<{ id?: string; reference_code?: string | null }>,
+    );
+    const previews = await fetchTicketLinePreviewsBatch(admin, refs);
+    const orders = attachLinePreviews(rows, previews);
+
     return NextResponse.json({
-      orders: rows,
+      orders,
       counts,
       pagination: toPaginatedMeta({ ...pagination, total, rowCount: rows.length }),
     });

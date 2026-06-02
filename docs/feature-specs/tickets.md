@@ -78,6 +78,8 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 **Mobile (< `lg`):** `TicketListToolbar` (scrollable tabs + full-width search) + `MobileListCard` per row. Desktop: full table. See `components/ui/mobile-list-card.tsx` and `.cursor/rules/mobile-table-cards.mdc`.
 
+**Quick preview (Jun 2026):** Click a list row (desktop or mobile card) to expand line items without opening the detail page. Rows on the current list page include `line_preview` from `GET …/page-data` (instant expand); cache miss uses `GET /api/tickets/[id]/line-preview`. Renders read-only `LineItemsForm` (same cards, thumbnails, and `LineItemFilePreviewModal` as quote detail). **View** navigates to detail; **Claim** unchanged on Routed tab. Wired on **Quoted Requests**, **Orders**, **Completed**, and **Payment Evidence** tabs. One expanded row at a time; expand state clears on tab/filter/page change.
+
 ### Tabs (count badge on all tabs)
 
 | Tab | Filter | Visible to |

@@ -43,6 +43,8 @@ import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 
 import { createClient } from "@/lib/supabase/client";
 import { useTicketRealtimeSync } from "@/hooks/use-ticket-realtime-sync";
+import { getTicketFormBootstrap } from "@/lib/client/ticket-form-bootstrap-cache";
+import type { TicketFormBootstrapPayload } from "@/lib/utils/ticket-form-bootstrap-server-cache";
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
 import { localDateStringFromIso, validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { validateShippingDestinationZips } from "@/lib/utils/address";
@@ -484,50 +486,52 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       .finally(() => { if (!silent) setLoading(false); });
   }, [ticketId]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const applyFormBootstrap = useCallback((bootstrap: TicketFormBootstrapPayload) => {
+    const settings = bootstrap.company?.settings;
+    if (settings?.high_value_threshold != null) {
+      setHvThreshold(Number(settings.high_value_threshold));
+    }
+    const actions = bootstrap.lookups_actions as Record<string, LookupValue[]>;
+    setCancelReasonLookups({
+      quote: actions.quote_cancel_reason ?? [],
+      order: actions.order_cancel_reason ?? [],
+    });
+    setRefundReasons(actions.payment_refund_reason ?? []);
+    if (bootstrap.products) setProducts(bootstrap.products as ProductType[]);
+    const edit = bootstrap.lookups_edit as Record<string, LookupOption[]>;
+    setSkuLookups({
+      lamination: edit.lamination ?? [],
+      color_mode: edit.color_mode ?? [],
+      sides: edit.sides ?? [],
+      roll_direction: edit.roll_direction ?? [],
+      finishing: edit.finishing ?? [],
+    });
+    setQuoteLookups({
+      ticket_priority: edit.ticket_priority ?? [],
+      quote_channel: edit.quote_channel ?? [],
+      ticket_payment: edit.ticket_payment ?? [],
+      follow_up_freq: edit.follow_up_freq ?? [],
+    });
+  }, []);
+
   const loadPageBootstrap = useCallback((silent = false) => {
     if (!silent) setLoading(true);
-    fetch(`/api/tickets/${ticketId}/page-data`)
-      .then((r) => r.json())
-      .then((d) => {
+    Promise.all([
+      getTicketFormBootstrap(),
+      fetch(`/api/tickets/${ticketId}/page-data`).then((r) => r.json()),
+    ])
+      .then(([bootstrap, d]) => {
+        applyFormBootstrap(bootstrap);
         if (d.ticket) {
           setTicket(d.ticket);
           if (!editingRef.current) populateEditState(d.ticket);
         } else {
           setError("Ticket not found.");
         }
-        const settings = d.company?.settings;
-        if (settings?.high_value_threshold != null) {
-          setHvThreshold(settings.high_value_threshold);
-        }
-        const actions = d.lookups_actions as Record<string, LookupValue[]> | undefined;
-        if (actions) {
-          setCancelReasonLookups({
-            quote: actions.quote_cancel_reason ?? [],
-            order: actions.order_cancel_reason ?? [],
-          });
-          setRefundReasons(actions.payment_refund_reason ?? []);
-        }
-        if (d.products) setProducts(d.products);
-        const edit = d.lookups_edit as Record<string, LookupOption[]> | undefined;
-        if (edit) {
-          setSkuLookups({
-            lamination: edit.lamination ?? [],
-            color_mode: edit.color_mode ?? [],
-            sides: edit.sides ?? [],
-            roll_direction: edit.roll_direction ?? [],
-            finishing: edit.finishing ?? [],
-          });
-          setQuoteLookups({
-            ticket_priority: edit.ticket_priority ?? [],
-            quote_channel: edit.quote_channel ?? [],
-            ticket_payment: edit.ticket_payment ?? [],
-            follow_up_freq: edit.follow_up_freq ?? [],
-          });
-        }
       })
       .catch(() => { if (!silent) setError("Failed to load ticket."); })
       .finally(() => { if (!silent) setLoading(false); });
-  }, [ticketId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ticketId, applyFormBootstrap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadPageBootstrap(false);

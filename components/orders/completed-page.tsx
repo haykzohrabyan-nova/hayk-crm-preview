@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import { ListRefreshingNotice } from "@/components/ui/mobile-list-card";
@@ -31,6 +31,18 @@ import { displayContactName, formatDate } from "@/lib/utils/format";
 import { createClient } from "@/lib/supabase/client";
 import { AdminUserFilter } from "@/components/ui/admin-user-filter";
 import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
+import {
+  clearLinePreviewListCache,
+  seedLinePreviewFromListRows,
+} from "@/lib/client/seed-line-preview-from-page-data";
+import { ticketPathSegment } from "@/lib/utils/reference-codes";
+import { TicketLineItemsQuickPreview } from "@/components/quotes/ticket-line-items-quick-preview";
+import {
+  ExpandChevron,
+  TicketListExpandChevronCell,
+  TicketListExpandPreviewRow,
+  TicketListViewButton,
+} from "@/components/ui/ticket-list-expand";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -77,18 +89,26 @@ function displayName(o: CompletedOrder): string {
 
 function CompletedMobileCard({
   order: o,
+  expanded,
+  onToggleExpand,
   onOpen,
 }: {
   order: CompletedOrder;
+  expanded: boolean;
+  onToggleExpand: () => void;
   onOpen: () => void;
 }) {
   const ps = PAYMENT_STYLE[o.payment_status ?? "unpaid"] ?? PAYMENT_STYLE.unpaid;
   const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
 
   return (
-    <MobileListCard onClick={onOpen}>
+    <MobileListCard onClick={onToggleExpand}>
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <span className="mt-0.5 shrink-0" style={{ color: "var(--color-text-muted)" }} aria-hidden>
+            <ExpandChevron open={expanded} />
+          </span>
+          <div className="min-w-0">
           {o.reference_code ? (
             <span className="text-xs font-mono px-1.5 py-0.5 rounded inline-block" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
               {o.reference_code}
@@ -102,6 +122,7 @@ function CompletedMobileCard({
           {o.customer?.company && (
             <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
           )}
+          </div>
         </div>
         <span
           className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0"
@@ -136,6 +157,22 @@ function CompletedMobileCard({
         />
         <MobileListCardRow label="Completed" value={formatDate(o.updated_at)} />
       </MobileListCardFields>
+
+      <TicketLineItemsQuickPreview
+        ticketId={o.id}
+        ticketRef={ticketPathSegment(o)}
+        expanded={expanded}
+        previewId={`completed-preview-${o.id}`}
+      />
+
+      <TicketListViewButton
+        label="View order"
+        className="w-full justify-center px-2.5 py-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+      />
     </MobileListCard>
   );
 }
@@ -161,8 +198,14 @@ export function CompletedPage() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [filterUserId, setFilterUserId] = useState<string | null>(null);
   const [listTotalUnfiltered, setListTotalUnfiltered] = useState(0);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const isAdmin = userRole === "admin";
+  const desktopColCount = (isAdmin ? 9 : 8) + 2;
+
+  function toggleExpand(id: string) {
+    setExpandedId((cur) => (cur === id ? null : id));
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -172,6 +215,10 @@ export function CompletedPage() {
   useEffect(() => {
     setOffset(0);
   }, [debouncedSearch, dateFilter, filterUserId, pageSize]);
+
+  useEffect(() => {
+    setExpandedId(null);
+  }, [debouncedSearch, dateFilter, filterUserId, pageSize, offset]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -217,9 +264,13 @@ export function CompletedPage() {
   useEffect(() => {
     if (!pageData) {
       setOrders([]);
+      clearLinePreviewListCache();
       return;
     }
-    if (pageData.orders) setOrders(pageData.orders);
+    if (pageData.orders) {
+      setOrders(pageData.orders);
+      seedLinePreviewFromListRows(pageData.orders);
+    }
     if (pageData.pagination) setPagination(pageData.pagination);
     if (pageData.counts?.completed != null) setListTotalUnfiltered(pageData.counts.completed);
   }, [pageData]);
@@ -280,7 +331,7 @@ export function CompletedPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableDivSkeleton cols={isAdmin ? 9 : 8} />
+          <TableDivSkeleton cols={desktopColCount} />
         ) : orders.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -292,6 +343,7 @@ export function CompletedPage() {
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
                 {[
+                  "",
                   "Order #",
                   "Contact",
                   "Title",
@@ -310,22 +362,27 @@ export function CompletedPage() {
                     {h}
                   </th>
                 ))}
+                <th className="px-4 py-3 w-16" />
               </tr>
             </thead>
             <tbody>
               {orders.map((o, idx) => {
                 const ps = PAYMENT_STYLE[o.payment_status ?? "unpaid"] ?? PAYMENT_STYLE.unpaid;
                 const priorityStyle = PRIORITY_STYLE[o.priority ?? "Normal"] ?? PRIORITY_STYLE.Normal;
+                const isOpen = expandedId === o.id;
+                const rowBg = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
 
                 return (
+                  <Fragment key={o.id}>
                   <tr
-                    key={o.id}
                     className="cursor-pointer transition-colors"
-                    style={{ background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)" }}
+                    style={{ background: isOpen ? "var(--color-row-hover)" : rowBg }}
+                    aria-expanded={isOpen}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)")}
-                    onClick={() => router.push(`/completed/${o.id}`)}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = isOpen ? "var(--color-row-hover)" : rowBg)}
+                    onClick={() => toggleExpand(o.id)}
                   >
+                    <TicketListExpandChevronCell open={isOpen} />
                     {/* Order # */}
                     <td className="px-4 py-3">
                       {o.reference_code ? (
@@ -400,7 +457,25 @@ export function CompletedPage() {
                         {formatDate(o.updated_at)}
                       </span>
                     </td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <TicketListViewButton
+                        label="View"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(`/completed/${ticketPathSegment(o)}`);
+                        }}
+                      />
+                    </td>
                   </tr>
+                  {isOpen && (
+                    <TicketListExpandPreviewRow
+                      colSpan={desktopColCount}
+                      ticketId={o.id}
+                      ticketRef={ticketPathSegment(o)}
+                      previewId={`completed-preview-${o.id}`}
+                    />
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -416,7 +491,13 @@ export function CompletedPage() {
           <MobileListCardEmpty message={emptyMessage} />
         ) : (
           orders.map((o) => (
-            <CompletedMobileCard key={o.id} order={o} onOpen={() => router.push(`/completed/${o.id}`)} />
+            <CompletedMobileCard
+              key={o.id}
+              order={o}
+              expanded={expandedId === o.id}
+              onToggleExpand={() => toggleExpand(o.id)}
+              onOpen={() => router.push(`/completed/${ticketPathSegment(o)}`)}
+            />
           ))
         )}
       </div>

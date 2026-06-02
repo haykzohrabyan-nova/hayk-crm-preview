@@ -3,6 +3,118 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-02] — Page-loading documentation
+
+### Added
+- `docs/FuturePlan/Performance/page-loading.md` — how list/detail/layout load today, DevTools measurement, P0–P2 backlog
+
+### Changed
+- `performance-optimization.md`, `session-and-api-auth-cache.md`, `architecture.md`, `api-contract.md`, `TECHNICAL_REFERENCE.md`, `component-architecture.md`, `session-summary.md`, `feature-specs/tickets.md`, `FuturePlan/README.md`, `TODO.md` — synced with Jun 2026 perf work
+
+## [2026-06-02] — Faster quote/order detail open
+
+### Added
+- `GET /api/ticket-form-bootstrap` — company settings, edit/action lookups, products (5 min server cache)
+- `lib/client/ticket-form-bootstrap-cache.ts` — memory + `sessionStorage` (30 min); `seedTicketFormBootstrapFromQuotesBootstrap` after `/quotes/new` load
+
+### Changed
+- `GET /api/tickets/[id]/page-data` — returns `{ ticket }` only (was bundled bootstrap + ticket)
+- `QuoteDetail` — `Promise.all` bootstrap + slim page-data; second detail in same tab often skips bootstrap network
+- `fetch-ticket-detail.ts` — single `job_tickets` lookup by ref or UUID
+
+## [2026-06-02] — Line preview bundled in list page-data (instant expand)
+
+### Added
+- `fetchTicketLinePreviewsBatch` — 3 DB queries for all tickets on a list page
+- `line_preview` on each row from `GET …/page-data` (orders, quotes, payments, completed)
+- Client `seedLinePreviewFromListRows` — expand uses cache, no extra `line-preview` fetch for current page
+- `docs/FuturePlan/Performance/vercel-supabase-region.md` — align Vercel `sfo1`/`pdx1` with Supabase Oregon
+
+### Changed
+- List `page-data` responses slightly larger; first load may add ~50–100ms, expand is immediate for rows on that page
+- `line-preview` API remains for stale rows, detail refresh, or cache miss
+
+## [2026-06-02] — Session cache + GET /api/me for faster loads
+
+### Added
+- `GET /api/me` — user id, role, full name, allowed routes, nav `pages` (server-validated)
+- `components/layout/app-session-provider.tsx` — single layout fetch; sidebar + mobile nav consume context
+- `lib/auth/allowed-routes-cache.ts`, `lib/auth/resolve-allowed-page-routes.ts`, `lib/auth/resolve-nav-pages.ts`, `lib/auth/nav-sections.ts`
+- `checkTicketDetailPageAccess()` — sync ticket-page gate when session already has `allowedRoutes`
+- `docs/FuturePlan/Performance/session-and-api-auth-cache.md` — follow-up perf ideas
+
+### Changed
+- `requireSession()` — returns `roleId`, `fullName`, `allowedRoutes`; session cache **45s** (was 3s)
+- `requirePageAccess` / `requireAnyPageAccess` — use cached routes (no repeated `role_permissions` per route)
+- `components/layout/sidebar.tsx`, `mobile-nav.tsx` — nav from `/api/me` (no duplicate Supabase nav queries)
+- `components/admin/dashboard-page.tsx` — role from `useAppSession()`
+- `app/(app)/layout.tsx` — wraps app shell in `AppSessionProvider`
+
+## [2026-06-02] — Faster line-preview API
+
+### Changed
+- `fetch-ticket-line-preview.ts` — one `job_tickets` lookup (was resolve + fetch); preview uses slim column selects on line tables
+- `requireTicketDetailPageAccess` — one permission resolve (was up to 14 sequential DB round-trips for non-admin)
+
+## [2026-06-02] — Dedupe line-preview fetches
+
+### Fixed
+- `ticket-line-items-quick-preview.tsx` — one in-flight request per ticket (desktop expand row + hidden mobile card no longer double-fetch; React Strict Mode no longer cancels and retries)
+
+## [2026-06-02] — Line-item quick preview on Orders, Payments, Completed
+
+### Added
+- `components/ui/ticket-list-expand.tsx` — shared expand chevron, View button, and preview row for ticket list tables
+
+### Changed
+- `components/orders/orders-page.tsx`, `completed-page.tsx`, `payments-page.tsx` — row click expands line items (same API as Quoted Requests); **View** opens detail; payment actions (Confirm, File, Stripe) unchanged with `stopPropagation`
+- `components/quotes/quotes-page.tsx` — uses shared list-expand primitives
+
+## [2026-06-02] — Blur placeholder while line-item images load
+
+### Added
+- `components/ui/lazy-blur-image.tsx` — shimmer + blurred image until sharp (`motion-reduce` respected)
+
+### Changed
+- `LineItemFileThumbnail` and `LineItemFilePreviewModal` image preview use `LazyBlurImage`
+
+## [2026-06-02] — Quote list preview matches detail line items UI
+
+### Changed
+- `components/quotes/ticket-line-items-quick-preview.tsx` — read-only `LineItemsForm` with thumbnails and file preview modal (same as quote detail)
+- `GET /api/tickets/[id]/line-preview` — adds `ticket_ref` for file URLs
+
+## [2026-06-02] — Quote list preview: line items only
+
+### Changed
+- Quoted Requests quick preview — removed Subtotal/Tax/Total block; `line-preview` API returns line items only
+
+## [2026-06-02] — Fix quote list line-preview 404
+
+### Fixed
+- `lib/utils/fetch-ticket-line-preview.ts` — removed invalid `sales_owner_id` from `job_tickets` select (column exists on `leads` only); Supabase error was returned as 404
+
+## [2026-06-02] — Quoted Requests list quick preview
+
+### Added
+- `GET /api/tickets/[id]/line-preview` — line items + slim pricing totals for list expand (auth + `canAccessTicket`)
+- `lib/utils/fetch-ticket-line-preview.ts`, `lineDisplayRowToCardProps()` in `lib/utils/ticket-line-items.ts`
+- `components/quotes/ticket-line-items-quick-preview.tsx` — lazy-loaded preview panel with client cache
+
+### Changed
+- `components/quotes/quotes-page.tsx` — row/card click expands line-item preview; **View quote** / **View** / **Claim** still navigate or claim (`stopPropagation`)
+- `docs/feature-specs/tickets.md`, `docs/api-contract.md` — quick preview documented
+
+## [2026-06-02] — Owner brand color picker (HTML)
+
+### Added
+- `docs/owner-color-picker.html` — shareable light/dark color tool with presets, live CRM preview, and copy-to-email export for the business owner
+
+## [2026-06-02] — Docs: color system guide
+
+### Added
+- `docs/color-system.md` — how CSS tokens, light/dark mode, Tailwind/shadcn bridge, and component usage work
+
 ## [2026-06-02] — Docs: performance, realtime, list SWR, bootstrap APIs
 
 ### Changed

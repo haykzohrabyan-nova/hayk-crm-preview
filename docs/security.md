@@ -34,7 +34,9 @@ Most CRM writes use the **service-role admin client** in Route Handlers (RLS byp
 | `canClaimLead()` | `lib/utils/lead-access.ts` | Sales/admin claim — unowned lead in sales pipeline (`status = 'Routed to Sales'`). |
 | `canAcquireLeadLock()` | `lib/utils/lead-access.ts` | Lock acquisition — SDR pool/owned, Sales routed/owned, admin any. |
 | `requireAnyPageAccess()` | `lib/auth/require-page-access.ts` | Pass if user has **any** of the listed page routes (e.g. `/crm` or `/quotes`). |
-| Session cache | `lib/auth/session-cache.ts` | ~3 s in-process memoization of successful `requireSession()` results during burst loads. Dev HMR cookie `__next_hmr_refresh_hash__` excluded from cache key. |
+| Session cache | `lib/auth/session-cache.ts` | ~45 s in-process memoization of successful `requireSession()` (includes `allowedRoutes`). Dev HMR cookie `__next_hmr_refresh_hash__` excluded from cache key. |
+| Allowed routes cache | `lib/auth/allowed-routes-cache.ts` | ~45 s per `userId:roleName` — shared by `requireSession`, `requirePageAccess`, ticket APIs. |
+| `GET /api/me` | `app/api/me/route.ts` | Layout-only identity + nav pages after `requireSession()` — **not** a substitute for per-API auth. |
 
 Returns `401` with `{ code: "UNAUTHENTICATED" }` when not logged in. Returns `403` with `{ code: "MFA_SETUP_REQUIRED" }` or `{ code: "MFA_VERIFY_REQUIRED" }` when MFA is incomplete.
 

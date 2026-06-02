@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { X, FileText, ExternalLink, Loader2 } from "lucide-react";
+import { LazyBlurImage } from "@/components/ui/lazy-blur-image";
 
 type LineItemFilePreviewModalProps = {
   open: boolean;
@@ -53,35 +54,32 @@ function ImagePreview({ src, fileName }: { src: string; fileName: string }) {
       className="relative flex w-full items-center justify-center rounded-md border"
       style={previewFrameStyle}
     >
-      {!loaded && !failed && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <Loader2
-            size={28}
-            className="animate-spin"
-            style={{ color: "var(--color-text-muted)" }}
-            aria-hidden
-          />
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Loading image…
-          </p>
-        </div>
-      )}
       {failed ? (
         <p className="px-6 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
           Could not load image — use Download instead.
         </p>
       ) : (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={fileName}
-          onLoad={() => setLoaded(true)}
-          onError={() => setFailed(true)}
-          className={`max-h-[70vh] w-auto max-w-full object-contain transition-opacity duration-200 ${
-            loaded ? "opacity-100" : "opacity-0"
-          }`}
-          style={{ background: "var(--color-bg)" }}
-        />
+        <>
+          {!loaded && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none z-[1]">
+              <Loader2
+                size={28}
+                className="animate-spin"
+                style={{ color: "var(--color-text-muted)" }}
+                aria-hidden
+              />
+            </div>
+          )}
+          <LazyBlurImage
+            src={src}
+            alt={fileName}
+            loading="eager"
+            onLoad={() => setLoaded(true)}
+            onError={() => setFailed(true)}
+            className="relative z-[2] max-h-[70vh] w-auto max-w-full object-contain mx-auto"
+            style={{ background: "var(--color-bg)" }}
+          />
+        </>
       )}
     </div>
   );

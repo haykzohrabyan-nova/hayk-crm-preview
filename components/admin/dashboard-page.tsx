@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { useAppSession } from "@/components/layout/app-session-provider";
 import { SdrDashboard } from "@/components/sales/sdr-dashboard";
 import { SalesDashboard } from "@/components/sales/sales-dashboard";
 import { AdminDashboard } from "@/components/admin/admin-dashboard";
@@ -10,24 +9,17 @@ import { AccountantDashboard } from "@/components/admin/accountant-dashboard";
 type Role = "sdr" | "sales" | "admin" | "accountant" | null;
 
 export function DashboardPage() {
-  const [role, setRole] = useState<Role>(null);
+  const { me, loading } = useAppSession();
+  const roleName = me?.roleName;
+  const role: Role =
+    roleName === "sdr" ||
+    roleName === "sales" ||
+    roleName === "admin" ||
+    roleName === "accountant"
+      ? roleName
+      : null;
 
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data }) => {
-      const uid = data.user?.id;
-      if (!uid) return;
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("roles(name)")
-        .eq("id", uid)
-        .single();
-      const name = (profile?.roles as unknown as { name: string } | null)?.name;
-      if (name === "sdr" || name === "sales" || name === "admin" || name === "accountant") setRole(name);
-    });
-  }, []);
-
-  if (!role) {
+  if (loading || !role) {
     // Skeleton while role loads — matches the 3-col KPI grid
     return (
       <div className="space-y-8">

@@ -6,6 +6,10 @@ import { fetchQuotesList, fetchQuotesTabCounts } from "@/lib/utils/fetch-quotes-
 import { isAccountantQuoteWorkflowDenied } from "@/lib/utils/ticket-access";
 import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 import { parseQuotesListFilters } from "@/lib/utils/ticket-list-filters";
+import {
+  attachLinePreviews,
+  fetchTicketLinePreviewsBatch,
+} from "@/lib/utils/fetch-ticket-line-previews-batch";
 
 /** GET /api/quotes/page-data — paginated quote list + tab counts in one auth pass. */
 export async function GET(request: NextRequest) {
@@ -26,8 +30,12 @@ export async function GET(request: NextRequest) {
       fetchQuotesList(admin, roleName, userId!, filters, pagination),
       fetchQuotesTabCounts(admin, roleName, userId!, filters),
     ]);
+
+    const previews = await fetchTicketLinePreviewsBatch(admin, rows);
+    const tickets = attachLinePreviews(rows, previews);
+
     return NextResponse.json({
-      tickets: rows,
+      tickets,
       counts,
       pagination: toPaginatedMeta({ ...pagination, total, rowCount: rows.length }),
     });

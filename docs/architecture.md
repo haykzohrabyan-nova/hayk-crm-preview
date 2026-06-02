@@ -173,7 +173,9 @@ BazarCRM/
 │   │   │   ├── counts/route.ts           ✓ GET — tab badge counts (SQL head counts)
 │   │   │   └── [id]/
 │   │   │       ├── route.ts              ✓ GET single / PATCH (claim_ownership, 409 ALREADY_CLAIMED)
-│   │   │       └── page-data/route.ts    ✓ GET — ticket + company + lookups + products (detail bootstrap)
+│   │   │       ├── line-preview/route.ts ✓ GET — line items for list expand (cache miss)
+│   │   │       └── page-data/route.ts    ✓ GET — `{ ticket }` only (detail mount)
+│   │   ├── ticket-form-bootstrap/route.ts ✓ GET — company + lookups + products (5m server cache)
 │   │   ├── quotes/
 │   │   │   ├── page-data/route.ts        ✓ GET — quote list + quote-stage counts
 │   │   │   ├── form-bootstrap/route.ts   ✓ GET — company + lookups + products (new quote mount)
@@ -411,11 +413,13 @@ List pages fetch **scoped, slim payloads** — no `line_items` on table views. F
 
 **Role dashboards:** `components/sales/sdr-dashboard.tsx` (9 owner-labeled KPI cards — Closed Order Value through Qty of Leads Routed to Sales Team; `N leads` format), `components/sales/sales-dashboard.tsx` (7 — no Lead Created); shared `DashboardDateRangeFilter` default `last_month`; metrics in `lib/utils/sdr-dashboard-metrics.ts` / `sales-dashboard-metrics.ts`. **Payments detail:** `/payments/[id]` uses full overview layout (stats row + timeline); Back → `/payments`. **Dashboard privacy (May 2026):** per-user `dashboard_values_hidden` on `user_profiles` (migration `087`); `GET/PATCH /api/user/dashboard-privacy`; KPI routes redact when hidden; SDR/Sales/Accountant UI uses `components/dashboard/dashboard-privacy.tsx` with masked placeholders (`DashboardHiddenValue`).
 
-**Session cache:** `lib/auth/session-cache.ts` memoizes `requireSession()` for ~3 s during burst loads.
+**Layout session (Jun 2026):** `GET /api/me` via `AppSessionProvider`; `lib/auth/session-cache.ts` memoizes `requireSession()` + `allowedRoutes` for **45s** during burst loads.
 
 **List SWR cache (Jun 2026):** `hooks/use-list-page-data.ts` + `lib/client/list-page-cache.ts` — instant tab/back navigation from in-memory cache (5 min TTL). Realtime refetch: **0ms** (`REALTIME_REFETCH_MS`); nav return with cache: background revalidate after 300ms (`LIST_NAV_REVALIDATE_MS`) unless realtime already ran. In-flight dedupe per URL; `ListRefreshingNotice` on list toolbars.
 
-**Detail bootstrap (Jun 2026):** `GET /api/tickets/[id]/page-data`, `GET /api/quotes/form-bootstrap` — one auth pass for QuoteDetail / NewQuoteForm mount.
+**List line expand (Jun 2026):** Each row on ticket list page-data includes `line_preview`; client `seedLinePreviewFromListRows` — expand without extra API for current page. Fallback: `GET /api/tickets/[id]/line-preview`.
+
+**Detail bootstrap (Jun 2026):** `QuoteDetail` loads `GET /api/tickets/[id]/page-data` (`{ ticket }`) in parallel with `GET /api/ticket-form-bootstrap` (cached server 5m, client 30m). `GET /api/quotes/form-bootstrap` for `/quotes/new`; seeds ticket-form cache for next detail open. Silent refresh: `GET /api/tickets/[id]` only.
 
 **Legacy hook:** `hooks/use-coalesced-refresh.ts` — superseded on list pages by `useListPageData`; pass stable `useCallback` refresh if used elsewhere.
 

@@ -30,8 +30,9 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/layout/theme-provider";
 import { createClient } from "@/lib/supabase/client";
 import { revokeMfaTrustOnSignOut } from "@/lib/auth/remember-mfa-client";
-import { filterPagesForRole } from "@/lib/auth/admin-only-pages";
+import { useAppSession } from "@/components/layout/app-session-provider";
 import type { Page } from "@/lib/types";
+import type { NavSection } from "@/lib/auth/nav-sections";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -52,11 +53,6 @@ const ICON_MAP: Record<string, LucideIcon> = {
 };
 
 const COLLAPSE_KEY = "bazaar-sidebar-collapsed";
-
-type NavSection = {
-  section: "main" | "admin" | "bottom";
-  pages: Page[];
-};
 
 // Role-specific display name overrides for the /dashboard page
 const DASHBOARD_ROLE_LABELS: Record<string, string> = {
@@ -152,76 +148,16 @@ function roleLabel(name: string | undefined): string {
 
 export function Sidebar() {
   const { theme, setTheme } = useTheme();
+  const { me, sections } = useAppSession();
   const [collapsed, setCollapsed] = useState(false);
-  const [sections, setSections] = useState<NavSection[]>([]);
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
-  const [userFullName, setUserFullName] = useState<string | null>(null);
-  const [userRoleName, setUserRoleName] = useState<string | undefined>(undefined);
-  const [userId, setUserId] = useState<string | null>(null);
+  const userFullName = me?.fullName ?? null;
+  const userRoleName = me?.roleName;
+  const userId = me?.userId ?? null;
 
   useEffect(() => {
     const stored = localStorage.getItem(COLLAPSE_KEY);
     if (stored === "true") setCollapsed(true);
-  }, []);
-
-  useEffect(() => {
-    async function loadNav() {
-      const supabase = createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return;
-      setUserId(user.id);
-
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("role_id, full_name, roles(name)")
-        .eq("id", user.id)
-        .single();
-
-      const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
-      setUserFullName(profile?.full_name ?? null);
-      setUserRoleName(roleName);
-
-      let pages: Page[] = [];
-
-      if (roleName === "admin") {
-        // Admin sees all pages
-        const { data } = await supabase
-          .from("pages")
-          .select("*")
-          .order("sort_order");
-        pages = data ?? [];
-      } else {
-        // Other roles: fetch pages via role_permissions join
-        const { data } = await supabase
-          .from("role_permissions")
-          .select("pages(*)")
-          .eq("role_id", profile!.role_id);
-        pages = filterPagesForRole(
-          (data ?? [])
-            .map((row: unknown) => (row as { pages: Page }).pages)
-            .filter((p): p is Page => p !== null && typeof p === "object")
-            .sort((a, b) => a.sort_order - b.sort_order),
-          roleName,
-        );
-      }
-
-      // Only show the top-level /admin link in the sidebar, not sub-pages like
-      // /admin/users, /admin/roles, etc. — those are navigated via the /admin card grid.
-      const main = pages.filter((p) => p.section === "main");
-      const admin = pages.filter(
-        (p) => p.section === "admin" && p.route === "/admin"
-      );
-      const bottom = pages.filter((p) => p.section === "bottom");
-
-      const result: NavSection[] = [];
-      if (main.length) result.push({ section: "main", pages: main });
-      if (admin.length) result.push({ section: "admin", pages: admin });
-      if (bottom.length) result.push({ section: "bottom", pages: bottom });
-      setSections(result);
-    }
-    loadNav();
   }, []);
 
   // Fetch sidebar badge counts — scoped to visible nav routes only.

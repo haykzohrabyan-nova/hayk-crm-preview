@@ -1879,9 +1879,14 @@ List pages use **`useListPageData`** (`hooks/use-list-page-data.ts` → `useStal
 
 **Layer 2 — Detail pages:**
 
-- **Initial load:** `GET /api/tickets/[id]/page-data` — ticket + company settings + edit/action lookups + product catalog in one request (`lib/utils/fetch-ticket-detail.ts`).
-- **Silent refresh:** `GET /api/tickets/[id]` only (lighter than full bootstrap).
+- **Initial load:** `Promise.all([getTicketFormBootstrap(), GET /api/tickets/[id]/page-data])` — bootstrap = company + lookups + products (`lib/utils/ticket-form-bootstrap-server-cache.ts`, client cache `lib/client/ticket-form-bootstrap-cache.ts`); page-data = `{ ticket }` only (`lib/utils/fetch-ticket-detail.ts`).
+- **Silent refresh:** `GET /api/tickets/[id]` only (no bootstrap).
 - **`useTicketRealtimeSync(ticketId, onRefresh)`** — `postgres_changes` on this ticket + `activities` INSERT; also `bazaar:tickets-changed` / `bazaar:activities-changed`. Refetch delay **`REALTIME_REFETCH_MS` (0)**.
+
+**Layer 2b — List row expand (Jun 2026):**
+
+- Rows on ticket list page-data include `line_preview`; `seedLinePreviewFromListRows` after fetch.
+- Cache miss: `GET /api/tickets/[id]/line-preview` (`lib/utils/fetch-ticket-line-preview.ts`, batch: `fetch-ticket-line-previews-batch.ts`).
 
 **Layer 3 — Public portal (broadcast channel):**
 
@@ -1983,6 +1988,8 @@ Same rendering path, token authentication, rate-limited.
 ---
 
 ## 24. UI Design System
+
+> **Full color guide:** [`docs/color-system.md`](./color-system.md) — token list, dark mode, Tailwind bridge, exceptions.
 
 ### Color token system
 
@@ -2248,4 +2255,4 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 
 ---
 
-*Last updated: 2026-06-02 (list SWR, detail bootstrap APIs, realtime 0ms, migration 107). Cross-reference `supabase/schema.sql`, `supabase/migrations/` (`103`–`107`), and `docs/api-contract.md`. Future resubmit portal: `docs/FuturePlan/tax-exempt-resubmit-portal/`.*
+*Last updated: 2026-06-02 (list SWR, line_preview bundling, split detail bootstrap, `/api/me`, realtime 0ms, migration 107). Page-load guide: `docs/FuturePlan/Performance/page-loading.md`. Cross-reference `supabase/migrations/` (`103`–`107`) and `docs/api-contract.md`.*

@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BazaarPrinting CRM — Brand Color Picker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: #f0f2f5;
+      color: #333;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .page-header {
+      background: #1B2B4B;
+      color: #fff;
+      padding: 24px 32px;
+    }
+    .page-header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+    .page-header .brand {
+      color: #E8C97A;
+      letter-spacing: 0.05em;
+    }
+    .page-header p {
+      margin-top: 8px;
+      font-size: 14px;
+      opacity: 0.85;
+      max-width: 720px;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 24px;
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+    @media (max-width: 960px) {
+      .layout { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #E5E7EB;
+      padding: 20px;
+    }
+    .panel h2 {
+      font-size: 14px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #666;
+      margin-bottom: 16px;
+    }
+    .panel h3 {
+      font-size: 13px;
+      font-weight: 600;
+      margin: 20px 0 10px;
+      color: #333;
+    }
+    .panel h3:first-of-type { margin-top: 0; }
+
+    .steps {
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 16px;
+      padding-left: 18px;
+    }
+    .steps li { margin-bottom: 6px; }
+
+    .mode-tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .mode-tabs button {
+      flex: 1;
+      padding: 10px 14px;
+      border-radius: 6px;
+      border: 1px solid #E5E7EB;
+      background: #FAFAFA;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .mode-tabs button.active {
+      background: #1B2B4B;
+      color: #E8C97A;
+      border-color: #1B2B4B;
+    }
+
+    .presets {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .presets button {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid #E5E7EB;
+      background: #fff;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .presets button:hover { background: #F8F7F4; }
+
+    .color-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .color-row label {
+      font-size: 13px;
+      font-weight: 500;
+      flex: 1;
+    }
+    .color-row .hint {
+      display: block;
+      font-size: 11px;
+      font-weight: 400;
+      color: #888;
+      margin-top: 2px;
+    }
+    .color-row input[type="color"] {
+      width: 48px;
+      height: 36px;
+      border: 1px solid #E5E7EB;
+      border-radius: 6px;
+      padding: 2px;
+      cursor: pointer;
+      background: #fff;
+    }
+    .color-row input[type="text"] {
+      width: 88px;
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+      padding: 6px 8px;
+      border: 1px solid #E5E7EB;
+      border-radius: 6px;
+      text-transform: uppercase;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 20px;
+    }
+    .actions button {
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      border: none;
+    }
+    .btn-primary {
+      background: #E8C97A;
+      color: #1B2B4B;
+    }
+    .btn-secondary {
+      background: #1B2B4B;
+      color: #E8C97A;
+      border: 1px solid #1B2B4B;
+    }
+    .btn-outline {
+      background: #fff;
+      color: #333;
+      border: 1px solid #E5E7EB;
+    }
+    .copy-status {
+      font-size: 12px;
+      color: #16A34A;
+      min-height: 18px;
+      text-align: center;
+    }
+
+    details.advanced {
+      margin-top: 16px;
+      font-size: 13px;
+    }
+    details.advanced summary {
+      cursor: pointer;
+      font-weight: 500;
+      color: #666;
+    }
+
+    /* Preview uses CSS variables set by JS */
+    #preview {
+      --color-bg: #ffffff;
+      --color-surface: #FAFAFA;
+      --color-topbar: #1B2B4B;
+      --color-accent: #E8C97A;
+      --color-accent-dark: #C9A84C;
+      --color-text-primary: #333333;
+      --color-text-muted: #666666;
+      --color-text-inverse: #FFFFFF;
+      --color-border: #E5E7EB;
+      --color-badge-bg: #EAF0FB;
+      --color-badge-text: #1B2B4B;
+      --color-row-alt: #F8F7F4;
+      --color-row-hover: #EAF0FB;
+      --color-btn-primary-bg: #E8C97A;
+      --color-btn-primary-text: #1B2B4B;
+      --color-btn-verify-bg: #1B2B4B;
+      --color-btn-verify-text: #E8C97A;
+      --color-tab-active: #1B2B4B;
+      --color-tab-underline: #E8C97A;
+      --color-tab-inactive: #888888;
+      --color-danger: #DC2626;
+      --color-danger-bg: #FEF2F2;
+      --color-danger-border: #FECACA;
+      --color-success: #16A34A;
+      --color-success-bg: #F0FDF4;
+      --color-success-border: #BBF7D0;
+      --color-warning: #B45309;
+      --color-warning-bg: #FFFBEB;
+      --color-warning-border: #FDE68A;
+      --color-info-bg: #EFF6FF;
+      --color-info-text: #2563EB;
+      --color-info-border: #BFDBFE;
+      --color-neutral-bg: #F2F2F0;
+      --color-neutral-text: #999999;
+      --color-neutral-border: #E0E0DC;
+
+      display: flex;
+      min-height: 520px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--color-border);
+      font-size: 13px;
+    }
+
+    #preview .mock-sidebar {
+      width: 200px;
+      flex-shrink: 0;
+      background: var(--color-topbar);
+      padding: 16px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    #preview .mock-brand {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--color-accent);
+      letter-spacing: 0.05em;
+      margin-bottom: 16px;
+    }
+    #preview .mock-nav {
+      padding: 8px 10px;
+      border-radius: 6px;
+      color: rgba(255,255,255,0.65);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    #preview .mock-nav.active {
+      background: var(--color-accent);
+      color: var(--color-btn-primary-text);
+    }
+
+    #preview .mock-main {
+      flex: 1;
+      background: var(--color-bg);
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+    #preview .mock-top {
+      padding: 16px 20px 0;
+    }
+    #preview .mock-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--color-text-primary);
+      margin-bottom: 12px;
+    }
+    #preview .mock-tabs {
+      display: flex;
+      gap: 4px;
+      border-bottom: 1px solid var(--color-border);
+    }
+    #preview .mock-tab {
+      padding: 10px 14px;
+      font-size: 13px;
+      font-weight: 400;
+      color: var(--color-tab-inactive);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    #preview .mock-tab.active {
+      color: var(--color-tab-active);
+      font-weight: 500;
+      border-bottom-color: var(--color-tab-underline);
+    }
+    #preview .mock-tab .badge {
+      margin-left: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 16px;
+      height: 16px;
+      padding: 0 4px;
+      border-radius: 9999px;
+      font-size: 10px;
+      font-weight: 600;
+      background: var(--color-badge-bg);
+      color: var(--color-badge-text);
+    }
+
+    #preview .mock-body {
+      padding: 16px 20px 20px;
+      flex: 1;
+    }
+    #preview .mock-actions {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    #preview .mock-btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      border: none;
+      cursor: default;
+    }
+    #preview .mock-btn.primary {
+      background: var(--color-btn-primary-bg);
+      color: var(--color-btn-primary-text);
+    }
+    #preview .mock-btn.verify {
+      background: var(--color-btn-verify-bg);
+      color: var(--color-btn-verify-text);
+    }
+
+    #preview .mock-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--color-border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #preview .mock-table th {
+      text-align: left;
+      padding: 10px 12px;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--color-text-muted);
+      background: var(--color-surface);
+      border-bottom: 1px solid var(--color-border);
+    }
+    #preview .mock-table td {
+      padding: 12px;
+      color: var(--color-text-primary);
+      border-bottom: 1px solid var(--color-border);
+    }
+    #preview .mock-table tr:nth-child(even) td {
+      background: var(--color-row-alt);
+    }
+    #preview .mock-table tr:hover td {
+      background: var(--color-row-hover);
+    }
+
+    #preview .pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 500;
+      border: 1px solid transparent;
+    }
+    #preview .pill.success {
+      background: var(--color-success-bg);
+      color: var(--color-success);
+      border-color: var(--color-success-border);
+    }
+    #preview .pill.warning {
+      background: var(--color-warning-bg);
+      color: var(--color-warning);
+      border-color: var(--color-warning-border);
+    }
+    #preview .pill.danger {
+      background: var(--color-danger-bg);
+      color: var(--color-danger);
+      border-color: var(--color-danger-border);
+    }
+
+    #preview .mock-banner {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      background: var(--color-info-bg);
+      color: var(--color-info-text);
+      border: 1px solid var(--color-info-border);
+    }
+
+    .export-box {
+      margin-top: 16px;
+      display: none;
+    }
+    .export-box.visible { display: block; }
+    .export-box textarea {
+      width: 100%;
+      min-height: 200px;
+      font-size: 11px;
+      font-family: ui-monospace, monospace;
+      padding: 12px;
+      border: 1px solid #E5E7EB;
+      border-radius: 6px;
+      resize: vertical;
+    }
+    .export-box p {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    .footer-note {
+      max-width: 1280px;
+      margin: 0 auto 32px;
+      padding: 0 24px;
+      font-size: 12px;
+      color: #888;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="page-header">
+    <h1><span class="brand">BAZAARPRINTING</span> CRM — Brand Color Picker</h1>
+    <p>
+      Use this page to try different colors for the staff CRM. Pick a preset or adjust the colors below,
+      then click <strong>Copy my choices</strong> and email the result to your developer.
+      No login required — open this file in Chrome, Safari, or Edge.
+    </p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel">
+      <h2>Your choices</h2>
+      <ol class="steps">
+        <li>Try a <strong>preset</strong> or change colors.</li>
+        <li>Switch <strong>Light</strong> / <strong>Dark</strong> and adjust both.</li>
+        <li>Check the <strong>preview</strong> on the right.</li>
+        <li>Click <strong>Copy my choices</strong> and send to your developer.</li>
+      </ol>
+
+      <div class="mode-tabs" role="tablist">
+        <button type="button" id="tab-light" class="active" data-mode="light">Light theme</button>
+        <button type="button" id="tab-dark" data-mode="dark">Dark theme</button>
+      </div>
+
+      <p style="font-size:12px;color:#666;margin-bottom:10px;">Quick presets (updates both themes)</p>
+      <div class="presets" id="presets"></div>
+
+      <h3 id="picker-heading">Light — main brand colors</h3>
+      <div id="pickers"></div>
+
+      <details class="advanced">
+        <summary>More colors (optional)</summary>
+        <div id="pickers-advanced" style="margin-top:12px"></div>
+      </details>
+
+      <div class="actions">
+        <button type="button" class="btn-primary" id="btn-copy">Copy my choices</button>
+        <button type="button" class="btn-outline" id="btn-reset">Reset to current CRM colors</button>
+        <button type="button" class="btn-outline" id="btn-show-export">Show full color list</button>
+      </div>
+      <p class="copy-status" id="copy-status" aria-live="polite"></p>
+
+      <div class="export-box" id="export-box">
+        <p>Send this text to your developer (or save as a file):</p>
+        <textarea id="export-text" readonly></textarea>
+      </div>
+    </aside>
+
+    <section class="panel" style="padding:16px;">
+      <h2 style="margin-bottom:12px;">Live preview</h2>
+      <div id="preview">
+        <div class="mock-sidebar">
+          <div class="mock-brand">BAZAARPRINTING</div>
+          <div class="mock-nav active">Leads</div>
+          <div class="mock-nav">Sales</div>
+          <div class="mock-nav">Quotes</div>
+          <div class="mock-nav">Orders</div>
+          <div class="mock-nav">Payments</div>
+        </div>
+        <div class="mock-main">
+          <div class="mock-top">
+            <div class="mock-title">Leads</div>
+            <div class="mock-tabs">
+              <span class="mock-tab active">All Leads <span class="badge">24</span></span>
+              <span class="mock-tab">Follow Up <span class="badge">3</span></span>
+              <span class="mock-tab">On Hold</span>
+            </div>
+          </div>
+          <div class="mock-body">
+            <div class="mock-actions">
+              <button type="button" class="mock-btn primary">New quote</button>
+              <button type="button" class="mock-btn verify">Verify lead</button>
+            </div>
+            <table class="mock-table">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th>Status</th>
+                  <th>Urgency</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Acme Signs LLC</td>
+                  <td><span class="pill success">Validated</span></td>
+                  <td><span class="pill danger">High</span></td>
+                </tr>
+                <tr>
+                  <td>Metro Print Co</td>
+                  <td><span class="pill warning">On Hold</span></td>
+                  <td><span class="pill success">Low</span></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="mock-banner">Known customer — linked from previous order.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <p class="footer-note">
+    BazaarPrinting CRM color system. Developer applies choices in <code>app/globals.css</code>.
+    Semantic colors (red/green alerts) can stay as-is unless you ask to change them.
+  </p>
+
+  <script>
+    const DEFAULTS = {
+      light: {
+        "--color-bg": "#ffffff",
+        "--color-surface": "#FAFAFA",
+        "--color-topbar": "#1B2B4B",
+        "--color-accent": "#E8C97A",
+        "--color-accent-dark": "#C9A84C",
+        "--color-text-primary": "#333333",
+        "--color-text-muted": "#666666",
+        "--color-text-inverse": "#FFFFFF",
+        "--color-border": "#E5E7EB",
+        "--color-badge-bg": "#EAF0FB",
+        "--color-badge-text": "#1B2B4B",
+        "--color-row-alt": "#F8F7F4",
+        "--color-row-hover": "#EAF0FB",
+        "--color-btn-primary-bg": "#E8C97A",
+        "--color-btn-primary-text": "#1B2B4B",
+        "--color-btn-verify-bg": "#1B2B4B",
+        "--color-btn-verify-text": "#E8C97A",
+        "--color-tab-active": "#1B2B4B",
+        "--color-tab-underline": "#E8C97A",
+        "--color-tab-inactive": "#888888",
+      },
+      dark: {
+        "--color-bg": "#18181B",
+        "--color-surface": "#27272A",
+        "--color-topbar": "#27272A",
+        "--color-accent": "#F97316",
+        "--color-accent-dark": "#FB923C",
+        "--color-text-primary": "#F4F4F5",
+        "--color-text-muted": "#71717A",
+        "--color-text-inverse": "#FFFFFF",
+        "--color-border": "#3F3F46",
+        "--color-badge-bg": "#2D1F0E",
+        "--color-badge-text": "#FB923C",
+        "--color-row-alt": "#27272A",
+        "--color-row-hover": "#27272A",
+        "--color-btn-primary-bg": "#F97316",
+        "--color-btn-primary-text": "#FFFFFF",
+        "--color-btn-verify-bg": "#F97316",
+        "--color-btn-verify-text": "#FFFFFF",
+        "--color-tab-active": "#F97316",
+        "--color-tab-underline": "#F97316",
+        "--color-tab-inactive": "#71717A",
+      },
+    };
+
+    const SEMANTIC = {
+      light: {
+        "--color-danger": "#DC2626",
+        "--color-danger-bg": "#FEF2F2",
+        "--color-danger-border": "#FECACA",
+        "--color-success": "#16A34A",
+        "--color-success-bg": "#F0FDF4",
+        "--color-success-border": "#BBF7D0",
+        "--color-warning": "#B45309",
+        "--color-warning-bg": "#FFFBEB",
+        "--color-warning-border": "#FDE68A",
+        "--color-info-bg": "#EFF6FF",
+        "--color-info-text": "#2563EB",
+        "--color-info-border": "#BFDBFE",
+      },
+      dark: {
+        "--color-danger": "#EF4444",
+        "--color-danger-bg": "rgba(239,68,68,0.10)",
+        "--color-danger-border": "rgba(239,68,68,0.30)",
+        "--color-success": "#22C55E",
+        "--color-success-bg": "#052E16",
+        "--color-success-border": "#166534",
+        "--color-warning": "#F59E0B",
+        "--color-warning-bg": "#431407",
+        "--color-warning-border": "#92400E",
+        "--color-info-bg": "#1E3A5F",
+        "--color-info-text": "#60A5FA",
+        "--color-info-border": "#1E40AF",
+      },
+    };
+
+    const PRESETS = [
+      { name: "Current (Navy + Gold)", light: { topbar: "#1B2B4B", accent: "#E8C97A", btnText: "#1B2B4B" }, dark: { topbar: "#27272A", accent: "#F97316", btnText: "#FFFFFF" } },
+      { name: "Navy + Coral", light: { topbar: "#1B2B4B", accent: "#F97316", btnText: "#FFFFFF" }, dark: { topbar: "#1e293b", accent: "#FB923C", btnText: "#FFFFFF" } },
+      { name: "Forest", light: { topbar: "#14532D", accent: "#86EFAC", btnText: "#14532D" }, dark: { topbar: "#052E16", accent: "#4ADE80", btnText: "#052E16" } },
+      { name: "Royal Blue", light: { topbar: "#1E3A8A", accent: "#93C5FD", btnText: "#1E3A8A" }, dark: { topbar: "#172554", accent: "#60A5FA", btnText: "#FFFFFF" } },
+      { name: "Burgundy + Gold", light: { topbar: "#7F1D1D", accent: "#E8C97A", btnText: "#7F1D1D" }, dark: { topbar: "#450A0A", accent: "#FCD34D", btnText: "#450A0A" } },
+      { name: "Charcoal + Teal", light: { topbar: "#27272A", accent: "#2DD4BF", btnText: "#18181B" }, dark: { topbar: "#18181B", accent: "#5EEAD4", btnText: "#18181B" } },
+    ];
+
+    const MAIN_PICKERS = [
+      { key: "--color-topbar", label: "Sidebar background", hint: "Left navigation bar" },
+      { key: "--color-accent", label: "Accent / highlight", hint: "Logo, active tab, primary buttons" },
+      { key: "--color-btn-primary-text", label: "Text on gold buttons", hint: "Usually dark on light accent" },
+      { key: "--color-bg", label: "Page background", hint: "Main content area" },
+    ];
+
+    const ADVANCED_PICKERS = [
+      { key: "--color-surface", label: "Card / table header background" },
+      { key: "--color-text-primary", label: "Main text" },
+      { key: "--color-text-muted", label: "Labels & secondary text" },
+      { key: "--color-border", label: "Borders" },
+      { key: "--color-tab-active", label: "Active tab text" },
+      { key: "--color-btn-verify-bg", label: "Secondary button (Verify) background" },
+    ];
+
+    let mode = "light";
+    const state = {
+      light: { ...DEFAULTS.light, ...SEMANTIC.light },
+      dark: { ...DEFAULTS.dark, ...SEMANTIC.dark },
+    };
+
+    const preview = document.getElementById("preview");
+    const pickersEl = document.getElementById("pickers");
+    const pickersAdvEl = document.getElementById("pickers-advanced");
+    const presetsEl = document.getElementById("presets");
+
+    function darkenHex(hex, pct = 12) {
+      if (!hex.startsWith("#") || hex.length < 7) return hex;
+      const n = parseInt(hex.slice(1, 7), 16);
+      const r = Math.max(0, ((n >> 16) & 255) * (1 - pct / 100) | 0);
+      const g = Math.max(0, ((n >> 8) & 255) * (1 - pct / 100) | 0);
+      const b = Math.max(0, (n & 255) * (1 - pct / 100) | 0);
+      return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+    }
+
+    function syncBrandDerived(m) {
+      const accent = state[m]["--color-accent"];
+      state[m]["--color-btn-primary-bg"] = accent;
+      state[m]["--color-tab-underline"] = accent;
+      state[m]["--color-btn-verify-text"] = accent;
+      state[m]["--color-accent-dark"] = darkenHex(accent, 15);
+      if (m === "light") {
+        state[m]["--color-tab-active"] = state[m]["--color-btn-primary-text"];
+        state[m]["--color-badge-text"] = state[m]["--color-btn-primary-text"];
+        state[m]["--color-btn-verify-bg"] = state[m]["--color-topbar"];
+        state[m]["--color-badge-bg"] = mixWithWhite(state[m]["--color-topbar"], 0.92);
+      } else {
+        state[m]["--color-tab-active"] = accent;
+        state[m]["--color-badge-text"] = state[m]["--color-accent-dark"];
+        state[m]["--color-btn-verify-bg"] = accent;
+        state[m]["--color-badge-bg"] = "#2D1F0E";
+      }
+    }
+
+    function mixWithWhite(hex, whiteRatio) {
+      if (!hex.startsWith("#")) return "#EAF0FB";
+      const n = parseInt(hex.slice(1, 7), 16);
+      const r = ((n >> 16) & 255) * (1 - whiteRatio) + 255 * whiteRatio | 0;
+      const g = ((n >> 8) & 255) * (1 - whiteRatio) + 255 * whiteRatio | 0;
+      const b = (n & 255) * (1 - whiteRatio) + 255 * whiteRatio | 0;
+      return "#" + [r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("");
+    }
+
+    function applyPreview() {
+      const vars = { ...state[mode] };
+      for (const [k, v] of Object.entries(vars)) {
+        preview.style.setProperty(k, v);
+      }
+    }
+
+    function makePicker(container, spec) {
+      const row = document.createElement("div");
+      row.className = "color-row";
+      row.dataset.key = spec.key;
+
+      const label = document.createElement("label");
+      label.innerHTML = spec.label + (spec.hint ? `<span class="hint">${spec.hint}</span>` : "");
+      row.appendChild(label);
+
+      const colorInput = document.createElement("input");
+      colorInput.type = "color";
+      const hex = state[mode][spec.key];
+      colorInput.value = hex.startsWith("#") && hex.length >= 7 ? hex.slice(0, 7) : "#000000";
+      row.appendChild(colorInput);
+
+      const textInput = document.createElement("input");
+      textInput.type = "text";
+      textInput.value = hex.startsWith("#") ? hex.slice(0, 7).toUpperCase() : hex;
+      textInput.maxLength = 7;
+      row.appendChild(textInput);
+
+      function update(val) {
+        if (!val.startsWith("#")) return;
+        const v = val.length === 7 ? val : val.slice(0, 7);
+        state[mode][spec.key] = v;
+        if (["--color-accent", "--color-topbar", "--color-btn-primary-text"].includes(spec.key)) {
+          syncBrandDerived(mode);
+          refreshPickerValues();
+        }
+        applyPreview();
+      }
+
+      colorInput.addEventListener("input", () => {
+        textInput.value = colorInput.value.toUpperCase();
+        update(colorInput.value);
+      });
+      textInput.addEventListener("change", () => {
+        let v = textInput.value.trim();
+        if (!v.startsWith("#")) v = "#" + v;
+        if (/^#[0-9A-Fa-f]{6}$/.test(v)) {
+          colorInput.value = v;
+          update(v);
+        }
+      });
+
+      container.appendChild(row);
+      return row;
+    }
+
+    function refreshPickerValues() {
+      document.querySelectorAll(".color-row").forEach((row) => {
+        const key = row.dataset.key;
+        if (!key || !state[mode][key]) return;
+        const val = state[mode][key];
+        const color = row.querySelector('input[type="color"]');
+        const text = row.querySelector('input[type="text"]');
+        if (color && val.startsWith("#") && val.length >= 7) color.value = val.slice(0, 7);
+        if (text) text.value = val.startsWith("#") ? val.slice(0, 7).toUpperCase() : val;
+      });
+    }
+
+    function buildPickers() {
+      pickersEl.innerHTML = "";
+      pickersAdvEl.innerHTML = "";
+      MAIN_PICKERS.forEach((p) => makePicker(pickersEl, p));
+      ADVANCED_PICKERS.forEach((p) => makePicker(pickersAdvEl, p));
+    }
+
+    function setMode(m) {
+      mode = m;
+      document.getElementById("tab-light").classList.toggle("active", m === "light");
+      document.getElementById("tab-dark").classList.toggle("active", m === "dark");
+      document.getElementById("picker-heading").textContent =
+        m === "light" ? "Light — main brand colors" : "Dark — main brand colors";
+      syncBrandDerived(m);
+      refreshPickerValues();
+      applyPreview();
+    }
+
+    function applyPreset(p) {
+      ["light", "dark"].forEach((m) => {
+        const cfg = p[m];
+        state[m]["--color-topbar"] = cfg.topbar;
+        state[m]["--color-accent"] = cfg.accent;
+        state[m]["--color-btn-primary-text"] = cfg.btnText;
+        syncBrandDerived(m);
+      });
+      refreshPickerValues();
+      applyPreview();
+    }
+
+    PRESETS.forEach((p) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = p.name;
+      b.addEventListener("click", () => applyPreset(p));
+      presetsEl.appendChild(b);
+    });
+
+    document.getElementById("tab-light").addEventListener("click", () => setMode("light"));
+    document.getElementById("tab-dark").addEventListener("click", () => setMode("dark"));
+
+    document.getElementById("btn-reset").addEventListener("click", () => {
+      state.light = { ...DEFAULTS.light, ...SEMANTIC.light };
+      state.dark = { ...DEFAULTS.dark, ...SEMANTIC.dark };
+      syncBrandDerived("light");
+      syncBrandDerived("dark");
+      refreshPickerValues();
+      applyPreview();
+      document.getElementById("copy-status").textContent = "Reset to current CRM colors.";
+    });
+
+    function buildExportText() {
+      const lines = [
+        "BazaarPrinting CRM — Color choices from owner",
+        "Date: " + new Date().toLocaleDateString(),
+        "",
+        "=== LIGHT THEME (:root in app/globals.css) ===",
+      ];
+      Object.entries({ ...state.light }).forEach(([k, v]) => lines.push(`  ${k}: ${v};`));
+      lines.push("", "=== DARK THEME (.dark in app/globals.css) ===");
+      Object.entries({ ...state.dark }).forEach(([k, v]) => lines.push(`  ${k}: ${v};`));
+      lines.push("", "Notes for developer:");
+      lines.push("- Apply values in app/globals.css");
+      lines.push("- btn-primary-bg, tab-underline, and verify-text were linked to accent in the picker");
+      return lines.join("\n");
+    }
+
+    document.getElementById("btn-copy").addEventListener("click", async () => {
+      const text = buildExportText();
+      try {
+        await navigator.clipboard.writeText(text);
+        document.getElementById("copy-status").textContent = "Copied! Paste into an email to your developer.";
+      } catch {
+        document.getElementById("export-box").classList.add("visible");
+        document.getElementById("export-text").value = text;
+        document.getElementById("copy-status").textContent = "Select the text below and copy manually.";
+      }
+    });
+
+    document.getElementById("btn-show-export").addEventListener("click", () => {
+      const box = document.getElementById("export-box");
+      box.classList.add("visible");
+      document.getElementById("export-text").value = buildExportText();
+    });
+
+    buildPickers();
+    syncBrandDerived("light");
+    syncBrandDerived("dark");
+    applyPreview();
+  </script>
+</body>
+</html>

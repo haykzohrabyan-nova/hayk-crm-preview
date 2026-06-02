@@ -36,7 +36,9 @@ Lead scope: `canReadLead`, `canMutateLead`, `canClaimLead`, `canAcquireLeadLock`
 
 Full security model: **`docs/security.md`**.
 
-**Session cache (May 2026):** Successful `requireSession()` results are memoized in-process for ~3 s (`lib/auth/session-cache.ts`) to avoid duplicate auth + profile lookups during page load bursts. Dev HMR cookie `__next_hmr_refresh_hash__` is excluded from the cache key so hot reload does not invalidate every write.
+**Session cache (Jun 2026):** Successful `requireSession()` results are memoized in-process for ~45 s (`lib/auth/session-cache.ts`) and include `userId`, `roleName`, `roleId`, `fullName`, `allowedRoutes`. Allowed routes are also cached per user in `lib/auth/allowed-routes-cache.ts` for `requirePageAccess` / ticket APIs. Dev HMR cookie `__next_hmr_refresh_hash__` is excluded from the session cache key.
+
+**Layout bootstrap:** `GET /api/me` — after `requireSession()`, returns `{ userId, roleName, fullName, allowedRoutes, pages }` for sidebar/mobile nav. **Does not replace** per-route `requireSession()` on other APIs.
 
 ---
 
@@ -46,9 +48,10 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 
 | Route | Response | Used by |
 |-------|----------|---------|
-| `GET /api/orders/page-data` | `{ orders, counts, pagination }` | Orders page — **server-side** tab, search, date, admin user filter + pagination (default `limit=25`) |
-| `GET /api/quotes/page-data` | `{ tickets, counts, pagination }` | Quotes page — server-side tab, search, date, admin user + pagination |
-| `GET /api/payments/page-data` | `{ orders \| taxExemptOrders \| approvedOrders \| refundedOrders (one list by `tab`), counts, pagination }` | Payments page — `?tab=pending\|tax_exempt\|approved\|refunded`, `limit`, `offset`, optional `search` |
+| `GET /api/orders/page-data` | `{ orders, counts, pagination }` — each order includes `line_preview: { line_items, ticket_ref }` for list expand | Orders page |
+| `GET /api/quotes/page-data` | `{ tickets, counts, pagination }` — each ticket includes `line_preview` | Quotes page |
+| `GET /api/payments/page-data` | Active tab list + `counts` + `pagination` — rows on active tab include `line_preview` | Payments tabs |
+| `GET /api/completed/page-data` | `{ orders, counts, pagination }` — each order includes `line_preview` | Completed page |
 | `GET /api/leads/sales/page-data` | `{ leads, counts, pagination }` | Sales pipeline — `?tab=`, `limit`, `offset`, optional `search` |
 | `GET /api/completed/page-data` | `{ orders, counts, pagination }` | Completed — server-side search, date on `updated_at`, admin user + pagination |
 | `GET /api/production/page-data` | `{ orders, counts, pagination }` | Production — server-side tab, search + pagination |
@@ -65,8 +68,10 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 
 | Route | Response | Used by |
 |-------|----------|---------|
-| `GET /api/tickets/[id]/page-data` | `{ ticket, company, lookups_edit, lookups_actions, products }` | `QuoteDetail` initial load (`/quotes/[id]`, `/orders/[id]`, …) |
-| `GET /api/quotes/form-bootstrap` | `{ company, lookups, products }` | `NewQuoteForm` (`/quotes/new`) |
+| `GET /api/tickets/[id]/page-data` | `{ ticket }` only | `QuoteDetail` initial load (`/quotes/[id]`, `/orders/[id]`, …) |
+| `GET /api/ticket-form-bootstrap` | `{ company, lookups_edit, lookups_actions, products }` (server cache 5 min; client 30 min) | `QuoteDetail` in parallel with page-data |
+| `GET /api/tickets/[id]/line-preview` | `{ line_items, ticket_ref }` | List expand cache miss; legacy path when row has no `line_preview` |
+| `GET /api/quotes/form-bootstrap` | `{ company, lookups, products }` | `NewQuoteForm` (`/quotes/new`); seeds ticket-form bootstrap cache |
 
 Silent ticket refresh after save still uses lighter `GET /api/tickets/[id]` only.
 
@@ -86,6 +91,13 @@ Shared helpers:
 | `lib/utils/leads-workspace-query.ts` | Leads workspace list + tab counts + pagination slice; `applyExcludeSalesStatusWon`, SDR `owner_scope` filters |
 | `lib/utils/validate-lead-product-interests.ts` | Product + quantity validation for manual create and PATCH lead |
 | `lib/utils/orders-list-sort.ts` | Orders column sort rules |
+| `lib/utils/fetch-ticket-line-previews-batch.ts` | Batch `line_preview` for list page-data (3 queries/page) |
+| `lib/utils/fetch-ticket-line-preview.ts` | Single-ticket line preview API |
+| `lib/utils/ticket-form-bootstrap-server-cache.ts` | Shared company + lookups + products (5 min server cache) |
+| `lib/client/ticket-form-bootstrap-cache.ts` | Client bootstrap cache (30 min); seed from quotes form-bootstrap |
+| `lib/client/seed-line-preview-from-page-data.ts` | Hydrate line-preview component cache from page-data rows |
+
+**Page-load guide:** `docs/FuturePlan/Performance/page-loading.md` — measurement, architecture, prioritized backlog.
 
 **Common pagination params** (all paginated page-data routes):
 

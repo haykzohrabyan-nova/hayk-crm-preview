@@ -22,6 +22,7 @@ import {
   type ShippingDestinationDraft,
 } from "@/lib/utils/ticket-shipping-destinations";
 import { scrollToFirstFormField, scrollToFormField } from "@/lib/utils/scroll-field-into-view";
+import { seedTicketFormBootstrapFromQuotesBootstrap } from "@/lib/client/ticket-form-bootstrap-cache";
 import {
   formatQuoteSendMissingMessage,
   getQuoteSendMissingFields,
@@ -310,6 +311,14 @@ export default function NewQuoteForm() {
     fetch("/api/quotes/form-bootstrap")
       .then((r) => r.json())
       .then((d) => {
+        const lookups = d.lookups as Record<string, LookupOption[]> | undefined;
+        if (lookups && d.company && d.products) {
+          seedTicketFormBootstrapFromQuotesBootstrap({
+            company: d.company,
+            lookups: lookups as Record<string, unknown[]>,
+            products: d.products,
+          });
+        }
         if (d.products) setProducts(d.products);
         if (d.company?.settings) {
           setCompanyCfg(d.company.settings);
@@ -317,7 +326,6 @@ export default function NewQuoteForm() {
             setTaxRate(d.company.settings.default_tax_rate);
           }
         }
-        const lookups = d.lookups as Record<string, LookupOption[]> | undefined;
         if (lookups) {
           setSkuLookups({
             lamination: lookups.lamination ?? [],

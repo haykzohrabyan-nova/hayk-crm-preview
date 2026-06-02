@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { QuoteSku } from "@/lib/utils/ticket-math";
+import { formatCurrency, skuLineTotal } from "@/lib/utils/ticket-math";
 import { deleteTicketAttachment } from "@/lib/utils/ticket-line-files";
 
 export interface LineItemVariantInput {
@@ -165,6 +166,41 @@ export function lineItemsToDisplayRows(lines: TicketLineItemRow[]): TicketLineDi
       file: v.file ?? null,
     })),
   }));
+}
+
+/** Props for DetailLineItemCard from a display row (list quick preview, read-only forms). */
+export function lineDisplayRowToCardProps(row: TicketLineDisplayRow): {
+  name: string;
+  specs: string[];
+  price: number;
+  variantLabels: { name: string; quantity: number }[];
+} {
+  const name = [
+    row.product_type,
+    row.material,
+    row.lamination && row.lamination !== "None" ? row.lamination : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const specs: string[] = [];
+  if (row.color_mode) specs.push(row.color_mode);
+  if (row.sides) specs.push(row.sides);
+  if (row.roll_direction) specs.push(row.roll_direction);
+  if (row.width && row.height) specs.push(`${row.width}" × ${row.height}"`);
+  if (row.quantity) specs.push(`Qty: ${row.quantity}`);
+  if (row.unit_price) specs.push(`${formatCurrency(row.unit_price)} ea`);
+  if (row.comment) specs.push(row.comment);
+
+  const variants = row.variants ?? [];
+  const variantLabels = variants.map((v) => ({ name: v.name, quantity: v.quantity }));
+
+  return {
+    name: name || row.description || row.product_type || "Line item",
+    specs,
+    price: skuLineTotal(row),
+    variantLabels,
+  };
 }
 
 export function lineItemsToQuoteSkuRows(lines: TicketLineItemRow[]): QuoteSku[] {
@@ -352,22 +388,33 @@ function assembleBundle(
     .sort((a, b) => a.sort_order - b.sort_order);
 }
 
-export async function fetchTicketLinesBundle(
+const LINE_ITEM_PREVIEW_COLUMNS =
+  "id, ticket_id, sort_order, product_type, description, material, lamination, color_mode, sides, roll_direction, width, height, quantity, unit_price, line_total, design_required, die_cut, spot_uv, foil, perforation, comment";
+
+const LINE_VARIANT_PREVIEW_COLUMNS =
+  "id, line_item_id, ticket_id, sort_order, name, quantity";
+
+async function fetchTicketLinesBundleInternal(
   admin: SupabaseClient,
   ticketId: string,
+  lineSelect: string,
+  variantSelect: string,
 ): Promise<TicketLineItemRow[]> {
   const [linesRes, variantsRes, filesRes] = await Promise.all([
     admin
       .from("ticket_line_items")
-      .select("*")
+      .select(lineSelect)
       .eq("ticket_id", ticketId)
       .order("sort_order", { ascending: true }),
     admin
       .from("ticket_line_variants")
-      .select("*")
+      .select(variantSelect)
       .eq("ticket_id", ticketId)
       .order("sort_order", { ascending: true }),
-    admin.from("ticket_files").select("id, line_item_id, variant_id, file_name, mime_type, byte_size").eq("ticket_id", ticketId),
+    admin
+      .from("ticket_files")
+      .select("id, line_item_id, variant_id, file_name, mime_type, byte_size")
+      .eq("ticket_id", ticketId),
   ]);
 
   if (linesRes.error) {
@@ -376,10 +423,78 @@ export async function fetchTicketLinesBundle(
   }
 
   return assembleBundle(
-    (linesRes.data ?? []) as DbLine[],
-    (variantsRes.data ?? []) as DbVariant[],
+    (linesRes.data ?? []) as unknown as DbLine[],
+    (variantsRes.data ?? []) as unknown as DbVariant[],
     (filesRes.data ?? []) as DbFile[],
   );
+}
+
+/** List quick-preview — slim columns, same shape as full bundle. */
+export async function fetchTicketLinesBundleForPreview(
+  admin: SupabaseClient,
+  ticketId: string,
+): Promise<TicketLineItemRow[]> {
+  return fetchTicketLinesBundleInternal(
+    admin,
+    ticketId,
+    LINE_ITEM_PREVIEW_COLUMNS,
+    LINE_VARIANT_PREVIEW_COLUMNS,
+  );
+}
+
+/** Batch line previews for list page-data — 3 queries total for all ticket IDs on the page. */
+export async function fetchTicketLinePreviewBundlesBatch(
+  admin: SupabaseClient,
+  ticketIds: string[],
+): Promise<Map<string, TicketLineItemRow[]>> {
+  const uniqueIds = [...new Set(ticketIds.filter(Boolean))];
+  const result = new Map<string, TicketLineItemRow[]>();
+  if (uniqueIds.length === 0) return result;
+
+  const [linesRes, variantsRes, filesRes] = await Promise.all([
+    admin
+      .from("ticket_line_items")
+      .select(LINE_ITEM_PREVIEW_COLUMNS)
+      .in("ticket_id", uniqueIds)
+      .order("sort_order", { ascending: true }),
+    admin
+      .from("ticket_line_variants")
+      .select(LINE_VARIANT_PREVIEW_COLUMNS)
+      .in("ticket_id", uniqueIds)
+      .order("sort_order", { ascending: true }),
+    admin
+      .from("ticket_files")
+      .select("id, line_item_id, variant_id, file_name, mime_type, byte_size, ticket_id")
+      .in("ticket_id", uniqueIds),
+  ]);
+
+  if (linesRes.error) {
+    console.error("[fetchTicketLinePreviewBundlesBatch] lines:", linesRes.error);
+    return result;
+  }
+
+  const lines = (linesRes.data ?? []) as unknown as DbLine[];
+  const variants = (variantsRes.data ?? []) as unknown as DbVariant[];
+  const files = (filesRes.data ?? []) as DbFile[];
+
+  for (const ticketId of uniqueIds) {
+    const ticketLines = lines.filter((l) => String(l.ticket_id) === ticketId);
+    const ticketVariants = variants.filter((v) => String(v.ticket_id) === ticketId);
+    const ticketFiles = files.filter((f) => String(f.ticket_id) === ticketId);
+    result.set(
+      ticketId,
+      assembleBundle(ticketLines, ticketVariants, ticketFiles),
+    );
+  }
+
+  return result;
+}
+
+export async function fetchTicketLinesBundle(
+  admin: SupabaseClient,
+  ticketId: string,
+): Promise<TicketLineItemRow[]> {
+  return fetchTicketLinesBundleInternal(admin, ticketId, "*", "*");
 }
 
 /** First SKU removed → line-level file; other SKU files → delete from Storage (DB row cascades). */

@@ -322,14 +322,15 @@ app/(app)/quotes/page.tsx  [Server Component — thin wrapper]
         │    Sidebar: job_tickets + activities INSERT (claim) → tickets-changed
         │    Page (Sales/Admin/SDR with Routed tab): channel `quotes-page-routed-sync` on job_tickets + activities INSERT
         │    Requires migration 086_job_tickets_routed_realtime_rls.sql (sales_read_routed_tickets RLS)
-        ├── Slim list — no line_items on table rows
+        ├── Slim list — no full line_items on table rows; each row has `line_preview` from page-data
+        ├── Row expand: `TicketListExpand` + `TicketLineItemsQuickPreview` (cached; no line-preview API on current page)
         ├── Columns: Contact, Title, Channel, Total, Due Now, Status pill, Follow-up, Created
         ├── Search: server-side (debounced) via `?search=`
         ├── ListPagination (25 default); `ListRefreshingNotice` during background sync
         ├── Mobile (< lg): `MobileListCard` per row + `TicketListToolbar`; desktop: table
         ├── Claim (Routed tab): PATCH /api/tickets/[id] `{ claim_ownership: true }` — **409** `ALREADY_CLAIMED` if another rep claimed first; success → `notifyListDataChanged({ cachePrefix: "quotes" })`
         ├── No Sales/Admin explainer banner on Routed tab (SDR read-only banner only)
-        └── Row click → /quotes/[id]
+        ├── Row click → expand preview; **View** → /quotes/[id]
 ```
 
 ---
@@ -351,7 +352,8 @@ app/(app)/orders/page.tsx  [Server Component — thin wrapper]
         ├── Search: server-side (debounced) via `?search=`
         ├── ListPagination (25 default)
         ├── Mobile (< lg): `MobileListCard` per row + `TicketListToolbar`; desktop: table
-        └── Row click → /orders/[id]
+        ├── Row expand + View (same as quotes — `ticket-list-expand.tsx`)
+        └── Row click → expand; View → /orders/[id]
 
 app/(app)/orders/[id]/page.tsx  [Server Component — thin wrapper]
   └── components/quotes/quote-detail.tsx  [Client Component — same component as /quotes/[id]]
@@ -568,7 +570,7 @@ app/(app)/quotes/[id]/page.tsx  [Server Component — thin wrapper]
         ├── Payment review (order context): PricingPaymentSummary read-only for sales/SDR; evidence hidden
         ├── TicketLifecycleTimeline: GET /api/activities?ticket_id=… (same id resolution); buildTicketLifecycleTimeline() — creation label from activity payload (QUO-*), not post-convert ORD-*
         ├── History: GET /api/activities?ticket_id=xxx&include_linked_lead=true (ticket_id = UUID or ORD-* / QUO-*)
-        ├── Mount: GET /api/tickets/[id]/page-data → ticket + company + lookups + products; silent refresh → GET /api/tickets/[id]
+        ├── Mount: parallel `GET /api/tickets/[id]/page-data` (`{ ticket }`) + `getTicketFormBootstrap()` (cached); silent refresh → `GET /api/tickets/[id]`
         ├── Realtime: `useTicketRealtimeSync` (0ms debounce) + `bazaar:tickets-changed` + `bazaar:leads-changed`
         └── Rendered at:
              /quotes/[id]  (context="quote")

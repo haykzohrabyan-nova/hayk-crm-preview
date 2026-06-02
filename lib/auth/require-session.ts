@@ -7,6 +7,10 @@ import {
   setCachedSession,
 } from "@/lib/auth/session-cache";
 import {
+  getCachedAllowedPageRoutes,
+  setCachedAllowedPageRoutes,
+} from "@/lib/auth/allowed-routes-cache";
+import {
   hasValidMfaTrustFromCookieValue,
   MFA_TRUST_COOKIE,
 } from "@/lib/auth/mfa-trust";
@@ -16,9 +20,25 @@ export type RequireSessionOptions = {
   requireMfa?: boolean;
 };
 
+export type SessionSuccess = {
+  userId: string;
+  roleName: string;
+  roleId: string | null;
+  fullName: string | null;
+  allowedRoutes: string[];
+  errorResponse: null;
+};
+
 export type SessionResult =
-  | { userId: string; roleName: string; errorResponse: null }
-  | { userId: null; roleName: null; errorResponse: NextResponse };
+  | SessionSuccess
+  | {
+      userId: null;
+      roleName: null;
+      roleId: null;
+      fullName: null;
+      allowedRoutes: null;
+      errorResponse: NextResponse;
+    };
 
 export async function requireSession(
   options?: RequireSessionOptions,
@@ -40,6 +60,9 @@ export async function requireSession(
     return {
       userId: null,
       roleName: null,
+      roleId: null,
+      fullName: null,
+      allowedRoutes: null,
       errorResponse: NextResponse.json(
         { error: "Not authenticated.", code: "UNAUTHENTICATED" },
         { status: 401 },
@@ -49,12 +72,14 @@ export async function requireSession(
 
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("mfa_required, roles(name)")
+    .select("role_id, full_name, mfa_required, roles(name)")
     .eq("id", user.id)
     .single();
 
   const roleName =
     (profile?.roles as unknown as { name: string } | null)?.name ?? "";
+  const roleId = profile?.role_id != null ? String(profile.role_id) : null;
+  const fullName = profile?.full_name != null ? String(profile.full_name) : null;
 
   if (requireMfa && isMfaRequired(profile)) {
     const trustCookie = cookieStore.get(MFA_TRUST_COOKIE)?.value;
@@ -74,6 +99,9 @@ export async function requireSession(
         return {
           userId: null,
           roleName: null,
+          roleId: null,
+          fullName: null,
+          allowedRoutes: null,
           errorResponse: NextResponse.json(
             {
               error: "Two-factor authentication required.",
@@ -86,7 +114,17 @@ export async function requireSession(
     }
   }
 
-  const success = { userId: user.id, roleName, errorResponse: null } as const;
+  const allowedRoutes = await getCachedAllowedPageRoutes(user.id, roleName);
+  setCachedAllowedPageRoutes(user.id, roleName, allowedRoutes);
+
+  const success: SessionSuccess = {
+    userId: user.id,
+    roleName,
+    roleId,
+    fullName,
+    allowedRoutes,
+    errorResponse: null,
+  };
   setCachedSession(cacheKey, success);
   return success;
 }

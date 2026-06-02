@@ -1,9 +1,24 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { isAdminOnlyPagePath, isNonAdminDeniedPage } from "@/lib/auth/admin-only-pages";
+import { getCachedAllowedPageRoutes } from "@/lib/auth/allowed-routes-cache";
+import { UNIVERSAL_ROUTES } from "@/lib/auth/resolve-allowed-page-routes";
 
-/** Routes any authenticated role may access regardless of role_permissions. */
-const UNIVERSAL_ROUTES = ["/dashboard", "/profile"];
+export { resolveAllowedPageRoutes, UNIVERSAL_ROUTES } from "@/lib/auth/resolve-allowed-page-routes";
+
+function routeMatches(allowedRoute: string, requiredRoute: string): boolean {
+  return (
+    requiredRoute === allowedRoute || requiredRoute.startsWith(`${allowedRoute}/`)
+  );
+}
+
+function hasPageRoute(allowedRoutes: string[], requiredRoute: string): boolean {
+  if (
+    UNIVERSAL_ROUTES.some((route) => routeMatches(route, requiredRoute))
+  ) {
+    return true;
+  }
+  return allowedRoutes.some((route) => routeMatches(route, requiredRoute));
+}
 
 /**
  * Mirrors proxy.ts page RBAC for API routes. Admin bypasses. Returns 403 response or null.
@@ -19,39 +34,8 @@ export async function requirePageAccess(
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
-  if (
-    UNIVERSAL_ROUTES.some(
-      (route) => requiredRoute === route || requiredRoute.startsWith(`${route}/`),
-    )
-  ) {
-    return null;
-  }
-
-  const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("user_profiles")
-    .select("role_id")
-    .eq("id", userId)
-    .single();
-
-  if (!profile?.role_id) {
-    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
-  }
-
-  const { data: permissions } = await admin
-    .from("role_permissions")
-    .select("pages!inner(route)")
-    .eq("role_id", profile.role_id);
-
-  const allowedRoutes = (permissions ?? []).map(
-    (p) => (p.pages as unknown as { route: string }).route,
-  );
-
-  const hasAccess = allowedRoutes.some(
-    (route) => requiredRoute === route || requiredRoute.startsWith(`${route}/`),
-  );
-
-  if (!hasAccess) {
+  const allowedRoutes = await getCachedAllowedPageRoutes(userId, roleName);
+  if (!hasPageRoute(allowedRoutes, requiredRoute)) {
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
@@ -64,45 +48,14 @@ export async function requireAnyPageAccess(
   roleName: string,
   requiredRoutes: string[],
 ): Promise<NextResponse | null> {
-  for (const route of requiredRoutes) {
-    const deny = await requirePageAccess(userId, roleName, route);
-    if (!deny) return null;
+  if (roleName === "admin") return null;
+
+  const allowedRoutes = await getCachedAllowedPageRoutes(userId, roleName);
+  const hasAny = requiredRoutes.some((required) => hasPageRoute(allowedRoutes, required));
+  if (!hasAny) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
-  return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
-}
-
-/** Page routes this user may access — mirrors proxy + role_permissions (server-side only). */
-export async function resolveAllowedPageRoutes(
-  userId: string,
-  roleName: string,
-): Promise<string[]> {
-  const admin = createAdminClient();
-
-  if (roleName === "admin") {
-    const { data: pages } = await admin.from("pages").select("route");
-    return (pages ?? []).map((p) => p.route as string);
-  }
-
-  const { data: profile } = await admin
-    .from("user_profiles")
-    .select("role_id")
-    .eq("id", userId)
-    .single();
-
-  if (!profile?.role_id) return [...UNIVERSAL_ROUTES];
-
-  const { data: permissions } = await admin
-    .from("role_permissions")
-    .select("pages!inner(route)")
-    .eq("role_id", profile.role_id);
-
-  const permitted = (permissions ?? []).map(
-    (p) => (p.pages as unknown as { route: string }).route,
-  );
-
-  const grantable = permitted.filter((route) => !isNonAdminDeniedPage(roleName, route));
-
-  return [...UNIVERSAL_ROUTES, ...grantable];
+  return null;
 }
 
 /** Page routes that may open ticket detail, PDF, print, or PATCH. */
@@ -116,11 +69,31 @@ export const TICKET_DETAIL_PAGE_ROUTES = [
   "/sales",
 ] as const;
 
+/** Sync check when `requireSession()` already returned `allowedRoutes`. */
+export function checkTicketDetailPageAccess(
+  allowedRoutes: string[],
+  roleName: string,
+): NextResponse | null {
+  if (roleName === "admin") return null;
+
+  const hasTicketPage = TICKET_DETAIL_PAGE_ROUTES.some((required) =>
+    allowedRoutes.some((route) => routeMatches(route, required)),
+  );
+
+  if (!hasTicketPage) {
+    return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
+  }
+
+  return null;
+}
+
 export async function requireTicketDetailPageAccess(
   userId: string,
   roleName: string,
 ): Promise<NextResponse | null> {
-  return requireAnyPageAccess(userId, roleName, [...TICKET_DETAIL_PAGE_ROUTES]);
+  if (roleName === "admin") return null;
+  const allowed = await getCachedAllowedPageRoutes(userId, roleName);
+  return checkTicketDetailPageAccess(allowed, roleName);
 }
 
 /** Lead drawer / mutation APIs — caller must have `/leads` or `/sales` page permission. */

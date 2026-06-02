@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { Fragment, useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
@@ -47,6 +47,18 @@ import {
   type ListPageSize,
   type PaginationMeta,
 } from "@/lib/utils/pagination";
+import { ticketPathSegment } from "@/lib/utils/reference-codes";
+import {
+  clearLinePreviewListCache,
+  seedLinePreviewFromListRows,
+} from "@/lib/client/seed-line-preview-from-page-data";
+import { TicketLineItemsQuickPreview } from "@/components/quotes/ticket-line-items-quick-preview";
+import {
+  ExpandChevron,
+  TicketListExpandChevronCell,
+  TicketListExpandPreviewRow,
+  TicketListViewButton,
+} from "@/components/ui/ticket-list-expand";
 
 type PaymentTab = "pending" | "tax_exempt" | "approved" | "refunded";
 
@@ -204,6 +216,7 @@ export function PaymentsPage() {
   const [taxExemptConfirmErr, setTaxExemptConfirmErr] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -213,6 +226,10 @@ export function PaymentsPage() {
   useEffect(() => {
     setOffset(0);
   }, [activeTab, debouncedSearch, pageSize]);
+
+  useEffect(() => {
+    setExpandedId(null);
+  }, [activeTab, debouncedSearch, offset, pageSize]);
 
   const pageDataUrl = useMemo(() => {
     const params = new URLSearchParams({
@@ -245,6 +262,7 @@ export function PaymentsPage() {
   useEffect(() => {
     if (!pageData) {
       setOrders([]);
+      clearLinePreviewListCache();
       return;
     }
     const rows =
@@ -255,7 +273,9 @@ export function PaymentsPage() {
           : activeTab === "approved"
             ? pageData.approvedOrders
             : pageData.refundedOrders;
-    setOrders(Array.isArray(rows) ? rows : []);
+    const list = Array.isArray(rows) ? rows : [];
+    setOrders(list);
+    seedLinePreviewFromListRows(list);
     if (pageData.counts) {
       setTabCounts({
         pending: pageData.counts.pending ?? 0,
@@ -286,16 +306,25 @@ export function PaymentsPage() {
   const isTaxExemptTab = activeTab === "tax_exempt";
   const isApprovedTab = activeTab === "approved";
   const isRefundedTab = activeTab === "refunded";
-  const desktopCols = isRefundedTab ? 8 : isTaxExemptTab ? 7 : 8;
+  const desktopCols = isRefundedTab ? 10 : isApprovedTab ? 10 : isTaxExemptTab ? 8 : 9;
   const headers = isRefundedTab
-    ? ["Order", "Customer", "Paid via", "Refunded via", "Status", "Total refunded", "Last refunded", "Refunded by"]
+    ? ["", "Order", "Customer", "Paid via", "Refunded via", "Status", "Total refunded", "Last refunded", "Refunded by", ""]
     : isTaxExemptTab
-      ? ["Order", "Customer", "Created by", "Total", "Permit #", "Submitted", "Actions"]
+      ? ["", "Order", "Customer", "Created by", "Total", "Permit #", "Submitted", "Actions"]
       : isPendingTab
-        ? ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
-        : ["Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Approved"];
+        ? ["", "Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
+        : ["", "Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Approved", ""];
 
   const paymentsReturnPath = "/payments";
+
+  function toggleExpand(id: string) {
+    setExpandedId((cur) => (cur === id ? null : id));
+  }
+
+  function openPaymentDetail(order: PaymentOrder, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    router.push(appendReturnPath(`/payments/${order.id}`, paymentsReturnPath));
+  }
 
   function openConfirmModal(order: PaymentOrder, e?: React.MouseEvent) {
     e?.stopPropagation();
@@ -510,6 +539,7 @@ export function PaymentsPage() {
                 const refundRelTime = relativeTime(order.last_refunded_at);
                 const isConfirming = confirmingId === order.id;
                 const rowBg = i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
+                const isOpen = expandedId === order.id;
 
                 if (isTaxExemptTab) {
                   const permitHref = `/api/tickets/${order.id}/sales-permit`;
@@ -517,22 +547,20 @@ export function PaymentsPage() {
                   const submittedAt = order.sales_permit_submitted_at;
                   const submittedRel = relativeTime(submittedAt);
                   const orderHref = appendReturnPath(
-                    `/orders/${order.reference_code ?? order.id}`,
+                    `/orders/${ticketPathSegment(order)}`,
                     paymentsReturnPath,
                   );
                   return (
+                    <Fragment key={order.id}>
                     <tr
-                      key={order.id}
                       className="cursor-pointer"
-                      style={{ borderBottom: "1px solid var(--color-border)", background: rowBg }}
-                      onClick={() =>
-                        router.push(
-                          appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
-                        )
-                      }
+                      style={{ borderBottom: "1px solid var(--color-border)", background: isOpen ? "var(--color-row-hover)" : rowBg }}
+                      aria-expanded={isOpen}
+                      onClick={() => toggleExpand(order.id)}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-row-hover)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = rowBg; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = isOpen ? "var(--color-row-hover)" : rowBg; }}
                     >
+                      <TicketListExpandChevronCell open={isOpen} />
                       <td className="px-5 py-4 align-middle">
                         <span className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
                           {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
@@ -589,6 +617,7 @@ export function PaymentsPage() {
                       </td>
                       <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2 flex-nowrap">
+                          <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
                           {legacyMissing ? (
                             <a
                               href={orderHref}
@@ -638,23 +667,30 @@ export function PaymentsPage() {
                         </div>
                       </td>
                     </tr>
+                    {isOpen && (
+                      <TicketListExpandPreviewRow
+                        colSpan={desktopCols}
+                        ticketId={order.id}
+                        ticketRef={ticketPathSegment(order)}
+                        previewId={`payment-preview-${order.id}`}
+                      />
+                    )}
+                    </Fragment>
                   );
                 }
 
                 if (isRefundedTab) {
                   return (
+                    <Fragment key={order.id}>
                     <tr
-                      key={order.id}
                       className="cursor-pointer"
-                      style={{ borderBottom: "1px solid var(--color-border)", background: rowBg }}
-                      onClick={() =>
-                        router.push(
-                          appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
-                        )
-                      }
+                      style={{ borderBottom: "1px solid var(--color-border)", background: isOpen ? "var(--color-row-hover)" : rowBg }}
+                      aria-expanded={isOpen}
+                      onClick={() => toggleExpand(order.id)}
                       onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-row-hover)"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.background = rowBg; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = isOpen ? "var(--color-row-hover)" : rowBg; }}
                     >
+                      <TicketListExpandChevronCell open={isOpen} />
                       <td className="px-5 py-4 align-middle">
                         <span className="text-sm font-semibold whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
                           {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
@@ -716,26 +752,36 @@ export function PaymentsPage() {
                           {order.last_refunded_by?.full_name ?? "—"}
                         </span>
                       </td>
+                      <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
+                        <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
+                      </td>
                     </tr>
+                    {isOpen && (
+                      <TicketListExpandPreviewRow
+                        colSpan={desktopCols}
+                        ticketId={order.id}
+                        ticketRef={ticketPathSegment(order)}
+                        previewId={`payment-preview-${order.id}`}
+                      />
+                    )}
+                    </Fragment>
                   );
                 }
 
                 return (
+                  <Fragment key={order.id}>
                   <tr
-                    key={order.id}
                     className="cursor-pointer"
                     style={{
                       borderBottom: "1px solid var(--color-border)",
-                      background: rowBg,
+                      background: isOpen ? "var(--color-row-hover)" : rowBg,
                     }}
-                    onClick={() =>
-                      router.push(
-                        appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
-                      )
-                    }
+                    aria-expanded={isOpen}
+                    onClick={() => toggleExpand(order.id)}
                     onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-row-hover)"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = rowBg; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = isOpen ? "var(--color-row-hover)" : rowBg; }}
                   >
+                    <TicketListExpandChevronCell open={isOpen} />
                     <td className="px-5 py-4 align-middle">
                       <span
                         className="text-sm font-semibold whitespace-nowrap"
@@ -812,48 +858,103 @@ export function PaymentsPage() {
                       </div>
                     </td>
 
-                    <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-end gap-2 flex-nowrap">
-                        {order.payment_evidence_url && (
-                          <a
-                            href={`/api/tickets/${order.id}/evidence`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                            style={{
-                              borderColor: "var(--color-border)",
-                              color: "var(--color-text-primary)",
-                              background: "var(--color-surface)",
-                              textDecoration: "none",
-                            }}
-                            title="View uploaded file"
-                          >
-                            <FileText size={14} />
-                            File
-                          </a>
-                        )}
-                        {order.stripe_payment_intent_id && (
-                          <a
-                            href={
-                              order.stripe_receipt_url ??
-                              stripePaymentDashboardUrl(order.stripe_payment_intent_id)
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                            style={{
-                              borderColor: "var(--color-border)",
-                              color: "var(--color-text-primary)",
-                              background: "var(--color-surface)",
-                              textDecoration: "none",
-                            }}
-                            title="View Stripe payment"
-                          >
-                            <ExternalLink size={14} />
-                            Stripe
-                          </a>
-                        )}
-                        {isPendingTab ? (
+                    {isApprovedTab ? (
+                      <>
+                        <td className="px-5 py-4 align-middle whitespace-nowrap">
+                          <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                            {formatDateTime(
+                              order.payment_evidence_reviewed_at ?? order.sales_permit_reviewed_at,
+                            )}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-2 flex-nowrap">
+                            {order.payment_evidence_url && (
+                              <a
+                                href={`/api/tickets/${order.id}/evidence`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                                style={{
+                                  borderColor: "var(--color-border)",
+                                  color: "var(--color-text-primary)",
+                                  background: "var(--color-surface)",
+                                  textDecoration: "none",
+                                }}
+                                title="View uploaded file"
+                              >
+                                <FileText size={14} />
+                                File
+                              </a>
+                            )}
+                            {order.stripe_payment_intent_id && (
+                              <a
+                                href={
+                                  order.stripe_receipt_url ??
+                                  stripePaymentDashboardUrl(order.stripe_payment_intent_id)
+                                }
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                                style={{
+                                  borderColor: "var(--color-border)",
+                                  color: "var(--color-text-primary)",
+                                  background: "var(--color-surface)",
+                                  textDecoration: "none",
+                                }}
+                                title="View Stripe payment"
+                              >
+                                <ExternalLink size={14} />
+                                Stripe
+                              </a>
+                            )}
+                            <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-2 flex-nowrap">
+                          {order.payment_evidence_url && (
+                            <a
+                              href={`/api/tickets/${order.id}/evidence`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                              style={{
+                                borderColor: "var(--color-border)",
+                                color: "var(--color-text-primary)",
+                                background: "var(--color-surface)",
+                                textDecoration: "none",
+                              }}
+                              title="View uploaded file"
+                            >
+                              <FileText size={14} />
+                              File
+                            </a>
+                          )}
+                          {order.stripe_payment_intent_id && (
+                            <a
+                              href={
+                                order.stripe_receipt_url ??
+                                stripePaymentDashboardUrl(order.stripe_payment_intent_id)
+                              }
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                              style={{
+                                borderColor: "var(--color-border)",
+                                color: "var(--color-text-primary)",
+                                background: "var(--color-surface)",
+                                textDecoration: "none",
+                              }}
+                              title="View Stripe payment"
+                            >
+                              <ExternalLink size={14} />
+                              Stripe
+                            </a>
+                          )}
+                          <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
                           <button
                             type="button"
                             disabled={isConfirming}
@@ -871,16 +972,19 @@ export function PaymentsPage() {
                             )}
                             Confirm
                           </button>
-                        ) : (
-                          <span className="text-sm whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
-                            {formatDateTime(
-                              order.payment_evidence_reviewed_at ?? order.sales_permit_reviewed_at,
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                        </div>
+                      </td>
+                    )}
                   </tr>
+                  {isOpen && (
+                    <TicketListExpandPreviewRow
+                      colSpan={desktopCols}
+                      ticketId={order.id}
+                      ticketRef={ticketPathSegment(order)}
+                      previewId={`payment-preview-${order.id}`}
+                    />
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -900,25 +1004,26 @@ export function PaymentsPage() {
             const relTime = relativeTime(order.payment_evidence_submitted_at);
             const refundRelTime = relativeTime(order.last_refunded_at);
             const isConfirming = confirmingId === order.id;
+            const isOpen = expandedId === order.id;
 
             if (isTaxExemptTab) {
               const permitHref = `/api/tickets/${order.id}/sales-permit`;
               const legacyMissing = isLegacyTaxExemptMissingPermitFile(order);
               const submittedRel = relativeTime(order.sales_permit_submitted_at);
               const orderHref = appendReturnPath(
-                `/orders/${order.reference_code ?? order.id}`,
+                `/orders/${ticketPathSegment(order)}`,
                 paymentsReturnPath,
               );
               return (
                 <MobileListCard
                   key={order.id}
-                  onClick={() =>
-                    router.push(
-                      appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
-                    )
-                  }
+                  onClick={() => toggleExpand(order.id)}
                 >
                   <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      <span className="mt-0.5 shrink-0" style={{ color: "var(--color-text-muted)" }} aria-hidden>
+                        <ExpandChevron open={isOpen} />
+                      </span>
                     <div className="min-w-0">
                       <span className="text-sm font-semibold font-mono" style={{ color: "var(--color-text-primary)" }}>
                         {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
@@ -926,6 +1031,7 @@ export function PaymentsPage() {
                       <p className="text-sm font-medium mt-1.5" style={{ color: "var(--color-text-primary)" }}>
                         {customerLabel(order)}
                       </p>
+                    </div>
                     </div>
                     <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: "var(--color-text-primary)" }}>
                       {fmt(order.quote_final_total)}
@@ -951,7 +1057,18 @@ export function PaymentsPage() {
                       }
                     />
                   </MobileListCardFields>
+                  <TicketLineItemsQuickPreview
+                    ticketId={order.id}
+                    ticketRef={ticketPathSegment(order)}
+                    expanded={isOpen}
+                    previewId={`payment-preview-${order.id}`}
+                  />
                   <div className="flex flex-col gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                    <TicketListViewButton
+                      label="View payment"
+                      className="w-full justify-center px-2.5 py-2"
+                      onClick={(e) => openPaymentDetail(order, e)}
+                    />
                     {legacyMissing && (
                       <a
                         href={orderHref}
@@ -1005,13 +1122,13 @@ export function PaymentsPage() {
               return (
                 <MobileListCard
                   key={order.id}
-                  onClick={() =>
-                    router.push(
-                      appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
-                    )
-                  }
+                  onClick={() => toggleExpand(order.id)}
                 >
                   <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start gap-2 min-w-0 flex-1">
+                      <span className="mt-0.5 shrink-0" style={{ color: "var(--color-text-muted)" }} aria-hidden>
+                        <ExpandChevron open={isOpen} />
+                      </span>
                     <div className="min-w-0">
                       <span className="text-sm font-semibold font-mono" style={{ color: "var(--color-text-primary)" }}>
                         {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
@@ -1019,6 +1136,7 @@ export function PaymentsPage() {
                       <p className="text-sm font-medium mt-1.5" style={{ color: "var(--color-text-primary)" }}>
                         {customerLabel(order)}
                       </p>
+                    </div>
                     </div>
                     <span
                       className="text-sm font-semibold tabular-nums shrink-0"
@@ -1064,6 +1182,17 @@ export function PaymentsPage() {
                       value={order.last_refunded_by?.full_name ?? "—"}
                     />
                   </MobileListCardFields>
+                  <TicketLineItemsQuickPreview
+                    ticketId={order.id}
+                    ticketRef={ticketPathSegment(order)}
+                    expanded={isOpen}
+                    previewId={`payment-preview-${order.id}`}
+                  />
+                  <TicketListViewButton
+                    label="View payment"
+                    className="w-full justify-center px-2.5 py-2"
+                    onClick={(e) => openPaymentDetail(order, e)}
+                  />
                 </MobileListCard>
               );
             }
@@ -1071,13 +1200,13 @@ export function PaymentsPage() {
             return (
               <MobileListCard
                 key={order.id}
-                onClick={() =>
-                  router.push(
-                    appendReturnPath(`/payments/${order.id}`, paymentsReturnPath),
-                  )
-                }
+                onClick={() => toggleExpand(order.id)}
               >
                 <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start gap-2 min-w-0 flex-1">
+                    <span className="mt-0.5 shrink-0" style={{ color: "var(--color-text-muted)" }} aria-hidden>
+                      <ExpandChevron open={isOpen} />
+                    </span>
                   <div className="min-w-0">
                     <span className="text-sm font-semibold font-mono" style={{ color: "var(--color-text-primary)" }}>
                       {order.reference_code ?? order.id.slice(0, 8).toUpperCase()}
@@ -1088,6 +1217,7 @@ export function PaymentsPage() {
                     <p className="text-sm font-medium mt-1.5" style={{ color: "var(--color-text-primary)" }}>
                       {customerLabel(order)}
                     </p>
+                  </div>
                   </div>
                   <span
                     className="text-sm font-semibold tabular-nums shrink-0"
@@ -1136,7 +1266,19 @@ export function PaymentsPage() {
                   )}
                 </MobileListCardFields>
 
+                <TicketLineItemsQuickPreview
+                  ticketId={order.id}
+                  ticketRef={ticketPathSegment(order)}
+                  expanded={isOpen}
+                  previewId={`payment-preview-${order.id}`}
+                />
+
                 <div className="flex flex-col gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                  <TicketListViewButton
+                    label="View payment"
+                    className="w-full justify-center px-2.5 py-2"
+                    onClick={(e) => openPaymentDetail(order, e)}
+                  />
                   {order.payment_evidence_url && (
                     <a
                       href={`/api/tickets/${order.id}/evidence`}

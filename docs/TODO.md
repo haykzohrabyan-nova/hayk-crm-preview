@@ -48,14 +48,17 @@ Product/policy choice before implementation (~1–2 days after decision).
 
 ### TODO-007 — Performance (optional at scale)
 
-Phase 1–3 core (page-data, session cache, coalesced refetch, list pagination) is **done** — see CHANGELOG (May 2026). **Sales** and **Payments** list pagination shipped 2026-06-02. **In-memory SWR** for list pages + **ticket/new-quote bootstrap APIs** shipped 2026-06-02.
+Phase 1–3 core + Jun 2026 perf is **done** — page-data, 45s session cache, `/api/me`, list SWR, `line_preview` on page-data, split detail bootstrap (`ticket-form-bootstrap`). See CHANGELOG (2026-06-02).
 
-**Optional when load grows:**
+**Next (prioritized):** [page-loading.md](./FuturePlan/Performance/page-loading.md)
 
-- CRM materialized aggregates when customer count > ~1000
-- Further server-side optimization for Leads workspace if tab row counts exceed comfortable single-query limits (pagination exists; tune queries/indexes at scale)
+| Priority | Item |
+|----------|------|
+| P0 ops | Vercel region `pdx1`/`sfo1` vs Supabase Oregon; confirm migration `107` in prod |
+| P1 code | `useAppSession()` on list pages; prefetch bootstrap on list mount; hover prefetch detail; slimmer ticket detail select |
+| P2 scale | CRM aggregates >1k customers; line-preview RPC if page-data JSON too large |
 
-**Spec:** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md)
+**Spec (historical):** [performance-anydoer-roadmap.md](./FuturePlan/Performance/performance-anydoer-roadmap.md)
 
 ---
 

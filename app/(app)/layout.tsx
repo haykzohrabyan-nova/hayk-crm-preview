@@ -2,9 +2,11 @@ import { Sidebar } from "@/components/layout/sidebar";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { IdleTimer } from "@/components/layout/idle-timer";
 import { ErrorBoundary } from "@/components/layout/error-boundary";
+import { AppSessionProvider } from "@/components/layout/app-session-provider";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
+    <AppSessionProvider>
     <div className="flex h-svh overflow-hidden" style={{ backgroundColor: "var(--color-bg)" }}>
       {/* Desktop sidebar — hidden below lg breakpoint */}
       <div className="hidden lg:flex lg:shrink-0">
@@ -29,5 +31,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
       {/* Idle session timer — monitors inactivity, shows warning modal, auto sign-out */}
       <IdleTimer />
     </div>
+    </AppSessionProvider>
   );
 }

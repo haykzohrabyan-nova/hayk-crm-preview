@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import {
@@ -42,6 +42,18 @@ import {
   type PaginationMeta,
 } from "@/lib/utils/pagination";
 import type { OrdersListSortField } from "@/lib/utils/orders-list-sort";
+import {
+  clearLinePreviewListCache,
+  seedLinePreviewFromListRows,
+} from "@/lib/client/seed-line-preview-from-page-data";
+import { ticketPathSegment } from "@/lib/utils/reference-codes";
+import { TicketLineItemsQuickPreview } from "@/components/quotes/ticket-line-items-quick-preview";
+import {
+  ExpandChevron,
+  TicketListExpandChevronCell,
+  TicketListExpandPreviewRow,
+  TicketListViewButton,
+} from "@/components/ui/ticket-list-expand";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -210,9 +222,13 @@ function orderPaymentAmounts(o: OrderTicket): {
 
 function OrderMobileCard({
   order: o,
+  expanded,
+  onToggleExpand,
   onOpen,
 }: {
   order: OrderTicket;
+  expanded: boolean;
+  onToggleExpand: () => void;
   onOpen: () => void;
 }) {
   const statusStyle = STATUS_TONE_STYLE[o.status_tone] ?? STATUS_TONE_STYLE.converted;
@@ -225,7 +241,7 @@ function OrderMobileCard({
 
   return (
     <MobileListCard
-      onClick={onOpen}
+      onClick={onToggleExpand}
       style={
         dueToday
           ? {
@@ -236,7 +252,11 @@ function OrderMobileCard({
       }
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <span className="mt-0.5 shrink-0" style={{ color: "var(--color-text-muted)" }} aria-hidden>
+            <ExpandChevron open={expanded} />
+          </span>
+          <div className="min-w-0">
           {o.reference_code ? (
             <span className="text-xs font-mono px-1.5 py-0.5 rounded inline-block" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
               {o.reference_code}
@@ -250,6 +270,7 @@ function OrderMobileCard({
           {o.customer?.company && (
             <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
           )}
+          </div>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span
@@ -313,6 +334,22 @@ function OrderMobileCard({
         />
         <MobileListCardRow label="Created" value={relativeTime(o.created_at)} />
       </MobileListCardFields>
+
+      <TicketLineItemsQuickPreview
+        ticketId={o.id}
+        ticketRef={ticketPathSegment(o)}
+        expanded={expanded}
+        previewId={`order-preview-${o.id}`}
+      />
+
+      <TicketListViewButton
+        label="View order"
+        className="w-full justify-center px-2.5 py-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+      />
     </MobileListCard>
   );
 }
@@ -336,22 +373,29 @@ const SORT_COLUMN_TITLES: Record<OrdersListSortField, string> = {
 
 function OrdersTableDesktop({
   orders: filtered,
-  onOpen,
+  expandedId,
+  onToggleExpand,
+  onView,
   showCreator = false,
   sortField,
   onSortColumn,
 }: {
   orders: OrderTicket[];
-  onOpen: (id: string) => void;
+  expandedId: string | null;
+  onToggleExpand: (id: string) => void;
+  onView: (order: OrderTicket) => void;
   showCreator?: boolean;
   sortField: OrdersListSortField;
   onSortColumn: (field: OrdersListSortField) => void;
 }) {
+  const colCount = (showCreator ? 12 : 11) + 2;
+
   return (
     <table className="w-full">
       <thead>
         <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
           {[
+            "",
             "Order #",
             "Contact",
             "Title",
@@ -399,6 +443,7 @@ function OrdersTableDesktop({
               </th>
             );
           })}
+          <th className="px-4 py-3 w-16" />
         </tr>
       </thead>
       <tbody>
@@ -411,11 +456,14 @@ function OrdersTableDesktop({
           const amounts = orderPaymentAmounts(o);
           const cellStyle = orderRowCellStyle(o, idx);
           const dueTodayRow = isDueTodayAlert(o);
+          const isOpen = expandedId === o.id;
+          const rowBg = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
 
           return (
+            <Fragment key={o.id}>
             <tr
-              key={o.id}
               className="cursor-pointer transition-colors"
+              aria-expanded={isOpen}
               onMouseEnter={(e) => {
                 if (dueTodayRow) {
                   setDueTodayRowCellsBg(e.currentTarget, DUE_TODAY_ROW_BG_HOVER);
@@ -428,15 +476,16 @@ function OrdersTableDesktop({
               onMouseLeave={(e) => {
                 const bg = dueTodayRow
                   ? DUE_TODAY_ROW_BG
-                  : idx % 2 === 0
-                    ? "var(--color-surface)"
-                    : "var(--color-row-alt)";
+                  : isOpen
+                    ? "var(--color-row-hover)"
+                    : rowBg;
                 e.currentTarget.querySelectorAll("td").forEach((cell) => {
                   cell.style.background = bg;
                 });
               }}
-              onClick={() => onOpen(o.id)}
+              onClick={() => onToggleExpand(o.id)}
             >
+              <TicketListExpandChevronCell open={isOpen} />
               <td className="px-4 py-3" style={{ ...cellStyle, ...(dueTodayRow ? { boxShadow: "inset 3px 0 0 var(--color-danger)" } : {}) }}>
                 {o.reference_code ? (
                   <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
@@ -551,7 +600,25 @@ function OrdersTableDesktop({
                   {relativeTime(o.created_at)}
                 </span>
               </td>
+              <td className="px-4 py-3" style={cellStyle} onClick={(e) => e.stopPropagation()}>
+                <TicketListViewButton
+                  label="View"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onView(o);
+                  }}
+                />
+              </td>
             </tr>
+            {isOpen && (
+              <TicketListExpandPreviewRow
+                colSpan={colCount}
+                ticketId={o.id}
+                ticketRef={ticketPathSegment(o)}
+                previewId={`order-preview-${o.id}`}
+              />
+            )}
+            </Fragment>
           );
         })}
       </tbody>
@@ -583,8 +650,13 @@ export default function OrdersPage() {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [filterUserId, setFilterUserId] = useState<string | null>(null);
   const [sortField, setSortField] = useState<OrdersListSortField>("default");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const isAdmin = userRole === "admin";
+
+  function toggleExpand(id: string) {
+    setExpandedId((cur) => (cur === id ? null : id));
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -594,6 +666,10 @@ export default function OrdersPage() {
   useEffect(() => {
     setOffset(0);
   }, [tab, debouncedSearch, dateFilter, filterUserId, pageSize, sortField]);
+
+  useEffect(() => {
+    setExpandedId(null);
+  }, [tab, debouncedSearch, dateFilter, filterUserId, pageSize, sortField, offset]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -662,9 +738,13 @@ export default function OrdersPage() {
   useEffect(() => {
     if (!pageData) {
       setOrders([]);
+      clearLinePreviewListCache();
       return;
     }
-    if (pageData.orders) setOrders(pageData.orders);
+    if (pageData.orders) {
+      setOrders(pageData.orders);
+      seedLinePreviewFromListRows(pageData.orders);
+    }
     if (pageData.counts) setTabCounts(pageData.counts);
     if (pageData.pagination) setPagination(pageData.pagination);
   }, [pageData]);
@@ -718,7 +798,7 @@ export default function OrdersPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableDivSkeleton rows={6} cols={11} />
+          <TableDivSkeleton rows={6} cols={isAdmin ? 14 : 13} />
         ) : orders.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -728,7 +808,9 @@ export default function OrdersPage() {
         ) : (
           <OrdersTableDesktop
             orders={orders}
-            onOpen={(id) => router.push(`/orders/${id}`)}
+            expandedId={expandedId}
+            onToggleExpand={toggleExpand}
+            onView={(o) => router.push(`/orders/${ticketPathSegment(o)}`)}
             showCreator={isAdmin}
             sortField={sortField}
             onSortColumn={toggleSortColumn}
@@ -744,7 +826,13 @@ export default function OrdersPage() {
           <MobileListCardEmpty message={emptyMessage} />
         ) : (
           orders.map((o) => (
-            <OrderMobileCard key={o.id} order={o} onOpen={() => router.push(`/orders/${o.id}`)} />
+            <OrderMobileCard
+              key={o.id}
+              order={o}
+              expanded={expandedId === o.id}
+              onToggleExpand={() => toggleExpand(o.id)}
+              onOpen={() => router.push(`/orders/${ticketPathSegment(o)}`)}
+            />
           ))
         )}
       </div>

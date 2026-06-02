@@ -8,6 +8,10 @@ import {
   type PaymentsPageTab,
 } from "@/lib/utils/fetch-payments-data";
 import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
+import {
+  attachLinePreviews,
+  fetchTicketLinePreviewsBatch,
+} from "@/lib/utils/fetch-ticket-line-previews-batch";
 
 const PAYMENTS_TABS: PaymentsPageTab[] = ["pending", "tax_exempt", "approved", "refunded"];
 
@@ -34,17 +38,31 @@ export async function GET(request: NextRequest) {
 
   try {
     const pageData = await fetchPaymentsPageData(admin, tab, { search, pagination });
-    const rowCount =
+    const activeRows =
       tab === "pending"
-        ? pageData.orders.length
+        ? pageData.orders
         : tab === "tax_exempt"
-          ? pageData.taxExemptOrders.length
+          ? pageData.taxExemptOrders
           : tab === "approved"
-            ? pageData.approvedOrders.length
-            : pageData.refundedOrders.length;
+            ? pageData.approvedOrders
+            : pageData.refundedOrders;
+
+    const previews = await fetchTicketLinePreviewsBatch(admin, activeRows);
+    const withPreviews = attachLinePreviews(activeRows, previews);
+
+    const enriched =
+      tab === "pending"
+        ? { ...pageData, orders: withPreviews }
+        : tab === "tax_exempt"
+          ? { ...pageData, taxExemptOrders: withPreviews }
+          : tab === "approved"
+            ? { ...pageData, approvedOrders: withPreviews }
+            : { ...pageData, refundedOrders: withPreviews };
+
+    const rowCount = withPreviews.length;
 
     return NextResponse.json({
-      ...pageData,
+      ...enriched,
       pagination: toPaginatedMeta({
         ...pagination,
         total: pageData.total,

@@ -1,7 +1,8 @@
 # Performance Optimization — Scoped Lists & Faster Queries
 
-> **Status: Phase 1–3 core complete (2026-05-26)**
-> **Phase 1–2:** 2026-05-22 · **Phase 3:** 2026-05-26 (page-data bundling, session cache)
+> **Status: Phase 1–3 core + Jun 2026 list/detail perf complete**
+> **Phase 1–2:** 2026-05-22 · **Phase 3:** 2026-05-26 · **Phase 3I:** 2026-06-02 (SWR, line_preview, split detail bootstrap, `/api/me`)
+> **Next steps:** [`page-loading.md`](./page-loading.md)
 > **Goal:** Same UI (columns, tabs, badges, drawers) — faster loads and fewer redundant API calls
 
 ---
@@ -23,8 +24,9 @@
 | **3A** | Combined `GET /api/{feature}/page-data` — list + counts in one auth pass |
 | **3B** | `lib/auth/session-cache.ts` — 3 s `requireSession()` memoization |
 | **3C** | `hooks/use-list-page-data.ts` (SWR) on all tabbed list pages (Jun 2026; superseded coalesced-refresh on lists) |
-| **3G** | `GET /api/tickets/[id]/page-data`, `GET /api/quotes/form-bootstrap` — detail/new-quote bootstrap |
+| **3G** | Slim `GET /api/tickets/[id]/page-data` + `GET /api/ticket-form-bootstrap` (cached); `GET /api/quotes/form-bootstrap` for new quote |
 | **3H** | Sales + Payments server pagination (Jun 2026) |
+| **3I** | `GET /api/me` + 45s session cache; `line_preview` on list page-data; line-preview dedupe; split detail bootstrap + client cache |
 | **3D** | `GET /api/orders/counts`, `GET /api/quotes/counts` — slim per-page count routes |
 | **3E** | Role-scoped `GET /api/sidebar-counts?routes=…` |
 | **3F** | Leads/Sales lazy-load lookups + admin user lists on modal/drawer open |
@@ -150,7 +152,10 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 ## Phase 3 — ✅ Core complete (2026-05-26)
 
 - **Page-data routes:** `/api/production/page-data`, `/api/orders/page-data`, `/api/quotes/page-data`, `/api/payments/page-data`, `/api/completed/page-data`, `/api/crm/page-data`, `/api/leads/workspace/page-data`, `/api/leads/sales/page-data`
-- **Session cache:** `requireSession()` hits in-memory cache for ~3 s (same warm serverless instance)
+- **Session cache:** `requireSession()` + `allowedRoutes` — **45s** in-memory cache (Jun 2026; was ~3s)
+- **Layout:** `GET /api/me` — single nav/session payload for sidebar + mobile nav
+- **List expand:** `line_preview` on page-data rows; `seedLinePreviewFromListRows`; fallback `GET /api/tickets/[id]/line-preview`
+- **Detail:** parallel slim `page-data` + cached `ticket-form-bootstrap` (server 5m, client 30m)
 - **Coalesced refetch:** all ticket + lead list pages
 - **List pagination (May 2026):** Orders, Quotes, Completed, Production, CRM, Leads — default 25 rows, server-side filters, `ListPagination`
 - **Optional remainder:** SWR/React Query, Sales/Payments pagination, CRM aggregate caching at scale
@@ -213,13 +218,17 @@ CREATE INDEX IF NOT EXISTS job_tickets_order_status_idx
 - [x] **List pagination** — Orders, Quotes, Completed, Production, CRM, Leads (May 2026)
 - [x] **Build passes**
 - [x] **Phase 3 optional (Jun 2026)** — list SWR, Sales/Payments pagination, detail bootstrap APIs
+- [x] **Phase 3I (Jun 2026)** — `/api/me`, line_preview bundling, split ticket-form-bootstrap, session 45s
+- [ ] **P0 ops** — Vercel region align (`page-loading.md`)
+- [ ] **P1 code** — `useAppSession` on lists, prefetch bootstrap/detail, slimmer ticket select
 - [ ] **Scale optional** — CRM aggregates, TanStack Query, infra keep-warm
 
 ---
 
 ## Related docs
 
-- `docs/TODO.md` — [TODO-007](../TODO.md) Phase 3 core done; optional remainder in any-doer roadmap
+- [`page-loading.md`](./page-loading.md) — **current** load model, measurement, prioritized backlog
+- `docs/TODO.md` — [TODO-007](../../TODO.md) Phase 3 core done; optional remainder in any-doer roadmap
 - [performance-anydoer-roadmap.md](./performance-anydoer-roadmap.md) — SWR, pagination, CRM search, infra
 - `docs/architecture.md` — scoped-list API pattern + new utils
 - `docs/api-contract.md` — `GET /api/orders/orders`, updated tickets/leads/customers contracts

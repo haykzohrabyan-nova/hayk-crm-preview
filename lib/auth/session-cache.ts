@@ -1,10 +1,10 @@
 import { createHash } from "crypto";
-import type { SessionResult } from "@/lib/auth/require-session";
+import type { SessionSuccess } from "@/lib/auth/require-session";
 
-const SESSION_CACHE_TTL_MS = 3000;
+const SESSION_CACHE_TTL_MS = 45_000;
 
 type CachedEntry = {
-  result: Extract<SessionResult, { errorResponse: null }>;
+  result: SessionSuccess;
   expiresAt: number;
 };
 
@@ -24,7 +24,7 @@ export function buildSessionCacheKey(
   return createHash("sha256").update(serialized).digest("hex");
 }
 
-export function getCachedSession(cacheKey: string): Extract<SessionResult, { errorResponse: null }> | null {
+export function getCachedSession(cacheKey: string): SessionSuccess | null {
   const entry = sessionCache.get(cacheKey);
   if (!entry) return null;
   if (Date.now() > entry.expiresAt) {
@@ -34,10 +34,7 @@ export function getCachedSession(cacheKey: string): Extract<SessionResult, { err
   return entry.result;
 }
 
-export function setCachedSession(
-  cacheKey: string,
-  result: Extract<SessionResult, { errorResponse: null }>,
-) {
+export function setCachedSession(cacheKey: string, result: SessionSuccess) {
   sessionCache.set(cacheKey, {
     result,
     expiresAt: Date.now() + SESSION_CACHE_TTL_MS,

@@ -5,6 +5,10 @@ import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { fetchOrdersList, fetchOrdersTabCounts } from "@/lib/utils/fetch-orders-data";
 import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 import { parseOrdersListFilters } from "@/lib/utils/ticket-list-filters";
+import {
+  attachLinePreviews,
+  fetchTicketLinePreviewsBatch,
+} from "@/lib/utils/fetch-ticket-line-previews-batch";
 
 /** GET /api/orders/page-data — paginated orders list + tab counts in one auth pass. */
 export async function GET(request: NextRequest) {
@@ -24,8 +28,11 @@ export async function GET(request: NextRequest) {
       fetchOrdersTabCounts(admin, roleName, userId!, filters),
     ]);
 
+    const previews = await fetchTicketLinePreviewsBatch(admin, rows);
+    const orders = attachLinePreviews(rows, previews);
+
     return NextResponse.json({
-      orders: rows,
+      orders,
       counts,
       pagination: toPaginatedMeta({
         ...pagination,

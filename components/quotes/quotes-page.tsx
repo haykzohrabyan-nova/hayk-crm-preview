@@ -1,11 +1,17 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { Fragment, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import { notifyListDataChanged } from "@/lib/client/notify-list-data-changed";
+import {
+  clearLinePreviewListCache,
+  seedLinePreviewFromListRows,
+} from "@/lib/client/seed-line-preview-from-page-data";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import { Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
+import { TicketLineItemsQuickPreview } from "@/components/quotes/ticket-line-items-quick-preview";
+import { ExpandChevron, TicketListViewButton } from "@/components/ui/ticket-list-expand";
 import {
   MobileListCard,
   MobileListCardRow,
@@ -125,18 +131,26 @@ function isOverdue(dateStr: string | null): boolean {
 
 function QuoteMobileCard({
   quote: q,
+  expanded,
+  onToggleExpand,
   onOpen,
 }: {
   quote: QuoteTicket;
+  expanded: boolean;
+  onToggleExpand: () => void;
   onOpen: () => void;
 }) {
   const statusStyle = quoteListStatus(q);
   const overdue = isOverdue(q.quote_reminder_date);
 
   return (
-    <MobileListCard onClick={onOpen}>
+    <MobileListCard onClick={onToggleExpand}>
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
+          <span className="mt-0.5 shrink-0" style={{ color: "var(--color-text-muted)" }} aria-hidden>
+            <ExpandChevron open={expanded} />
+          </span>
+          <div className="min-w-0">
           <span className="text-xs font-mono font-medium" style={{ color: "var(--color-text-primary)" }}>
             {q.reference_code ?? "—"}
           </span>
@@ -146,6 +160,7 @@ function QuoteMobileCard({
           {q.customer?.company && (
             <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
           )}
+          </div>
         </div>
         <span
           className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium shrink-0"
@@ -182,40 +197,56 @@ function QuoteMobileCard({
         <MobileListCardRow label="Created" value={relativeTime(q.created_at)} />
       </MobileListCardFields>
 
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onOpen(); }}
-        className="w-full flex items-center justify-center gap-1 px-2.5 py-2 rounded-md text-xs font-medium border transition-opacity hover:opacity-70"
-        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
-      >
-        <ExternalLink size={11} /> View quote
-      </button>
+      <TicketLineItemsQuickPreview
+        ticketId={q.id}
+        ticketRef={ticketPathSegment(q)}
+        expanded={expanded}
+        previewId={`quote-preview-${q.id}`}
+      />
+
+      <TicketListViewButton
+        label="View quote"
+        className="w-full justify-center px-2.5 py-2"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen();
+        }}
+      />
     </MobileListCard>
   );
 }
 
 function RoutedQuoteMobileCard({
   quote: q,
+  expanded,
+  onToggleExpand,
   userRole,
   claimingId,
   onView,
   onClaim,
 }: {
   quote: QuoteTicket;
+  expanded: boolean;
+  onToggleExpand: () => void;
   userRole: string | null;
   claimingId: string | null;
   onView: () => void;
   onClaim: () => void;
 }) {
   return (
-    <MobileListCard>
-      <div className="min-w-0">
+    <MobileListCard onClick={onToggleExpand}>
+      <div className="flex items-start gap-2 min-w-0">
+        <span className="mt-0.5 shrink-0" style={{ color: "var(--color-text-muted)" }} aria-hidden>
+          <ExpandChevron open={expanded} />
+        </span>
+        <div className="min-w-0 flex-1">
         <p className="font-semibold text-sm truncate" style={{ color: "var(--color-text-primary)" }}>
           {displayName(q)}
         </p>
         {q.customer?.company && (
           <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
         )}
+        </div>
       </div>
 
       {q.title && (
@@ -238,10 +269,17 @@ function RoutedQuoteMobileCard({
         <MobileListCardRow label="Date" value={relativeTime(q.created_at)} />
       </MobileListCardFields>
 
+      <TicketLineItemsQuickPreview
+        ticketId={q.id}
+        ticketRef={ticketPathSegment(q)}
+        expanded={expanded}
+        previewId={`quote-preview-${q.id}`}
+      />
+
       {userRole === "sdr" ? (
         <button
           type="button"
-          onClick={onView}
+          onClick={(e) => { e.stopPropagation(); onView(); }}
           className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
           style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
         >
@@ -252,7 +290,7 @@ function RoutedQuoteMobileCard({
         <button
           type="button"
           disabled={claimingId === q.id}
-          onClick={onClaim}
+          onClick={(e) => { e.stopPropagation(); onClaim(); }}
           className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
           style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
         >
@@ -289,8 +327,13 @@ export default function QuotesPage() {
     defaultDashboardDateRangeFilterValue("last_month"),
   );
   const [filterUserId, setFilterUserId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const isAdmin = userRole === "admin";
+
+  function toggleQuoteExpand(id: string) {
+    setExpandedId((prev) => (prev === id ? null : id));
+  }
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -300,6 +343,10 @@ export default function QuotesPage() {
   useEffect(() => {
     setOffset(0);
   }, [tab, debouncedSearch, dateFilter, filterUserId, pageSize]);
+
+  useEffect(() => {
+    setExpandedId(null);
+  }, [tab, debouncedSearch, dateFilter, filterUserId, offset, pageSize]);
 
   const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
 
@@ -353,9 +400,13 @@ export default function QuotesPage() {
   useEffect(() => {
     if (!pageData) {
       setQuotes([]);
+      clearLinePreviewListCache();
       return;
     }
-    if (pageData.tickets) setQuotes(pageData.tickets);
+    if (pageData.tickets) {
+      setQuotes(pageData.tickets);
+      seedLinePreviewFromListRows(pageData.tickets);
+    }
     if (pageData.counts) setTabCounts(pageData.counts);
     if (pageData.pagination) setPagination(pageData.pagination);
   }, [pageData]);
@@ -519,7 +570,7 @@ export default function QuotesPage() {
         style={{ borderColor: "var(--color-border)", background: "var(--color-surface)" }}
       >
         {loading ? (
-          <TableDivSkeleton cols={isRoutedTab ? 8 : 9} />
+          <TableDivSkeleton cols={isRoutedTab ? 9 : isAdmin ? 12 : 11} />
         ) : quotes.length === 0 ? (
           <div className="text-center py-16">
             <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
@@ -531,7 +582,7 @@ export default function QuotesPage() {
           <table className="w-full">
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-                {["Contact", "Quote #", "Title", "Total", "Due Now", "Routed By", "Date", ""].map((h) => (
+                {["", "Contact", "Quote #", "Title", "Total", "Due Now", "Routed By", "Date", ""].map((h) => (
                   <th
                     key={h}
                     className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
@@ -543,14 +594,24 @@ export default function QuotesPage() {
               </tr>
             </thead>
             <tbody>
-              {quotes.map((q, idx) => (
+              {quotes.map((q, idx) => {
+                const isOpen = expandedId === q.id;
+                const rowBg = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
+                return (
+                <Fragment key={q.id}>
                 <tr
-                  key={q.id}
-                  className="transition-colors"
-                  style={{ background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)" }}
+                  className="cursor-pointer transition-colors"
+                  style={{ background: isOpen ? "var(--color-row-hover)" : rowBg }}
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
-                  onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)")}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = isOpen ? "var(--color-row-hover)" : rowBg)}
+                  onClick={() => toggleQuoteExpand(q.id)}
+                  aria-expanded={isOpen}
                 >
+                  <td className="px-3 py-3 w-10">
+                    <span style={{ color: "var(--color-text-muted)" }}>
+                      <ExpandChevron open={isOpen} />
+                    </span>
+                  </td>
                   <td className="px-4 py-3">
                     <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(q)}</p>
                     {q.customer?.company && (
@@ -597,7 +658,8 @@ export default function QuotesPage() {
                   <td className="px-4 py-3">
                     {userRole === "sdr" ? (
                       <button
-                        onClick={() => router.push(quoteDetailPath(q))}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); router.push(quoteDetailPath(q)); }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
                         style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
                       >
@@ -606,8 +668,9 @@ export default function QuotesPage() {
                       </button>
                     ) : (
                       <button
+                        type="button"
                         disabled={claimingId === q.id}
-                        onClick={() => handleClaim(q)}
+                        onClick={(e) => { e.stopPropagation(); handleClaim(q); }}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
                         style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                       >
@@ -617,7 +680,20 @@ export default function QuotesPage() {
                     )}
                   </td>
                 </tr>
-              ))}
+                {isOpen && (
+                  <tr key={`${q.id}-preview`} style={{ background: "var(--color-row-alt)" }}>
+                    <td colSpan={9} className="p-0 border-b" style={{ borderColor: "var(--color-border)" }}>
+                      <TicketLineItemsQuickPreview
+                        ticketId={q.id}
+                        ticketRef={ticketPathSegment(q)}
+                        expanded
+                        previewId={`quote-preview-${q.id}`}
+                      />
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
+              );})}
             </tbody>
           </table>
         ) : (
@@ -626,6 +702,7 @@ export default function QuotesPage() {
             <thead>
               <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
                 {[
+                  "",
                   "Contact",
                   "Quote #",
                   "Title",
@@ -652,17 +729,26 @@ export default function QuotesPage() {
               {quotes.map((q, idx) => {
                 const statusStyle = quoteListStatus(q);
                 const overdue = isOverdue(q.quote_reminder_date);
+                const isOpen = expandedId === q.id;
+                const rowBg = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
+                const colCount = isAdmin ? 12 : 11;
                 return (
+                  <Fragment key={q.id}>
                   <tr
-                    key={q.id}
                     className="cursor-pointer transition-colors"
                     style={{
-                      background: idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
+                      background: isOpen ? "var(--color-row-hover)" : rowBg,
                     }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)")}
-                    onClick={() => router.push(quoteDetailPath(q))}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = isOpen ? "var(--color-row-hover)" : rowBg)}
+                    onClick={() => toggleQuoteExpand(q.id)}
+                    aria-expanded={isOpen}
                   >
+                    <td className="px-3 py-3 w-10">
+                      <span style={{ color: "var(--color-text-muted)" }}>
+                        <ExpandChevron open={isOpen} />
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(q)}</p>
                       {q.customer?.company && (
@@ -735,15 +821,28 @@ export default function QuotesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); router.push(quoteDetailPath(q)); }}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-opacity hover:opacity-70"
-                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-bg)" }}
-                      >
-                        <ExternalLink size={11} /> View
-                      </button>
+                      <TicketListViewButton
+                        label="View"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          router.push(quoteDetailPath(q));
+                        }}
+                      />
                     </td>
                   </tr>
+                  {isOpen && (
+                    <tr key={`${q.id}-preview`} style={{ background: "var(--color-row-alt)" }}>
+                      <td colSpan={colCount} className="p-0 border-b" style={{ borderColor: "var(--color-border)" }}>
+                        <TicketLineItemsQuickPreview
+                          ticketId={q.id}
+                          ticketRef={ticketPathSegment(q)}
+                          expanded
+                          previewId={`quote-preview-${q.id}`}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })}
             </tbody>
@@ -762,6 +861,8 @@ export default function QuotesPage() {
             <RoutedQuoteMobileCard
               key={q.id}
               quote={q}
+              expanded={expandedId === q.id}
+              onToggleExpand={() => toggleQuoteExpand(q.id)}
               userRole={userRole}
               claimingId={claimingId}
               onView={() => router.push(quoteDetailPath(q))}
@@ -773,6 +874,8 @@ export default function QuotesPage() {
             <QuoteMobileCard
               key={q.id}
               quote={q}
+              expanded={expandedId === q.id}
+              onToggleExpand={() => toggleQuoteExpand(q.id)}
               onOpen={() => router.push(quoteDetailPath(q))}
             />
           ))

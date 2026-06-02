@@ -29,7 +29,7 @@ import {
 import { useTheme } from "@/components/layout/theme-provider";
 import { createClient } from "@/lib/supabase/client";
 import { revokeMfaTrustOnSignOut } from "@/lib/auth/remember-mfa-client";
-import { filterPagesForRole } from "@/lib/auth/admin-only-pages";
+import { useAppSession } from "@/components/layout/app-session-provider";
 import type { Page } from "@/lib/types";
 
 const ICON_MAP: Record<string, LucideIcon> = {
@@ -47,67 +47,22 @@ function roleLabel(name: string | undefined): string {
 export function MobileNav() {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { me, sections } = useAppSession();
   const [open, setOpen] = useState(false);
-  const [pages, setPages] = useState<Page[]>([]);
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
-  const [userFullName, setUserFullName] = useState<string | null>(null);
-  const [userRoleName, setUserRoleName] = useState<string | undefined>(undefined);
-  const [userId, setUserId] = useState<string | null>(null);
+  const pages = me?.pages ?? [];
+  const userFullName = me?.fullName ?? null;
+  const userRoleName = me?.roleName;
+  const userId = me?.userId ?? null;
 
-  // Load role-based nav pages (same logic as Sidebar)
+  // Fetch badge counts — scoped to visible nav routes (same as sidebar)
   useEffect(() => {
-    async function loadNav() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      setUserId(user.id);
+    const visibleRoutes = sections.flatMap((s) => s.pages.map((p) => p.route));
+    if (visibleRoutes.length === 0) return;
 
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("role_id, full_name, roles(name)")
-        .eq("id", user.id)
-        .single();
-
-      const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
-      setUserFullName(profile?.full_name ?? null);
-      setUserRoleName(roleName);
-      let allPages: Page[] = [];
-
-      if (roleName === "admin") {
-        const { data } = await supabase.from("pages").select("*").order("sort_order");
-        allPages = data ?? [];
-      } else {
-        const { data } = await supabase
-          .from("role_permissions")
-          .select("pages(*)")
-          .eq("role_id", profile!.role_id);
-        allPages = (data ?? [])
-          .map((row: unknown) => (row as { pages: Page }).pages)
-          .filter((p): p is Page => p !== null && typeof p === "object")
-          .sort((a, b) => a.sort_order - b.sort_order);
-      }
-
-      const navPages = filterPagesForRole(allPages, roleName);
-
-      // Mirror sidebar exactly: main + bottom sections, plus only the top-level
-      // /admin link. Pages with section='admin-sub' are internal sub-pages
-      // navigated via the /admin tab layout — never shown in nav.
-      setPages(
-        navPages.filter(
-          (p) =>
-            p.section === "main" ||
-            p.section === "bottom" ||
-            (p.section === "admin" && p.route === "/admin")
-        )
-      );
-    }
-    loadNav();
-  }, []);
-
-  // Fetch badge counts
-  useEffect(() => {
     function fetchBadges() {
-      fetch("/api/sidebar-counts")
+      const routes = encodeURIComponent(visibleRoutes.join(","));
+      fetch(`/api/sidebar-counts?routes=${routes}`)
         .then((r) => r.json())
         .then((d) => { if (d.counts) setBadgeCounts(d.counts); })
         .catch(() => {});
@@ -115,7 +70,7 @@ export function MobileNav() {
     fetchBadges();
     window.addEventListener("bazaar:refresh-counts", fetchBadges);
     return () => window.removeEventListener("bazaar:refresh-counts", fetchBadges);
-  }, []);
+  }, [sections]);
 
   // Close drawer on route change
   useEffect(() => { setOpen(false); }, [pathname]);

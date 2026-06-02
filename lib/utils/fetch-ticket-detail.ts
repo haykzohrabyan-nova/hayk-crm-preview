@@ -4,7 +4,7 @@ import { fetchTicketPaymentRefunds } from "@/lib/payments/fetch-ticket-refunds";
 import { canAccessTicket } from "@/lib/utils/ticket-access";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { resolveTicketCancelledAt } from "@/lib/utils/fetch-ticket-cancelled-at";
-import { resolveTicketId } from "@/lib/utils/reference-codes";
+import { ticketLookupColumn, ticketLookupValue } from "@/lib/utils/reference-codes";
 import { fetchTicketLinesBundle } from "@/lib/utils/ticket-line-items";
 import { fetchTicketShippingDestinations } from "@/lib/utils/ticket-shipping-destinations";
 
@@ -20,8 +20,8 @@ export async function fetchTicketDetailPayload(
   userId: string,
   roleName: string | null,
 ): Promise<TicketDetailResult> {
-  const ticketId = await resolveTicketId(admin, rawId);
-  if (!ticketId) return { ok: false, code: "NOT_FOUND" };
+  const column = ticketLookupColumn(rawId);
+  const value = ticketLookupValue(rawId);
 
   const { data: ticket, error } = await admin
     .from("job_tickets")
@@ -34,10 +34,12 @@ export async function fetchTicketDetailPayload(
          customer:customers(id, first_name, last_name, company, phone, email, industry)
        )`,
     )
-    .eq("id", ticketId)
+    .eq(column, value)
     .single();
 
   if (error || !ticket) return { ok: false, code: "NOT_FOUND" };
+
+  const ticketId = ticket.id as string;
 
   if (!canAccessTicket(ticket, userId, roleName ?? "")) {
     return { ok: false, code: "FORBIDDEN" };

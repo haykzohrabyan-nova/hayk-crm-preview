@@ -9,12 +9,14 @@
 
 ## June 2, 2026 — Perceived performance + list UX
 
-- **List SWR:** `useListPageData` on all tabbed list pages — in-memory cache (`list-page-cache`, 5 min TTL); instant tab/back navigation; realtime refetch **0ms**; nav cache revalidate **300ms** only
-- **Bootstrap APIs:** `GET /api/tickets/[id]/page-data`, `GET /api/quotes/form-bootstrap` — QuoteDetail + NewQuoteForm single mount fetch
+- **List SWR:** `useListPageData` on all tabbed list pages — in-memory cache (`list-page-cache`, 5 min TTL); instant tab/back; realtime refetch **0ms**; nav revalidate **300ms**
+- **Session + layout:** `GET /api/me`, `AppSessionProvider`, `requireSession()` **45s** cache + cached `allowedRoutes`; sidebar/mobile nav from context
+- **List expand:** `line_preview` on Orders/Quotes/Payments/Completed page-data; `seedLinePreviewFromListRows`; `GET /api/tickets/[id]/line-preview` fallback + in-flight dedupe
+- **Detail load:** slim `GET /api/tickets/[id]/page-data` (`{ ticket }`) + `GET /api/ticket-form-bootstrap` in parallel (server 5m / client 30m cache); `/quotes/new` seeds bootstrap cache
 - **Sales + Payments pagination** — server `limit`/`offset` on page-data (25/50/100)
-- **UX:** `ListRefreshingNotice`; tab-switch flash fix; routed claim **409** `ALREADY_CLAIMED`; no Sales/Admin banner on Quotes Routed tab
-- **Indexes:** `107_performance_indexes.sql` (documents 073 definitions)
-- Docs: `CHANGELOG.md`, `api-contract.md`, `TECHNICAL_REFERENCE.md`, `architecture.md`, `realtime-live-updates.md`, performance roadmap, feature specs
+- **UX:** expandable rows + View on Orders/Completed/Payments; `ListRefreshingNotice`; routed claim **409** `ALREADY_CLAIMED`
+- **Indexes:** `107_performance_indexes.sql`
+- **Docs:** `FuturePlan/Performance/page-loading.md` (load model + next steps), `CHANGELOG.md`, `api-contract.md`, `architecture.md`, `TECHNICAL_REFERENCE.md`, `component-architecture.md`
 
 ---
 

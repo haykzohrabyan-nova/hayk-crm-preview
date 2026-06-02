@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { Download, Paperclip, FileText, Image as ImageIcon, Eye, Trash2 } from "lucide-react";
 import type { TicketFileMeta } from "@/lib/utils/ticket-line-items";
+import { LazyBlurImage } from "@/components/ui/lazy-blur-image";
 import { LineItemFilePreviewModal } from "./line-item-file-preview-modal";
 
 /**
@@ -57,12 +58,7 @@ export function LineItemFileThumbnail({
         style={buttonStyle}
       >
         {isImage ? (
-          <img
-            src={href}
-            alt={fileName}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <LazyBlurImage src={href} alt={fileName} fill loading="lazy" />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-1 p-1.5">
             <FileText size={fill || size >= 64 ? 22 : 16} style={{ color: "var(--color-text-muted)" }} />
