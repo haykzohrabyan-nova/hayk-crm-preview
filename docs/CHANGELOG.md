@@ -3,6 +3,46 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-02] — Technical reference: add-quote sales permit + Stripe auto-approve
+
+### Changed
+- `docs/TECHNICAL_REFERENCE.md` — §12 Quote Creation documents tax-exempt permit # + file UI, validation/send gates, and post-create upload flow; §13/§19 Stripe auto-approve; §20 sales-permit API; schema columns; key file index
+- `docs/api-contract.md` — `POST/GET/DELETE /api/tickets/[id]/sales-permit`; tax-exempt file upload note on ticket create; Stripe webhook auto-approve; payments pending filter
+- `docs/schema.md`, `docs/types.md` — `sales_permit_storage_path`, `sales_permit_file_name`, `sales_permit_mime_type` on `job_tickets` / `Ticket`
+
+## [2026-06-01] — Sales permit file attachment for tax-exempt tickets
+
+### Added
+- `supabase/migrations/103_sales_permit_file.sql` — adds `sales_permit_storage_path`, `sales_permit_file_name`, `sales_permit_mime_type` columns to `job_tickets`
+- `app/api/tickets/[id]/sales-permit/route.ts` — GET (signed URL redirect), POST (upload/replace), DELETE (remove) for the sales permit file; stored in `ticket-attachments` bucket under `{ticketId}/sales-permit/`
+- `quote-form.tsx` — when tax exempt is enabled in edit mode, shows a required "Permit File" attachment control (file picker + pending/saved file display with view/remove buttons); read-only mode shows a clickable download link
+- New props on `QuoteForm`: `salesPermitPendingFile`, `setSalesPermitPendingFile`, `salesPermitSavedName`, `salesPermitViewHref`, `onClearSavedSalesPermit`, `salesPermitFileError`
+
+### Changed
+- `validate-quote-send.ts` — `getQuoteSendMissingFields` now requires a sales permit file (`hasSalesPermitFile`) in addition to the permit number when `taxExempt` is true; quote cannot be sent without both
+- `new-quote-form.tsx` — tracks `salesPermitFile` state, validates file presence before routing/sending, uploads file after ticket creation
+- `quote-detail.tsx` — tracks `salesPermitPendingFile` and `clearSavedPermit` state; on save, uploads or deletes the permit file before the PATCH; `sendValidationInput` includes file presence; `TicketDetail` type gains `sales_permit_file_name`, `sales_permit_storage_path`, `sales_permit_mime_type`
+- `ticket-overview-sections.tsx` — accepts optional `ticketRef` prop and passes `salesPermitSavedName` + `salesPermitViewHref` to the read-only `QuoteForm` for the download link
+- `lib/types/index.ts` — `Ticket` type gains the three new permit file columns
+- `app/api/tickets/[id]/route.ts` — GET query now selects `sales_permit_storage_path`, `sales_permit_file_name`, `sales_permit_mime_type`
+
+## [2026-06-01] — Auto-approve Stripe payments (no accountant review)
+
+### Changed
+- `lib/stripe/apply-checkout-session.ts` — Stripe `checkout.session.completed` webhook now auto-approves the payment instead of leaving it pending for accountant review:
+  - Sets `payment_evidence_reviewed_at` immediately (was `null`)
+  - Updates `payment_amount_received`, `payment_status`, and deposit/balance timestamp fields
+  - Calls `maybeConvertQuoteToOrder` → converts quote to order if confirm + payment gates pass
+  - Calls `maybeAutoReleaseProduction` → releases to production if all gates satisfied
+  - Logs `ticket_payment_recorded` activity (same event dashboards/reports read)
+  - Sends "payment confirmed" notification to customer (email/SMS, fire-and-forget)
+  - Payments tab no longer shows Stripe payments in the "Pending" state
+
+## [2026-06-01] — Add comprehensive technical reference document
+
+### Added
+- `docs/TECHNICAL_REFERENCE.md` — full system technical reference covering: app overview, tech stack, folder structure, auth/MFA/RBAC, database schema (all tables), lead management, sales pipeline, dashboards & KPIs, quote/order lifecycle, line items & pricing, payment system (Stripe, evidence, refunds), production workflow, completed orders, email/SMS delivery, CRM, admin settings, public customer portal, file management, real-time system, activity log, PDF generation, UI design system, sidebar & navigation, and key file index
+
 ## [2026-06-01] — Line item thumbnail moved to card right panel
 
 ### Changed

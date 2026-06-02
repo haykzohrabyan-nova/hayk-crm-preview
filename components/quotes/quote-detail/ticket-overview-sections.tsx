@@ -50,10 +50,13 @@ interface OverviewTicket {
   quote_final_total: number | null;
   discount_type: string | null;
   discount_value: string | null;
+  sales_permit_file_name?: string | null;
 }
 
 interface Props {
   ticket: SectionTicket;
+  /** Reference code or ID — used to build the sales permit download URL. */
+  ticketRef?: string;
   products: ProductType[];
   skuLookups: SkuLookups;
   pricing: ReturnType<typeof import("@/lib/utils/ticket-math").computePricing>;
@@ -107,6 +110,7 @@ function buildPricingRows(ticket: SectionTicket): { label: string; value: string
 /** Shared read-only body below the snapshot card (payments / production / quote stages). */
 export function TicketOverviewSections({
   ticket,
+  ticketRef,
   products,
   skuLookups,
   pricing,
@@ -217,6 +221,8 @@ export function TicketOverviewSections({
                 salesPermit={salesPermit}
                 setSalesPermit={setSalesPermit}
                 salesPermitError={salesPermitError}
+                salesPermitSavedName={ticket.sales_permit_file_name ?? null}
+                salesPermitViewHref={ticket.sales_permit_file_name && ticketRef ? `/api/tickets/${ticketRef}/sales-permit` : null}
                 paymentDraft={paymentDraft}
                 onPaymentChange={onPaymentChange}
               />

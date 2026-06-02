@@ -173,6 +173,8 @@ interface Ticket {
   quote_final_total: number | null;
   tax_exempt: boolean;
   sales_permit_number: string | null;
+  sales_permit_file_name: string | null;
+  sales_permit_storage_path: string | null;
   quote_payment_types: string[];
   payment_status: "unpaid" | "partial" | "paid" | null;
   prepayment_type: string | null;
@@ -401,8 +403,11 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [taxRate, setTaxRate] = useState(0);
   const [taxExempt, setTaxExempt] = useState(false);
   const [salesPermit, setSalesPermit] = useState("");
+  const [salesPermitPendingFile, setSalesPermitPendingFile] = useState<File | null>(null);
+  const [clearSavedPermit, setClearSavedPermit] = useState(false);
   const [paymentDraft, setPaymentDraft] = useState<TicketPaymentDraft>(PAYMENT_CONFIG_DEFAULTS);
   const [salesPermitError, setSalesPermitError] = useState<string | undefined>();
+  const [salesPermitFileError, setSalesPermitFileError] = useState<string | undefined>();
   const [titleError, setTitleError] = useState<string | undefined>();
   const [dueDateError, setDueDateError] = useState<string | undefined>();
   const [completionAt, setCompletionAt] = useState<string | null>(null);
@@ -434,6 +439,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     setTaxRate(t.quote_tax_rate_percent ?? 0);
     setTaxExempt(t.tax_exempt ?? false);
     setSalesPermit(t.sales_permit_number ?? "");
+    setSalesPermitPendingFile(null);
+    setClearSavedPermit(false);
     setPaymentDraft(
       resolveQuoteDeliveryFromContact(
         {
@@ -668,6 +675,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         skus,
         taxExempt,
         salesPermit,
+        hasSalesPermitFile: !!(salesPermitPendingFile || (ticket?.sales_permit_file_name && !clearSavedPermit)),
         requiresShipping,
         shipToDestinations: shippingDestinations,
         paymentDraft: effectiveDraft,
@@ -712,6 +720,12 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       setSalesPermitError("Sales Permit # is required when Tax Exempt is selected.");
       return;
     }
+    // Require permit file when tax exempt (must have pending file OR existing saved file not cleared)
+    const hasSavedPermit = !!(ticket?.sales_permit_file_name && !clearSavedPermit);
+    if (taxExempt && !salesPermitPendingFile && !hasSavedPermit) {
+      setSalesPermitFileError("Permit file is required when Tax Exempt is selected.");
+      return;
+    }
 
     const zipErr = validateShippingDestinationZips(
       requiresShipping ? shippingDestinations : [],
@@ -724,6 +738,26 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     }
 
     beginSaveLoading(globalSaveMessage(newStatus));
+
+    // Upload / remove permit file before the PATCH
+    const permitApiRef = ticket?.reference_code ?? ticketId;
+    if (clearSavedPermit && !salesPermitPendingFile) {
+      await fetch(`/api/tickets/${permitApiRef}/sales-permit`, { method: "DELETE" });
+    }
+    if (salesPermitPendingFile) {
+      const fd = new FormData();
+      fd.append("file", salesPermitPendingFile);
+      const permitRes = await fetch(`/api/tickets/${permitApiRef}/sales-permit`, { method: "POST", body: fd });
+      if (!permitRes.ok) {
+        const permitJson = await permitRes.json().catch(() => ({}));
+        setError(permitJson.error ?? "Failed to upload sales permit file.");
+        setSaving(false);
+        hideLoading();
+        return;
+      }
+      setSalesPermitPendingFile(null);
+      setClearSavedPermit(false);
+    }
 
     const body: Record<string, unknown> = {
       title: title.trim(),
@@ -895,11 +929,12 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       skus,
       taxExempt,
       salesPermit,
+      hasSalesPermitFile: !!(salesPermitPendingFile || (ticket?.sales_permit_file_name && !clearSavedPermit)),
       requiresShipping,
       shipToDestinations: shippingDestinations,
       paymentDraft,
     }),
-    [title, dueDate, skus, taxExempt, salesPermit, requiresShipping, shippingDestinations, paymentDraft],
+    [title, dueDate, skus, taxExempt, salesPermit, salesPermitPendingFile, ticket, clearSavedPermit, requiresShipping, shippingDestinations, paymentDraft],
   );
   const sendMissingFields = useMemo(
     () => getQuoteSendMissingFields(sendValidationInput),
@@ -1509,6 +1544,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                       />
                       <TicketOverviewSections
                         ticket={ticket}
+                        ticketRef={ticket.reference_code ?? ticketId}
                         products={products}
                         skuLookups={skuLookups}
                         pricing={pricing}
@@ -1651,6 +1687,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   />
                   <TicketOverviewSections
                     ticket={ticket}
+                    ticketRef={ticket.reference_code ?? ticketId}
                     products={products}
                     skuLookups={skuLookups}
                     pricing={pricing}
@@ -1758,6 +1795,12 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     taxExempt={taxExempt} setTaxExempt={setTaxExempt}
                     salesPermit={salesPermit} setSalesPermit={(v) => { setSalesPermit(v); setSalesPermitError(undefined); }}
                     salesPermitError={salesPermitError}
+                    salesPermitPendingFile={salesPermitPendingFile}
+                    setSalesPermitPendingFile={(f) => { setSalesPermitPendingFile(f); setSalesPermitFileError(undefined); }}
+                    salesPermitSavedName={clearSavedPermit ? null : (ticket.sales_permit_file_name ?? null)}
+                    salesPermitViewHref={ticket.sales_permit_file_name && !clearSavedPermit ? `/api/tickets/${ticket.reference_code ?? ticketId}/sales-permit` : null}
+                    onClearSavedSalesPermit={() => { setClearSavedPermit(true); }}
+                    salesPermitFileError={salesPermitFileError}
                     paymentDraft={paymentDraft}
                     onPaymentChange={setPaymentDraft}
                     customerPhone={ticket.contact_phone ?? ticket.customer?.phone ?? ""}

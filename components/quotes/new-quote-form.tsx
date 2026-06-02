@@ -225,6 +225,7 @@ export default function NewQuoteForm() {
   const [taxRate, setTaxRate] = useState(0);
   const [taxExempt, setTaxExempt] = useState(false);
   const [salesPermit, setSalesPermit] = useState("");
+  const [salesPermitFile, setSalesPermitFile] = useState<File | null>(null);
   const [paymentDraft, setPaymentDraft] = useState<TicketPaymentDraft>(PAYMENT_CONFIG_DEFAULTS);
 
   // ─── Load lead + products + company settings ────────────────────────────
@@ -430,6 +431,9 @@ export default function NewQuoteForm() {
       if (taxExempt && !salesPermit.trim()) {
         errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
       }
+      if (taxExempt && !salesPermitFile) {
+        errors.salesPermitFile = "Permit file is required when Tax Exempt is selected.";
+      }
       const zipErr = validateShippingDestinationZips(
         requiresShipping ? shippingDestinations : [],
       );
@@ -514,6 +518,7 @@ export default function NewQuoteForm() {
         skus,
         taxExempt,
         salesPermit,
+        hasSalesPermitFile: !!salesPermitFile,
         requiresShipping,
         shipToDestinations: shippingDestinations,
         paymentDraft,
@@ -525,8 +530,11 @@ export default function NewQuoteForm() {
       }
     }
 
-    if (taxExempt && !salesPermit.trim()) {
-      setFieldErrors({ salesPermit: "Sales Permit # is required when Tax Exempt is selected." });
+    if (taxExempt && (!salesPermit.trim() || !salesPermitFile)) {
+      setFieldErrors({
+        ...(!salesPermit.trim() ? { salesPermit: "Sales Permit # is required when Tax Exempt is selected." } : {}),
+        ...(!salesPermitFile ? { salesPermitFile: "Permit file is required when Tax Exempt is selected." } : {}),
+      });
       setTab("quote");
       scrollToFormField(tabContentRef, "salesPermit");
       return;
@@ -660,6 +668,17 @@ export default function NewQuoteForm() {
           setError(uploadErr);
           return;
         }
+
+        if (salesPermitFile) {
+          const fd = new FormData();
+          fd.append("file", salesPermitFile);
+          const permitRes = await fetch(`/api/tickets/${ticketRef}/sales-permit`, { method: "POST", body: fd });
+          if (!permitRes.ok) {
+            const permitJson = await permitRes.json().catch(() => ({}));
+            setError(permitJson.error ?? "Failed to upload sales permit file.");
+            return;
+          }
+        }
       }
 
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
@@ -704,6 +723,9 @@ export default function NewQuoteForm() {
       if (taxExempt && !salesPermit.trim()) {
         errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
       }
+      if (taxExempt && !salesPermitFile) {
+        errors.salesPermitFile = "Permit file is required when Tax Exempt is selected.";
+      }
       const zipErr = validateShippingDestinationZips(
         requiresShipping ? shippingDestinations : [],
       );
@@ -728,7 +750,7 @@ export default function NewQuoteForm() {
         setTab("info");
       }
       const errorTab: Tab =
-        errors.salesPermit || errors.shipToZip
+        errors.salesPermit || errors.salesPermitFile || errors.shipToZip
           ? "quote"
           : errors.lineItems
             ? "lines"
@@ -754,11 +776,12 @@ export default function NewQuoteForm() {
         skus,
         taxExempt,
         salesPermit,
+        hasSalesPermitFile: !!salesPermitFile,
         requiresShipping,
         shipToDestinations: shippingDestinations,
         paymentDraft,
       }),
-    [title, dueDate, skus, taxExempt, salesPermit, requiresShipping, shippingDestinations, paymentDraft],
+    [title, dueDate, skus, taxExempt, salesPermit, salesPermitFile, requiresShipping, shippingDestinations, paymentDraft],
   );
   const quoteSendReady = sendMissingFields.length === 0;
   const sendMissingMessage = formatQuoteSendMissingMessage(sendMissingFields);
@@ -1021,6 +1044,9 @@ export default function NewQuoteForm() {
                   taxExempt={taxExempt} setTaxExempt={setTaxExempt}
                   salesPermit={salesPermit} setSalesPermit={(v) => { setSalesPermit(v); setFieldErrors((e) => ({ ...e, salesPermit: "" })); }}
                   salesPermitError={fieldErrors.salesPermit}
+                  salesPermitPendingFile={salesPermitFile}
+                  setSalesPermitPendingFile={(f) => { setSalesPermitFile(f); setFieldErrors((e) => ({ ...e, salesPermitFile: "" })); }}
+                  salesPermitFileError={fieldErrors.salesPermitFile}
                   paymentDraft={paymentDraft}
                   onPaymentChange={setPaymentDraft}
                   customerPhone={contactPhone || lead?.customer?.phone || ""}

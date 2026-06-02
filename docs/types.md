@@ -387,6 +387,9 @@ export interface JobTicket {
   quote_final_total: number | null
   tax_exempt: boolean
   sales_permit_number: string | null
+  sales_permit_storage_path: string | null
+  sales_permit_file_name: string | null
+  sales_permit_mime_type: string | null
   quote_payment_types: string[]     // from `ticket_payment` lookup (multi-select)
   prepayment_type: 'full' | 'percent' | 'fixed' | null
   prepayment_value: string | null   // '100' for full; parsed at runtime for percent/fixed

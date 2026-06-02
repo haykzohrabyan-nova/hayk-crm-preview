@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { ChevronDown } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronDown, Paperclip, Download, X, FileText } from "lucide-react";
 import { computePricing, formatCurrency } from "@/lib/utils/ticket-math";
 import QuotePaymentConfig, { type TicketPaymentDraft } from "@/components/quotes/quote-payment-config";
 import {
@@ -45,6 +45,16 @@ interface QuoteFormProps {
   taxExempt: boolean; setTaxExempt: (v: boolean) => void;
   salesPermit: string; setSalesPermit: (v: string) => void;
   salesPermitError?: string;
+  /** Pending local file chosen in edit mode (not yet uploaded). */
+  salesPermitPendingFile?: File | null;
+  setSalesPermitPendingFile?: (f: File | null) => void;
+  /** File name of the already-saved permit document (from ticket). */
+  salesPermitSavedName?: string | null;
+  /** URL to view / download the saved permit (e.g. /api/tickets/REF/sales-permit). */
+  salesPermitViewHref?: string | null;
+  /** Called when the user removes the saved file; parent marks it for deletion. */
+  onClearSavedSalesPermit?: () => void;
+  salesPermitFileError?: string;
   paymentDraft: TicketPaymentDraft;
   onPaymentChange: (cfg: TicketPaymentDraft) => void;
   customerPhone?: string;
@@ -60,6 +70,14 @@ export function QuoteForm(p: QuoteFormProps) {
   const fieldStyle = { background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" };
 
   const [taxRateRaw, setTaxRateRaw]   = useState(p.taxRate   === 0 ? "" : String(p.taxRate));
+  const permitFileInputRef = useRef<HTMLInputElement>(null);
+
+  function onPermitFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    p.setSalesPermitPendingFile?.(file);
+  }
 
   function StyledSelect({ value, onChange, children }: {
     value: string; onChange: (v: string) => void; children: React.ReactNode;
@@ -117,13 +135,40 @@ export function QuoteForm(p: QuoteFormProps) {
             ["Order Flow", t.order_source === "direct" ? "Direct order" : "Quote first"],
             ["Discount", t.discount_type === "percent" ? `${t.discount_value}%` : t.discount_type === "fixed" ? `$${t.discount_value}` : null],
             ["Tax Rate", t.tax_exempt ? "Exempt" : t.quote_tax_rate_percent != null ? `${t.quote_tax_rate_percent}%` : null],
-            ["Sales Permit", t.tax_exempt ? (t.sales_permit_number ?? null) : null],
+            ["Sales Permit #", t.tax_exempt ? (t.sales_permit_number ?? null) : null],
           ] as [string, string | null][]).map(([label, val]) => val ? (
             <div key={label}>
               <dt className="text-xs font-medium mb-0.5" style={{ color: "var(--color-text-muted)" }}>{label}</dt>
               <dd className="text-sm" style={{ color: "var(--color-text-primary)" }}>{val}</dd>
             </div>
           ) : null)}
+
+          {/* Permit file download — shown whenever a saved file exists */}
+          {t.tax_exempt && p.salesPermitSavedName && (
+            <div>
+              <dt className="text-xs font-medium mb-0.5" style={{ color: "var(--color-text-muted)" }}>Permit File</dt>
+              <dd className="text-sm">
+                {p.salesPermitViewHref ? (
+                  <a
+                    href={p.salesPermitViewHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 font-medium hover:underline"
+                    style={{ color: "var(--color-tab-active)" }}
+                  >
+                    <FileText size={13} />
+                    {p.salesPermitSavedName}
+                    <Download size={11} />
+                  </a>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5" style={{ color: "var(--color-text-primary)" }}>
+                    <FileText size={13} />
+                    {p.salesPermitSavedName}
+                  </span>
+                )}
+              </dd>
+            </div>
+          )}
         </dl>
       </div>
     );
@@ -217,38 +262,129 @@ export function QuoteForm(p: QuoteFormProps) {
           </div>
         </div>
 
-        {/* Conditional: discount value + sales permit */}
-        {(p.discountType || p.taxExempt) && (
+        {/* Conditional: discount value row */}
+        {p.discountType && (
           <div className="grid grid-cols-2 gap-4">
             <div>
-              {p.discountType ? (
-                <>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                    {p.discountType === "percent" ? "Discount %" : "Discount ($)"}
-                  </label>
-                  <input type="number" min={0} max={p.discountType === "percent" ? 100 : undefined}
-                    step={p.discountType === "percent" ? 1 : 0.01} value={p.discountValue}
-                    onChange={(e) => p.setDiscountValue(e.target.value)}
-                    placeholder={p.discountType === "percent" ? "0" : "0.00"}
-                    className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
-                </>
-              ) : <div />}
+              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                {p.discountType === "percent" ? "Discount %" : "Discount ($)"}
+              </label>
+              <input type="number" min={0} max={p.discountType === "percent" ? 100 : undefined}
+                step={p.discountType === "percent" ? 1 : 0.01} value={p.discountValue}
+                onChange={(e) => p.setDiscountValue(e.target.value)}
+                placeholder={p.discountType === "percent" ? "0" : "0.00"}
+                className="w-full px-3 py-2 rounded-md text-sm border outline-none" style={fieldStyle} />
             </div>
+          </div>
+        )}
+
+        {/* Conditional: sales permit # (left) + permit file (right) — same 50/50 row */}
+        {p.taxExempt && (
+          <div className="grid grid-cols-2 gap-4" style={{ marginTop: 10 }}>
+            {/* Left: permit number */}
             <div>
-              {p.taxExempt ? (
-                <>
-                  <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                    Sales Permit # <span style={{ color: "var(--color-danger)" }}>*</span>
-                  </label>
-                  <input value={p.salesPermit} onChange={(e) => p.setSalesPermit(e.target.value)}
-                    placeholder="Permit number…"
-                    className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-                    style={{ ...fieldStyle, ...(p.salesPermitError ? { border: "1px solid var(--color-danger)" } : {}) }} />
-                  {p.salesPermitError && (
-                    <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.salesPermitError}</p>
-                  )}
-                </>
-              ) : <div />}
+              <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                Sales Permit # <span style={{ color: "var(--color-danger)" }}>*</span>
+              </label>
+              <input value={p.salesPermit} onChange={(e) => p.setSalesPermit(e.target.value)}
+                placeholder="Permit number…"
+                className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+                style={{ ...fieldStyle, ...(p.salesPermitError ? { border: "1px solid var(--color-danger)" } : {}) }} />
+              {p.salesPermitError && (
+                <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.salesPermitError}</p>
+              )}
+            </div>
+
+            {/* Right: permit file */}
+            <div>
+              <p className="text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                Permit File <span style={{ color: "var(--color-danger)" }}>*</span>
+              </p>
+              <input
+                ref={permitFileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,application/pdf"
+                className="hidden"
+                onChange={onPermitFileChange}
+              />
+
+                    {/* Pending file (not yet saved) */}
+                    {p.salesPermitPendingFile ? (
+                      <div
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-md border text-sm"
+                        style={{ borderColor: "var(--color-border)", background: "var(--color-badge-bg)" }}
+                      >
+                        <FileText size={14} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
+                        <span className="flex-1 truncate" style={{ color: "var(--color-text-primary)" }}>
+                          {p.salesPermitPendingFile.name}
+                        </span>
+                        <span className="text-xs shrink-0" style={{ color: "var(--color-text-muted)" }}>
+                          uploads on save
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => p.setSalesPermitPendingFile?.(null)}
+                          className="shrink-0 hover:opacity-70"
+                          style={{ color: "var(--color-danger)" }}
+                          aria-label="Remove file"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : p.salesPermitSavedName ? (
+                      /* Saved file already on ticket */
+                      <div
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-md border text-sm"
+                        style={{ borderColor: "var(--color-border)", background: "var(--color-badge-bg)" }}
+                      >
+                        <FileText size={14} style={{ color: "var(--color-text-muted)", flexShrink: 0 }} />
+                        <span className="flex-1 truncate" style={{ color: "var(--color-text-primary)" }}>
+                          {p.salesPermitSavedName}
+                        </span>
+                        {p.salesPermitViewHref && (
+                          <a
+                            href={p.salesPermitViewHref}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="shrink-0 hover:opacity-70"
+                            style={{ color: "var(--color-tab-active)" }}
+                            aria-label="View permit file"
+                            title="View permit file"
+                          >
+                            <Download size={14} />
+                          </a>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => p.onClearSavedSalesPermit?.()}
+                          className="shrink-0 hover:opacity-70"
+                          style={{ color: "var(--color-danger)" }}
+                          aria-label="Remove file"
+                          title="Remove file"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      /* No file yet */
+                      <button
+                        type="button"
+                        onClick={() => permitFileInputRef.current?.click()}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium border"
+                        style={{
+                          borderColor: p.salesPermitFileError ? "var(--color-danger)" : "var(--color-border)",
+                          background: "var(--color-surface)",
+                          color: "var(--color-text-primary)",
+                        }}
+                      >
+                        <Paperclip size={13} />
+                        Attach permit file
+                      </button>
+                    )}
+
+              {p.salesPermitFileError && (
+                <p className="mt-1 text-xs" style={{ color: "var(--color-danger)" }}>{p.salesPermitFileError}</p>
+              )}
             </div>
           </div>
         )}

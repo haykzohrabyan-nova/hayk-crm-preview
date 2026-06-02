@@ -409,6 +409,9 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `quote_final_total` | `numeric` | pre_tax_total + tax_amount |
 | `tax_exempt` | `boolean` NOT NULL DEFAULT `false` | |
 | `sales_permit_number` | `text` | Required when tax_exempt = true |
+| `sales_permit_storage_path` | `text` | Supabase Storage path in `ticket-attachments` (migration **103**) |
+| `sales_permit_file_name` | `text` | Original filename for staff UI / download |
+| `sales_permit_mime_type` | `text` | MIME type of permit file |
 | `quote_payment_types` | `text[]` NOT NULL DEFAULT `'{}'` | `'card_default'` \| `'zelle'` \| `'offline'` *(legacy — use `ticket_*` columns for new payment config)* |
 | `prepayment_type` | `text` | `'full'` \| `'percent'` \| `'fixed'` |
 | `prepayment_value` | `text` | Stored as text; parsed at runtime |

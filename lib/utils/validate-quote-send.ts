@@ -9,6 +9,8 @@ export interface QuoteSendValidationInput {
   skus: { product_type?: string; quantity?: number; unit_price?: number }[];
   taxExempt: boolean;
   salesPermit: string;
+  /** True when a permit file has been selected (pending) or is already saved on the ticket. */
+  hasSalesPermitFile?: boolean;
   requiresShipping?: boolean;
   /** @deprecated Use shipToDestinations — kept for callers still passing one ZIP */
   shipToZip?: string;
@@ -49,6 +51,7 @@ export function getQuoteSendMissingFields(input: QuoteSendValidationInput): stri
     skus,
     taxExempt,
     salesPermit,
+    hasSalesPermitFile = false,
     requiresShipping = false,
     shipToZip = "",
     shipToDestinations,
@@ -64,6 +67,9 @@ export function getQuoteSendMissingFields(input: QuoteSendValidationInput): stri
 
   if (taxExempt && !salesPermit.trim()) {
     missing.push("Sales Permit #");
+  }
+  if (taxExempt && !hasSalesPermitFile) {
+    missing.push("Sales Permit file");
   }
 
   if (requiresShipping) {

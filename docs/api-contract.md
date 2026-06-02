@@ -886,7 +886,7 @@ Create a new ticket.
   "quote_tax_amount": "number | null",
   "quote_final_total": "number | null",
   "tax_exempt": "boolean",
-  "sales_permit_number": "string | null",
+  "sales_permit_number": "string | null — required when tax_exempt = true",
   "quote_payment_types": "string[]",
   "prepayment_type": "full | percent | fixed | null",
   "prepayment_value": "string | null",
@@ -935,6 +935,7 @@ Create a new ticket.
 - If `ticket_status = 'sent'` on create (Save & Send): logs `ticket_sent` and triggers `sendQuoteToCustomer()` — same activity shape as PATCH send
 - May auto-record cash deposit/full payment when configured — logs `ticket_payment_recorded` via `lib/utils/log-ticket-payment-recorded.ts` (counts in Reports/dashboard cash); **does not** set `client_confirmed` when `ticket_require_client_confirm = true`
 - **Fulfillment:** when `requires_shipping = false`, server clears `ship_to_*`, deletes `ticket_shipping_destinations`, and sets `quote_shipping = 0`. When `requires_shipping = true`, accepts **`shipping_destinations[]`** (synced via `syncTicketShippingDestinations()`); per-destination **Shipping ($)** is optional (may be `0`); address fields optional; ZIP validated when non-empty. Legacy `ship_to_*` on `job_tickets` mirrors the primary destination. See `lib/utils/ticket-shipping-destinations.ts` and `lib/utils/address.ts`.
+- **Tax-exempt permit file:** not in this body. After create, client uploads via `POST /api/tickets/{reference_code}/sales-permit` (multipart `file`). Send/readiness on the client also requires the file when `tax_exempt = true` (`validate-quote-send.ts`).
 
 **Response `201`:**
 ```json
@@ -1002,6 +1003,38 @@ Plus `file` (JPEG, PNG, WebP, or PDF; limits in `lib/utils/ticket-line-files.ts`
 ### `DELETE /api/tickets/[id]/files/[fileId]`
 
 **Auth:** `canMutateTicket()`. Deletes the Storage object in bucket `ticket-attachments`, then the `ticket_files` row. Calls `notifyPublicQuoteUpdatedByTicketId()` when the ticket is customer-portal visible.
+
+---
+
+### `POST /api/tickets/[id]/sales-permit`
+
+Upload or replace the tax-exempt **sales permit document** (staff only). Stored on `job_tickets` columns, not `ticket_files`.
+
+**Auth:** `requireSession()` + `requireTicketDetailPageAccess()` + `canMutateTicket()`.
+
+**URL segment:** UUID or reference code (`QUO-*`, `ORD-*`).
+
+**Body:** `multipart/form-data` — field `file` (JPEG, PNG, WebP, or PDF; same validation as line attachments).
+
+**Storage:** bucket `ticket-attachments`, path `{ticketId}/sales-permit/{uuid}-{sanitizedFileName}`.
+
+**Replace:** Deletes previous object if present, then updates `sales_permit_storage_path`, `sales_permit_file_name`, `sales_permit_mime_type`.
+
+**Response `200`:** `{ ok: true, file_name, mime_type }`
+
+---
+
+### `GET /api/tickets/[id]/sales-permit`
+
+**Auth:** `canAccessTicket()`. **Response `302`:** redirect to 60-second signed Storage URL. **404** when no file on ticket.
+
+---
+
+### `DELETE /api/tickets/[id]/sales-permit`
+
+**Auth:** `canMutateTicket()`. Removes Storage object and clears `sales_permit_*` columns. Idempotent when already absent.
+
+**Response `200`:** `{ ok: true }`
 
 ---
 
@@ -1228,7 +1261,7 @@ Preferred mount endpoint for `/payments`. Returns all three tabs in one request.
 
 **Auth:** Accountant or Admin only.
 
-**Pending filter:** Evidence or Stripe PI submitted, not yet reviewed; `refund_status` none/null; ordered by `payment_evidence_submitted_at` asc.
+**Pending filter:** Offline payment evidence submitted, not yet reviewed (`payment_evidence_reviewed_at` null); `refund_status` none/null; ordered by `payment_evidence_submitted_at` asc. **Stripe card payments are auto-approved** in the webhook and do not appear here.
 
 **Approved filter:** Reviewed evidence or Stripe; `refund_status` none/null; ordered by `payment_evidence_reviewed_at` desc.
 
@@ -1296,11 +1329,11 @@ Stripe Checkout webhook (Phase C). **No staff session** — authenticated via St
 
 **Auth:** `Stripe-Signature` header verified with `STRIPE_WEBHOOK_SECRET`.
 
-**Events handled:** `checkout.session.completed` — sets Stripe evidence columns on `job_tickets`, queues ticket on `/payments` pending review.
+**Events handled:** `checkout.session.completed` — `lib/stripe/apply-checkout-session.ts` auto-approves payment (`payment_evidence_reviewed_at` set immediately), updates `payment_amount_received` / status / deposit-balance timestamps, logs `ticket_payment_recorded`, runs `maybeConvertQuoteToOrder` + `maybeAutoReleaseProduction`, sends `sendPaymentConfirmed` to customer. Does **not** queue on `/payments` pending.
 
 **Response `200`:** `{ "received": true }` on success.
 
-See `docs/feature-specs/invoice-payment.md` Phase C and `app/api/payments/stripe/webhook/route.ts`.
+See `lib/stripe/apply-checkout-session.ts` and `app/api/payments/stripe/webhook/route.ts`.
 
 ---
 

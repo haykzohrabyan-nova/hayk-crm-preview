@@ -327,6 +327,9 @@ export interface JobTicket {
   quote_final_total: number | null
   tax_exempt: boolean
   sales_permit_number: string | null
+  sales_permit_storage_path: string | null
+  sales_permit_file_name: string | null
+  sales_permit_mime_type: string | null
 
   // Payment
   quote_payment_types: PaymentTypeKey[]
