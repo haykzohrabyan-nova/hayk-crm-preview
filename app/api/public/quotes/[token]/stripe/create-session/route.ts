@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getStripe, isStripeConfigured } from "@/lib/stripe/client";
 import { computePublicPaymentDueAmount } from "@/lib/utils/invoice-payment-summary";
@@ -6,13 +7,12 @@ import { inferPaymentEvidenceMode } from "@/lib/utils/payment-evidence-type";
 import { isPaymentEvidencePending } from "@/lib/utils/payment-evidence-pending";
 import { publicQuotePaymentBlockedResponse } from "@/lib/utils/public-quote-payment-blocked";
 import { enforcePublicQuoteRateLimit } from "@/lib/security/enforce-route-rate-limit";
+import { resolveAppUrl } from "@/lib/utils/resolve-app-url";
 
 type Params = { params: Promise<{ token: string }> };
 
-function appOrigin(): string {
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
-  return base;
-}
+/** Stripe USD minimum charge (cents). */
+const MIN_CHARGE_CENTS = 50;
 
 export async function POST(request: NextRequest, { params }: Params) {
   const rateLimited = enforcePublicQuoteRateLimit(request, "stripe-create-session");
@@ -86,11 +86,21 @@ export async function POST(request: NextRequest, { params }: Params) {
     : "Full payment";
 
   const ref = row.reference_code ?? row.id.slice(0, 8);
-  const origin = appOrigin();
+  const origin = resolveAppUrl(request.nextUrl.origin);
   const successUrl = `${origin}/q/${token}?stripe=success`;
   const cancelUrl = `${origin}/q/${token}?stripe=cancel`;
 
   const amountCents = Math.round(dueAmount * 100);
+  if (amountCents < MIN_CHARGE_CENTS) {
+    return NextResponse.json(
+      {
+        error: `Card payments must be at least $${(MIN_CHARGE_CENTS / 100).toFixed(2)}. Please contact your sales representative.`,
+      },
+      { status: 400 },
+    );
+  }
+
+  const productDescription = row.title?.trim() || undefined;
 
   try {
     const stripe = getStripe();
@@ -105,7 +115,7 @@ export async function POST(request: NextRequest, { params }: Params) {
             unit_amount: amountCents,
             product_data: {
               name: `${modeLabel} — ${ref}`,
-              description: row.title ?? undefined,
+              ...(productDescription ? { description: productDescription } : {}),
             },
           },
         },
@@ -127,6 +137,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ session_url: session.url });
   } catch (err) {
     console.error("[stripe/create-session]", err);
-    return NextResponse.json({ error: "Could not start card payment." }, { status: 500 });
+    const message =
+      err instanceof Stripe.errors.StripeError
+        ? err.message
+        : "Could not start card payment.";
+    const status =
+      err instanceof Stripe.errors.StripeError && err.statusCode && err.statusCode >= 400 && err.statusCode < 600
+        ? err.statusCode
+        : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

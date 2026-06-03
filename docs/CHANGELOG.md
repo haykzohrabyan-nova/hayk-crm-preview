@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-02] — Stripe Checkout: fix redirect URLs on Vercel
+
+### Fixed
+- `POST /api/public/quotes/[token]/stripe/create-session` — success/cancel URLs use `resolveAppUrl()` (request origin / `VERCEL_URL`) instead of falling back to `localhost` when `NEXT_PUBLIC_APP_URL` is unset — fixes Stripe 500 on production
+- Same route — returns Stripe’s error message in JSON for easier diagnosis; minimum $0.50 charge guard
+
 ## [2026-06-02] — Net terms: allow Stripe/offline pay on public link
 
 ### Fixed
