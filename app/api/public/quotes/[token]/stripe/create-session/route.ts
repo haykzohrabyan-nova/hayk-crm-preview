@@ -11,6 +11,8 @@ import { resolveAppUrl } from "@/lib/utils/resolve-app-url";
 
 type Params = { params: Promise<{ token: string }> };
 
+export const runtime = "nodejs";
+
 /** Stripe USD minimum charge (cents). */
 const MIN_CHARGE_CENTS = 50;
 

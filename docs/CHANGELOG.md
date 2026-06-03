@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-02] — Stripe Checkout: connection error on Vercel
+
+### Fixed
+- `lib/stripe/client.ts` — Stripe SDK uses `createFetchHttpClient()` + trims `STRIPE_SECRET_KEY`; rejects `pk_` keys in secret env
+- `POST .../stripe/create-session` — `runtime = "nodejs"`
+
 ## [2026-06-02] — Stripe Checkout: fix redirect URLs on Vercel
 
 ### Fixed
