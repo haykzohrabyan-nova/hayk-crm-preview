@@ -99,12 +99,18 @@ export function computeInvoicePaymentSummary(ticket: TicketPaymentFields): Invoi
   };
 }
 
-/** Next amount due on the public payment link (deposit first, then balance). */
+/** Next amount due on the public payment link (deposit first, then balance; net = full balance). */
 export function computePublicPaymentDueAmount(ticket: TicketPaymentFields): number {
   const summary = computeInvoicePaymentSummary(ticket);
-  if (summary.strategy === "net" || summary.fullyPaid || summary.evidencePending) return 0;
+  if (summary.fullyPaid || summary.evidencePending) return 0;
 
   const { depositDue, amountPaid, depositPaid, balanceDue, strategy } = summary;
+
+  // Net terms: no upfront deposit; customer may pay the full invoice early or when due
+  if (strategy === "net") {
+    return balanceDue;
+  }
+
   if (!depositPaid && strategy === "partial") {
     return Math.max(0, Math.round((depositDue - amountPaid) * 100) / 100);
   }

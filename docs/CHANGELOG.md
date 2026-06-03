@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-02] — Net terms: allow Stripe/offline pay on public link
+
+### Fixed
+- `computePublicPaymentDueAmount()` — net-term ($0 upfront) orders no longer return $0 on the server while the portal showed a balance; card checkout and submit-payment now accept early/full payment (e.g. $1.08 balance)
+
 ## [2026-06-02] — Net terms: payment methods on quote + public portal
 
 ### Fixed
