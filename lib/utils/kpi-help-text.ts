@@ -3,7 +3,8 @@
 export const KPI_HELP = {
   cash_collected:
     "Sum of payment amounts recorded in this period (matches Reports). Excludes cancelled and refunded tickets.",
-  total_leads: "Workspace leads created in this period. Status badges below are mutually exclusive and sum to this total.",
+  total_leads:
+    "Workspace leads created in this period. Status badges below are mutually exclusive and sum to this total. Refunded then cancelled orders count as Cancelled.",
   inbox_leads: "Inbox leads not yet moved to the SDR workspace.",
   open_leads: "Unclaimed workspace leads waiting for an SDR.",
   routed_to_sales: "Leads currently in Routed to Sales status (live snapshot).",

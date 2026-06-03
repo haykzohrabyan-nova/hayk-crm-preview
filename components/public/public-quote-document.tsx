@@ -119,33 +119,11 @@ function discountAmount(ticket: PublicTicketDoc): number | null {
   return amt > 0 ? amt : null;
 }
 
-function StatusPill({ label, tone }: { label: string; tone: "navy" | "rush" | "success" | "warning" }) {
-  const styles: Record<string, { bg: string; color: string; border: string }> = {
-    navy:    { bg: NAVY, color: "#E8C97A", border: NAVY },
-    rush:    { bg: "#FFFBEB", color: "#D97706", border: "#FDE68A" },
-    success: { bg: "#F0FDF4", color: "#16A34A", border: "#BBF7D0" },
-    warning: { bg: "#FFFBEB", color: "#92400E", border: "#FDE68A" },
-  };
-  const t = styles[tone];
-  return (
-    <span style={{
-      display: "inline-flex", alignItems: "center",
-      padding: "4px 10px", borderRadius: 9999, fontSize: 10, fontWeight: 600,
-      textTransform: "uppercase", letterSpacing: "0.06em",
-      background: t.bg, color: t.color, border: `1px solid ${t.border}`,
-    }}>
-      {label}
-    </span>
-  );
-}
-
 export function PublicQuoteDocument({
   company,
   ticket,
   token,
   isOrder,
-  isInProduction,
-  isCompleted,
   isCancelled = false,
   isRefunded = false,
   refundStatus,
@@ -156,8 +134,6 @@ export function PublicQuoteDocument({
   ticket: PublicTicketDoc;
   token: string;
   isOrder: boolean;
-  isInProduction: boolean;
-  isCompleted?: boolean;
   isCancelled?: boolean;
   isRefunded?: boolean;
   refundStatus?: string | null;
@@ -175,34 +151,6 @@ export function PublicQuoteDocument({
   const shippingRows = publicShippingDestinationRows(ticket);
   const singleShippingRow = shippingRows.length === 1 ? shippingRows[0] : null;
   const docType = isOrder ? "INVOICE" : "QUOTE";
-
-  const workflowStatus = (() => {
-    if (isCancelled && isRefunded) {
-      const refundLabel = refundStatus === "full" ? "Refunded" : "Partially Refunded";
-      return isOrder ? `Cancelled · ${refundLabel}` : `Quote Cancelled · ${refundLabel}`;
-    }
-    if (isCancelled) return isOrder ? "Cancelled" : "Quote Cancelled";
-    if (isRefunded && refundStatus === "full") return "Refunded";
-    if (isRefunded) return "Partially Refunded";
-    if (isCompleted) return "Ready for Pickup";
-    if (paymentSummary.evidencePending) return "Payment Under Review";
-    if (paymentSummary.fullyPaid) return isInProduction ? "In Production" : "Paid In Full";
-    if (paymentSummary.depositPaid && paymentSummary.balanceDue > 0.01) {
-      return "Active · Balance Due";
-    }
-    if (isInProduction) return "In Production";
-    if (isOrder) return "Active";
-    return "Awaiting Payment";
-  })();
-
-  const workflowTone: "navy" | "rush" | "success" | "warning" =
-    isCancelled ? "warning"
-    : isRefunded ? "warning"
-    : isCompleted ? "success"
-    : paymentSummary.evidencePending ? "warning"
-    : paymentSummary.fullyPaid ? "success"
-    : paymentSummary.depositPaid && paymentSummary.balanceDue > 0.01 ? "warning"
-    : "success";
 
   return (
     <div style={{ marginBottom: 24 }}>
@@ -251,11 +199,6 @@ export function PublicQuoteDocument({
             {ticket.priority && ticket.priority !== "Normal" && (
               <div><span style={{ color: MUTED }}>Priority: </span>{ticket.priority}</div>
             )}
-          </div>
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginTop: 10, flexWrap: "wrap" }}>
-            {isOrder && <StatusPill label="Order" tone="navy" />}
-            {ticket.rush && <StatusPill label="Rush" tone="rush" />}
-            <StatusPill label={workflowStatus} tone={workflowTone} />
           </div>
         </div>
       </div>

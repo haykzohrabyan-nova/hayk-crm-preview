@@ -166,7 +166,11 @@ function buildGatePreview(cfg: TicketPaymentDraft, quoteTotal: number): string {
   } else if (cfg.ticket_payment_strategy === "full") {
     parts.push(`100% payment (${fmt(quoteTotal)}) → production`);
   } else {
-    parts.push("No upfront payment (net terms) → production");
+    const ch =
+      cfg.ticket_full_channels.length > 0
+        ? cfg.ticket_full_channels.join(", ")
+        : "selected methods";
+    parts.push(`No upfront payment (net terms) → production; customer pays via ${ch} on quote link`);
   }
 
   let extra = "";
@@ -727,6 +731,39 @@ export default function QuotePaymentConfig({
               Reminder start date is set to today plus this period (e.g. 30 days → due date 30 days from today).
             </p>
           </div>
+
+          <div>
+            <p className={sectionLabel} style={{ color: "var(--color-text-muted)" }}>
+              Payment method
+            </p>
+            <p className="text-sm mb-2" style={{ color: "var(--color-text-muted)" }}>
+              Methods the customer can use on the public quote link to pay the invoice when due (or pay early).
+            </p>
+            <div className="grid grid-cols-3 gap-2">
+              {PAY_CHANNELS.map((ch) => (
+                <ChannelChip
+                  key={ch.id}
+                  id={ch.id}
+                  label={ch.label}
+                  active={fullChannels.includes(ch.id)}
+                  onToggle={toggleFullChannel}
+                />
+              ))}
+            </div>
+          </div>
+
+          {!isCashOnly && fullChannels.includes("cash") && (
+            <div
+              className="text-xs leading-relaxed px-3 py-2.5 rounded-lg"
+              style={{
+                background: "var(--color-success-bg)",
+                border: "1px solid var(--color-success-border)",
+                color: "var(--color-success)",
+              }}
+            >
+              <strong>Cash included:</strong> Customer may pay in person; record cash on the order with a receipt ID.
+            </div>
+          )}
         </div>
       )}
 

@@ -42,12 +42,13 @@ const EMPTY: AdminLeadBreakdown = {
   inbox_leads: 0,
 };
 
+/** Terminal ticket outcome for lead KPI bucket — cancelled wins over refund (matches Orders → Cancelled). */
 function ticketOutcome(tickets: TicketRow[]): "refunded" | "cancelled" | null {
-  if (tickets.some((t) => t.refund_status === "partial" || t.refund_status === "full")) {
-    return "refunded";
-  }
   if (tickets.some((t) => t.ticket_status === "cancelled")) {
     return "cancelled";
+  }
+  if (tickets.some((t) => t.refund_status === "partial" || t.refund_status === "full")) {
+    return "refunded";
   }
   return null;
 }

@@ -3,6 +3,27 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-02] — Net terms: payment methods on quote + public portal
+
+### Fixed
+- `components/quotes/quote-payment-config.tsx` — **$0 upfront / Net terms** now includes **Payment method** channel selection (same chips as pay-in-full); saved to `ticket_full_channels`
+- `/q/[token]` — net-term quotes use `ticket_full_channels` for Pay modal (was empty, so customers could not choose card/Zelle/etc.)
+
+## [2026-06-02] — Public portal footer centered
+
+### Fixed
+- `/q/[token]` page footer — company address and contact links centered (block `fit-content` links were left-aligned under `text-align: center`)
+
+## [2026-06-02] — Public portal: remove internal status pills on invoice
+
+### Changed
+- `components/public/public-quote-document.tsx` — removed Order / Rush / workflow status pills from customer `/q/[token]` invoice header; cancel/refund alerts, payment totals, and checklist still explain next steps
+
+## [2026-06-02] — Admin Total Leads: cancelled+refunded → Cancelled
+
+### Fixed
+- `lib/utils/admin-lead-breakdown.ts` — leads with a cancelled ticket (including refunded-then-cancelled, e.g. ORD-2026-014) now bucket as **Cancelled** instead of **Refunded**; active refunded orders still count as **Refunded**
+
 ## [2026-06-02] — Page-loading documentation
 
 ### Added

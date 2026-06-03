@@ -143,14 +143,17 @@ function customerName(ticket: PublicTicket): string {
   return ticket.contact_name ?? "Valued Customer";
 }
 
+const DEFAULT_FULL_PAY_CHANNELS = ["wire", "ach", "zelle", "check", "card"];
+
 function getChannels(ticket: PublicTicket): string[] {
   const strategy = ticket.ticket_payment_strategy ?? "full";
-  if (strategy === "net") return [];
-  if (strategy === "partial") {
-    return ticket.ticket_partial_channels ?? ticket.ticket_full_channels ?? [];
-  }
-  // Full strategy — try full_channels first, fall back to partial as legacy safety net
-  return ticket.ticket_full_channels ?? ticket.ticket_partial_channels ?? [];
+  const raw =
+    strategy === "partial"
+      ? (ticket.ticket_partial_channels ?? ticket.ticket_full_channels)
+      : (ticket.ticket_full_channels ?? ticket.ticket_partial_channels);
+  if (raw?.length) return raw;
+  if (strategy === "partial") return [];
+  return DEFAULT_FULL_PAY_CHANNELS;
 }
 
 function computeDepositDue(ticket: PublicTicket): number {
@@ -1543,8 +1546,6 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
             token={token}
             isOrder={isOrderDoc}
             isCancelled={isCancelled}
-            isInProduction={isInProd}
-            isCompleted={isCompleted}
             isRefunded={isRefunded}
             refundStatus={ticket.refund_status}
             refCode={refCode}
@@ -1575,12 +1576,19 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
 
         </div>
 
-        {/* Footer */}
-        <div style={{ marginTop: 20, textAlign: "center" }}>
+        {/* Footer — flex centers block links (fit-content width ignores text-align) */}
+        <div style={{
+          marginTop: 20,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          textAlign: "center",
+        }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: NAVY, marginBottom: 6 }}>{companyName}</div>
           <AddressMapLink
             company={company ?? {}}
-            lineStyle={{ fontSize: 12, color: MUTED, lineHeight: 1.8 }}
+            lineStyle={{ fontSize: 12, color: MUTED, lineHeight: 1.8, textAlign: "center" }}
+            blockStyle={{ textAlign: "center" }}
           />
           {company?.phone && (
             <a href={`tel:${String(company.phone).replace(/\s/g, "")}`} style={{ ...publicContactLinkStyle, fontSize: 12, color: MUTED, lineHeight: 1.8 }}>
