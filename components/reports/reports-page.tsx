@@ -35,6 +35,15 @@ import { memberOptionLabel } from "@/lib/utils/parse-embedded-role";
 
 type Period = "week" | "month" | "quarter";
 
+/** Shared height for Reports header filter button + team select (36px). */
+const REPORTS_TOOLBAR_CONTROL_CLASS =
+  "h-9 shrink-0 rounded-[8px] border text-[13px] font-medium outline-none transition-opacity hover:opacity-80";
+const REPORTS_TOOLBAR_CONTROL_STYLE = {
+  background: "var(--color-surface)",
+  borderColor: "var(--color-border)",
+  color: "var(--color-text-primary)",
+} as const;
+
 interface TeamMember {
   id: string;
   full_name: string;
@@ -452,15 +461,11 @@ export function ReportsPage() {
             onClick={() => setFiltersOpen(true)}
             title="Open report filters"
             aria-label="Open report filters"
-            className="inline-flex items-center gap-2 rounded-[8px] border px-3 py-2 text-[13px] font-medium transition-opacity hover:opacity-80"
-            style={{
-              background: "var(--color-surface)",
-              borderColor: "var(--color-border)",
-              color: "var(--color-text-primary)",
-            }}
+            className={`inline-flex items-center gap-2 px-3 ${REPORTS_TOOLBAR_CONTROL_CLASS}`}
+            style={REPORTS_TOOLBAR_CONTROL_STYLE}
           >
             <span
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[6px]"
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px]"
               style={{
                 background: "color-mix(in srgb, var(--color-accent) 12%, transparent)",
                 color: "var(--color-accent-dark)",
@@ -474,13 +479,9 @@ export function ReportsPage() {
           <select
             value={userId ?? ""}
             onChange={(e) => setUserId(e.target.value || null)}
-            className="rounded-[8px] border px-3 py-2 text-[13px] font-medium outline-none"
-            style={{
-              background: "var(--color-surface)",
-              borderColor: "var(--color-border)",
-              color: "var(--color-text-primary)",
-              minWidth: "180px",
-            }}
+            aria-label="Filter by team member"
+            className={`px-3 ${REPORTS_TOOLBAR_CONTROL_CLASS}`}
+            style={{ ...REPORTS_TOOLBAR_CONTROL_STYLE, minWidth: "180px" }}
           >
             <option value="">All team members</option>
             {(data?.team_members ?? []).map((m) => (
@@ -497,10 +498,9 @@ export function ReportsPage() {
             <button
               type="button"
               onClick={resetAllFilters}
-              className="inline-flex items-center gap-1.5 rounded-[6px] border px-3 py-2 text-[13px] font-medium transition-opacity hover:opacity-80"
+              className={`inline-flex items-center gap-1.5 px-3 ${REPORTS_TOOLBAR_CONTROL_CLASS}`}
               style={{
-                borderColor: "var(--color-border)",
-                background: "var(--color-surface)",
+                ...REPORTS_TOOLBAR_CONTROL_STYLE,
                 color: "var(--color-text-muted)",
               }}
             >

@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-04] — Reports toolbar control height
+
+### Fixed
+- `/reports` — period filter button and team member select share `h-9` (aligned height)
+
 ## [2026-06-04] — Payment proof resubmit portal (`/evidence`)
 
 ### Added
