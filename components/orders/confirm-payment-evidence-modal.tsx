@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, Mail } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 
 export interface ConfirmPaymentEvidenceModalProps {
@@ -14,6 +14,7 @@ export interface ConfirmPaymentEvidenceModalProps {
   error?: string | null;
   onConfirm: () => void;
   onClose: () => void;
+  onRequestEvidence?: () => void;
 }
 
 export function ConfirmPaymentEvidenceModal({
@@ -27,6 +28,7 @@ export function ConfirmPaymentEvidenceModal({
   error,
   onConfirm,
   onClose,
+  onRequestEvidence,
 }: ConfirmPaymentEvidenceModalProps) {
   if (!open) return null;
 
@@ -127,7 +129,23 @@ export function ConfirmPaymentEvidenceModal({
           </div>
         )}
 
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
+          {onRequestEvidence && (
+            <button
+              type="button"
+              disabled={confirming}
+              onClick={onRequestEvidence}
+              className="inline-flex items-center gap-1.5 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 mr-auto"
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-primary)",
+                background: "var(--color-surface)",
+              }}
+            >
+              <Mail size={14} />
+              Request updated proof
+            </button>
+          )}
           <button
             type="button"
             disabled={confirming}

@@ -51,6 +51,11 @@ const PRE_MUTATE_ACTION_KEYS = new Set([
   "invoice_destination",
   "notify_revision",
   "claim_ownership",
+  "request_payment_evidence_resubmit",
+  "request_tax_exempt_resubmit",
+  "outreach_channel",
+  "outreach_email",
+  "outreach_phone",
 ]);
 
 const ACCOUNTANT_PAYMENT_PATCH_KEYS = new Set([
@@ -89,6 +94,8 @@ export function canAccountantMutateTicket(
   if (body.record_payment === true) return true;
   if (body.approve_tax_exempt === true) return true;
   if (body.deny_tax_exempt === true) return true;
+  if (body.request_payment_evidence_resubmit === true) return true;
+  if (body.request_tax_exempt_resubmit === true) return true;
   if (body.ticket_status === "cancelled" && existing.ticket_status !== "cancelled") return true;
   if (body.ticket_status === "completed" && existing.ticket_status === "in_production") return true;
 

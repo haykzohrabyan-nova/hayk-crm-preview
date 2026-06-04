@@ -17,6 +17,8 @@ export type SmsTemplateKey =
   | "payment_confirmed"
   | "tax_exempt_approved"
   | "tax_exempt_approved_total_unchanged"
+  | "payment_evidence_resubmit_requested"
+  | "tax_exempt_resubmit_requested"
   | "quote_follow_up"
   | "quote_follow_up_no_total";
 
@@ -164,6 +166,24 @@ export const SMS_TEMPLATE_DEFINITIONS: SmsTemplateDefinition[] = [
     placeholders: ["firstName", "amount", "ref", "companyName", "link"],
     defaultBody:
       "Hi {firstName}, tax-exempt documentation for order {ref} from {companyName} is verified. Your order total is {amount}. View your order: {link}",
+  },
+  {
+    key: "payment_evidence_resubmit_requested",
+    label: "Payment evidence resubmit requested",
+    group: "payment",
+    description: "Accountant asked customer to upload updated payment proof.",
+    placeholders: ["firstName", "ref", "companyName", "link", "amount"],
+    defaultBody:
+      "Hi {firstName}, we need updated payment proof for order {ref} from {companyName}. Code: {amount} Upload: {link}",
+  },
+  {
+    key: "tax_exempt_resubmit_requested",
+    label: "Tax-exempt permit resubmit requested",
+    group: "payment",
+    description: "Accountant asked customer to upload updated tax-exempt permit.",
+    placeholders: ["firstName", "ref", "companyName", "link", "amount"],
+    defaultBody:
+      "Hi {firstName}, we need an updated tax-exempt permit for order {ref} from {companyName}. Code: {amount} Upload: {link}",
   },
   {
     key: "quote_follow_up",

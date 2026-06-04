@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -13,6 +13,7 @@ const TABS = [
   { label: "Products",            href: "/admin/settings/products",      icon: Package   },
   { label: "Integrations",        href: "/admin/settings/integrations",  icon: Plug           },
   { label: "SMS Templates",       href: "/admin/settings/sms-templates", icon: MessageSquare  },
+  { label: "Email Templates",     href: "/admin/settings/email-templates", icon: Mail         },
   { label: "Payment",             href: "/admin/settings/payment",       icon: CreditCard     },
 ] as const;
 

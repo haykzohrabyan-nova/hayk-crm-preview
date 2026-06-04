@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, FileText, Loader2, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Loader2, Mail, XCircle } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { displayContactName } from "@/lib/utils/format";
 import { computeTotalsIfTaxExemptDenied } from "@/lib/utils/tax-exempt-approval";
@@ -35,6 +35,7 @@ interface Props {
   error?: string | null;
   onClose: () => void;
   onApproved: () => void;
+  onRequestEvidence?: () => void;
 }
 
 function TotalRow({
@@ -69,6 +70,7 @@ export function ApproveTaxExemptModal({
   error: errorProp,
   onClose,
   onApproved,
+  onRequestEvidence,
 }: Props) {
   const [taxRate, setTaxRate] = useState(ticket.quote_tax_rate_percent ?? 0);
   const [preTax, setPreTax] = useState(ticket.quote_pre_tax_total ?? 0);
@@ -174,7 +176,7 @@ export function ApproveTaxExemptModal({
       role="presentation"
     >
       <div
-        className="w-full max-w-[640px] rounded-[12px] p-6 max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-[720px] rounded-[12px] p-6 max-h-[90vh] overflow-y-auto"
         style={{ background: "var(--color-surface)" }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
@@ -434,12 +436,29 @@ export function ApproveTaxExemptModal({
           </div>
         )}
 
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          {onRequestEvidence ? (
+            <button
+              type="button"
+              disabled={confirming}
+              onClick={onRequestEvidence}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-primary)",
+                background: "var(--color-surface)",
+              }}
+            >
+              <Mail size={14} />
+              Request updated permit
+            </button>
+          ) : null}
+          <div className="min-w-2 flex-1" aria-hidden />
           <button
             type="button"
             disabled={confirming}
             onClick={onClose}
-            className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium disabled:opacity-60"
+            className="shrink-0 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
             style={{
               borderColor: "var(--color-border)",
               color: "var(--color-text-muted)",
@@ -458,7 +477,7 @@ export function ApproveTaxExemptModal({
               }
               void handleDeny();
             }}
-            className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-1.5 text-[13px] font-medium disabled:opacity-60"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
             style={{
               background: "var(--color-danger)",
               color: "white",
@@ -469,13 +488,13 @@ export function ApproveTaxExemptModal({
             ) : (
               <XCircle size={14} />
             )}
-            {showDenyConfirm ? "Yes, deny tax-exempt" : "Deny tax-exempt"}
+            {showDenyConfirm ? "Yes, deny" : "Deny tax-exempt"}
           </button>
           <button
             type="button"
             disabled={confirming || finalTotal <= 0}
             onClick={() => void handleApprove()}
-            className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-1.5 text-[13px] font-medium disabled:opacity-60"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
             style={{
               background: "var(--color-btn-primary-bg)",
               color: "var(--color-btn-primary-text)",
@@ -486,7 +505,7 @@ export function ApproveTaxExemptModal({
             ) : (
               <CheckCircle2 size={14} />
             )}
-            Approve tax-exempt ({formatCurrency(finalTotal)})
+            Approve ({formatCurrency(finalTotal)})
           </button>
         </div>
       </div>

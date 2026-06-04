@@ -21,6 +21,7 @@ The page lives at `app/(app)/admin/page.tsx`. A sub-nav strip (Overview / Settin
 | Products | `/admin/settings/products` | ✅ Built | Product types, materials, material–product links |
 | Integrations | `/admin/settings/integrations` | ✅ Built | Twilio SMS + Instantly AI live; Stripe/Zelle out of scope this stage |
 | SMS Templates | `/admin/settings/sms-templates` | ✅ Built | Editable SMS/WhatsApp bodies for quote send, reminders, payment confirmed, etc. |
+| Email Templates | `/admin/settings/email-templates` | ✅ Built | Editable customer email subject, body, and CTA for all Instantly outbound messages |
 | Payment | `/admin/settings/payment` | ✅ Built | Bank / Wire / ACH and Zelle remittance shown on public quote page |
 
 Built cards show an accent-colored icon + "Open →".
@@ -293,6 +294,32 @@ Admin-editable text for all customer **SMS** and **WhatsApp** messages sent via 
 **Database:** `sms_templates` table (migration `084_sms_templates.sql`). Seeded on migrate; server falls back to catalog defaults if a row is missing.
 
 **Integrations tab** remains for Twilio/Instantly **test sends** only — message copy is not edited there.
+
+---
+
+## `/admin/settings/email-templates` — Email Templates ✅ Built
+
+Admin-editable **subject**, **message body**, and **button label (CTA)** for all customer **email** messages sent via Instantly (`lib/integrations/send-quote.ts`, `lib/integrations/resubmit-requested-outreach.ts`).
+
+**Component:** `components/admin/email-templates-section.tsx`
+
+**Groups:** Quote & order delivery · Payment reminders & confirmations · Invoice / portal links · Ready for pickup / shipped · Quote follow-up (resubmit-request keys live under Payment group in the catalog)
+
+**Placeholders:** `{firstName}`, `{companyName}`, `{ref}`, `{total}`, `{link}`, `{amount}`, `{statusLine}`, `{previousTotal}`, `{otpCode}` — see in-editor labels. Invoice-link templates use `{statusLine}` for the main paragraph (filled at send time from ticket status). Tax-exempt resubmit emails should include `{otpCode}` in the body.
+
+**Quote / order delivery emails:** Admin controls subject, intro paragraph, and CTA only. Line items, pricing summary, prepayment schedule, and payment-method list remain in `lib/integrations/quote-email-template.ts`.
+
+**Simple transactional emails** (payment reminder, invoice link, payment confirmed, tax-exempt approved, order ready, follow-up, resubmit): Admin body + CTA wrap in `wrap-transactional-email.ts`; structured blocks (order ref + amount, pickup address, revision banner) are appended automatically in `customer-email-extra-html.ts`.
+
+**Actions:** Edit → **Save all templates**; per-template **Reset default** (coded defaults in `lib/integrations/email-template-catalog.ts`).
+
+**API:**
+- `GET /api/admin/email-templates` — list with metadata + current values; `dbAvailable: false` + `migrationHint` when migration `109` not applied (UI shows defaults, Save disabled)
+- `PATCH /api/admin/email-templates` — `{ templates: { "quote_sent": { "subject", "body", "ctaLabel" }, … } }` (admin only)
+
+**Database:** `email_templates` table (migrations `109_email_templates.sql`, `110_email_templates_customer_emails.sql`). Server merges DB rows over catalog defaults via `load-email-templates.ts`.
+
+**Do not** change production email copy in `*-template.ts` builders for customer sends — use the admin UI so ops can tune wording without deploys. Staff welcome / password-reset emails remain code-only (`welcome-email-template.ts`).
 
 ---
 

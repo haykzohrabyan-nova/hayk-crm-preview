@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: Params) {
     .from("job_tickets")
     .select(
       AUTO_RELEASE_SELECT.replace(/\s+/g, " ") +
-        ", payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_receipt_id, refund_status",
+        ", payment_evidence_url, payment_evidence_submitted_at, payment_evidence_amount, ticket_receipt_id, refund_status, payment_evidence_resubmit_requested_at, payment_evidence_resubmit_received_at, payment_method_used",
     )
     .eq("public_token", token)
     .single();
@@ -43,6 +43,9 @@ export async function POST(request: NextRequest, { params }: Params) {
     payment_evidence_url: string | null;
     payment_evidence_submitted_at: string | null;
     ticket_receipt_id: string | null;
+    payment_evidence_resubmit_requested_at: string | null;
+    payment_evidence_resubmit_received_at: string | null;
+    payment_method_used: string | null;
   };
 
   const blocked = publicQuotePaymentBlockedResponse(
@@ -58,14 +61,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "This order is already paid in full." }, { status: 400 });
   }
 
-  const requireConfirm = row.ticket_require_client_confirm ?? true;
-  if (requireConfirm && !row.client_confirmed) {
-    return NextResponse.json(
-      { error: "Please confirm the quote before submitting payment.", code: "CONFIRM_REQUIRED" },
-      { status: 409 },
-    );
-  }
-
   const isFollowUpPayment =
     row.ticket_status === "in_production" ||
     row.ticket_status === "order" ||
@@ -73,7 +68,23 @@ export async function POST(request: NextRequest, { params }: Params) {
     !!row.deposit_paid_at ||
     alreadyPaidBefore > 0.01;
 
-  if (row.payment_evidence_url && !isFollowUpPayment) {
+  const resubmitRequested = !!row.payment_evidence_resubmit_requested_at;
+  const resubmitReceived =
+    !!row.payment_evidence_resubmit_received_at && !resubmitRequested;
+
+  if (resubmitRequested && !resubmitReceived) {
+    // Replacement proof only — skip quote confirmation gate on dedicated /evidence page.
+  } else {
+    const requireConfirm = row.ticket_require_client_confirm ?? true;
+    if (requireConfirm && !row.client_confirmed) {
+      return NextResponse.json(
+        { error: "Please confirm the quote before submitting payment.", code: "CONFIRM_REQUIRED" },
+        { status: 409 },
+      );
+    }
+  }
+
+  if (row.payment_evidence_url && !isFollowUpPayment && !resubmitRequested) {
     return NextResponse.json({ error: "Payment evidence already submitted." }, { status: 409 });
   }
 
@@ -87,6 +98,16 @@ export async function POST(request: NextRequest, { params }: Params) {
   const method    = String(formData.get("method") ?? "").trim();
   const receiptId = String(formData.get("receiptId") ?? "").trim() || null;
   const file      = formData.get("file") as File | null;
+
+  if (resubmitReceived) {
+    return NextResponse.json(
+      {
+        error: "Updated payment proof was already submitted. Contact us if you need to send another file.",
+        code: "ALREADY_SUBMITTED",
+      },
+      { status: 409 },
+    );
+  }
 
   if (!method) {
     return NextResponse.json({ error: "Payment method is required." }, { status: 400 });
@@ -116,8 +137,14 @@ export async function POST(request: NextRequest, { params }: Params) {
     }
   }
 
+  const isEvidenceResubmit = resubmitRequested && !!file;
+
   let evidenceStoragePath: string | null = null;
   if (file) {
+    if (isEvidenceResubmit && row.payment_evidence_url) {
+      await admin.storage.from("payment-evidence").remove([row.payment_evidence_url]);
+    }
+
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const storagePath = `${row.id}/${randomUUID()}-${safeName}`;
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -136,7 +163,6 @@ export async function POST(request: NextRequest, { params }: Params) {
     evidenceStoragePath = storagePath;
   }
 
-  const now = new Date().toISOString();
   const alreadyPaid = alreadyPaidBefore;
   const newTotal    = Math.min(alreadyPaid + amount, quoteTotal);
   const fullyPaid   = newTotal >= quoteTotal - 0.01;
@@ -155,6 +181,8 @@ export async function POST(request: NextRequest, { params }: Params) {
     });
   }
 
+  const now = new Date().toISOString();
+
   const patch: Record<string, unknown> = {
     updated_at:                    now,
     payment_method_used:           method,
@@ -164,6 +192,12 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (evidenceStoragePath) {
     patch.payment_evidence_url = evidenceStoragePath;
     patch.payment_evidence_reviewed_at = null;
+    if (isEvidenceResubmit) {
+      patch.payment_evidence_resubmit_requested_at = null;
+      patch.payment_evidence_resubmit_requested_by_id = null;
+      patch.payment_evidence_resubmit_reason = null;
+      patch.payment_evidence_resubmit_received_at = now;
+    }
   }
   if (receiptId) patch.ticket_receipt_id = receiptId;
 
@@ -208,7 +242,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
   if (needsAccountantReview) {
     activityRows.push({
-      type: "ticket_payment_evidence_submitted",
+      type: isEvidenceResubmit ? "ticket_payment_evidence_resubmitted" : "ticket_payment_evidence_submitted",
       lead_id: row.linked_lead_id ?? null,
       customer_id: row.customer_id ?? null,
       ticket_id: row.id,

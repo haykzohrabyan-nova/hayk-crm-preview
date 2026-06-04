@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
-import { FileText, CheckCircle2, Clock, Loader2, CreditCard, ExternalLink, RotateCcw } from "lucide-react";
+import { FileText, CheckCircle2, Clock, Loader2, CreditCard, ExternalLink, RotateCcw, Mail } from "lucide-react";
 import { stripePaymentDashboardUrl } from "@/lib/stripe/dashboard-url";
 import {
   GLOBAL_LOADING_MESSAGES,
@@ -39,6 +39,14 @@ import {
   ApproveTaxExemptModal,
   type TaxExemptApproveTicket,
 } from "@/components/orders/approve-tax-exempt-modal";
+import { RequestEvidenceResubmitFlow } from "@/components/orders/request-evidence-resubmit-flow";
+import type { EvidenceResubmitMode } from "@/lib/client/request-evidence-resubmit";
+import { ResubmitStatusCell } from "@/components/orders/resubmit-status-cell";
+import {
+  resolvePaymentEvidenceResubmitListStatus,
+  resolveTaxExemptResubmitListStatus,
+  resubmitListStatusIsVisible,
+} from "@/lib/utils/evidence-resubmit-list-status";
 import { isLegacyTaxExemptMissingPermitFile } from "@/lib/utils/tax-exempt-approval";
 import { ListPagination } from "@/components/ui/list-pagination";
 import {
@@ -75,7 +83,13 @@ interface PaymentOrder {
   payment_paid_at?: string | null;
   payment_evidence_submitted_at: string | null;
   payment_evidence_reviewed_at: string | null;
+  payment_evidence_resubmit_requested_at?: string | null;
+  payment_evidence_resubmit_received_at?: string | null;
   payment_evidence_url: string | null;
+  public_token?: string | null;
+  ticket_quote_channel?: "sms" | "email" | "both" | null;
+  ticket_dest_email?: string | null;
+  ticket_dest_phone?: string | null;
   payment_evidence_amount: number | null;
   stripe_payment_intent_id: string | null;
   stripe_receipt_url: string | null;
@@ -92,6 +106,9 @@ interface PaymentOrder {
   sales_permit_storage_path?: string | null;
   sales_permit_submitted_at?: string | null;
   sales_permit_reviewed_at?: string | null;
+  sales_permit_resubmit_requested_at?: string | null;
+  sales_permit_resubmit_received_at?: string | null;
+  sales_permit_resubmit_token?: string | null;
   quote_pre_tax_total?: number | null;
   quote_tax_rate_percent?: number | null;
   quote_tax_amount?: number | null;
@@ -103,6 +120,8 @@ interface PaymentOrder {
     first_name: string | null;
     last_name: string | null;
     company: string | null;
+    email?: string | null;
+    phone?: string | null;
   } | null;
   created_by: { id: string; full_name: string | null } | null;
   refund_status?: "none" | "partial" | "full" | string | null;
@@ -211,6 +230,8 @@ export function PaymentsPage() {
   const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
   const [confirmTarget, setConfirmTarget] = useState<PaymentOrder | null>(null);
   const [taxExemptTarget, setTaxExemptTarget] = useState<PaymentOrder | null>(null);
+  const [resubmitTarget, setResubmitTarget] = useState<PaymentOrder | null>(null);
+  const [resubmitMode, setResubmitMode] = useState<EvidenceResubmitMode | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
   const [taxExemptConfirmErr, setTaxExemptConfirmErr] = useState<string | null>(null);
@@ -306,14 +327,77 @@ export function PaymentsPage() {
   const isTaxExemptTab = activeTab === "tax_exempt";
   const isApprovedTab = activeTab === "approved";
   const isRefundedTab = activeTab === "refunded";
-  const desktopCols = isRefundedTab ? 10 : isApprovedTab ? 10 : isTaxExemptTab ? 8 : 9;
-  const headers = isRefundedTab
-    ? ["", "Order", "Customer", "Paid via", "Refunded via", "Status", "Total refunded", "Last refunded", "Refunded by", ""]
-    : isTaxExemptTab
-      ? ["", "Order", "Customer", "Created by", "Total", "Permit #", "Submitted", "Actions"]
-      : isPendingTab
-        ? ["", "Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Actions"]
-        : ["", "Order", "Customer", "Created by", "Claimed", "Payment For", "Method", "Submitted", "Approved", ""];
+
+  const showResubmitColumn = useMemo(() => {
+    if (!isPendingTab && !isTaxExemptTab) return false;
+    return orders.some((order) =>
+      resubmitListStatusIsVisible(
+        isTaxExemptTab
+          ? resolveTaxExemptResubmitListStatus(order)
+          : resolvePaymentEvidenceResubmitListStatus(order),
+      ),
+    );
+  }, [orders, isPendingTab, isTaxExemptTab]);
+
+  const headers = useMemo(() => {
+    if (isRefundedTab) {
+      return [
+        "",
+        "Order",
+        "Customer",
+        "Paid via",
+        "Refunded via",
+        "Status",
+        "Total refunded",
+        "Last refunded",
+        "Refunded by",
+        "",
+      ];
+    }
+    if (isTaxExemptTab) {
+      const cols = [
+        "",
+        "Order",
+        "Customer",
+        "Created by",
+        "Total",
+        "Permit #",
+        "Submitted",
+      ];
+      if (showResubmitColumn) cols.push("Resubmit status");
+      cols.push("Actions");
+      return cols;
+    }
+    if (isPendingTab) {
+      const cols = [
+        "",
+        "Order",
+        "Customer",
+        "Created by",
+        "Claimed",
+        "Payment For",
+        "Method",
+        "Submitted",
+      ];
+      if (showResubmitColumn) cols.push("Resubmit status");
+      cols.push("Actions");
+      return cols;
+    }
+    return [
+      "",
+      "Order",
+      "Customer",
+      "Created by",
+      "Claimed",
+      "Payment For",
+      "Method",
+      "Submitted",
+      "Approved",
+      "",
+    ];
+  }, [isRefundedTab, isTaxExemptTab, isPendingTab, showResubmitColumn]);
+
+  const desktopCols = headers.length;
 
   const paymentsReturnPath = "/payments";
 
@@ -335,6 +419,25 @@ export function PaymentsPage() {
     }
     setConfirmErr(null);
     setConfirmTarget(order);
+  }
+
+  function openResubmitModal(order: PaymentOrder, mode: EvidenceResubmitMode, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    setResubmitTarget(order);
+    setResubmitMode(mode);
+  }
+
+  function orderForResubmitFlow(order: PaymentOrder) {
+    return {
+      id: order.id,
+      reference_code: order.reference_code,
+      public_token: order.public_token,
+      contact_email: order.contact_email,
+      ticket_quote_channel: order.ticket_quote_channel,
+      ticket_dest_email: order.ticket_dest_email,
+      ticket_dest_phone: order.ticket_dest_phone,
+      customer: order.customer,
+    };
   }
 
   function openTaxExemptModal(order: PaymentOrder, e?: React.MouseEvent) {
@@ -540,12 +643,14 @@ export function PaymentsPage() {
                 const isConfirming = confirmingId === order.id;
                 const rowBg = i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)";
                 const isOpen = expandedId === order.id;
+                const paymentResubmitStatus = resolvePaymentEvidenceResubmitListStatus(order);
 
                 if (isTaxExemptTab) {
                   const permitHref = `/api/tickets/${order.id}/sales-permit`;
                   const legacyMissing = isLegacyTaxExemptMissingPermitFile(order);
                   const submittedAt = order.sales_permit_submitted_at;
                   const submittedRel = relativeTime(submittedAt);
+                  const taxResubmitStatus = resolveTaxExemptResubmitListStatus(order);
                   const orderHref = appendReturnPath(
                     `/orders/${ticketPathSegment(order)}`,
                     paymentsReturnPath,
@@ -615,6 +720,11 @@ export function PaymentsPage() {
                           </div>
                         )}
                       </td>
+                      {showResubmitColumn && (
+                        <td className="px-5 py-4 align-middle whitespace-nowrap">
+                          <ResubmitStatusCell status={taxResubmitStatus} />
+                        </td>
+                      )}
                       <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-2 flex-nowrap">
                           <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
@@ -632,7 +742,21 @@ export function PaymentsPage() {
                             >
                               Upload file
                             </a>
-                          ) : null}
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => openResubmitModal(order, "tax_exempt_resubmit", e)}
+                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                              style={{
+                                borderColor: "var(--color-border)",
+                                color: "var(--color-text-primary)",
+                                background: "var(--color-surface)",
+                              }}
+                            >
+                              <Mail size={14} />
+                              Request
+                            </button>
+                          )}
                           {order.sales_permit_storage_path && (
                             <a
                               href={permitHref}
@@ -655,7 +779,7 @@ export function PaymentsPage() {
                             type="button"
                             disabled={legacyMissing}
                             onClick={(e) => openTaxExemptModal(order, e)}
-                            className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium whitespace-nowrap disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border border-transparent whitespace-nowrap disabled:opacity-50"
                             style={{
                               background: "var(--color-btn-primary-bg)",
                               color: "var(--color-btn-primary-text)",
@@ -858,6 +982,12 @@ export function PaymentsPage() {
                       </div>
                     </td>
 
+                    {isPendingTab && showResubmitColumn && (
+                      <td className="px-5 py-4 align-middle whitespace-nowrap">
+                        <ResubmitStatusCell status={paymentResubmitStatus} />
+                      </td>
+                    )}
+
                     {isApprovedTab ? (
                       <>
                         <td className="px-5 py-4 align-middle whitespace-nowrap">
@@ -957,9 +1087,22 @@ export function PaymentsPage() {
                           <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
                           <button
                             type="button"
+                            onClick={(e) => openResubmitModal(order, "payment_evidence_resubmit", e)}
+                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
+                            style={{
+                              borderColor: "var(--color-border)",
+                              color: "var(--color-text-primary)",
+                              background: "var(--color-surface)",
+                            }}
+                          >
+                            <Mail size={14} />
+                            Request
+                          </button>
+                          <button
+                            type="button"
                             disabled={isConfirming}
                             onClick={(e) => openConfirmModal(order, e)}
-                            className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
+                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border border-transparent disabled:opacity-60 whitespace-nowrap"
                             style={{
                               background: "var(--color-btn-primary-bg)",
                               color: "var(--color-btn-primary-text)",
@@ -1010,6 +1153,7 @@ export function PaymentsPage() {
               const permitHref = `/api/tickets/${order.id}/sales-permit`;
               const legacyMissing = isLegacyTaxExemptMissingPermitFile(order);
               const submittedRel = relativeTime(order.sales_permit_submitted_at);
+              const taxResubmitStatus = resolveTaxExemptResubmitListStatus(order);
               const orderHref = appendReturnPath(
                 `/orders/${ticketPathSegment(order)}`,
                 paymentsReturnPath,
@@ -1056,6 +1200,28 @@ export function PaymentsPage() {
                         )
                       }
                     />
+                    {taxResubmitStatus.kind !== "none" && (
+                      <MobileListCardRow
+                        label="Resubmit"
+                        value={
+                          <>
+                            <span
+                              style={{
+                                color:
+                                  taxResubmitStatus.kind === "requested"
+                                    ? "var(--color-warning)"
+                                    : "var(--color-success)",
+                              }}
+                            >
+                              {taxResubmitStatus.label}
+                            </span>
+                            <span className="block text-[11px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                              {formatDateTime(taxResubmitStatus.at)}
+                            </span>
+                          </>
+                        }
+                      />
+                    )}
                   </MobileListCardFields>
                   <TicketLineItemsQuickPreview
                     ticketId={order.id}
@@ -1069,6 +1235,21 @@ export function PaymentsPage() {
                       className="w-full justify-center px-2.5 py-2"
                       onClick={(e) => openPaymentDetail(order, e)}
                     />
+                    {!legacyMissing && (
+                      <button
+                        type="button"
+                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
+                        style={{
+                          borderColor: "var(--color-border)",
+                          color: "var(--color-text-primary)",
+                          background: "var(--color-bg)",
+                        }}
+                        onClick={(e) => openResubmitModal(order, "tax_exempt_resubmit", e)}
+                      >
+                        <Mail size={14} />
+                        Request updated permit
+                      </button>
+                    )}
                     {legacyMissing && (
                       <a
                         href={orderHref}
@@ -1103,7 +1284,7 @@ export function PaymentsPage() {
                     <button
                       type="button"
                       disabled={legacyMissing}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-4 py-2.5 text-[13px] font-medium disabled:opacity-50"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border border-transparent disabled:opacity-50"
                       style={{
                         background: "var(--color-btn-primary-bg)",
                         color: "var(--color-btn-primary-text)",
@@ -1197,6 +1378,8 @@ export function PaymentsPage() {
               );
             }
 
+            const paymentResubmitStatus = resolvePaymentEvidenceResubmitListStatus(order);
+
             return (
               <MobileListCard
                 key={order.id}
@@ -1258,6 +1441,28 @@ export function PaymentsPage() {
                       </>
                     }
                   />
+                  {isPendingTab && paymentResubmitStatus.kind !== "none" && (
+                    <MobileListCardRow
+                      label="Resubmit"
+                      value={
+                        <>
+                          <span
+                            style={{
+                              color:
+                                paymentResubmitStatus.kind === "requested"
+                                  ? "var(--color-warning)"
+                                  : "var(--color-success)",
+                            }}
+                          >
+                            {paymentResubmitStatus.label}
+                          </span>
+                          <span className="block text-[11px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
+                            {formatDateTime(paymentResubmitStatus.at)}
+                          </span>
+                        </>
+                      }
+                    />
+                  )}
                   {isApprovedTab && (
                     <MobileListCardRow
                       label="Approved"
@@ -1279,6 +1484,21 @@ export function PaymentsPage() {
                     className="w-full justify-center px-2.5 py-2"
                     onClick={(e) => openPaymentDetail(order, e)}
                   />
+                  {isPendingTab && (
+                    <button
+                      type="button"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
+                      style={{
+                        borderColor: "var(--color-border)",
+                        color: "var(--color-text-primary)",
+                        background: "var(--color-bg)",
+                      }}
+                      onClick={(e) => openResubmitModal(order, "payment_evidence_resubmit", e)}
+                    >
+                      <Mail size={14} />
+                      Request updated proof
+                    </button>
+                  )}
                   {order.payment_evidence_url && (
                     <a
                       href={`/api/tickets/${order.id}/evidence`}
@@ -1321,7 +1541,7 @@ export function PaymentsPage() {
                       type="button"
                       disabled={isConfirming}
                       onClick={(e) => openConfirmModal(order, e)}
-                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-4 py-2.5 text-[13px] font-medium disabled:opacity-60"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border border-transparent disabled:opacity-60"
                       style={{
                         background: "var(--color-btn-primary-bg)",
                         color: "var(--color-btn-primary-text)",
@@ -1370,6 +1590,14 @@ export function PaymentsPage() {
         onConfirm={() => {
           if (confirmTarget) void handleConfirm(confirmTarget);
         }}
+        onRequestEvidence={
+          confirmTarget
+            ? () => {
+                setConfirmTarget(null);
+                openResubmitModal(confirmTarget, "payment_evidence_resubmit");
+              }
+            : undefined
+        }
         onClose={() => {
           if (confirmingId) return;
           setConfirmTarget(null);
@@ -1387,9 +1615,31 @@ export function PaymentsPage() {
             setTaxExemptTarget(null);
             setTaxExemptConfirmErr(null);
           }}
+          onRequestEvidence={() => {
+            const target = taxExemptTarget;
+            setTaxExemptTarget(null);
+            openResubmitModal(target, "tax_exempt_resubmit");
+          }}
           onApproved={() => {
             setTaxExemptTarget(null);
             setTaxExemptConfirmErr(null);
+            void refreshPageData(true);
+          }}
+        />
+      )}
+
+      {resubmitTarget && resubmitMode && (
+        <RequestEvidenceResubmitFlow
+          ticket={orderForResubmitFlow(resubmitTarget)}
+          mode={resubmitMode}
+          open
+          onClose={() => {
+            setResubmitTarget(null);
+            setResubmitMode(null);
+          }}
+          onSuccess={() => {
+            setResubmitTarget(null);
+            setResubmitMode(null);
             void refreshPageData(true);
           }}
         />

@@ -61,7 +61,7 @@ Copy `.env.local.example` → `.env.local` and fill in values from **Supabase �
 ### Key rules
 - `proxy.ts` enforces AAL2 on all **app pages**. It does **not** run auth on `/api/*` — Route Handlers call `requireSession()` / `requireAdmin()` instead.
 - **`requireSession()`** enforces MFA on API routes (matches page gate). Trusted-device cookie (`bazaar_mfa_trust`) skips verify when valid.
-- **Public paths** (`/q/*`, `/policy`, `/api/public/*`): no staff auth; logged-in staff visiting `/q/{token}` skip RBAC/MFA redirects for portal preview.
+- **Public paths** (`/q/*`, `/permit/*`, `/policy`, `/api/public/*`): no staff auth; logged-in staff visiting `/q/{token}` or `/permit/{token}` skip RBAC/MFA redirects for portal preview.
 - After `mfa.verify()`, always call `refreshSession()` then use `window.location.assign()` (not `router.push`) so the new cookies are sent before `proxy.ts` runs on the next request.
 - All redirects go through `lib/auth/safe-return-path.ts` to prevent open redirect attacks.
 - Default post-login destination via `lib/auth/resolve-default-home.ts`: SDR → `/leads`, Sales → `/sales`, Accountant → `/payments`, Admin → `/dashboard`
@@ -139,7 +139,7 @@ BazarCRM/
 │   │   ├── admin/
 │   │   │   ├── page.tsx                  ✓ Overview card grid
 │   │   │   ├── loading.tsx               ✓ Route-level skeleton
-│   │   │   └── settings/[tab]/page.tsx   ✓ users | roles | dropdowns | products | company | integrations | sms-templates | payment
+│   │   │   └── settings/[tab]/page.tsx   ✓ users | roles | dropdowns | products | company | integrations | sms-templates | email-templates | payment
 │   │   ├── settings/page.tsx             ✓ Stub — redirects conceptually to profile (not in nav)
 │   │   └── profile/page.tsx              ✓ Personal profile stub (sidebar user card → /profile; universal in proxy.ts)
 │   ├── api/
@@ -238,6 +238,7 @@ BazarCRM/
 │   │   ├── payment-section.tsx           ✓ Payment remittance info (Wire/ACH/Zelle)
 │   │   ├── integrations-section.tsx      ✓ Twilio SMS + Instantly AI live (Stripe/Zelle out of scope)
 │   │   ├── sms-templates-section.tsx       ✓ Admin-editable SMS/WhatsApp bodies
+│   │   ├── email-templates-section.tsx     ✓ Admin-editable customer email subject/body/CTA
 │   │   ├── activity-log-section.tsx      ✓ Paginated system activity feed
 │   │   └── user-activity-section.tsx     ✓ Per-user session KPI cards + history table
 │   ├── auth/

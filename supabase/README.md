@@ -1,28 +1,27 @@
 # Supabase database
 
-## Schema sources
+## Single source of truth
 
-| Source | Use |
-|--------|-----|
-| **`schema.sql`** | Fresh installs — idempotent full DDL + seeds in Supabase SQL Editor |
-| **`migrations/`** | Incremental deltas for **existing** production DBs (currently `077`–`102`) |
+**`schema.sql`** — idempotent full DDL + seeds for a **fresh** Supabase project. Run once in the SQL Editor on an empty `public` schema.
 
-**New project:** run `schema.sql` once.
+Includes: tables, indexes, RLS (through security hardening 096), functions, triggers, views, Realtime, storage buckets, SMS/email template seeds, roles/pages/permissions, lookups, product catalog, `company_settings`.
 
-**Existing production DB:** apply only new migration files you have not run yet. Do **not** re-run the full `schema.sql` on a live database. Sales `/quotes` + `/orders` on live DBs: grant via **Admin → Roles** (or already present in `role_permissions`).
+Excludes: one-time **backfills** (e.g. staff payment activity rows) — those were run on production once and are not needed on new installs.
 
-## Recent migrations (reference)
+## Existing production database
 
-| Migration | Purpose |
-|-----------|---------|
-| `081_grant_sdr_completed_page.sql` | SDR `/quotes`, `/orders`, `/completed` |
+Do **not** re-run the full `schema.sql` on a live database with data.
+
+Patch missing objects by running only the relevant `CREATE TABLE` / `ALTER TABLE` / policy blocks copied from `schema.sql`, or rebuild a staging project from the full file.
 
 ## Local test reset
-
-Wipe tickets, leads, customers, and payment evidence (keeps users + settings):
 
 ```bash
 npm run reset-test-data
 ```
 
 Requires `.env.local` with `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SECRET_KEY`.
+
+## `migrations/`
+
+The numbered migration files were removed after consolidation. See `migrations/README.md`.

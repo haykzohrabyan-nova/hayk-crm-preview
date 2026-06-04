@@ -1,9 +1,20 @@
 # BazarCRM — Session Summary & Complete Plan
-**Last updated:** June 2, 2026 (narrative log — not auto-synced)
+**Last updated:** June 4, 2026 (narrative log — not auto-synced)
 
 > **Authoritative specs (May 2026):** Payment refunds, Stripe Checkout, cancel rules, and public portal blocks → [`feature-specs/payment-refunds.md`](feature-specs/payment-refunds.md), [`feature-specs/invoice-payment.md`](feature-specs/invoice-payment.md), [`api-contract.md`](api-contract.md). This file is a **historical build diary**; older sections may describe pre-refund behaviour.
 
 **Status:** MVP complete + performance Phase 3 + **Jun 2026: list SWR cache, detail bootstrap APIs, Sales/Payments pagination, realtime 0ms** + security audit (May 26) + **May 29: security hardening** + line attachment lifecycle, public portal Realtime.
+
+---
+
+## June 4, 2026 — Admin email templates + evidence resubmit
+
+- **Email templates:** `email_templates` table (migrations **109**, **110**); Admin → Settings → **Email Templates** — subject, body, CTA for all customer Instantly emails (21 keys, mirrors SMS catalog)
+- **Send path:** `customer-email-builders.ts` + `load-email-templates.ts`; quote/order keeps line-item HTML in `quote-email-template.ts` with admin intro/CTA
+- **Resubmit:** Migration **108**; accountant **Request** on `/payments`; payment proof on `/q/{token}`; tax-exempt on `/permit/{token}` + OTP; copy from admin templates only (no staff message in modal)
+- **Payments UX:** **Resubmit status** column only when at least one row on the page has activity; `ApproveTaxExemptModal` wider with all footer buttons on one row
+- **Docs:** full sync in `docs/` (see `CHANGELOG.md` 2026-06-04 entries); **build:** `npm run build` passes before deploy
+- **Deploy:** run Supabase migrations **108**, **109**, **110** on production before relying on Email Templates save or resubmit columns
 
 ---
 
@@ -1046,7 +1057,7 @@ All unbuilt pages now show their full feature spec as a styled in-app page inste
 | `/statistics` | main | ❌ Removed — Dashboard handles all KPIs and analytics |
 | `/reports` | main | ✅ Built — cash collected, rep scorecards, payment ledger, awaiting collection (admin only) |
 | `/activity-log` | main | ✅ Built — 2-tab layout: "Order / Lead Activity" + "User Activity" (admin) |
-| `/admin` | admin | ✅ Built — card grid overview (Users, Roles, Dropdowns, Company, Products, Integrations, SMS Templates, Payment) |
+| `/admin` | admin | ✅ Built — card grid overview (Users, Roles, Dropdowns, Company, Products, Integrations, SMS Templates, Email Templates, Payment) |
 | `/admin/settings/users` | admin-sub | ✅ Built |
 | `/admin/settings/roles` | admin-sub | ✅ Built |
 | `/admin/settings/dropdowns` | admin-sub | ✅ Built — all lead + order/quote categories |

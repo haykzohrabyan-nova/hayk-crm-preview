@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail } from "lucide-react";
 
 const CARDS = [
   {
@@ -49,6 +49,13 @@ const CARDS = [
     description: "Edit SMS and WhatsApp message text for quotes, payments, invoice links, pickup, and follow-ups.",
     href: "/admin/settings/sms-templates",
     icon: MessageSquare,
+    built: true,
+  },
+  {
+    title: "Email Templates",
+    description: "Edit customer email subject, body, and button labels for payment and tax-exempt resubmit requests.",
+    href: "/admin/settings/email-templates",
+    icon: Mail,
     built: true,
   },
   {

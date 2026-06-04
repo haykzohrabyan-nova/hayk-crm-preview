@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, CheckCircle2, Loader2 } from "lucide-react";
+import { FileText, CheckCircle2, Mail } from "lucide-react";
 import { isTaxExemptApprovalPending } from "@/lib/utils/invoice-payment-summary";
 import { isLegacyTaxExemptMissingPermitFile } from "@/lib/utils/tax-exempt-approval";
 import { formatDateTime } from "@/lib/utils/format";
@@ -10,11 +10,21 @@ import {
   DetailSection,
 } from "@/components/quotes/quote-detail/detail-layout-primitives";
 import { ApproveTaxExemptModal, type TaxExemptApproveTicket } from "@/components/orders/approve-tax-exempt-modal";
+import { RequestEvidenceResubmitFlow } from "@/components/orders/request-evidence-resubmit-flow";
 
 export interface TaxExemptReviewTicket extends TaxExemptApproveTicket {
   sales_permit_storage_path?: string | null;
   sales_permit_reviewed_at?: string | null;
   sales_permit_reviewed_by?: { id: string; full_name: string | null } | null;
+  contact_email?: string | null;
+  ticket_quote_channel?: "sms" | "email" | "both" | null;
+  ticket_dest_email?: string | null;
+  ticket_dest_phone?: string | null;
+  sales_permit_resubmit_token?: string | null;
+  customer?: TaxExemptApproveTicket["customer"] & {
+    email?: string | null;
+    phone?: string | null;
+  };
 }
 
 interface Props {
@@ -37,6 +47,7 @@ export function TaxExemptReviewSection({
   embedded = false,
 }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [resubmitModalOpen, setResubmitModalOpen] = useState(false);
   const pending = isTaxExemptApprovalPending(ticket);
   const legacyMissingFile = isLegacyTaxExemptMissingPermitFile(ticket);
   const permitHref = `/api/tickets/${ticket.reference_code ?? ticket.id}/sales-permit`;
@@ -101,18 +112,33 @@ export function TaxExemptReviewSection({
                 </a>
               )}
               {canApprove && (
-                <button
-                  type="button"
-                  onClick={() => setModalOpen(true)}
-                  className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium"
-                  style={{
-                    background: "var(--color-btn-primary-bg)",
-                    color: "var(--color-btn-primary-text)",
-                  }}
-                >
-                  <CheckCircle2 size={14} />
-                  Confirm tax-exempt
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setResubmitModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border"
+                    style={{
+                      borderColor: "var(--color-border)",
+                      color: "var(--color-text-primary)",
+                      background: "var(--color-bg)",
+                    }}
+                  >
+                    <Mail size={14} />
+                    Request updated permit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium"
+                    style={{
+                      background: "var(--color-btn-primary-bg)",
+                      color: "var(--color-btn-primary-text)",
+                    }}
+                  >
+                    <CheckCircle2 size={14} />
+                    Confirm tax-exempt
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -166,11 +192,34 @@ export function TaxExemptReviewSection({
         ticket={ticket}
         permitViewHref={permitHref}
         onClose={() => setModalOpen(false)}
+        onRequestEvidence={() => {
+          setModalOpen(false);
+          setResubmitModalOpen(true);
+        }}
         onApproved={() => {
           onApproved?.();
           if (afterApprovePath) {
             window.location.assign(afterApprovePath);
           }
+        }}
+      />
+
+      <RequestEvidenceResubmitFlow
+        ticket={{
+          id: ticket.id,
+          reference_code: ticket.reference_code,
+          contact_email: ticket.contact_email,
+          ticket_quote_channel: ticket.ticket_quote_channel,
+          ticket_dest_email: ticket.ticket_dest_email,
+          ticket_dest_phone: ticket.ticket_dest_phone,
+          customer: ticket.customer,
+        }}
+        mode="tax_exempt_resubmit"
+        open={resubmitModalOpen}
+        onClose={() => setResubmitModalOpen(false)}
+        onSuccess={() => {
+          setResubmitModalOpen(false);
+          onApproved?.();
         }}
       />
     </>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { FileText, CheckCircle2, Loader2, CreditCard } from "lucide-react";
+import { FileText, CheckCircle2, Loader2, CreditCard, Mail } from "lucide-react";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import {
   inferPaymentEvidenceMode,
@@ -23,6 +23,7 @@ import {
 import { StripeEvidencePanel } from "@/components/ui/stripe-evidence-panel";
 import { TaxExemptReviewSection, type TaxExemptReviewTicket } from "@/components/orders/tax-exempt-review-section";
 import { isTaxExemptApprovalPending } from "@/lib/utils/invoice-payment-summary";
+import { RequestEvidenceResubmitFlow } from "@/components/orders/request-evidence-resubmit-flow";
 
 const CHANNEL_LABELS: Record<string, string> = {
   wire:    "Wire Transfer",
@@ -61,6 +62,7 @@ export function PaymentDetailOverview({
 }) {
   const router = useRouter();
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [resubmitModalOpen, setResubmitModalOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
 
@@ -184,19 +186,35 @@ export function PaymentDetailOverview({
                 </a>
               )}
               {canConfirm && (
-                <button
-                  type="button"
-                  disabled={confirming}
-                  onClick={openConfirmModal}
-                  className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60"
-                  style={{
-                    background: "var(--color-btn-primary-bg)",
-                    color: "var(--color-btn-primary-text)",
-                  }}
-                >
-                  {confirming ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
-                  Confirm payment
-                </button>
+                <>
+                  <button
+                    type="button"
+                    disabled={confirming}
+                    onClick={() => setResubmitModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border disabled:opacity-60"
+                    style={{
+                      borderColor: "var(--color-border)",
+                      color: "var(--color-text-primary)",
+                      background: "var(--color-bg)",
+                    }}
+                  >
+                    <Mail size={14} />
+                    Request updated proof
+                  </button>
+                  <button
+                    type="button"
+                    disabled={confirming}
+                    onClick={openConfirmModal}
+                    className="inline-flex items-center gap-1.5 rounded-[6px] px-4 py-2 text-[13px] font-medium disabled:opacity-60"
+                    style={{
+                      background: "var(--color-btn-primary-bg)",
+                      color: "var(--color-btn-primary-text)",
+                    }}
+                  >
+                    {confirming ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    Confirm payment
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -245,10 +263,35 @@ export function PaymentDetailOverview({
         confirming={confirming}
         error={confirmErr}
         onConfirm={() => void handleConfirm()}
+        onRequestEvidence={() => {
+          setConfirmModalOpen(false);
+          setResubmitModalOpen(true);
+        }}
         onClose={() => {
           if (confirming) return;
           setConfirmModalOpen(false);
           setConfirmErr(null);
+        }}
+      />
+
+      <RequestEvidenceResubmitFlow
+        ticket={{
+          id: ticket.id,
+          reference_code: ticket.reference_code ?? null,
+          public_token: (ticket as { public_token?: string | null }).public_token,
+          contact_email: (ticket as { contact_email?: string | null }).contact_email,
+          ticket_quote_channel: (ticket as { ticket_quote_channel?: "sms" | "email" | "both" | null })
+            .ticket_quote_channel,
+          ticket_dest_email: (ticket as { ticket_dest_email?: string | null }).ticket_dest_email,
+          ticket_dest_phone: (ticket as { ticket_dest_phone?: string | null }).ticket_dest_phone,
+          customer: (ticket as { customer?: { email?: string | null; phone?: string | null } | null }).customer,
+        }}
+        mode="payment_evidence_resubmit"
+        open={resubmitModalOpen}
+        onClose={() => setResubmitModalOpen(false)}
+        onSuccess={() => {
+          setResubmitModalOpen(false);
+          router.refresh();
         }}
       />
     </DetailSection>

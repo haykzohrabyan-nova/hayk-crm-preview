@@ -1,4 +1,5 @@
 import { formatCurrency } from "@/lib/utils/format";
+import { resolveTaxExemptResubmitListStatus } from "@/lib/utils/evidence-resubmit-list-status";
 
 export type TaxExemptSearchRow = {
   id: string;
@@ -8,6 +9,9 @@ export type TaxExemptSearchRow = {
   contact_email?: string | null;
   sales_permit_number?: string | null;
   sales_permit_file_name?: string | null;
+  sales_permit_resubmit_requested_at?: string | null;
+  sales_permit_resubmit_received_at?: string | null;
+  sales_permit_submitted_at?: string | null;
   quote_final_total?: number | null;
   customer?: {
     first_name?: string | null;
@@ -31,6 +35,8 @@ function buildHaystack(row: TaxExemptSearchRow): string {
     row.customer?.company ?? "",
     row.created_by?.full_name ?? "",
     row.quote_final_total != null ? formatCurrency(row.quote_final_total) : "",
+    resolveTaxExemptResubmitListStatus(row).kind === "requested" ? "new permit requested" : "",
+    resolveTaxExemptResubmitListStatus(row).kind === "submitted" ? "new permit submitted" : "",
   ];
   return parts.map((p) => p.trim()).filter(Boolean).join(" ").toLowerCase();
 }

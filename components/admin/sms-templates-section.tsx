@@ -145,7 +145,8 @@ export function SmsTemplatesSection() {
           </h2>
           <p className="text-[12px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
             Edit the text sent via Twilio SMS and WhatsApp. Use placeholders in curly braces — they are
-            replaced when a message is sent.
+            replaced when a message is sent. Resubmit requests always use these templates (staff choose
+            channel and recipient only).
           </p>
         </div>
       </div>

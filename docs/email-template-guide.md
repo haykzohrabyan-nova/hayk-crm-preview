@@ -357,24 +357,39 @@ Use a nested `<table>` + `<td>`, NOT `display:inline-block` on a `<span>`:
 
 ---
 
-## Existing Templates
+## Customer email templates (admin-editable) ✅
 
-| File | Purpose | Preview route |
-|---|---|---|
-| `lib/integrations/quote-email-template.ts` | Customer quote / order confirmation | `GET /api/dev/quote-email-preview` |
-| `lib/integrations/welcome-email-template.ts` | New-user welcome + admin password reset | `GET /api/dev/quote-email-preview?template=welcome` or `?template=password-reset` (dev only) |
-| `lib/integrations/payment-reminder-template.ts` | Payment reminder for confirmed unpaid orders | — |
-| `lib/integrations/payment-confirmed-template.ts` | Payment confirmed after accountant reviews evidence | — |
-| `lib/integrations/invoice-link-template.ts` | Resend customer portal link (`/q/{token}`) | — |
-| `lib/integrations/order-ready-template.ts` | Order ready for pickup (mark completed) | — |
+All **customer-facing** emails sent via Instantly use **Admin → Settings → Email Templates**. Copy is stored in `email_templates` (migrations `109`, `110`) and merged with coded defaults in `load-email-templates.ts`.
 
-All outbound customer messages are routed through `lib/integrations/send-quote.ts` (`sendQuoteToCustomer`, `sendPaymentReminder`, `sendInvoiceLinkToCustomer`, `sendOrderReadyToCustomer`, payment confirmed helper).
+| Source | Purpose |
+|--------|---------|
+| `lib/integrations/email-template-catalog.ts` | Template keys, labels, default subject/body/CTA, placeholders |
+| `lib/integrations/load-email-templates.ts` | DB + default merge |
+| `lib/integrations/render-email-template.ts` | Replaces `{placeholder}` at send time |
+| `lib/integrations/apply-admin-email.ts` | Key pickers + `buildSimpleAdminEmail` wrapper |
+| `lib/integrations/customer-email-builders.ts` | Wires admin copy into each send path |
+| `lib/integrations/customer-email-extra-html.ts` | Auto-appended blocks (amount due, pickup address, revision banner) |
+| `GET` / `PATCH` `/api/admin/email-templates` | Admin CRUD |
+
+**Send paths:** `lib/integrations/send-quote.ts` — quote/order delivery, payment reminder, invoice link, order ready, payment confirmed, tax-exempt approved, quote follow-up. `lib/integrations/resubmit-requested-outreach.ts` — payment evidence + tax-exempt resubmit request.
+
+**Template keys (21):** `quote_sent`, `order_sent`, `quote_sent_revision`, `order_sent_revision`, `payment_reminder`, `invoice_link`, `invoice_link_in_production_paid`, `invoice_link_in_production_unpaid`, `invoice_link_revision`, `order_ready_pickup`, `order_ready_shipped`, `payment_confirmed`, `payment_confirmed_full`, `payment_confirmed_in_production`, `payment_confirmed_full_in_production`, `tax_exempt_approved`, `tax_exempt_approved_total_unchanged`, `payment_evidence_resubmit_requested`, `tax_exempt_resubmit_requested`, `quote_follow_up`, `quote_follow_up_no_total`.
+
+**Quote / order HTML layout:** `lib/integrations/quote-email-template.ts` still renders line items and pricing. Admin supplies **subject**, **intro** (`body`), and **CTA** via `buildQuoteDeliveryEmail()`. Preview: `GET /api/dev/quote-email-preview` (uses coded intro until you wire preview to DB — dev preview may not reflect saved admin copy).
+
+**Simple emails:** Subject + plain body + CTA are wrapped by `wrap-transactional-email.ts`. Do not put HTML in admin body fields — line breaks become `<br/>`.
+
+**Staff-only (not in admin UI):** `lib/integrations/welcome-email-template.ts` — new user welcome + admin password reset. Preview: `?template=welcome` or `?template=password-reset` on the dev preview route.
+
+**Migrations required:** Run `109_email_templates.sql` before Save works in admin. Run `110_email_templates_customer_emails.sql` to seed all keys in the database.
+
+**Do not** edit customer email copy in `send-quote.ts` or legacy `*-template.ts` files for production wording — use the admin UI.
 
 ---
 
-## SMS / WhatsApp templates (editable)
+## SMS / WhatsApp templates (admin-editable) ✅
 
-Unlike HTML emails, SMS and WhatsApp bodies are **plain text** stored in `sms_templates` (migration `084`) and edited at **Admin → Settings → SMS Templates**.
+SMS and WhatsApp bodies are **plain text** in `sms_templates` (migration `084`) and edited at **Admin → Settings → SMS Templates**.
 
 | Source | Purpose |
 |--------|---------|
@@ -383,11 +398,11 @@ Unlike HTML emails, SMS and WhatsApp bodies are **plain text** stored in `sms_te
 | `lib/integrations/render-sms-template.ts` | Replaces `{placeholder}` at send time |
 | `GET` / `PATCH` `/api/admin/sms-templates` | Admin CRUD |
 
-**Template keys (examples):** `quote_sent`, `order_sent`, `payment_reminder`, `payment_confirmed`, `order_ready_pickup`, `quote_follow_up`, `tax_exempt_approved`, `tax_exempt_approved_total_unchanged`, …
+**Template keys:** Mirror customer email keys where applicable (`quote_sent`, `payment_reminder`, `tax_exempt_resubmit_requested`, …).
 
-**Tax-exempt approved email:** `lib/integrations/tax-exempt-approved-template.ts` — sent from `sendTaxExemptApproved()` after accountant `approve_tax_exempt` (SMS uses the keys above).
+**Resubmit placeholders:** `payment_evidence_resubmit_requested` and `tax_exempt_resubmit_requested` email bodies use `{otpCode}` and `{link}` (`/evidence/{token}` or `/permit/{token}`). SMS defaults use `{amount}` for the 6-digit code on both resubmit keys. Template copy is **email/SMS only** — not rendered on `/q` or `/evidence` public pages.
 
-**Do not** edit SMS copy in `send-quote.ts` for production changes — use the admin UI so ops can tune wording without deploys.
+**Do not** edit SMS copy in `send-quote.ts` for production changes — use the admin UI.
 
 ---
 

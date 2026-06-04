@@ -77,7 +77,13 @@ export async function GET(_request: NextRequest, { params }: Params) {
        payment_evidence_url,
        payment_evidence_submitted_at,
        payment_evidence_reviewed_at,
+       payment_evidence_resubmit_requested_at,
+       payment_evidence_resubmit_received_at,
        payment_evidence_amount,
+       payment_evidence_resubmit_token,
+       sales_permit_resubmit_token,
+       sales_permit_resubmit_requested_at,
+       sales_permit_resubmit_received_at,
        stripe_payment_intent_id,
        payment_amount_received,
        payment_paid_at,
@@ -107,14 +113,41 @@ export async function GET(_request: NextRequest, { params }: Params) {
 
   const reviewedAt = (ticket as { sales_permit_reviewed_at?: string | null }).sales_permit_reviewed_at;
   const storagePath = (ticket as { sales_permit_storage_path?: string | null }).sales_permit_storage_path;
+  const paymentResubmitRequested = !!(ticket as { payment_evidence_resubmit_requested_at?: string | null })
+    .payment_evidence_resubmit_requested_at;
+  const paymentResubmitReceived = !!(ticket as { payment_evidence_resubmit_received_at?: string | null })
+    .payment_evidence_resubmit_received_at;
+  const permitResubmitRequested = !!(ticket as { sales_permit_resubmit_requested_at?: string | null })
+    .sales_permit_resubmit_requested_at;
+  const permitResubmitReceived = !!(ticket as { sales_permit_resubmit_received_at?: string | null })
+    .sales_permit_resubmit_received_at;
+  const permitToken = (ticket as { sales_permit_resubmit_token?: string | null }).sales_permit_resubmit_token;
+  const evidenceToken = (ticket as { payment_evidence_resubmit_token?: string | null })
+    .payment_evidence_resubmit_token;
+
+  const {
+    payment_evidence_resubmit_requested_at: _p1,
+    payment_evidence_resubmit_received_at: _p2,
+    payment_evidence_resubmit_token: _e,
+    sales_permit_resubmit_token: _t,
+    ...safeTicket
+  } = ticket as Record<string, unknown>;
 
   return NextResponse.json({
     ticket: {
-      ...ticket,
+      ...safeTicket,
       line_items,
       shipping_destinations,
       tax_exempt_review_pending:
         !!ticket.tax_exempt && !!storagePath && !reviewedAt,
+      payment_evidence_resubmit_required: paymentResubmitRequested && !paymentResubmitReceived,
+      payment_evidence_resubmit_received: paymentResubmitReceived && !paymentResubmitRequested,
+      tax_exempt_resubmit_required: permitResubmitRequested && !permitResubmitReceived,
+      tax_exempt_resubmit_received: permitResubmitReceived && !permitResubmitRequested,
+      tax_exempt_permit_path:
+        permitResubmitRequested && permitToken ? `/permit/${permitToken}` : null,
+      payment_evidence_resubmit_path:
+        paymentResubmitRequested && evidenceToken ? `/evidence/${evidenceToken}` : null,
     },
     company: company ?? null,
   });

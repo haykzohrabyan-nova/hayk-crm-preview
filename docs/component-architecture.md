@@ -103,8 +103,11 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `DashboardPage` | `components/admin/dashboard-page.tsx` | Role router — all roles |
 | `QuotesPage` | `components/quotes/quotes-page.tsx` | All roles |
 | `OrdersPage` | `components/orders/orders-page.tsx` | All roles |
-| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending / **Tax-exempt pending** / Approved / Refunded tabs; **Payment For** column on evidence tabs; inline tax-exempt Confirm (legacy rows: File required, Upload file link, Confirm disabled until upload) |
-| `ApproveTaxExemptModal` | `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny tax-exempt totals (side-by-side preview) |
+| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending / **Tax-exempt pending** / Approved / Refunded; **Resubmit status** column only when any visible row has resubmit activity; **Request** opens resubmit outreach flow |
+| `ResubmitStatusCell` | `components/orders/resubmit-status-cell.tsx` | Payments desktop table — empty when no resubmit state |
+| `RequestEvidenceResubmitFlow` | `components/orders/request-evidence-resubmit-flow.tsx` | Channel/recipient modal → PATCH resubmit request (admin templates) |
+| `ApproveTaxExemptModal` | `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny tax-exempt totals; single-row footer with **Request updated permit** |
+| `EmailTemplatesSection` | `components/admin/email-templates-section.tsx` | Admin — customer email subject/body/CTA editor |
 | `TaxExemptReviewSection` | `components/orders/tax-exempt-review-section.tsx` | Payment/order detail tax-exempt review card; legacy missing-file warning + link to order upload |
 | `CustomerTaxExemptModal` | `components/crm/customer-tax-exempt-modal.tsx` | CRM customer profile — tax-exempt history **See more** |
 | `PaymentTypeBadge` | `components/orders/payment-type-badge.tsx` | Deposit / Balance / Full payment pill with optional description (list + detail) |
@@ -621,11 +624,12 @@ app/(public)/q/[token]/page.tsx  [Client Component "use client"]
 
 ### Quote Email (`lib/integrations/quote-email-template.ts`)
 
-- **`QuoteEmailData`** — accepts `prepaymentType` and `prepaymentValue` (optional)
+- **`QuoteEmailData`** — accepts `prepaymentType` and `prepaymentValue` (optional); optional **`adminCopy`** `{ subject, introHtml, ctaLabel }` from `buildQuoteDeliveryEmail()` + admin `email_templates`
 - When partial prepayment is set, a **Payment Schedule** section is injected between the pricing total and the payment methods:
   - Amber-highlighted row: "Deposit Due Now" + amount
   - Plain row: "Balance Remaining" + amount + italic note
-- Subject / CTA label differ by `isOrder`: "Your Quote is Ready" vs "Your Order — Payment Details"
+- Default subject / intro / CTA differ by `isOrder` and `revisionNotice`; overrides come from Admin → Email Templates (`quote_sent`, `order_sent`, `*_revision` keys)
+- Other customer emails: `customer-email-builders.ts` + `wrap-transactional-email.ts` — see `docs/email-template-guide.md`
 
 ---
 

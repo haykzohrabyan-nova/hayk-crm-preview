@@ -193,7 +193,22 @@ Applies when the rep marks the quote **tax exempt** (migrations **103–106**). 
 
 **Legacy orders (permit # only, no file):** Tickets created before migration **103** may have `sales_permit_number` without `sales_permit_storage_path`. They list on **Tax-exempt pending** with **File required**; staff upload on **Orders → [ref]** (Quote tab), then accountant **Confirm**. Public link does not show “under review” until a file exists. Helpers: `isLegacyTaxExemptMissingPermitFile`, `isTaxExemptReviewQueueItem` in `lib/utils/tax-exempt-approval.ts`.
 
-**Future (not built):** OTP resubmit portal, staff replace on payments, internal denial notes — [`docs/FuturePlan/tax-exempt-resubmit-portal/`](../FuturePlan/tax-exempt-resubmit-portal/README.md).
+### Evidence resubmit (Accountant) ✅
+
+When payment proof or tax-exempt permit needs to be replaced after customer submission:
+
+| Queue | Staff action | Customer | Templates |
+|-------|--------------|----------|-----------|
+| Payment evidence pending | **Request** on `/payments` (Pending tab) or payment detail | `/evidence/{resubmitToken}` — OTP + upload (read-only original method) | Admin **Email** + **SMS** `payment_evidence_resubmit_requested` (`{otpCode}`, `{link}`) |
+| Tax-exempt pending | **Request** on Tax-exempt tab or tax-exempt detail | `/permit/{token}` — OTP + upload | Admin `tax_exempt_resubmit_requested` (`{otpCode}` in email body) |
+
+- PATCH `request_payment_evidence_resubmit` / `request_tax_exempt_resubmit` — outreach channel + destination only (no free-text message from staff)
+- `components/orders/request-evidence-resubmit-flow.tsx` + `ResendQuoteModal` modes `payment_evidence_resubmit` | `tax_exempt_resubmit`
+- **Resubmit status** column on Pending + Tax-exempt tabs — shown only when at least one row on the current page has resubmit activity (`resubmitListStatusIsVisible` in `lib/utils/evidence-resubmit-list-status.ts`; UI: `components/orders/resubmit-status-cell.tsx`). Rows without activity leave the cell empty (no `—`).
+- **Review tax-exempt documentation** modal (`ApproveTaxExemptModal`) — `720px` wide; footer: Request updated permit, Cancel, Deny, Approve on one row.
+- Customer resubmit does **not** email/SMS staff — realtime + activities only
+
+**Future (not built):** Staff replace permit on payments list, declare-documents-unavailable, internal denial notes — [`docs/FuturePlan/tax-exempt-resubmit-portal/`](../FuturePlan/tax-exempt-resubmit-portal/README.md).
 
 ### Net terms auto-production
 
@@ -402,13 +417,31 @@ In `components/quotes/quote-detail.tsx` action bar:
 | `components/orders/approve-tax-exempt-modal.tsx` | B++++ | ✅ Built | Approve/deny UI on `/payments` |
 | `supabase/migrations/084_sms_templates.sql` | — | ✅ Built | Admin-editable SMS/WhatsApp bodies (`sms_templates` table) |
 | `supabase/migrations/072_net_terms_auto_production.sql` | B+++ | ✅ Built | Net terms auto-release support |
-| `lib/integrations/send-quote.ts` | A | ✅ Built | Channel router — loads SMS bodies from DB (`load-sms-templates.ts`) |
+| `supabase/migrations/108_evidence_resubmit.sql` | — | ✅ Built | Resubmit columns on `job_tickets` |
+| `supabase/migrations/109_email_templates.sql` | — | ✅ Built | `email_templates` table + resubmit email seeds |
+| `supabase/migrations/110_email_templates_customer_emails.sql` | — | ✅ Built | Seeds all customer email template keys |
+| `lib/integrations/resubmit-requested-outreach.ts` | — | ✅ Built | Resubmit customer email/SMS from admin templates |
+| `lib/integrations/email-template-catalog.ts` | — | ✅ Built | Email keys, defaults, placeholders |
+| `lib/integrations/load-email-templates.ts` | — | ✅ Built | DB + default merge for outbound email |
+| `lib/integrations/customer-email-builders.ts` | — | ✅ Built | Admin copy wired into each send path |
+| `components/admin/email-templates-section.tsx` | — | ✅ Built | Admin → Settings → Email Templates |
+| `app/api/admin/email-templates/route.ts` | — | ✅ Built | GET/PATCH editable email templates |
+| `app/(public)/evidence/[token]/page.tsx` | — | ✅ Built | Payment proof resubmit portal |
+| `app/api/public/evidence/[token]/*` | — | ✅ Built | OTP + evidence upload |
+| `lib/utils/public-payment-evidence-resubmit.ts` | — | ✅ Built | Token fetch, OTP gate, submitted method |
+| `lib/utils/record-payment-evidence-resubmit-upload.ts` | — | ✅ Built | Storage + ticket patch on resubmit upload |
+| `app/(public)/permit/[token]/page.tsx` | — | ✅ Built | Tax-exempt resubmit portal |
+| `app/api/public/permit/[token]/*` | — | ✅ Built | OTP + permit upload |
+| `components/orders/request-evidence-resubmit-flow.tsx` | — | ✅ Built | Shared Request resubmit UX |
+| `components/orders/resubmit-status-cell.tsx` | — | ✅ Built | Payments list resubmit status (hidden when none) |
+| `lib/utils/evidence-resubmit-list-status.ts` | — | ✅ Built | Resubmit list status + column visibility helper |
+| `lib/integrations/send-quote.ts` | A | ✅ Built | Channel router — SMS + email from admin templates |
 | `lib/integrations/sms-template-catalog.ts` | — | ✅ Built | Template keys, defaults, placeholders |
 | `lib/integrations/load-sms-templates.ts` | — | ✅ Built | DB + default merge for outbound SMS |
-| `lib/integrations/quote-email-template.ts` | A | ✅ Built | HTML email template builder |
-| `lib/integrations/payment-confirmed-template.ts` | B+++ | ✅ Built | Email after accountant confirms evidence |
-| `lib/integrations/invoice-link-template.ts` | B+++ | ✅ Built | Resend customer portal link |
-| `lib/integrations/order-ready-template.ts` | B+++ | ✅ Built | Pickup-ready notification |
+| `lib/integrations/quote-email-template.ts` | A | ✅ Built | Quote/order HTML layout; intro/CTA from admin |
+| `lib/integrations/payment-confirmed-template.ts` | B+++ | ⚠ Legacy | Superseded by `customer-email-builders` for sends |
+| `lib/integrations/invoice-link-template.ts` | B+++ | ⚠ Legacy | Superseded by admin templates at send time |
+| `lib/integrations/order-ready-template.ts` | B+++ | ⚠ Legacy | `formatPickupAddress` still used; email from admin |
 | `lib/utils/compute-checkout.ts` | B++ | ✅ Built | Payment stepper + production gate evaluation |
 | `lib/utils/maybe-convert-quote-to-order.ts` | B+++ | ✅ Built | Quote → order conversion gate (payment, net confirm, admin override); assigns `ORD-*` — convert skipped if sequence fails (no `ticket_kind: order` with `QUO-*` left behind) |
 | `lib/utils/maybe-auto-release-production.ts` | B+++ | ✅ Built | Shared auto-release to in_production |

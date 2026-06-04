@@ -59,6 +59,9 @@ interface PublicTicket {
   payment_evidence_submitted_at: string | null;
   payment_evidence_reviewed_at: string | null;
   payment_evidence_amount: number | null;
+  payment_evidence_resubmit_required?: boolean;
+  payment_evidence_resubmit_received?: boolean;
+  payment_evidence_resubmit_path?: string | null;
   stripe_payment_intent_id: string | null;
   payment_amount_received: number | null;
   payment_paid_at: string | null;
@@ -229,12 +232,19 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
   const customerConfirmed = isConfirmedOverride ?? ticket.client_confirmed ?? false;
   const priceGateOpen     = customerConfirmed || !requireConfirm;
 
-  const evidencePending =
-    strategy !== "net" && isPaymentEvidencePending(ticket);
+  const resubmitRequired = !!ticket.payment_evidence_resubmit_required;
+  const resubmitThankYou =
+    !!ticket.payment_evidence_resubmit_received && !resubmitRequired;
+  const quietPaymentPortal = resubmitRequired || resubmitThankYou;
+
+  const rawEvidencePending = strategy !== "net" && isPaymentEvidencePending(ticket);
+  const evidencePending = rawEvidencePending && !quietPaymentPortal;
 
   const fullyPaid =
-    !!ticket.payment_paid_at ||
-    (total > 0 && amountPaid >= total - 0.01 && !evidencePending);
+    !resubmitRequired &&
+    !resubmitThankYou &&
+    (!!ticket.payment_paid_at ||
+      (total > 0 && amountPaid >= total - 0.01 && !rawEvidencePending));
 
   let phase: PortalPhase = "needs_payment";
   if (isCompleted && fullyPaid) phase = "order_ready";
@@ -315,7 +325,14 @@ function computePortalState(ticket: PublicTicket, isConfirmedOverride?: boolean)
   };
 }
 
-function portalGreetingSubtitle(portal: PortalState): string {
+function portalGreetingSubtitle(portal: PortalState, ticket: PublicTicket): string {
+  const quietPaymentPortal =
+    !!ticket.payment_evidence_resubmit_required ||
+    (!!ticket.payment_evidence_resubmit_received && !ticket.payment_evidence_resubmit_required);
+  if (quietPaymentPortal && portal.isInProduction) {
+    return ", your order is in production.";
+  }
+
   switch (portal.phase) {
     case "needs_confirm":
       return ", please review your quote and confirm when ready to proceed.";
@@ -655,11 +672,12 @@ interface PublicPayModalProps {
   dueAmount: number;
   amountLabel: string;
   modalTitle: string;
+  replaceEvidence?: boolean;
   onSubmitted: (autoReleased: boolean, refCode: string | null) => void;
 }
 
 function PublicPayModal({
-  open, onClose, ticket, company, token, dueAmount, amountLabel, modalTitle, onSubmitted,
+  open, onClose, ticket, company, token, dueAmount, amountLabel, modalTitle, replaceEvidence, onSubmitted,
 }: PublicPayModalProps) {
   const strategy  = ticket.ticket_payment_strategy ?? "full";
   const channels  = getChannels(ticket);
@@ -723,7 +741,12 @@ function PublicPayModal({
       if (evidenceFile) form.set("file",      evidenceFile);
       const res  = await fetch(`/api/public/quotes/${token}/submit-payment`, { method: "POST", body: form });
       const data = await res.json();
-      if (!res.ok) { setSubmitErr(data.error ?? "Submission failed. Please try again."); setSubmitting(false); return; }
+      if (!res.ok) {
+        setSubmitErr(data.error ?? "Submission failed. Please try again.");
+        setSubmitting(false);
+        if (data.code === "ALREADY_SUBMITTED") onClose();
+        return;
+      }
       onClose();
       onSubmitted(data.autoReleased ?? false, data.reference_code ?? data.referenceCode ?? null);
     } catch {
@@ -750,7 +773,9 @@ function PublicPayModal({
         boxShadow: "0 20px 60px rgba(0,0,0,0.25)",
       }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-          <div style={{ fontSize: 16, fontWeight: 600, color: TEXT }}>{modalTitle}</div>
+          <div style={{ fontSize: 16, fontWeight: 600, color: TEXT }}>
+            {replaceEvidence ? "Upload updated payment proof" : modalTitle}
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -944,11 +969,16 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
 
   const [localSubmitted, setLocalSubmitted] = useState(false);
 
+  const resubmitRequired = !!ticket.payment_evidence_resubmit_required;
+  const resubmitThankYou = !!ticket.payment_evidence_resubmit_received;
+  const quietPaymentPortal = resubmitRequired || resubmitThankYou;
+
   const paymentValidated =
     fullyPaid ||
     (strategy === "net" && priceStepDone);
   const balanceDue = remaining > 0.01 && (depositPaid || isInProduction);
-  const awaitingReview = evidencePending || (localSubmitted && !fullyPaid);
+  const awaitingReview =
+    !quietPaymentPortal && (evidencePending || (localSubmitted && !fullyPaid));
 
   const paymentStepState: "done" | "review" | "active" | "idle" =
     fullyPaid && !evidencePending ? "done"
@@ -1006,7 +1036,14 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
 
   const paymentStepDesc = paymentStepDescription();
 
-  const canPay = !fullyPaid && payAmount > 0.01 && priceStepDone && !evidencePending && !localSubmitted && (
+  const canPay =
+    !fullyPaid &&
+    payAmount > 0.01 &&
+    priceStepDone &&
+    !evidencePending &&
+    !quietPaymentPortal &&
+    !localSubmitted &&
+    (
     phase === "balance_due" ||
     phase === "needs_payment" ||
     phase === "net_terms" ||
@@ -1042,9 +1079,11 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
     setFeedback(
       autoReleased
         ? "Payment confirmed — your order has entered production!"
-        : isBalance
-          ? "Thank you — we've received your balance payment proof. Our team will validate it and email you once confirmed."
-          : "Thank you — we've received your payment proof. Our team will validate it and email you once confirmed.",
+        : resubmitRequired
+          ? "Thank you — we've received your updated payment proof. Our team will validate it and email you once confirmed."
+          : isBalance
+            ? "Thank you — we've received your balance payment proof. Our team will validate it and email you once confirmed."
+            : "Thank you — we've received your payment proof. Our team will validate it and email you once confirmed.",
     );
     onPaymentSubmitted(autoReleased, refCode);
   }
@@ -1168,7 +1207,8 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
   <>
     <div style={{ border: `1px solid ${BORDER}`, borderRadius: 12, overflow: "hidden" }}>
 
-      {/* Phase action banner — same shell, different message per scenario */}
+      {/* Phase action banner — hidden during payment-proof resubmit (customer uses /evidence link) */}
+      {!quietPaymentPortal && (
       <div style={{ padding: "16px 24px", borderBottom: `1px solid ${BORDER}`, background: BG }}>
         <p style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 600, color: TEXT }}>{actionTitle}</p>
         <p style={{ margin: 0, fontSize: 13, color: MUTED, lineHeight: 1.6 }}>{actionSubtitle}</p>
@@ -1181,6 +1221,7 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
           </button>
         )}
       </div>
+      )}
 
       {/* Two-column panel */}
       <div className="stack-mobile" style={{ display: "flex" }}>
@@ -1379,6 +1420,7 @@ function QuotePortalSection({ ticket, company, token, onPaymentSubmitted, onConf
       dueAmount={payAmount}
       amountLabel={payLabel}
       modalTitle={payButtonText}
+      replaceEvidence={resubmitRequired}
       onSubmitted={handlePaymentSubmitted}
     />
   </>
@@ -1515,7 +1557,7 @@ export default function PublicQuotePage({ params }: { params: Promise<{ token: s
               Hi {customerName(ticket)}
             </h1>
             <p style={{ margin: 0, fontSize: 15, color: MUTED, lineHeight: 1.6 }}>
-              {portalGreetingSubtitle(portal).replace(/^,\s*/, "")}
+              {portalGreetingSubtitle(portal, ticket).replace(/^,\s*/, "")}
             </p>
           </div>
 

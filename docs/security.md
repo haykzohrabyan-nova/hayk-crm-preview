@@ -1,6 +1,6 @@
 # BazarCRM — Security Model
 
-**Last updated:** May 29, 2026
+**Last updated:** June 4, 2026
 
 This document describes how the app protects data, what is stored in the browser, and how API + database layers work together.
 
@@ -15,7 +15,7 @@ This document describes how the app protects data, what is stored in the browser
 
 Most CRM writes use the **service-role admin client** in Route Handlers (RLS bypassed server-side). Security depends on Route Handler auth being correct on every endpoint.
 
-**Public quote routes** (`/api/public/quotes/*`) are intentionally unauthenticated; access is gated by unguessable `public_token` (UUID).
+**Public customer routes** (`/api/public/quotes/*`, `/api/public/evidence/*`, `/api/public/permit/*`) are intentionally unauthenticated; access is gated by unguessable `public_token` (UUID), `payment_evidence_resubmit_token`, or `sales_permit_resubmit_token`. Evidence and permit uploads require a short-lived OTP + httpOnly verification cookie (`path: /`).
 
 ---
 
@@ -46,7 +46,7 @@ Returns `401` with `{ code: "UNAUTHENTICATED" }` when not logged in. Returns `40
 
 - **`proxy.ts`** protects **pages** (`/leads`, `/dashboard`, …) — redirects to login / setup-2fa / verify-2fa.
 - **`/api/*` is skipped by proxy** — each Route Handler must call `requireSession()` or `requireAdmin()` itself. `requireSession()` delegates to `createServerSupabase()` so JWT refresh cookies are written on API responses when the access token expires.
-- **Public paths:** `/q/*`, `/policy`, `/api/public/*` — no staff auth.
+- **Public paths:** `/q/*`, `/permit/*`, `/policy`, `/api/public/*` — no staff auth.
 - **Missing `NEXT_PUBLIC_SUPABASE_URL`** → `proxy.ts` returns **503** (fail closed). Previously skipped auth entirely; that behavior has been removed.
 
 Never add `middleware.ts` alongside `proxy.ts` (Next.js 16 build failure).

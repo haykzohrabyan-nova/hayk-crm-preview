@@ -1,22 +1,25 @@
 # Tax-exempt document workflow (future plan)
 
-**Status:** Not implemented — saved for a future sprint.  
-**Last updated:** 2026-06-02  
-**Depends on:** Migrations `103`–`106` applied; existing tax-exempt approval on Payments (`approve_tax_exempt`, `deny_tax_exempt`).
+**Status:** **Partially shipped** (Jun 2026) — core resubmit + admin templates done; items below marked [ ] remain.  
+**Last updated:** 2026-06-04  
+**Depends on:** Migrations `103`–`106`, **108** (resubmit), **109**–**110** (email templates); existing tax-exempt approval on Payments.
 
 ## Overview
 
-1. **Phase 0** — Staff **Replace document** when accountant already has the correct file.  
-2. **Phase 1** — **Deny and request new** → customer email → OTP upload page (replaces file).  
-3. **Phase 1b** — **“I don’t have it” / “Missing documents”** — customer confirms total will change → accountant sees **documents missing** → applies **Deny tax-exempt** → taxed total on public link, tax-exempt banners removed.
+1. **Phase 0** — Staff **Replace document** when accountant already has the correct file. **[ ] Not shipped**  
+2. **Phase 1** — **Request resubmit** → customer email/SMS (admin templates) → OTP upload on `/permit/{token}`. **[x] Shipped** (migration **108**, not 107)  
+3. **Phase 1b** — **“I don’t have it” / “Missing documents”**. **[ ] Not shipped**
+
+Payment evidence resubmit (`/evidence/{token}`, OTP portal) shipped alongside Phase 1.
 
 ### Implementation checklist
 
 - [ ] Phase 0 — Replace API auth + Replace button (payments + review + modal)
-- [ ] Phase 1 — Migration 107, resubmit email, `/permit` upload, modal actions, deny internal notes
+- [x] Phase 1 — Migration **108**, resubmit outreach, `/permit` upload, Request on `/payments`, admin email/SMS templates
+- [ ] Phase 1 — Deny flow **internal notes** (customer-safe `sales_permit_resubmit_reason` only today)
 - [ ] Phase 1b — Missing documents opt-out + accountant badge
-- [ ] Email templates + SMS catalog keys
-- [ ] Docs: CHANGELOG, TECHNICAL_REFERENCE
+- [x] Email templates + SMS catalog keys (`109`, `110`, admin UI)
+- [x] Docs: CHANGELOG, TECHNICAL_REFERENCE, feature-specs (Jun 2026 sync)
 
 ---
 

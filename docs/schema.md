@@ -423,6 +423,13 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `sales_permit_reviewed_at` | `timestamptz` | Accountant approve/deny stamp (migration **104**) |
 | `sales_permit_reviewed_by_id` | `uuid` FK → `user_profiles` | Reviewer |
 | `sales_permit_reused_from_customer` | `boolean` NOT NULL DEFAULT `false` | Set when permit copied from customer last file (migration **104**) |
+| `sales_permit_resubmit_token` | `text` UNIQUE | Public `/permit/{token}` upload link (migration **108**) |
+| `sales_permit_otp_hash` | `text` | Hashed 6-digit OTP for permit portal |
+| `sales_permit_otp_expires_at` | `timestamptz` | OTP expiry |
+| `sales_permit_resubmit_requested_at` | `timestamptz` | Accountant requested new permit |
+| `sales_permit_resubmit_requested_by_id` | `uuid` FK → `user_profiles` | |
+| `sales_permit_resubmit_reason` | `text` | Rendered admin email body (customer-safe) |
+| `sales_permit_resubmit_received_at` | `timestamptz` | Customer uploaded via permit portal |
 | `quote_payment_types` | `text[]` NOT NULL DEFAULT `'{}'` | `'card_default'` \| `'zelle'` \| `'offline'` *(legacy — use `ticket_*` columns for new payment config)* |
 | `prepayment_type` | `text` | `'full'` \| `'percent'` \| `'fixed'` |
 | `prepayment_value` | `text` | Stored as text; parsed at runtime |
@@ -493,6 +500,13 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `payment_evidence_submitted_at` | `timestamptz` | When customer uploaded proof |
 | `payment_evidence_amount` | `numeric` | Amount customer claimed while awaiting accountant review |
 | `payment_evidence_reviewed_at` | `timestamptz` | When accountant confirmed evidence via `record_payment`; evidence URL is retained for audit |
+| `payment_evidence_resubmit_requested_at` | `timestamptz` | Accountant asked customer to upload new proof (migration **108**) |
+| `payment_evidence_resubmit_requested_by_id` | `uuid` FK → `user_profiles` | |
+| `payment_evidence_resubmit_reason` | `text` | Legacy column — unused (email copy is not stored on ticket; Jun 2026) |
+| `payment_evidence_resubmit_received_at` | `timestamptz` | Customer uploaded replacement proof via `/evidence/{token}` |
+| `payment_evidence_resubmit_token` | `text` UNIQUE | Public `/evidence/{token}` upload link (OTP portal) |
+| `payment_evidence_otp_hash` | `text` | Hashed 6-digit OTP for evidence portal |
+| `payment_evidence_otp_expires_at` | `timestamptz` | OTP expiry |
 
 When evidence is pending (`payment_evidence_url` set, `payment_evidence_reviewed_at` null), the ticket appears on `/payments` → Pending approval — excluded from `/orders` list counts. After review, it appears on `/payments` → Approved with evidence still viewable.
 
@@ -838,6 +852,22 @@ Single-row configuration table (always `id = 1`). Seeded in migration 045. Exten
 **RLS:** All authenticated users can SELECT at the database level (forms read tax rate, threshold, remittance). **API layer:** `GET /api/admin/company` returns bank/Zelle fields to **admin only**; non-admin roles receive `default_tax_rate`, `high_value_threshold`, `rush_surcharge_percent`, `session_idle_timeout_minutes` only. Only Admin can UPDATE. No INSERT / DELETE — single seeded row.
 
 **Payment remittance fields** (`bank_*` and `zelle_*`) are configured in **Admin → Settings → Payment**. Shown to customers on `/q/[token]` via the public quotes API. Staff see them via **admin-only** `GET /api/admin/company` (or admin settings UI).
+
+---
+
+### `email_templates`
+
+Admin-editable customer **email** subject, body, and CTA (migrations `109_email_templates.sql`, `110_email_templates_customer_emails.sql`). Keys match `lib/integrations/email-template-catalog.ts`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `template_key` | `text` PK | e.g. `quote_sent`, `payment_reminder`, `payment_evidence_resubmit_requested` |
+| `subject` | `text` NOT NULL | Subject line with `{placeholder}` tokens |
+| `body` | `text` NOT NULL | Plain-text body (line breaks allowed) |
+| `cta_label` | `text` NOT NULL DEFAULT `''` | Button label on wrapped transactional emails |
+| `updated_at` | `timestamptz` NOT NULL DEFAULT `now()` | |
+
+**RLS:** Enabled; staff UI uses `GET`/`PATCH` `/api/admin/email-templates` (service role). Outbound send loads via `load-email-templates.ts` with catalog defaults as fallback.
 
 ---
 
@@ -1293,6 +1323,10 @@ All DDL is consolidated in **`supabase/schema.sql`** — a single idempotent fil
 
 **Not included:** dev/test seed rows, one-time backfills, and reset scripts. For local test wipes use `npm run reset-test-data` (`scripts/full-test-reset.mjs`).
 
-**Existing production DBs:** do not re-run the full file. Apply targeted SQL for new columns/tables only, or patch via the Supabase dashboard.
+**Existing production DBs:** do not re-run the full file. Copy only missing DDL from `schema.sql` into the SQL Editor.
+
+**Fresh install note:** `customers.tax_exempt_last_*` columns are added in `schema.sql` §1b (after `job_tickets` exists) so Postgres does not fail on forward FK references.
+
+**Migrations folder:** removed (Jun 2026); all `077`–`111` deltas are consolidated in `schema.sql`.
 
 See `supabase/README.md` for setup notes.

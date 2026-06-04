@@ -19,7 +19,8 @@ const PAYMENT_REFUNDED_STATUSES = [
 ] as const;
 
 const PAYMENT_REVIEW_SELECT = `
-  id, reference_code, title, created_at, contact_name, contact_email,
+  id, reference_code, title, created_at, contact_name, contact_email, public_token,
+  ticket_quote_channel, ticket_dest_email, ticket_dest_phone,
   quote_final_total,
   payment_method_used,
   deposit_method,
@@ -27,6 +28,8 @@ const PAYMENT_REVIEW_SELECT = `
   payment_evidence_url,
   payment_evidence_submitted_at,
   payment_evidence_reviewed_at,
+  payment_evidence_resubmit_requested_at,
+  payment_evidence_resubmit_received_at,
   payment_evidence_amount,
   stripe_payment_intent_id,
   stripe_checkout_session_id,
@@ -52,6 +55,9 @@ const PAYMENT_REVIEW_SELECT = `
   sales_permit_storage_path,
   sales_permit_submitted_at,
   sales_permit_reviewed_at,
+  sales_permit_resubmit_requested_at,
+  sales_permit_resubmit_received_at,
+  sales_permit_resubmit_token,
   quote_pre_tax_total,
   quote_tax_rate_percent,
   quote_tax_amount,
@@ -59,7 +65,7 @@ const PAYMENT_REVIEW_SELECT = `
   total_refunded_amount,
   last_refunded_at,
   last_refunded_by_id,
-  ${jobTicketCustomerEmbed("first_name, last_name, company")}
+  ${jobTicketCustomerEmbed("first_name, last_name, company, email, phone")}
 `.trim();
 
 type PaymentReviewRow = Record<string, unknown> & {

@@ -179,7 +179,9 @@ Legacy list + count routes remain for compatibility. Shared query logic lives in
 
 ### Public routes (no staff session)
 
-- `/api/public/quotes/[token]/*` — customer quote portal (token-gated UUID)
+- `/api/public/quotes/[token]/*` — customer quote/order portal (token-gated UUID)
+- `/api/public/evidence/[token]/*` — payment proof resubmit (dedicated token + OTP)
+- `/api/public/permit/[token]/*` — tax-exempt permit resubmit (token + OTP)
 - `/api/auth/change-password` — own session via `getUser()` (forced password change flow)
 - `/api/auth/mfa-trust` — POST requires AAL2; DELETE clears trust cookie
 
@@ -1129,7 +1131,7 @@ Partial ticket update. Six distinct operation modes:
 ```
 - Ticket must be `client_confirmed = true` (confirmed order)
 - Fetches full ticket + company settings, calls `sendPaymentReminder()` from `lib/integrations/send-quote.ts`
-- Uses `lib/integrations/payment-reminder-template.ts` for email channel; short SMS body for SMS/WhatsApp
+- Email uses admin template `payment_reminder`; SMS uses admin `sms_templates` key `payment_reminder`
 - Phone numbers are auto-normalised to E.164 format via `toE164()` (e.g. `3233413620` → `+13233413620`)
 - Delivery is fire-and-forget — errors logged to console, never block the API response
 - Logs `ticket_payment_reminder_sent` activity with `{ channel, destination }` in payload
@@ -1194,6 +1196,37 @@ Partial ticket update. Six distinct operation modes:
 - Sets `tax_exempt: false`, recomputes tax on current `quote_pre_tax_total` via `computeTotalsIfTaxExemptDenied`, stamps `sales_permit_reviewed_*`
 - Activity `ticket_tax_exempt_denied` (no customer-facing denial note column in v1)
 - Returns `{ ticket }`
+
+**Mode 3d — Request payment evidence resubmit (Accountant + Admin only):**
+```json
+{
+  "request_payment_evidence_resubmit": true,
+  "outreach_channel": "email | sms | both",
+  "outreach_email": "string",
+  "outreach_phone": "string"
+}
+```
+- Ticket must have pending payment evidence (`payment_evidence_url` set, not yet reviewed)
+- Message copy from admin **Email** / **SMS** templates (`payment_evidence_resubmit_requested`) — staff do not type a custom message; copy is **not** shown on `/q` or `/evidence`
+- Generates `payment_evidence_resubmit_token` + OTP (`payment_evidence_otp_hash` / `payment_evidence_otp_expires_at`); sets `payment_evidence_resubmit_requested_at`; clears `payment_evidence_resubmit_received_at`
+- Customer flow: `/evidence/{token}` → `POST /api/public/evidence/[token]/verify-otp` → `POST …/upload` (read-only `payment_method_used`; proof file + optional receipt #)
+- Activities: `ticket_payment_evidence_resubmit_requested`, `ticket_payment_evidence_resubmitted`
+- No staff email/SMS when customer submits — list column + realtime refresh only
+- **Existing DB:** run §1b DDL in `supabase/schema.sql` if columns `payment_evidence_otp_*` / `payment_evidence_resubmit_token` are missing
+
+**Mode 3e — Request tax-exempt permit resubmit (Accountant + Admin only):**
+```json
+{
+  "request_tax_exempt_resubmit": true,
+  "outreach_channel": "email | sms | both",
+  "outreach_email": "string",
+  "outreach_phone": "string"
+}
+```
+- Ticket must be in tax-exempt review queue (`requiresTaxExemptAccountantReview`)
+- Generates `sales_permit_resubmit_token` + OTP; email/SMS from admin templates (`tax_exempt_resubmit_requested`, `{otpCode}` in body)
+- Customer flow: `/permit/{token}` → `POST /api/public/permit/[token]/verify-otp` → `POST …/upload`
+- Activities: `ticket_tax_exempt_resubmit_requested`, `ticket_tax_exempt_resubmit_received`
 
 **Normal PATCH invalidation:** Changing fields in `TAX_EXEMPT_APPROVAL_INVALIDATING_FIELDS` clears `sales_permit_reviewed_at` / `sales_permit_reviewed_by_id` when a review existed.
 
@@ -1667,7 +1700,7 @@ Combined list + counts in one auth pass. **Same role scope as** `GET /api/comple
 
 ## Public Quote Routes (no auth required)
 
-These routes are accessible without a session. `proxy.ts` allows `/q/` and `/api/public/` paths without authentication. Logged-in staff visiting `/q/{token}` also bypass RBAC/MFA redirects so they can preview the customer portal.
+These routes are accessible without a session. `proxy.ts` allows `/q/`, `/permit/`, and `/api/public/` paths without authentication. Logged-in staff visiting `/q/{token}` or `/permit/{token}` also bypass RBAC/MFA redirects so they can preview customer portals.
 
 ### `GET /api/public/quotes/[token]`
 
@@ -1698,7 +1731,10 @@ Fetches a ticket by its `public_token` for the customer-facing quote page.
     "ticket_payment_strategy": "full | partial | net",
     "ticket_require_client_confirm": "boolean",
     "tax_exempt": "boolean",
-    "tax_exempt_review_pending": "boolean — true when tax_exempt, sales_permit_storage_path set, and sales_permit_reviewed_at null (not set for legacy permit-#-only tickets)"
+    "tax_exempt_review_pending": "boolean — true when tax_exempt, sales_permit_storage_path set, and sales_permit_reviewed_at null (not set for legacy permit-#-only tickets)",
+    "payment_evidence_resubmit_required": "boolean — accountant requested new proof; customer should use /evidence link from email",
+    "payment_evidence_resubmit_received": "boolean — customer submitted replacement; awaiting review",
+    "payment_evidence_resubmit_path": "string | null — internal path only; not exposed on UI while resubmit active (Jun 2026)"
   },
   "company": { "company_name": "string", "phone": "string", "address_line1": "string" }
 }
@@ -1787,6 +1823,7 @@ Customer submits payment proof or records an in-person payment from the public p
 - Allowed when `ticket_status IN ('sent', 'order', 'in_production', 'completed')`
 - When `ticket_require_client_confirm = true`: returns `409 CONFIRM_REQUIRED` if not yet `client_confirmed`
 - Wire/ACH/Zelle/check/card: stores file in `payment-evidence` bucket; sets evidence fields + `payment_evidence_amount`; clears `payment_evidence_reviewed_at` on new upload; **does not** update `payment_amount_received` — queues on `/payments` → **Pending approval**
+- When accountant requested resubmit: customer must use `/evidence/{resubmitToken}` (not this endpoint); `submit-payment` resubmit path is legacy — prefer evidence portal
 - Cash: records payment immediately; may convert + auto-release via `maybeConvertQuoteToOrder` / `maybeAutoReleaseProduction` when gates pass
 - Balance/follow-up payments: allowed when partially paid or `in_production`; cash balance does **not** overwrite `deposit_amount`
 - `sent` → `order` conversion on first payment only when approval gate satisfied (`maybeConvertQuoteToOrder`)
@@ -1801,7 +1838,55 @@ Customer submits payment proof or records an in-person payment from the public p
 }
 ```
 
-**Response `409`:** Evidence already submitted (first payment only).
+**Response `409`:** Evidence already submitted (first payment only), or `ALREADY_SUBMITTED` when resubmit upload already received.
+
+---
+
+## Public Permit Routes (tax-exempt resubmit, no auth)
+
+Token = `sales_permit_resubmit_token` on `job_tickets`. Page: `/permit/{token}`.
+
+### `GET /api/public/permit/[token]/status`
+
+Returns whether OTP is required, token validity, and reference code for display.
+
+### `POST /api/public/permit/[token]/verify-otp`
+
+**Body:** `{ "code": "123456" }` — validates against `sales_permit_otp_hash` / `sales_permit_otp_expires_at`.
+
+### `POST /api/public/permit/[token]/upload`
+
+**Content-Type:** `multipart/form-data` — new permit file after OTP verified. Updates `sales_permit_*` file columns and `sales_permit_resubmit_received_at`. Does not notify staff by email/SMS.
+
+---
+
+## Public Evidence Routes (payment proof resubmit, no auth)
+
+Token = `payment_evidence_resubmit_token` on `job_tickets` (not `public_token`). Page: `/evidence/{token}`.
+
+### `GET /api/public/evidence/[token]/status`
+
+Returns `otp_required` | `upload` | `already_submitted`, `reference_code`, `company_name`, `amount_due`, `submitted_payment_method` (read-only — from `payment_method_used`, wire/ach/zelle/check only).
+
+**Response `400` `NO_SUBMITTED_METHOD`:** No recorded proof method on ticket — customer must contact shop.
+
+### `POST /api/public/evidence/[token]/verify-otp`
+
+**Body:** `{ "code": "123456" }` — validates against `payment_evidence_otp_hash` / `payment_evidence_otp_expires_at` (purpose `payment_evidence`). Sets httpOnly cookie (`path: /`) for upload.
+
+### `POST /api/public/evidence/[token]/upload`
+
+**Auth:** OTP cookie required (`401` `OTP_REQUIRED` if missing).
+
+**Content-Type:** `multipart/form-data`
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `method` | Yes | Must match `payment_method_used` on ticket |
+| `file` | Yes | JPEG, PNG, WebP, or PDF (max 10 MB) |
+| `receiptId` | No | Wire/check reference |
+
+Replaces prior proof in `payment-evidence` bucket; clears resubmit + OTP fields; sets `payment_evidence_resubmit_received_at`; activity `ticket_payment_evidence_resubmitted`.
 
 ---
 
@@ -2644,6 +2729,39 @@ Update company settings. **Admin only** (`requireAdmin()`).
 **Response `200`:** `{ "settings": CompanySettings }`
 
 ---
+
+---
+
+## Admin — Email templates
+
+### `GET /api/admin/email-templates`
+
+Returns all template definitions with current `subject`, `body`, `ctaLabel`, metadata (label, description, placeholders, group), and `isCustom` flag. **Admin only.**
+
+When migration `109_email_templates.sql` is not applied: `{ templates, dbAvailable: false, migrationHint }` — UI shows coded defaults; Save disabled.
+
+### `PATCH /api/admin/email-templates`
+
+Upsert one or more templates. **Admin only.**
+
+**Body:**
+```json
+{
+  "templates": {
+    "quote_sent": {
+      "subject": "Your Quote from {companyName} is Ready",
+      "body": "Your quote from {companyName} is ready…",
+      "ctaLabel": "View & Confirm Quote"
+    }
+  }
+}
+```
+
+**Validation:** Unknown keys rejected; empty subject/body/cta rejected; reasonable max lengths per field.
+
+**Response `200`:** `{ "ok": true }` or `{ "ok": true, "dbAvailable": false }` when table missing (no-op save).
+
+**Outbound:** `load-email-templates.ts` + `customer-email-builders.ts` — see `docs/email-template-guide.md`.
 
 ---
 

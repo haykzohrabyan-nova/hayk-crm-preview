@@ -10,6 +10,9 @@ import {
   summarizeRefundIssued,
 } from "@/lib/utils/payment-refund-list-labels";
 import { getChannelLabel } from "@/lib/utils/compute-checkout";
+import {
+  resolvePaymentEvidenceResubmitListStatus,
+} from "@/lib/utils/evidence-resubmit-list-status";
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   wire: "Wire Transfer",
@@ -48,6 +51,9 @@ export type PaymentEvidenceSearchRow = PaymentEvidenceModeFields & {
   last_refund_method?: string | null;
   last_refund_source?: string | null;
   last_refund_payment_mode?: string | null;
+  payment_evidence_submitted_at?: string | null;
+  payment_evidence_resubmit_requested_at?: string | null;
+  payment_evidence_resubmit_received_at?: string | null;
 };
 
 function amountTokens(value: number | null | undefined): string[] {
@@ -99,6 +105,12 @@ function buildPaymentEvidenceHaystack(row: PaymentEvidenceSearchRow): string {
     row.last_refund_source ?? "",
     row.last_refund_payment_mode ?? "",
     row.stripe_payment_intent_id ? "stripe" : "",
+    resolvePaymentEvidenceResubmitListStatus(row).kind === "requested"
+      ? "new evidence requested"
+      : "",
+    resolvePaymentEvidenceResubmitListStatus(row).kind === "submitted"
+      ? "new evidence submitted"
+      : "",
   ];
 
   return parts

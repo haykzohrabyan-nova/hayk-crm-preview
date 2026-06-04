@@ -1,7 +1,8 @@
 -- =============================================================================
 -- BazaarPrinting CRM — Consolidated Schema
 -- =============================================================================
--- Single-file schema for a fresh Supabase project — current production state (May 2026).
+-- Single source of truth for database DDL (Jun 2026 production state).
+-- supabase/migrations/ removed — all incremental history is consolidated here.
 -- Run in the Supabase SQL Editor (or `psql`) on an empty `public` schema.
 --
 -- Includes: tables (final column set), indexes, RLS, functions, triggers, views,
@@ -81,6 +82,7 @@ create table if not exists public.customers (
   website     text,
   authority   text,
   heat_tag    text        check (heat_tag in ('hot', 'warm', 'cold')),
+  -- tax_exempt_last_* columns: added in §1b after job_tickets exists (migration 105)
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
@@ -185,6 +187,13 @@ create table if not exists public.job_tickets (
   quote_final_total                  numeric,
   tax_exempt                         boolean        not null default false,
   sales_permit_number                text,
+  sales_permit_storage_path          text,
+  sales_permit_file_name             text,
+  sales_permit_mime_type             text,
+  sales_permit_submitted_at          timestamptz,
+  sales_permit_reviewed_at           timestamptz,
+  sales_permit_reviewed_by_id        uuid           references public.user_profiles(id),
+  sales_permit_reused_from_customer  boolean        not null default false,
 
   -- Payment
   quote_payment_types                text[]         not null default '{}',
@@ -264,6 +273,20 @@ create table if not exists public.job_tickets (
   payment_evidence_submitted_at      timestamptz,
   payment_evidence_amount            numeric,
   payment_evidence_reviewed_at       timestamptz,
+  payment_evidence_resubmit_requested_at     timestamptz,
+  payment_evidence_resubmit_requested_by_id  uuid           references public.user_profiles(id),
+  payment_evidence_resubmit_reason           text,
+  payment_evidence_resubmit_received_at      timestamptz,
+  payment_evidence_resubmit_token            text,
+  payment_evidence_otp_hash                  text,
+  payment_evidence_otp_expires_at            timestamptz,
+  sales_permit_resubmit_token                text,
+  sales_permit_otp_hash                      text,
+  sales_permit_otp_expires_at                timestamptz,
+  sales_permit_resubmit_requested_at         timestamptz,
+  sales_permit_resubmit_requested_by_id      uuid           references public.user_profiles(id),
+  sales_permit_resubmit_reason               text,
+  sales_permit_resubmit_received_at          timestamptz,
 
   -- Cancellation audit (migration 088)
   cancel_reason                      text,
@@ -351,6 +374,22 @@ create table if not exists public.ticket_files (
   uploaded_by_id  uuid        references auth.users(id),
   created_at      timestamptz not null default now(),
   constraint ticket_files_variant_id_key unique (variant_id)
+);
+
+-- ── ticket_shipping_destinations (migration 093) ───────────────────────────
+
+create table if not exists public.ticket_shipping_destinations (
+  id              uuid        primary key default gen_random_uuid(),
+  ticket_id       uuid        not null references public.job_tickets(id) on delete cascade,
+  sort_order      int         not null default 0,
+  shipping_amount numeric     not null default 0,
+  ship_to_line1   text,
+  ship_to_line2   text,
+  ship_to_city    text,
+  ship_to_state   text,
+  ship_to_zip     text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
 );
 
 -- ── ticket_payment_refunds (migration 100) ────────────────────────────────────
@@ -506,6 +545,17 @@ create table if not exists public.sms_templates (
   updated_at   timestamptz not null default now()
 );
 
+-- ── email_templates ───────────────────────────────────────────────────────────
+-- Admin-editable customer email bodies (Instantly). Keys match email-template-catalog.ts.
+
+create table if not exists public.email_templates (
+  template_key text        primary key,
+  subject      text        not null,
+  body         text        not null,
+  cta_label    text        not null default '',
+  updated_at   timestamptz not null default now()
+);
+
 -- ── user_sessions ─────────────────────────────────────────────────────────────
 -- One row per login session; populated by POST /api/auth/session.
 
@@ -537,6 +587,45 @@ create table if not exists public.quote_sequence_counters (
   year        int  primary key,
   last_number int  not null default 0
 );
+
+
+-- =============================================================================
+-- 1b. DEFERRED COLUMNS — FKs that require job_tickets to exist first (105, 103–108)
+-- =============================================================================
+
+alter table public.job_tickets
+  add column if not exists sales_permit_storage_path text,
+  add column if not exists sales_permit_file_name text,
+  add column if not exists sales_permit_mime_type text,
+  add column if not exists sales_permit_submitted_at timestamptz,
+  add column if not exists sales_permit_reviewed_at timestamptz,
+  add column if not exists sales_permit_reviewed_by_id uuid references public.user_profiles(id),
+  add column if not exists sales_permit_reused_from_customer boolean not null default false;
+
+alter table public.customers
+  add column if not exists tax_exempt_last_permit_number text,
+  add column if not exists tax_exempt_last_storage_path text,
+  add column if not exists tax_exempt_last_file_name text,
+  add column if not exists tax_exempt_last_mime_type text,
+  add column if not exists tax_exempt_last_reviewed_at timestamptz,
+  add column if not exists tax_exempt_last_reviewed_by_id uuid references public.user_profiles(id),
+  add column if not exists tax_exempt_last_source_ticket_id uuid references public.job_tickets(id);
+
+alter table public.job_tickets
+  add column if not exists payment_evidence_resubmit_requested_at timestamptz,
+  add column if not exists payment_evidence_resubmit_requested_by_id uuid references public.user_profiles(id),
+  add column if not exists payment_evidence_resubmit_reason text,
+  add column if not exists payment_evidence_resubmit_received_at timestamptz,
+  add column if not exists payment_evidence_resubmit_token text,
+  add column if not exists payment_evidence_otp_hash text,
+  add column if not exists payment_evidence_otp_expires_at timestamptz,
+  add column if not exists sales_permit_resubmit_token text,
+  add column if not exists sales_permit_otp_hash text,
+  add column if not exists sales_permit_otp_expires_at timestamptz,
+  add column if not exists sales_permit_resubmit_requested_at timestamptz,
+  add column if not exists sales_permit_resubmit_requested_by_id uuid references public.user_profiles(id),
+  add column if not exists sales_permit_resubmit_reason text,
+  add column if not exists sales_permit_resubmit_received_at timestamptz;
 
 
 -- =============================================================================
@@ -594,6 +683,17 @@ create index if not exists job_tickets_stripe_payment_intent_id_idx
 create index if not exists job_tickets_refund_status_idx
   on public.job_tickets (refund_status)
   where refund_status <> 'none';
+
+create unique index if not exists job_tickets_payment_evidence_resubmit_token_key
+  on public.job_tickets (payment_evidence_resubmit_token)
+  where payment_evidence_resubmit_token is not null;
+
+create unique index if not exists job_tickets_sales_permit_resubmit_token_key
+  on public.job_tickets (sales_permit_resubmit_token)
+  where sales_permit_resubmit_token is not null;
+
+create index if not exists idx_ticket_shipping_destinations_ticket
+  on public.ticket_shipping_destinations (ticket_id, sort_order);
 
 create index if not exists ticket_payment_refunds_ticket_id_idx
   on public.ticket_payment_refunds (ticket_id);
@@ -654,6 +754,8 @@ alter table public.order_sequence_counters enable row level security;
 alter table public.quote_sequence_counters enable row level security;
 alter table public.company_settings        enable row level security;
 alter table public.sms_templates           enable row level security;
+alter table public.email_templates         enable row level security;
+alter table public.ticket_shipping_destinations enable row level security;
 alter table public.user_sessions           enable row level security;
 alter table public.mfa_trusted_devices     enable row level security;
 
@@ -759,16 +861,42 @@ do $$ begin
     for update using (id = auth.uid());
 exception when duplicate_object then null; end $$;
 
--- ── customers ─────────────────────────────────────────────────────────────────
+-- ── customers — CRM roles only (096); service role used by API routes ─────
 
 do $$ begin
-  create policy "authenticated_read_customers" on public.customers
-    for select using (auth.uid() is not null);
+  create policy "crm_roles_read_customers" on public.customers
+    for select
+    to authenticated
+    using (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name in ('sdr', 'sales', 'admin')
+      )
+    );
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create policy "sdr_admin_write_customers" on public.customers
-    for all using (public.current_user_role() in ('sdr', 'admin'));
+  create policy "crm_roles_write_customers" on public.customers
+    for all
+    to authenticated
+    using (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name in ('sdr', 'sales', 'admin')
+      )
+    )
+    with check (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name in ('sdr', 'sales', 'admin')
+      )
+    );
 exception when duplicate_object then null; end $$;
 
 -- ── leads ─────────────────────────────────────────────────────────────────────
@@ -819,8 +947,54 @@ do $$ begin
 exception when duplicate_object then null; end $$;
 
 do $$ begin
-  create policy "authenticated_update_leads" on public.leads
-    for update using (auth.uid() is not null);
+  create policy "admin_update_all_leads" on public.leads
+    for update
+    to authenticated
+    using (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name = 'admin'
+      )
+    );
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "sdr_update_leads" on public.leads
+    for update
+    to authenticated
+    using (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name = 'sdr'
+      )
+      and (
+        sdr_id = auth.uid()
+        or locked_by_id = auth.uid()
+        or locked_by_id is null
+      )
+    );
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "sales_update_leads" on public.leads
+    for update
+    to authenticated
+    using (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name = 'sales'
+      )
+      and (
+        sales_owner_id = auth.uid()
+        or (status = 'Routed to Sales' and sales_owner_id is null)
+      )
+    );
 exception when duplicate_object then null; end $$;
 
 -- ── job_tickets ───────────────────────────────────────────────────────────────
@@ -875,8 +1049,18 @@ exception when duplicate_object then null; end $$;
 -- Activities are an append-only audit trail — no DELETE policy (migration 043).
 
 do $$ begin
-  create policy "authenticated_read_activities" on public.activities
-    for select using (auth.uid() is not null);
+  create policy "staff_read_activities" on public.activities
+    for select
+    to authenticated
+    using (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid()
+          and r.name in ('sdr', 'sales', 'admin', 'accountant')
+      )
+    );
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -982,11 +1166,20 @@ do $$ begin
     with check (public.current_user_role() = 'admin');
 exception when duplicate_object then null; end $$;
 
--- ── company_settings ──────────────────────────────────────────────────────────
+-- ── company_settings — admin SELECT only; app reads via service role (080, 096) ─
 
 do $$ begin
-  create policy "authenticated_read_company_settings" on public.company_settings
-    for select using (auth.uid() is not null);
+  create policy "admin_read_company_settings" on public.company_settings
+    for select
+    to authenticated
+    using (
+      exists (
+        select 1
+        from public.user_profiles up
+        join public.roles r on r.id = up.role_id
+        where up.id = auth.uid() and r.name = 'admin'
+      )
+    );
 exception when duplicate_object then null; end $$;
 
 do $$ begin
@@ -1069,12 +1262,23 @@ create trigger set_sms_templates_updated_at
   before update on public.sms_templates
   for each row execute function public.set_updated_at();
 
+drop trigger if exists set_email_templates_updated_at on public.email_templates;
+create trigger set_email_templates_updated_at
+  before update on public.email_templates
+  for each row execute function public.set_updated_at();
+
+drop trigger if exists set_ticket_shipping_destinations_updated_at on public.ticket_shipping_destinations;
+create trigger set_ticket_shipping_destinations_updated_at
+  before update on public.ticket_shipping_destinations
+  for each row execute function public.set_updated_at();
+
 
 -- =============================================================================
 -- 7. VIEWS
 -- =============================================================================
 
-create or replace view public.user_profiles_with_role as
+create or replace view public.user_profiles_with_role
+with (security_invoker = true) as
   select
     up.id,
     up.role_id,
@@ -1083,6 +1287,7 @@ create or replace view public.user_profiles_with_role as
     up.is_active,
     up.must_change_password,
     up.mfa_required,
+    up.dashboard_values_hidden,
     up.created_at,
     up.updated_at,
     r.name          as role_name,
@@ -1135,6 +1340,33 @@ begin
 end;
 $$;
 
+-- Remittance fields — service role only (080); not exposed via permissive RLS SELECT.
+create or replace function public.get_company_remittance_settings()
+returns json
+language sql
+security definer
+stable
+as $$
+  select json_build_object(
+    'bank_name', bank_name,
+    'bank_account_name', bank_account_name,
+    'bank_account_number', bank_account_number,
+    'bank_routing_number', bank_routing_number,
+    'zelle_phone', zelle_phone,
+    'zelle_email', zelle_email
+  )
+  from public.company_settings
+  where id = 1;
+$$;
+
+revoke execute on function public.get_company_remittance_settings() from public;
+grant execute on function public.get_company_remittance_settings() to service_role;
+
+revoke all on function public.increment_order_sequence(int) from public, anon, authenticated;
+revoke all on function public.increment_quote_sequence(int) from public, anon, authenticated;
+grant execute on function public.increment_order_sequence(int) to service_role;
+grant execute on function public.increment_quote_sequence(int) to service_role;
+
 
 -- =============================================================================
 -- 9. GRANTS
@@ -1143,6 +1375,7 @@ $$;
 grant usage  on schema public                   to anon, authenticated;
 grant select on public.leads                    to authenticated;
 grant select on public.activities               to authenticated;
+grant select on public.job_tickets              to authenticated;
 grant select on public.product_types            to anon, authenticated, service_role;
 grant select on public.materials                to anon, authenticated, service_role;
 grant select on public.material_groups          to anon, authenticated, service_role;
@@ -1703,7 +1936,102 @@ on conflict (id) do nothing;
 
 
 -- =============================================================================
--- 17. SEED — COMPANY SETTINGS
+-- 17. SEED — SMS & EMAIL TEMPLATES (migrations 084, 109, 110)
+-- =============================================================================
+
+insert into public.sms_templates (template_key, body) values
+  ('quote_sent', 'Hi {firstName}, your quote from {companyName} is ready. Total: {total}. View & confirm: {link}'),
+  ('order_sent', 'Hi {firstName}, your order from {companyName} is ready! Total: {total}. View details & payment: {link}'),
+  ('payment_reminder', 'Hi {firstName}, your order {ref} from {companyName} is confirmed. Please pay {total} here: {link}'),
+  ('invoice_link', 'Hi {firstName}, here is your order link for {ref} from {companyName}. View invoice & details: {link}'),
+  ('invoice_link_in_production_paid', 'Hi {firstName}, your order {ref} from {companyName} is in production. View your invoice & status: {link}'),
+  ('invoice_link_in_production_unpaid', 'Hi {firstName}, your order {ref} from {companyName} is in production. View invoice & pay online: {link}'),
+  ('order_ready_pickup', 'Hi {firstName}, your order {ref} from {companyName} is ready for pickup!{pickupBlock}{phoneBlock} Details: {link}'),
+  ('payment_confirmed_full_in_production', 'Hi {firstName}, your payment of {amount} for order {ref} from {companyName} is confirmed — your order is paid in full. Track it here: {link}'),
+  ('payment_confirmed_in_production', 'Hi {firstName}, your payment of {amount} for order {ref} from {companyName} is confirmed — your order is now in production. Track it here: {link}'),
+  ('payment_confirmed_full', 'Hi {firstName}, your payment of {amount} for order {ref} from {companyName} is confirmed — paid in full. View your order: {link}'),
+  ('payment_confirmed', 'Hi {firstName}, your payment of {amount} for order {ref} from {companyName} is confirmed. View your order: {link}'),
+  ('tax_exempt_approved', 'Hi {firstName}, tax-exempt documentation for order {ref} from {companyName} is verified. Your updated total is {amount}. View your order: {link}'),
+  ('tax_exempt_approved_total_unchanged', 'Hi {firstName}, tax-exempt documentation for order {ref} from {companyName} is verified. Your order total is {amount}. View your order: {link}'),
+  ('payment_evidence_resubmit_requested', 'Hi {firstName}, we need updated payment proof for order {ref} from {companyName}. Code: {amount} Upload: {link}'),
+  ('tax_exempt_resubmit_requested', 'Hi {firstName}, we need an updated tax-exempt permit for order {ref} from {companyName}. Code: {amount} Upload: {link}'),
+  ('quote_follow_up', 'Hi {firstName}, friendly reminder about your quote {ref} from {companyName} ({total}). View & confirm: {link}'),
+  ('quote_follow_up_no_total', 'Hi {firstName}, friendly reminder about your quote {ref} from {companyName}. View & confirm: {link}')
+on conflict (template_key) do nothing;
+
+insert into public.email_templates (template_key, subject, body, cta_label) values
+  (
+    'payment_evidence_resubmit_requested',
+    'Action needed — upload payment proof for {ref} · {companyName}',
+    'We need an updated payment proof for order {ref} from {companyName}.' || E'\n\n' ||
+    'Your verification code is {otpCode}. Open the link below, enter the code, and upload your payment confirmation.' || E'\n\n' ||
+    'If you have questions, reply to this message.',
+    'Upload payment proof'
+  ),
+  (
+    'tax_exempt_resubmit_requested',
+    'Action needed — upload tax-exempt permit for {ref} · {companyName}',
+    'We need an updated tax-exempt permit for order {ref} from {companyName}.' || E'\n\n' ||
+    'Your verification code is {otpCode}. Open the link below, enter the code, and upload the new document.' || E'\n\n' ||
+    'If you have questions, reply to this message.',
+    'Upload permit'
+  ),
+  ('quote_sent', 'Your Quote from {companyName} is Ready',
+   'Your quote from {companyName} is ready. Please review the details below and confirm when you are ready to proceed.',
+   'View & Confirm Quote'),
+  ('order_sent', 'Your Order from {companyName} — Payment Details',
+   'Your order from {companyName} has been confirmed. Here are your order details.',
+   'View Order & Payment Details'),
+  ('quote_sent_revision', 'Updated quote from {companyName} — {ref}',
+   'Please open the link below to view the current version of your quote.',
+   'View & Confirm Quote'),
+  ('order_sent_revision', 'Updated order from {companyName} — {ref}',
+   'Please open the link below to view the current version of your order.',
+   'View Order & Payment Details'),
+  ('payment_reminder', 'Payment Required — {ref} · {companyName}',
+   'Your order with {companyName} has been confirmed. Please complete your payment of {total} to start production.',
+   'Pay Now'),
+  ('invoice_link', 'Your Order {ref} — View Online · {companyName}', '{statusLine}', 'View Order & Invoice'),
+  ('invoice_link_in_production_paid', 'Your Order {ref} — View Online · {companyName}', '{statusLine}', 'View Order & Invoice'),
+  ('invoice_link_in_production_unpaid', 'Your Order {ref} — View Online · {companyName}', '{statusLine}', 'View Order & Invoice'),
+  ('invoice_link_revision', 'Updated order {ref} — please review · {companyName}',
+   'Your order was updated. Please review the latest information on your customer portal.',
+   'View Order & Invoice'),
+  ('order_ready_pickup', 'Your Order {ref} Is Ready for Pickup · {companyName}',
+   'Great news — your order {ref} is complete and ready for pickup at our print shop.',
+   'View Order Details'),
+  ('order_ready_shipped', 'Your Order {ref} Has Shipped · {companyName}',
+   'Great news — your order {ref} is complete and is ready to ship.',
+   'View Order Details'),
+  ('payment_confirmed_full_in_production', 'Payment Confirmed — {ref} paid in full · {companyName}',
+   'We have verified your payment of {amount} for order {ref}. Your order is paid in full and remains in production — we will notify you when it is ready.',
+   'View Your Order'),
+  ('payment_confirmed_in_production', 'Payment Confirmed — {ref} is now in production · {companyName}',
+   'We have verified your payment of {amount} for order {ref}. Your order is now in production.',
+   'View Your Order'),
+  ('payment_confirmed_full', 'Payment Confirmed — {ref} · {companyName}',
+   'We have verified your payment of {amount} for order {ref}. Your order is paid in full.',
+   'View Your Order'),
+  ('payment_confirmed', 'Payment Confirmed — {ref} · {companyName}',
+   'We have verified your payment of {amount} for order {ref}. We will notify you when production begins.',
+   'View Your Order'),
+  ('tax_exempt_approved', 'Tax-Exempt Verified — {ref} total updated · {companyName}',
+   'We have verified the tax-exempt permit for order {ref}. Your updated order total is {amount} (previously {previousTotal}). If you already paid, your balance may be adjusted.',
+   'View your order'),
+  ('tax_exempt_approved_total_unchanged', 'Tax-Exempt Verified — {ref} · {companyName}',
+   'We have verified the tax-exempt permit for order {ref}. Your order total remains {amount}.',
+   'View your order'),
+  ('quote_follow_up', 'Reminder: your quote {ref} from {companyName}',
+   E'We wanted to follow up on quote {ref} from {companyName}. Total: {total}.\n\nYou can review the details and confirm online anytime using the button below.',
+   'View quote'),
+  ('quote_follow_up_no_total', 'Reminder: your quote {ref} from {companyName}',
+   E'We wanted to follow up on quote {ref} from {companyName}.\n\nYou can review the details and confirm online anytime using the button below.',
+   'View quote')
+on conflict (template_key) do nothing;
+
+
+-- =============================================================================
+-- 18. SEED — COMPANY SETTINGS
 -- =============================================================================
 
 insert into public.company_settings (id) values (1)

@@ -848,9 +848,10 @@ SDR/Sales **Convert to Order** button is hidden; API returns `403` for non-admin
 
 | File | Purpose |
 |------|---------|
-| `lib/integrations/send-quote.ts` | Channel router + Twilio/Instantly callers + `toE164()` phone normaliser + `sendPaymentReminder()` |
-| `lib/integrations/quote-email-template.ts` | HTML email template for quote delivery (table-based, inline-styled, email-client safe) |
-| `lib/integrations/payment-reminder-template.ts` | HTML email template for payment reminders — "Pay Now" focused, no line items |
+| `lib/integrations/send-quote.ts` | Channel router + Twilio/Instantly; loads admin SMS + email templates |
+| `lib/integrations/quote-email-template.ts` | Quote/order HTML layout; subject/intro/CTA from admin `email_templates` |
+| `lib/integrations/customer-email-builders.ts` | Admin email copy for reminders, invoice link, payment confirmed, etc. |
+| `lib/integrations/resubmit-requested-outreach.ts` | Resubmit request email/SMS from admin templates |
 | `app/(public)/layout.tsx` | Minimal public layout (no auth, no sidebar) |
 | `app/(public)/q/[token]/page.tsx` | Customer-facing quote/order page — shows "Quote Confirmed!" or "Order Confirmed!" based on ticket kind |
 | `supabase/migrations/052_add_public_token_to_tickets.sql` | `public_token` column + unique index |
@@ -866,7 +867,8 @@ SDR/Sales **Convert to Order** button is hidden; API returns `403` for non-admin
 - Line items table uses `border-collapse:separate; border-spacing:0` — allows `border-radius` to work (unlike `border-collapse:collapse` which disables it)
 - **Reference card status badge** (`Awaiting Approval` / `Confirmed`) is anchored to the top-right corner of the reference card using `border-radius:0 7px 0 8px` — independent of title length, no wrapping
 - Contains full quote info: company branding, reference + status, line items table, pricing summary, payment methods, gold CTA button, footer with contact details
-- Preview: `GET /api/dev/quote-email-preview` (dev server only)
+- Preview: `GET /api/dev/quote-email-preview` (dev server only; may use coded defaults, not live admin DB copy)
+- **Admin-editable copy:** All customer emails — `docs/email-template-guide.md`; quote emails edit subject, intro, and CTA only (line items unchanged)
 
 ## Deferred
 

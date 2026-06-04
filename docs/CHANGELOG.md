@@ -3,6 +3,118 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-04] — Payment proof resubmit portal (`/evidence`)
+
+### Added
+- `payment_evidence_resubmit_token`, `payment_evidence_otp_hash`, `payment_evidence_otp_expires_at` on `job_tickets` (`schema.sql` §1 + §1b)
+- `/evidence/[token]` — OTP verify + upload (mirrors `/permit/[token]`)
+- `GET|POST /api/public/evidence/[token]/status|verify-otp|upload`
+- `lib/constants/payment-evidence-resubmit-cookie.ts`, `lib/utils/public-payment-evidence-resubmit.ts`, `lib/utils/record-payment-evidence-resubmit-upload.ts`
+
+### Changed
+- Accountant **Request**: OTP + email/SMS link `/evidence/{resubmitToken}` (`{otpCode}` / SMS `{amount}`); Instantly delivery shared with quote sends
+- Resubmit email copy is **email/SMS only** — not stored on ticket or shown on `/q` or `/evidence`
+- `/q/{token}` — hides balance-under-review and resubmit UI while resubmit is active
+- `/evidence` — read-only `payment_method_used` (must match upload)
+
+### Fixed
+- Payment resubmit links no longer use `public_token` or `/q` for proof upload
+- Permit OTP cookie `path: /` so upload API receives verification cookie
+
+### Docs
+- `docs/api-contract.md`, `docs/schema.md`, `docs/navigation.md`, `docs/security.md`, `docs/TECHNICAL_REFERENCE.md`, `docs/feature-specs/invoice-payment.md`, `docs/email-template-guide.md`
+
+## [2026-06-04] — Permit upload OTP cookie fix
+
+### Fixed
+- Tax-exempt permit upload returned “Please verify your code first” after OTP — verification cookie used `path: /permit/{token}` so it was not sent to `/api/public/permit/.../upload` (cookie path now `/`)
+
+## [2026-06-04] — Permit resubmit upload UX
+
+### Changed
+- `/permit/[token]` — obvious **Choose file** button, drag-and-drop zone, and selected-file preview (replaces native file input)
+- `/permit/[token]` — Sales permit # and document are required; permit # accepts digits only (client + API validation)
+
+## [2026-06-04] — Tax-exempt resubmit email delivery fix
+
+### Fixed
+- Resubmit request emails (**payment proof** + **tax-exempt permit**) use the same Instantly API as quote/order sends (`/api/v2/emails/test`) — previously used a non-working endpoint
+- Payment proof resubmit: same `outreach_email` / modal path as tax-exempt; API reports error if send prerequisites missing (`public_token`, reference, company settings)
+- Modal email/phone from user input is sent as `outreach_email` / `outreach_phone`; form no longer resets while open on background list refresh
+- API returns `outreach_ok` / `outreach_error`; modal shows delivery failure instead of always closing on success
+
+## [2026-06-04] — schema.sql only; remove migrations folder
+
+### Removed
+- `supabase/migrations/*.sql` (077–111) — consolidated into `schema.sql`; `migrations/README.md` points to the single file
+
+### Changed
+- `supabase/schema.sql` — final RLS from 080/096 (CRM customers, scoped lead updates, staff activities, admin-only `company_settings`), `get_company_remittance_settings()`, sequence RPC lockdown, `user_profiles_with_role` security invoker
+- `supabase/README.md`, root `README.md`, `docs/schema.md`, `email-templates-db-error.ts` — setup docs reference `schema.sql` only
+
+### Fixed
+- `supabase/schema.sql` — `customers.tax_exempt_last_*` deferred to §1b (no forward FK to `job_tickets` at CREATE time)
+
+## [2026-06-04] — Payments resubmit column + tax-exempt modal footer
+
+### Changed
+- `/payments` — **Resubmit status** column appears only when at least one row on the page has resubmit activity; empty cells no longer show "—"
+- `ApproveTaxExemptModal` — wider modal (`720px`); footer actions on one row (Request, Cancel, Deny, Approve)
+- **Docs** — `feature-specs/invoice-payment.md`, `component-architecture.md`, `TECHNICAL_REFERENCE.md`, `session-summary.md` (and prior doc sync for email templates 108–110, `/permit`, admin Email Templates)
+
+## [2026-06-04] — Documentation sync (email templates + resubmit)
+
+### Changed
+- `docs/email-template-guide.md`, `docs/feature-specs/admin.md`, `docs/feature-specs/invoice-payment.md`, `docs/feature-specs/tickets.md`, `docs/api-contract.md`, `docs/schema.md`, `docs/navigation.md`, `docs/architecture.md`, `docs/component-architecture.md`, `docs/TECHNICAL_REFERENCE.md`, `docs/security.md`, `docs/TODO.md`, `docs/FuturePlan/`, `README.md`, `supabase/README.md`, `docs/session-summary.md` — aligned with admin email templates (109–110), evidence resubmit (108), and `/permit` portal
+
+## [2026-06-04] — All customer emails editable in Admin
+
+### Added
+- `supabase/migrations/110_email_templates_customer_emails.sql` — seeds quote/order delivery, payment reminder, invoice links, payment confirmed, tax-exempt approved, order ready, and quote follow-up email templates
+- `lib/integrations/customer-email-builders.ts`, `customer-email-extra-html.ts`, `apply-admin-email.ts` — outbound email uses admin subject/body/CTA (quote emails keep line-item layout; intro + CTA are editable)
+
+### Changed
+- `lib/integrations/email-template-catalog.ts` — full catalog mirroring customer SMS keys (delivery, payment, invoice, pickup, follow-up)
+- `send-quote.ts` — all customer email sends load templates from `email_templates` (falls back to coded defaults if DB row missing)
+- Admin **Email Templates** — placeholder help for `{total}`, `{amount}`, `{statusLine}`, `{previousTotal}`
+
+## [2026-06-04] — Admin-controlled resubmit SMS & email templates
+
+### Added
+- `supabase/migrations/109_email_templates.sql` — `email_templates` table + seeds for resubmit emails; SMS seeds for resubmit keys
+- **Admin → Settings → Email Templates** — subject, body, and button label (placeholders `{firstName}`, `{ref}`, `{link}`, `{otpCode}`, etc.)
+- `lib/integrations/email-template-catalog.ts`, `load-email-templates.ts`, `wrap-transactional-email.ts`
+
+### Fixed
+- Email Templates admin page — shows coded defaults + migration banner when `109_email_templates.sql` is not applied yet (instead of a blank error)
+
+### Changed
+- Admin overview (`/admin`) — **Email Templates** card links to `/admin/settings/email-templates`
+- Resubmit **Request** modal — channel and recipient only; message copy always from admin SMS/email templates
+- `resubmit-requested-outreach.ts` — loads admin templates; stores rendered body on ticket for customer portal banner
+- Removed per-send message field and `lib/client/default-resubmit-messages.ts`
+
+## [2026-06-04] — Payment & tax-exempt evidence resubmit flows
+
+### Added
+- `supabase/migrations/108_evidence_resubmit.sql` — resubmit request/received timestamps, permit portal token + OTP fields on `job_tickets`
+- `app/api/public/permit/[token]/*` — OTP verify + permit upload for tax-exempt resubmit
+- `app/(public)/permit/[token]/page.tsx` — customer permit resubmit portal
+- `lib/utils/evidence-resubmit-list-status.ts`, `lib/client/request-evidence-resubmit.ts`, `components/orders/request-evidence-resubmit-flow.tsx` — shared list status + `ResendQuoteModal` outreach
+- Payment Evidence **Resubmit status** column (Pending + Tax-exempt tabs); **Request** actions on list, confirm modals, and payment/tax-exempt detail sections
+
+### Changed
+- `components/quotes/quote-detail/resend-quote-modal.tsx` — modes `payment_evidence_resubmit` / `tax_exempt_resubmit` with editable customer message
+- `app/api/tickets/[id]/route.ts` — `request_payment_evidence_resubmit` / `request_tax_exempt_resubmit` with customer email/SMS
+- `app/(public)/q/[token]/page.tsx` — resubmit banner, replace-proof upload, thank-you / already-submitted states
+- Activity log + ticket history labels for resubmit request/receive events
+
+## [2026-06-04] — Payment Evidence action buttons aligned
+
+### Fixed
+- `components/ui/ticket-list-expand.tsx` — **View** list button matches File/Confirm sizing (`13px`, `py-2`, `px-3`)
+- `components/orders/payments-page.tsx` — **Confirm** uses same padding and transparent border so row actions share one height
+
 ## [2026-06-02] — Sidebar slate background & white nav text
 
 ### Changed

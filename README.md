@@ -36,15 +36,11 @@ Optional (features degrade gracefully if absent):
 - `INSTANTLY_*` — email outreach
 - `CRON_SECRET` — quote follow-up reminders
 
-### 3. Run database migrations
+### 3. Run database schema
 
-Requires the [Supabase CLI](https://supabase.com/docs/guides/cli).
+In the Supabase SQL Editor, run **`supabase/schema.sql`** once on an empty `public` schema.
 
-```bash
-supabase db push
-```
-
-Or apply individual migration files from `supabase/migrations/` in order.
+For an existing production database, do not re-run the full file — patch only missing objects from `schema.sql`. See `supabase/README.md`.
 
 ### 4. Start the dev server
 
@@ -59,13 +55,13 @@ App runs at [http://localhost:3000](http://localhost:3000).
 ```
 app/(app)/          Authenticated CRM pages
 app/(auth)/         Login, MFA, password flows
-app/(public)/       Customer-facing quote portal (/q/[token])
+app/(public)/       Customer portals (/q/[token], /permit/[token] for tax-exempt resubmit)
 app/api/            Route Handlers (server-side only)
 components/         Feature UI (leads/, sales/, quotes/, orders/, crm/, admin/, layout/, ui/)
 lib/auth/           Session helpers, MFA, RBAC guards
 lib/supabase/       Browser client and server-only admin client
 lib/utils/          Pure helpers (formatting, ticket math, PDF, etc.)
-lib/integrations/   Email (Instantly) and SMS (Twilio) senders
+lib/integrations/   Email (Instantly) and SMS (Twilio) senders; admin-editable templates
 docs/               Architecture, API contract, security model, changelog
 supabase/           Schema DDL and incremental migrations
 ```
@@ -75,7 +71,11 @@ supabase/           Schema DDL and incremental migrations
 - Architecture & auth flow: [`docs/architecture.md`](docs/architecture.md)
 - Security model: [`docs/security.md`](docs/security.md)
 - API contract: [`docs/api-contract.md`](docs/api-contract.md)
+- Email & SMS templates (admin): [`docs/email-template-guide.md`](docs/email-template-guide.md)
+- Payments & resubmit flows: [`docs/feature-specs/invoice-payment.md`](docs/feature-specs/invoice-payment.md)
 - Changelog: [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
+
+Before deploying, run `npm run build` locally and apply new Supabase migrations on the target project.
 - UI design system: [`.cursor/rules/ui-design-system.mdc`](.cursor/rules/ui-design-system.mdc)
 
 ## Scripts

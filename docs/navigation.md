@@ -466,7 +466,9 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/completed/[id]` | Completed Order |
 | `/reports` | Reports |
 | `/crm/customers/[id]` | Customer Profile |
-| `/q/[token]` | Customer portal (public) — quote/order checklist, payment, line items with additional-SKU grid + file preview/download; **shipping** (single Ship To column or 2-col address cards); PDF download (`GET /api/public/quotes/[token]/pdf`) |
+| `/q/[token]` | Customer portal (public) — quote/order checklist, payment, line items with additional-SKU grid + file preview/download; **shipping** (single Ship To column or 2-col address cards); PDF download (`GET /api/public/quotes/[token]/pdf`). During payment-proof resubmit, hides balance-review/resubmit banners — customer uses `/evidence` from email/SMS |
+| `/evidence/[token]` | Payment proof resubmit portal (public) — OTP verify + upload; read-only original payment method; link `{APP_URL}/evidence/{payment_evidence_resubmit_token}` in `payment_evidence_resubmit_requested` email/SMS |
+| `/permit/[token]` | Tax-exempt permit resubmit portal (public) — OTP verify + upload after accountant **Request** on `/payments` |
 | `/profile` | My Profile |
 | `/settings` | Account Settings (legacy stub — use `/profile`) |
 | `/admin` | Admin (Overview) |
@@ -477,6 +479,7 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/admin/settings/products` | Products |
 | `/admin/settings/integrations` | Integrations |
 | `/admin/settings/sms-templates` | SMS Templates |
+| `/admin/settings/email-templates` | Email Templates |
 | `/admin/settings/payment` | Payment (bank / Zelle) |
 | `/activity-log` | Activity Log |
 
@@ -492,7 +495,7 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 
 ```typescript
 // Public customer-facing — no auth required; RBAC skipped even when logged in (staff can preview)
-const isPublic = pathname.startsWith('/q/') || pathname === '/policy'
+const isPublic = pathname.startsWith('/q/') || pathname.startsWith('/permit/') || pathname === '/policy'
 
 const AUTH_PATHS = [
   '/login',

@@ -52,6 +52,10 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; label: string; co
   ticket_order_ready_sent:     { icon: Send,          label: "Pickup notification sent",   color: "var(--color-success)" },
   ticket_order_ready_failed:   { icon: AlertCircle,   label: "Pickup notification failed", color: "var(--color-warning)" },
   ticket_payment_evidence_submitted: { icon: CreditCard, label: "Customer submitted payment proof", color: "var(--color-warning)" },
+  ticket_payment_evidence_resubmit_requested: { icon: Mail, label: "Requested updated payment proof", color: "var(--color-info-text)" },
+  ticket_payment_evidence_resubmitted: { icon: CreditCard, label: "Customer submitted updated payment proof", color: "var(--color-warning)" },
+  ticket_tax_exempt_resubmit_requested: { icon: Mail, label: "Requested updated tax-exempt permit", color: "var(--color-info-text)" },
+  ticket_tax_exempt_resubmit_received: { icon: FileText, label: "Customer submitted updated permit", color: "var(--color-warning)" },
   ticket_payment_recorded:     { icon: BadgeCheck,    label: "Payment recorded",           color: "var(--color-success)" },
   ticket_payment_refund:       { icon: RotateCcw,     label: "Payment refunded",           color: "var(--color-warning)" },
   ticket_stripe_refund:        { icon: RotateCcw,     label: "Card payment refunded",      color: "var(--color-warning)" },
@@ -67,6 +71,7 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; label: string; co
 const CUSTOMER_ACTIVITY_TYPES = new Set([
   "ticket_client_confirmed",
   "ticket_payment_evidence_submitted",
+  "ticket_payment_evidence_resubmitted",
   "order_ticket_status_changed",
   "ticket_payment_recorded",
   "ticket_production_released",
@@ -155,10 +160,18 @@ function activityDetail(a: ActivityRow): string | null {
   if (a.type === "ticket_converted") {
     return p.reference_code ? `Order ${p.reference_code} created` : "Converted manually";
   }
-  if (a.type === "ticket_payment_evidence_submitted") {
+  if (a.type === "ticket_payment_evidence_submitted" || a.type === "ticket_payment_evidence_resubmitted") {
     const amount = fmtMoney(p.amount);
     const method = p.method ? (METHOD_LABELS[String(p.method)] ?? String(p.method)) : null;
     return [amount, method].filter(Boolean).join(" · ") || "Awaiting accountant review";
+  }
+  if (a.type === "ticket_payment_evidence_resubmit_requested" || a.type === "ticket_tax_exempt_resubmit_requested") {
+    const channel = p.channel ? String(p.channel) : null;
+    const excerpt = p.message_excerpt ? String(p.message_excerpt) : null;
+    return [channel, excerpt].filter(Boolean).join(" · ") || null;
+  }
+  if (a.type === "ticket_tax_exempt_resubmit_received") {
+    return p.file_name ? String(p.file_name) : "Updated permit uploaded";
   }
   if (a.type === "ticket_tax_exempt_approved") {
     const pl = p as Record<string, unknown>;

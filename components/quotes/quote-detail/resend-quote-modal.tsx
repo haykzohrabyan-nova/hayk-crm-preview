@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, Mail, MessageSquare, X } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
@@ -11,7 +11,14 @@ export interface SendChannelOpts {
   channel: "email" | "sms" | "both";
   email: string;
   phone: string;
+  message?: string;
 }
+
+export type ResendQuoteModalMode =
+  | "quote"
+  | "invoice"
+  | "payment_evidence_resubmit"
+  | "tax_exempt_resubmit";
 
 interface ResendQuoteModalProps {
   isOpen: boolean;
@@ -21,8 +28,9 @@ interface ResendQuoteModalProps {
   initialChannel?: "email" | "sms" | "both" | null;
   initialEmail?: string;
   initialPhone?: string;
-  /** "quote" = sending/resending the quote; "invoice" = resending the order/production link */
-  mode?: "quote" | "invoice";
+  initialMessage?: string;
+  collectMessage?: boolean;
+  mode?: ResendQuoteModalMode;
 }
 
 const CHANNEL_OPTS: { value: "email" | "sms" | "both"; label: string }[] = [
@@ -38,22 +46,35 @@ export function ResendQuoteModal({
   initialChannel = "email",
   initialEmail = "",
   initialPhone = "",
+  initialMessage = "",
+  collectMessage = false,
   mode = "quote",
 }: ResendQuoteModalProps) {
   const [channel, setChannel] = useState<"email" | "sms" | "both">(initialChannel ?? "email");
   const [email, setEmail]     = useState(initialEmail);
   const [phone, setPhone]     = useState(initialPhone);
+  const [message, setMessage] = useState(initialMessage);
   const [sending, setSending] = useState(false);
   const [err, setErr]         = useState<string | null>(null);
+  const wasOpenRef = useRef(false);
 
+  // Reset fields only when the modal opens — not when parent re-renders while open
+  // (avoids wiping a typed email/phone if list data refreshes in the background).
   useEffect(() => {
-    if (!isOpen) return;
-    setChannel(initialChannel ?? "email");
-    setEmail(initialEmail);
-    setPhone(initialPhone);
-    setSending(false);
-    setErr(null);
-  }, [isOpen, initialChannel, initialEmail, initialPhone]);
+    if (isOpen && !wasOpenRef.current) {
+      setChannel(initialChannel ?? "email");
+      setEmail(initialEmail);
+      setPhone(initialPhone);
+      setMessage(initialMessage);
+      setSending(false);
+      setErr(null);
+    }
+    if (!isOpen) {
+      setSending(false);
+      setErr(null);
+    }
+    wasOpenRef.current = isOpen;
+  }, [isOpen, initialChannel, initialEmail, initialPhone, initialMessage]);
 
   if (!isOpen) return null;
 
@@ -72,9 +93,18 @@ export function ResendQuoteModal({
       const phoneErr = validatePhone(phone.trim());
       if (phoneErr) { setErr(phoneErr); return; }
     }
+    if (collectMessage && !message.trim()) {
+      setErr("Message to customer is required.");
+      return;
+    }
     setSending(true);
     try {
-      await onSend({ channel, email: email.trim(), phone: phone.trim() });
+      await onSend({
+        channel,
+        email: email.trim(),
+        phone: phone.trim(),
+        ...(collectMessage ? { message: message.trim() } : {}),
+      });
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to send. Please try again.");
@@ -82,7 +112,19 @@ export function ResendQuoteModal({
     }
   }
 
-  const title = mode === "invoice" ? "Resend Invoice Link" : "Send Quote";
+  const title =
+    mode === "invoice"
+      ? "Resend Invoice Link"
+      : mode === "payment_evidence_resubmit"
+        ? "Request updated payment proof"
+        : mode === "tax_exempt_resubmit"
+          ? "Request updated tax-exempt permit"
+          : "Send Quote";
+
+  const sendLabel =
+    mode === "payment_evidence_resubmit" || mode === "tax_exempt_resubmit"
+      ? "Send request"
+      : title;
 
   return (
     <div
@@ -91,7 +133,7 @@ export function ResendQuoteModal({
       onClick={(e) => { if (e.target === e.currentTarget && !sending) onClose(); }}
     >
       <div
-        className="w-full max-w-sm rounded-xl shadow-xl"
+        className={`w-full ${collectMessage ? "max-w-md" : "max-w-sm"} rounded-xl shadow-xl`}
         style={{
           background: "var(--color-surface)",
           border: "1px solid var(--color-border)",
@@ -185,6 +227,29 @@ export function ResendQuoteModal({
             </div>
           )}
 
+          {collectMessage && (
+            <div>
+              <label
+                className="block text-sm font-medium mb-1"
+                style={{ color: "var(--color-text-muted)" }}
+              >
+                Message to customer
+              </label>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                disabled={sending}
+                rows={6}
+                className="w-full rounded-[6px] border px-3 py-2 text-sm resize-y min-h-[120px]"
+                style={{
+                  borderColor: "var(--color-border)",
+                  background: "var(--color-bg)",
+                  color: "var(--color-text-primary)",
+                }}
+              />
+            </div>
+          )}
+
           {err && (
             <p
               className="text-xs px-3 py-2 rounded-lg border"
@@ -225,7 +290,7 @@ export function ResendQuoteModal({
             }}
           >
             {sending && <Loader2 size={14} className="animate-spin" />}
-            {sending ? "Sending…" : title}
+            {sending ? "Sending…" : sendLabel}
           </button>
         </div>
       </div>

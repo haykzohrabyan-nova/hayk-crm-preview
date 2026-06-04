@@ -11,13 +11,17 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { loadSmsTemplatesMap, pickSmsBody } from "./load-sms-templates";
 import { renderSmsTemplate, type SmsTemplateVars } from "./render-sms-template";
 import type { SmsTemplateKey } from "./sms-template-catalog";
-import { buildQuoteEmail } from "./quote-email-template";
-import { buildQuoteFollowUpEmail } from "./quote-follow-up-template";
-import { buildPaymentReminderEmail } from "./payment-reminder-template";
-import { buildPaymentConfirmedEmail } from "./payment-confirmed-template";
-import { buildTaxExemptApprovedEmail } from "./tax-exempt-approved-template";
-import { buildInvoiceLinkEmail } from "./invoice-link-template";
-import { buildOrderReadyEmail, formatPickupAddress } from "./order-ready-template";
+import { loadEmailTemplatesForSend } from "./apply-admin-email";
+import {
+  buildInvoiceLinkFromTemplates,
+  buildOrderReadyFromTemplates,
+  buildPaymentConfirmedFromTemplates,
+  buildPaymentReminderFromTemplates,
+  buildQuoteDeliveryEmail,
+  buildQuoteFollowUpFromTemplates,
+  buildTaxExemptApprovedFromTemplates,
+} from "./customer-email-builders";
+import { formatPickupAddress } from "./order-ready-template";
 import { formatShipToAddress, formatShipToAddressInline } from "@/lib/utils/address";
 import { ticketDisplayReference } from "@/lib/utils/reference-codes";
 import {
@@ -25,6 +29,7 @@ import {
   lineItemsToDisplayRows,
   type TicketLineDisplayRow,
 } from "@/lib/utils/ticket-line-items";
+import { instantlySendEmail as instantlySend } from "./instantly-send";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,7 +40,7 @@ export interface SendOutreachOptions {
   revisionNotice?: OutreachRevisionNotice;
 }
 
-interface TicketForSend {
+export interface TicketForSend {
   id: string;
   title: string | null;
   reference_code: string | null;
@@ -69,7 +74,7 @@ interface TicketForSend {
   } | null;
 }
 
-interface CompanyForSend {
+export interface CompanyForSend {
   company_name?: string | null;
   logo_url?: string | null;
   address_line1?: string | null;
@@ -90,7 +95,7 @@ export interface SendResult {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function customerDisplayName(ticket: {
+export function customerDisplayName(ticket: {
   customer?: TicketForSend["customer"];
   contact_name?: string | null;
 }): string {
@@ -100,7 +105,7 @@ function customerDisplayName(ticket: {
   return ticket.contact_name ?? "Valued Customer";
 }
 
-function publicUrl(token: string): string {
+export function publicUrl(token: string): string {
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
   return `${base}/q/${token}`;
 }
@@ -171,7 +176,7 @@ function fmtUsd(amount: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
 }
 
-function firstNameFromTicket(ticket: {
+export function firstNameFromTicket(ticket: {
   customer?: TicketForSend["customer"];
   contact_name?: string | null;
 }): string {
@@ -199,45 +204,8 @@ function renderStoredSms(
   return renderSmsTemplate(pickSmsBody(templates, key), vars);
 }
 
-async function loadTemplatesForSend(): Promise<Record<SmsTemplateKey, string>> {
+export async function loadTemplatesForSend(): Promise<Record<SmsTemplateKey, string>> {
   return loadSmsTemplatesMap(createAdminClient());
-}
-
-// ─── Email via Instantly AI ───────────────────────────────────────────────────
-
-// Low-level Instantly sender. The v2/emails/send endpoint does not exist —
-// v2/emails/test is the real delivery endpoint (naming is Instantly's quirk).
-async function instantlySend(destination: string, subject: string, html: string): Promise<SendResult> {
-  const apiKey = process.env.INSTANTLY_API_KEY;
-  const sendingAccount = process.env.INSTANTLY_SENDING_ACCOUNT;
-
-  if (!apiKey || !sendingAccount) {
-    return { ok: false, channel: "email", error: "Instantly credentials not configured." };
-  }
-
-  const payload = {
-    eaccount: sendingAccount,
-    to_address_email_list: [destination],
-    subject,
-    body: { html },
-  };
-
-  try {
-    const res = await fetch("https://api.instantly.ai/api/v2/emails/test", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      return { ok: false, channel: "email", error: `Instantly API error (${res.status}): ${errText}` };
-    }
-
-    return { ok: true, channel: "email" };
-  } catch (err) {
-    return { ok: false, channel: "email", error: err instanceof Error ? err.message : String(err) };
-  }
 }
 
 function smsRevisionPrefix(notice: OutreachRevisionNotice | undefined, isOrder: boolean): string {
@@ -273,7 +241,8 @@ async function sendEmail(
   const skus: TicketLineDisplayRow[] = lineItemsToDisplayRows(lineBundle);
 
   const isOrder = ticket.order_source === "direct";
-  const { subject, html } = buildQuoteEmail({
+  const emailTemplates = await loadEmailTemplatesForSend();
+  const { subject, html } = buildQuoteDeliveryEmail(emailTemplates, {
     customerName: customerDisplayName(ticket),
     title: ticket.title ?? "Your Quote",
     referenceCode: ticketDisplayReference(ticket),
@@ -415,7 +384,8 @@ export async function sendPaymentReminder(
   if (channel === "email") {
     if (!destination) return { ok: false, channel: "email", error: "No destination email address." };
 
-    const { subject, html } = buildPaymentReminderEmail({
+    const emailTemplates = await loadEmailTemplatesForSend();
+    const { subject, html } = buildPaymentReminderFromTemplates(emailTemplates, {
       customerName,
       referenceCode: ticket.reference_code,
       finalTotal: ticket.quote_final_total ?? 0,
@@ -482,7 +452,8 @@ export async function sendInvoiceLinkToCustomer(
   }
 
   if (channel === "email") {
-    const { subject, html } = buildInvoiceLinkEmail({
+    const emailTemplates = await loadEmailTemplatesForSend();
+    const { subject, html } = buildInvoiceLinkFromTemplates(emailTemplates, {
       customerName,
       referenceCode: ticket.reference_code,
       finalTotal: ticket.quote_final_total ?? 0,
@@ -490,6 +461,7 @@ export async function sendInvoiceLinkToCustomer(
       statusLine: invoiceStatusLine(ticket),
       company,
       revisionNotice: options?.revisionNotice === "admin" ? "admin" : undefined,
+      ticket,
     });
     return instantlySend(destination, subject, html);
   }
@@ -564,13 +536,15 @@ export async function sendOrderReadyToCustomer(
   }
 
   if (channel === "email") {
-    const { subject, html } = buildOrderReadyEmail({
+    const emailTemplates = await loadEmailTemplatesForSend();
+    const { subject, html } = buildOrderReadyFromTemplates(emailTemplates, {
       customerName,
       referenceCode: ticket.reference_code,
       orderUrl,
       company,
       requiresShipping,
       shipToAddress,
+      pickupAddress,
     });
     return instantlySend(destination, subject, html);
   }
@@ -648,7 +622,8 @@ export async function sendPaymentConfirmed(
   if (channel === "email") {
     if (!destination) return { ok: false, channel: "email", error: "No destination email address." };
 
-    const { subject, html } = buildPaymentConfirmedEmail({
+    const emailTemplates = await loadEmailTemplatesForSend();
+    const { subject, html } = buildPaymentConfirmedFromTemplates(emailTemplates, {
       customerName,
       referenceCode: ticket.reference_code,
       amountConfirmed: opts.amountConfirmed,
@@ -723,7 +698,8 @@ export async function sendTaxExemptApproved(
   if (channel === "email") {
     if (!destination) return { ok: false, channel: "email", error: "No destination email address." };
 
-    const { subject, html } = buildTaxExemptApprovedEmail({
+    const emailTemplates = await loadEmailTemplatesForSend();
+    const { subject, html } = buildTaxExemptApprovedFromTemplates(emailTemplates, {
       customerName,
       referenceCode: ticket.reference_code,
       previousFinalTotal: opts.previousFinalTotal,
@@ -801,7 +777,8 @@ export async function sendQuoteFollowUpReminder(
   }
 
   if (channel === "email") {
-    const { subject, html } = buildQuoteFollowUpEmail({
+    const emailTemplates = await loadEmailTemplatesForSend();
+    const { subject, html } = buildQuoteFollowUpFromTemplates(emailTemplates, {
       customerName,
       referenceCode: ref,
       finalTotal: total,

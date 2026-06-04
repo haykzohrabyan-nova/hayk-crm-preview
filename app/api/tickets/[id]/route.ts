@@ -11,6 +11,7 @@ import {
   sendOrderReadyToCustomer,
   resolveTicketOutreach,
   type OutreachRevisionNotice,
+  type TicketForSend,
 } from "@/lib/integrations/send-quote";
 import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { logTicketPaymentRecorded } from "@/lib/utils/log-ticket-payment-recorded";
@@ -47,6 +48,15 @@ import {
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import { isPaymentStaffRole } from "@/lib/auth/role-checks";
 import { canAccessTicket, canPatchTicket, canAccountantMutateTicket, canResendTicketNotifications } from "@/lib/utils/ticket-access";
+import { isPaymentEvidencePending } from "@/lib/utils/payment-evidence-pending";
+import { parseResubmitOutreachBody } from "@/lib/utils/parse-resubmit-outreach-body";
+import {
+  renderTaxExemptResubmitCustomerMessage,
+  sendPaymentEvidenceResubmitRequested,
+  sendTaxExemptResubmitRequested,
+} from "@/lib/integrations/resubmit-requested-outreach";
+import { generateResubmitOtp } from "@/lib/utils/public-resubmit-otp";
+import { randomUUID } from "crypto";
 import { fetchTicketPaymentRefunds } from "@/lib/payments/fetch-ticket-refunds";
 import { resolveTicketCancelledAt } from "@/lib/utils/fetch-ticket-cancelled-at";
 import {
@@ -569,6 +579,211 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ ticket: denied });
   }
 
+  // ── request_payment_evidence_resubmit ─────────────────────────────────────
+  if (body.request_payment_evidence_resubmit === true) {
+    if (!isPaymentStaffRole(roleName)) {
+      return NextResponse.json(
+        { error: "Only accountants can request updated payment evidence.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+    if (!isPaymentEvidencePending(existing)) {
+      return NextResponse.json(
+        { error: "No pending payment evidence to resubmit.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+    const outreach = parseResubmitOutreachBody(body);
+    if (!outreach) {
+      return NextResponse.json(
+        { error: "Valid outreach channel and destination are required.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const { code: otpCode, hash, expiresAt } = generateResubmitOtp("payment_evidence");
+    const resubmitToken = randomUUID();
+    const { data: companyRow } = await admin.from("company_settings").select("*").eq("id", 1).single();
+
+    const now = new Date().toISOString();
+    const { data: updated, error: updErr } = await admin
+      .from("job_tickets")
+      .update({
+        updated_at: now,
+        payment_evidence_resubmit_token: resubmitToken,
+        payment_evidence_otp_hash: hash,
+        payment_evidence_otp_expires_at: expiresAt,
+        payment_evidence_resubmit_requested_at: now,
+        payment_evidence_resubmit_requested_by_id: userId,
+        payment_evidence_resubmit_reason: null,
+        payment_evidence_resubmit_received_at: null,
+      })
+      .eq("id", ticketId)
+      .select(
+        `*, customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)`,
+      )
+      .single();
+
+    if (updErr || !updated) {
+      return NextResponse.json({ error: updErr?.message ?? "Update failed.", code: "DB_ERROR" }, { status: 500 });
+    }
+
+    let outreachOk = true;
+    let outreachError: string | null = null;
+    if (companyRow && updated.reference_code) {
+      const sendResult = await sendPaymentEvidenceResubmitRequested(
+        admin,
+        updated as typeof updated & { reference_code: string },
+        companyRow,
+        outreach,
+        { evidenceToken: resubmitToken, otpCode },
+      );
+      outreachOk = sendResult.ok;
+      outreachError = sendResult.error ?? null;
+      if (!sendResult.ok) {
+        console.error("[payment-evidence-resubmit] delivery failed:", sendResult.error, {
+          ticketId,
+          email: outreach.email,
+          channel: outreach.channel,
+        });
+      }
+    } else {
+      outreachOk = false;
+      outreachError = !companyRow
+        ? "Company settings unavailable — email/SMS was not sent."
+        : !updated.reference_code
+          ? "Order reference missing — email/SMS was not sent."
+          : "Email/SMS was not sent.";
+    }
+
+    await admin.from("activities").insert({
+      type: "ticket_payment_evidence_resubmit_requested",
+      lead_id: existing.linked_lead_id ?? null,
+      customer_id: existing.customer_id ?? null,
+      ticket_id: ticketId,
+      by_user_id: userId,
+      payload: {
+        channel: outreach.channel,
+        email: outreach.email || null,
+        phone: outreach.phone || null,
+        message_excerpt: existing.reference_code
+          ? `Updated payment proof requested for ${existing.reference_code} (email/SMS).`
+          : "Updated payment proof requested (email/SMS).",
+      },
+      created_at: now,
+    });
+
+    notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
+    return NextResponse.json({ ticket: updated, outreach_ok: outreachOk, outreach_error: outreachError });
+  }
+
+  // ── request_tax_exempt_resubmit ─────────────────────────────────────────
+  if (body.request_tax_exempt_resubmit === true) {
+    if (!isPaymentStaffRole(roleName)) {
+      return NextResponse.json(
+        { error: "Only accountants can request updated tax-exempt documentation.", code: "FORBIDDEN" },
+        { status: 403 },
+      );
+    }
+    if (!requiresTaxExemptAccountantReview(existing)) {
+      return NextResponse.json(
+        { error: "This ticket does not require tax-exempt resubmit.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+    const outreach = parseResubmitOutreachBody(body);
+    if (!outreach) {
+      return NextResponse.json(
+        { error: "Valid outreach channel and destination are required.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const { code: otpCode, hash, expiresAt } = generateResubmitOtp();
+    const resubmitToken = randomUUID();
+    const { data: companyRow } = await admin.from("company_settings").select("*").eq("id", 1).single();
+    let customerMessage = "We need an updated tax-exempt permit for this order.";
+    if (companyRow && existing.reference_code) {
+      customerMessage = await renderTaxExemptResubmitCustomerMessage(
+        admin,
+        existing as unknown as TicketForSend & { reference_code: string },
+        companyRow,
+        resubmitToken,
+        otpCode,
+      );
+    }
+
+    const now = new Date().toISOString();
+
+    const { data: updated, error: updErr } = await admin
+      .from("job_tickets")
+      .update({
+        updated_at: now,
+        sales_permit_resubmit_token: resubmitToken,
+        sales_permit_otp_hash: hash,
+        sales_permit_otp_expires_at: expiresAt,
+        sales_permit_resubmit_requested_at: now,
+        sales_permit_resubmit_requested_by_id: userId,
+        sales_permit_resubmit_reason: customerMessage,
+        sales_permit_resubmit_received_at: null,
+      })
+      .eq("id", ticketId)
+      .select(
+        `*, customer:customers!job_tickets_customer_id_fkey(first_name, last_name, email, phone)`,
+      )
+      .single();
+
+    if (updErr || !updated) {
+      return NextResponse.json({ error: updErr?.message ?? "Update failed.", code: "DB_ERROR" }, { status: 500 });
+    }
+
+    let outreachOk = true;
+    let outreachError: string | null = null;
+    if (companyRow && updated.reference_code) {
+      const sendResult = await sendTaxExemptResubmitRequested(
+        admin,
+        updated as typeof updated & { reference_code: string },
+        companyRow,
+        outreach,
+        { permitToken: resubmitToken, otpCode },
+      );
+      outreachOk = sendResult.ok;
+      outreachError = sendResult.error ?? null;
+      if (!sendResult.ok) {
+        console.error("[tax-exempt-resubmit] delivery failed:", sendResult.error, {
+          ticketId,
+          email: outreach.email,
+          channel: outreach.channel,
+        });
+      }
+    } else {
+      outreachOk = false;
+      outreachError = !companyRow
+        ? "Company settings unavailable — email/SMS was not sent."
+        : !updated.reference_code
+          ? "Order reference missing — email/SMS was not sent."
+          : "Email/SMS was not sent.";
+    }
+
+    await admin.from("activities").insert({
+      type: "ticket_tax_exempt_resubmit_requested",
+      lead_id: existing.linked_lead_id ?? null,
+      customer_id: existing.customer_id ?? null,
+      ticket_id: ticketId,
+      by_user_id: userId,
+      payload: {
+        channel: outreach.channel,
+        email: outreach.email || null,
+        phone: outreach.phone || null,
+        message_excerpt: customerMessage.slice(0, 200),
+      },
+      created_at: now,
+    });
+
+    notifyPublicQuoteUpdatedByTicketId(admin, ticketId);
+    return NextResponse.json({ ticket: updated, outreach_ok: outreachOk, outreach_error: outreachError });
+  }
+
   // ── record_payment action ────────────────────────────────────────────────
   // Body: { record_payment: true, payment_mode: "deposit"|"balance"|"full",
   //         payment_method: string, payment_amount: number, receipt_id?: string }
@@ -665,6 +880,14 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     ) {
       payPatch.payment_evidence_reviewed_at = now;
     }
+
+    payPatch.payment_evidence_resubmit_requested_at = null;
+    payPatch.payment_evidence_resubmit_requested_by_id = null;
+    payPatch.payment_evidence_resubmit_reason = null;
+    payPatch.payment_evidence_resubmit_received_at = null;
+    payPatch.payment_evidence_resubmit_token = null;
+    payPatch.payment_evidence_otp_hash = null;
+    payPatch.payment_evidence_otp_expires_at = null;
 
     const { data: payUpdated, error: payErr } = await admin
       .from("job_tickets")

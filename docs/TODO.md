@@ -1,6 +1,6 @@
 # BazarCRM — TODO Tracker
 
-**Last updated:** 2026-06-02
+**Last updated:** 2026-06-04
 
 Open and future work only. **Shipped features** → [`docs/CHANGELOG.md`](./CHANGELOG.md). **Specs** → [`docs/feature-specs/`](./feature-specs/). **Larger designs** → [`docs/FuturePlan/`](./FuturePlan/).
 
@@ -66,7 +66,7 @@ Phase 1–3 core + Jun 2026 perf is **done** — page-data, 45s session cache, `
 
 | Item | Spec / notes |
 |------|----------------|
-| Tax-exempt resubmit portal | [FuturePlan/tax-exempt-resubmit-portal/](./FuturePlan/tax-exempt-resubmit-portal/README.md) — OTP customer upload, staff replace, denial notes |
+| Tax-exempt resubmit portal (remaining) | [FuturePlan/tax-exempt-resubmit-portal/](./FuturePlan/tax-exempt-resubmit-portal/README.md) — **shipped:** OTP `/permit`, Request flow, admin email/SMS. **Not shipped:** staff replace on payments tab, declare-unavailable, internal denial notes |
 | Admin broadcast notifications | `/admin/settings/notifications` — form not built |
 | Per-user notification bell (V2) | `feature-specs/notifications.md` |
 | Reports extras | CSV export, product/source charts, bonus % preview, forecast — `feature-specs/reports.md` |

@@ -224,7 +224,7 @@ BazarCRM/
 │   └── use-ticket-realtime-sync.ts # Ticket detail postgres_changes subscription
 ├── supabase/
 │   ├── schema.sql                # Full consolidated DDL (new project baseline)
-│   └── migrations/077–102        # Incremental deltas for existing DBs
+│   └── schema.sql                # Sole DDL source (migrations/ removed Jun 2026)
 ├── docs/
 │   ├── CHANGELOG.md
 │   ├── TECHNICAL_REFERENCE.md    # ← this file
@@ -409,7 +409,7 @@ isAccountantQuoteWorkflowDenied(roleName)   // accountant cannot create/send quo
 
 ## 6. Database Schema
 
-> Primary source: `supabase/schema.sql` (consolidated) + `supabase/migrations/077–102` (incremental). Migration 093 (`ticket_shipping_destinations`) is not yet merged into `schema.sql` — apply separately.
+> Primary source: `supabase/schema.sql` only (Jun 2026). Numbered migrations were removed after consolidation.
 
 ### RBAC & users tables
 
@@ -1352,7 +1352,9 @@ Migration: `supabase/migrations/103_sales_permit_file.sql`.
 
 **PostgREST embed (migration 105):** Ticket list/detail queries must use `customer:customers!job_tickets_customer_id_fkey(...)` via `jobTicketCustomerEmbed()` — otherwise `PGRST201` (ambiguous FK). Nested `lead.customer` on `GET /api/tickets/[id]` uses unqualified `customers(...)` only.
 
-**Future (not shipped):** OTP resubmit portal, staff replace on payments tab, internal denial notes — [`docs/FuturePlan/tax-exempt-resubmit-portal/`](./FuturePlan/tax-exempt-resubmit-portal/README.md).
+**Evidence resubmit (shipped):** Accountant **Request** on `/payments` → customer email/SMS from admin templates (`{otpCode}` / SMS `{amount}`) → payment proof on `/evidence/{payment_evidence_resubmit_token}` (OTP + upload, read-only `payment_method_used`); tax-exempt on `/permit/{sales_permit_resubmit_token}` (OTP). `/q/{token}` does not show resubmit copy or upload during active payment resubmit. See `request_payment_evidence_resubmit` / `request_tax_exempt_resubmit` in `PATCH /api/tickets/[id]` and `docs/api-contract.md` (Public Evidence Routes).
+
+**Future (not shipped):** Staff replace permit on payments tab, declare-documents-unavailable, internal denial notes — [`docs/FuturePlan/tax-exempt-resubmit-portal/`](./FuturePlan/tax-exempt-resubmit-portal/README.md).
 
 ### `POST /api/tickets`
 
@@ -1611,27 +1613,35 @@ SMS bodies come from DB (`sms_templates` table, keyed by `template_key`) merged 
 
 `components/quotes/quote-detail/resend-quote-modal.tsx`
 
-Two modes:
+Modes:
 - **`quote`** — opens from "Send Quote" / "Resend Quote" buttons; calls parent `handleSave("sent", channelOverride)` → full quote send flow
 - **`invoice`** — opens from "Resend Link" button; PATCH with `{ resend_invoice: true, invoice_channel, invoice_destination }`
+- **`payment_evidence_resubmit`** / **`tax_exempt_resubmit`** — accountant **Request** on `/payments`; PATCH `request_*_resubmit`; channel/recipient only (message from admin templates)
 
 Pre-fills current `ticket_dest_email` / `ticket_dest_phone`. Validates email format and phone format. Channel toggle: email / SMS / both.
 
-### Email templates (HTML)
+### Customer email templates (admin-editable)
 
-| Template | Purpose |
-|---------|---------|
-| `quote-email-template.ts` | Initial quote/order send |
-| `quote-follow-up-template.ts` | Cron follow-up on unconfirmed quotes |
-| `payment-reminder-template.ts` | After customer confirms — pay now |
-| `payment-confirmed-template.ts` | Evidence confirmed by accountant |
-| `invoice-link-template.ts` | Resend portal link |
-| `order-ready-template.ts` | Order complete / pickup |
-| `welcome-email-template.ts` | New staff user / password reset |
+All Instantly customer emails load from `email_templates` (migrations `109`, `110`) via `load-email-templates.ts` + `customer-email-builders.ts`. Defaults in `email-template-catalog.ts`. Admin UI: `/admin/settings/email-templates`.
+
+| Key (examples) | Send helper |
+|----------------|-------------|
+| `quote_sent` / `order_sent` (+ `_revision`) | `buildQuoteDeliveryEmail` → `quote-email-template.ts` (line items fixed) |
+| `payment_reminder` | `buildPaymentReminderFromTemplates` |
+| `invoice_link` (+ in-production / revision variants) | `buildInvoiceLinkFromTemplates` — body often `{statusLine}` |
+| `payment_confirmed*` (4 keys) | `buildPaymentConfirmedFromTemplates` |
+| `tax_exempt_approved*` | `buildTaxExemptApprovedFromTemplates` |
+| `order_ready_pickup` / `order_ready_shipped` | `buildOrderReadyFromTemplates` |
+| `quote_follow_up` / `quote_follow_up_no_total` | `buildQuoteFollowUpFromTemplates` |
+| `payment_evidence_resubmit_requested` / `tax_exempt_resubmit_requested` | `resubmit-requested-outreach.ts` |
+
+**Staff-only HTML (not admin):** `welcome-email-template.ts` — welcome + password reset.
+
+Legacy `*-template.ts` files remain for reference; outbound customer email uses admin copy.
 
 ### SMS template keys
 
-`quote_sent`, `order_sent`, `payment_reminder`, `invoice_link`, `invoice_link_balance`, `order_ready_pickup`, `payment_confirmed`, `payment_confirmed_balance`, `quote_follow_up`
+`quote_sent`, `order_sent`, `payment_reminder`, `invoice_link`, `invoice_link_in_production_paid`, `invoice_link_in_production_unpaid`, `order_ready_pickup`, `payment_confirmed` (+ variants), `tax_exempt_approved`, `tax_exempt_resubmit_requested`, `payment_evidence_resubmit_requested`, `quote_follow_up`, … — see `sms-template-catalog.ts`
 
 ---
 
@@ -1712,6 +1722,7 @@ Access: `requireAdmin()` on all admin API routes.
 | Products | `/admin/settings/products` | Product types, materials, groups, links |
 | Integrations | `/admin/settings/integrations` | Test Twilio + Instantly sends |
 | SMS Templates | `/admin/settings/sms-templates` | Edit SMS body templates |
+| Email Templates | `/admin/settings/email-templates` | Edit customer email subject / body / CTA |
 | Payment | `/admin/settings/payment` | Bank + Zelle info shown on public portal |
 
 ### User management
@@ -2208,8 +2219,11 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 | `app/api/tickets/[id]/sales-permit/route.ts` | Sales permit file GET (accountant/admin) / POST / DELETE |
 | `app/api/tickets/[id]/sales-permit/reuse-from-customer/route.ts` | Copy customer last permit onto ticket |
 | `app/api/crm/customers/[id]/tax-exempt-history/route.ts` | CRM tax-exempt history for See more modal |
-| `components/orders/payments-page.tsx` | Payments tabs including tax-exempt pending |
-| `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny totals + optional adjust |
+| `components/orders/payments-page.tsx` | Payments tabs; conditional **Resubmit status** column; Request resubmit |
+| `components/orders/resubmit-status-cell.tsx` | List cell for resubmit requested/submitted |
+| `lib/utils/evidence-resubmit-list-status.ts` | `resolve*ResubmitListStatus`, `resubmitListStatusIsVisible` |
+| `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny totals; 720px modal; one-row footer |
+| `components/admin/email-templates-section.tsx` | Admin email template editor |
 | `components/orders/tax-exempt-review-section.tsx` | Payment/order detail tax-exempt review card |
 | `components/crm/customer-tax-exempt-modal.tsx` | CRM customer tax-exempt history |
 | `components/leads/verify-drawer.tsx` | SDR lead verification modal |
@@ -2233,7 +2247,10 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 | File | Purpose |
 |------|---------|
 | `send-quote.ts` | All send functions + `resolveTicketOutreach` |
-| `quote-email-template.ts` | Quote/order email HTML |
+| `email-template-catalog.ts` | Customer email keys + defaults |
+| `load-email-templates.ts` | DB merge for outbound email |
+| `customer-email-builders.ts` | Admin copy → HTML per send type |
+| `quote-email-template.ts` | Quote/order email HTML (line items + admin intro/CTA) |
 | `payment-reminder-template.ts` | Payment reminder email |
 | `invoice-link-template.ts` | Invoice resend email |
 | `order-ready-template.ts` | Order complete email |
@@ -2255,4 +2272,4 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 
 ---
 
-*Last updated: 2026-06-02 (list SWR, line_preview bundling, split detail bootstrap, `/api/me`, realtime 0ms, migration 107). Page-load guide: `docs/FuturePlan/Performance/page-loading.md`. Cross-reference `supabase/migrations/` (`103`–`107`) and `docs/api-contract.md`.*
+*Last updated: 2026-06-04. Database DDL: `supabase/schema.sql` only. Page-load guide: `docs/FuturePlan/Performance/page-loading.md`. See `docs/api-contract.md`.*

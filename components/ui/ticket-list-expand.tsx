@@ -24,14 +24,14 @@ export function TicketListViewButton({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium border transition-opacity hover:opacity-70 ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap transition-opacity hover:opacity-70 ${className}`}
       style={{
         borderColor: "var(--color-border)",
-        color: "var(--color-text-muted)",
-        background: "var(--color-bg)",
+        color: "var(--color-text-primary)",
+        background: "var(--color-surface)",
       }}
     >
-      <ExternalLink size={11} aria-hidden />
+      <ExternalLink size={14} aria-hidden />
       {label}
     </button>
   );

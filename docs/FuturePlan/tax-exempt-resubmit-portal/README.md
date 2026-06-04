@@ -1,11 +1,28 @@
-# Future plans
+# Future plans — tax-exempt resubmit portal
 
-Planned features and flows that are **not yet implemented**. Use these documents when prioritizing work; implementation should update `docs/CHANGELOG.md` and `docs/TECHNICAL_REFERENCE.md` when shipped.
+Planned enhancements and **remaining** work for tax-exempt / payment evidence resubmit. Core resubmit flow is **shipped** (Jun 2026) — update `docs/CHANGELOG.md` when adding more.
 
 | Plan | Status | Summary |
 |------|--------|---------|
-| [tax-exempt-resubmit-portal.md](./tax-exempt-resubmit-portal.md) | Not started | Staff replace permit, deny/request-new with OTP customer upload, missing-documents opt-out, internal denial notes, email templates |
+| [tax-exempt-resubmit-portal.md](./tax-exempt-resubmit-portal.md) | **Partially shipped** | See checklist in linked doc |
 
-**Prerequisites already in repo (shipped):** migrations `103`–`106`, tax-exempt approval on `/payments`, `deny_tax_exempt` / `approve_tax_exempt` APIs, [`approve-tax-exempt-modal.tsx`](../../../components/orders/approve-tax-exempt-modal.tsx), **legacy queue** for pre-103 tickets (permit # without file — staff upload on order, then accountant confirm). See `docs/TECHNICAL_REFERENCE.md` (tax-exempt accountant approval) and `docs/CHANGELOG.md` (2026-06-02 entries).
+## Shipped (Jun 2026)
 
-**Cursor plan source (archive):** `.cursor/plans/tax-exempt_resubmit_portal_e860babd.plan.md` — keep in sync with this doc when the plan changes.
+- Migration **108** — resubmit columns on `job_tickets`
+- Accountant **Request** on `/payments` (payment evidence + tax-exempt) — `request_payment_evidence_resubmit` / `request_tax_exempt_resubmit`
+- Customer: payment proof on `/evidence/{token}` + `app/api/public/evidence/[token]/*`; tax-exempt OTP portal `/permit/{token}` + `app/api/public/permit/[token]/*`
+- Admin **Email Templates** + **SMS Templates** for resubmit copy (no staff-typed message in modal)
+- `lib/integrations/resubmit-requested-outreach.ts`, `request-evidence-resubmit-flow.tsx`, resubmit list status column
+
+**Docs:** [`docs/feature-specs/invoice-payment.md`](../../feature-specs/invoice-payment.md), [`docs/api-contract.md`](../../api-contract.md), [`docs/email-template-guide.md`](../../email-template-guide.md).
+
+## Not shipped (still in plan doc)
+
+- Staff **replace permit** from payments tab without full deny/approve cycle
+- Customer **declare documents unavailable**
+- **Internal denial notes** (separate from customer-safe resubmit reason)
+- Optional `/q` banner when tax-exempt resubmit pending (permit flow uses `/permit` only today)
+
+**Prerequisites already in repo:** migrations `103`–`106`, tax-exempt approval on `/payments`, `approve_tax_exempt` / `deny_tax_exempt`, [`approve-tax-exempt-modal.tsx`](../../../components/orders/approve-tax-exempt-modal.tsx).
+
+**Cursor plan source (archive):** `.cursor/plans/tax-exempt_resubmit_portal_e860babd.plan.md` — keep in sync with this doc when scope changes.
