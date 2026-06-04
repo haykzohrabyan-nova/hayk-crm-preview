@@ -5,6 +5,7 @@ import { LineItemsForm } from "@/components/quotes/shared/line-items-form";
 import { QuoteForm } from "@/components/quotes/shared/quote-form";
 import { ShippingFulfillmentSection } from "@/components/quotes/shared/shipping-fulfillment-section";
 import { OrderPaymentSummary } from "@/components/quotes/quote-detail/order-payment-summary";
+import { StripePaymentDetailSection } from "@/components/quotes/quote-detail/stripe-payment-detail-section";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { resolveRequiresShipping } from "@/lib/utils/address";
@@ -170,6 +171,10 @@ export function TicketOverviewSections({
           />
         </DetailCollapsibleSection>
       </DetailSection>
+
+      {canViewPaymentEvidence && ticket.stripe_payment_intent_id && (
+        <StripePaymentDetailSection ticket={ticket} />
+      )}
 
       {/* ── Collapsed under "More details" by default ── */}
       <MoreSectionGroup>

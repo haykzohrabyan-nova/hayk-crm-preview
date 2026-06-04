@@ -100,19 +100,20 @@ function NavLink({
               color: "var(--color-btn-primary-text)",
               fontWeight: 500,
             }
-          : { color: "rgba(255,255,255,0.65)" }
+          : { color: "var(--color-sidebar-nav)" }
       }
       onMouseEnter={(e) => {
         if (!active) {
           (e.currentTarget as HTMLElement).style.backgroundColor =
-            "rgba(255,255,255,0.08)";
-          (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.9)";
+            "var(--color-sidebar-hover-bg)";
+          (e.currentTarget as HTMLElement).style.color =
+            "var(--color-sidebar-nav-hover)";
         }
       }}
       onMouseLeave={(e) => {
         if (!active) {
           (e.currentTarget as HTMLElement).style.backgroundColor = "";
-          (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.65)";
+          (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav)";
         }
       }}
     >
@@ -328,13 +329,13 @@ export function Sidebar() {
       )}
       style={{
         backgroundColor: "var(--color-topbar)",
-        borderRight: "1px solid rgba(255,255,255,0.08)",
+        borderRight: "1px solid var(--color-sidebar-divider)",
       }}
     >
       {/* Brand */}
       <div
         className="flex h-14 shrink-0 items-center px-3.5"
-        style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+        style={{ borderBottom: "1px solid var(--color-sidebar-divider)" }}
       >
         {collapsed ? (
           <span
@@ -359,9 +360,10 @@ export function Sidebar() {
         <Link
           href="/profile"
           className="group flex items-center gap-2.5 rounded-md px-2 py-2 transition-colors"
-          style={{ color: "rgba(255,255,255,0.85)" }}
+          style={{ color: "var(--color-sidebar-nav)" }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.08)";
+            (e.currentTarget as HTMLElement).style.backgroundColor =
+              "var(--color-sidebar-hover-bg)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.backgroundColor = "";
@@ -378,20 +380,20 @@ export function Sidebar() {
           {/* Name + role — hidden when collapsed */}
           {!collapsed && (
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium" style={{ color: "rgba(255,255,255,0.9)" }}>
+              <p className="truncate text-[13px] font-medium" style={{ color: "var(--color-sidebar-nav)" }}>
                 {userFullName ?? "—"}
               </p>
-              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+              <p className="text-[11px]" style={{ color: "var(--color-sidebar-nav-faint)" }}>
                 {roleLabel(userRoleName)}
               </p>
             </div>
           )}
           {!collapsed && (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: "rgba(255,255,255,0.35)" }} />
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: "var(--color-sidebar-nav-faint)" }} />
           )}
         </Link>
         {/* Divider */}
-        <div className="mt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
+        <div className="mt-2" style={{ borderTop: "1px solid var(--color-sidebar-divider)" }} />
       </div>
 
       {/* Nav sections */}
@@ -402,7 +404,7 @@ export function Sidebar() {
             {!collapsed && section === "admin" && (
               <p
                 className="px-2.5 pb-1 pt-0.5 text-[10px] font-medium uppercase tracking-wider"
-                style={{ color: "rgba(255,255,255,0.35)" }}
+                style={{ color: "var(--color-sidebar-nav-faint)" }}
               >
                 Admin
               </p>
@@ -423,21 +425,21 @@ export function Sidebar() {
       {/* Bottom utility strip */}
       <div
         className="flex flex-col gap-0.5 p-2"
-        style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+        style={{ borderTop: "1px solid var(--color-sidebar-divider)" }}
       >
         <button
           onClick={toggleTheme}
           title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
           className={utilityButtonClass}
-          style={{ color: "rgba(255,255,255,0.55)" }}
+          style={{ color: "var(--color-sidebar-nav-muted)" }}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLElement).style.backgroundColor =
-              "rgba(255,255,255,0.08)";
-            (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.85)";
+              "var(--color-sidebar-hover-bg)";
+            (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.backgroundColor = "";
-            (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.55)";
+            (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav-muted)";
           }}
         >
           {theme === "dark" ? (
@@ -454,15 +456,15 @@ export function Sidebar() {
           onClick={handleSignOut}
           title={collapsed ? "Sign out" : undefined}
           className={utilityButtonClass}
-          style={{ color: "rgba(255,255,255,0.55)" }}
+          style={{ color: "var(--color-sidebar-nav-muted)" }}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLElement).style.backgroundColor =
-              "rgba(255,255,255,0.08)";
-            (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.85)";
+              "var(--color-sidebar-hover-bg)";
+            (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.backgroundColor = "";
-            (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.55)";
+            (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav-muted)";
           }}
         >
           <LogOut className="h-4 w-4 shrink-0" />
@@ -473,15 +475,15 @@ export function Sidebar() {
           onClick={toggleCollapse}
           title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           className={utilityButtonClass}
-          style={{ color: "rgba(255,255,255,0.45)" }}
+          style={{ color: "var(--color-sidebar-nav-faint)" }}
           onMouseEnter={(e) => {
             (e.currentTarget as HTMLElement).style.backgroundColor =
-              "rgba(255,255,255,0.08)";
-            (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.8)";
+              "var(--color-sidebar-hover-bg)";
+            (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav)";
           }}
           onMouseLeave={(e) => {
             (e.currentTarget as HTMLElement).style.backgroundColor = "";
-            (e.currentTarget as HTMLElement).style.color = "rgba(255,255,255,0.45)";
+            (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav-faint)";
           }}
         >
           {collapsed ? (

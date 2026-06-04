@@ -3,6 +3,28 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-02] — Sidebar slate background & white nav text
+
+### Changed
+- `app/globals.css` — `--color-topbar` `#32373F` (light + dark); new `--color-sidebar-nav` tokens; inactive nav links white
+- `components/layout/sidebar.tsx`, `components/layout/mobile-nav.tsx` — nav labels use sidebar tokens
+
+## [2026-06-02] — Table column headers bold
+
+### Changed
+- `app/globals.css` — all `thead th` use `font-weight: 600` (semibold) across list and detail tables
+
+## [2026-06-02] — Light theme: black text, black verify & tabs
+
+### Changed
+- `app/globals.css` (`:root` light) — main and label text `#000000`; active tab text `#000000`; verify button bg `#000000` / text `#FFFFFF`; card/surface `#FAFAFA` and borders `#E5E7EB` unchanged
+
+## [2026-06-02] — Order detail: Stripe payment section after Line Items
+
+### Added
+- `components/quotes/quote-detail/stripe-payment-detail-section.tsx` — collapsible **Stripe card payment** block (open by default) with CRM review status + `StripeEvidencePanel` (amount, card, IDs, receipt, Open in Stripe)
+- Order / completed overview and edit layout — shown for **admin** and **accountant** when `stripe_payment_intent_id` is set, directly under **Line Items**
+
 ## [2026-06-02] — Stripe Checkout: connection error on Vercel
 
 ### Fixed

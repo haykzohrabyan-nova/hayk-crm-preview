@@ -104,7 +104,7 @@ export function MobileNav() {
         className="flex h-14 w-full shrink-0 items-center justify-between px-4 lg:hidden"
         style={{
           backgroundColor: "var(--color-topbar)",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          borderBottom: "1px solid var(--color-sidebar-divider)",
         }}
       >
         <span
@@ -118,7 +118,7 @@ export function MobileNav() {
         <button
           onClick={() => setOpen(true)}
           className="flex h-8 w-8 items-center justify-center rounded-md"
-          style={{ color: "rgba(255,255,255,0.7)" }}
+          style={{ color: "var(--color-sidebar-nav)" }}
           aria-label="Open navigation"
         >
           <Menu className="h-5 w-5" />
@@ -139,13 +139,13 @@ export function MobileNav() {
         className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col transition-transform duration-200 ease-in-out lg:hidden ${open ? "translate-x-0" : "-translate-x-full"}`}
         style={{
           backgroundColor: "var(--color-topbar)",
-          borderRight: "1px solid rgba(255,255,255,0.08)",
+          borderRight: "1px solid var(--color-sidebar-divider)",
         }}
       >
         {/* Drawer header */}
         <div
           className="flex h-14 shrink-0 items-center justify-between px-4"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+          style={{ borderBottom: "1px solid var(--color-sidebar-divider)" }}
         >
           <span
             className="text-[13px] font-semibold select-none"
@@ -157,7 +157,7 @@ export function MobileNav() {
           <button
             onClick={() => setOpen(false)}
             className="flex h-8 w-8 items-center justify-center rounded-md"
-            style={{ color: "rgba(255,255,255,0.6)" }}
+            style={{ color: "var(--color-sidebar-nav)" }}
             aria-label="Close navigation"
           >
             <X className="h-5 w-5" />
@@ -169,8 +169,11 @@ export function MobileNav() {
           <Link
             href="/profile"
             className="group flex items-center gap-3 rounded-md px-3 py-2.5 transition-colors"
-            style={{ color: "rgba(255,255,255,0.85)" }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = "rgba(255,255,255,0.08)"; }}
+            style={{ color: "var(--color-sidebar-nav)" }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.backgroundColor =
+                "var(--color-sidebar-hover-bg)";
+            }}
             onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.backgroundColor = ""; }}
           >
             <div
@@ -180,16 +183,16 @@ export function MobileNav() {
               {userFullName?.trim()[0]?.toUpperCase() ?? "?"}
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium" style={{ color: "rgba(255,255,255,0.9)" }}>
+              <p className="truncate text-[13px] font-medium" style={{ color: "var(--color-sidebar-nav)" }}>
                 {userFullName ?? "—"}
               </p>
-              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.45)" }}>
+              <p className="text-[11px]" style={{ color: "var(--color-sidebar-nav-faint)" }}>
                 {roleLabel(userRoleName)}
               </p>
             </div>
-            <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "rgba(255,255,255,0.35)" }} />
+            <ChevronRight className="h-4 w-4 shrink-0" style={{ color: "var(--color-sidebar-nav-faint)" }} />
           </Link>
-          <div className="mt-2" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }} />
+          <div className="mt-2" style={{ borderTop: "1px solid var(--color-sidebar-divider)" }} />
         </div>
 
         {/* Nav items — role-based, same as sidebar */}
@@ -210,7 +213,7 @@ export function MobileNav() {
                 style={
                   active
                     ? { backgroundColor: "var(--color-accent)", color: "var(--color-btn-primary-text)", fontWeight: 500 }
-                    : { color: "rgba(255,255,255,0.65)" }
+                    : { color: "var(--color-sidebar-nav)" }
                 }
               >
                 <Icon className="h-4 w-4 shrink-0" />
@@ -234,12 +237,12 @@ export function MobileNav() {
         {/* Bottom strip */}
         <div
           className="flex flex-col gap-0.5 p-2"
-          style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}
+          style={{ borderTop: "1px solid var(--color-sidebar-divider)" }}
         >
           <button
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
             className="flex items-center gap-3 rounded-md px-3 py-2.5 text-[13px] w-full transition-colors"
-            style={{ color: "rgba(255,255,255,0.55)" }}
+            style={{ color: "var(--color-sidebar-nav-muted)" }}
           >
             {theme === "dark" ? <Sun className="h-4 w-4 shrink-0" /> : <Moon className="h-4 w-4 shrink-0" />}
             {theme === "dark" ? "Light mode" : "Dark mode"}
@@ -248,7 +251,7 @@ export function MobileNav() {
           <button
             onClick={handleSignOut}
             className="flex items-center gap-3 rounded-md px-3 py-2.5 text-[13px] w-full transition-colors"
-            style={{ color: "rgba(255,255,255,0.55)" }}
+            style={{ color: "var(--color-sidebar-nav-muted)" }}
           >
             <LogOut className="h-4 w-4 shrink-0" />
             Sign out

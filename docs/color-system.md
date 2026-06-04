@@ -115,10 +115,10 @@ The sidebar theme control calls `useTheme().setTheme(...)` — same storage and 
 |-------|-------|------|-------------|
 | `--color-bg` | `#FFFFFF` | `#18181B` | Page background |
 | `--color-surface` | `#FAFAFA` | `#27272A` | Cards, modals, inputs |
-| `--color-topbar` | `#1B2B4B` | `#27272A` | Sidebar background |
+| `--color-topbar` | `#32373F` | `#32373F` | Sidebar background |
 | `--color-border` | `#E5E7EB` | `#3F3F46` | Borders, dividers |
-| `--color-text-primary` | `#333333` | `#F4F4F5` | Body text |
-| `--color-text-muted` | `#666666` | `#71717A` | Labels, placeholders |
+| `--color-text-primary` | `#000000` | `#F4F4F5` | Body text |
+| `--color-text-muted` | `#000000` | `#71717A` | Labels, placeholders |
 | `--color-text-inverse` | `#FFFFFF` | `#FFFFFF` | Text on dark/colored buttons |
 
 ### Accent & buttons
@@ -129,8 +129,8 @@ The sidebar theme control calls `useTheme().setTheme(...)` — same storage and 
 | `--color-accent-dark` | `#C9A84C` | `#FB923C` | Accent hover |
 | `--color-btn-primary-bg` | `#E8C97A` | `#F97316` | Primary CTA background |
 | `--color-btn-primary-text` | `#1B2B4B` | `#FFFFFF` | Primary CTA text |
-| `--color-btn-verify-bg` | `#1B2B4B` | `#F97316` | Navy/orange “verify” buttons |
-| `--color-btn-verify-text` | `#E8C97A` | `#FFFFFF` | Verify button text |
+| `--color-btn-verify-bg` | `#000000` | `#F97316` | Verify / secondary action buttons |
+| `--color-btn-verify-text` | `#FFFFFF` | `#FFFFFF` | Verify button text |
 
 ### Tables & badges
 
@@ -145,7 +145,7 @@ The sidebar theme control calls `useTheme().setTheme(...)` — same storage and 
 
 | Token | Light | Dark |
 |-------|-------|------|
-| `--color-tab-active` | `#1B2B4B` | `#F97316` |
+| `--color-tab-active` | `#000000` | `#F97316` |
 | `--color-tab-underline` | `#E8C97A` | `#F97316` |
 | `--color-tab-inactive` | `#888888` | `#71717A` |
 
@@ -202,7 +202,7 @@ Change status colors by editing token values in `globals.css`, or adjust the map
 
 ### Sidebar (special case)
 
-Sidebar nav uses `--color-topbar`, `--color-accent`, and **white at reduced opacity** for inactive links (`rgba(255,255,255,0.65)` on hover `0.9`). Active item uses `--color-accent` background and `--color-btn-primary-text`.
+Sidebar nav uses `--color-topbar` (`#32373F`), `--color-sidebar-nav` (`#FFFFFF`) for inactive links, `--color-accent` for active background, and `--color-btn-primary-text` for active label. Utility row uses `--color-sidebar-nav-muted`.
 
 ### Page chrome
 

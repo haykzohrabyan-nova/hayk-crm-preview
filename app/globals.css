@@ -10,15 +10,23 @@
   /* Backgrounds */
   --color-bg: #ffffff;
   --color-surface: #FAFAFA;
-  --color-topbar: #1B2B4B;
+  --color-topbar: #32373F;
+
+  /* Sidebar nav (on --color-topbar) */
+  --color-sidebar-nav: #FFFFFF;
+  --color-sidebar-nav-hover: #FFFFFF;
+  --color-sidebar-nav-muted: rgba(255, 255, 255, 0.55);
+  --color-sidebar-nav-faint: rgba(255, 255, 255, 0.35);
+  --color-sidebar-hover-bg: rgba(255, 255, 255, 0.08);
+  --color-sidebar-divider: rgba(255, 255, 255, 0.08);
 
   /* Accent */
   --color-accent: #E8C97A;
   --color-accent-dark: #C9A84C;
 
   /* Text */
-  --color-text-primary: #333333;
-  --color-text-muted: #666666;
+  --color-text-primary: #000000;
+  --color-text-muted: #000000;
   --color-text-inverse: #FFFFFF;
 
   /* Borders */
@@ -35,11 +43,11 @@
   /* Buttons */
   --color-btn-primary-bg: #E8C97A;
   --color-btn-primary-text: #1B2B4B;
-  --color-btn-verify-bg: #1B2B4B;
-  --color-btn-verify-text: #E8C97A;
+  --color-btn-verify-bg: #000000;
+  --color-btn-verify-text: #FFFFFF;
 
   /* Tabs */
-  --color-tab-active: #1B2B4B;
+  --color-tab-active: #000000;
   --color-tab-underline: #E8C97A;
   --color-tab-inactive: #888888;
 
@@ -77,7 +85,7 @@
   /* Backgrounds */
   --color-bg: #18181B;
   --color-surface: #27272A;
-  --color-topbar: #27272A;
+  --color-topbar: #32373F;
 
   /* Accent */
   --color-accent: #F97316;
@@ -169,7 +177,7 @@
 
   /* Sidebar tokens */
   --color-sidebar:            var(--color-topbar);
-  --color-sidebar-foreground: rgba(255,255,255,0.85);
+  --color-sidebar-foreground: var(--color-sidebar-nav);
   --color-sidebar-border:     rgba(255,255,255,0.10);
   --color-sidebar-accent:     rgba(255,255,255,0.08);
   --color-sidebar-accent-foreground: rgba(255,255,255,0.90);
@@ -195,6 +203,11 @@ body {
   font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Table column headers — bold across all list/detail tables */
+thead th {
+  font-weight: 600;
 }
 
 /* ─── Native select: force light appearance so the OS popup matches the UI ── */

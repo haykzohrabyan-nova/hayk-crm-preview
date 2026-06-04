@@ -79,6 +79,7 @@ import { CustomerInfoCard } from "@/components/quotes/quote-detail/customer-info
 import { OrderPaymentSummary } from "@/components/quotes/quote-detail/order-payment-summary";
 import { TicketDetailOverview } from "@/components/quotes/quote-detail/ticket-detail-overview";
 import { TicketOverviewSections } from "@/components/quotes/quote-detail/ticket-overview-sections";
+import { StripePaymentDetailSection } from "@/components/quotes/quote-detail/stripe-payment-detail-section";
 import { TicketStatsRow } from "@/components/quotes/quote-detail/ticket-stats-row";
 import { TicketLifecycleTimeline } from "@/components/quotes/quote-detail/ticket-lifecycle-timeline";
 import { ticketIsQuoteStage } from "@/lib/utils/reference-codes";
@@ -1801,6 +1802,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     }
                   />
                 </DetailCollapsibleSection>
+
+                {canViewPaymentEvidence && ticket.stripe_payment_intent_id && (
+                  <StripePaymentDetailSection ticket={ticket} />
+                )}
 
                 {/* ── Fulfillment ── */}
                 <DetailCollapsibleSection title="Fulfillment" defaultOpen={editing}>

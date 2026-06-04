@@ -14,7 +14,7 @@ Always use these variables. **Never hardcode hex values in components.**
 |---|---|---|
 | `--color-bg` | `#FFFFFF` | `#18181B` |
 | `--color-surface` | `#FAFAFA` | `#27272A` |
-| `--color-topbar` | `#1B2B4B` | `#27272A` |
+| `--color-topbar` | `#32373F` | `#32373F` |
 | `--color-accent` | `#E8C97A` | `#F97316` |
 | `--color-accent-dark` | `#C9A84C` | `#FB923C` |
 | `--color-text-primary` | `#333333` | `#F4F4F5` |
@@ -40,7 +40,7 @@ Semantic colors (not tokenized — use directly):
 ## Typography
 - **Font: Inter** (Google Fonts via `next/font/google`). Fallback: `-apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif`
 - Max font-weight: **600**. Never use 700+.
-- Table headers: `11px / 500 / uppercase / letter-spacing: 0.06em` in `--color-text-muted`
+- Table headers: `11px / 600 / uppercase / letter-spacing: 0.06em` in `--color-text-muted` (global `thead th` in `globals.css`)
 - Page title (h1): `20px / 600` in `--color-text-primary`
 - Button text: `13px / 500`
 
@@ -48,7 +48,7 @@ Semantic colors (not tokenized — use directly):
 - **Left collapsible sidebar** for navigation. Background: `var(--color-topbar)` (navy light / dark gray dark).
 - Expanded width: `224px` (`w-56`). Collapsed width: `56px` (`w-14`). Collapse state persisted in `localStorage` key `bazaar-sidebar-collapsed`.
 - Brand name at sidebar top: `BAZAARPRINTING` in `var(--color-accent)`, `letter-spacing: 0.05em`.
-- Active nav item: `background: var(--color-accent)`, `color: var(--color-btn-primary-text)`. Inactive: `rgba(255,255,255,0.65)` on hover `rgba(255,255,255,0.9)`.
+- Active nav item: `background: var(--color-accent)`, `color: var(--color-btn-primary-text)`. Inactive: `var(--color-sidebar-nav)` (white); hover uses `var(--color-sidebar-nav-hover)` and `var(--color-sidebar-hover-bg)`.
 - Bottom of sidebar: Dark mode toggle, Sign out, Collapse button — all using `rgba(255,255,255,0.55)` text.
 - Page content: **full width** (no `max-w` on page component roots) — the app layout wrapper (`app/(app)/layout.tsx`) provides `max-w-[1980px] px-4 lg:px-6 py-6` which is effectively full-screen. Page components use `<div className="space-y-5">` as their root, matching `leads-page.tsx`. Do NOT add `max-w-screen-xl mx-auto` or similar on page-level wrappers — it narrows the page unnecessarily. Full-page form/detail views (e.g. `/quotes/new`, `/quotes/[id]`) use `w-full px-6 py-6` for their inner content area.
 - Spacing scale: multiples of 4px only (`4 / 8 / 12 / 16 / 20 / 24 / 32px`).
