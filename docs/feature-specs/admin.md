@@ -23,8 +23,21 @@ The page lives at `app/(app)/admin/page.tsx`. A sub-nav strip (Overview / Settin
 | SMS Templates | `/admin/settings/sms-templates` | ✅ Built | Editable SMS/WhatsApp bodies for quote send, reminders, payment confirmed, etc. |
 | Email Templates | `/admin/settings/email-templates` | ✅ Built | Editable customer email subject, body, and CTA for all Instantly outbound messages |
 | Payment | `/admin/settings/payment` | ✅ Built | Bank / Wire / ACH and Zelle remittance shown on public quote page |
+| Lead import | `/admin/settings/import-export` | ✅ Built | Bulk JSON lead import — validate-first preview, AI template download, optional auto-add missing dropdown slugs |
 
 Built cards show an accent-colored icon + "Open →".
+
+### Lead import (`/admin/settings/import-export`) ✅ Built (Jun 2026)
+
+**Component:** `components/admin/leads-import-section.tsx`
+
+**Flow:** Upload JSON → **Validate** (dry run, no DB writes) → preview table → **Import** valid rows only → download results JSON.
+
+**API:** `GET /api/admin/leads/import/template` (AI-friendly sample with `_documentation` + live `_lookups`); `POST /api/admin/leads/import?dry_run=true` | commit.
+
+**Rules:** `source` and `industry` must be **value** slugs from Dropdown Options (or `create_missing_lookups: true` on import). Max 500 rows per file. JSON only — not CSV.
+
+**Spec:** [`lead-import.md`](./lead-import.md)
 
 ---
 

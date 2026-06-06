@@ -1335,7 +1335,7 @@ Migration: `supabase/migrations/103_sales_permit_file.sql`.
 | Body flag | Effect |
 |-----------|--------|
 | `approve_tax_exempt: true` | Sets `sales_permit_reviewed_*`, optional adjusted totals (`quote_final_total` required), syncs customer last permit, activity `ticket_tax_exempt_approved`, `sendTaxExemptApproved` + `ticket_tax_exempt_confirmed_sent`, `notifyPublicQuoteUpdated` |
-| `deny_tax_exempt: true` | Sets `tax_exempt: false`, recomputes tax via `computeTotalsIfTaxExemptDenied`, stamps `sales_permit_reviewed_*`, activity `ticket_tax_exempt_denied`, `notifyPublicQuoteUpdated` |
+| `deny_tax_exempt: true` + `sales_permit_denial_notes` | Required internal note; sets `tax_exempt: false`, recomputes tax via `computeTotalsIfTaxExemptDenied`, stamps `sales_permit_reviewed_*`, activity `ticket_tax_exempt_denied` (payload includes `denial_notes`), `notifyPublicQuoteUpdated` |
 
 **Gates (blocked while tax-exempt pending):**
 
@@ -1354,7 +1354,9 @@ Migration: `supabase/migrations/103_sales_permit_file.sql`.
 
 **Evidence resubmit (shipped):** Accountant **Request** on `/payments` → customer email/SMS from admin templates (`{otpCode}` / SMS `{amount}`) → payment proof on `/evidence/{payment_evidence_resubmit_token}` (OTP + upload, read-only `payment_method_used`); tax-exempt on `/permit/{sales_permit_resubmit_token}` (OTP). `/q/{token}` does not show resubmit copy or upload during active payment resubmit. See `request_payment_evidence_resubmit` / `request_tax_exempt_resubmit` in `PATCH /api/tickets/[id]` and `docs/api-contract.md` (Public Evidence Routes).
 
-**Future (not shipped):** Staff replace permit on payments tab, declare-documents-unavailable, internal denial notes — [`docs/FuturePlan/tax-exempt-resubmit-portal/`](./FuturePlan/tax-exempt-resubmit-portal/README.md).
+**Staff replace (shipped Jun 2026):** `/payments` Pending + Tax-exempt tabs — `replace-ticket-document-modal.tsx`; `POST /api/tickets/[id]/evidence` (payment proof), `POST /api/tickets/[id]/sales-permit` (permit + required `sales_permit_number` for payment staff). Activities: `ticket_payment_evidence_replaced`, `ticket_tax_exempt_permit_replaced`.
+
+**Won't build:** Customer declare-documents-unavailable — use **Deny tax-exempt** with `sales_permit_denial_notes`. See [`docs/FuturePlan/tax-exempt-resubmit-portal/`](./FuturePlan/tax-exempt-resubmit-portal/README.md).
 
 ### `POST /api/tickets`
 
@@ -1457,7 +1459,7 @@ Creates Stripe Checkout session for `computePublicPaymentDueAmount`. Redirect on
 
 Stripe payments therefore do **not** appear on the Payments **Pending** tab (only offline evidence awaiting review does).
 
-**`POST /api/tickets/[id]/evidence`** — `GET` → signed URL redirect (accountant/admin view only)
+**`GET /api/tickets/[id]/evidence`** — 302 redirect to signed URL (accountant/admin). **`POST`** — staff replace payment proof from `/payments` (`staff-replace-payment-evidence.ts`)
 
 ### Recording payment (accountant)
 
@@ -1856,7 +1858,8 @@ This ensures the portal auto-updates when:
 | POST | `/api/tickets/[id]/files` | `canMutateTicket` | Multipart upload; `variant_id` OR `line_item_id` in form fields; replaces existing file for that scope |
 | GET | `/api/tickets/[id]/files/[fileId]` | `canAccessTicket` | 302 redirect to 60-second signed URL |
 | DELETE | `/api/tickets/[id]/files/[fileId]` | `canMutateTicket` | Deletes from storage + DB row |
-| POST | `/api/tickets/[id]/sales-permit` | `canMutateTicket` | Multipart `file`; replaces prior permit; updates `sales_permit_*` columns |
+| POST | `/api/tickets/[id]/sales-permit` | `canMutateTicket` **or** payment staff (`/payments`) | Multipart `file`; optional `sales_permit_number` (required for payment-staff replace); updates `sales_permit_*` columns |
+| POST | `/api/tickets/[id]/evidence` | `isPaymentStaffRole` | Staff replace payment proof while pending review |
 | GET | `/api/tickets/[id]/sales-permit` | `isPaymentStaffRole` | 302 redirect to 60-second signed URL (accepts reference code or UUID) |
 | DELETE | `/api/tickets/[id]/sales-permit` | `canMutateTicket` | Removes storage object + clears `sales_permit_*` columns |
 

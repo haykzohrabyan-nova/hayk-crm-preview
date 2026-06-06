@@ -197,7 +197,7 @@ flowchart LR
   AD3[Admin: Mark completed with balance due] --> AD4[completed + pickup email<br/>balance still collectible on /q/token]
 ```
 
-Owner policy for complete-with-balance: **TODO-009** / open-questions **B7**.
+Owner policy for complete-with-balance: **Option B (decided)** — accountants blocked; **Admin only** with `acknowledge_outstanding_balance: true` on `PATCH /api/tickets/[id]`. See open-questions **B7**.
 
 ---
 

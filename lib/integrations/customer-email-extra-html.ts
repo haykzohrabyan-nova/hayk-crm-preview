@@ -88,6 +88,12 @@ ${esc(pickupAddress)}${companyPhone ? `<br><br><strong>Phone:</strong> ${esc(com
   return "";
 }
 
+/** OTP line for payment evidence / tax-exempt resubmit emails (no block margins). */
+export function resubmitOtpExtraHtml(otpCode: string): string {
+  const safeOtp = otpCode.replace(/[<>&"]/g, "");
+  return `Your verification code: <strong style="font-size:18px;letter-spacing:0.2em;color:#111827;">${safeOtp}</strong>`;
+}
+
 export function orderReadyRefExtraHtml(referenceCode: string): string {
   return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 16px;"><tr>
 <td bgcolor="#f9fafb" style="background-color:#f9fafb;border-left:3px solid #16a34a;padding:14px 18px;font-family:Arial,Helvetica,sans-serif;font-size:14px;">

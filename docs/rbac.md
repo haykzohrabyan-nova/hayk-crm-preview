@@ -42,8 +42,8 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 ### Admin
 - Default pages: all pages including `/admin/*`, `/payments`, `/orders`, `/completed`
 - All SDR and Sales capabilities
-- Manage users, roles, system settings
-- **Mark Completed** on any in-production order (paid or unpaid)
+- Manage users, roles, system settings; **bulk lead import** at `/admin/settings/import-export` (JSON validate-first)
+- **Mark Completed** on in-production orders — paid in full, or with outstanding balance after acknowledgment modal (`acknowledge_outstanding_balance: true`; **Option B** — accountants cannot)
 - **Resend invoice link** on production/completed detail
 
 ### Accountant
@@ -52,8 +52,9 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - **No quote workflow** — `/quotes` not in default pages; `GET /api/quotes/*` and quote-list `GET /api/tickets?kind=quote` return `403`
 - Review customer-submitted payment evidence on `/payments` (Pending · **Tax-exempt pending** · Approved · **Refunded** tabs)
 - **Confirm payment** via `record_payment` PATCH action (blocked while tax-exempt permit review pending)
-- **Approve / deny tax-exempt** via `approve_tax_exempt` / `deny_tax_exempt` PATCH actions; view permit file via `GET /api/tickets/[id]/sales-permit` (accountant/admin only)
-- **Legacy tax-exempt (permit #, no file):** any role with `canMutateTicket` may upload permit on the order (`POST /api/tickets/[id]/sales-permit`); accountant approves on `/payments` after file exists
+- **Approve / deny tax-exempt** via `approve_tax_exempt` / `deny_tax_exempt` PATCH actions; deny requires `sales_permit_denial_notes` (internal only); view permit file via `GET /api/tickets/[id]/sales-permit` (accountant/admin only)
+- **Staff replace** on `/payments` Pending + Tax-exempt tabs — `POST /api/tickets/[id]/evidence` (payment proof) or `POST /api/tickets/[id]/sales-permit` (permit + required **Sales Permit #**)
+- **Legacy tax-exempt (permit #, no file):** any role with `canMutateTicket` may upload permit on the order (`POST /api/tickets/[id]/sales-permit`); accountant may also upload/replace from `/payments`; approves on `/payments` after file exists
 - **Refund payment** via `POST /api/tickets/[id]/refund` (manual + Stripe per slot) — same as Admin
 - **Cancel quote/order** via `PATCH /api/tickets/[id]` (`ticket_status: cancelled`) — same as Admin; partial-refund warning in UI first when applicable
 - View orders, production, and completed orders (read-only except mark complete, refund, cancel)
@@ -175,6 +176,8 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET /api/admin/lookups` | ✗ | ✗ | ✓ |
 | `POST /api/admin/lookups` | ✗ | ✗ | ✓ |
 | `PATCH/DELETE /api/admin/lookups/[id]` | ✗ | ✗ | ✓ |
+| `GET /api/admin/leads/import/template` | ✗ | ✗ | ✓ |
+| `POST /api/admin/leads/import` | ✗ | ✗ | ✓ |
 | `GET/POST /api/admin/materials` | ✗ | ✗ | ✓ |
 | `PATCH/DELETE /api/admin/materials/[id]` | ✗ | ✗ | ✓ |
 | `GET /api/admin/activity-log` | ✗ | ✗ | ✓ |
@@ -399,7 +402,7 @@ After MFA setup or password change, users land on their role home — not always
 ## User Lifecycle
 
 1. Admin creates user via **Admin → Settings → Users** → **Add User** (`POST /api/admin/users/create`) with email, role, and temporary password
-2. Admin shares credentials with the user (optional Instantly welcome email when configured)
+2. Admin creates user with temp password; optional **Send welcome email** (Instantly, checked by default) includes login URL + credentials — or admin shares password manually if email fails
 3. User logs in with temp password → `proxy.ts` redirects to `/change-password` when `must_change_password = true`
 4. After password change → `/setup-2fa` if no TOTP enrolled, else role home via `resolveDefaultHomePath()`
 5. Admin can deactivate user (`is_active = false`) → `proxy.ts` redirects to `/login?error=deactivated`

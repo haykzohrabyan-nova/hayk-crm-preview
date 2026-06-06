@@ -40,7 +40,7 @@ Optional (features degrade gracefully if absent):
 
 In the Supabase SQL Editor, run **`supabase/schema.sql`** once on an empty `public` schema.
 
-For an existing production database, do not re-run the full file — patch only missing objects from `schema.sql`. See `supabase/README.md`.
+For an existing production database, do not re-run the full file — patch only missing objects from `schema.sql` or `supabase/patches/*.sql`. See `supabase/README.md` and `supabase/migrations/README.md`.
 
 ### 4. Start the dev server
 
@@ -55,7 +55,7 @@ App runs at [http://localhost:3000](http://localhost:3000).
 ```
 app/(app)/          Authenticated CRM pages
 app/(auth)/         Login, MFA, password flows
-app/(public)/       Customer portals (/q/[token], /permit/[token] for tax-exempt resubmit)
+app/(public)/       Customer portals (/q/[token], /evidence/[token] payment resubmit, /permit/[token] tax-exempt resubmit)
 app/api/            Route Handlers (server-side only)
 components/         Feature UI (leads/, sales/, quotes/, orders/, crm/, admin/, layout/, ui/)
 lib/auth/           Session helpers, MFA, RBAC guards
@@ -73,9 +73,10 @@ supabase/           Schema DDL and incremental migrations
 - API contract: [`docs/api-contract.md`](docs/api-contract.md)
 - Email & SMS templates (admin): [`docs/email-template-guide.md`](docs/email-template-guide.md)
 - Payments & resubmit flows: [`docs/feature-specs/invoice-payment.md`](docs/feature-specs/invoice-payment.md)
+- Bulk lead import (admin, JSON): [`docs/feature-specs/lead-import.md`](docs/feature-specs/lead-import.md)
 - Changelog: [`docs/CHANGELOG.md`](docs/CHANGELOG.md)
 
-Before deploying, run `npm run build` locally and apply new Supabase migrations on the target project.
+Before deploying, run `npm run build` locally and apply any new Supabase DDL patches on the target project.
 - UI design system: [`.cursor/rules/ui-design-system.mdc`](.cursor/rules/ui-design-system.mdc)
 
 ## Scripts

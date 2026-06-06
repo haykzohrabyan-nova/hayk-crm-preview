@@ -682,8 +682,13 @@ All fixes are zero-logic-change — behavior is preserved; only security posture
 - Payment summary: **Required — pending** / **Confirmed** / **Not required**
 
 ### Owner questions (docs only)
-- **TODO-008** / **B6** — sent-quote email vs live portal after edit
-- **TODO-009** / **B7** — mark completed with balance still due
+- **TODO-008** / **B6** — sent-quote email vs live portal after edit (implemented hybrid — confirm wording)
+- **B7** — mark completed with balance still due — **decided Option B** (admin only + `acknowledge_outstanding_balance`; accountant blocked)
+
+### Jun 6, 2026 — Payments staff replace + lead import
+- `/payments` **Replace** on Pending + Tax-exempt tabs (`replace-ticket-document-modal.tsx`); permit replace requires **Sales Permit #**
+- Tax-exempt **Deny** requires internal `sales_permit_denial_notes` (not on `/q`)
+- Admin **Lead import** at `/admin/settings/import-export` — JSON validate-first, AI template (`GET /api/admin/leads/import/template`); spec `docs/feature-specs/lead-import.md`
 
 ---
 

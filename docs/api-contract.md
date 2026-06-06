@@ -1073,17 +1073,27 @@ Plus `file` (JPEG, PNG, WebP, or PDF; limits in `lib/utils/ticket-line-files.ts`
 
 ### `POST /api/tickets/[id]/sales-permit`
 
-Upload or replace the tax-exempt **sales permit document** (staff only). Stored on `job_tickets` columns, not `ticket_files`.
+Upload or replace the tax-exempt **sales permit document**. Stored on `job_tickets` columns, not `ticket_files`.
 
-**Auth:** `requireSession()` + `requireTicketDetailPageAccess()` + `canMutateTicket()`.
+**Auth (either path):**
+
+| Caller | Gate |
+|--------|------|
+| **Payment staff** (accountant/admin) | `/payments` page access + `canAccessTicket()` — used from `/payments` **Replace** modal |
+| **Ticket owner / admin** | `requireTicketDetailPageAccess()` + `canMutateTicket()` — quote/order detail save |
 
 **URL segment:** UUID or reference code (`QUO-*`, `ORD-*`).
 
-**Body:** `multipart/form-data` — field `file` (JPEG, PNG, WebP, or PDF; same validation as line attachments).
+**Body:** `multipart/form-data`:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `file` | Yes | JPEG, PNG, WebP, or PDF (same validation as line attachments) |
+| `sales_permit_number` | **Yes for payment-staff replace** | Updates `sales_permit_number` on ticket when provided |
 
 **Storage:** bucket `ticket-attachments`, path `{ticketId}/sales-permit/{uuid}-{sanitizedFileName}`.
 
-**Replace:** Deletes previous object if present, then updates `sales_permit_storage_path`, `sales_permit_file_name`, `sales_permit_mime_type`, `sales_permit_submitted_at` (and clears `sales_permit_reviewed_*` when replacing an already-reviewed permit).
+**Replace:** Deletes previous object if present, then updates `sales_permit_storage_path`, `sales_permit_file_name`, `sales_permit_mime_type`, `sales_permit_submitted_at` (and clears `sales_permit_reviewed_*` when replacing an already-reviewed permit). Clears active tax-exempt resubmit token/OTP when staff replaces during a resubmit cycle. Logs `ticket_tax_exempt_permit_replaced` when payment staff replaces from `/payments`.
 
 **Response `200`:** `{ ok: true, file_name, mime_type }`
 
@@ -1191,10 +1201,14 @@ Partial ticket update. Six distinct operation modes:
 
 **Mode 3c — Deny tax-exempt (Accountant + Admin only):**
 ```json
-{ "deny_tax_exempt": true }
+{
+  "deny_tax_exempt": true,
+  "sales_permit_denial_notes": "Internal audit note — required"
+}
 ```
+- `sales_permit_denial_notes` — **required** non-empty string; stored on `job_tickets`; **not** exposed on public `/q`
 - Sets `tax_exempt: false`, recomputes tax on current `quote_pre_tax_total` via `computeTotalsIfTaxExemptDenied`, stamps `sales_permit_reviewed_*`
-- Activity `ticket_tax_exempt_denied` (no customer-facing denial note column in v1)
+- Activity `ticket_tax_exempt_denied` with `denial_notes` in payload (History + CRM)
 - Returns `{ ticket }`
 
 **Mode 3d — Request payment evidence resubmit (Accountant + Admin only):**
@@ -1268,7 +1282,7 @@ Body: Any subset of ticket fields plus optional:
 - If `ticket_status` transitions to `"completed"` from `"in_production"`: sends order-ready notification via `sendOrderReadyToCustomer()` (pickup copy or **shipped to [address]** when `requires_shipping`; same `/q/{public_token}` URL); logs `ticket_order_ready_sent` or `ticket_order_ready_failed`
 - **Accountant** may set `ticket_status = "completed"` only on in-production orders that are **paid in full** (`isTicketPaidInFull()`)
 - **Tax-exempt pending** blocks completion unless **Admin** passes `acknowledge_tax_exempt_unapproved: true` (same pattern as outstanding balance)
-- **Admin** may mark completed with outstanding balance only when body includes `acknowledge_outstanding_balance: true` (UI shows confirmation modal); see **TODO-009**
+- **Admin** may mark completed with outstanding balance only when body includes `acknowledge_outstanding_balance: true` (UI shows confirmation modal); **accountant blocked** — owner policy **Option B** (open-questions **B7**)
 - If `ticket_status` transitions to `"order"` (manual "Convert to Order"):
   - **Admin only** — non-admin receives `403`
   - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`; sets `ticket_kind = "order"`
@@ -1354,16 +1368,27 @@ Returns a complete, fully-styled HTML document of the invoice. Used for browser 
 
 ### `GET /api/tickets/[id]/evidence`
 
-Returns a short-lived signed URL for the customer-uploaded payment evidence file.
+**Auth:** `requireSession()` + `isPaymentStaffRole()` + `canAccessTicket()`.
 
-**Auth:** `requireSession()` + Accountant or Admin role.
-
-**Response `200`:**
-```json
-{ "url": "https://..." }
-```
+**Response `302`:** Redirect to 60-second signed URL in `payment-evidence` bucket.
 
 **Response `404`:** No evidence on file.
+
+---
+
+### `POST /api/tickets/[id]/evidence`
+
+Staff replace customer-submitted payment proof while awaiting accountant review (or when proof exists on a pending row).
+
+**Auth:** `isPaymentStaffRole()` + `canAccessTicket()` — `/payments` **Replace** modal.
+
+**Body:** `multipart/form-data` — field `file` (image or PDF; same rules as public submit-payment).
+
+**Preconditions:** Ticket has unreviewed evidence (`payment_evidence_submitted_at` set, `payment_evidence_reviewed_at` null) **or** existing `payment_evidence_url`.
+
+**Side effects:** Replaces object in `payment-evidence` bucket; resets review timestamps; clears active payment resubmit token/OTP when applicable; activity `ticket_payment_evidence_replaced`; `notifyPublicQuoteUpdated`.
+
+**Response `200`:** `{ ok: true, file_name }`
 
 ---
 
@@ -1427,7 +1452,9 @@ Deduped by ticket id. Same row shape as pending evidence. UI: Submitted column; 
 
 **Refunded filter (`refundedOrders`):** `refund_status IN ('partial', 'full')`; includes latest ledger row fields (`last_refund_method`, `last_refund_source`, `last_refund_payment_mode`) for list labels.
 
-**UI columns (evidence tabs):** Order, Customer, Claimed (`payment_evidence_amount` or remainder), **Payment For** (`inferPaymentEvidenceMode`), Method, Submitted, Actions/Approved.
+**UI columns (evidence tabs):** Order, Customer, Claimed (`payment_evidence_amount` or remainder), **Payment For** (`inferPaymentEvidenceMode`), Method, Submitted, Resubmit status (when any row on page has activity), Actions/Approved.
+
+**Row actions (Pending + Tax-exempt tabs):** Icon buttons with hover labels — **View file**, **Replace** (`ReplaceTicketDocumentModal` → `POST …/evidence` or `POST …/sales-permit` + required permit #), **Request updated proof/permit**, primary **Confirm** / **Review**.
 
 **Row navigation:** `/payments/{id}?from=/payments` (payment detail uses `QuoteDetail` with `context="payment"`).
 
@@ -2462,14 +2489,21 @@ Creates a new user with a temp password and optionally sends a branded welcome e
 **Business rules:**
 1. Calls `supabase.auth.admin.createUser({ email, password: temp_password, email_confirm: true })`
 2. Creates `user_profiles` with `role_id`, `must_change_password: true`, `is_active: true`, `dashboard_values_hidden: false`
-3. If `send_welcome_email: true` — fires a branded HTML welcome email via **Instantly AI** (fire-and-forget) containing the user's email, temp password, and a login CTA. Requires `INSTANTLY_API_KEY` and `INSTANTLY_SENDING_ACCOUNT` env vars. Silently skips if Instantly is not configured.
+3. If `send_welcome_email: true` — **awaits** a branded HTML welcome email via **Instantly AI** (same `/api/v2/emails/test` endpoint as customer outreach) containing email, temp password, and login CTA (`resolveLoginUrl`). Requires `INSTANTLY_API_KEY` and `INSTANTLY_SENDING_ACCOUNT`. UI checkbox on Add User form defaults to **on** (`components/admin/users-section.tsx`).
 
 **Response `201`:**
 ```json
 {
-  "user": UserProfile
+  "user": UserProfile,
+  "email_delivery": {
+    "attempted": true,
+    "ok": true,
+    "login_url": "https://…/login"
+  }
 }
 ```
+
+When `send_welcome_email` is false, `email_delivery` is omitted. When Instantly fails, `email_delivery.ok` is `false` with `error`; user account is still created — admin shares credentials manually.
 
 ---
 
@@ -2606,6 +2640,47 @@ Create a new option. Admin only.
 ```
 
 **Response `201`:** `{ "item": LookupValue }`
+
+---
+
+### `GET /api/admin/leads/import/template`
+
+Download a live JSON template for bulk lead import. Admin only.
+
+**Response `200`:** `application/json` attachment with:
+
+- `_documentation` — AI-friendly field guide (required/optional, example values, instructions)
+- `_lookups` — current `source`, `industry`, `urgency`, and product option tables (`value` + `label`)
+- `leads` — one example row
+
+Keys starting with `_` are ignored on import.
+
+---
+
+### `POST /api/admin/leads/import`
+
+Bulk import leads from JSON. Admin only. **Validate before commit** — always dry-run first in UI.
+
+**Query:** `dry_run=true` — parse + validate only; no DB writes.
+
+**Body:**
+```json
+{
+  "leads": [ /* up to 500 row objects */ ],
+  "create_missing_lookups": false
+}
+```
+
+| Field | Notes |
+|-------|-------|
+| `leads[]` | Required. Each row: customer fields + lead fields (see `docs/feature-specs/lead-import.md`) |
+| `create_missing_lookups` | When `true` on **commit**, auto-creates unknown `source` / `industry` slugs in Dropdown Options |
+
+**Dry-run response `200`:** `{ valid, invalid, preview, errors[] }` — no mutations.
+
+**Commit response `200`:** `{ imported, skipped, created_lookups, results[] }`; logs `leads_bulk_imported` activity.
+
+**Validation:** Unknown `source` / `industry` rejected by default (error lists valid slugs). Duplicate phone skips row. Max 500 leads per request.
 
 ---
 

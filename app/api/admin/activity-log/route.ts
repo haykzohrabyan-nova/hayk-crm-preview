@@ -15,6 +15,7 @@ const ACTION_LABELS: Record<string, string> = {
   lead_sales_claimed: "Claimed lead",
   lead_claimed: "Claimed lead",
   lead_manual_created: "Created lead manually",
+  leads_bulk_imported: "Bulk imported leads",
   lead_reassigned: "Reassigned lead",
   customer_merged: "Merged customer records",
   contact_edited: "Edited customer profile",

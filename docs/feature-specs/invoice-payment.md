@@ -208,7 +208,11 @@ When payment proof or tax-exempt permit needs to be replaced after customer subm
 - **Review tax-exempt documentation** modal (`ApproveTaxExemptModal`) — `720px` wide; footer: Request updated permit, Cancel, Deny, Approve on one row.
 - Customer resubmit does **not** email/SMS staff — realtime + activities only
 
-**Future (not built):** Staff replace permit on payments list, declare-documents-unavailable, internal denial notes — [`docs/FuturePlan/tax-exempt-resubmit-portal/`](../FuturePlan/tax-exempt-resubmit-portal/README.md).
+**Staff replace (shipped Jun 2026):** `/payments` **Pending** and **Tax-exempt pending** tabs — **Replace** opens `ReplaceTicketDocumentModal`; payment proof → `POST /api/tickets/[id]/evidence`; sales permit → `POST /api/tickets/[id]/sales-permit` with required **Sales Permit #**. Icon row actions use hover tooltips (`payments-row-actions.tsx`).
+
+**Deny tax-exempt (shipped Jun 2026):** `ApproveTaxExemptModal` deny step requires internal **Reason / notes** → `PATCH { deny_tax_exempt: true, sales_permit_denial_notes }` — staff-only; not on `/q`.
+
+**Won't build:** Customer **declare documents unavailable** — staff use **Deny tax-exempt** instead. See [`docs/FuturePlan/tax-exempt-resubmit-portal/`](../FuturePlan/tax-exempt-resubmit-portal/README.md).
 
 ### Net terms auto-production
 
@@ -240,7 +244,7 @@ When cash/offline deposit or full cash-only payment is configured, **Receipt ID*
 History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_ready_failed`, `ticket_payment_confirmed_sent`.
 
 **Mark Completed rules:**
-- **Admin** — may mark in-production orders complete; when balance is still due, UI shows acknowledgment modal and API requires `acknowledge_outstanding_balance: true` (see **TODO-009** / open-questions **B7** for owner policy)
+- **Admin** — may mark in-production orders complete; when balance is still due, UI shows acknowledgment modal and API requires `acknowledge_outstanding_balance: true` (**Option B** — decided; open-questions **B7**)
 - **Accountant** — only when `isTicketPaidInFull()` (`lib/utils/invoice-payment-summary.ts`)
 - Pickup email (`sendOrderReadyToCustomer`) always uses the same `/q/{public_token}` URL
 
@@ -255,6 +259,8 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 | `GET /api/public/quotes/[token]/files/[fileId]` | None | Line/variant attachment stream for preview + download |
 | `GET /api/payments/page-data` | Accountant + Admin | Pending evidence + **tax-exempt pending** + merged approved + refunded + tab counts |
 | `GET /api/tickets/[id]/sales-permit` | Accountant + Admin | Signed URL for tax-exempt permit file |
+| `POST /api/tickets/[id]/sales-permit` | `canMutateTicket` **or** payment staff from `/payments` | Upload/replace permit; payment-staff replace requires `sales_permit_number` |
+| `POST /api/tickets/[id]/evidence` | Accountant + Admin | Staff replace payment proof file (pending review) |
 | `POST /api/tickets/[id]/sales-permit/reuse-from-customer` | Staff (`canMutateTicket`) | Copy customer last permit onto ticket |
 | `GET /api/crm/customers/[id]/tax-exempt-history` | CRM page access | Customer tax-exempt ticket history |
 | `POST /api/tickets/[id]/refund` | Accountant + Admin | Unified refund (manual + Stripe per payment slot) |
@@ -266,7 +272,7 @@ History logs: `ticket_invoice_resent`, `ticket_order_ready_sent`, `ticket_order_
 | `GET /api/completed/orders` | SDR (created only) / Admin / Accountant | Completed list — SDR: `created_by_id` only |
 | `GET /api/completed/counts` | SDR (created only) / Admin / Accountant | Completed badge — same scope |
 | `GET /api/completed/page-data` | SDR (created only) / Admin / Accountant | List + counts — same scope |
-| `GET /api/tickets/[id]/evidence` | Staff with ticket access | Signed URL for evidence file |
+| `GET /api/tickets/[id]/evidence` | Accountant + Admin | 302 redirect to signed payment evidence URL |
 
 ---
 

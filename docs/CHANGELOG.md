@@ -3,10 +3,111 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-06] — Documentation sync (payments replace, lead import, TODO-009)
+
+### Changed
+- `docs/api-contract.md` — `POST …/sales-permit` payment-staff auth + `sales_permit_number`; `POST …/evidence` staff replace; `deny_tax_exempt` + `sales_permit_denial_notes`; lead import APIs; payments row actions; mark-completed **Option B**
+- `docs/feature-specs/invoice-payment.md`, `docs/TECHNICAL_REFERENCE.md` — staff replace + deny notes shipped; declare-unavailable won't build
+- `docs/feature-specs/admin.md`, `docs/navigation.md`, `docs/component-architecture.md` — Lead import tab + components
+- `docs/feature-specs/activity.md`, `docs/feature-specs/tickets.md`, `docs/order-ticket/lifecycle-flow.md`, `docs/session-summary.md` — activity types, B7 decided
+- `docs/FuturePlan/tax-exempt-resubmit-portal/` — Phase 0 + denial notes checked off; Phase 1b won't build
+- `docs/TODO.md`, `docs/feature-specs/reports.md`, `README.md` — lead import path, JSON export note
+- `docs/architecture.md`, `docs/rbac.md` — lead import routes, payments staff replace + deny notes, mark-completed Option B
+
+## [2026-06-06] — AI-friendly lead import JSON template
+
+### Changed
+- Download template — `_documentation` block (purpose, instructions, required/optional fields, example source/industry values); single example lead; full `_lookups` list for AI matching
+
+## [2026-06-06] — Lead import dropdown reference + strict lookup validation
+
+### Added
+- `GET /api/admin/leads/import/template` — sample JSON with live `_lookups` (source/industry value + label tables)
+- Import page — **Allowed dropdown values** tables (`value` | `label`); optional **Add missing source/industry** on import
+
+### Changed
+- Bulk import — rejects unknown `source`/`industry` by default; errors list valid options; `create_missing_lookups` adds new Dropdown Options on commit
+
+## [2026-06-06] — Lead import copy: JSON only
+
+### Changed
+- Admin lead import UI — renamed **Import / Export** → **Lead import**; removed CSV references; notes JSON-only policy for import and future exports
+
+## [2026-06-06] — Admin bulk lead import (JSON)
+
+### Added
+- `/admin/settings/import-export` — upload JSON, **validate first** (dry run preview), then import valid rows only
+- `POST /api/admin/leads/import` — `?dry_run=true` for validation; commit creates customer + lead per row (max 500)
+- `lib/utils/bulk-import-leads.ts` — parse, lookup validation, duplicate-phone skip, batch activities
+- `public/samples/bazaar-leads-import-sample.json` — owner reference format
+- `docs/feature-specs/lead-import.md`
+
+### Changed
+- Admin overview + Settings tab nav — **Import / Export** card
+
+## [2026-06-06] — Owner decisions documented (TODO-009, tax-exempt portal)
+
+### Changed
+- **TODO-009 / open-questions B7** — confirmed **Option B**: only **admin** may mark in-production orders completed when balance is still due (accountant blocked; modal + `acknowledge_outstanding_balance`); no code change
+- **Tax-exempt resubmit portal** — marked complete; customer **declare-unavailable** won't build (staff use **Deny tax-exempt**); `docs/TODO.md`, FuturePlan README
+
+## [2026-06-06] — Sales permit replace requires permit number
+
+### Changed
+- `ReplaceTicketDocumentModal` — sales permit upload/replace includes required **Sales Permit #** field (pre-filled when replacing)
+- `POST /api/tickets/[id]/sales-permit` — accepts `sales_permit_number` in form data; required for payment-staff replaces from `/payments`
+- Ticket history — staff permit replace shows permit number change when updated
+
+## [2026-06-06] — Payments row icon tooltips
+
+### Changed
+- `components/orders/payments-row-actions.tsx` — icon-only row actions show labeled tooltips on hover (View file, Replace, Request updated proof, etc.)
+
+## [2026-06-06] — Staff replace on Payments tabs
+
+### Added
+- `components/orders/replace-ticket-document-modal.tsx` — view current file + upload replacement (payment proof or sales permit)
+- `POST /api/tickets/[id]/evidence` — staff replace payment proof (`lib/utils/staff-replace-payment-evidence.ts`)
+- `/payments` **Pending approval** and **Tax-exempt pending** — **Replace** icon (desktop) / button (mobile) opens replace modal; legacy missing permit uses upload flow in the same modal
+- Ticket history — `ticket_payment_evidence_replaced`, `ticket_tax_exempt_permit_replaced` activity labels
+
+### Changed
+- `POST /api/tickets/[id]/sales-permit` — payment staff (accountant/admin) may replace permit from `/payments` without ticket-owner mutate rights
+
+## [2026-06-06] — Tax-exempt deny notes + compact payments actions
+
+### Added
+- `sales_permit_denial_notes` on `job_tickets` — required internal note when denying tax-exempt (`schema.sql`)
+- `components/orders/payments-row-actions.tsx` — icon secondary actions + primary CTA for payments table rows
+
+### Changed
+- `ApproveTaxExemptModal` — deny step shows required internal note textarea; **Yes, deny** only after note is entered; **Back** returns to review
+- `PATCH /api/tickets/[id]` `deny_tax_exempt` — accepts `sales_permit_denial_notes`; stored on ticket and in `ticket_tax_exempt_denied` activity
+- `/payments` desktop rows — File, View, Request as compact icon buttons; primary **Confirm** / **Review** keeps label
+
+## [2026-06-06] — Payments table header keys
+
+### Fixed
+- `components/orders/payments-page.tsx` — duplicate React keys on table headers (expand/actions columns used empty strings)
+
+## [2026-06-06] — Tighter transactional email spacing
+
+### Fixed
+- `lib/integrations/wrap-transactional-email.ts` — quote follow-up and other simple customer emails no longer show large gaps between header, body, and footer; replaced `<p>` margins with table rows and explicit padding; body paragraphs render as separate rows instead of double `<br/>` gaps
+- Payment evidence and tax-exempt resubmit emails — OTP block no longer uses `<p>` margins (`resubmitOtpExtraHtml` in `customer-email-extra-html.ts`)
+
+## [2026-06-04] — Documentation sync (Jun 4 changes)
+
+### Changed
+- Docs updated for payment evidence OTP portal (`/evidence`), `/q` resubmit UX, read-only payment method, reports toolbar, welcome email API, Supabase patches — see files listed under Payment proof resubmit portal → Docs
+
 ## [2026-06-04] — Reports toolbar control height
 
 ### Fixed
 - `/reports` — period filter button and team member select share `h-9` (aligned height)
+
+### Docs
+- `docs/feature-specs/reports.md`, `docs/navigation.md`
 
 ## [2026-06-04] — Payment proof resubmit portal (`/evidence`)
 
@@ -27,7 +128,7 @@ Format: `## [version or date] — description`, newest first.
 - Permit OTP cookie `path: /` so upload API receives verification cookie
 
 ### Docs
-- `docs/api-contract.md`, `docs/schema.md`, `docs/navigation.md`, `docs/security.md`, `docs/TECHNICAL_REFERENCE.md`, `docs/feature-specs/invoice-payment.md`, `docs/email-template-guide.md`
+- `docs/api-contract.md`, `docs/schema.md`, `docs/navigation.md`, `docs/security.md`, `docs/TECHNICAL_REFERENCE.md`, `docs/feature-specs/invoice-payment.md`, `docs/feature-specs/tickets.md`, `docs/email-template-guide.md`, `supabase/migrations/README.md`, `supabase/patches/2026-06-04-payment-evidence-otp.sql`, `README.md`, `supabase/README.md`
 
 ## [2026-06-04] — Permit upload OTP cookie fix
 

@@ -400,7 +400,14 @@ SMS and WhatsApp bodies are **plain text** in `sms_templates` (migration `084`) 
 
 **Template keys:** Mirror customer email keys where applicable (`quote_sent`, `payment_reminder`, `tax_exempt_resubmit_requested`, …).
 
-**Resubmit placeholders:** `payment_evidence_resubmit_requested` and `tax_exempt_resubmit_requested` email bodies use `{otpCode}` and `{link}` (`/evidence/{token}` or `/permit/{token}`). SMS defaults use `{amount}` for the 6-digit code on both resubmit keys. Template copy is **email/SMS only** — not rendered on `/q` or `/evidence` public pages.
+**Resubmit placeholders:**
+
+| Key | Email placeholders | SMS placeholders | Customer link |
+|-----|-------------------|------------------|---------------|
+| `payment_evidence_resubmit_requested` | `{firstName}`, `{companyName}`, `{ref}`, `{link}`, `{otpCode}` | `{firstName}`, `{ref}`, `{companyName}`, `{link}`, `{amount}` (OTP code) | `/evidence/{payment_evidence_resubmit_token}` |
+| `tax_exempt_resubmit_requested` | same + `{otpCode}` | `{amount}` for OTP | `/permit/{sales_permit_resubmit_token}` |
+
+Template copy is **email/SMS only** — not stored on `job_tickets` or shown on `/q` or `/evidence` public pages. Edit in **Admin → Settings → Email Templates** / **SMS Templates**.
 
 **Do not** edit SMS copy in `send-quote.ts` for production changes — use the admin UI.
 

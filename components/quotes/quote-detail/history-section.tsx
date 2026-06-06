@@ -54,7 +54,9 @@ const ACTIVITY_META: Record<string, { icon: React.ElementType; label: string; co
   ticket_payment_evidence_submitted: { icon: CreditCard, label: "Customer submitted payment proof", color: "var(--color-warning)" },
   ticket_payment_evidence_resubmit_requested: { icon: Mail, label: "Requested updated payment proof", color: "var(--color-info-text)" },
   ticket_payment_evidence_resubmitted: { icon: CreditCard, label: "Customer submitted updated payment proof", color: "var(--color-warning)" },
+  ticket_payment_evidence_replaced: { icon: RefreshCw, label: "Staff replaced payment proof", color: "var(--color-info-text)" },
   ticket_tax_exempt_resubmit_requested: { icon: Mail, label: "Requested updated tax-exempt permit", color: "var(--color-info-text)" },
+  ticket_tax_exempt_permit_replaced: { icon: RefreshCw, label: "Staff replaced tax-exempt permit", color: "var(--color-info-text)" },
   ticket_tax_exempt_resubmit_received: { icon: FileText, label: "Customer submitted updated permit", color: "var(--color-warning)" },
   ticket_payment_recorded:     { icon: BadgeCheck,    label: "Payment recorded",           color: "var(--color-success)" },
   ticket_payment_refund:       { icon: RotateCcw,     label: "Payment refunded",           color: "var(--color-warning)" },
@@ -160,10 +162,26 @@ function activityDetail(a: ActivityRow): string | null {
   if (a.type === "ticket_converted") {
     return p.reference_code ? `Order ${p.reference_code} created` : "Converted manually";
   }
-  if (a.type === "ticket_payment_evidence_submitted" || a.type === "ticket_payment_evidence_resubmitted") {
+  if (
+    a.type === "ticket_payment_evidence_submitted" ||
+    a.type === "ticket_payment_evidence_resubmitted" ||
+    a.type === "ticket_payment_evidence_replaced"
+  ) {
     const amount = fmtMoney(p.amount);
     const method = p.method ? (METHOD_LABELS[String(p.method)] ?? String(p.method)) : null;
-    return [amount, method].filter(Boolean).join(" · ") || "Awaiting accountant review";
+    const fileName = p.file_name ? String(p.file_name) : null;
+    return [amount, method, fileName].filter(Boolean).join(" · ") || "Awaiting accountant review";
+  }
+  if (a.type === "ticket_tax_exempt_permit_replaced") {
+    const fileName = p.file_name ? String(p.file_name) : null;
+    const permit = p.permit_number ? `#${String(p.permit_number)}` : null;
+    const prevPermit = p.previous_permit_number ? String(p.previous_permit_number) : null;
+    const permitChange =
+      permit && prevPermit && permit !== `#${prevPermit}`
+        ? `#${prevPermit} → ${permit}`
+        : permit;
+    const hadPrevious = p.had_previous_file === true ? "replaced file" : "uploaded permit";
+    return [permitChange, fileName, hadPrevious].filter(Boolean).join(" · ") || null;
   }
   if (a.type === "ticket_payment_evidence_resubmit_requested" || a.type === "ticket_tax_exempt_resubmit_requested") {
     const channel = p.channel ? String(p.channel) : null;
@@ -188,9 +206,11 @@ function activityDetail(a: ActivityRow): string | null {
     const prev = fmtMoney(pl.previous_final_total);
     const rate = pl.quote_tax_rate_percent != null ? `${pl.quote_tax_rate_percent}% tax applied` : null;
     const reviewer = pl.reviewed_by_name ? String(pl.reviewed_by_name) : null;
+    const note = pl.denial_notes ? String(pl.denial_notes) : null;
     return [
       prev && total ? `${prev} → ${total}` : total,
       rate,
+      note,
       reviewer ? `by ${reviewer}` : null,
     ]
       .filter(Boolean)

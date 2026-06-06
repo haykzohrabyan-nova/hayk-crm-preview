@@ -12,7 +12,7 @@ Excludes: one-time **backfills** (e.g. staff payment activity rows) — those we
 
 Do **not** re-run the full `schema.sql` on a live database with data.
 
-Patch missing objects by running only the relevant `CREATE TABLE` / `ALTER TABLE` / policy blocks copied from `schema.sql`, or rebuild a staging project from the full file.
+Patch missing objects by running only the relevant `CREATE TABLE` / `ALTER TABLE` / policy blocks copied from `schema.sql`, one-off files under `patches/` (e.g. `patches/2026-06-04-payment-evidence-otp.sql`), or rebuild a staging project from the full file. See `migrations/README.md` for common deltas.
 
 ## Local test reset
 

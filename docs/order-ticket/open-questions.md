@@ -140,18 +140,19 @@ Blocks: Edit button visibility logic, Cancel action, duplicate ticket API endpoi
 
 **B7. Admin marks order completed while balance is still due — intended flow?**
 
-⚠️ **OWNER DECISION NEEDED — 2026-05-23**
+✅ **ANSWERED — 2026-06-06 owner session.** Option **B — Admin override only** (current build; no code change).
 
-**Problem:** In-production orders with partial deposit may still owe balance. Accountants are blocked from marking completed until paid in full. **Admins** can complete with balance due after acknowledging a modal; customer receives ready-for-pickup email with the same `/q/{token}` link where balance can still be paid.
+**Policy:**
 
-**Pick one:**
+| Role | Balance still due | Mark completed |
+|------|-------------------|----------------|
+| Accountant | Yes | **Blocked** — must be paid in full |
+| Admin | Yes | **Allowed** after confirmation modal (`acknowledge_outstanding_balance: true`) |
+| Customer | After admin completes | Pickup email; balance payable on `/q/{token}` |
 
-- [ ] **A — Block all roles** — Completion requires paid in full for everyone (remove admin override).
-- [ ] **B — Admin override (current build)** — Admin may complete with balance due; pickup email sent; balance collected via public link afterward.
-- [ ] **C — Complete with balance-aware email** — Admin override allowed; pickup email explicitly states balance due before pickup.
-- [ ] **D — No pickup email until paid** — Admin may complete internally but customer notification waits until balance clears.
+Accountants cannot complete with outstanding balance. Only **admin** may override after acknowledging the modal in `quote-detail.tsx`. API: `app/api/tickets/[id]/route.ts` (`BALANCE_DUE` / `acknowledge_outstanding_balance`).
 
-**Tracked in:** [TODO-009](../TODO.md#open--owner-question-mark-completed-with-balance-still-due-todo-009) · Owner HTML: [owner-decisions-pending.html](./owner-decisions-pending.html#question-2)
+**Deferred (not chosen):** Option C (balance called out in pickup email), Option D (no pickup email until paid).
 
 ---
 

@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "_documentation": {
+    "purpose": "Bulk import leads into BazaarPrinting CRM. Generate a JSON file matching this schema exactly.",
+    "audience": "AI assistants or scripts converting data from Instantly, spreadsheets, or other CRMs.",
+    "output_format": "Single JSON object. Root must include a leads array. Keys starting with _ are documentation only — ignored on import.",
+    "instructions": [
+      "Return valid JSON only — no markdown fences, no commentary outside the JSON.",
+      "Put one object per person in the leads array (max 500).",
+      "Every lead MUST include: first_name, phone, source, industry.",
+      "For source and industry: copy the value slug from _lookups (e.g. email, cannabis_cbd) — NEVER use the human label (e.g. Email, Cannabis & CBD).",
+      "phone: at least 10 digits.",
+      "If interests is set: each true product needs quantities[product] > 0; names must match _lookups.products exactly.",
+      "Replace the example lead with all real rows."
+    ],
+    "lead_fields": {
+      "required": {
+        "first_name": "string",
+        "phone": "string",
+        "source": "string — value slug from _lookups.source (example: email)",
+        "industry": "string — value slug from _lookups.industry (example: cannabis_cbd)"
+      },
+      "optional": {
+        "last_name": "string",
+        "email": "string",
+        "company": "string",
+        "sdr_comment": "string",
+        "interests": "{ \"Labels\": true }",
+        "quantities": "{ \"Labels\": \"10000\" }",
+        "external_id": "string"
+      }
+    },
+    "example_values": {
+      "source": { "use_this_value": "email", "not_this_label": "Email" },
+      "industry": { "use_this_value": "cannabis_cbd", "not_this_label": "Cannabis & CBD" }
+    }
+  },
+  "_lookups": {
+    "how_to_use": "Pick source and industry from value column. Prefer Download on Admin page for your live database list.",
+    "source": [
+      { "value": "email", "label": "Email" },
+      { "value": "referral", "label": "Referral" },
+      { "value": "manual_crm", "label": "Manual (CRM)" }
+    ],
+    "industry": [
+      { "value": "cannabis_cbd", "label": "Cannabis & CBD" },
+      { "value": "food_beverage", "label": "Food & Beverage" },
+      { "value": "other", "label": "Other" }
+    ],
+    "urgency": [
+      { "value": "high", "label": "High" },
+      { "value": "medium", "label": "Medium" },
+      { "value": "low", "label": "Low" }
+    ],
+    "products": [
+      "Labels",
+      "Boxes",
+      "Flyers",
+      "Stickers",
+      "Jars",
+      "Bags",
+      "Tubes",
+      "Banners",
+      "Business Cards",
+      "Other"
+    ]
+  },
+  "imported_by_note": "REPLACE — batch note for staff",
+  "skip_duplicate_phones": true,
+  "create_missing_lookups": false,
+  "leads": [
+    {
+      "_note": "DELETE this key — example only. One lead shown; add more objects to this array.",
+      "first_name": "Jane",
+      "last_name": "Rivera",
+      "phone": "4155551234",
+      "email": "jane@example.com",
+      "company": "Acme Print Co",
+      "industry": "cannabis_cbd",
+      "source": "email",
+      "urgency": "high",
+      "interests": { "Labels": true },
+      "quantities": { "Labels": "10000" },
+      "has_design": { "Labels": true },
+      "external_id": "your-system-lead-id-123"
+    }
+  ]
+}

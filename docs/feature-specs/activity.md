@@ -133,6 +133,7 @@ The following Route Handlers automatically insert activity rows when they run:
 | Handler | Activities logged |
 |---------|------------------|
 | `POST /api/leads/manual` | `lead_manual_created` |
+| `POST /api/admin/leads/import` | `leads_bulk_imported` (commit only; payload: `imported`, `skipped`, `created_lookups`) |
 | `POST /api/leads/[id]/lock` | `lead_claimed` — **SDR only**, first claim (not self-refresh). Sales temp lock does not log. |
 | `POST /api/leads/[id]/claim` | `lead_sales_claimed` |
 | `POST /api/leads/[id]/reassign` | `lead_reassigned` |
@@ -144,7 +145,9 @@ The following Route Handlers automatically insert activity rows when they run:
 | `PATCH /api/customers/[id]/merge` | `lead_merged` (on all affected leads) |
 | `PATCH /api/customers/[id]` | `contact_edited` |
 | `POST /api/tickets` | `order_ticket_created` |
-| `PATCH /api/tickets/[id]` | `quote_approval_requested` / `quote_follow_up_completed` / `quote_follow_up_reset` / `ticket_client_confirmed` / `ticket_sent` / `ticket_converted` / `ticket_payment_reminder_sent` / `ticket_payment_recorded` / `ticket_payment_confirmed_sent` / `ticket_invoice_resent` / `ticket_order_ready_sent` / `ticket_order_ready_failed` / `order_ticket_updated` / `order_ticket_status_changed` (claim, production release, mark completed) |
+| `PATCH /api/tickets/[id]` | `quote_approval_requested` / `quote_follow_up_completed` / `quote_follow_up_reset` / `ticket_client_confirmed` / `ticket_sent` / `ticket_converted` / `ticket_payment_reminder_sent` / `ticket_payment_recorded` / `ticket_payment_confirmed_sent` / `ticket_invoice_resent` / `ticket_order_ready_sent` / `ticket_order_ready_failed` / `order_ticket_updated` / `order_ticket_status_changed` (claim, production release, mark completed) / `ticket_tax_exempt_denied` (deny with `sales_permit_denial_notes`) |
+| `POST /api/tickets/[id]/evidence` | `ticket_payment_evidence_replaced` (staff replace on `/payments`) |
+| `POST /api/tickets/[id]/sales-permit` | `ticket_tax_exempt_permit_replaced` (staff replace; requires `sales_permit_number`) |
 | `POST /api/public/quotes/[token]/confirm` | `ticket_client_confirmed` only (customer, `by_user_id = null`); `ticket_converted` / production activities when gates pass on same request |
 | `POST /api/public/quotes/[token]/submit-payment` | `ticket_payment_evidence_submitted` / status transitions / production release |
 | Quote/ticket send integrations (`lib/integrations/send-quote.ts`) | `outreach_sent`, `ticket_sent`, payment reminders, etc. |

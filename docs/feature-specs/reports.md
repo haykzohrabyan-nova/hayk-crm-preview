@@ -82,10 +82,11 @@ Shared helper: `lib/utils/log-ticket-payment-recorded.ts`. Staff cash auto-recor
 
 ## UI
 
-### Filters
-- **Report filters** modal — Week / Month / Quarter presets (update From/To immediately), custom date range, Apply
-- Team member dropdown inline (scorecard tables are display-only)
-- **Reset** — This Month, whole team
+### Filters (header toolbar)
+- **Period filter** button — opens `reports-filters-modal.tsx` (Week / Month / Quarter presets, custom date range, Apply). Button label shows active preset or custom range (e.g. “This Month”).
+- **Team member** `<select>` inline — filters scorecard KPIs and tables via `user_id` query param (scorecard table rows are display-only, not clickable).
+- **Reset** — appears when filters differ from defaults (This Month, all team); clears period + member.
+- Toolbar controls share fixed height (`h-9`) and matching border radius for visual alignment (`components/reports/reports-page.tsx`).
 
 Info banner explains period scope; notes that **Awaiting Collection** is a live snapshot (not period-filtered).
 
@@ -139,7 +140,7 @@ Admin dashboard **Cash Collected** matches Reports **Total Cash Collected** for 
 ## Not in v2 (future)
 
 - Configurable bonus % preview column
-- CSV export for payroll
+- JSON export for payroll (CSV not used — data exchange is JSON-only per import/export policy)
 - Revenue by product type / lead source charts
 - Pipeline forecast
 

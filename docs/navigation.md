@@ -69,7 +69,7 @@ app/
     │
     └── admin/
         ├── layout.tsx                ✓ EXISTS — border-b sub-nav strip (Overview / Settings)
-        ├── page.tsx                  ✓ EXISTS — card grid overview (6 built + Broadcast Notifications deferred)
+        ├── page.tsx                  ✓ EXISTS — card grid overview (settings cards incl. Lead import)
         └── settings/
             ├── layout.tsx            ✓ EXISTS — SettingsTabNav above children
             ├── page.tsx              ✓ EXISTS — redirects → /admin/settings/users
@@ -79,8 +79,10 @@ app/
                                         dropdowns     → DropdownsSection (all lookup_values categories) ✅
                                         products      → ProductsSection (product types, materials, links) ✅
                                         company       → CompanySection (branding, address, order defaults) ✅
-                                        integrations  → IntegrationsSection (Twilio SMS ✅ live, Instantly AI ✅ live; Stripe/Zelle out of scope) ✅
-                                        notifications → ❌ Not needed — removed from scope
+                                        integrations    → IntegrationsSection (Twilio SMS ✅ live, Instantly AI ✅ live; Stripe/Zelle out of scope) ✅
+                                        payment         → PaymentSection (bank / Zelle remittance on /q) ✅
+                                        import-export   → LeadsImportSection (bulk JSON lead import, validate-first) ✅
+                                        notifications   → ❌ Not needed — removed from scope
 ```
 
 ---
@@ -409,7 +411,7 @@ Row click → `/completed/[id]`. Mount: `GET /api/completed/page-data`; counts-o
 
 ### `/reports` — Admin reports
 
-No tabs. Single page with period filters + optional team member dropdown.
+No tabs. Header toolbar: **period filter** button (opens modal), **team member** dropdown, optional **Reset** — all `h-9` aligned (`components/reports/reports-page.tsx`). See `docs/feature-specs/reports.md`.
 
 | Section | Notes |
 |---------|-------|

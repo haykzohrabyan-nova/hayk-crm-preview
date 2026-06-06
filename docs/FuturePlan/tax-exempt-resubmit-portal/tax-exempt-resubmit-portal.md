@@ -1,25 +1,25 @@
 # Tax-exempt document workflow (future plan)
 
-**Status:** **Partially shipped** (Jun 2026) — core resubmit + admin templates done; items below marked [ ] remain.  
-**Last updated:** 2026-06-04  
+**Status:** **Mostly shipped** (Jun 2026) — resubmit, staff replace, and internal denial notes done; **Phase 1b won't build**.  
+**Last updated:** 2026-06-06  
 **Depends on:** Migrations `103`–`106`, **108** (resubmit), **109**–**110** (email templates); existing tax-exempt approval on Payments.
 
 ## Overview
 
-1. **Phase 0** — Staff **Replace document** when accountant already has the correct file. **[ ] Not shipped**  
+1. **Phase 0** — Staff **Replace document** when accountant already has the correct file. **[x] Shipped**  
 2. **Phase 1** — **Request resubmit** → customer email/SMS (admin templates) → OTP upload on `/permit/{token}`. **[x] Shipped** (migration **108**, not 107)  
-3. **Phase 1b** — **“I don’t have it” / “Missing documents”**. **[ ] Not shipped**
+3. **Phase 1b** — **“I don’t have it” / “Missing documents”**. **[ ] Won't build** — staff use **Deny tax-exempt** (owner decision 2026-06-06)
 
 Payment evidence resubmit (`/evidence/{token}`, OTP portal) shipped alongside Phase 1.
 
 ### Implementation checklist
 
-- [ ] Phase 0 — Replace API auth + Replace button (payments + review + modal)
+- [x] Phase 0 — Replace API auth + Replace button (payments + `replace-ticket-document-modal.tsx`)
 - [x] Phase 1 — Migration **108**, resubmit outreach, `/permit` upload, Request on `/payments`, admin email/SMS templates
-- [ ] Phase 1 — Deny flow **internal notes** (customer-safe `sales_permit_resubmit_reason` only today)
-- [ ] Phase 1b — Missing documents opt-out + accountant badge
+- [x] Phase 1 — Deny flow **internal notes** (`sales_permit_denial_notes` on ticket + activity)
+- [ ] Phase 1b — Missing documents opt-out + accountant badge — **won't build**
 - [x] Email templates + SMS catalog keys (`109`, `110`, admin UI)
-- [x] Docs: CHANGELOG, TECHNICAL_REFERENCE, feature-specs (Jun 2026 sync)
+- [x] Docs: CHANGELOG, TECHNICAL_REFERENCE, feature-specs, api-contract (Jun 2026 sync)
 
 ---
 
@@ -47,12 +47,11 @@ When accountant clicks **Deny tax-exempt** (apply tax):
    - **Back** | **Confirm deny**
 3. `PATCH { deny_tax_exempt: true, sales_permit_denial_notes: "..." }`
 
-**Persistence (migration 107):**
+**Persistence (shipped in `schema.sql`):**
 
 | Column | Purpose |
 |--------|---------|
-| `sales_permit_denied_at` | When apply-tax deny completed |
-| `sales_permit_denied_by_id` | Accountant |
+| `sales_permit_reviewed_at` / `sales_permit_reviewed_by_id` | Set on deny (same as approve path) |
 | `sales_permit_denial_notes` | Required internal note — **not** on public `/q` |
 
 Activity `ticket_tax_exempt_denied` payload: `denial_notes`, totals, `reviewed_by_name`.

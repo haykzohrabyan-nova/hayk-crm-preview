@@ -526,6 +526,15 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       );
     }
 
+    const denialNotes =
+      typeof body.sales_permit_denial_notes === "string" ? body.sales_permit_denial_notes.trim() : "";
+    if (!denialNotes) {
+      return NextResponse.json(
+        { error: "An internal denial note is required.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
     const preTax = Number(existing.quote_pre_tax_total ?? 0);
     const taxRate = Number(existing.quote_tax_rate_percent ?? 0);
     const { tax_amount: taxAmount, final_total: finalTotal } = computeTotalsIfTaxExemptDenied(
@@ -544,6 +553,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         quote_final_total: finalTotal,
         sales_permit_reviewed_at: now,
         sales_permit_reviewed_by_id: userId,
+        sales_permit_denial_notes: denialNotes,
       })
       .eq("id", ticketId)
       .select()
@@ -570,6 +580,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         previous_final_total: previousFinalTotal,
         quote_tax_rate_percent: taxRate,
         reviewed_by_name: reviewerProfile?.full_name ?? null,
+        denial_notes: denialNotes,
       },
       created_at: now,
     });

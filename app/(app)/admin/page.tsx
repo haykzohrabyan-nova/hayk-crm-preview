@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown } from "lucide-react";
 
 const CARDS = [
   {
@@ -63,6 +63,13 @@ const CARDS = [
     description: "Bank details for Wire and ACH payments, and Zelle contact info. Shown to customers on their quote page.",
     href: "/admin/settings/payment",
     icon: CreditCard,
+    built: true,
+  },
+  {
+    title: "Lead import",
+    description: "Bulk import leads from JSON only (no CSV). Validate-first preview and sample file for external tools.",
+    href: "/admin/settings/import-export",
+    icon: ArrowUpDown,
     built: true,
   },
 ] as const;

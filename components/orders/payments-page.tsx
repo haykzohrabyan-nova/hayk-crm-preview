@@ -4,7 +4,7 @@ import { Fragment, useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
-import { FileText, CheckCircle2, Clock, Loader2, CreditCard, ExternalLink, RotateCcw, Mail } from "lucide-react";
+import { FileText, CheckCircle2, Clock, Loader2, CreditCard, ExternalLink, RotateCcw, Mail, RefreshCw } from "lucide-react";
 import { stripePaymentDashboardUrl } from "@/lib/stripe/dashboard-url";
 import {
   GLOBAL_LOADING_MESSAGES,
@@ -67,6 +67,16 @@ import {
   TicketListExpandPreviewRow,
   TicketListViewButton,
 } from "@/components/ui/ticket-list-expand";
+import {
+  PaymentsRowActions,
+  PaymentsRowIconButton,
+  PaymentsRowIconLink,
+  PaymentsRowPrimaryButton,
+} from "@/components/orders/payments-row-actions";
+import {
+  ReplaceTicketDocumentModal,
+  type ReplaceDocumentKind,
+} from "@/components/orders/replace-ticket-document-modal";
 
 type PaymentTab = "pending" | "tax_exempt" | "approved" | "refunded";
 
@@ -206,6 +216,12 @@ function claimedAmount(order: PaymentOrder): number {
   return Math.max(0, total - paid);
 }
 
+function paymentEvidenceFileName(order: PaymentOrder): string | null {
+  if (!order.payment_evidence_url) return null;
+  const segment = order.payment_evidence_url.split("/").pop();
+  return segment?.trim() || "Payment proof";
+}
+
 function TableSkeleton({ cols }: { cols: number }) {
   return (
     <tbody>
@@ -232,6 +248,8 @@ export function PaymentsPage() {
   const [taxExemptTarget, setTaxExemptTarget] = useState<PaymentOrder | null>(null);
   const [resubmitTarget, setResubmitTarget] = useState<PaymentOrder | null>(null);
   const [resubmitMode, setResubmitMode] = useState<EvidenceResubmitMode | null>(null);
+  const [replaceTarget, setReplaceTarget] = useState<PaymentOrder | null>(null);
+  const [replaceKind, setReplaceKind] = useState<ReplaceDocumentKind | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [confirmErr, setConfirmErr] = useState<string | null>(null);
   const [taxExemptConfirmErr, setTaxExemptConfirmErr] = useState<string | null>(null);
@@ -339,61 +357,63 @@ export function PaymentsPage() {
     );
   }, [orders, isPendingTab, isTaxExemptTab]);
 
-  const headers = useMemo(() => {
+  type PaymentTableHeader = { key: string; label: string };
+
+  const headers = useMemo((): PaymentTableHeader[] => {
     if (isRefundedTab) {
       return [
-        "",
-        "Order",
-        "Customer",
-        "Paid via",
-        "Refunded via",
-        "Status",
-        "Total refunded",
-        "Last refunded",
-        "Refunded by",
-        "",
+        { key: "expand", label: "" },
+        { key: "order", label: "Order" },
+        { key: "customer", label: "Customer" },
+        { key: "paid-via", label: "Paid via" },
+        { key: "refunded-via", label: "Refunded via" },
+        { key: "status", label: "Status" },
+        { key: "total-refunded", label: "Total refunded" },
+        { key: "last-refunded", label: "Last refunded" },
+        { key: "refunded-by", label: "Refunded by" },
+        { key: "actions", label: "" },
       ];
     }
     if (isTaxExemptTab) {
-      const cols = [
-        "",
-        "Order",
-        "Customer",
-        "Created by",
-        "Total",
-        "Permit #",
-        "Submitted",
+      const cols: PaymentTableHeader[] = [
+        { key: "expand", label: "" },
+        { key: "order", label: "Order" },
+        { key: "customer", label: "Customer" },
+        { key: "created-by", label: "Created by" },
+        { key: "total", label: "Total" },
+        { key: "permit", label: "Permit #" },
+        { key: "submitted", label: "Submitted" },
       ];
-      if (showResubmitColumn) cols.push("Resubmit status");
-      cols.push("Actions");
+      if (showResubmitColumn) cols.push({ key: "resubmit-status", label: "Resubmit status" });
+      cols.push({ key: "actions", label: "Actions" });
       return cols;
     }
     if (isPendingTab) {
-      const cols = [
-        "",
-        "Order",
-        "Customer",
-        "Created by",
-        "Claimed",
-        "Payment For",
-        "Method",
-        "Submitted",
+      const cols: PaymentTableHeader[] = [
+        { key: "expand", label: "" },
+        { key: "order", label: "Order" },
+        { key: "customer", label: "Customer" },
+        { key: "created-by", label: "Created by" },
+        { key: "claimed", label: "Claimed" },
+        { key: "payment-for", label: "Payment For" },
+        { key: "method", label: "Method" },
+        { key: "submitted", label: "Submitted" },
       ];
-      if (showResubmitColumn) cols.push("Resubmit status");
-      cols.push("Actions");
+      if (showResubmitColumn) cols.push({ key: "resubmit-status", label: "Resubmit status" });
+      cols.push({ key: "actions", label: "Actions" });
       return cols;
     }
     return [
-      "",
-      "Order",
-      "Customer",
-      "Created by",
-      "Claimed",
-      "Payment For",
-      "Method",
-      "Submitted",
-      "Approved",
-      "",
+      { key: "expand", label: "" },
+      { key: "order", label: "Order" },
+      { key: "customer", label: "Customer" },
+      { key: "created-by", label: "Created by" },
+      { key: "claimed", label: "Claimed" },
+      { key: "payment-for", label: "Payment For" },
+      { key: "method", label: "Method" },
+      { key: "submitted", label: "Submitted" },
+      { key: "approved", label: "Approved" },
+      { key: "actions", label: "" },
     ];
   }, [isRefundedTab, isTaxExemptTab, isPendingTab, showResubmitColumn]);
 
@@ -427,6 +447,12 @@ export function PaymentsPage() {
     setResubmitMode(mode);
   }
 
+  function openReplaceModal(order: PaymentOrder, kind: ReplaceDocumentKind, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    setReplaceTarget(order);
+    setReplaceKind(kind);
+  }
+
   function orderForResubmitFlow(order: PaymentOrder) {
     return {
       id: order.id,
@@ -444,7 +470,7 @@ export function PaymentsPage() {
     e?.stopPropagation();
     if (isLegacyTaxExemptMissingPermitFile(order)) {
       setTaxExemptConfirmErr(
-        "Upload the sales permit file on the order first (Quote tab → Permit File).",
+        "Upload the sales permit file first — use Replace on this row or Quote tab → Permit File.",
       );
       return;
     }
@@ -602,15 +628,19 @@ export function PaymentsPage() {
         <table className="w-full border-collapse">
           <thead>
             <tr style={{ borderBottom: "1px solid var(--color-border)", background: "var(--color-row-alt)" }}>
-              {headers.map((h) => (
+              {headers.map((col) => (
                 <th
-                  key={h}
+                  key={col.key}
                   className={`px-5 py-3 text-left text-[11px] font-medium uppercase tracking-wider whitespace-nowrap ${
-                    h === "Claimed" ? "text-right" : h === "Actions" || h === "Approved" ? "text-right" : ""
+                    col.label === "Claimed"
+                      ? "text-right"
+                      : col.label === "Actions" || col.label === "Approved"
+                        ? "text-right"
+                        : ""
                   }`}
                   style={{ color: "var(--color-text-muted)", letterSpacing: "0.06em" }}
                 >
-                  {h}
+                  {col.label}
                 </th>
               ))}
             </tr>
@@ -651,10 +681,6 @@ export function PaymentsPage() {
                   const submittedAt = order.sales_permit_submitted_at;
                   const submittedRel = relativeTime(submittedAt);
                   const taxResubmitStatus = resolveTaxExemptResubmitListStatus(order);
-                  const orderHref = appendReturnPath(
-                    `/orders/${ticketPathSegment(order)}`,
-                    paymentsReturnPath,
-                  );
                   return (
                     <Fragment key={order.id}>
                     <tr
@@ -726,69 +752,38 @@ export function PaymentsPage() {
                         </td>
                       )}
                       <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-2 flex-nowrap">
-                          <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
-                          {legacyMissing ? (
-                            <a
-                              href={orderHref}
-                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                              style={{
-                                borderColor: "var(--color-warning-border)",
-                                color: "var(--color-warning-text-deep)",
-                                background: "var(--color-warning-bg)",
-                                textDecoration: "none",
-                              }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              Upload file
-                            </a>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => openResubmitModal(order, "tax_exempt_resubmit", e)}
-                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                              style={{
-                                borderColor: "var(--color-border)",
-                                color: "var(--color-text-primary)",
-                                background: "var(--color-surface)",
-                              }}
-                            >
-                              <Mail size={14} />
-                              Request
-                            </button>
-                          )}
-                          {order.sales_permit_storage_path && (
-                            <a
+                        <PaymentsRowActions>
+                          {order.sales_permit_storage_path ? (
+                            <PaymentsRowIconLink
                               href={permitHref}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                              style={{
-                                borderColor: "var(--color-border)",
-                                color: "var(--color-text-primary)",
-                                background: "var(--color-surface)",
-                                textDecoration: "none",
-                              }}
-                              title="View uploaded permit"
-                            >
-                              <FileText size={14} />
-                              File
-                            </a>
+                              title="View permit file"
+                              icon={FileText}
+                            />
+                          ) : null}
+                          <PaymentsRowIconButton
+                            title={legacyMissing ? "Upload sales permit" : "Replace sales permit"}
+                            icon={RefreshCw}
+                            onClick={(e) => openReplaceModal(order, "sales_permit", e)}
+                          />
+                          <PaymentsRowIconButton
+                            title="View order"
+                            icon={ExternalLink}
+                            onClick={(e) => openPaymentDetail(order, e)}
+                          />
+                          {!legacyMissing && (
+                            <PaymentsRowIconButton
+                              title="Request updated permit"
+                              icon={Mail}
+                              onClick={(e) => openResubmitModal(order, "tax_exempt_resubmit", e)}
+                            />
                           )}
-                          <button
-                            type="button"
+                          <PaymentsRowPrimaryButton
+                            label="Review"
+                            icon={CheckCircle2}
                             disabled={legacyMissing}
                             onClick={(e) => openTaxExemptModal(order, e)}
-                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border border-transparent whitespace-nowrap disabled:opacity-50"
-                            style={{
-                              background: "var(--color-btn-primary-bg)",
-                              color: "var(--color-btn-primary-text)",
-                            }}
-                          >
-                            <CheckCircle2 size={14} />
-                            Confirm
-                          </button>
-                        </div>
+                          />
+                        </PaymentsRowActions>
                       </td>
                     </tr>
                     {isOpen && (
@@ -998,124 +993,76 @@ export function PaymentsPage() {
                           </span>
                         </td>
                         <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-2 flex-nowrap">
-                            {order.payment_evidence_url && (
-                              <a
+                          <PaymentsRowActions>
+                            {order.payment_evidence_url ? (
+                              <PaymentsRowIconLink
                                 href={`/api/tickets/${order.id}/evidence`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                                style={{
-                                  borderColor: "var(--color-border)",
-                                  color: "var(--color-text-primary)",
-                                  background: "var(--color-surface)",
-                                  textDecoration: "none",
-                                }}
-                                title="View uploaded file"
-                              >
-                                <FileText size={14} />
-                                File
-                              </a>
-                            )}
-                            {order.stripe_payment_intent_id && (
-                              <a
+                                title="View payment file"
+                                icon={FileText}
+                              />
+                            ) : null}
+                            {order.stripe_payment_intent_id ? (
+                              <PaymentsRowIconLink
                                 href={
                                   order.stripe_receipt_url ??
                                   stripePaymentDashboardUrl(order.stripe_payment_intent_id)
                                 }
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                                style={{
-                                  borderColor: "var(--color-border)",
-                                  color: "var(--color-text-primary)",
-                                  background: "var(--color-surface)",
-                                  textDecoration: "none",
-                                }}
-                                title="View Stripe payment"
-                              >
-                                <ExternalLink size={14} />
-                                Stripe
-                              </a>
-                            )}
-                            <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
-                          </div>
+                                title="View in Stripe"
+                                icon={CreditCard}
+                              />
+                            ) : null}
+                            <PaymentsRowIconButton
+                              title="View order"
+                              icon={ExternalLink}
+                              onClick={(e) => openPaymentDetail(order, e)}
+                            />
+                          </PaymentsRowActions>
                         </td>
                       </>
                     ) : (
                       <td className="px-5 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-2 flex-nowrap">
-                          {order.payment_evidence_url && (
-                            <a
+                        <PaymentsRowActions>
+                          {order.payment_evidence_url ? (
+                            <PaymentsRowIconLink
                               href={`/api/tickets/${order.id}/evidence`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                              style={{
-                                borderColor: "var(--color-border)",
-                                color: "var(--color-text-primary)",
-                                background: "var(--color-surface)",
-                                textDecoration: "none",
-                              }}
-                              title="View uploaded file"
-                            >
-                              <FileText size={14} />
-                              File
-                            </a>
-                          )}
-                          {order.stripe_payment_intent_id && (
-                            <a
+                              title="View payment file"
+                              icon={FileText}
+                            />
+                          ) : null}
+                          {order.payment_evidence_url ? (
+                            <PaymentsRowIconButton
+                              title="Replace payment proof"
+                              icon={RefreshCw}
+                              onClick={(e) => openReplaceModal(order, "payment_evidence", e)}
+                            />
+                          ) : null}
+                          {order.stripe_payment_intent_id ? (
+                            <PaymentsRowIconLink
                               href={
                                 order.stripe_receipt_url ??
                                 stripePaymentDashboardUrl(order.stripe_payment_intent_id)
                               }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                              style={{
-                                borderColor: "var(--color-border)",
-                                color: "var(--color-text-primary)",
-                                background: "var(--color-surface)",
-                                textDecoration: "none",
-                              }}
-                              title="View Stripe payment"
-                            >
-                              <ExternalLink size={14} />
-                              Stripe
-                            </a>
-                          )}
-                          <TicketListViewButton label="View" onClick={(e) => openPaymentDetail(order, e)} />
-                          <button
-                            type="button"
+                              title="View in Stripe"
+                              icon={CreditCard}
+                            />
+                          ) : null}
+                          <PaymentsRowIconButton
+                            title="View order"
+                            icon={ExternalLink}
+                            onClick={(e) => openPaymentDetail(order, e)}
+                          />
+                          <PaymentsRowIconButton
+                            title="Request updated proof"
+                            icon={Mail}
                             onClick={(e) => openResubmitModal(order, "payment_evidence_resubmit", e)}
-                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border whitespace-nowrap"
-                            style={{
-                              borderColor: "var(--color-border)",
-                              color: "var(--color-text-primary)",
-                              background: "var(--color-surface)",
-                            }}
-                          >
-                            <Mail size={14} />
-                            Request
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isConfirming}
+                          />
+                          <PaymentsRowPrimaryButton
+                            label="Confirm"
+                            icon={CheckCircle2}
+                            loading={isConfirming}
                             onClick={(e) => openConfirmModal(order, e)}
-                            className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border border-transparent disabled:opacity-60 whitespace-nowrap"
-                            style={{
-                              background: "var(--color-btn-primary-bg)",
-                              color: "var(--color-btn-primary-text)",
-                            }}
-                          >
-                            {isConfirming ? (
-                              <Loader2 size={14} className="animate-spin" />
-                            ) : (
-                              <CheckCircle2 size={14} />
-                            )}
-                            Confirm
-                          </button>
-                        </div>
+                          />
+                        </PaymentsRowActions>
                       </td>
                     )}
                   </tr>
@@ -1154,10 +1101,6 @@ export function PaymentsPage() {
               const legacyMissing = isLegacyTaxExemptMissingPermitFile(order);
               const submittedRel = relativeTime(order.sales_permit_submitted_at);
               const taxResubmitStatus = resolveTaxExemptResubmitListStatus(order);
-              const orderHref = appendReturnPath(
-                `/orders/${ticketPathSegment(order)}`,
-                paymentsReturnPath,
-              );
               return (
                 <MobileListCard
                   key={order.id}
@@ -1235,6 +1178,19 @@ export function PaymentsPage() {
                       className="w-full justify-center px-2.5 py-2"
                       onClick={(e) => openPaymentDetail(order, e)}
                     />
+                    <button
+                      type="button"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
+                      style={{
+                        borderColor: legacyMissing ? "var(--color-warning-border)" : "var(--color-border)",
+                        color: legacyMissing ? "var(--color-warning-text-deep)" : "var(--color-text-primary)",
+                        background: legacyMissing ? "var(--color-warning-bg)" : "var(--color-bg)",
+                      }}
+                      onClick={(e) => openReplaceModal(order, "sales_permit", e)}
+                    >
+                      <RefreshCw size={14} />
+                      {legacyMissing ? "Upload sales permit" : "Replace permit"}
+                    </button>
                     {!legacyMissing && (
                       <button
                         type="button"
@@ -1249,20 +1205,6 @@ export function PaymentsPage() {
                         <Mail size={14} />
                         Request updated permit
                       </button>
-                    )}
-                    {legacyMissing && (
-                      <a
-                        href={orderHref}
-                        className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
-                        style={{
-                          borderColor: "var(--color-warning-border)",
-                          color: "var(--color-warning-text-deep)",
-                          background: "var(--color-warning-bg)",
-                          textDecoration: "none",
-                        }}
-                      >
-                        Upload file on order
-                      </a>
                     )}
                     {order.sales_permit_storage_path && (
                       <a
@@ -1499,6 +1441,21 @@ export function PaymentsPage() {
                       Request updated proof
                     </button>
                   )}
+                  {isPendingTab && order.payment_evidence_url && (
+                    <button
+                      type="button"
+                      className="w-full inline-flex items-center justify-center gap-1.5 rounded-[6px] px-3 py-2.5 text-[13px] font-medium border"
+                      style={{
+                        borderColor: "var(--color-border)",
+                        color: "var(--color-text-primary)",
+                        background: "var(--color-bg)",
+                      }}
+                      onClick={(e) => openReplaceModal(order, "payment_evidence", e)}
+                    >
+                      <RefreshCw size={14} />
+                      Replace payment proof
+                    </button>
+                  )}
                   {order.payment_evidence_url && (
                     <a
                       href={`/api/tickets/${order.id}/evidence`}
@@ -1640,6 +1597,37 @@ export function PaymentsPage() {
           onSuccess={() => {
             setResubmitTarget(null);
             setResubmitMode(null);
+            void refreshPageData(true);
+          }}
+        />
+      )}
+
+      {replaceTarget && replaceKind && (
+        <ReplaceTicketDocumentModal
+          open
+          kind={replaceKind}
+          ticketId={replaceTarget.id}
+          referenceCode={replaceTarget.reference_code}
+          existingPermitNumber={
+            replaceKind === "sales_permit" ? replaceTarget.sales_permit_number : undefined
+          }
+          existingFileName={
+            replaceKind === "payment_evidence"
+              ? paymentEvidenceFileName(replaceTarget)
+              : replaceTarget.sales_permit_file_name
+          }
+          viewHref={
+            replaceKind === "payment_evidence"
+              ? `/api/tickets/${replaceTarget.id}/evidence`
+              : `/api/tickets/${replaceTarget.id}/sales-permit`
+          }
+          onClose={() => {
+            setReplaceTarget(null);
+            setReplaceKind(null);
+          }}
+          onSuccess={() => {
+            setReplaceTarget(null);
+            setReplaceKind(null);
             void refreshPageData(true);
           }}
         />

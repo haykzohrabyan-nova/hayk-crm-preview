@@ -103,10 +103,13 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `DashboardPage` | `components/admin/dashboard-page.tsx` | Role router — all roles |
 | `QuotesPage` | `components/quotes/quotes-page.tsx` | All roles |
 | `OrdersPage` | `components/orders/orders-page.tsx` | All roles |
-| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending / **Tax-exempt pending** / Approved / Refunded; **Resubmit status** column only when any visible row has resubmit activity; **Request** opens resubmit outreach flow |
+| `PaymentsPage` | `components/orders/payments-page.tsx` | Accountant + Admin — Pending / **Tax-exempt pending** / Approved / Refunded; **Resubmit status** column only when any visible row has resubmit activity; icon actions with tooltips (**View**, **Replace**, **Request**); primary **Confirm** / **Review** |
+| `PaymentsRowActions` | `components/orders/payments-row-actions.tsx` | Desktop/mobile row icon buttons + hover labels |
+| `ReplaceTicketDocumentModal` | `components/orders/replace-ticket-document-modal.tsx` | Staff replace payment proof or sales permit from `/payments` |
 | `ResubmitStatusCell` | `components/orders/resubmit-status-cell.tsx` | Payments desktop table — empty when no resubmit state |
 | `RequestEvidenceResubmitFlow` | `components/orders/request-evidence-resubmit-flow.tsx` | Channel/recipient modal → PATCH resubmit request (admin templates) |
-| `ApproveTaxExemptModal` | `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny tax-exempt totals; single-row footer with **Request updated permit** |
+| `ApproveTaxExemptModal` | `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny tax-exempt totals; deny step requires internal notes; footer **Request updated permit** |
+| `LeadsImportSection` | `components/admin/leads-import-section.tsx` | Admin bulk JSON lead import — validate-first, template download, optional `create_missing_lookups` |
 | `EmailTemplatesSection` | `components/admin/email-templates-section.tsx` | Admin — customer email subject/body/CTA editor |
 | `TaxExemptReviewSection` | `components/orders/tax-exempt-review-section.tsx` | Payment/order detail tax-exempt review card; legacy missing-file warning + link to order upload |
 | `CustomerTaxExemptModal` | `components/crm/customer-tax-exempt-modal.tsx` | CRM customer profile — tax-exempt history **See more** |

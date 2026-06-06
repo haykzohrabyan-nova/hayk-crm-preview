@@ -193,6 +193,7 @@ create table if not exists public.job_tickets (
   sales_permit_submitted_at          timestamptz,
   sales_permit_reviewed_at           timestamptz,
   sales_permit_reviewed_by_id        uuid           references public.user_profiles(id),
+  sales_permit_denial_notes          text,
   sales_permit_reused_from_customer  boolean        not null default false,
 
   -- Payment
@@ -600,6 +601,7 @@ alter table public.job_tickets
   add column if not exists sales_permit_submitted_at timestamptz,
   add column if not exists sales_permit_reviewed_at timestamptz,
   add column if not exists sales_permit_reviewed_by_id uuid references public.user_profiles(id),
+  add column if not exists sales_permit_denial_notes text,
   add column if not exists sales_permit_reused_from_customer boolean not null default false;
 
 alter table public.customers

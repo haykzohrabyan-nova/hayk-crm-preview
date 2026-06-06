@@ -61,7 +61,7 @@ Copy `.env.local.example` → `.env.local` and fill in values from **Supabase �
 ### Key rules
 - `proxy.ts` enforces AAL2 on all **app pages**. It does **not** run auth on `/api/*` — Route Handlers call `requireSession()` / `requireAdmin()` instead.
 - **`requireSession()`** enforces MFA on API routes (matches page gate). Trusted-device cookie (`bazaar_mfa_trust`) skips verify when valid.
-- **Public paths** (`/q/*`, `/permit/*`, `/policy`, `/api/public/*`): no staff auth; logged-in staff visiting `/q/{token}` or `/permit/{token}` skip RBAC/MFA redirects for portal preview.
+- **Public paths** (`/q/*`, `/evidence/*`, `/permit/*`, `/policy`, `/api/public/*`): no staff auth; logged-in staff visiting customer portals skip RBAC/MFA redirects for preview. Evidence and permit resubmit require OTP + httpOnly cookie before upload.
 - After `mfa.verify()`, always call `refreshSession()` then use `window.location.assign()` (not `router.push`) so the new cookies are sent before `proxy.ts` runs on the next request.
 - All redirects go through `lib/auth/safe-return-path.ts` to prevent open redirect attacks.
 - Default post-login destination via `lib/auth/resolve-default-home.ts`: SDR → `/leads`, Sales → `/sales`, Accountant → `/payments`, Admin → `/dashboard`
@@ -78,7 +78,7 @@ Copy `.env.local.example` → `.env.local` and fill in values from **Supabase �
 | Redirect URLs | `https://bazar-crm-eta.vercel.app/**`, `http://localhost:3000/**` |
 
 ### Creating users
-Users are created by an Admin via **Admin → Settings → Users** (`/admin/settings/users`) → **Add User**. This calls `POST /api/admin/users/create`: `supabase.auth.admin.createUser({ email, password: temp_password, email_confirm: true })` plus a `user_profiles` row with `must_change_password: true`. Optional branded welcome email via Instantly when `send_welcome_email: true`. No self-registration.
+Users are created by an Admin via **Admin → Settings → Users** (`/admin/settings/users`) → **Add User**. This calls `POST /api/admin/users/create`: `supabase.auth.admin.createUser({ email, password: temp_password, email_confirm: true })` plus a `user_profiles` row with `must_change_password: true`. **Send welcome email** is checked by default; when true, API awaits Instantly delivery and returns `email_delivery` status. First login → `/change-password` → MFA setup if required. No self-registration.
 
 ---
 
@@ -220,7 +220,11 @@ BazarCRM/
 │   │       ├── product-types/[id]/route.ts          ✓ PATCH/DELETE product type
 │   │       ├── product-types/[id]/materials/[matId]/ ✓ POST link / DELETE unlink material
 │   │       ├── materials/route.ts        ✓ GET/POST materials
-│   │       └── materials/[id]/route.ts   ✓ PATCH/DELETE material
+│   │       ├── materials/[id]/route.ts   ✓ PATCH/DELETE material
+│   │       └── leads/
+│   │           └── import/
+│   │               ├── route.ts          ✓ POST bulk import (`?dry_run=true` validate)
+│   │               └── template/route.ts ✓ GET AI-friendly JSON template
 │   ├── globals.css                       ✓ Tailwind v4 + BazaarPrinting CSS tokens
 │   ├── layout.tsx                        ✓ Root layout — Inter font, ThemeProvider, GlobalLoadingProvider
 │   └── page.tsx                          ✓ Redirects → /dashboard
@@ -236,6 +240,7 @@ BazarCRM/
 │   │   ├── products-section.tsx          ✓ Product types + materials + link manager
 │   │   ├── company-section.tsx           ✓ Company info with validation
 │   │   ├── payment-section.tsx           ✓ Payment remittance info (Wire/ACH/Zelle)
+│   │   ├── leads-import-section.tsx      ✓ Bulk JSON lead import (validate-first, template download)
 │   │   ├── integrations-section.tsx      ✓ Twilio SMS + Instantly AI live (Stripe/Zelle out of scope)
 │   │   ├── sms-templates-section.tsx       ✓ Admin-editable SMS/WhatsApp bodies
 │   │   ├── email-templates-section.tsx     ✓ Admin-editable customer email subject/body/CTA

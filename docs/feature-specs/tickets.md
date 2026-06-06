@@ -194,6 +194,8 @@ Evidence files are **retained** after accountant confirm (`payment_evidence_revi
 
 **Detail (`/payments/[id]`):** Same overview layout as order detail — **stats row** + **lifecycle timeline** at top, left sidebar (customer/lead + quick actions), Payment review section default **open**. **Back** → `/payments` (context `payment` wins over `in_production` status; see `resolveTicketDetailBackPath()`).
 
+**Request updated proof (Jun 2026):** **Request** on Pending tab or payment detail (`ResendQuoteModal` mode `payment_evidence_resubmit`) → PATCH `request_payment_evidence_resubmit` with outreach channel + destination only. Server generates `payment_evidence_resubmit_token` + OTP, sends admin **Email** / **SMS** template `payment_evidence_resubmit_requested` (`{otpCode}`, `{link}` → `/evidence/{token}`). Template copy is **not** stored on the ticket or shown on public pages. Customer uploads on `/evidence/{token}` (not `/q`). See [`invoice-payment.md`](./invoice-payment.md) and `docs/api-contract.md` (Public Evidence Routes). Activity: `ticket_payment_evidence_resubmit_requested` / `ticket_payment_evidence_resubmitted`.
+
 ---
 
 ## In production (on `/orders`)
@@ -481,6 +483,7 @@ Customer tabs on `/q/[token]` subscribe to Supabase **Realtime broadcast** on ch
 - **Quote vs invoice label:** `ticketIsOrderStage()` — `ORD-*` shows **INVOICE** even when `ticket_status = cancelled` (reference prefix over `ticket_kind`).
 - **Tax-exempt review banner:** Shown only when API `tax_exempt_review_pending` is true (`tax_exempt` + permit file on ticket + not reviewed). Pre–migration 103 tickets with permit # only do not show “under review” until staff uploads a file.
 - **Cancelled / refunded pricing:** `shouldHidePricingOnCustomerDocument()` — cancelled hides full totals; partial/full refund shows **Amount Refunded** only. Payment-evidence “under review” suppressed when cancelled/refunded (`customerDocumentPaymentSummary`). Shared with `GET /api/public/quotes/[token]/pdf`.
+- **Payment proof resubmit (Jun 2026):** While `payment_evidence_resubmit_required` is true, `/q` hides balance-under-review messaging, resubmit banners, and pay CTAs — customer uses the `/evidence` link from email/SMS only. API may expose `payment_evidence_resubmit_path` but the quote portal does not render it.
 
 ### Shipping addresses (May 2026)
 
@@ -488,6 +491,23 @@ Customer tabs on `/q/[token]` subscribe to Supabase **Realtime broadcast** on ch
 - **One** destination with address or charge → **Ship To** column in the Bill To / Quote Details row (`PublicShippingAddressSingle`).
 - **Multiple** destinations → full-width **2-column card grid** below the parties row (`PublicShippingAddressesList`) — same visual pattern as additional SKUs (per-card shipping amount + address lines).
 - **Download PDF** (`GET /api/public/quotes/[token]/pdf`) uses the same rules: single **Ship To** column vs **Shipping addresses** 50/50 grid in `InvoicePDF`.
+
+---
+
+## Public payment proof resubmit — `/evidence/[token]`
+
+**Page:** `app/(public)/evidence/[token]/page.tsx` · **Token:** `payment_evidence_resubmit_token` (not `public_token`).
+
+Mirrors tax-exempt `/permit/[token]` flow:
+
+1. Customer opens link from resubmit email/SMS.
+2. `POST /api/public/evidence/[token]/verify-otp` with 6-digit code from message.
+3. Upload form: read-only **payment method** (`payment_method_used` from original submission), optional receipt #, proof file.
+4. `POST /api/public/evidence/[token]/upload` — replaces evidence in Storage; clears OTP/token; sets `payment_evidence_resubmit_received_at`.
+
+Helpers: `lib/utils/public-payment-evidence-resubmit.ts`, `lib/utils/record-payment-evidence-resubmit-upload.ts`, `lib/constants/payment-evidence-resubmit-cookie.ts` (OTP cookie `path: /`).
+
+**Existing DB:** apply `supabase/patches/2026-06-04-payment-evidence-otp.sql` if OTP columns are missing.
 
 ---
 
@@ -876,5 +896,5 @@ SDR/Sales **Convert to Order** button is hidden; API returns `403` for non-admin
 - **Stripe payment collection** — see `docs/feature-specs/invoice-payment.md` for full spec
 - **Zelle code matching** — automated memo parsing; manual "Mark as Paid" fallback
 - **WhatsApp delivery** — requires Meta Business Manager registration
-- **Mark completed with balance due** — owner policy (**TODO-009** / open-questions **B7**)
+- **Mark completed with balance due** — **decided (Option B):** Admin only with `acknowledge_outstanding_balance: true`; accountants blocked when balance remains (open-questions **B7**)
 - **Sent-quote email vs live portal after edit** — owner policy (**TODO-008** / open-questions **B6**)

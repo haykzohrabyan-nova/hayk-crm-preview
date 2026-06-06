@@ -11,6 +11,7 @@ import {
   renderResubmitSmsFromTemplates,
   type ResubmitTemplateMaps,
 } from "./render-resubmit-customer-message";
+import { resubmitOtpExtraHtml } from "./customer-email-extra-html";
 import { instantlySendEmail } from "./instantly-send";
 
 export type ResubmitOutreachOverride = {
@@ -130,14 +131,11 @@ export async function sendPaymentEvidenceResubmitRequested(
     otpCode: opts.otpCode,
   };
 
-  const safeOtp = opts.otpCode.replace(/[<>&"]/g, "");
-  const otpHtml = `<p style="font-size:14px;line-height:1.5;color:#374151;margin:0 0 12px;">Your verification code: <strong style="font-size:18px;letter-spacing:0.2em;">${safeOtp}</strong></p>`;
-
   const { subject, html } = buildResubmitEmailFromTemplates(
     "payment_evidence_resubmit_requested",
     templates,
     vars,
-    { companyName, firstName, ctaUrl: paymentUrl, extraHtml: otpHtml },
+    { companyName, firstName, ctaUrl: paymentUrl, extraHtml: resubmitOtpExtraHtml(opts.otpCode) },
   );
 
   const smsBody = renderResubmitSmsFromTemplates("payment_evidence_resubmit_requested", templates, {
@@ -178,14 +176,11 @@ export async function sendTaxExemptResubmitRequested(
     otpCode: opts.otpCode,
   };
 
-  const safeOtp = opts.otpCode.replace(/[<>&"]/g, "");
-  const otpHtml = `<p style="font-size:14px;line-height:1.5;color:#374151;margin:0 0 12px;">Your verification code: <strong style="font-size:18px;letter-spacing:0.2em;">${safeOtp}</strong></p>`;
-
   const { subject, html } = buildResubmitEmailFromTemplates(
     "tax_exempt_resubmit_requested",
     templates,
     vars,
-    { companyName, firstName, ctaUrl: permitUrl, extraHtml: otpHtml },
+    { companyName, firstName, ctaUrl: permitUrl, extraHtml: resubmitOtpExtraHtml(opts.otpCode) },
   );
 
   const smsBody = renderResubmitSmsFromTemplates("tax_exempt_resubmit_requested", templates, {

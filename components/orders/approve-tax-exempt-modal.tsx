@@ -79,6 +79,7 @@ export function ApproveTaxExemptModal({
   const [saving, setSaving] = useState<"approve" | "deny" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showDenyConfirm, setShowDenyConfirm] = useState(false);
+  const [denialNotes, setDenialNotes] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -88,6 +89,7 @@ export function ApproveTaxExemptModal({
     setFinalTotal(ticket.quote_final_total ?? 0);
     setError(null);
     setShowDenyConfirm(false);
+    setDenialNotes("");
   }, [
     open,
     ticket.id,
@@ -143,14 +145,24 @@ export function ApproveTaxExemptModal({
     }
   }
 
+  const denialNotesTrimmed = denialNotes.trim();
+  const canSubmitDeny = denialNotesTrimmed.length > 0;
+
   async function handleDeny() {
+    if (!canSubmitDeny) {
+      setError("Add an internal note explaining why tax-exempt was denied.");
+      return;
+    }
     setSaving("deny");
     setError(null);
     try {
       const res = await fetch(`/api/tickets/${ticket.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ deny_tax_exempt: true }),
+        body: JSON.stringify({
+          deny_tax_exempt: true,
+          sales_permit_denial_notes: denialNotesTrimmed,
+        }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -291,15 +303,18 @@ export function ApproveTaxExemptModal({
           </div>
         </div>
 
-        <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>
-          Denying removes tax-exempt status and updates the quote to{" "}
-          <strong style={{ color: "var(--color-text-primary)" }}>
-            {formatCurrency(deniedTotals.final_total)}
-          </strong>{" "}
-          ({formatCurrency(deniedTotals.tax_amount)} tax at {rateLabel}). The customer is not emailed on deny;
-          follow up with sales if needed.
-        </p>
+        {!showDenyConfirm && (
+          <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>
+            Denying removes tax-exempt status and updates the quote to{" "}
+            <strong style={{ color: "var(--color-text-primary)" }}>
+              {formatCurrency(deniedTotals.final_total)}
+            </strong>{" "}
+            ({formatCurrency(deniedTotals.tax_amount)} tax at {rateLabel}). The customer is not emailed on deny;
+            follow up with sales if needed.
+          </p>
+        )}
 
+        {!showDenyConfirm && (
         <details className="mb-4 rounded-lg border" style={{ borderColor: "var(--color-border)" }}>
           <summary
             className="cursor-pointer px-3 py-2.5 text-[13px] font-medium"
@@ -395,19 +410,44 @@ export function ApproveTaxExemptModal({
             </div>
           </div>
         </details>
+        )}
 
         {showDenyConfirm && (
-          <p
-            className="text-sm font-medium rounded-lg border px-3 py-2 mb-4"
+          <div
+            className="rounded-lg border px-4 py-3 mb-4 space-y-3"
             style={{
               borderColor: "var(--color-danger-border)",
               background: "var(--color-danger-bg)",
-              color: "var(--color-danger)",
             }}
           >
-            Deny will turn off tax-exempt and set the quote total to{" "}
-            {formatCurrency(deniedTotals.final_total)}. Click Deny again to confirm.
-          </p>
+            <p className="text-sm font-medium" style={{ color: "var(--color-danger)" }}>
+              Deny will turn off tax-exempt and set the quote total to{" "}
+              {formatCurrency(deniedTotals.final_total)}. Add an internal note (staff only — not sent to the
+              customer), then click Yes, deny to confirm.
+            </p>
+            <div>
+              <label
+                htmlFor="tax-exempt-denial-notes"
+                className="block text-[11px] font-medium uppercase tracking-wide mb-1.5"
+                style={{ color: "var(--color-danger-text-deep)", letterSpacing: "0.06em" }}
+              >
+                Internal denial note
+              </label>
+              <textarea
+                id="tax-exempt-denial-notes"
+                value={denialNotes}
+                onChange={(e) => setDenialNotes(e.target.value)}
+                rows={3}
+                placeholder="e.g. Permit expired, wrong state, name mismatch…"
+                className="w-full rounded-[6px] border px-3 py-2 text-sm resize-y min-h-[72px]"
+                style={{
+                  borderColor: "var(--color-danger-border)",
+                  background: "var(--color-bg)",
+                  color: "var(--color-text-primary)",
+                }}
+              />
+            </div>
+          </div>
         )}
 
         {!showDenyConfirm && (
@@ -436,8 +476,8 @@ export function ApproveTaxExemptModal({
           </div>
         )}
 
-        <div className="flex items-center gap-2 min-w-0">
-          {onRequestEvidence ? (
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          {!showDenyConfirm && onRequestEvidence ? (
             <button
               type="button"
               disabled={confirming}
@@ -454,6 +494,25 @@ export function ApproveTaxExemptModal({
             </button>
           ) : null}
           <div className="min-w-2 flex-1" aria-hidden />
+          {showDenyConfirm ? (
+            <button
+              type="button"
+              disabled={confirming}
+              onClick={() => {
+                setShowDenyConfirm(false);
+                setDenialNotes("");
+                setError(null);
+              }}
+              className="shrink-0 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
+              style={{
+                borderColor: "var(--color-border)",
+                color: "var(--color-text-muted)",
+                background: "transparent",
+              }}
+            >
+              Back
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={confirming}
@@ -467,46 +526,58 @@ export function ApproveTaxExemptModal({
           >
             Cancel
           </button>
-          <button
-            type="button"
-            disabled={confirming}
-            onClick={() => {
-              if (!showDenyConfirm) {
-                setShowDenyConfirm(true);
-                return;
-              }
-              void handleDeny();
-            }}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
-            style={{
-              background: "var(--color-danger)",
-              color: "white",
-            }}
-          >
-            {saving === "deny" ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
+          {showDenyConfirm ? (
+            <button
+              type="button"
+              disabled={confirming || !canSubmitDeny}
+              onClick={() => void handleDeny()}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
+              style={{
+                background: "var(--color-danger)",
+                color: "white",
+              }}
+            >
+              {saving === "deny" ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <XCircle size={14} />
+              )}
+              Yes, deny
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={confirming}
+              onClick={() => setShowDenyConfirm(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
+              style={{
+                background: "var(--color-danger)",
+                color: "white",
+              }}
+            >
               <XCircle size={14} />
-            )}
-            {showDenyConfirm ? "Yes, deny" : "Deny tax-exempt"}
-          </button>
-          <button
-            type="button"
-            disabled={confirming || finalTotal <= 0}
-            onClick={() => void handleApprove()}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
-            style={{
-              background: "var(--color-btn-primary-bg)",
-              color: "var(--color-btn-primary-text)",
-            }}
-          >
-            {saving === "approve" ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <CheckCircle2 size={14} />
-            )}
-            Approve ({formatCurrency(finalTotal)})
-          </button>
+              Deny tax-exempt
+            </button>
+          )}
+          {!showDenyConfirm ? (
+            <button
+              type="button"
+              disabled={confirming || finalTotal <= 0}
+              onClick={() => void handleApprove()}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium disabled:opacity-60 whitespace-nowrap"
+              style={{
+                background: "var(--color-btn-primary-bg)",
+                color: "var(--color-btn-primary-text)",
+              }}
+            >
+              {saving === "approve" ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <CheckCircle2 size={14} />
+              )}
+              Approve ({formatCurrency(finalTotal)})
+            </button>
+          ) : null}
         </div>
       </div>
     </div>

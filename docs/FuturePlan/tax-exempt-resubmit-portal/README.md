@@ -16,12 +16,15 @@ Planned enhancements and **remaining** work for tax-exempt / payment evidence re
 
 **Docs:** [`docs/feature-specs/invoice-payment.md`](../../feature-specs/invoice-payment.md), [`docs/api-contract.md`](../../api-contract.md), [`docs/email-template-guide.md`](../../email-template-guide.md).
 
-## Not shipped (still in plan doc)
+## Shipped (Jun 2026, continued)
 
-- Staff **replace permit** from payments tab without full deny/approve cycle
-- Customer **declare documents unavailable**
-- **Internal denial notes** (separate from customer-safe resubmit reason)
+- **Internal denial notes** on `deny_tax_exempt` — `sales_permit_denial_notes` on ticket + activity payload; staff-only (not on `/q`)
+- Staff **replace permit / payment proof** from `/payments` — `replace-ticket-document-modal.tsx`, `POST …/evidence`, permit number required on replace
 - Optional `/q` banner when tax-exempt resubmit pending (permit flow uses `/permit` only today)
+
+## Won't build (owner decision 2026-06-06)
+
+- Customer **declare documents unavailable** — use staff **Deny tax-exempt** on `/payments` instead (internal notes + apply sales tax)
 
 **Prerequisites already in repo:** migrations `103`–`106`, tax-exempt approval on `/payments`, `approve_tax_exempt` / `deny_tax_exempt`, [`approve-tax-exempt-modal.tsx`](../../../components/orders/approve-tax-exempt-modal.tsx).
 
