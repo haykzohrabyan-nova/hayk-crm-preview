@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-07] — Hide Jarvis from nav on main
+
+### Changed
+- `resolve-nav-pages.ts` — `/assistant` filtered via `HIDDEN_NAV_ROUTES` so the DB `pages` row does not show in sidebar until the assistant feature branch ships
+
 ## [2026-06-06] — Documentation sync (payments replace, lead import, TODO-009)
 
 ### Changed

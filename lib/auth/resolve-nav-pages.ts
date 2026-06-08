@@ -1,5 +1,6 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { filterPagesForRole } from "@/lib/auth/admin-only-pages";
+import { isHiddenNavRoute } from "@/lib/auth/hidden-nav-routes";
 import type { Page } from "@/lib/types";
 
 const NAV_PAGES_TTL_MS = 45_000;
@@ -44,7 +45,9 @@ export async function resolveNavPagesForUser(
       .sort((a, b) => a.sort_order - b.sort_order);
   }
 
-  const filtered = filterPagesForRole(allPages, roleName);
+  const filtered = filterPagesForRole(allPages, roleName).filter(
+    (p) => !isHiddenNavRoute(p.route),
+  );
   const navPages = filtered.filter(
     (p) =>
       p.section === "main" ||
