@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-08] — Full test reset includes ticket attachments
+
+### Changed
+- `scripts/full-test-reset.mjs` — also empties the `ticket-attachments` storage bucket (line-item files, sales permits) before wiping leads, orders, and customers
+
 ## [2026-06-07] — Hide Jarvis from nav on main
 
 ### Changed

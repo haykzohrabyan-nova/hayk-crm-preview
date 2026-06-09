@@ -2,7 +2,7 @@
 /**
  * DEV / TESTING ONLY — full operational reset.
  *
- * Clears payment-evidence storage (via Storage API) and wipes DB rows
+ * Clears payment-evidence and ticket-attachments storage (via Storage API) and wipes DB rows
  * (quotes, orders, production, leads, customers, activities, etc.).
  *
  * Usage (from project root, with .env.local present):
@@ -37,12 +37,14 @@ async function deleteAll(table, configure) {
 async function main() {
   console.log("\nBazaarCRM — full test reset\n");
 
-  console.log("1. Empty payment-evidence bucket (Storage API)…");
-  const { error: bucketErr } = await admin.storage.emptyBucket("payment-evidence");
-  if (bucketErr) {
-    console.warn(`   ⚠ storage: ${bucketErr.message} (continuing with DB wipe)`);
-  } else {
-    console.log("   ✓ payment-evidence bucket emptied");
+  console.log("1. Empty storage buckets (Storage API)…");
+  for (const bucket of ["payment-evidence", "ticket-attachments"]) {
+    const { error: bucketErr } = await admin.storage.emptyBucket(bucket);
+    if (bucketErr) {
+      console.warn(`   ⚠ ${bucket}: ${bucketErr.message} (continuing with DB wipe)`);
+    } else {
+      console.log(`   ✓ ${bucket} bucket emptied`);
+    }
   }
 
   console.log("\n2. Delete database rows…");
