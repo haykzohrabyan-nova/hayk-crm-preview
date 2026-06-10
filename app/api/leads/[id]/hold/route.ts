@@ -16,7 +16,10 @@ export async function POST(
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const { hold_reason, hold_notes, hold_until, role } = body;
+  const { hold_reason, hold_notes, hold_until } = body;
+  // Sales/SDR roles are derived from the verified session — body.role cannot escalate privileges.
+  // Admins are trusted to indicate which workflow they are acting in (they pass both scope checks).
+  const isSales = roleName === "sales" || (roleName === "admin" && body.role === "sales");
 
   if (!hold_reason) {
     return NextResponse.json(
@@ -36,7 +39,6 @@ export async function POST(
     return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  const isSales = role === "sales";
   const scopeError = isSales
     ? salesScopedLeadActionError(current, userId!, roleName)
     : sdrScopedLeadActionError(current, userId!, roleName);
@@ -53,7 +55,7 @@ export async function POST(
     // SDR retains ownership (locked_by_id stays set) so the lead remains
     // in their queue and hidden from other SDRs while on hold.
     // Sales holds still release the lock (sales ownership is via sales_owner_id).
-    ...(role === "sales" ? { locked_by_id: null, locked_at: null } : {}),
+    ...(isSales ? { locked_by_id: null, locked_at: null } : {}),
   };
 
   if (isSales) {
@@ -84,7 +86,7 @@ export async function POST(
       reason: hold_reason,
       notes: hold_notes ?? null,
       until: hold_until || null,
-      role,
+      role: isSales ? "sales" : "sdr",
     },
   });
 

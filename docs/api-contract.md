@@ -399,8 +399,10 @@ Places a lead on hold. Snapshots current `status` and `sales_status` into `prev_
 }
 ```
 
+> **`role` in body is a workflow hint for admins only.** For Sales and SDR callers, the workflow branch (`isSales`) is derived exclusively from the verified session `roleName` — the body value is ignored. Admins may pass `role: "sales"` to operate in the sales pipeline on a lead they don't own; they pass `role: "sdr"` (or omit) to act in the SDR workflow. This prevents privilege escalation (an SDR sending `role: "sales"` is blocked).
+
 **Business rules:**
-- Sets `status = 'On Hold'` (SDR) or `sales_status = 'On Hold'` (Sales) based on `role`
+- Sets `status = 'On Hold'` (SDR) or `sales_status = 'On Hold'` (Sales) based on derived workflow branch
 - Records `held_by_id = current_user`, `held_at = now()`
 - Logs `lead_held` activity
 
@@ -434,7 +436,9 @@ Marks an SDR lead for follow-up later (separate from On Hold). Snapshots current
 - Logs `lead_follow_up_later` activity
 - When `follow_up_reason` is **Other** (case-insensitive), `follow_up_notes` is required — `400` if empty
 
-**With `role: "sales"` in body** (Sales pipeline): sets `sales_status = 'Follow Up Later'`, snapshots `prev_sales_status`, clears temp lock; `status` stays `Routed to Sales`. Requires `sales_owner_id = current_user`.
+**With `role: "sales"` in body** (Sales pipeline or Admin acting in sales view): sets `sales_status = 'Follow Up Later'`, snapshots `prev_sales_status`, clears temp lock; `status` stays `Routed to Sales`. Requires `sales_owner_id = current_user` (or Admin).
+
+> **`role` in body is a workflow hint for admins only.** For Sales and SDR callers, the workflow branch is derived from the verified session `roleName`. See `POST /api/leads/[id]/hold` for the full explanation.
 
 **Response `200`:** `{ "lead": Lead }`  
 **Response `403`:** SDR — lead owned/locked by another SDR; Sales — lead not assigned to current rep
@@ -452,7 +456,7 @@ Restores a lead from hold or follow-up later to its previous status. Clears hold
 }
 ```
 
-**Body (sales):** `{ "role": "sales" }` — required for sales pipeline resume scope checks.
+**Body (sales):** `{ "role": "sales" }` — workflow hint for admins acting in the sales pipeline. For Sales and SDR callers, the workflow branch is derived from session `roleName` and the body value is ignored. See `POST /api/leads/[id]/hold` for the full explanation.
 
 **Business rules:**
 - Restores `status` from `prev_status` (SDR) or `sales_status` from `prev_sales_status` (Sales, default `Ongoing`)
@@ -472,16 +476,17 @@ Restores a lead from hold or follow-up later to its previous status. Clears hold
 
 ### `PATCH /api/leads/[id]`
 
-Partial update of a lead. `created_at` is always stripped from the body (immutable).
+Partial update of a lead. Only the following fields are accepted — all other keys are silently dropped (field whitelist, prevents mass-assignment of privileged columns like `sales_owner_id`, `locked_by_id`, `sdr_id`, hold/follow-up fields, etc.):
 
-**Body:** Any subset of lead fields (except `id`, `created_at`).
+**Allowed fields:** `urgency`, `interests`, `quantities`, `has_design`, `sdr_comment`, `is_returning_customer`, `brand`, `source`, `quote_destination`, `sales_notes`, `sales_status`, `status`, `rejection_reason`, `rejection_notes`
+
+**Special field:** `authority` — routed to `customers.authority` (different table), not the leads table. Response includes refreshed `customer` join.
 
 **Business rules:**
-- Phone and `quote_destination` are normalized to digits-only on every write
+- `quote_destination` is normalized to digits-only on every write
 - **Product interests:** when `interests` / `quantities` / `has_design` are sent, validated via `validateLeadProductInterests()` (product required; quantity **> 0** when product selected)
-- **`authority`** in the body updates **`customers.authority`** (not `leads.authority`); response includes refreshed `customer` join
 - Logs `lead_status_changed` activity if `status` or `sales_status` changes
-- **Terminal state guard:** If current `status = 'Rejected'` or `sales_status = 'Rejected'`, only Admin can apply changes. Non-admin → returns `403` with `code: 'LEAD_REJECTED_TERMINAL'`
+- **Terminal state guard:** If current `status = 'Rejected'`, only Admin can apply changes → `403` `LEAD_REJECTED_TERMINAL`
 - **Scope guard:** `canMutateLead()` — same rules as `GET /api/leads/[id]` (`canReadLead()`). Out-of-scope → `403` `FORBIDDEN`
 - **Lock guard:** If `locked_by_id` is set to a different user, returns `409` unless the caller is Admin
 
@@ -500,9 +505,11 @@ Sales rep claims an unclaimed routed lead. Sets `sales_owner_id = current_user`,
 
 **Auth:** Sales or admin only. Requires `/sales` page permission. `canClaimLead()` — lead must be unowned and `status = 'Routed to Sales'` (admin may claim any unowned sales-pipeline lead).
 
+**Concurrency:** The claim write uses a conditional `UPDATE … WHERE sales_owner_id IS NULL`. Two reps clicking Claim simultaneously will not both succeed — one gets `200`, the other gets `409 ALREADY_CLAIMED` deterministically (no silent double-claim).
+
 **Response `200`:** `{ "lead": Lead }`  
 **Response `403`:** `FORBIDDEN` — wrong role, page permission, or lead not claimable  
-**Response `409`:** `ALREADY_CLAIMED` if `sales_owner_id` is already set
+**Response `409`:** `ALREADY_CLAIMED` if `sales_owner_id` is already set (including concurrent claim race)
 
 ---
 
@@ -522,6 +529,8 @@ Acquires or refreshes `locked_by_id` on a lead.
 - If `locked_by_id` is `null` → acquires lock and returns `200`
 - **Sales** caller: sets `locked_by_id` only — does **not** overwrite `sdr_id` or log `lead_claimed`
 - Admin calling this endpoint on any lead → always acquires lock (overrides existing lock)
+
+**Concurrency:** For non-admin callers, the lock write is conditional: `UPDATE … WHERE locked_by_id IS NULL OR locked_by_id = current_user`. Two SDRs clicking Claim simultaneously cannot both acquire the lock — the loser receives `409` with the winner's name, identical to the stale-page case.
 
 **Response `200`:**
 ```json
@@ -838,7 +847,7 @@ Update a customer profile. Called when SDR chooses "Yes, update profile" on the 
 
 ### `POST /api/customers/[id]/merge`
 
-Merge duplicate customer **source** (`id` in path) into **target** (`target_id` in body). Moves all leads and activities to the target, logs a merge activity, then **deletes** the source customer.
+Merge duplicate customer **source** (`id` in path) into **target** (`target_id` in body). Moves all leads, **job tickets**, and activities to the target, logs a merge activity, then **deletes** the source customer.
 
 **Auth:** Admin or Sales only (`403` for SDR, Accountant, etc.).
 

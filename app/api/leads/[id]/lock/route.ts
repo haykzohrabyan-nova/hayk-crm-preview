@@ -60,17 +60,57 @@ export async function POST(
   // Detect new claim vs self-refresh (same user reopening their own lead)
   const isNewClaim = !lead.locked_by_id || lead.locked_by_id !== userId;
 
-  // Acquire (or refresh) lock. Set sdr_id only when the caller is an SDR —
-  // sales users locking a lead to work it must NOT overwrite the original sdr_id
-  // or the SDR loses visibility in their "Directed to Sales" scoped tab.
-  await admin
-    .from("leads")
-    .update({
-      locked_by_id: userId,
-      locked_at: new Date().toISOString(),
-      ...(roleName === "sdr" ? { sdr_id: userId } : {}),
-    })
-    .eq("id", id);
+  const updatePayload = {
+    locked_by_id: userId,
+    locked_at: new Date().toISOString(),
+    ...(roleName === "sdr" ? { sdr_id: userId } : {}),
+  };
+
+  // Atomic lock acquisition: for non-admins the UPDATE is conditional so two concurrent
+  // callers who both saw locked_by_id=null cannot both succeed — the DB serialises them
+  // at the row level and the loser gets 0 rows back.
+  let lockAcquired = true;
+  if (roleName === "admin") {
+    await admin.from("leads").update(updatePayload).eq("id", id);
+  } else {
+    const { data: lockResult } = await admin
+      .from("leads")
+      .update(updatePayload)
+      .eq("id", id)
+      .or(`locked_by_id.is.null,locked_by_id.eq.${userId}`)
+      .select("id")
+      .maybeSingle();
+    lockAcquired = lockResult !== null;
+  }
+
+  if (!lockAcquired) {
+    // Race: another request grabbed the lock between our read check and this write.
+    const { data: raceWinner } = await admin
+      .from("leads")
+      .select("locked_by_id")
+      .eq("id", id)
+      .single();
+    let lockerName = "Another user";
+    if (raceWinner?.locked_by_id) {
+      const { data: locker } = await admin
+        .from("user_profiles")
+        .select("id, full_name")
+        .eq("id", raceWinner.locked_by_id)
+        .single();
+      lockerName = locker?.full_name ?? "Another user";
+    }
+    return NextResponse.json(
+      {
+        locked: false,
+        locked_by: {
+          id: raceWinner?.locked_by_id ?? null,
+          full_name: lockerName,
+          role: "",
+        },
+      },
+      { status: 409 }
+    );
+  }
 
   // SDR soft-claim only — Sales uses POST /claim (lead_sales_claimed) and a temporary
   // lock while the modal is open; unlocking on close must not re-log lead_claimed on reopen.

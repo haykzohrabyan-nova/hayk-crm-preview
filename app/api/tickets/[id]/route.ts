@@ -846,70 +846,41 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       );
     }
 
-    const quoteTotal    = Number(cur?.quote_final_total ?? 0);
-    const alreadyPaid   = Number(cur?.payment_amount_received ?? 0);
-    const newTotal      = Math.min(alreadyPaid + amount, quoteTotal);
-    const fullyPaid     = newTotal >= quoteTotal - 0.01;
-
     // Prefer server-side inference from ticket config — list APIs may omit deposit fields.
     const mode = inferPaymentEvidenceMode({
       quote_final_total: cur?.quote_final_total,
       ticket_payment_strategy: cur?.ticket_payment_strategy,
       ticket_deposit_type: cur?.ticket_deposit_type,
       ticket_deposit_value: cur?.ticket_deposit_value,
-      payment_amount_received: alreadyPaid,
+      payment_amount_received: Number(cur?.payment_amount_received ?? 0),
       deposit_paid_at: cur?.deposit_paid_at,
       payment_evidence_amount: cur?.payment_evidence_amount ?? amount,
     });
 
-    const payPatch: Record<string, unknown> = {
-      updated_at: now,
-      payment_amount_received: newTotal,
-    };
-
-    if (mode === "deposit" && !cur?.deposit_paid_at) {
-      payPatch.deposit_amount    = amount;
-      payPatch.deposit_paid_at   = now;
-      payPatch.deposit_receipt_id = receiptId;
-      payPatch.deposit_method    = method;
-    } else if (mode === "balance" || mode === "full") {
-      payPatch.balance_paid_at   = now;
-      payPatch.payment_method_used = method;
-    }
-
-    if (fullyPaid && !cur?.payment_paid_at) {
-      payPatch.payment_paid_at = now;
-      payPatch.payment_status  = "paid";
-    } else if (newTotal > 0.01 && !fullyPaid) {
-      payPatch.payment_status = "partial";
-    }
-
-    // Mark evidence reviewed — keep URL / Stripe IDs and submitted_at for audit
-    if (
-      (cur?.payment_evidence_url || cur?.stripe_payment_intent_id) &&
-      !cur?.payment_evidence_reviewed_at
-    ) {
-      payPatch.payment_evidence_reviewed_at = now;
-    }
-
-    payPatch.payment_evidence_resubmit_requested_at = null;
-    payPatch.payment_evidence_resubmit_requested_by_id = null;
-    payPatch.payment_evidence_resubmit_reason = null;
-    payPatch.payment_evidence_resubmit_received_at = null;
-    payPatch.payment_evidence_resubmit_token = null;
-    payPatch.payment_evidence_otp_hash = null;
-    payPatch.payment_evidence_otp_expires_at = null;
-
+    // Atomic payment: SELECT FOR UPDATE inside the RPC serialises concurrent calls
+    // (e.g. accountant confirm + Stripe webhook) so each sees the other's committed
+    // total before adding its own amount — no payment can be silently overwritten.
     const { data: payUpdated, error: payErr } = await admin
-      .from("job_tickets")
-      .update(payPatch)
-      .eq("id", ticketId)
-      .select()
-      .single();
+      .rpc("record_ticket_payment_atomic", {
+        p_ticket_id:  ticketId,
+        p_amount:     amount,
+        p_mode:       mode,
+        p_method:     method,
+        p_now:        now,
+        p_receipt_id: receiptId,
+      })
+      .maybeSingle();
 
     if (payErr) {
       return NextResponse.json({ error: payErr.message, code: "DB_ERROR" }, { status: 500 });
     }
+    if (!payUpdated) {
+      return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
+    }
+
+    const newTotal  = Number(payUpdated.payment_amount_received);
+    const quoteTotal = Number(payUpdated.quote_final_total ?? 0);
+    const fullyPaid  = newTotal >= quoteTotal - 0.01;
 
     const hadPendingEvidence =
       !!cur?.payment_evidence_submitted_at &&

@@ -19,8 +19,10 @@ export async function POST(
 
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
-  const { follow_up_reason, follow_up_notes, follow_up_until, role: roleParam } = body;
-  const isSales = roleParam === "sales" || (roleParam !== "sdr" && roleName === "sales");
+  const { follow_up_reason, follow_up_notes, follow_up_until } = body;
+  // Sales/SDR roles are derived from the verified session — body.role cannot escalate privileges.
+  // Admins are trusted to indicate which workflow they are acting in (they pass both scope checks).
+  const isSales = roleName === "sales" || (roleName === "admin" && body.role === "sales");
 
   if (!follow_up_reason) {
     return NextResponse.json(

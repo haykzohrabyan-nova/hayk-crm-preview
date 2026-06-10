@@ -38,13 +38,9 @@ export async function POST(
     );
   }
 
-  if (current.sales_owner_id) {
-    return NextResponse.json(
-      { error: "Lead is already claimed.", code: "ALREADY_CLAIMED" },
-      { status: 409 }
-    );
-  }
-
+  // Atomic claim: only succeeds if sales_owner_id is still null at write time.
+  // Prevents a double-claim race where two reps both pass the canClaimLead check
+  // before either write commits — last write would silently overwrite the first.
   const { data: lead, error } = await admin
     .from("leads")
     .update({
@@ -53,11 +49,19 @@ export async function POST(
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
+    .is("sales_owner_id", null)
     .select("*, customer:customers(*)")
-    .single();
+    .maybeSingle();
 
   if (error) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
+  }
+
+  if (!lead) {
+    return NextResponse.json(
+      { error: "Lead is already claimed.", code: "ALREADY_CLAIMED" },
+      { status: 409 }
+    );
   }
 
   await admin.from("activities").insert({

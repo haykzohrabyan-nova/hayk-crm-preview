@@ -3,6 +3,33 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-09] — Fix four pre-launch critical issues
+
+### Changed
+- `package.json` — Next.js upgraded from 16.2.4 to 16.2.9 (patches proxy-bypass CVEs GHSA-26hh-7cqf-hhc6, GHSA-492v-c6pp-mqqv, GHSA-267c-6grr-h53f)
+
+### Fixed
+- `app/api/leads/[id]/route.ts` — PATCH now uses `ALLOWED_PATCH_FIELDS` whitelist; only `urgency`, `interests`, `quantities`, `has_design`, `sdr_comment`, `is_returning_customer`, `brand`, `source`, `quote_destination`, `sales_notes`, `sales_status`, `status`, `rejection_reason`, `rejection_notes` can be written; privileged columns (`sales_owner_id`, `locked_by_id`, `sdr_id`, hold/follow-up fields) are silently dropped
+- `lib/utils/public-resubmit-otp.ts` — OTP HMAC secret now requires `SUPABASE_SECRET_KEY`; removed fallback to `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` which would have made hashes forgeable if the env var was unset
+- `app/api/customers/[id]/merge/route.ts` — customer merge now moves `job_tickets` to the target customer before deleting the source; previously the delete would fail (FK violation) or leave orphaned tickets for any customer with order history
+
+## [2026-06-09] — Fix role bypass on lead hold / resume / follow-up routes
+
+### Fixed
+- `app/api/leads/[id]/hold/route.ts` — `isSales` now derived from verified session `roleName` instead of `body.role`; activity log also fixed to use derived value; `locked_by_id` conditional updated to use the same variable
+- `app/api/leads/[id]/resume/route.ts` — same fix; `body.role` removed entirely; activity log uses derived value
+- `app/api/leads/[id]/follow-up/route.ts` — replaced partially-client-controlled `roleParam === "sales"` expression with session-only `roleName === "sales" || roleName === "admin"`
+
+## [2026-06-09] — Fix three race conditions in leads and payment recording
+
+### Fixed
+- `app/api/leads/[id]/claim/route.ts` — atomic conditional update (`.is("sales_owner_id", null)`) replaces the non-atomic read-then-write; two sales reps claiming simultaneously now get a deterministic 409 instead of a silent double-claim
+- `app/api/leads/[id]/lock/route.ts` — atomic conditional update (`.or("locked_by_id.is.null,locked_by_id.eq.{userId}")`) prevents two SDRs from both acquiring the same lead lock in the same race window; loser gets a 409 with the winner's name
+- `app/api/tickets/[id]/route.ts` — `record_payment` block now calls `record_ticket_payment_atomic` RPC instead of read→compute→blind write; concurrent payment recordings (accountant + Stripe webhook) serialize at the DB row level so no payment total can be overwritten
+
+### Added
+- `supabase/patches/2026-06-09-atomic-payment-rpc.sql` — `record_ticket_payment_atomic(uuid, numeric, text, text, timestamptz, text)` Postgres function using `SELECT … FOR UPDATE` to atomically increment `payment_amount_received` and stamp all related payment timestamp/status fields
+
 ## [2026-06-08] — Full test reset includes ticket attachments
 
 ### Changed

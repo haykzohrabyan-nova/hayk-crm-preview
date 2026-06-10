@@ -1,6 +1,6 @@
 # BazarCRM — Security Model
 
-**Last updated:** June 4, 2026
+**Last updated:** June 9, 2026
 
 This document describes how the app protects data, what is stored in the browser, and how API + database layers work together.
 
@@ -16,6 +16,8 @@ This document describes how the app protects data, what is stored in the browser
 Most CRM writes use the **service-role admin client** in Route Handlers (RLS bypassed server-side). Security depends on Route Handler auth being correct on every endpoint.
 
 **Public customer routes** (`/api/public/quotes/*`, `/api/public/evidence/*`, `/api/public/permit/*`) are intentionally unauthenticated; access is gated by unguessable `public_token` (UUID), `payment_evidence_resubmit_token`, or `sales_permit_resubmit_token`. Evidence and permit uploads require a short-lived OTP + httpOnly verification cookie (`path: /`).
+
+**OTP HMAC secret:** `lib/utils/public-resubmit-otp.ts` signs OTP hashes with `SUPABASE_SECRET_KEY` (server-only). If the env var is unset, the function throws immediately — it does **not** fall back to the public anon key. Ensure `SUPABASE_SECRET_KEY` is set in all environments.
 
 ---
 
@@ -137,10 +139,10 @@ These endpoints verify the caller has access to the specific object before retur
 | Endpoint | Check |
 |----------|-------|
 | `GET /api/leads/[id]` | `canReadLead()` |
-| `PATCH /api/leads/[id]` | `canMutateLead()` (same scope as read) + lock/rejected guards |
-| `POST /api/leads/[id]/claim` | Sales or admin only; `canClaimLead()` |
-| `POST /api/leads/[id]/lock` | SDR/Sales/Admin only; `canAcquireLeadLock()` |
-| `POST /api/leads/[id]/hold` | Scoped-tab helpers (SDR/Sales) |
+| `PATCH /api/leads/[id]` | `canMutateLead()` + lock/rejected guards; **field whitelist** — only 14 named fields accepted, privileged columns (`sales_owner_id`, `locked_by_id`, `sdr_id`, hold/follow-up fields) silently dropped |
+| `POST /api/leads/[id]/claim` | Sales or admin only; `canClaimLead()`; **atomic** conditional write (`WHERE sales_owner_id IS NULL`) |
+| `POST /api/leads/[id]/lock` | SDR/Sales/Admin only; `canAcquireLeadLock()`; **atomic** conditional write for non-admins |
+| `POST /api/leads/[id]/hold` | Workflow branch derived from session `roleName` (not `body.role`) — prevents SDR from spoofing sales scope |
 | `GET /api/customers/[id]`, CRM list/lookup | `requirePageAccess(..., '/crm')` |
 | `GET /api/customers/[id]/shipping-addresses` | `requireAnyPageAccess(..., ['/crm', '/quotes'])` |
 | `GET /api/leads/[id]/activities` | `canReadLead()` on the lead before returning its timeline |

@@ -15,9 +15,6 @@ export async function POST(
   if (pageDeny) return pageDeny;
 
   const { id } = await params;
-  const body = await request.json().catch(() => ({}));
-  const role = body?.role ?? "sdr";
-
   const admin = createAdminClient();
   const { data: current, error: fetchErr } = await admin
     .from("leads")
@@ -29,7 +26,10 @@ export async function POST(
     return NextResponse.json({ error: "Lead not found.", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  const isSales = role === "sales";
+  const body = await request.json().catch(() => ({}));
+  // Sales/SDR roles are derived from the verified session — body.role cannot escalate privileges.
+  // Admins are trusted to indicate which workflow they are acting in (they pass both scope checks).
+  const isSales = roleName === "sales" || (roleName === "admin" && body.role === "sales");
   const resumedFrom = isSales ? current.sales_status : current.status;
   const scopeError = isSales
     ? salesScopedLeadActionError(current, userId!, roleName)
@@ -78,7 +78,7 @@ export async function POST(
     customer_id: lead.customer_id,
     type: "lead_resumed",
     by_user_id: userId,
-    payload: { role, from: resumedFrom ?? null },
+    payload: { role: isSales ? "sales" : "sdr", from: resumedFrom ?? null },
   });
 
   return NextResponse.json({ lead });

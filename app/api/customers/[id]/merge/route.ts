@@ -49,7 +49,10 @@ export async function POST(
     return NextResponse.json({ error: "Target customer not found.", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  // Move all leads from source → target
+  // Move all child records from source → target before deleting the source customer.
+  // All three tables have a customer_id FK — if any are missed the DELETE will fail
+  // (FK violation) or leave orphaned rows depending on the constraint type.
+
   const { error: leadsError } = await admin
     .from("leads")
     .update({ customer_id: target_id })
@@ -59,7 +62,15 @@ export async function POST(
     return NextResponse.json({ error: leadsError.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  // Move activities from source → target
+  const { error: ticketsError } = await admin
+    .from("job_tickets")
+    .update({ customer_id: target_id })
+    .eq("customer_id", id);
+
+  if (ticketsError) {
+    return NextResponse.json({ error: ticketsError.message, code: "DB_ERROR" }, { status: 500 });
+  }
+
   await admin.from("activities").update({ customer_id: target_id }).eq("customer_id", id);
 
   // Log a merge activity on the surviving customer
@@ -74,7 +85,7 @@ export async function POST(
     },
   });
 
-  // Delete the duplicate customer
+  // All FKs cleared — safe to delete the source customer
   const { error: deleteError } = await admin.from("customers").delete().eq("id", id);
 
   if (deleteError) {

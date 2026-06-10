@@ -7,7 +7,25 @@ import { normalizeAuthority } from "@/lib/utils/authority";
 import { canReadLead, canMutateLead } from "@/lib/utils/lead-access";
 import { validateLeadInterestsPayload } from "@/lib/utils/validate-lead-product-interests";
 
-const IMMUTABLE = ["id", "created_at"];
+// Only these fields may be written via a general PATCH.
+// Privileged columns (sales_owner_id, locked_by_id, sdr_id, hold_*, follow_up_*, etc.)
+// are managed exclusively by their dedicated endpoints.
+const ALLOWED_PATCH_FIELDS = [
+  "urgency",
+  "interests",
+  "quantities",
+  "has_design",
+  "sdr_comment",
+  "is_returning_customer",
+  "brand",
+  "source",
+  "quote_destination",
+  "sales_notes",
+  "sales_status",
+  "status",
+  "rejection_reason",
+  "rejection_notes",
+] as const;
 
 // ─── GET /api/leads/[id] ──────────────────────────────────────────────────────
 
@@ -73,23 +91,28 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
 
-  // Strip immutable fields
-  for (const f of IMMUTABLE) delete body[f];
-
+  // Extract customer authority before whitelist filtering (it updates a different table)
   const customerAuthority =
     body.authority !== undefined ? normalizeAuthority(String(body.authority ?? "")) : undefined;
-  delete body.authority;
+
+  // Build update from the whitelist only — unknown keys are silently dropped
+  const update: Record<string, unknown> = {};
+  for (const f of ALLOWED_PATCH_FIELDS) {
+    if (f in body) update[f] = body[f];
+  }
 
   // Normalize "not_defined" sentinel → null, and capitalize to match DB constraint
-  if (body.urgency === "not_defined" || body.urgency === "") {
-    body.urgency = null;
-  } else if (typeof body.urgency === "string" && body.urgency) {
-    body.urgency = body.urgency.charAt(0).toUpperCase() + body.urgency.slice(1).toLowerCase();
+  if ("urgency" in update) {
+    if (update.urgency === "not_defined" || update.urgency === "") {
+      update.urgency = null;
+    } else if (typeof update.urgency === "string" && update.urgency) {
+      update.urgency = update.urgency.charAt(0).toUpperCase() + (update.urgency as string).slice(1).toLowerCase();
+    }
   }
 
   // Normalize phone-like fields
-  if (body.quote_destination) {
-    body.quote_destination = digitsOnly(body.quote_destination);
+  if (update.quote_destination) {
+    update.quote_destination = digitsOnly(update.quote_destination as string);
   }
 
   const admin = createAdminClient();
@@ -141,14 +164,14 @@ export async function PATCH(
   }
 
   if (
-    body.interests !== undefined ||
-    body.quantities !== undefined ||
-    body.has_design !== undefined
+    update.interests !== undefined ||
+    update.quantities !== undefined ||
+    update.has_design !== undefined
   ) {
     const interestsErr = validateLeadInterestsPayload(
-      body.interests as Record<string, unknown> | undefined,
-      body.quantities as Record<string, unknown> | undefined,
-      body.has_design as Record<string, unknown> | undefined,
+      update.interests as Record<string, unknown> | undefined,
+      update.quantities as Record<string, unknown> | undefined,
+      update.has_design as Record<string, unknown> | undefined,
     );
     if (interestsErr) {
       return NextResponse.json({ error: interestsErr, code: "VALIDATION_ERROR" }, { status: 400 });
@@ -161,15 +184,15 @@ export async function PATCH(
   // When rejecting, persist prev_status so consumers can distinguish
   // "rejected by SDR" (prev_status != "Routed to Sales") from
   // "rejected from the sales pipeline" (prev_status == "Routed to Sales").
-  if (body.status === "Rejected") {
-    body.prev_status = current.status;
+  if (update.status === "Rejected") {
+    update.prev_status = current.status;
   }
 
-  body.updated_at = new Date().toISOString();
+  update.updated_at = new Date().toISOString();
 
   const { data: lead, error } = await admin
     .from("leads")
-    .update(body)
+    .update(update)
     .eq("id", id)
     .select("*, customer:customers(*)")
     .single();
@@ -196,9 +219,9 @@ export async function PATCH(
   }
 
   // Log field-level edits when no status change is happening
-  if (!body.status) {
+  if (!update.status) {
     const changedFields = TRACKED_FIELDS.filter(
-      (f) => body[f] !== undefined && JSON.stringify(body[f]) !== JSON.stringify((current as Record<string, unknown>)[f])
+      (f) => update[f] !== undefined && JSON.stringify(update[f]) !== JSON.stringify((current as Record<string, unknown>)[f])
     );
     if (customerAuthority !== undefined) changedFields.push("authority");
     if (changedFields.length > 0) {
@@ -213,16 +236,16 @@ export async function PATCH(
   }
 
   // Log status change activity if status changed
-  if (body.status && body.status !== prevStatus) {
+  if (update.status && update.status !== prevStatus) {
     await admin.from("activities").insert({
       lead_id: id,
       customer_id: lead.customer_id,
       type: "lead_status_changed",
       by_user_id: userId,
-      payload: { from: prevStatus, to: body.status },
+      payload: { from: prevStatus, to: update.status },
     });
 
-    if (body.status === "Routed to Sales") {
+    if (update.status === "Routed to Sales") {
       await admin.from("activities").insert({
         lead_id: id,
         customer_id: lead.customer_id,
@@ -231,7 +254,7 @@ export async function PATCH(
         payload: {},
       });
     }
-    if (body.status === "Rejected") {
+    if (update.status === "Rejected") {
       await admin.from("activities").insert({
         lead_id: id,
         customer_id: lead.customer_id,
@@ -239,20 +262,20 @@ export async function PATCH(
         by_user_id: userId,
         payload: {
           from: prevStatus,
-          reason: body.rejection_reason ?? null,
-          notes: body.rejection_notes ?? null,
+          reason: update.rejection_reason ?? null,
+          notes: update.rejection_notes ?? null,
         },
       });
     }
   }
 
-  if (body.sales_status && body.sales_status !== prevSalesStatus) {
+  if (update.sales_status && update.sales_status !== prevSalesStatus) {
     await admin.from("activities").insert({
       lead_id: id,
       customer_id: lead.customer_id,
       type: "lead_status_changed",
       by_user_id: userId,
-      payload: { sales_from: prevSalesStatus, sales_to: body.sales_status },
+      payload: { sales_from: prevSalesStatus, sales_to: update.sales_status },
     });
   }
 

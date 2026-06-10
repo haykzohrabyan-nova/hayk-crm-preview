@@ -5,8 +5,12 @@ const OTP_TTL_MS = 15 * 60 * 1000;
 export type ResubmitOtpPurpose = "permit" | "payment_evidence";
 
 function otpSecret(): string {
-  const secret = process.env.SUPABASE_SECRET_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-  if (!secret) throw new Error("OTP secret not configured.");
+  const secret = process.env.SUPABASE_SECRET_KEY;
+  if (!secret) throw new Error(
+    "SUPABASE_SECRET_KEY is required for OTP signing. " +
+    "Never fall back to the public Supabase key — it is visible in every browser session " +
+    "and would make OTP hashes forgeable."
+  );
   return secret;
 }
 

@@ -91,17 +91,19 @@ SDR clicks Claim on an unclaimed lead
       ▼
 POST /api/leads/[id]/lock  (also sets sdr_id = userId when role is SDR)
       │
-      ├── Lead unlocked? ──────────────────────────── Grant ownership
+      ├── Lead unlocked? ──────────────────────────── Atomic write: UPDATE WHERE locked_by_id IS NULL
+      │                                               OR locked_by_id = user (non-admin only)
       │                                               (locked_by_id = user, locked_at = now(),
       │                                                sdr_id = user for SDR)
       │                                               → Drawer opens in EDIT mode
       │                                               (useGlobalLoading overlay while fetching)
       │
-      ├── Locked by same user? ────────────────────── Refresh locked_at
-      │   (page refresh / reconnect)                  → Drawer opens in EDIT mode
+      ├── Locked by same user? ────────────────────── Same atomic write matches (IS NULL OR = user)
+      │   (page refresh / reconnect)                  Refreshes locked_at → Drawer in EDIT mode
       │
-      └── Locked by different user? ──────────────── Return 409 with locker info
-          (race condition — stale page)               → Drawer opens in READ-ONLY mode
+      └── Locked by different user? ──────────────── 409 from pre-check (stale page) OR from
+          (stale page OR race condition)              atomic write returning 0 rows (true race)
+                                                      → Drawer opens in READ-ONLY mode
                                                       → Banner: "Jane is working this lead"
 
 SDR or Admin saves via Manual Add Lead (POST /api/leads/manual)
@@ -271,6 +273,16 @@ The unlock operation itself is not logged separately (route/reject/resume have t
 
 ---
 
-## Concurrency Edge Case
+## Concurrency
 
-If User A and User B both call `POST /api/leads/[id]/lock` at the exact same millisecond, the first write wins due to Postgres's row-level serialization. The loser receives a `409`.
+Both `POST /api/leads/[id]/lock` and `POST /api/leads/[id]/claim` use **atomic conditional writes** to prevent race conditions.
+
+### Lock race (two SDRs clicking Claim simultaneously)
+
+The UPDATE is: `WHERE locked_by_id IS NULL OR locked_by_id = current_user` (non-admin callers only). Two concurrent requests both see `locked_by_id = null` at read time — but the DB serializes writes at the row level. The winner's update matches 1 row; the loser's matches 0 rows and receives `409` with the winner's name, identical to the stale-page case.
+
+### Claim race (two sales reps clicking Claim simultaneously)
+
+The UPDATE is: `WHERE sales_owner_id IS NULL`. Same principle — one write matches, the other gets 0 rows and returns `409 ALREADY_CLAIMED`.
+
+Both endpoints use `.maybeSingle()` to detect the 0-row case rather than relying on a separate read before the write.
