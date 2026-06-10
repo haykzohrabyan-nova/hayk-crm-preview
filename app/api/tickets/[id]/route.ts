@@ -860,7 +860,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     // Atomic payment: SELECT FOR UPDATE inside the RPC serialises concurrent calls
     // (e.g. accountant confirm + Stripe webhook) so each sees the other's committed
     // total before adding its own amount — no payment can be silently overwritten.
-    const { data: payUpdated, error: payErr } = await admin
+    type AtomicPayResult = {
+      payment_amount_received: number;
+      quote_final_total: number | null;
+      ticket_status: string;
+      deposit_paid_at: string | null;
+      balance_paid_at: string | null;
+      payment_paid_at: string | null;
+      payment_status: string;
+    };
+    const { data: payRaw, error: payErr } = await admin
       .rpc("record_ticket_payment_atomic", {
         p_ticket_id:  ticketId,
         p_amount:     amount,
@@ -874,10 +883,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (payErr) {
       return NextResponse.json({ error: payErr.message, code: "DB_ERROR" }, { status: 500 });
     }
-    if (!payUpdated) {
+    if (!payRaw) {
       return NextResponse.json({ error: "Ticket not found.", code: "NOT_FOUND" }, { status: 404 });
     }
 
+    const payUpdated = payRaw as unknown as AtomicPayResult;
     const newTotal  = Number(payUpdated.payment_amount_received);
     const quoteTotal = Number(payUpdated.quote_final_total ?? 0);
     const fullyPaid  = newTotal >= quoteTotal - 0.01;
