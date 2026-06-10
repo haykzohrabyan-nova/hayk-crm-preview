@@ -3,6 +3,33 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-09] — RBAC Slice 0 — SQL patch verified, docs finalized
+
+### Changed
+- `supabase/patches/2026-06-09-action-permissions.sql` — full codebase verification pass; fixed 2 seed errors found: (1) removed `payments.resend_invoice` + `payments.send_reminder` from accountant seed (`canResendTicketNotifications` requires admin or ticket creator — accountants cannot create tickets); (2) added `orders.release_production` to accountant seed (`canAccountantMutateTicket` explicitly allows `production_released_at` field). Added 6 previously missing permission keys: `quotes.upload_sales_permit`, `orders.convert_manual`, `payments.request_resubmit`, `payments.send_reminder`, `payments.view_evidence`, `payments.view_sales_permit`. Total keys: 50
+- `docs/rbac-migration/plan.md` — added "How to wire up a slice" step-by-step section with exact code pattern, pre-flight custom role check, per-route permission key reference table, and updated success criteria checklist
+- `docs/rbac.md` — added enforcement status callout: Slice 0 deployed, zero routes wired yet, all `roleName` checks still authoritative
+- `docs/rbac-migration/plan.md` — resolved known gaps section; updated success criteria
+
+## [2026-06-09] — RBAC Slice 0 — Action permission foundation
+
+### Added
+- `supabase/patches/2026-06-09-action-permissions.sql` — `permissions` catalog table (50 action keys across leads/sales/quotes/orders/payments/crm/admin) + `role_action_grants` join table + RLS policies + seeds for all 4 system roles (SDR, Sales, Accountant, Admin). Keys verified against full codebase scan — covers all existing `roleName` checks, `isPaymentStaffRole`, `canMutateTicket`, `canResendTicketNotifications`, `canPatchTicket`, and `canAcquireLeadLock` logic paths
+- `lib/auth/resolve-action-grants.ts` — loads DB-granted action keys for a user/role (admin gets all; others filtered by role)
+- `lib/auth/action-grants-cache.ts` — 45 s in-memory cache for action grants (same pattern as `allowed-routes-cache.ts`)
+- `lib/auth/has-permission.ts` — `hasPermission(session, key)`, `hasAllPermissions`, `hasAnyPermission` server-side helpers
+- `lib/auth/require-permission.ts` — `requirePermission(key)` server guard; returns 403 `FORBIDDEN` with `requiredPermission` field if key missing
+- `hooks/use-permissions.ts` — `usePermissions()` client hook with `can(key)`, `canAll(keys)`, `canAny(keys)` helpers; module-level cache so repeated renders don't re-fetch
+- `app/api/admin/permissions/route.ts` — `GET /api/admin/permissions` returns full permissions catalog grouped by area
+- `app/api/admin/roles/[id]/action-grants/route.ts` — `GET` list + `POST` grant for a role
+- `app/api/admin/roles/[id]/action-grants/[permissionId]/route.ts` — `DELETE` revoke for a role
+
+### Changed
+- `lib/auth/require-session.ts` — `SessionSuccess` type extended with `actionGrants: string[]`; `requireSession()` now loads action grants in parallel with page routes (no added latency — concurrent `Promise.all`)
+- `app/api/me/route.ts` — response now includes `actionGrants: string[]`
+- `app/api/admin/roles/route.ts` — `GET /api/admin/roles` now includes `permitted_action_ids` per role (join on `role_action_grants`)
+- `components/admin/roles-section.tsx` — added **Actions** tab alongside existing Page Access tab; shows permissions grouped by area with toggle checkboxes; system roles (admin) show locked read-only banner; badge shows `granted/total` count on inactive tab; `+ New` button moved into left column header
+
 ## [2026-06-09] — Fix four pre-launch critical issues
 
 ### Changed

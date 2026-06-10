@@ -1,6 +1,6 @@
 # BazarCRM — RBAC (Role-Based Access Control)
 
-> **Planned migration (deferred):** Capability-based RBAC with page + scope + action permissions, page-by-page rollout. Planning docs: [`rbac-migration/`](rbac-migration/README.md) (start with [`plan.md`](rbac-migration/plan.md)). **Not implemented yet** — current behavior below is authoritative.
+> **RBAC migration — Slice 0 complete (2026-06-09):** Action permission foundation shipped. The `permissions` catalog and `role_action_grants` table are live and seeded. Auth helpers (`hasPermission`, `requirePermission`) and `usePermissions()` hook are available. `GET /api/me` returns `actionGrants[]`. The Admin → Roles → **Actions** tab lets admins toggle action grants per role. Enforcement (replacing hardcoded `roleName` checks) rolls out incrementally in Slice 1+. See [`rbac-migration/plan.md`](rbac-migration/plan.md).
 
 Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are seeded and cannot be deleted. Admin can create additional custom roles and assign page access to each via the Settings → Roles tab.
 
@@ -14,6 +14,10 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 3. **Supabase RLS** — database-level row filtering for direct browser/realtime Supabase client access
 
 **Helper modules:** `lib/auth/require-page-access.ts`, `lib/auth/role-checks.ts` (`isAdminRole`, `isPaymentStaffRole`), `lib/auth/admin-only-pages.ts`, `lib/utils/ticket-access.ts`, `lib/utils/lead-access.ts`, `lib/utils/db-counts.ts` (`scopeJobTicketsQuery`).
+
+**Action permission helpers (Slice 0):** `lib/auth/has-permission.ts` (`hasPermission`, `hasAllPermissions`, `hasAnyPermission`), `lib/auth/require-permission.ts` (`requirePermission` — server guard returning 403), `hooks/use-permissions.ts` (`usePermissions().can(key)` — client hook). Action grants are loaded into every session and cached 45 s alongside page routes.
+
+> **Current enforcement status:** Slice 0 is deployed. The `permissions` catalog (50 keys) and `role_action_grants` seeds are in the DB. All helpers are ready. **Zero route handlers have been wired yet** — all existing `roleName` checks are still active and authoritative. Wiring happens slice-by-slice when workflows are stable. See [`rbac-migration/plan.md`](rbac-migration/plan.md) for the exact step-by-step wiring process.
 
 ---
 

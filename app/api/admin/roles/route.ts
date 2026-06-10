@@ -9,18 +9,20 @@ export async function GET() {
   const admin = createAdminClient();
   const { data: roles, error } = await admin
     .from("roles")
-    .select("*, role_permissions(page_id)")
+    .select("*, role_permissions(page_id), role_action_grants(permission_id)")
     .order("created_at");
 
   if (error) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  // Flatten permissions to array of page_ids per role
+  // Flatten permissions to array of page_ids / permission_ids per role
   const formatted = (roles ?? []).map((r) => ({
     ...r,
     permitted_page_ids: (r.role_permissions ?? []).map((p: { page_id: string }) => p.page_id),
+    permitted_action_ids: (r.role_action_grants ?? []).map((g: { permission_id: string }) => g.permission_id),
     role_permissions: undefined,
+    role_action_grants: undefined,
   }));
 
   return NextResponse.json({ roles: formatted });
@@ -62,5 +64,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
   }
 
-  return NextResponse.json({ role: { ...data, permitted_page_ids: [] } }, { status: 201 });
+  return NextResponse.json({ role: { ...data, permitted_page_ids: [], permitted_action_ids: [] } }, { status: 201 });
 }

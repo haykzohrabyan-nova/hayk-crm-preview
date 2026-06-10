@@ -11,6 +11,10 @@ import {
   setCachedAllowedPageRoutes,
 } from "@/lib/auth/allowed-routes-cache";
 import {
+  getCachedActionGrants,
+  setCachedActionGrants,
+} from "@/lib/auth/action-grants-cache";
+import {
   hasValidMfaTrustFromCookieValue,
   MFA_TRUST_COOKIE,
 } from "@/lib/auth/mfa-trust";
@@ -26,6 +30,8 @@ export type SessionSuccess = {
   roleId: string | null;
   fullName: string | null;
   allowedRoutes: string[];
+  /** Action permission keys granted to this user's role (e.g. 'leads.claim', 'payments.record_payment'). */
+  actionGrants: string[];
   errorResponse: null;
 };
 
@@ -37,6 +43,7 @@ export type SessionResult =
       roleId: null;
       fullName: null;
       allowedRoutes: null;
+      actionGrants: null;
       errorResponse: NextResponse;
     };
 
@@ -63,6 +70,7 @@ export async function requireSession(
       roleId: null,
       fullName: null,
       allowedRoutes: null,
+      actionGrants: null,
       errorResponse: NextResponse.json(
         { error: "Not authenticated.", code: "UNAUTHENTICATED" },
         { status: 401 },
@@ -102,6 +110,7 @@ export async function requireSession(
           roleId: null,
           fullName: null,
           allowedRoutes: null,
+          actionGrants: null,
           errorResponse: NextResponse.json(
             {
               error: "Two-factor authentication required.",
@@ -114,8 +123,12 @@ export async function requireSession(
     }
   }
 
-  const allowedRoutes = await getCachedAllowedPageRoutes(user.id, roleName);
+  const [allowedRoutes, actionGrants] = await Promise.all([
+    getCachedAllowedPageRoutes(user.id, roleName),
+    getCachedActionGrants(user.id, roleName),
+  ]);
   setCachedAllowedPageRoutes(user.id, roleName, allowedRoutes);
+  setCachedActionGrants(user.id, roleName, actionGrants);
 
   const success: SessionSuccess = {
     userId: user.id,
@@ -123,6 +136,7 @@ export async function requireSession(
     roleId,
     fullName,
     allowedRoutes,
+    actionGrants,
     errorResponse: null,
   };
   setCachedSession(cacheKey, success);

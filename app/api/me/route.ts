@@ -18,6 +18,7 @@ export async function GET() {
     roleName: session.roleName,
     fullName: session.fullName,
     allowedRoutes: session.allowedRoutes,
+    actionGrants: session.actionGrants,
     pages,
   });
 }
