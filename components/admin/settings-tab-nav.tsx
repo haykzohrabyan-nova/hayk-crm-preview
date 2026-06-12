@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown, Webhook } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -16,6 +16,7 @@ const TABS = [
   { label: "Email Templates",     href: "/admin/settings/email-templates", icon: Mail         },
   { label: "Payment",             href: "/admin/settings/payment",       icon: CreditCard     },
   { label: "Lead import",         href: "/admin/settings/import-export", icon: ArrowUpDown    },
+  { label: "Webhook",             href: "/admin/settings/webhook",       icon: Webhook        },
 ] as const;
 
 function cnTab(active: boolean) {

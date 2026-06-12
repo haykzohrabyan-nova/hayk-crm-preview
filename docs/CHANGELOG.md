@@ -3,6 +3,39 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-12] — Webhook delivery log + admin panel
+
+### Added
+- `supabase/patches/2026-06-12-webhook-deliveries.sql` — `webhook_deliveries` table: one row per delivery attempt, columns `ticket_id`, `reference_code`, `attempt`, `status` (success/failed), `http_status`, `response_body`, `error_message`, `via`, `sent_at`. Indexes on ticket_id, sent_at, status. Service-role only (RLS denies anon/user).
+- `app/api/admin/webhook/page-data/route.ts` — `GET /api/admin/webhook/page-data` admin-only endpoint; returns all order-stage tickets with their latest delivery status and aggregate counts (total / delivered / failed / not sent).
+- `app/api/admin/webhook/resend/route.ts` — `POST /api/admin/webhook/resend` admin-only endpoint; accepts `{ ticket_id }` and retriggers `sendOrderWebhook`.
+- `components/admin/webhook-section.tsx` — full admin panel UI: stats bar (4 counters), filter tabs (All / Delivered / Failed / Not Sent) with counts, order table with delivery badges, expandable attempt detail (HTTP status, error, response body), Resend button per row, mobile card layout.
+
+### Changed
+- `lib/utils/send-order-webhook.ts` — now logs every delivery attempt (success or failure) to `webhook_deliveries` with HTTP status, response body, and error messages. DB fetch is awaited; HTTP POST + logging are still fire-and-forget.
+- `components/admin/settings-tab-nav.tsx` — added "Webhook" tab with `Webhook` icon.
+- `app/(app)/admin/settings/[tab]/page.tsx` — added `"webhook"` to `SUPPORTED_TABS` and wired `<WebhookSection />`.
+
+## [2026-06-12] — Webhook status card on admin dashboard
+
+### Changed
+- `components/admin/admin-dashboard.tsx` — added `WebhookStatusCard` between the KPI grid and the Reports footnote. Shows Delivered / Failed / Not Sent counts loaded independently from `/api/admin/webhook/page-data`. Card border turns red and shows a "click to resend" CTA when there are failures. Shows a "not configured" warning if `ORDER_WEBHOOK_URL` is missing. Links to `/admin/settings/webhook` for the full panel.
+
+## [2026-06-12] — Webhook artwork signed URLs
+
+### Changed
+- `lib/utils/send-order-webhook.ts` — fetches `ticket_files` for all line items/variants and generates 7-day Supabase signed URLs. Each SKU in the payload now includes `artwork_url` when a file is attached to that variant. Top-level `artwork_url` is the first file across all line items (for single-SKU orders). URLs expire after 7 days — the external workflow system should download immediately on receipt.
+
+## [2026-06-12] — Order webhook notification (workflow-rho-one integration)
+
+### Added
+- `lib/utils/send-order-webhook.ts` — `sendOrderWebhook(admin, ticketId, referenceCode, via, now)` async utility. Fetches full ticket + line items from DB, then fires a fire-and-forget POST to `ORDER_WEBHOOK_URL` with the exact payload contract expected by `workflow-rho-one.vercel.app` (`customer_name`, `customer_contact`, `order_number`, `product`, `materials`, `finishing`, `sides`, `color`, `order_qty`, `skus`, etc.). Uses `x-webhook-secret: ORDER_WEBHOOK_SECRET` header. Silent no-op when `ORDER_WEBHOOK_URL` is unset.
+- `.env.local.example` — documented `ORDER_WEBHOOK_URL` and `ORDER_WEBHOOK_SECRET`.
+
+### Changed
+- `lib/utils/maybe-convert-quote-to-order.ts` — awaits `sendOrderWebhook` after every successful quote→order conversion (covers: admin override, payment confirm, Stripe checkout, customer confirm, net-terms, cash).
+- `app/api/tickets/route.ts` — awaits `sendOrderWebhook` when `POST /api/tickets` creates a ticket directly as `ticket_kind: "order"`.
+
 ## [2026-06-09] — RBAC Slice 0 — SQL patch verified, docs finalized
 
 ### Changed

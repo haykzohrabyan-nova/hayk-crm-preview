@@ -31,6 +31,7 @@ import {
   resolveShippingFromRequest,
   syncTicketShippingDestinations,
 } from "@/lib/utils/ticket-shipping-destinations";
+import { sendOrderWebhook } from "@/lib/utils/send-order-webhook";
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -622,6 +623,12 @@ export async function POST(request: NextRequest) {
   const line_items =
     syncedLineItems ?? (await fetchTicketLinesBundle(admin, ticket.id));
   const shipping_destinations = await fetchTicketShippingDestinations(admin, ticket.id);
+
+  // Fire order webhook when a ticket is created directly as an order (ticket_kind="order").
+  // Quote→order conversions are handled inside maybeConvertQuoteToOrder.
+  if (resolvedTicketKind === "order") {
+    await sendOrderWebhook(admin, (finalTicket ?? ticket).id, reference_code, "direct_create", now);
+  }
 
   notifyPublicQuoteUpdatedByTicketId(admin, (finalTicket ?? ticket).id);
 

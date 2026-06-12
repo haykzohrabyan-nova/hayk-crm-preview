@@ -9,6 +9,7 @@ import {
 import type { TaxExemptApprovalFields } from "@/lib/utils/tax-exempt-approval";
 import { assignOrderReferenceCode, isQuoteReferenceCode } from "@/lib/utils/reference-codes";
 import type { PaymentConfig } from "@/lib/types";
+import { sendOrderWebhook } from "@/lib/utils/send-order-webhook";
 
 export interface ConvertQuoteTicket extends TicketPaymentFields, TaxExemptApprovalFields {
   id: string;
@@ -151,6 +152,8 @@ export async function maybeConvertQuoteToOrder(
     .eq("id", ticket.id);
 
   if (updateErr) return { converted: false };
+
+  await sendOrderWebhook(admin, ticket.id, referenceCode, context.via, now);
 
   await admin.from("activities").insert([
     {

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown, Webhook } from "lucide-react";
 
 const CARDS = [
   {
@@ -70,6 +70,13 @@ const CARDS = [
     description: "Bulk import leads from JSON only (no CSV). Validate-first preview and sample file for external tools.",
     href: "/admin/settings/import-export",
     icon: ArrowUpDown,
+    built: true,
+  },
+  {
+    title: "Webhook",
+    description: "Monitor order webhook delivery to the workflow automation system. See delivery status per order and resend any that failed.",
+    href: "/admin/settings/webhook",
+    icon: Webhook,
     built: true,
   },
 ] as const;
