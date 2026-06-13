@@ -399,6 +399,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
   const [editOpen, setEditOpen] = useState(false);
   const [taxExemptModalOpen, setTaxExemptModalOpen] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [hasDuplicates, setHasDuplicates] = useState(false);
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [isSdr, setIsSdr] = useState(false);
   const [leadLookups, setLeadLookups] = useState<LookupMap>({});
@@ -440,6 +441,15 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
         setSourceLabels(Object.fromEntries(sourceOpts.map((o) => [o.value, o.label])));
         setIndustries(lookupData?.industry ?? []);
         setLoading(false);
+
+        // Check for duplicate phone numbers — show Merge button only when dupes exist
+        const phone = customerData?.customer?.phone;
+        if (phone) {
+          fetch(`/api/customers?search=${encodeURIComponent(phone)}`)
+            .then((r) => r.json())
+            .then((d) => setHasDuplicates((d.customers ?? []).length > 1))
+            .catch(() => {});
+        }
       })
       .catch(() => setLoading(false));
   }, [customerId]);
@@ -529,14 +539,16 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setMergeOpen(true)}
-              className="flex items-center gap-1.5 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80"
-              style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
-            >
-              <Merge className="h-3.5 w-3.5" />
-              Merge Duplicate
-            </button>
+            {hasDuplicates && (
+              <button
+                onClick={() => setMergeOpen(true)}
+                className="flex items-center gap-1.5 rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all hover:opacity-80"
+                style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+              >
+                <Merge className="h-3.5 w-3.5" />
+                Merge Duplicate
+              </button>
+            )}
             {isSdr && (
               <button
                 onClick={() => setAddLeadOpen(true)}

@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-12] — Conditional Merge Duplicate button on customer profile
+
+### Changed
+- **`components/crm/customer-profile.tsx`** — "Merge Duplicate" button is now hidden by default. After the customer loads, a background check (`GET /api/customers?search={phone}`) runs; the button appears only when 2+ records share the same phone number. No visual change for customers with unique phones.
+- **`app/(app)/admin/page.tsx`** — Order import card renders as a non-interactive `<div>` (not a `<Link>`) when `built: false`: 50% opacity, `cursor-not-allowed`, no "Open →" label, no hover shadow. Removed duplicate "Coming soon." text from the card description.
+
 ## [2026-06-12] — Comprehensive documentation update
 
 ### Added

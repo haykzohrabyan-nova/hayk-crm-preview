@@ -1697,7 +1697,7 @@ Used by:
 
 Component: `components/crm/merge-customer-modal.tsx`
 
-Available from: CRM list Merge icon button + customer profile "Merge Duplicate" button.
+Available from: CRM list Merge icon button (only when `is_duplicate_phone = true`) + customer profile "Merge Duplicate" button (only shown after a background `GET /api/customers?search={phone}` confirms 2+ records share the phone — hidden for unique-phone customers).
 
 **Step 1 — Select keeper:** On open, fetches all customers sharing the source's phone via `GET /api/customers?search={phone}` (includes the source itself). User clicks to select the one to keep; "Customer since" (`created_at`) shown to help identify the original.
 

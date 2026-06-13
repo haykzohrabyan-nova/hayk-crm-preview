@@ -86,7 +86,7 @@ A dedicated full page for a single customer. Accessible from:
 - Heat tag badge (Hot / Warm / Cold)
 - **Add Quote** button → `/quotes/new` with customer params pre-filled (same as CRM list)
 - **Edit** button → opens Edit Customer modal
-- **Merge Duplicate** button
+- **Merge Duplicate** button — conditionally shown; hidden when the customer has a unique phone number (no other record shares it)
 
 ### Contact grid
 - Company, Phone, Email, Industry, Website
@@ -189,7 +189,7 @@ Table of tickets for this customer via **`GET /api/tickets?customer_id=[id]`** (
 
 **Where it appears:**
 - **Merge** icon button in the CRM list Actions column — only rendered when `is_duplicate_phone = true` (invisible placeholder maintains button alignment otherwise)
-- **Merge Duplicate** button on the customer profile page (`/crm/customers/[id]`)
+- **Merge Duplicate** button on the customer profile page (`/crm/customers/[id]`) — conditionally shown: on load, `GET /api/customers?search={phone}` is called; the button renders only when the response contains 2+ customers (i.e. another record shares the same phone). Hidden for customers with a unique phone number.
 
 **Auth:** `POST /api/customers/[id]/merge` — **Admin and Sales only** (`403` for SDR, Accountant, etc.). Destructive: deletes victim customers after reassigning leads, tickets, and activities.
 
