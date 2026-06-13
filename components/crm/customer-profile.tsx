@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft, Edit2, X, Merge, Search, AlertTriangle, FileText, Package, FilePlus, UserPlus, ScrollText } from "lucide-react";
+import { ArrowLeft, Edit2, X, Merge, FileText, Package, FilePlus, UserPlus, ScrollText } from "lucide-react";
+import { MergeCustomerModal } from "@/components/crm/merge-customer-modal";
 import { CustomerTaxExemptModal } from "@/components/crm/customer-tax-exempt-modal";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
@@ -366,201 +367,6 @@ function EditCustomerModal({
   );
 }
 
-// ─── Merge Duplicate Modal ────────────────────────────────────────────────────
-
-interface MergeCustomer {
-  id: string;
-  first_name: string | null;
-  last_name: string | null;
-  phone: string | null;
-  email: string | null;
-  company: string | null;
-}
-
-function MergeModal({
-  source,
-  onClose,
-  onMerged,
-}: {
-  source: Customer;
-  onClose: () => void;
-  onMerged: (survivingId: string) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [results, setResults] = useState<MergeCustomer[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [selected, setSelected] = useState<MergeCustomer | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
-  const [merging, setMerging] = useState(false);
-  const [error, setError] = useState("");
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    const q = search.trim();
-    if (q.length < 2) { setResults([]); return; }
-    debounceRef.current = setTimeout(async () => {
-      setSearching(true);
-      const res = await fetch(`/api/customers?search=${encodeURIComponent(q)}`);
-      const data = await res.json();
-      setSearching(false);
-      // Exclude the current customer from results
-      setResults((data.customers ?? []).filter((c: MergeCustomer) => c.id !== source.id));
-    }, 400);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [search, source.id]);
-
-  async function handleMerge() {
-    if (!selected) return;
-    setMerging(true);
-    setError("");
-    const res = await fetch(`/api/customers/${source.id}/merge`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ target_id: selected.id }),
-    });
-    const data = await res.json();
-    setMerging(false);
-    if (!res.ok) { setError(data.error ?? "Merge failed."); return; }
-    onMerged(data.surviving_id);
-  }
-
-  const sourceName = [source.first_name, source.last_name].filter(Boolean).join(" ") || "This customer";
-  const targetName = selected ? ([selected.first_name, selected.last_name].filter(Boolean).join(" ") || "Selected customer") : "";
-
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/45" onClick={onClose} aria-hidden="true" />
-      <div
-        className="fixed left-1/2 top-1/2 z-50 w-full max-w-[520px] -translate-x-1/2 -translate-y-1/2 rounded-[12px] p-6 shadow-2xl"
-        style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}
-      >
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-[16px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-            Merge Duplicate Customer
-          </h2>
-          <button onClick={onClose} style={{ color: "var(--color-text-muted)" }}><X className="h-4 w-4" /></button>
-        </div>
-
-        {!confirmed ? (
-          <>
-            <p className="text-[13px] mb-4" style={{ color: "var(--color-text-muted)" }}>
-              Search for the customer to keep. All leads from <strong style={{ color: "var(--color-text-primary)" }}>{sourceName}</strong> will be moved to the customer you select, then this record will be deleted.
-            </p>
-
-            {/* Search input */}
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
-              <input
-                className="w-full h-9 rounded-[6px] border pl-9 pr-3 text-sm outline-none"
-                style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                placeholder="Search by name, phone, or email…"
-                value={search}
-                onChange={(e) => { setSearch(e.target.value); setSelected(null); }}
-                autoFocus
-              />
-              {searching && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
-                  Searching…
-                </span>
-              )}
-            </div>
-
-            {/* Results list */}
-            {results.length > 0 && (
-              <div className="rounded-[8px] border overflow-hidden mb-4" style={{ borderColor: "var(--color-border)" }}>
-                {results.slice(0, 6).map((c, idx) => {
-                  const name = [c.first_name, c.last_name].filter(Boolean).join(" ") || "Unknown";
-                  const isSelected = selected?.id === c.id;
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => setSelected(c)}
-                      className="w-full text-left px-3 py-2.5 flex items-center gap-3 transition-colors"
-                      style={{
-                        background: isSelected ? "var(--color-row-hover)" : idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
-                        borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
-                      }}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[13px] font-medium truncate" style={{ color: "var(--color-text-primary)" }}>{name}</p>
-                        <p className="text-[11px] truncate" style={{ color: "var(--color-text-muted)" }}>
-                          {[c.company, c.phone, c.email].filter(Boolean).join(" · ")}
-                        </p>
-                      </div>
-                      {isSelected && (
-                        <span className="shrink-0 text-[11px] font-medium rounded-full px-2 py-0.5" style={{ background: "var(--color-accent)", color: "var(--color-btn-primary-text)" }}>
-                          Selected
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-
-            {search.length >= 2 && !searching && results.length === 0 && (
-              <p className="text-[12px] mb-4" style={{ color: "var(--color-text-muted)" }}>No other customers found.</p>
-            )}
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={onClose}
-                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium"
-                style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => setConfirmed(true)}
-                disabled={!selected}
-                className="rounded-[6px] px-4 py-1.5 text-[13px] font-medium disabled:opacity-40"
-                style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-              >
-                Continue
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* Confirmation step */}
-            <div
-              className="flex items-start gap-3 rounded-[8px] border p-4 mb-5"
-              style={{ background: "var(--color-warning-bg)", borderColor: "var(--color-warning-border)" }}
-            >
-              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--color-warning-text-deep)" }} />
-              <p className="text-[13px]" style={{ color: "var(--color-warning-text-deep)" }}>
-                All leads from <strong>{sourceName}</strong> will be moved to <strong>{targetName}</strong> and this record will be permanently deleted. This cannot be undone.
-              </p>
-            </div>
-
-            {error && <p className="text-[12px] font-medium mb-3" style={{ color: "var(--color-danger)" }}>{error}</p>}
-
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setConfirmed(false)}
-                className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium"
-                style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
-              >
-                Back
-              </button>
-              <button
-                onClick={handleMerge}
-                disabled={merging}
-                className="rounded-[6px] px-4 py-1.5 text-[13px] font-medium disabled:opacity-50"
-                style={{ background: "var(--color-danger)", color: "var(--color-text-inverse)" }}
-              >
-                {merging ? "Merging…" : "Merge & Delete This Record"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </>
-  );
-}
-
 // ─── Profile Skeleton ─────────────────────────────────────────────────────────
 
 function ProfileSkeleton() {
@@ -900,7 +706,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
 
       {/* Merge modal */}
       {mergeOpen && (
-        <MergeModal
+        <MergeCustomerModal
           source={c}
           onClose={() => setMergeOpen(false)}
           onMerged={handleMerged}

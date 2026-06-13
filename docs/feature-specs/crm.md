@@ -109,25 +109,30 @@ Table of tickets for this customer via **`GET /api/tickets?customer_id=[id]`** (
 
 ## CRM List Page (`/crm`)
 
+**Data:** `GET /api/crm/page-data` — DB-level pagination (`LIMIT`/`OFFSET` + `COUNT exact`). Only the requested page rows are fetched; total count is a separate lightweight query. Default 25 rows; 25 / 50 / 100 selectable (`bazaar-list-page-size` localStorage key).
+
 ### Table Columns
 
 | Column | Notes |
 |--------|-------|
-| Name | `first_name + last_name` |
-| Company | Click company name (or **—**) → customer profile |
-| Phone | `tel:` link when present |
-| Email | `mailto:` link when present |
+| Name | `first_name + last_name`; truncated with `…` if long |
+| Company | Click company name (or **—**) → customer profile; truncated if long |
+| Phone | `tel:` link; amber `Dup` badge if `is_duplicate_phone = true` |
+| Email | `mailto:` link when present; truncated if long |
 | Status | New / Known badge (`customer_status` — New = no leads/tickets yet) |
-| Industry | Lookup label via `GET /api/lookups?categories=industry` (not raw value) |
+| Industry | Lookup label via `GET /api/lookups?categories=industry` (not raw value); truncated if long |
 | Leads | Count of qualifying leads |
 | Last Activity | Relative time from most recent lead or ticket |
-| Actions | **View** → customer profile · **Add Quote** → `/quotes/new` pre-filled |
+| Actions | **View** → customer profile · **Add Quote** → `/quotes/new` pre-filled · **Merge** (icon button, only visible when `is_duplicate_phone = true`) |
 
-**Row interaction:** The table row itself is not clickable. Use **Company**, **View**, or action buttons.
+**Row interaction:** The table row itself is not clickable. Use **Company**, **View**, or action buttons. All action buttons are always the same width (`shrink-0`) — layout never shifts regardless of which buttons are visible.
+
+**Fixed column layout:** `<colgroup>` pins column widths so the actions column never wraps and long text columns truncate cleanly.
 
 ### Mobile cards
 - Company link opens profile; phone/email use `tel:` / `mailto:` when present
 - Industry shown as lookup label when set
+- Duplicate phone shown with amber badge on phone field
 
 ### Filters & Controls
 
@@ -138,6 +143,17 @@ Table of tickets for this customer via **`GET /api/tickets?customer_id=[id]`** (
 | Pagination | **Showing 1–25 of N**, Previous/Next, rows-per-page 25 / 50 / 100 (`ListPagination`; default 25) |
 | Status filter | **All** / **New Contact** / **Known Customer** — server `?status=` |
 | Heat Tag filter | **Hot** / **Warm** / **Cold** — optional toggle; server `?heat=`; click again to clear. Not shown as a table column. |
+| **Duplicates filter** | Amber pill — when active, shows only customers whose phone number appears on 2+ records (`?duplicates=1`). Count reflects all matching rows, not just page. |
+
+### Duplicate Phone Detection
+
+`is_duplicate_phone` is computed on every `GET /api/crm/page-data` response via `fetchDuplicatePhoneIds` in `lib/utils/fetch-crm-data.ts`:
+
+1. Fetches all customer `(id, phone)` pairs
+2. Groups by phone; marks any `id` whose phone appears on 2+ records
+3. The flag is added to every row in the page response
+
+**Why:** The flag drives the amber badge, the Merge button, and the Duplicates filter. The overhead is one extra lightweight SELECT on every page load.
 
 ### Heat Tag (`heat_tag`)
 
@@ -171,16 +187,82 @@ Table of tickets for this customer via **`GET /api/tickets?customer_id=[id]`** (
 
 ## Merge Duplicate Customers
 
-**When it appears:** "Merge" button on the customer profile page (`/crm/customers/[id]`).
+**Where it appears:**
+- **Merge** icon button in the CRM list Actions column — only rendered when `is_duplicate_phone = true` (invisible placeholder maintains button alignment otherwise)
+- **Merge Duplicate** button on the customer profile page (`/crm/customers/[id]`)
 
-**Auth:** `POST /api/customers/[id]/merge` — **Admin and Sales only** (`403` for SDR, Accountant, etc.). Destructive: deletes the source customer after reassigning leads and activities.
+**Auth:** `POST /api/customers/[id]/merge` — **Admin and Sales only** (`403` for SDR, Accountant, etc.). Destructive: deletes victim customers after reassigning leads, tickets, and activities.
 
-**Flow:**
-1. Search input to find the duplicate customer
-2. Side-by-side preview of both customers' fields
-3. User selects which values to keep per field
-4. **Confirm Merge** → server reassigns all leads + tickets from duplicate to surviving customer → deletes duplicate
-5. Logs `lead_merged` activity on all affected leads
+**Component:** `components/crm/merge-customer-modal.tsx`
+
+### 3-step merge flow
+
+**Step 1 — Select keeper**
+
+When the modal opens it immediately fetches all customers sharing the same phone number via `GET /api/customers?search={phone}` — including the customer the button was clicked on. All results are shown in a selectable list:
+
+- Radio-circle selection indicator
+- Customer name + company / phone / email
+- "This record" pill marks the record the merge was initiated from
+- "Customer since" date (`created_at`) shown beneath to help identify the original record
+
+User clicks a record to mark it as the keeper; "Next →" is disabled until a selection is made.
+
+**Step 2 — Choose field values**
+
+For every field where two or more candidates have *different* values (`first_name`, `last_name`, `company`, `email`, `industry`, `heat_tag`), a radio group is shown — one option per unique value, labelled with which customer it comes from. The keeper's values are pre-selected but can be overridden.
+
+If all records have identical values, a green "no conflicts" notice is shown and the step is skipped on confirm.
+
+**Step 3 — Confirm**
+
+Amber warning box lists exactly which records will be deleted and that all their leads, tickets, and activities will be moved to the keeper. "Merge & Delete N records" button executes sequential API calls:
+
+- For each non-keeper: `POST /api/customers/{victim_id}/merge` with `{ target_id: keeper_id, overrides: { … } }`
+- `overrides` contains the user's field selections for the first call; subsequent calls omit overrides (already applied)
+
+On success: modal closes, success toast, `bazaar:customers-changed` event dispatched, CRM list refreshes, browser navigates to `/crm/customers/{survivingId}`.
+
+### Merge API
+
+`POST /api/customers/[id]/merge`
+
+**Body:**
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `target_id` | `string` (UUID) | ✅ | The surviving customer. Must differ from path `id`. |
+| `overrides` | `Record<string, unknown>` | ❌ | Field values to apply to the surviving record before moving child rows. Allowed keys: `first_name, last_name, company, email, industry, heat_tag`. Other keys are silently dropped. |
+
+**Server steps:**
+1. Apply `overrides` to target via `UPDATE customers SET … WHERE id = target_id`
+2. `UPDATE leads SET customer_id = target_id WHERE customer_id = source_id`
+3. `UPDATE job_tickets SET customer_id = target_id WHERE customer_id = source_id`
+4. `UPDATE activities SET customer_id = target_id WHERE customer_id = source_id`
+5. Insert `contact_edited` activity on target with `action: "merge"`, `overrides_applied: [...]`
+6. `DELETE customers WHERE id = source_id`
+
+**Response `200`:** `{ success: true, surviving_id: "uuid" }`
+
+### Automated bulk merge script
+
+`scripts/auto-merge-duplicates.py` — Python script for bulk deduplication. Fetches all customers, groups by phone, and auto-merges using:
+
+1. **Rule 1:** Keep the customer with the **oldest** `created_at` (original relationship)
+2. **Rule 2 (tie):** Keep the one with the most non-empty profile fields
+3. **Rule 3 (tie):** Keep the one with the lowest UUID string
+
+Supports `--dry-run` flag for safe preview without DB changes.
+
+```bash
+# Preview only
+python3 scripts/auto-merge-duplicates.py --dry-run
+
+# Execute
+python3 scripts/auto-merge-duplicates.py
+```
+
+Requires `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SECRET_KEY` env vars.
 
 ---
 

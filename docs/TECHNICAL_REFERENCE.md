@@ -1655,9 +1655,13 @@ Component: `components/crm/crm-page.tsx` + `GET /api/crm/page-data`
 
 Auth: session + `/crm` page permission
 
-**Columns:** Name, Company, Phone, Email, Status, Industry, Leads, Last Activity; actions: View / Add Quote
+**Columns:** Name, Company, Phone, Email, Status, Industry, Leads, Last Activity; actions: View / Add Quote / Merge (duplicate-only)
 
-**Filters:** debounced search (name/email/phone/company); status pills `all | new | known`; heat pills `hot | warm | cold`
+**Filters:** debounced search (name/email/phone/company); status pills `all | new | known`; heat pills `hot | warm | cold`; **Duplicates** amber pill (`?duplicates=1` — shows only customers with a shared phone number)
+
+**Layout:** `<colgroup>` pins column widths so long text truncates cleanly (`truncate whitespace-nowrap`) and action buttons never wrap. Merge button is an icon-only button visible only when `is_duplicate_phone = true`; an invisible same-width placeholder keeps alignment when the customer has no duplicate.
+
+**Pagination:** DB-level `LIMIT`/`OFFSET` — only requested page rows fetched. Total count via separate `SELECT COUNT(*)` with `head: true`. User-selectable 25 / 50 / 100 rows; persisted in `localStorage` key `bazaar-list-page-size`.
 
 **CRM visibility rule:** Only customers that have a qualifying lead (`leadQualifiesForCrm`: sales_status set OR `status = Routed to Sales`) OR any job ticket are shown. Pure unqualified leads are excluded.
 
@@ -1671,25 +1675,92 @@ Auth: session + `/crm` page permission
 | `known` | Has ≥1 lead OR ≥1 ticket |
 | `returning` | UI badge on profile (3rd state, not in list API) |
 
+### Duplicate phone detection
+
+On every `GET /api/crm/page-data`, `fetchDuplicatePhoneIds` (`lib/utils/fetch-crm-data.ts`) fetches all `(id, phone)` pairs, groups by phone, and marks every `id` whose phone appears on 2+ records. The `is_duplicate_phone: boolean` flag is added to every row.
+
+Used by:
+- **Amber "Dup" badge** on the phone cell in the CRM list
+- **Merge icon button** in the Actions column (only rendered when `is_duplicate_phone = true`)
+- **Duplicates filter** (`?duplicates=1`)
+
 ### Phone dedup / lookup
 
 `GET /api/customers/lookup?phone=` or `?email=` — exact digits-only match for phone; `ilike` for email.
 
 Used by:
-- Add lead modal (`components/leads/add-lead-modal.tsx`) — on phone blur, shows "existing customer" banner
+- Add lead modal — on phone blur, shows "existing customer" banner
 - New quote form — same dedup on customer tab
 - `POST /api/tickets` — resolves customer by phone if not explicitly linked
 
-### Merge duplicates
+### Merge duplicates — 3-step modal
 
-`POST /api/customers/[id]/merge` — body: `{ target_id }`
+Component: `components/crm/merge-customer-modal.tsx`
 
-Roles: admin or (sales + `/crm` access)
+Available from: CRM list Merge icon button + customer profile "Merge Duplicate" button.
 
-1. Moves all `leads` from source → target
-2. Moves all `activities` from source → target
-3. Logs merge on target (`contact_edited` with `action: "merge"`)
-4. **Deletes** source customer row
+**Step 1 — Select keeper:** On open, fetches all customers sharing the source's phone via `GET /api/customers?search={phone}` (includes the source itself). User clicks to select the one to keep; "Customer since" (`created_at`) shown to help identify the original.
+
+**Step 2 — Choose field values:** For each field where values differ (`first_name`, `last_name`, `company`, `email`, `industry`, `heat_tag`), shows a radio group with one option per unique value. The keeper's values are pre-selected; user can override individual fields.
+
+**Step 3 — Confirm:** Amber warning listing records to be deleted. "Merge & Delete N records" button fires sequential API calls — one `POST /api/customers/{victim}/merge` per non-keeper, with `overrides` on the first call only.
+
+**Merge API** — `POST /api/customers/[id]/merge`:
+
+| Step | SQL |
+|------|-----|
+| 1 | `UPDATE customers SET {overrides} WHERE id = target_id` (if overrides) |
+| 2 | `UPDATE leads SET customer_id = target_id WHERE customer_id = source_id` |
+| 3 | `UPDATE job_tickets SET customer_id = target_id WHERE customer_id = source_id` |
+| 4 | `UPDATE activities SET customer_id = target_id WHERE customer_id = source_id` |
+| 5 | Insert `contact_edited` activity with `action: "merge"` |
+| 6 | `DELETE FROM customers WHERE id = source_id` |
+
+Roles: Admin or Sales.
+
+### Automated bulk merge script
+
+`scripts/auto-merge-duplicates.py` — Python 3 script for bulk deduplication via Supabase REST API.
+
+Keeper selection per duplicate group:
+1. Oldest `created_at` (original record)
+2. Most non-empty profile fields (tie)
+3. Lowest UUID string (stable final tie-break)
+
+Supports `--dry-run`. Uses `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SECRET_KEY` env vars.
+
+### Bulk import — Customers
+
+Admin-only JSON import at `/admin/settings/import-export` (Customers tab).
+
+Component: `components/admin/customers-import-section.tsx`
+
+Key rules:
+- `phone` required; normalised to digits-only; leading `1` stripped from 11-digit US numbers
+- `industry` defaults to `"other"` when absent (never a row error)
+- `authority` defaults to `"yes"` when absent
+- `customer_since` ISO date → written to `created_at` + `updated_at` on insert (preserves history)
+- Real-time progress modal; client sends in batches of 25
+
+Shared code: `lib/utils/bulk-import-customers.ts`
+
+Spec: `docs/feature-specs/customer-import.md`
+
+### Bulk import — Orders
+
+Admin-only JSON import at `/admin/settings/import-export` (Orders tab).
+
+Component: `components/admin/orders-import-section.tsx`
+
+Key rules:
+- Customer resolved by `customer_phone` (digits-only match against `customers.phone`)
+- `create_missing_customers: true` auto-creates customer from `customer_first_name` when no match found
+- Line items required (min 1)
+- Real-time progress modal; client sends in batches of 25
+
+Shared code: `lib/utils/bulk-import-orders.ts`
+
+Spec: `docs/feature-specs/order-import.md`
 
 ### Customer profile (`/crm/customers/[id]`)
 
@@ -1726,6 +1797,25 @@ Access: `requireAdmin()` on all admin API routes.
 | SMS Templates | `/admin/settings/sms-templates` | Edit SMS body templates |
 | Email Templates | `/admin/settings/email-templates` | Edit customer email subject / body / CTA |
 | Payment | `/admin/settings/payment` | Bank + Zelle info shown on public portal |
+| Import / Export | `/admin/settings/import-export` | Bulk JSON import: Leads / Customers / Orders (tabbed) |
+
+### Import / Export — tabs
+
+All three import flows follow the same validate-first pattern:
+
+```
+Upload JSON → Validate (dry run) → Preview table → Import with progress modal → Results
+```
+
+| Tab | Component | Key file |
+|-----|-----------|---------|
+| Leads | `leads-import-section.tsx` | `lib/utils/bulk-import-leads.ts` |
+| Customers | `customers-import-section.tsx` | `lib/utils/bulk-import-customers.ts` |
+| Orders | `orders-import-section.tsx` | `lib/utils/bulk-import-orders.ts` |
+
+**Real-time progress modal** (Customers + Orders): client sends rows in batches of 25. UI shows "Processing X / N…" live so the operator knows the job is running. Prevents browser timeouts on large files.
+
+**AI-ready templates:** `GET /api/admin/{leads|customers|orders}/import/template` — returns JSON with `_documentation` block explaining every field + live `_lookups` (industry slugs etc.) so an AI can fill in the correct values without guessing.
 
 ### User management
 

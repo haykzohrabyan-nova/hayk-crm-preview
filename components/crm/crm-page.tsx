@@ -4,7 +4,8 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import { ListRefreshingNotice } from "@/components/ui/mobile-list-card";
-import { Search, X, FilePlus, UserPlus } from "lucide-react";
+import { Search, X, FilePlus, UserPlus, CopyX, Merge } from "lucide-react";
+import { MergeCustomerModal } from "@/components/crm/merge-customer-modal";
 import { Input } from "@/components/ui/input";
 import { AddCustomerModal } from "@/components/crm/add-customer-modal";
 import { ListPagination } from "@/components/ui/list-pagination";
@@ -40,6 +41,7 @@ interface CrmCustomer {
   customer_status: CustomerStatus;
   created_at: string;
   updated_at: string;
+  is_duplicate_phone?: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -187,11 +189,14 @@ export function CRMPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [heatFilter, setHeatFilter] = useState<HeatFilter>("all");
+  const [showDuplicates, setShowDuplicates] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [pageSize, setPageSize] = useState<ListPageSize>(25);
+  useEffect(() => { setPageSize(readStoredListPageSize()); }, []);
   const [industryLookups, setIndustryLookups] = useState<LookupOption[]>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
+  const [mergeCustomer, setMergeCustomer] = useState<{ id: string; first_name: string | null; last_name: string | null; phone: string | null } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -200,18 +205,19 @@ export function CRMPage() {
 
   useEffect(() => {
     setOffset(0);
-  }, [debouncedSearch, statusFilter, heatFilter, pageSize]);
+  }, [debouncedSearch, statusFilter, heatFilter, showDuplicates, pageSize]);
 
   const pageDataUrl = useMemo(() => {
     const params = new URLSearchParams();
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (heatFilter !== "all") params.set("heat", heatFilter);
+    if (showDuplicates) params.set("duplicates", "1");
     params.set("limit", String(pageSize));
     params.set("offset", String(offset));
     const qs = params.toString();
     return `/api/crm/page-data${qs ? `?${qs}` : ""}`;
-  }, [debouncedSearch, statusFilter, heatFilter, offset, pageSize]);
+  }, [debouncedSearch, statusFilter, heatFilter, showDuplicates, offset, pageSize]);
 
   const { data: pageData, loading, refreshing, refresh: refreshPageData } = useListPageData<{
     customers?: CrmCustomer[];
@@ -346,6 +352,24 @@ export function CRMPage() {
           ))}
         </div>
 
+        {/* Divider */}
+        <div className="h-5 w-px" style={{ background: "var(--color-border)" }} />
+
+        {/* Duplicates toggle */}
+        <button
+          onClick={() => { setShowDuplicates((v) => !v); setOffset(0); }}
+          className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-all"
+          style={{
+            background: showDuplicates ? "var(--color-warning-bg)" : "var(--color-surface)",
+            color: showDuplicates ? "var(--color-warning)" : "var(--color-text-muted)",
+            border: "1px solid",
+            borderColor: showDuplicates ? "var(--color-warning-border)" : "var(--color-border)",
+          }}
+        >
+          <CopyX size={12} />
+          Duplicates
+        </button>
+
         {!loading && pagination.total > 0 && (
           <span className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
             {pagination.total} customer{pagination.total !== 1 ? "s" : ""}
@@ -355,7 +379,18 @@ export function CRMPage() {
 
       {/* Desktop Table */}
       <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
+          <colgroup>
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "14%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "10%" }} />
+            <col style={{ width: "5%" }} />
+            <col style={{ width: "8%" }} />
+            <col style={{ width: "17%" }} />
+          </colgroup>
           <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
             <tr>
               {["Name", "Company", "Phone", "Email", "Status", "Industry", "Leads", "Last Activity", ""].map((h) => (
@@ -390,23 +425,34 @@ export function CRMPage() {
                   onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                   onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                 >
-                  <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
-                    {fullName(c)}
+                  <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>
+                    <span className="block truncate whitespace-nowrap" title={fullName(c)}>{fullName(c)}</span>
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-sm">
-                    <CompanyCell customer={c} onOpen={() => router.push(`/crm/customers/${c.id}`)} />
+                  <td className="px-3 py-2.5 text-sm">
+                    <span className="block truncate whitespace-nowrap">
+                      <CompanyCell customer={c} onOpen={() => router.push(`/crm/customers/${c.id}`)} />
+                    </span>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                    <PhoneCell phone={c.phone} />
+                    {c.is_duplicate_phone ? (
+                      <span className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5" style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}>
+                        <CopyX size={10} />
+                        <PhoneCell phone={c.phone} />
+                      </span>
+                    ) : (
+                      <PhoneCell phone={c.phone} />
+                    )}
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                    <EmailCell email={c.email} />
+                  <td className="px-3 py-2.5 text-xs">
+                    <span className="block truncate whitespace-nowrap">
+                      <EmailCell email={c.email} />
+                    </span>
                   </td>
                   <td className="px-3 py-2.5 text-center">
                     <StatusBadge status={c.customer_status} />
                   </td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-xs max-w-[140px] truncate" style={{ color: "var(--color-text-muted)" }} title={lookupLabel(industryLookups, c.industry, "")}>
-                    {lookupLabel(industryLookups, c.industry)}
+                  <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }} title={lookupLabel(industryLookups, c.industry, "")}>
+                    <span className="block truncate whitespace-nowrap">{lookupLabel(industryLookups, c.industry)}</span>
                   </td>
                   <td className="px-3 py-2.5 text-center font-medium" style={{ color: "var(--color-text-primary)" }}>
                     {c.lead_count}
@@ -414,24 +460,36 @@ export function CRMPage() {
                   <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                     {relativeTime(c.last_activity)}
                   </td>
-                  <td className="px-3 py-2.5 text-center">
-                    <div className="flex items-center justify-center gap-1.5">
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center justify-center gap-1.5 flex-nowrap">
                       <button
                         onClick={() => router.push(`/crm/customers/${c.id}`)}
-                        className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                        className="shrink-0 rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
                         style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
                       >
                         View
                       </button>
                       <button
                         onClick={() => router.push(newQuoteUrlFromCustomer(c))}
-                        className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] flex items-center gap-1"
+                        className="shrink-0 rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] flex items-center gap-1"
                         style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
                         title="New quote for this customer"
                       >
                         <FilePlus size={11} />
                         Add Quote
                       </button>
+                      {c.is_duplicate_phone ? (
+                        <button
+                          onClick={() => setMergeCustomer({ id: c.id, first_name: c.first_name, last_name: c.last_name, phone: c.phone })}
+                          className="shrink-0 rounded-[6px] p-1.5 transition-all active:scale-[0.97]"
+                          style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)", border: "1px solid var(--color-warning-border)" }}
+                          title="Merge duplicate"
+                        >
+                          <Merge size={13} />
+                        </button>
+                      ) : (
+                        <span className="shrink-0 inline-block p-1.5" style={{ width: 30 }} />
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -481,7 +539,16 @@ export function CRMPage() {
                 )}
                 <div className="flex justify-between items-center gap-2">
                   <span>Phone</span>
-                  <span className="normal-case tracking-normal"><PhoneCell phone={c.phone} /></span>
+                  <span className="normal-case tracking-normal">
+                    {c.is_duplicate_phone ? (
+                      <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5" style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}>
+                        <CopyX size={10} />
+                        <PhoneCell phone={c.phone} />
+                      </span>
+                    ) : (
+                      <PhoneCell phone={c.phone} />
+                    )}
+                  </span>
                 </div>
                 <div className="flex justify-between items-center gap-2">
                   <span>Email</span>
@@ -536,6 +603,20 @@ export function CRMPage() {
           router.push(`/crm/customers/${customerId}`);
         }}
       />
+
+      {mergeCustomer && (
+        <MergeCustomerModal
+          source={mergeCustomer}
+          onClose={() => setMergeCustomer(null)}
+          onMerged={(survivingId) => {
+            setMergeCustomer(null);
+            setToast({ message: "Customers merged successfully.", type: "success" });
+            window.dispatchEvent(new Event("bazaar:customers-changed"));
+            void refreshPageData(true);
+            router.push(`/crm/customers/${survivingId}`);
+          }}
+        />
+      )}
     </div>
   );
 }

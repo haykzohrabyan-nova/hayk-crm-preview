@@ -405,6 +405,35 @@ export async function fetchPaymentsTabCounts(admin: AdminClient) {
   return { pending, tax_exempt, approved, refunded };
 }
 
+/**
+ * Build a DB-level OR filter for payment search. Searches `reference_code`, `title`,
+ * `contact_name`, `contact_email`, and customer name via pre-resolved customer IDs.
+ * Amount/method searches still require in-memory filtering and are handled after.
+ */
+async function resolvePaymentSearchCustomerIds(admin: AdminClient, search: string): Promise<string[]> {
+  const q = `%${search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+  const { data } = await admin
+    .from("customers")
+    .select("id")
+    .or(`first_name.ilike.${q},last_name.ilike.${q},company.ilike.${q}`);
+  return (data ?? []).map((r) => r.id as string);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyPaymentDbSearch(query: any, search: string, customerIds: string[]): any {
+  const q = `%${search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+  const parts = [
+    `reference_code.ilike.${q}`,
+    `title.ilike.${q}`,
+    `contact_name.ilike.${q}`,
+    `contact_email.ilike.${q}`,
+  ];
+  if (customerIds.length > 0) {
+    parts.push(`customer_id.in.(${customerIds.join(",")})`);
+  }
+  return query.or(parts.join(","));
+}
+
 async function fetchPaymentsListForTab(
   admin: AdminClient,
   tab: PaymentsPageTab,
@@ -413,24 +442,48 @@ async function fetchPaymentsListForTab(
   const search = options.search?.trim() ?? "";
   const { pagination } = options;
 
+  // ── pending: DB pagination + DB search ───────────────────────────────────────
   if (tab === "pending") {
     if (search) {
-      const all = await fetchPendingPaymentOrders(admin);
-      const filtered = filterPaymentsTabRows(tab, all, search);
-      return slicePage(filtered, pagination);
+      const customerIds = await resolvePaymentSearchCustomerIds(admin, search);
+      const { data, count, error } = await applyPaymentDbSearch(
+        pendingPaymentEvidenceQuery(admin, { count: "exact" })
+          .order("payment_evidence_submitted_at", { ascending: true }),
+        search,
+        customerIds,
+      ).range(pagination.offset, pagination.offset + pagination.limit - 1);
+      if (error) throw error;
+      const rows = Array.isArray(data) ? (data as unknown as PaymentReviewRow[]) : [];
+      return { rows: await enrichPaymentRows(admin, rows), total: count ?? 0 };
     }
     return fetchPendingPaymentOrdersPaged(admin, pagination);
   }
 
+  // ── refunded: DB pagination + DB search ──────────────────────────────────────
   if (tab === "refunded") {
     if (search) {
-      const all = await fetchRefundedPaymentOrders(admin);
-      const filtered = filterPaymentsTabRows(tab, all, search);
-      return slicePage(filtered, pagination);
+      const customerIds = await resolvePaymentSearchCustomerIds(admin, search);
+      const { data, count, error } = await applyPaymentDbSearch(
+        admin
+          .from("job_tickets")
+          .select(PAYMENT_REVIEW_SELECT, { count: "exact" })
+          .in("refund_status", ["partial", "full"])
+          .in("ticket_status", [...PAYMENT_REFUNDED_STATUSES])
+          .order("last_refunded_at", { ascending: false, nullsFirst: false }),
+        search,
+        customerIds,
+      ).range(pagination.offset, pagination.offset + pagination.limit - 1);
+      if (error) throw error;
+      const rows = Array.isArray(data) ? (data as unknown as PaymentReviewRow[]) : [];
+      return { rows: await enrichRefundedPaymentRows(admin, rows), total: count ?? 0 };
     }
     return fetchRefundedPaymentOrdersPaged(admin, pagination);
   }
 
+  // ── tax_exempt and approved: merge of two query result sets ──────────────────
+  // These combine results from two independent queries (e.g. file-based + legacy tax exempt,
+  // or payment evidence + tax exempt) and require in-memory merge + sort. In-memory slice
+  // is unavoidable here without a DB view/union. Dataset is small in practice.
   if (tab === "tax_exempt") {
     const raw = await loadPendingTaxExemptMerged(admin);
     const enriched = await enrichPaymentRows(admin, raw);

@@ -24,10 +24,12 @@ The page lives at `app/(app)/admin/page.tsx`. A sub-nav strip (Overview / Settin
 | Email Templates | `/admin/settings/email-templates` | ✅ Built | Editable customer email subject, body, and CTA for all Instantly outbound messages |
 | Payment | `/admin/settings/payment` | ✅ Built | Bank / Wire / ACH and Zelle remittance shown on public quote page |
 | Lead import | `/admin/settings/import-export` | ✅ Built | Bulk JSON lead import — validate-first preview, AI template download, optional auto-add missing dropdown slugs |
+| Customer import | `/admin/settings/import-export` (Customers tab) | ✅ Built | Bulk JSON customer import — same 3-step validate/preview/commit flow; supports `customer_since` → `created_at`; real-time progress modal |
+| Order import | `/admin/settings/import-export` (Orders tab) | ✅ Built | Bulk JSON order import — links orders to existing customers by phone; real-time progress modal |
 
 Built cards show an accent-colored icon + "Open →".
 
-### Lead import (`/admin/settings/import-export`) ✅ Built (Jun 2026)
+### Lead import (`/admin/settings/import-export` — Leads tab) ✅ Built (Jun 2026)
 
 **Component:** `components/admin/leads-import-section.tsx`
 
@@ -38,6 +40,30 @@ Built cards show an accent-colored icon + "Open →".
 **Rules:** `source` and `industry` must be **value** slugs from Dropdown Options (or `create_missing_lookups: true` on import). Max 500 rows per file. JSON only — not CSV.
 
 **Spec:** [`lead-import.md`](./lead-import.md)
+
+### Customer import (`/admin/settings/import-export` — Customers tab) ✅ Built (Jun 2026)
+
+**Component:** `components/admin/customers-import-section.tsx`
+
+**Flow:** Upload JSON → **Validate** → preview table → **Import** with real-time progress modal → results + download JSON.
+
+**Progress modal:** Shows live count of records processed / total during import. Client-side chunking (batches of 25) with per-batch progress updates — prevents browser timeout and gives the operator live feedback.
+
+**API:** `GET /api/admin/customers/import/template` (AI-friendly sample with `_documentation`); `POST /api/admin/customers/import?dry_run=true` | commit.
+
+**Spec:** [`customer-import.md`](./customer-import.md)
+
+### Order import (`/admin/settings/import-export` — Orders tab) ✅ Built (Jun 2026)
+
+**Component:** `components/admin/orders-import-section.tsx`
+
+**Flow:** Upload JSON → **Validate** (resolves customer by phone) → preview table (shows matched customer name) → **Import** with real-time progress modal → results + download JSON.
+
+**Progress modal:** Same live progress as customer import.
+
+**API:** `GET /api/admin/orders/import/template`; `POST /api/admin/orders/import?dry_run=true` | commit.
+
+**Spec:** [`order-import.md`](./order-import.md)
 
 ---
 

@@ -1,0 +1,80 @@
+{
+  "version": 1,
+  "_documentation": {
+    "purpose": "Bulk import historical orders into BazaarPrinting CRM. Generate a JSON file matching this schema exactly.",
+    "audience": "AI assistants or scripts converting data from spreadsheets or other CRMs.",
+    "output_format": "Single JSON object with an orders array. Keys starting with _ are documentation only — ignored on import.",
+    "instructions": [
+      "Return valid JSON only — no markdown fences, no commentary outside the JSON.",
+      "Put one object per order in the orders array (max 200).",
+      "Every order MUST include: customer_phone, ticket_status, and at least one line_item.",
+      "customer_phone: at least 10 digits — used to match existing customer by phone.",
+      "If customer not found: set create_missing_customers true and include customer_first_name.",
+      "ticket_status: order | in_production | completed | cancelled",
+      "payment_status: unpaid | partial | paid (default: unpaid)",
+      "payment_method: cash | check | card | zelle | wire | offline (optional)",
+      "Each line_item needs product_type and quantity.",
+      "Replace the example order with all real rows."
+    ],
+    "order_fields": {
+      "required": {
+        "customer_phone": "string — min 10 digits",
+        "ticket_status": "string — order | in_production | completed | cancelled",
+        "line_items": "array — min 1 item"
+      },
+      "optional": {
+        "customer_first_name": "string — needed if create_missing_customers is true",
+        "customer_last_name": "string",
+        "customer_company": "string",
+        "title": "string — order title",
+        "reference_code": "string — unique order ID from your system",
+        "payment_status": "string — unpaid | partial | paid",
+        "payment_method": "string — cash | check | card | zelle | wire | offline",
+        "total": "number — full order total",
+        "subtotal": "number — before discount",
+        "discount_amount": "number",
+        "order_date": "string — ISO date, e.g. 2025-11-15",
+        "due_date": "string — ISO date",
+        "notes": "string — internal notes",
+        "external_id": "string — your source system ID (activity log only)"
+      }
+    },
+    "line_item_fields": {
+      "required": {
+        "product_type": "string — Labels | Boxes | Flyers | Stickers | Jars | Bags | Tubes | Banners | Business Cards | Other",
+        "quantity": "number — units ordered"
+      },
+      "optional": {
+        "description": "string — e.g. 4x6 vinyl labels, full color",
+        "unit_price": "number — price per unit"
+      }
+    }
+  },
+  "imported_by_note": "REPLACE — short note about this batch (e.g. Migrated from old system May 2026)",
+  "create_missing_customers": false,
+  "orders": [
+    {
+      "_note": "DELETE this key — example only. One order shown; add more objects to this array.",
+      "customer_phone": "4155551234",
+      "customer_first_name": "Jane",
+      "customer_last_name": "Rivera",
+      "customer_company": "Acme Print Co",
+      "title": "Labels — Acme Print Co",
+      "ticket_status": "completed",
+      "payment_status": "paid",
+      "payment_method": "zelle",
+      "total": 850.00,
+      "order_date": "2025-11-15",
+      "notes": "Rush order — delivered same day",
+      "external_id": "your-system-order-id-001",
+      "line_items": [
+        {
+          "product_type": "Labels",
+          "description": "4x6 vinyl labels, full color",
+          "quantity": 10000,
+          "unit_price": 0.085
+        }
+      ]
+    }
+  ]
+}

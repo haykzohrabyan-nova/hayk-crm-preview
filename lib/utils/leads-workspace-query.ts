@@ -24,6 +24,10 @@ const LEAD_ROUTED_LIST_SELECT =
 const LEAD_WON_LIST_SELECT =
   "id, customer_id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, sdr_id, rejection_reason, tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)";
 
+/** Minimal columns needed only for urgency sort — avoids fat JOIN for the full dataset. */
+const LEAD_SORT_ONLY_SELECT =
+  "id, urgency, created_at";
+
 type LeadCustomer = {
   first_name?: string | null;
   last_name?: string | null;
@@ -51,21 +55,6 @@ function leadCustomer(lead: { customer?: unknown }): LeadCustomer | null {
   const c = lead.customer;
   if (Array.isArray(c)) return (c[0] as LeadCustomer) ?? null;
   return (c as LeadCustomer) ?? null;
-}
-
-function filterLeadsByCustomerSearch(leads: WorkspaceListLead[], search: string) {
-  return leads.filter((lead) => {
-    const c = leadCustomer(lead);
-    return (
-      c?.first_name?.toLowerCase().includes(search) ||
-      c?.last_name?.toLowerCase().includes(search) ||
-      c?.email?.toLowerCase().includes(search) ||
-      c?.phone?.includes(search) ||
-      c?.company?.toLowerCase().includes(search) ||
-      lead.status?.toLowerCase().includes(search) ||
-      (lead.sales_status?.toLowerCase().includes(search) ?? false)
-    );
-  });
 }
 
 export type LeadsWorkspaceQuery = {
@@ -112,59 +101,92 @@ function applySdrAllTabOwnerFilter<
   return query.is("locked_by_id", null);
 }
 
-function sortWorkspaceLeads(
-  leads: WorkspaceListLead[],
-  sortField: "created" | "urgency",
+function sortLeadsByUrgency(
+  leads: { id?: string; urgency?: string | null; created_at?: string }[],
   sortDir: "asc" | "desc",
-): WorkspaceListLead[] {
-  const sorted = [...leads];
-  sorted.sort((a, b) => {
-    if (sortField === "urgency") {
-      const ua = URGENCY_ORDER[a.urgency ?? ""] ?? 4;
-      const ub = URGENCY_ORDER[b.urgency ?? ""] ?? 4;
-      const primary = sortDir === "asc" ? ua - ub : ub - ua;
-      if (primary !== 0) return primary;
-      return new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime();
-    }
-    const diff =
-      new Date(a.created_at as string).getTime() - new Date(b.created_at as string).getTime();
-    return sortDir === "asc" ? diff : -diff;
+): typeof leads {
+  return [...leads].sort((a, b) => {
+    const ua = URGENCY_ORDER[a.urgency ?? ""] ?? 4;
+    const ub = URGENCY_ORDER[b.urgency ?? ""] ?? 4;
+    const primary = sortDir === "asc" ? ua - ub : ub - ua;
+    if (primary !== 0) return primary;
+    return new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime();
   });
-  return sorted;
 }
 
-function finalizeLeadsWorkspaceResult(
-  leads: WorkspaceListLead[],
-  query: LeadsWorkspaceQuery,
-): LeadsWorkspaceResult {
-  const sortField = query.sortField ?? "created";
-  const sortDir = query.sortDir ?? "desc";
+/** Resolve customer IDs matching a search term — used for DB-level lead search. */
+async function resolveLeadSearchCustomerIds(admin: AdminClient, search: string): Promise<string[]> {
+  const q = `%${search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+  const { data } = await admin
+    .from("customers")
+    .select("id")
+    .or(`first_name.ilike.${q},last_name.ilike.${q},email.ilike.${q},phone.ilike.${q},company.ilike.${q}`);
+  return (data ?? []).map((r) => r.id as string);
+}
 
-  let processed = leads;
-  let routedSubCounts: Record<RoutedPipelineFilter, number> | undefined;
+/** Apply DB-level search to a lead query (status fields + customer_id IN resolved IDs). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyLeadSearchFilter(query: any, search: string, customerIds: string[]): any {
+  const q = `%${search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
+  const parts: string[] = [`status.ilike.${q}`, `sales_status.ilike.${q}`];
+  if (customerIds.length > 0) {
+    parts.push(`customer_id.in.(${customerIds.join(",")})`);
+  }
+  return query.or(parts.join(","));
+}
 
-  if (query.routed) {
-    routedSubCounts = countRoutedPipelineStages(processed as Parameters<typeof countRoutedPipelineStages>[0]);
-    const routedFilter = query.routedFilter ?? "all";
-    if (routedFilter !== "all") {
-      processed = processed.filter((lead) =>
-        matchesRoutedPipelineFilter(
-          lead as Parameters<typeof matchesRoutedPipelineFilter>[0],
-          routedFilter,
-        ),
-      );
+/** Apply all non-search DB filters for the standard (non-routed, non-won) leads path. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyStandardLeadFilters(query: any, q: LeadsWorkspaceQuery, userId: string, roleName: string, adminFilterUserId: string | null): any {
+  if (q.statuses && q.statuses.length > 0) {
+    query = query.in("status", q.statuses);
+    query = applyExcludeSalesStatusWon(query);
+    if (roleName === "sdr" && userId) {
+      query = applySdrAllTabOwnerFilter(query, userId, q.ownerScope);
+    }
+  } else if (q.status) {
+    query = query.eq("status", q.status);
+  }
+
+  if (q.salesTab === "hold") {
+    query = query.eq("sales_status", "On Hold");
+  } else if (q.salesTab === "follow_up") {
+    query = query.eq("sales_status", "Follow Up Later");
+  } else if (q.salesTab === "pipeline") {
+    query = query.or("sales_status.eq.Ongoing,sales_status.eq.Quote Sent,sales_status.is.null");
+  }
+
+  if (q.prevStatus) {
+    query = query.eq("prev_status", q.prevStatus);
+  }
+
+  if (q.scope === "mine" && userId && roleName !== "admin") {
+    query = query.eq("sdr_id", userId);
+  }
+
+  if (adminFilterUserId) {
+    const isAllTab = Boolean(q.statuses?.length) && !q.status && !q.routed && !q.won;
+    query = applyAdminLeadUserFilter(
+      query,
+      roleName,
+      adminFilterUserId,
+      isAllTab ? "all_tab" : "sdr_id",
+    );
+  }
+
+  if (roleName === "sales" && userId) {
+    if (q.salesTab === "follow_up") {
+      query = query.eq("sales_owner_id", userId);
+    } else if (q.status === "Routed to Sales") {
+      query = query.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
     }
   }
 
-  processed = sortWorkspaceLeads(processed, sortField, sortDir);
-  const total = processed.length;
-
-  if (query.pagination) {
-    const { offset, limit } = query.pagination;
-    processed = processed.slice(offset, offset + limit);
+  if (roleName === "sdr" && userId && !q.status && !(q.statuses && q.statuses.length > 0)) {
+    query = query.is("locked_by_id", null);
   }
 
-  return { rows: processed, total, routedSubCounts };
+  return query;
 }
 
 export function parseLeadsWorkspaceQuery(searchParams: URLSearchParams): LeadsWorkspaceQuery {
@@ -212,10 +234,14 @@ export async function fetchLeadsWorkspace(
   const adminFilterUserId =
     roleName === "admin" && query.filterUserId ? query.filterUserId : null;
   const routedOpts = { userId, roleName, adminFilterUserId };
+  const sortField = query.sortField ?? "created";
+  const sortDir = query.sortDir ?? "desc";
 
+  // ── Routed tab ────────────────────────────────────────────────────────────────
+  // Needs ALL routed lead rows to compute pipeline sub-filter stage counts.
   if (query.routed) {
     const routedIds = await fetchRoutedToSalesLeadIds(admin, routedOpts);
-    if (routedIds.length === 0) return finalizeLeadsWorkspaceResult([], query);
+    if (routedIds.length === 0) return { rows: [], total: 0 };
 
     const { data, error } = await admin
       .from("leads")
@@ -227,10 +253,48 @@ export async function fetchLeadsWorkspace(
     if (error) throw error;
 
     let leads = (data ?? []) as unknown as WorkspaceListLead[];
-    if (search) leads = filterLeadsByCustomerSearch(leads, search);
-    return finalizeLeadsWorkspaceResult(leads, query);
+    if (search) leads = leads.filter((lead) => {
+      const c = leadCustomer(lead);
+      return (
+        c?.first_name?.toLowerCase().includes(search) ||
+        c?.last_name?.toLowerCase().includes(search) ||
+        c?.email?.toLowerCase().includes(search) ||
+        c?.phone?.includes(search) ||
+        c?.company?.toLowerCase().includes(search) ||
+        lead.status?.toLowerCase().includes(search) ||
+        (lead.sales_status?.toLowerCase().includes(search) ?? false)
+      );
+    });
+
+    const routedSubCounts = countRoutedPipelineStages(leads as Parameters<typeof countRoutedPipelineStages>[0]);
+    const routedFilter = query.routedFilter ?? "all";
+    if (routedFilter !== "all") {
+      leads = leads.filter((lead) =>
+        matchesRoutedPipelineFilter(lead as Parameters<typeof matchesRoutedPipelineFilter>[0], routedFilter),
+      );
+    }
+
+    leads = leads.sort((a, b) => {
+      if (sortField === "urgency") {
+        const ua = URGENCY_ORDER[a.urgency ?? ""] ?? 4;
+        const ub = URGENCY_ORDER[b.urgency ?? ""] ?? 4;
+        const primary = sortDir === "asc" ? ua - ub : ub - ua;
+        if (primary !== 0) return primary;
+        return new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime();
+      }
+      const diff = new Date(a.created_at as string).getTime() - new Date(b.created_at as string).getTime();
+      return sortDir === "asc" ? diff : -diff;
+    });
+
+    const total = leads.length;
+    const page = query.pagination
+      ? leads.slice(query.pagination.offset, query.pagination.offset + query.pagination.limit)
+      : leads;
+    return { rows: page, total, routedSubCounts };
   }
 
+  // ── Won tab ───────────────────────────────────────────────────────────────────
+  // Needs routedIds cross-check — in-memory filter unavoidable.
   if (query.won) {
     let wonQuery = admin
       .from("leads")
@@ -262,70 +326,126 @@ export async function fetchLeadsWorkspace(
         );
       });
     }
-    return finalizeLeadsWorkspaceResult(leads, query);
+
+    const sorted = leads.sort((a, b) => {
+      if (sortField === "urgency") {
+        const ua = URGENCY_ORDER[(a as WorkspaceListLead).urgency ?? ""] ?? 4;
+        const ub = URGENCY_ORDER[(b as WorkspaceListLead).urgency ?? ""] ?? 4;
+        const primary = sortDir === "asc" ? ua - ub : ub - ua;
+        if (primary !== 0) return primary;
+        return new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime();
+      }
+      const diff = new Date(a.created_at as string).getTime() - new Date(b.created_at as string).getTime();
+      return sortDir === "asc" ? diff : -diff;
+    });
+
+    const total = sorted.length;
+    const page = query.pagination
+      ? sorted.slice(query.pagination.offset, query.pagination.offset + query.pagination.limit)
+      : sorted;
+    return { rows: page as WorkspaceListLead[], total };
   }
 
-  let dbQuery = admin
-    .from("leads")
-    .select(LEAD_WORKSPACE_LIST_SELECT)
-    .eq("is_inbox", false)
-    .order("updated_at", { ascending: false });
+  // ── Standard path (all other tabs) ───────────────────────────────────────────
 
-  if (query.statuses && query.statuses.length > 0) {
-    dbQuery = dbQuery.in("status", query.statuses);
-    dbQuery = applyExcludeSalesStatusWon(dbQuery);
-    if (roleName === "sdr" && userId) {
-      dbQuery = applySdrAllTabOwnerFilter(dbQuery, userId, query.ownerScope);
-    }
-  } else if (query.status) {
-    dbQuery = dbQuery.eq("status", query.status);
-  }
+  // Pre-resolve customer IDs for search once, reuse across all queries.
+  const customerIds = search ? await resolveLeadSearchCustomerIds(admin, search) : [];
 
-  if (query.salesTab === "hold") {
-    dbQuery = dbQuery.eq("sales_status", "On Hold");
-  } else if (query.salesTab === "follow_up") {
-    dbQuery = dbQuery.eq("sales_status", "Follow Up Later");
-  } else if (query.salesTab === "pipeline") {
-    dbQuery = dbQuery.or("sales_status.eq.Ongoing,sales_status.eq.Quote Sent,sales_status.is.null");
-  }
-
-  if (query.prevStatus) {
-    dbQuery = dbQuery.eq("prev_status", query.prevStatus);
-  }
-
-  if (query.scope === "mine" && userId && roleName !== "admin") {
-    dbQuery = dbQuery.eq("sdr_id", userId);
-  }
-
-  if (adminFilterUserId) {
-    const isAllTab =
-      Boolean(query.statuses?.length) && !query.status && !query.routed && !query.won;
-    dbQuery = applyAdminLeadUserFilter(
-      dbQuery,
+  // ── "created" sort: full DB-level pagination ──────────────────────────────────
+  if (sortField === "created") {
+    let dbQuery = applyStandardLeadFilters(
+      admin
+        .from("leads")
+        .select(LEAD_WORKSPACE_LIST_SELECT, { count: "exact" })
+        .eq("is_inbox", false),
+      query,
+      userId,
       roleName,
       adminFilterUserId,
-      isAllTab ? "all_tab" : "sdr_id",
     );
-  }
 
-  if (roleName === "sales" && userId) {
-    if (query.salesTab === "follow_up") {
-      dbQuery = dbQuery.eq("sales_owner_id", userId);
-    } else if (query.status === "Routed to Sales") {
-      dbQuery = dbQuery.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
+    if (search) {
+      dbQuery = applyLeadSearchFilter(dbQuery, search, customerIds);
     }
+
+    dbQuery = dbQuery.order("updated_at", { ascending: sortDir === "asc" });
+
+    if (query.pagination) {
+      dbQuery = dbQuery.range(
+        query.pagination.offset,
+        query.pagination.offset + query.pagination.limit - 1,
+      );
+    }
+
+    const { data, count, error } = await dbQuery;
+    if (error) throw error;
+
+    return {
+      rows: (data ?? []) as unknown as WorkspaceListLead[],
+      total: count ?? (data ?? []).length,
+    };
   }
 
-  if (roleName === "sdr" && userId && !query.status && !(query.statuses && query.statuses.length > 0)) {
-    dbQuery = dbQuery.is("locked_by_id", null);
+  // ── "urgency" sort: two-pass — sort IDs in memory, full select for page only ──
+  // Pass 1: fetch only id + urgency + created_at for ALL matching leads (tiny payload).
+  let sortPassQuery = applyStandardLeadFilters(
+    admin
+      .from("leads")
+      .select(LEAD_SORT_ONLY_SELECT)
+      .eq("is_inbox", false),
+    query,
+    userId,
+    roleName,
+    adminFilterUserId,
+  );
+
+  if (search) {
+    sortPassQuery = applyLeadSearchFilter(sortPassQuery, search, customerIds);
   }
 
-  const { data, error } = await dbQuery;
-  if (error) throw error;
+  const { data: sortRows, error: sortErr } = await sortPassQuery.order("updated_at", { ascending: false });
+  if (sortErr) throw sortErr;
 
-  let leads = (data ?? []) as unknown as WorkspaceListLead[];
-  if (search) leads = filterLeadsByCustomerSearch(leads, search);
-  return finalizeLeadsWorkspaceResult(leads, query);
+  const sorted = sortLeadsByUrgency(
+    (sortRows ?? []) as { id: string; urgency: string | null; created_at: string }[],
+    sortDir,
+  );
+  const total = sorted.length;
+
+  if (!query.pagination || total === 0) {
+    // No pagination — still need to fetch full rows
+    if (total === 0) return { rows: [], total: 0 };
+    const ids = sorted.map((r) => (r as { id: string }).id);
+    const { data: fullRows, error: fullErr } = await admin
+      .from("leads")
+      .select(LEAD_WORKSPACE_LIST_SELECT)
+      .in("id", ids);
+    if (fullErr) throw fullErr;
+    const orderMap = new Map(ids.map((id, i) => [id, i]));
+    const reordered = ((fullRows ?? []) as WorkspaceListLead[]).sort(
+      (a, b) => (orderMap.get(a.id!) ?? 0) - (orderMap.get(b.id!) ?? 0),
+    );
+    return { rows: reordered, total };
+  }
+
+  // Pass 2: fetch full rows for just this page's IDs.
+  const pageSlice = sorted.slice(query.pagination.offset, query.pagination.offset + query.pagination.limit);
+  const pageIds = pageSlice.map((r) => (r as { id: string }).id);
+
+  if (pageIds.length === 0) return { rows: [], total };
+
+  const { data: fullRows, error: fullErr } = await admin
+    .from("leads")
+    .select(LEAD_WORKSPACE_LIST_SELECT)
+    .in("id", pageIds);
+  if (fullErr) throw fullErr;
+
+  const orderMap = new Map(pageIds.map((id, i) => [id, i]));
+  const reordered = ((fullRows ?? []) as WorkspaceListLead[]).sort(
+    (a, b) => (orderMap.get(a.id!) ?? 0) - (orderMap.get(b.id!) ?? 0),
+  );
+
+  return { rows: reordered, total };
 }
 
 export async function fetchLeadsWorkspaceTabCounts(

@@ -12,11 +12,11 @@ import {
   XCircle,
 } from "lucide-react";
 import type {
-  BulkImportLookupsReference,
-  BulkImportRowResult,
-  BulkImportSummary,
+  BulkCustomerImportRowResult,
+  BulkCustomerImportSummary,
+  BulkCustomerLookupsReference,
   LookupOption,
-} from "@/lib/utils/bulk-import-leads";
+} from "@/lib/utils/bulk-import-customers";
 import { ImportProgressModal, type ImportProgress } from "@/components/admin/import-progress-modal";
 
 const IMPORT_CHUNK_SIZE = 25;
@@ -68,7 +68,7 @@ function LookupOptionsTable({
   );
 }
 
-function statusStyle(status: BulkImportRowResult["status"]) {
+function statusStyle(status: BulkCustomerImportRowResult["status"]) {
   if (status === "valid") {
     return {
       background: "var(--color-success-bg)",
@@ -93,16 +93,16 @@ function statusStyle(status: BulkImportRowResult["status"]) {
   };
 }
 
-export function LeadsImportSection() {
+export function CustomersImportSection() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<Step>("upload");
   const [fileName, setFileName] = useState<string | null>(null);
   const [payload, setPayload] = useState<Record<string, unknown> | null>(null);
   const [skipDuplicates, setSkipDuplicates] = useState(true);
   const [createMissingLookups, setCreateMissingLookups] = useState(false);
-  const [lookups, setLookups] = useState<BulkImportLookupsReference | null>(null);
+  const [lookups, setLookups] = useState<BulkCustomerLookupsReference | null>(null);
   const [lookupsLoading, setLookupsLoading] = useState(true);
-  const [summary, setSummary] = useState<BulkImportSummary | null>(null);
+  const [summary, setSummary] = useState<BulkCustomerImportSummary | null>(null);
   const [loading, setLoading] = useState<"validate" | "import" | "sample" | null>(null);
   const [progress, setProgress] = useState<ImportProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -111,8 +111,8 @@ export function LeadsImportSection() {
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/admin/leads/import/template");
-        const data = (await res.json()) as { lookups?: BulkImportLookupsReference };
+        const res = await fetch("/api/admin/customers/import/template");
+        const data = (await res.json()) as { lookups?: BulkCustomerLookupsReference };
         if (!cancelled && res.ok && data.lookups) setLookups(data.lookups);
       } catch {
         /* reference tables optional */
@@ -143,8 +143,8 @@ export function LeadsImportSection() {
     try {
       const text = await file.text();
       const parsed = JSON.parse(text) as Record<string, unknown>;
-      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.leads)) {
-        setError('JSON must include a "leads" array.');
+      if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.customers)) {
+        setError('JSON must include a "customers" array.');
         return;
       }
       setFileName(file.name);
@@ -155,7 +155,7 @@ export function LeadsImportSection() {
   }
 
   function buildBody(): Record<string, unknown> {
-    const { _lookups: _a, _products: _b, _urgency: _c, ...rest } = payload ?? {};
+    const { _lookups: _a, _documentation: _b, ...rest } = payload ?? {};
     return {
       ...rest,
       skip_duplicate_phones: skipDuplicates,
@@ -167,7 +167,7 @@ export function LeadsImportSection() {
     setLoading("sample");
     setError(null);
     try {
-      const res = await fetch("/api/admin/leads/import/template");
+      const res = await fetch("/api/admin/customers/import/template");
       const data = (await res.json()) as { template?: Record<string, unknown>; error?: string };
       if (!res.ok || !data.template) {
         setError(data.error ?? "Could not load sample file.");
@@ -178,7 +178,7 @@ export function LeadsImportSection() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "bazaar-leads-import-sample.json";
+      a.download = "bazaar-customers-import-sample.json";
       a.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -192,12 +192,12 @@ export function LeadsImportSection() {
     setLoading("validate");
     setError(null);
     try {
-      const res = await fetch("/api/admin/leads/import?dry_run=true", {
+      const res = await fetch("/api/admin/customers/import?dry_run=true", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(buildBody()),
       });
-      const data = (await res.json().catch(() => ({}))) as BulkImportSummary & { error?: string };
+      const data = (await res.json().catch(() => ({}))) as BulkCustomerImportSummary & { error?: string };
       if (!res.ok) {
         setError(data.error ?? "Validation failed.");
         setLoading(null);
@@ -217,23 +217,23 @@ export function LeadsImportSection() {
     setError(null);
 
     const body = buildBody();
-    const allLeads = Array.isArray(body.leads) ? (body.leads as unknown[]) : [];
-    const total = allLeads.length;
+    const allCustomers = Array.isArray(body.customers) ? (body.customers as unknown[]) : [];
+    const total = allCustomers.length;
     const prog: ImportProgress = { total, processed: 0, created: 0, errors: 0, skipped: 0 };
     setProgress({ ...prog });
 
-    const accRows: BulkImportSummary["rows"] = [];
+    const accRows: BulkCustomerImportSummary["rows"] = [];
     let accCreated = 0;
 
     try {
       for (let i = 0; i < total; i += IMPORT_CHUNK_SIZE) {
-        const chunk = allLeads.slice(i, i + IMPORT_CHUNK_SIZE);
-        const res = await fetch("/api/admin/leads/import", {
+        const chunk = allCustomers.slice(i, i + IMPORT_CHUNK_SIZE);
+        const res = await fetch("/api/admin/customers/import", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...body, leads: chunk }),
+          body: JSON.stringify({ ...body, customers: chunk }),
         });
-        const data = (await res.json().catch(() => ({}))) as BulkImportSummary & { error?: string };
+        const data = (await res.json().catch(() => ({}))) as BulkCustomerImportSummary & { error?: string };
         if (!res.ok) {
           setError(data.error ?? "Import failed.");
           setLoading(null);
@@ -251,7 +251,7 @@ export function LeadsImportSection() {
 
       setSummary((prev) => prev ? { ...prev, created_count: accCreated, rows: accRows } : prev);
       setStep("done");
-      window.dispatchEvent(new Event("bazaar:leads-changed"));
+      window.dispatchEvent(new Event("bazaar:customers-changed"));
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
     } catch {
       setError("Network error — please try again.");
@@ -266,7 +266,7 @@ export function LeadsImportSection() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `leads-import-results-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `customers-import-results-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -275,11 +275,11 @@ export function LeadsImportSection() {
     <div className="space-y-6">
       <div>
         <h1 className="text-[20px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-          Lead import
+          Customer import
         </h1>
         <p className="mt-1 max-w-2xl text-sm" style={{ color: "var(--color-text-muted)" }}>
-          JSON only — use the <span className="font-mono text-xs">value</span> column from source and industry below
-          (not the label). Rows are validated before anything is saved.
+          JSON only — use the <span className="font-mono text-xs">value</span> column from industry below (not the
+          label). Rows are validated before anything is saved.
         </p>
       </div>
 
@@ -292,16 +292,15 @@ export function LeadsImportSection() {
             Allowed dropdown values
           </h2>
           <p className="text-xs mb-3" style={{ color: "var(--color-text-muted)" }}>
-            Each lead&apos;s <span className="font-mono">source</span> and <span className="font-mono">industry</span>{" "}
-            must match a <span className="font-mono">value</span> here — or enable auto-add below.
+            Each customer&apos;s <span className="font-mono">industry</span> must match a{" "}
+            <span className="font-mono">value</span> here — or enable auto-add below.
           </p>
           {lookupsLoading ? (
             <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>
               Loading options…
             </p>
           ) : lookups ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              <LookupOptionsTable title="Lead sources (source)" options={lookups.source} />
+            <div className="max-w-sm">
               <LookupOptionsTable title="Industries (industry)" options={lookups.industry} />
             </div>
           ) : (
@@ -342,7 +341,7 @@ export function LeadsImportSection() {
               onChange={(e) => setSkipDuplicates(e.target.checked)}
               className="rounded"
             />
-            Skip duplicate phones (open leads)
+            Skip duplicate phones (existing customers)
           </label>
           <label className="inline-flex items-center gap-2 text-[13px]" style={{ color: "var(--color-text-muted)" }}>
             <input
@@ -351,7 +350,7 @@ export function LeadsImportSection() {
               onChange={(e) => setCreateMissingLookups(e.target.checked)}
               className="rounded"
             />
-            Add missing source/industry to Dropdown Options on import
+            Add missing industry to Dropdown Options on import
           </label>
         </div>
 
@@ -380,7 +379,7 @@ export function LeadsImportSection() {
                 {fileName ? fileName : "Drop a .json file or click to browse"}
               </p>
               <p className="text-xs mt-1" style={{ color: "var(--color-text-muted)" }}>
-                Max 500 leads per file · invalid source/industry values are rejected unless auto-add is enabled
+                Max 500 customers per file · invalid industry values are rejected unless auto-add is enabled
               </p>
             </button>
 
@@ -453,15 +452,45 @@ export function LeadsImportSection() {
             </div>
 
             <div className="overflow-x-auto rounded-lg border" style={{ borderColor: "var(--color-border)" }}>
-              <table className="w-full text-left text-sm min-w-[640px]">
+              <table className="w-full text-left text-sm min-w-[600px]">
                 <thead>
                   <tr style={{ borderBottom: "1px solid var(--color-border)", background: "var(--color-bg)" }}>
-                    <th className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--color-text-muted)" }}>#</th>
-                    <th className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--color-text-muted)" }}>Name</th>
-                    <th className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--color-text-muted)" }}>Phone</th>
-                    <th className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--color-text-muted)" }}>Source</th>
-                    <th className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--color-text-muted)" }}>Status</th>
-                    <th className="px-3 py-2 font-semibold text-xs uppercase tracking-wide" style={{ color: "var(--color-text-muted)" }}>Details</th>
+                    <th
+                      className="px-3 py-2 font-semibold text-xs uppercase tracking-wide"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      #
+                    </th>
+                    <th
+                      className="px-3 py-2 font-semibold text-xs uppercase tracking-wide"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      Name
+                    </th>
+                    <th
+                      className="px-3 py-2 font-semibold text-xs uppercase tracking-wide"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      Phone
+                    </th>
+                    <th
+                      className="px-3 py-2 font-semibold text-xs uppercase tracking-wide"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      Industry
+                    </th>
+                    <th
+                      className="px-3 py-2 font-semibold text-xs uppercase tracking-wide"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      Status
+                    </th>
+                    <th
+                      className="px-3 py-2 font-semibold text-xs uppercase tracking-wide"
+                      style={{ color: "var(--color-text-muted)" }}
+                    >
+                      Details
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -482,14 +511,14 @@ export function LeadsImportSection() {
                           {preview?.phone ?? "—"}
                         </td>
                         <td className="px-3 py-2 text-xs" style={{ color: "var(--color-text-muted)" }}>
-                          {preview?.source ?? "—"}
+                          {preview?.industry ?? "—"}
                         </td>
                         <td className="px-3 py-2">
                           <span
                             className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
                             style={{ background: st.background, color: st.color, border: st.border }}
                           >
-                            {step === "done" && row.lead_id ? "Created" : st.label}
+                            {step === "done" && row.customer_id ? "Created" : st.label}
                           </span>
                         </td>
                         <td className="px-3 py-2 text-xs max-w-[280px]" style={{ color: "var(--color-text-muted)" }}>
@@ -497,10 +526,16 @@ export function LeadsImportSection() {
                             <span style={{ color: "var(--color-danger)" }}>{row.errors.join(" ")}</span>
                           )}
                           {row.errors.length === 0 && row.warnings.length > 0 && row.warnings.join(" ")}
-                          {row.errors.length === 0 && row.warnings.length === 0 && row.lead_id && (
-                            <span style={{ color: "var(--color-success)" }}>Lead {row.lead_id.slice(0, 8)}…</span>
+                          {row.errors.length === 0 && row.warnings.length === 0 && row.customer_id && (
+                            <span style={{ color: "var(--color-success)" }}>
+                              Customer {row.customer_id.slice(0, 8)}…
+                            </span>
                           )}
-                          {row.errors.length === 0 && row.warnings.length === 0 && !row.lead_id && row.status === "valid" && "—"}
+                          {row.errors.length === 0 &&
+                            row.warnings.length === 0 &&
+                            !row.customer_id &&
+                            row.status === "valid" &&
+                            "—"}
                         </td>
                       </tr>
                     );
@@ -535,7 +570,7 @@ export function LeadsImportSection() {
                     ) : (
                       <CheckCircle2 size={14} />
                     )}
-                    Import {summary.valid_count} lead{summary.valid_count === 1 ? "" : "s"}
+                    Import {summary.valid_count} customer{summary.valid_count === 1 ? "" : "s"}
                   </button>
                 </>
               )}
@@ -559,7 +594,7 @@ export function LeadsImportSection() {
                     Import another file
                   </button>
                   <Link
-                    href="/leads"
+                    href="/crm"
                     className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium"
                     style={{
                       background: "var(--color-btn-verify-bg)",
@@ -567,7 +602,7 @@ export function LeadsImportSection() {
                       textDecoration: "none",
                     }}
                   >
-                    View leads
+                    View customers
                   </Link>
                 </>
               )}
@@ -593,13 +628,13 @@ export function LeadsImportSection() {
         </h2>
         <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
           The downloaded template includes <span className="font-mono">_documentation</span> for AI tools — paste it
-          into ChatGPT or your export script so output matches CRM rules. One example lead is included; replace with
-          your full list. Unknown <span className="font-mono">source</span> / <span className="font-mono">industry</span>{" "}
-          values are rejected unless auto-add is enabled.
+          into ChatGPT or your export script so output matches CRM rules. One example customer is included; replace
+          with your full list. Unknown <span className="font-mono">industry</span> values are rejected unless auto-add
+          is enabled. This import creates customer records only — no leads are created.
         </p>
       </div>
 
-      {progress && <ImportProgressModal label="leads" progress={progress} />}
+      {progress && <ImportProgressModal label="customers" progress={progress} />}
     </div>
   );
 }

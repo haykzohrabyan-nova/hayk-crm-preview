@@ -23,6 +23,12 @@ const AUTHORITY_OPTIONS = [
   { value: "no", label: "No" },
 ];
 
+const HEAT_TAG_OPTIONS = [
+  { value: "hot", label: "Hot" },
+  { value: "warm", label: "Warm" },
+  { value: "cold", label: "Cold" },
+];
+
 /** Isolates modal fields from list search so Chrome autofill does not cross-fill. */
 const AC = "section-bazaar-add-customer";
 
@@ -44,6 +50,7 @@ interface CustomerForm {
   industry: string;
   website: string;
   authority: string;
+  heat_tag: string;
 }
 
 const EMPTY_FORM: CustomerForm = {
@@ -55,6 +62,7 @@ const EMPTY_FORM: CustomerForm = {
   industry: "",
   website: "",
   authority: "",
+  heat_tag: "",
 };
 
 export function AddCustomerModal({
@@ -127,6 +135,7 @@ export function AddCustomerModal({
           industry: form.industry || null,
           website: form.website.trim() ? normalizeWebsite(form.website) : null,
           authority: form.authority || null,
+          heat_tag: form.heat_tag || null,
         }),
       });
       const data = await res.json();
@@ -252,6 +261,21 @@ export function AddCustomerModal({
               </SelectTrigger>
               <SelectContent>
                 {AUTHORITY_OPTIONS.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className={labelCls} style={labelStyle}>Heat Tag</label>
+            <Select value={form.heat_tag} onValueChange={(v) => setForm((f) => ({ ...f, heat_tag: v ?? "" }))}>
+              <SelectTrigger className="h-9 text-sm w-full">
+                <SelectValue placeholder="Select…">
+                  {HEAT_TAG_OPTIONS.find((o) => o.value === form.heat_tag)?.label ?? "Select…"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {HEAT_TAG_OPTIONS.map((o) => (
                   <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                 ))}
               </SelectContent>

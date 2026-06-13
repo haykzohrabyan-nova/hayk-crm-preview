@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown, Webhook } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown, Webhook, UserRoundPlus, PackagePlus } from "lucide-react";
 
 const CARDS = [
   {
@@ -73,6 +73,20 @@ const CARDS = [
     built: true,
   },
   {
+    title: "Customer import",
+    description: "Bulk import customers from JSON only (no CSV). Creates customer records only — no leads. Validate-first preview with duplicate phone detection.",
+    href: "/admin/settings/customer-import",
+    icon: UserRoundPlus,
+    built: true,
+  },
+  {
+    title: "Order import",
+    description: "Bulk import historical orders from JSON. Each order is matched to a customer by phone. Preview customer matches and line items before committing.",
+    href: "/admin/settings/order-import",
+    icon: PackagePlus,
+    built: false,
+  },
+  {
     title: "Webhook",
     description: "Monitor order webhook delivery to the workflow automation system. See delivery status per order and resend any that failed.",
     href: "/admin/settings/webhook",
@@ -97,15 +111,10 @@ export default function AdminOverviewPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {CARDS.map(({ title, description, href, icon: Icon, built }) => (
-          <Link
-            key={href}
-            href={href}
-            className="group block rounded-[10px] focus-visible:outline-none focus-visible:ring-2"
-            style={{ "--tw-ring-color": "var(--color-accent)" } as React.CSSProperties}
-          >
+        {CARDS.map(({ title, description, href, icon: Icon, built }) => {
+          const cardInner = (
             <div
-              className="h-full rounded-[10px] border p-5 transition-shadow group-hover:shadow-md"
+              className={`h-full rounded-[10px] border p-5 transition-shadow ${built ? "group-hover:shadow-md" : "opacity-50 cursor-not-allowed select-none"}`}
               style={{
                 background: "var(--color-surface)",
                 borderColor: "var(--color-border)",
@@ -137,15 +146,32 @@ export default function AdminOverviewPage() {
               <p className="text-sm mb-4" style={{ color: "var(--color-text-muted)" }}>
                 {description}
               </p>
-              <span
-                className="text-sm font-medium group-hover:underline"
-                style={{ color: built ? "var(--color-tab-active)" : "var(--color-text-muted)" }}
-              >
-                {built ? "Open →" : "Coming soon"}
-              </span>
+              {built && (
+                <span
+                  className="text-sm font-medium group-hover:underline"
+                  style={{ color: "var(--color-tab-active)" }}
+                >
+                  Open →
+                </span>
+              )}
             </div>
-          </Link>
-        ))}
+          );
+
+          return built ? (
+            <Link
+              key={href}
+              href={href}
+              className="group block rounded-[10px] focus-visible:outline-none focus-visible:ring-2"
+              style={{ "--tw-ring-color": "var(--color-accent)" } as React.CSSProperties}
+            >
+              {cardInner}
+            </Link>
+          ) : (
+            <div key={href} className="rounded-[10px]" aria-disabled="true">
+              {cardInner}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

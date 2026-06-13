@@ -55,7 +55,7 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 | `GET /api/leads/sales/page-data` | `{ leads, counts, pagination }` | Sales pipeline — `?tab=`, `limit`, `offset`, optional `search` |
 | `GET /api/completed/page-data` | `{ orders, counts, pagination }` | Completed — server-side search, date on `updated_at`, admin user + pagination |
 | `GET /api/production/page-data` | `{ orders, counts, pagination }` | Production — server-side tab, search + pagination |
-| `GET /api/crm/page-data` | `{ customers, pagination }` | CRM page — server-side search, status, heat + pagination |
+| `GET /api/crm/page-data` | `{ customers, pagination }` | CRM page — server-side search, status, heat, duplicates filter + DB-level pagination; every row includes `is_duplicate_phone` |
 | `GET /api/leads/workspace/page-data?…` | `{ leads, counts, pagination, routedSubCounts? }` | Leads page — server-side tab, search, owner scope, routed sub-filter, sort + pagination |
 
 **Slim count-only routes** (realtime refresh without full list): `GET /api/orders/counts`, `GET /api/quotes/counts`, plus existing `*/counts` routes.
@@ -152,6 +152,7 @@ Shared helpers:
 | `search` | — | Name, email, phone, company |
 | `status` | `all` | `all` \| `new` \| `known` |
 | `heat` | `all` | `all` \| `hot` \| `warm` \| `cold` |
+| `duplicates` | — | `1` = show only customers with duplicate phone numbers |
 | `limit` / `offset` | `25` / `0` | Pagination |
 
 **Leads workspace query params** (`GET /api/leads/workspace/page-data`):
@@ -585,6 +586,10 @@ Paginated CRM customer list. Used by `components/crm/crm-page.tsx`.
 
 **Auth:** `requireSession()` + `requirePageAccess('/crm')`. Accountant and roles without CRM page permission → `403`.
 
+**Pagination:** DB-level `LIMIT`/`OFFSET` — only requested page rows are fetched. Total count via a separate `SELECT COUNT(*)` with `head: true`. Implemented in `lib/utils/fetch-crm-data.ts → fetchCrmCustomers`.
+
+**Duplicate detection:** On every request, `fetchDuplicatePhoneIds` fetches all `(id, phone)` pairs and identifies IDs whose phone appears on 2+ records. Each row in the response includes `is_duplicate_phone: boolean`.
+
 **Query params:**
 
 | Param | Type | Description |
@@ -592,13 +597,32 @@ Paginated CRM customer list. Used by `components/crm/crm-page.tsx`.
 | `search` | `string` | Filter name, email, phone, company |
 | `status` | `all` \| `new` \| `known` | Customer status filter |
 | `heat` | `all` \| `hot` \| `warm` \| `cold` | Heat tag filter |
+| `duplicates` | `1` | When present, returns only customers with `is_duplicate_phone = true` |
 | `limit` | `25` \| `50` \| `100` | Page size (default 25) |
 | `offset` | `number` | Row offset (default 0) |
 
 **Response `200`:**
 ```json
 {
-  "customers": [ "…same shape as GET /api/customers…" ],
+  "customers": [
+    {
+      "id": "uuid",
+      "first_name": "string",
+      "last_name": "string | null",
+      "email": "string | null",
+      "phone": "string",
+      "company": "string | null",
+      "industry": "string | null",
+      "heat_tag": "string | null",
+      "created_at": "ISO",
+      "updated_at": "ISO",
+      "lead_count": 0,
+      "ticket_count": 0,
+      "last_activity": "ISO | null",
+      "customer_status": "new | known",
+      "is_duplicate_phone": false
+    }
+  ],
   "pagination": { "limit": 25, "offset": 0, "total": 200, "hasMore": true }
 }
 ```
@@ -847,16 +871,34 @@ Update a customer profile. Called when SDR chooses "Yes, update profile" on the 
 
 ### `POST /api/customers/[id]/merge`
 
-Merge duplicate customer **source** (`id` in path) into **target** (`target_id` in body). Moves all leads, **job tickets**, and activities to the target, logs a merge activity, then **deletes** the source customer.
+Merge duplicate customer **source** (`id` in path) into **target** (`target_id` in body). Optionally applies field overrides to the surviving record first. Moves all leads, **job tickets**, and activities to the target, logs a merge activity, then **deletes** the source customer.
 
 **Auth:** Admin or Sales only (`403` for SDR, Accountant, etc.).
 
 **Body:**
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `target_id` | `string` (UUID) | ✅ | The surviving customer. Must differ from path `id`. |
+| `overrides` | `Record<string, unknown>` | ❌ | Field values to apply to the target before moving child rows. Allowed keys: `first_name`, `last_name`, `company`, `email`, `industry`, `heat_tag`. All other keys are silently dropped. |
+
 ```json
 {
-  "target_id": "uuid"
+  "target_id": "uuid",
+  "overrides": {
+    "first_name": "Jane",
+    "company": "Acme Print Co"
+  }
 }
 ```
+
+**Server steps (in order):**
+1. `UPDATE customers SET {overrides}, updated_at = now() WHERE id = target_id` (if overrides present)
+2. `UPDATE leads SET customer_id = target_id WHERE customer_id = source_id`
+3. `UPDATE job_tickets SET customer_id = target_id WHERE customer_id = source_id`
+4. `UPDATE activities SET customer_id = target_id WHERE customer_id = source_id`
+5. Insert `contact_edited` activity on target (`action: "merge"`, `overrides_applied: [...]`)
+6. `DELETE FROM customers WHERE id = source_id`
 
 **Response `200`:**
 ```json
@@ -866,7 +908,9 @@ Merge duplicate customer **source** (`id` in path) into **target** (`target_id` 
 }
 ```
 
-**Errors:** `404` if either customer missing; `400` if `target_id === id`.
+**Errors:** `404` if either customer missing; `400` if `target_id === id`; `500` if any DB step fails.
+
+> **UI:** Called sequentially once per non-keeper when the 3-step `MergeCustomerModal` confirms. Overrides are only sent on the first call (applied once to the surviving record). See `docs/feature-specs/crm.md — Merge Duplicate Customers`.
 
 ---
 

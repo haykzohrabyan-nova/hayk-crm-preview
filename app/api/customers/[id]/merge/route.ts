@@ -20,6 +20,17 @@ export async function POST(
   const body = await request.json().catch(() => ({}));
   const target_id: string | undefined = body.target_id;
 
+  // Optional field overrides to apply to the surviving (target) record after merge.
+  const overrides: Record<string, unknown> = body.overrides ?? {};
+
+  const ALLOWED_OVERRIDE_FIELDS = new Set([
+    "first_name", "last_name", "company", "email", "industry", "heat_tag",
+  ]);
+
+  const safeOverrides = Object.fromEntries(
+    Object.entries(overrides).filter(([k]) => ALLOWED_OVERRIDE_FIELDS.has(k)),
+  );
+
   if (!target_id) {
     return NextResponse.json(
       { error: "target_id is required.", code: "VALIDATION_ERROR" },
@@ -36,7 +47,6 @@ export async function POST(
 
   const admin = createAdminClient();
 
-  // Verify both customers exist
   const [srcResult, tgtResult] = await Promise.all([
     admin.from("customers").select("id, first_name, last_name").eq("id", id).single(),
     admin.from("customers").select("id, first_name, last_name").eq("id", target_id).single(),
@@ -49,15 +59,22 @@ export async function POST(
     return NextResponse.json({ error: "Target customer not found.", code: "NOT_FOUND" }, { status: 404 });
   }
 
-  // Move all child records from source → target before deleting the source customer.
-  // All three tables have a customer_id FK — if any are missed the DELETE will fail
-  // (FK violation) or leave orphaned rows depending on the constraint type.
+  // Apply field overrides to the surviving record before moving child rows.
+  if (Object.keys(safeOverrides).length > 0) {
+    const { error: overrideErr } = await admin
+      .from("customers")
+      .update({ ...safeOverrides, updated_at: new Date().toISOString() })
+      .eq("id", target_id);
+    if (overrideErr) {
+      return NextResponse.json({ error: overrideErr.message, code: "DB_ERROR" }, { status: 500 });
+    }
+  }
 
+  // Move all child records from source → target.
   const { error: leadsError } = await admin
     .from("leads")
     .update({ customer_id: target_id })
     .eq("customer_id", id);
-
   if (leadsError) {
     return NextResponse.json({ error: leadsError.message, code: "DB_ERROR" }, { status: 500 });
   }
@@ -66,14 +83,12 @@ export async function POST(
     .from("job_tickets")
     .update({ customer_id: target_id })
     .eq("customer_id", id);
-
   if (ticketsError) {
     return NextResponse.json({ error: ticketsError.message, code: "DB_ERROR" }, { status: 500 });
   }
 
   await admin.from("activities").update({ customer_id: target_id }).eq("customer_id", id);
 
-  // Log a merge activity on the surviving customer
   await admin.from("activities").insert({
     customer_id: target_id,
     type: "contact_edited",
@@ -82,12 +97,11 @@ export async function POST(
       action: "merge",
       merged_from: id,
       merged_from_name: [srcResult.data.first_name, srcResult.data.last_name].filter(Boolean).join(" "),
+      overrides_applied: Object.keys(safeOverrides),
     },
   });
 
-  // All FKs cleared — safe to delete the source customer
   const { error: deleteError } = await admin.from("customers").delete().eq("id", id);
-
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message, code: "DB_ERROR" }, { status: 500 });
   }

@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "_documentation": {
+    "purpose": "Bulk import customers into BazaarPrinting CRM. Generate a JSON file matching this schema exactly.",
+    "audience": "AI assistants or scripts converting data from spreadsheets or other CRMs.",
+    "output_format": "Single JSON object. Root must include a customers array. Keys starting with _ are documentation only — ignored on import.",
+    "instructions": [
+      "Return valid JSON only — no markdown fences, no commentary outside the JSON.",
+      "Put one object per customer in the customers array (max 500).",
+      "Every customer MUST include: first_name, phone.",
+      "For industry: copy the value slug from _lookups (e.g. cannabis_cbd) — NEVER use the human label (e.g. Cannabis & CBD). If unknown, omit — defaults to 'other'.",
+      "phone: digits only or formatted — at least 10 digits after stripping non-digits. Leading country code 1 on 11-digit numbers is stripped automatically.",
+      "heat_tag: hot | warm | cold (or omit).",
+      "authority: yes | no (or omit — defaults to 'yes').",
+      "customer_since: the date this customer was first created in the source system (ISO 8601: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ). Used as created_at — preserves real customer history. Omit if unknown.",
+      "Replace the example customer with all real rows. Delete the _note key."
+    ],
+    "customer_fields": {
+      "required": {
+        "first_name": "string",
+        "phone": "string — min 10 digits"
+      },
+      "optional": {
+        "last_name": "string",
+        "email": "string",
+        "company": "string",
+        "industry": "string — value slug from _lookups.industry (example: cannabis_cbd). Defaults to 'other' if omitted.",
+        "website": "string — full URL with https://",
+        "authority": "yes | no — defaults to 'yes' if omitted",
+        "heat_tag": "hot | warm | cold",
+        "customer_since": "ISO 8601 date — when the customer was first created in the source system. Stored as created_at."
+      }
+    }
+  },
+  "_lookups": {
+    "how_to_use": "Pick industry from value column. Download template from Admin page to get your live database list.",
+    "industry": [
+      { "value": "cannabis_cbd", "label": "Cannabis & CBD" },
+      { "value": "food_beverage", "label": "Food & Beverage" },
+      { "value": "other", "label": "Other" }
+    ]
+  },
+  "imported_by_note": "REPLACE — short batch note for staff (e.g. Migrated from InkCloud Jun 2026)",
+  "skip_duplicate_phones": true,
+  "create_missing_lookups": false,
+  "customers": [
+    {
+      "_note": "DELETE this key — example only. One customer shown; add more objects to this array.",
+      "first_name": "Jane",
+      "last_name": "Rivera",
+      "phone": "4155551234",
+      "email": "jane@example.com",
+      "company": "Acme Print Co",
+      "industry": "cannabis_cbd",
+      "website": "https://acmeprint.com",
+      "authority": "yes",
+      "heat_tag": "warm",
+      "customer_since": "2021-03-15"
+    }
+  ]
+}

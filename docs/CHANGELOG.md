@@ -3,6 +3,82 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-12] — Comprehensive documentation update
+
+### Added
+- `docs/feature-specs/customer-import.md` — full spec for bulk customer JSON import (field reference, validation rules, progress modal, phone normalisation, `customer_since` mapping)
+- `docs/feature-specs/order-import.md` — full spec for bulk order JSON import (customer resolution by phone, line items, progress modal)
+- `scripts/README.md` — documents `auto-merge-duplicates.py` and `backfill-customer-since.py` scripts and the batch import JSON files
+
+### Changed
+- `docs/feature-specs/crm.md` — updated CRM list table (duplicate phone badge, Merge button, fixed-column layout, truncation); rewrote Merge Duplicate Customers section for 3-step modal flow, API overrides, and automated merge script; updated filters to include Duplicates pill; added DB-level pagination notes
+- `docs/feature-specs/admin.md` — added Customer Import and Order Import cards to overview grid; added import sections with flow description and links to specs
+- `docs/api-contract.md` — `GET /api/crm/page-data`: added `duplicates` query param, `is_duplicate_phone` response field, DB-level pagination explanation; `POST /api/customers/[id]/merge`: documented `overrides` body field and step-by-step server execution
+- `docs/TECHNICAL_REFERENCE.md` — Section 17 (CRM): added duplicate phone detection, 3-step merge modal, bulk merge script, customer + order import; Section 18 (Admin Settings): added Import/Export tab row and sub-section documenting all three import tabs + progress modal pattern
+
+## [2026-06-12] — Redesign merge-duplicate modal with 3-step picker flow
+
+### Changed
+- **`components/crm/merge-customer-modal.tsx`** — fully redesigned:
+  - Removed search input; modal now auto-loads *all* customers sharing the same phone (including the initiating record) on open
+  - **Step 1 – Pick keeper:** list of all duplicates with radio-style selection, "This record" badge on the initiating entry
+  - **Step 2 – Choose info:** for every field where values differ (name, company, email, industry, heat_tag) shows per-field radio buttons so the user can pull a value from any duplicate record
+  - **Step 3 – Confirm:** warning box listing which records will be deleted, then executes sequential merge API calls
+- **`app/api/customers/[id]/merge/route.ts`** — added optional `overrides` body field: a map of allowed field keys → values that get applied to the surviving record before child rows are moved; only `first_name, last_name, company, email, industry, heat_tag` are accepted (other keys are silently dropped)
+
+## [2026-06-12] — DB-level pagination everywhere + page size from user selection
+
+### Changed
+- **`lib/utils/leads-workspace-query.ts`** — rewrote `fetchLeadsWorkspace` standard path:
+  - **`created` sort (default):** DB-level `count: "exact"` + `.range()` — only the user's chosen page size comes over the wire. Search is now DB-level too: customer IDs resolved once via `resolveLeadSearchCustomerIds`, then pushed as `customer_id.in.(...)` + `status.ilike` filter.
+  - **`urgency` sort:** two-pass — pass 1 fetches only `id, urgency, created_at` for all matching leads (no JOINs, tiny payload), sorts in memory, slices; pass 2 fetches full `LEAD_WORKSPACE_LIST_SELECT` for page IDs only.
+  - **Routed / Won tabs:** unchanged (still need full rows for sub-filter stage counts and `routedIds` cross-check).
+  - Extracted `applyStandardLeadFilters` and `applyLeadSearchFilter` helpers for the DB path.
+- **`lib/utils/fetch-orders-data.ts`** — rewrote `fetchOrdersList` custom-sort path:
+  - **Default sort:** unchanged (already DB-level).
+  - **Custom sort (any):** two-pass — pass 1 fetches only `ORDERS_SORT_ONLY_SELECT` (9 fields) for all matching rows, sorts in memory; pass 2 fetches full `ORDERS_LIST_SELECT` for page IDs only via `.in("id", pageIds)`. Reduces transferred data ~10× vs. fetching full rows for every order.
+- **`lib/utils/fetch-payments-data.ts`** — pending and refunded tabs with search:
+  - Previously: loaded all rows, filtered in memory, sliced.
+  - Now: customer IDs resolved from DB once, then `reference_code`, `title`, `contact_name`, `contact_email`, and `customer_id.in.(...)` filters applied at DB level with `count: "exact"` + `.range()`. Only the page rows come over the wire.
+  - `tax_exempt` and `approved` tabs still in-memory (merge of two independent queries; dataset is small in practice).
+- **`lib/utils/fetch-crm-data.ts`** (previous entry) — page-size limit removed; page size now comes from `parseListPaginationParams` which reads `limit` from the query string (user-selectable: 25 / 50 / 100, persisted in localStorage).
+
+## [2026-06-12] — CRM efficient DB-level pagination
+
+### Changed
+- `lib/utils/fetch-crm-data.ts` — rewrote `fetchCrmCustomers` to eliminate full-table fetches:
+  - **No status filter ("all"):** uses a `head: true` count query (returns just a number, zero row data) + `LIMIT/OFFSET` page query (returns only the 25 current-page rows) + enrichment for those 25 IDs only.
+  - **Status filter ("new"/"known"):** fetches only the `id` column for matching customers (UUIDs only, no field data), applies the known/new split in memory, then fetches full data for the 25 page IDs + enrichment for those 25 only.
+  - Lead/ticket activity IDs (for the known-set) are fetched as UUID-only queries — never full row data.
+  - Removed the previous `.limit(50000)` full-row approach.
+
+## [2026-06-12] — Order bulk import
+
+### Added
+- `lib/utils/bulk-import-orders.ts` — parse, validate, commit logic for bulk order import (max 200 rows); customer lookup by phone with optional auto-create; validates ticket_status, payment_status, payment_method, and line items; writes `order_created` and `orders_bulk_imported` activity log entries; sets completed_at, production_released_at, cancelled_at, and payment timestamps automatically from ticket_status/payment_status.
+- `app/api/admin/orders/import/route.ts` — `POST /api/admin/orders/import?dry_run=true` (validate + customer match preview) and `POST /api/admin/orders/import` (commit); admin-only.
+- `app/api/admin/orders/import/template/route.ts` — `GET /api/admin/orders/import/template`; downloadable JSON template with embedded AI documentation.
+- `components/admin/orders-import-section.tsx` — 3-step wizard UI; customer match explained upfront with Found / Will create / Not found legend; preview table shows customer match, order status pill, payment status+total, item count; "Validate & match customers" button triggers dry-run.
+- `public/samples/bazaar-orders-import-sample.json` — static sample file with embedded `_documentation` for AI tools.
+
+### Changed
+- `components/admin/settings-tab-nav.tsx` — added "Order import" tab with `PackagePlus` icon.
+- `app/(app)/admin/settings/[tab]/page.tsx` — added `"order-import"` to `SUPPORTED_TABS` and wired `<OrdersImportSection />`.
+- `app/(app)/admin/page.tsx` — added Order import card to admin overview grid.
+
+## [2026-06-12] — Customer bulk import
+
+### Added
+- `lib/utils/bulk-import-customers.ts` — parse, validate, commit, and template-build logic for bulk customer import (max 500 rows per file); dedup by phone against existing customers; industry lookup validation with optional auto-create; writes `customer_created` and `customers_bulk_imported` activity log entries.
+- `app/api/admin/customers/import/route.ts` — `POST /api/admin/customers/import?dry_run=true` (validate only) and `POST /api/admin/customers/import` (commit); admin-only.
+- `app/api/admin/customers/import/template/route.ts` — `GET /api/admin/customers/import/template`; returns downloadable JSON template with live industry lookups embedded.
+- `components/admin/customers-import-section.tsx` — 3-step wizard UI (upload → preview → done) matching the Lead import pattern; industry lookup table, skip-duplicate-phones checkbox, auto-add missing industry checkbox, results table with status pills, download results JSON.
+- `public/samples/bazaar-customers-import-sample.json` — static sample import file with embedded `_documentation` for AI tools.
+
+### Changed
+- `components/admin/settings-tab-nav.tsx` — added "Customer import" tab with `UserRoundPlus` icon.
+- `app/(app)/admin/settings/[tab]/page.tsx` — added `"customer-import"` to `SUPPORTED_TABS` and wired `<CustomersImportSection />`.
+
 ## [2026-06-12] — Webhook delivery log + admin panel
 
 ### Added

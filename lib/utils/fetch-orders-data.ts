@@ -223,6 +223,10 @@ async function enrichOrdersPage(admin: AdminClient, orders: RawOrderRow[]) {
   });
 }
 
+/** Minimal columns needed for sorting — one field per sort type to keep payload tiny. */
+const ORDERS_SORT_ONLY_SELECT =
+  "id, ticket_status, payment_status, refund_status, due_date, quote_final_total, payment_amount_received, production_released_at, created_at, created_by_id";
+
 export async function fetchOrdersList(
   admin: AdminClient,
   roleName: string,
@@ -232,68 +236,80 @@ export async function fetchOrdersList(
 ) {
   const useCustomSort = filters.sort && filters.sort !== "default";
 
-  if (useCustomSort) {
+  // ── Default sort: full DB-level count + range ─────────────────────────────────
+  if (!useCustomSort) {
     const query = await buildScopedOrdersQuery(
       admin,
       roleName,
       userId,
       filters,
       ORDERS_LIST_SELECT,
-      { skipDefaultOrder: true },
+      pagination ? { count: "exact", pagination } : undefined,
     );
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     if (error) throw error;
 
-    let orders = (data ?? []) as RawOrderRow[];
-
-    let creatorNameById: Map<string, string> | undefined;
-    if (filters.sort === "created_by") {
-      const creatorIds = [
-        ...new Set(
-          orders
-            .map((o) => o.created_by_id)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      ];
-      if (creatorIds.length > 0) {
-        const { data: profiles } = await admin
-          .from("user_profiles")
-          .select("id, full_name")
-          .in("id", creatorIds);
-        creatorNameById = new Map(
-          (profiles ?? []).map((p) => [p.id as string, (p.full_name as string | null) ?? ""]),
-        );
-      }
-    }
-
-    orders = sortOrdersRows(orders, filters.sort!, { creatorNameById });
-
-    const total = orders.length;
-    const offset = pagination?.offset ?? 0;
-    const limit = pagination?.limit ?? total;
-    const pageSlice = pagination ? orders.slice(offset, offset + limit) : orders;
-    const rows = await enrichOrdersPage(admin, pageSlice);
-
+    const orders = (data ?? []) as RawOrderRow[];
+    const rows = await enrichOrdersPage(admin, orders);
+    const total = pagination ? (count ?? rows.length) : rows.length;
     return { rows, total };
   }
 
-  const query = await buildScopedOrdersQuery(
+  // ── Custom sort: two-pass ─────────────────────────────────────────────────────
+  // Pass 1: fetch only the columns needed for sorting (tiny payload) for all matching rows.
+  const sortPass = await buildScopedOrdersQuery(
     admin,
     roleName,
     userId,
     filters,
-    ORDERS_LIST_SELECT,
-    pagination ? { count: "exact", pagination } : undefined,
+    ORDERS_SORT_ONLY_SELECT,
+    { skipDefaultOrder: true },
   );
 
-  const { data, error, count } = await query;
-  if (error) throw error;
+  const { data: sortData, error: sortErr } = await sortPass;
+  if (sortErr) throw sortErr;
 
-  const orders = (data ?? []) as RawOrderRow[];
-  const rows = await enrichOrdersPage(admin, orders);
-  const total = pagination ? (count ?? rows.length) : rows.length;
+  let sortable = (sortData ?? []) as RawOrderRow[];
 
+  // For "created_by" sort, load creator names (only IDs needed, much smaller than full rows).
+  let creatorNameById: Map<string, string> | undefined;
+  if (filters.sort === "created_by") {
+    const creatorIds = [...new Set(sortable.map((o) => o.created_by_id).filter((id): id is string => Boolean(id)))];
+    if (creatorIds.length > 0) {
+      const { data: profiles } = await admin
+        .from("user_profiles")
+        .select("id, full_name")
+        .in("id", creatorIds);
+      creatorNameById = new Map(
+        (profiles ?? []).map((p) => [p.id as string, (p.full_name as string | null) ?? ""]),
+      );
+    }
+  }
+
+  sortable = sortOrdersRows(sortable, filters.sort!, { creatorNameById });
+  const total = sortable.length;
+
+  // Pass 2: fetch full select for ONLY the current page's IDs.
+  const offset = pagination?.offset ?? 0;
+  const limit = pagination?.limit ?? total;
+  const pageIds = sortable.slice(offset, offset + limit).map((o) => o.id);
+
+  if (pageIds.length === 0) return { rows: [], total };
+
+  const { data: pageData, error: pageErr } = await admin
+    .from("job_tickets")
+    .select(ORDERS_LIST_SELECT)
+    .in("id", pageIds);
+  if (pageErr) throw pageErr;
+
+  // Re-sort page rows to match the sorted order (IN query doesn't guarantee order).
+  const orderMap = new Map(pageIds.map((id, i) => [id, i]));
+  const pageOrders = ((pageData ?? []) as unknown as RawOrderRow[]).sort(
+    (a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0),
+  );
+
+  const rows = await enrichOrdersPage(admin, pageOrders);
   return { rows, total };
 }
 
