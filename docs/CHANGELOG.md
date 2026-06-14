@@ -8,6 +8,31 @@ Format: `## [version or date] — description`, newest first.
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-13] — Add missing performance indexes
+
+### Added
+- `supabase/patches/2026-06-13-performance-indexes.sql` — 9 new indexes targeting the three highest-traffic tables:
+  - **`leads`**: composite `(is_inbox, status, updated_at DESC)` serves the most common filter+sort pattern on every tab; composite `(is_inbox, status, sales_status)` for the sales tab; standalone `updated_at DESC` fallback.
+  - **`customers`**: `updated_at DESC` for CRM list sort; `(heat_tag, updated_at DESC)` partial index for heat filter.
+  - **`job_tickets`**: composite `(ticket_status, updated_at DESC)` for orders/production/completed/payments pages; standalone `updated_at DESC` fallback; partial `(tax_exempt, sales_permit_reviewed_at)` for the tax-exempt payment queue.
+  - **`activities`**: `type` index eliminates a full-table scan on every Routed-to-Sales tab load (`WHERE type = 'lead_routed_to_sales'`); composite `(type, lead_id)` partial index for the most common activity lookup pattern.
+
+## [2026-06-13] — Move merge duplicate action to customer profile only
+
+### Changed
+- **`components/crm/crm-page.tsx`** — Removed the Merge button and duplicate phone indicator (`CopyX` icon + amber highlight) from the CRM list page. Merge is now only accessible from the individual customer profile page, where the context is clear and the action is intentional. The Duplicates filter tab still works — it shows which customers have duplicate phones so users can click View to open their profile and use the Merge button there.
+- **`lib/utils/fetch-crm-data.ts`** — Removed `is_duplicate_phone` from `CrmCustomerRow` type and from `enrichCustomerPage` output (no longer consumed by the list UI). Removed the `checkPageDuplicatePhones` helper that was added earlier today since it is no longer needed.
+
+## [2026-06-13] — Performance audit: eliminate unnecessary full-table fetches
+
+### Fixed
+- **`lib/utils/fetch-crm-data.ts`** — Eliminated two unconditional 100 000-row scans (leads + job_tickets customer IDs) that ran on every CRM page load regardless of filters:
+  - Fast path (`status=all`): removed upfront `knownIds` pre-fetch. `enrichCustomerPage` now derives `customer_status` ("new" / "known") from the leads/tickets it already fetches for the current page of 25 customers — no full-table scan needed.
+  - Removed unconditional `fetchDuplicatePhoneIds(admin, {})` (another 100 000-row phone scan) that ran on every tab. Duplicate phone detection now uses `checkPageDuplicatePhones` — a targeted query against only the current page's phone numbers.
+  - Status-filter path (`status=new|known`): retains the two-pass ID-scan approach (unavoidable in PostgREST without a DB view), but no longer also scans phones unconditionally.
+  - Duplicates tab path: unchanged — still requires a full phone scan to find all duplicate IDs.
+- **`app/api/customers/lookup/route.ts`** — Changed `select("*")` to explicit column list and added `.limit(10)` to prevent unbounded result sets on phone/email lookup.
+
 ## [2026-06-13] — Fix order webhook product_type field
 
 ### Fixed

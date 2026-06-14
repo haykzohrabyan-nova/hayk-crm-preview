@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import { ListRefreshingNotice } from "@/components/ui/mobile-list-card";
-import { Search, X, FilePlus, UserPlus, CopyX, Merge } from "lucide-react";
-import { MergeCustomerModal } from "@/components/crm/merge-customer-modal";
+import { Search, X, FilePlus, UserPlus, CopyX } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { AddCustomerModal } from "@/components/crm/add-customer-modal";
 import { ListPagination } from "@/components/ui/list-pagination";
@@ -41,7 +40,6 @@ interface CrmCustomer {
   customer_status: CustomerStatus;
   created_at: string;
   updated_at: string;
-  is_duplicate_phone?: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -196,7 +194,6 @@ export function CRMPage() {
   const [industryLookups, setIndustryLookups] = useState<LookupOption[]>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
-  const [mergeCustomer, setMergeCustomer] = useState<{ id: string; first_name: string | null; last_name: string | null; phone: string | null } | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search), 300);
@@ -434,14 +431,7 @@ export function CRMPage() {
                     </span>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-xs">
-                    {c.is_duplicate_phone ? (
-                      <span className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5" style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}>
-                        <CopyX size={10} />
-                        <PhoneCell phone={c.phone} />
-                      </span>
-                    ) : (
-                      <PhoneCell phone={c.phone} />
-                    )}
+                    <PhoneCell phone={c.phone} />
                   </td>
                   <td className="px-3 py-2.5 text-xs">
                     <span className="block truncate whitespace-nowrap">
@@ -478,18 +468,6 @@ export function CRMPage() {
                         <FilePlus size={11} />
                         Add Quote
                       </button>
-                      {c.is_duplicate_phone ? (
-                        <button
-                          onClick={() => setMergeCustomer({ id: c.id, first_name: c.first_name, last_name: c.last_name, phone: c.phone })}
-                          className="shrink-0 rounded-[6px] p-1.5 transition-all active:scale-[0.97]"
-                          style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)", border: "1px solid var(--color-warning-border)" }}
-                          title="Merge duplicate"
-                        >
-                          <Merge size={13} />
-                        </button>
-                      ) : (
-                        <span className="shrink-0 inline-block p-1.5" style={{ width: 30 }} />
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -539,16 +517,7 @@ export function CRMPage() {
                 )}
                 <div className="flex justify-between items-center gap-2">
                   <span>Phone</span>
-                  <span className="normal-case tracking-normal">
-                    {c.is_duplicate_phone ? (
-                      <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5" style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}>
-                        <CopyX size={10} />
-                        <PhoneCell phone={c.phone} />
-                      </span>
-                    ) : (
-                      <PhoneCell phone={c.phone} />
-                    )}
-                  </span>
+                  <span className="normal-case tracking-normal"><PhoneCell phone={c.phone} /></span>
                 </div>
                 <div className="flex justify-between items-center gap-2">
                   <span>Email</span>
@@ -604,19 +573,7 @@ export function CRMPage() {
         }}
       />
 
-      {mergeCustomer && (
-        <MergeCustomerModal
-          source={mergeCustomer}
-          onClose={() => setMergeCustomer(null)}
-          onMerged={(survivingId) => {
-            setMergeCustomer(null);
-            setToast({ message: "Customers merged successfully.", type: "success" });
-            window.dispatchEvent(new Event("bazaar:customers-changed"));
-            void refreshPageData(true);
-            router.push(`/crm/customers/${survivingId}`);
-          }}
-        />
-      )}
+
     </div>
   );
 }

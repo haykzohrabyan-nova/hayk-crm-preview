@@ -30,7 +30,6 @@ export type CrmCustomerRow = {
   ticket_count: number;
   last_activity: string;
   customer_status: CrmCustomerStatus;
-  is_duplicate_phone?: boolean;
 };
 
 // ─── DB-level filter builder ───────────────────────────────────────────────────
@@ -55,9 +54,7 @@ function applyDbFilters(query: AnyQuery, filters: CrmListFilters): any {
 
 async function enrichCustomerPage(
   admin: AdminClient,
-  customers: Array<{ id: string; updated_at: string; phone?: string | null; [k: string]: unknown }>,
-  knownIds: Set<string>,
-  duplicatePhones?: Set<string>,
+  customers: Array<{ id: string; updated_at: string; [k: string]: unknown }>,
 ): Promise<CrmCustomerRow[]> {
   if (customers.length === 0) return [];
 
@@ -95,12 +92,12 @@ async function enrichCustomerPage(
   return customers.map((c) => {
     const a = agg.get(c.id) ?? { lead_count: 0, ticket_count: 0, last_activity: c.updated_at as string };
     return {
-      ...(c as Omit<CrmCustomerRow, "lead_count" | "ticket_count" | "last_activity" | "customer_status" | "is_duplicate_phone">),
+      ...(c as Omit<CrmCustomerRow, "lead_count" | "ticket_count" | "last_activity" | "customer_status">),
       lead_count: a.lead_count,
       ticket_count: a.ticket_count,
       last_activity: a.last_activity > (c.updated_at as string) ? a.last_activity : (c.updated_at as string),
-      customer_status: knownIds.has(c.id) ? "known" : "new",
-      is_duplicate_phone: duplicatePhones != null && c.phone ? duplicatePhones.has(c.phone) : undefined,
+      // Derive customer_status from actual fetched activity data — no full-table scan needed.
+      customer_status: (a.lead_count > 0 || a.ticket_count > 0) ? "known" : "new",
     };
   });
 }
@@ -153,23 +150,8 @@ export async function fetchCrmCustomers(
   const { offset = 0, limit = 25 } = pagination ?? {};
   const needsStatusFilter = filters.status && filters.status !== "all";
 
-  // Always fetch the set of customer IDs that have any lead or ticket activity.
-  // This is a lightweight query — just UUIDs, no row data.
-  const [leadsIdsRes, ticketIdsRes] = await Promise.all([
-    admin.from("leads").select("customer_id").not("customer_id", "is", null).limit(100000),
-    admin.from("job_tickets").select("customer_id").not("customer_id", "is", null).limit(100000),
-  ]);
-
-  const knownIds = new Set<string>([
-    ...((leadsIdsRes.data ?? []) as { customer_id: string }[]).map((r) => r.customer_id),
-    ...((ticketIdsRes.data ?? []) as { customer_id: string }[]).map((r) => r.customer_id),
-  ]);
-
-  // Always resolve duplicate phones (id+phone only — two tiny columns, ~20ms for thousands of rows).
-  // This lets the merge icon appear on any tab, not just the Duplicates filter view.
-  const { duplicatePhones } = await fetchDuplicatePhoneIds(admin, {});
-
   // ── Duplicates filter path ────────────────────────────────────────────────────
+  // Full phone scan is required here to find all duplicate phone IDs.
   if (filters.duplicates) {
     const { duplicateIds } = await fetchDuplicatePhoneIds(admin, filters);
     const total = duplicateIds.length;
@@ -190,11 +172,12 @@ export async function fetchCrmCustomers(
       (a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0),
     );
 
-    const rows = await enrichCustomerPage(admin, sorted, knownIds, duplicatePhones);
+    const rows = await enrichCustomerPage(admin, sorted);
     return { rows, total, duplicateCount: total };
   }
 
   // ── Fast path: no status filter ──────────────────────────────────────────────
+  // No upfront full-table scans. Count + paginated list only.
   if (!needsStatusFilter) {
     const { count } = await applyDbFilters(
       admin.from("customers").select("*", { count: "exact", head: true }),
@@ -216,11 +199,24 @@ export async function fetchCrmCustomers(
     const { data: pageCustomers, error } = await rowQuery;
     if (error) throw new Error(error.message);
 
-    const rows = await enrichCustomerPage(admin, (pageCustomers ?? []) as Parameters<typeof enrichCustomerPage>[1], knownIds, duplicatePhones);
+    const rows = await enrichCustomerPage(admin, (pageCustomers ?? []) as Parameters<typeof enrichCustomerPage>[1]);
     return { rows, total };
   }
 
   // ── Status-filter path (new / known) ─────────────────────────────────────────
+  // Requires scanning customer IDs from leads + job_tickets to classify known/new.
+  // PostgREST does not support EXISTS subqueries; this two-pass approach is the
+  // only way without a DB view or RPC. Dataset is UUID-only (minimal payload).
+  const [leadsIdsRes, ticketIdsRes] = await Promise.all([
+    admin.from("leads").select("customer_id").not("customer_id", "is", null).limit(100000),
+    admin.from("job_tickets").select("customer_id").not("customer_id", "is", null).limit(100000),
+  ]);
+
+  const knownIds = new Set<string>([
+    ...((leadsIdsRes.data ?? []) as { customer_id: string }[]).map((r) => r.customer_id),
+    ...((ticketIdsRes.data ?? []) as { customer_id: string }[]).map((r) => r.customer_id),
+  ]);
+
   const { data: idRows, error: idErr } = await applyDbFilters(
     admin.from("customers").select("id"),
     filters,
@@ -253,7 +249,7 @@ export async function fetchCrmCustomers(
     (a, b) => (orderMap.get(a.id) ?? 0) - (orderMap.get(b.id) ?? 0),
   );
 
-  const rows = await enrichCustomerPage(admin, sorted, knownIds, duplicatePhones);
+  const rows = await enrichCustomerPage(admin, sorted);
   return { rows, total };
 }
 

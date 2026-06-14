@@ -23,7 +23,10 @@ export async function GET(request: NextRequest) {
   }
 
   const admin = createAdminClient();
-  let query = admin.from("customers").select("*");
+  const LOOKUP_SELECT =
+    "id, first_name, last_name, email, phone, company, industry, heat_tag, created_at, updated_at";
+
+  let query = admin.from("customers").select(LOOKUP_SELECT);
 
   if (phone) {
     // Phone takes priority — lookup by digits-only stored value
@@ -32,7 +35,9 @@ export async function GET(request: NextRequest) {
     query = query.ilike("email", email);
   }
 
-  const { data, error } = await query.order("created_at", { ascending: false });
+  const { data, error } = await query
+    .order("created_at", { ascending: false })
+    .limit(10);
 
   if (error) {
     return NextResponse.json({ error: error.message, code: "DB_ERROR" }, { status: 500 });
