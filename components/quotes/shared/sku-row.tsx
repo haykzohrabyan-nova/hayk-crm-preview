@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Trash2, ChevronDown } from "lucide-react";
+import { Trash2, ChevronDown, AlertCircle } from "lucide-react";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { renderLookupOptions } from "./utils";
 import type { ProductType, SkuLookups } from "./types";
@@ -26,6 +26,8 @@ interface SkuRowProps {
   lineAttachment?: FormLineAttachment;
   onLineAttachmentChange?: (idx: number, attachment: FormLineAttachment | undefined) => void;
   ticketRef?: string | null;
+  rowError?: string;
+  variantError?: string;
 }
 
 export function SkuRow({
@@ -41,13 +43,17 @@ export function SkuRow({
   lineAttachment,
   onLineAttachmentChange,
   ticketRef,
+  rowError,
+  variantError,
 }: SkuRowProps) {
   const selectedProduct = products.find((p) => p.name === sku.product_type);
   const allMaterials = selectedProduct?.material_groups.flatMap((g) => g.materials) ?? [];
   const computedTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
   const skuFieldStyle = {
     background: "var(--color-surface)",
-    border: "1px solid var(--color-border)",
+    borderWidth: "1px",
+    borderStyle: "solid" as const,
+    borderColor: "var(--color-border)",
     color: "var(--color-text-primary)",
   };
 
@@ -85,10 +91,11 @@ export function SkuRow({
     }
   }
 
-  function SkuSelect({ value, onChange, disabled = false, children }: {
+  function SkuSelect({ value, onChange, disabled = false, error = false, children }: {
     value: string;
     onChange: (v: string) => void;
     disabled?: boolean;
+    error?: boolean;
     children: React.ReactNode;
   }) {
     return (
@@ -97,8 +104,8 @@ export function SkuRow({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={disabled}
-          className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm border outline-none disabled:opacity-50"
-          style={skuFieldStyle}
+          className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm outline-none disabled:opacity-50"
+          style={{ ...skuFieldStyle, ...(error ? { borderColor: "var(--color-danger)" } : {}) }}
         >
           {children}
         </select>
@@ -113,8 +120,9 @@ export function SkuRow({
 
   return (
     <div
-      className="rounded-lg p-4 border"
-      style={{ borderColor: "var(--color-border)", background: "var(--color-bg)" }}
+      className="rounded-lg p-4"
+      style={{ border: rowError ? "1px solid var(--color-danger)" : "1px solid var(--color-border)", background: "var(--color-bg)" }}
+      data-field-anchor={`lineItem-${idx}`}
     >
       <div className="flex items-center justify-between mb-3">
         <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
@@ -132,18 +140,38 @@ export function SkuRow({
         )}
       </div>
 
+      {rowError && (
+        <div
+          className="flex items-center gap-2 rounded-md px-3 py-2 mb-3 text-[12px] font-medium"
+          style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)", border: "1px solid var(--color-danger-border)" }}
+          role="alert"
+        >
+          <AlertCircle size={13} className="shrink-0" />
+          {rowError}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         {/* Product Type | Material */}
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Product Type *</label>
-          <SkuSelect value={sku.product_type} onChange={(v) => { onUpdate(idx, "product_type", v); onUpdate(idx, "material", ""); }}>
+          <SkuSelect
+            value={sku.product_type}
+            onChange={(v) => { onUpdate(idx, "product_type", v); onUpdate(idx, "material", ""); }}
+            error={!!rowError && !sku.product_type?.trim()}
+          >
             <option value="">Select product…</option>
             {products.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
           </SkuSelect>
         </div>
         <div>
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Material *</label>
-          <SkuSelect value={sku.material ?? ""} onChange={(v) => onUpdate(idx, "material", v)} disabled={!selectedProduct}>
+          <SkuSelect
+            value={sku.material ?? ""}
+            onChange={(v) => onUpdate(idx, "material", v)}
+            disabled={!selectedProduct}
+            error={!!rowError && !sku.material?.trim()}
+          >
             <option value="">Select material…</option>
             {allMaterials.map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
           </SkuSelect>
@@ -158,8 +186,11 @@ export function SkuRow({
             onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && widthRaw === "0") { e.preventDefault(); if (e.key !== "0") { setWidthRaw(e.key); onUpdate(idx, "width", parseFloat(e.key)); } } }}
             onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setWidthRaw(v); onUpdate(idx, "width", v && v !== "." ? parseFloat(v) : undefined); }}
             onBlur={() => { const n = parseFloat(widthRaw); setWidthRaw(isNaN(n) ? "" : String(n)); }}
-            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-            style={skuFieldStyle}
+            className="w-full px-3 py-2 rounded-md text-sm outline-none"
+            style={{
+              ...skuFieldStyle,
+              ...(rowError && !(sku.width != null && sku.width > 0) ? { borderColor: "var(--color-danger)" } : {}),
+            }}
           />
         </div>
         <div>
@@ -170,8 +201,11 @@ export function SkuRow({
             onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && heightRaw === "0") { e.preventDefault(); if (e.key !== "0") { setHeightRaw(e.key); onUpdate(idx, "height", parseFloat(e.key)); } } }}
             onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setHeightRaw(v); onUpdate(idx, "height", v && v !== "." ? parseFloat(v) : undefined); }}
             onBlur={() => { const n = parseFloat(heightRaw); setHeightRaw(isNaN(n) ? "" : String(n)); }}
-            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-            style={skuFieldStyle}
+            className="w-full px-3 py-2 rounded-md text-sm outline-none"
+            style={{
+              ...skuFieldStyle,
+              ...(rowError && !(sku.height != null && sku.height > 0) ? { borderColor: "var(--color-danger)" } : {}),
+            }}
           />
         </div>
 
@@ -207,10 +241,11 @@ export function SkuRow({
             title={hasVariants ? "Sum of additional SKU quantities" : undefined}
             onKeyDown={hasVariants ? undefined : (e) => { if (/^[0-9]$/.test(e.key) && quantityRaw === "0") { e.preventDefault(); if (e.key !== "0") { setQuantityRaw(e.key); onUpdate(idx, "quantity", parseInt(e.key)); } } }}
             onChange={hasVariants ? undefined : (e) => { const v = e.target.value.replace(/[^0-9]/g, "").replace(/^0+([1-9])/, "$1"); setQuantityRaw(v); onUpdate(idx, "quantity", v ? parseInt(v) : undefined); }}
-            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+            className="w-full px-3 py-2 rounded-md text-sm outline-none"
             style={{
               ...skuFieldStyle,
               ...(hasVariants ? { opacity: 0.85, cursor: "default" } : {}),
+              ...(rowError && !((sku.quantity ?? 0) > 0) ? { borderColor: "var(--color-danger)" } : {}),
             }}
           />
         </div>
@@ -222,8 +257,11 @@ export function SkuRow({
             onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && unitPriceRaw === "0") { e.preventDefault(); if (e.key !== "0") { setUnitPriceRaw(e.key); onUpdate(idx, "unit_price", parseFloat(e.key)); } } }}
             onChange={(e) => { const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1"); setUnitPriceRaw(v); onUpdate(idx, "unit_price", v && v !== "." ? parseFloat(v) : undefined); }}
             onBlur={() => { const n = parseFloat(unitPriceRaw); setUnitPriceRaw(isNaN(n) ? "" : String(n)); }}
-            className="w-full px-3 py-2 rounded-md text-sm border outline-none"
-            style={skuFieldStyle}
+            className="w-full px-3 py-2 rounded-md text-sm outline-none"
+            style={{
+              ...skuFieldStyle,
+              ...(rowError && !((sku.unit_price ?? 0) > 0) ? { borderColor: "var(--color-danger)" } : {}),
+            }}
           />
         </div>
 
@@ -317,7 +355,7 @@ export function SkuRow({
           placeholder="Optional notes for this SKU"
           value={sku.comment ?? ""}
           onChange={(e) => onUpdate(idx, "comment", e.target.value || undefined)}
-          className="w-full px-3 py-2 rounded-md text-sm border outline-none resize-none"
+          className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none"
           style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
         />
       </div>
@@ -336,7 +374,7 @@ export function SkuRow({
           onKeyDown={(e) => { if (/^[0-9]$/.test(e.key) && e.currentTarget.value === "0") { e.preventDefault(); if (e.key !== "0") { const nv = e.key; setLineTotalRaw(nv); onUpdate(idx, "line_total", parseFloat(nv)); } } }}
           onChange={(e) => { const v = e.target.value.replace(/^0+([1-9])/, "$1"); setLineTotalRaw(v); const n = parseFloat(v); onUpdate(idx, "line_total", isNaN(n) ? undefined : n); }}
           onBlur={() => { const n = parseFloat(lineTotalRaw); setLineTotalRaw(isNaN(n) ? "" : String(n)); }}
-          className="w-full px-3 py-2 rounded-md text-sm border outline-none"
+          className="w-full px-3 py-2 rounded-md text-sm outline-none"
           style={{
             background: "var(--color-surface)",
             border: sku.line_total != null ? "1px solid var(--color-accent)" : "1px solid var(--color-border)",
@@ -362,6 +400,9 @@ export function SkuRow({
           lineItemQuantity={sku.quantity}
           ticketRef={ticketRef}
           onChange={handleVariantsChange}
+          bannerError={variantError}
+          nameError={variantError?.includes("name is required") ? variantError : undefined}
+          qtyError={variantError?.includes("quantity must be") ? variantError : undefined}
         />
       ) : null}
     </div>

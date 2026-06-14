@@ -3,6 +3,57 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+# Changelog
+
+All notable changes to BazaarPrinting CRM are documented here.
+Format: `## [version or date] — description`, newest first.
+
+## [2026-06-13] — Fix order webhook product_type field
+
+### Fixed
+- `lib/utils/send-order-webhook.ts` — `product_type` field now sends `"Flat"` for non-die-cut products instead of `null`. Matches updated external API spec: `"Die Cut"` when `die_cut=true`, `"Flat"` otherwise.
+
+## [2026-06-13] — Full Lines-tab validation in new quote/order flow
+
+### Fixed
+- **`components/quotes/new-quote-form.tsx`** — `validateAndAdvance` and `handleRouteToSalesClick` now enforce all required fields on every line item row before allowing the user to proceed from the Lines tab:
+  - **Per-row**: Product Type, Material, Width, Height, Quantity, Unit Price must all be filled. Every row that exists is validated — not just "started" ones. A completely empty second row is also blocked.
+  - **Per-variant (additional SKU)**: each SKU row must have a non-empty name and quantity > 0.
+  - Error keys (`lineItem-N`, `lineVariants-N`) are included in the scroll-priority list so the page auto-scrolls to the first failing row.
+  - Fixed a `Cannot access 'skus' before initialization` crash by moving the scroll-priority array inside `scrollToValidationError()` (called at runtime, not at module init).
+- **`components/quotes/shared/line-items-form.tsx`** — new `rowErrors` and `variantErrors` props (`Record<number, string>`) thread per-row and per-variant error messages down to each `SkuRow`.
+- **`components/quotes/shared/sku-row.tsx`** — new `rowError` and `variantError` props:
+  - `rowError`: shows an inline danger banner at the top of the row, outlines the card border red, and highlights the specific missing field inputs (Product Type, Material, Width, Height, Quantity, Unit Price) red.
+  - `variantError`: passed as `bannerError` + `nameError`/`qtyError` to `LineItemVariants` so the Additional SKUs section shows an inline message and turns the offending input red.
+  - Fixed React style warning by replacing `border` shorthand in `skuFieldStyle` with separate `borderWidth` / `borderStyle` / `borderColor` longhand properties, and removing redundant Tailwind `border` classes from inputs whose border is fully controlled by inline style.
+
+## [2026-06-13] — InkCloud legacy order conversion script + import batches
+
+### Added
+- `scripts/convert-inkcloud-orders.py` — converts `InkCloud-Legacy-Orders-Full.xlsx` (8,485 orders / 17,460 line-item rows) into CRM-ready JSON batches. Features: name splitting, tax_amount field, auto-computed discounts, payment method detection from notes (Zelle/Cash/Card/Wire/Check keyword patterns), year-correct reference codes, no-phone order separation.
+- `scripts/order-import-batches/orders-batch-001.json` … `orders-batch-042.json` — 42 import batch files covering 8,382 importable orders (Feb 2024 – Jun 2026). 2,854 have `tax_amount`; 269 have `discount_amount`; 727 have `payment_method` auto-detected from notes.
+- `scripts/order-import-batches/orders-no-phone.json` — 103 orders without phone, set aside.
+- `scripts/order-import-batches/no-phone-orders-review.csv` — categorized: SKIP (27 test/system), READY (1 auto-matched), NEED REAL PHONE (19 — "holo roll" fake number), NEED PHONE (56 — Esther Farag/Execuprint $54K is highest priority).
+- `scripts/order-import-batches/OWNER-QUESTIONNAIRE.html` — styled HTML form for the owner covering: payment method, paid/cancelled status, phone numbers for holo roll and Execuprint, date range, and a product-type limitation note.
+- `scripts/order-import-batches/OWNER-QUESTIONNAIRE.md` — same questionnaire in plain Markdown.
+- `scripts/README.md` — documented `convert-inkcloud-orders.py`, all output files, current status (waiting for owner answers), and step-by-step import instructions.
+
+### Changed
+- `lib/utils/bulk-import-orders.ts` — added `tax_amount` to `BulkOrderImportRowInput`; commit now sets `quote_tax_amount`, `quote_pre_tax_total`, and `quote_final_total` in DB so tax is a proper field, not only in notes.
+
+### Status
+**⏳ Waiting for owner answers** before running the 42 batch files. See `scripts/order-import-batches/OWNER-QUESTIONNAIRE.html`.
+
+## [2026-06-13] — Enable Order import in admin panel
+
+### Changed
+- **`app/(app)/admin/page.tsx`** — Order import card set to `built: true`; now links to `/admin/settings/order-import` from the admin overview grid.
+- **`components/admin/settings-tab-nav.tsx`** — Added "Order import" tab (with `PackagePlus` icon) between "Customer import" and "Webhook".
+- **`lib/utils/bulk-import-orders.ts`** — Three bug fixes:
+  - Removed `completed_at` timestamp assignment (column does not exist in schema; `ticket_status = 'completed'` is the source of truth).
+  - Added auto `ORD-YYYY-NNN` reference code assignment for orders without an explicit `reference_code`. The year is taken from the order's `order_date`, so a 2025 historical order gets `ORD-2025-NNN` rather than the current year.
+  - Fixed activity log type from `order_created` → `order_ticket_created` to match the activity log UI; also sets `ticket_id` on the activity row.
+
 ## [2026-06-12] — Conditional Merge Duplicate button on customer profile
 
 ### Changed

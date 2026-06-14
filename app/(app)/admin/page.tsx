@@ -84,7 +84,7 @@ const CARDS = [
     description: "Bulk import historical orders from JSON. Each order is matched to a customer by phone. Preview customer matches and line items before committing.",
     href: "/admin/settings/order-import",
     icon: PackagePlus,
-    built: false,
+    built: true,
   },
   {
     title: "Webhook",

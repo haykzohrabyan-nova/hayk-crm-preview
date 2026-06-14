@@ -181,14 +181,13 @@ export default function NewQuoteForm() {
   });
   const [routeReasons, setRouteReasons] = useState<LookupOption[]>([]);
 
-  const TAB_FIELD_PRIORITY: Record<Tab, string[]> = {
-    customer: ["customerName", "customerContact", "customerSource", "customerIndustry", "customerWebsite"],
-    info: ["customerSource", "title", "dueDate"],
-    lines: ["lineItems"],
-    quote: ["salesPermit"],
-  };
-
   function scrollToValidationError(errors: Record<string, string>, activeTab: Tab) {
+    const TAB_FIELD_PRIORITY: Record<Tab, string[]> = {
+      customer: ["customerName", "customerContact", "customerSource", "customerIndustry", "customerWebsite"],
+      info: ["customerSource", "title", "dueDate"],
+      lines: ["lineItems", ...skus.map((_, i) => `lineItem-${i}`), ...skus.map((_, i) => `lineVariants-${i}`)],
+      quote: ["salesPermit"],
+    };
     scrollToFirstFormField(tabContentRef, errors, TAB_FIELD_PRIORITY[activeTab]);
   }
 
@@ -450,6 +449,35 @@ export default function NewQuoteForm() {
       );
       if (!hasFullItem) {
         errors.lineItems = "Please fill in at least one complete line item (product, quantity, and unit price).";
+      }
+      for (let i = 0; i < skus.length; i++) {
+        const s = skus[i];
+        const missing: string[] = [];
+        if (!s.product_type?.trim()) missing.push("product type");
+        if (!s.material?.trim()) missing.push("material");
+        if (!(s.width != null && s.width > 0)) missing.push("width");
+        if (!(s.height != null && s.height > 0)) missing.push("height");
+        if (!((s.quantity ?? 0) > 0)) missing.push("quantity");
+        if (!((s.unit_price ?? 0) > 0)) missing.push("unit price");
+        if (missing.length > 0) {
+          errors[`lineItem-${i}`] = `Line ${i + 1}: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} required.`;
+        }
+      }
+      for (let i = 0; i < skus.length; i++) {
+        const formSku = skus[i] as FormLineItem;
+        const variants = formSku.variants ?? [];
+        for (let j = 0; j < variants.length; j++) {
+          const v = variants[j];
+          if (!String(v.name ?? "").trim()) {
+            errors[`lineVariants-${i}`] = `Additional SKU ${j + 1}: name is required.`;
+            break;
+          }
+          const qty = Number(v.quantity);
+          if (!Number.isFinite(qty) || qty <= 0) {
+            errors[`lineVariants-${i}`] = `Additional SKU ${j + 1}: quantity must be greater than 0.`;
+            break;
+          }
+        }
       }
     }
 
@@ -754,6 +782,37 @@ export default function NewQuoteForm() {
       errors.lineItems = "Please fill in at least one complete line item (product, quantity, and unit price).";
     }
 
+    for (let i = 0; i < skus.length; i++) {
+      const s = skus[i];
+      const missing: string[] = [];
+      if (!s.product_type?.trim()) missing.push("product type");
+      if (!s.material?.trim()) missing.push("material");
+      if (!(s.width != null && s.width > 0)) missing.push("width");
+      if (!(s.height != null && s.height > 0)) missing.push("height");
+      if (!((s.quantity ?? 0) > 0)) missing.push("quantity");
+      if (!((s.unit_price ?? 0) > 0)) missing.push("unit price");
+      if (missing.length > 0) {
+        errors[`lineItem-${i}`] = `Line ${i + 1}: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} required.`;
+      }
+    }
+
+    for (let i = 0; i < skus.length; i++) {
+      const formSku = skus[i] as FormLineItem;
+      const variants = formSku.variants ?? [];
+      for (let j = 0; j < variants.length; j++) {
+        const v = variants[j];
+        if (!String(v.name ?? "").trim()) {
+          errors[`lineVariants-${i}`] = `Additional SKU ${j + 1}: name is required.`;
+          break;
+        }
+        const qty = Number(v.quantity);
+        if (!Number.isFinite(qty) || qty <= 0) {
+          errors[`lineVariants-${i}`] = `Additional SKU ${j + 1}: quantity must be greater than 0.`;
+          break;
+        }
+      }
+    }
+
     if (tab === "quote") {
       if (taxExempt && !salesPermit.trim()) {
         errors.salesPermit = "Sales Permit # is required when Tax Exempt is selected.";
@@ -1047,6 +1106,22 @@ export default function NewQuoteForm() {
                   onVariantsChange={updateVariants}
                   onLineAttachmentChange={updateLineAttachment}
                   error={fieldErrors.lineItems}
+                  rowErrors={
+                    Object.keys(fieldErrors)
+                      .filter((k) => k.startsWith("lineItem-"))
+                      .reduce<Record<number, string>>((acc, k) => {
+                        acc[Number(k.replace("lineItem-", ""))] = fieldErrors[k];
+                        return acc;
+                      }, {})
+                  }
+                  variantErrors={
+                    Object.keys(fieldErrors)
+                      .filter((k) => k.startsWith("lineVariants-"))
+                      .reduce<Record<number, string>>((acc, k) => {
+                        acc[Number(k.replace("lineVariants-", ""))] = fieldErrors[k];
+                        return acc;
+                      }, {})
+                  }
                 />
               </div>
             )}

@@ -17,6 +17,8 @@
  *   Headers: x-webhook-secret: ORDER_WEBHOOK_SECRET, Content-Type: application/json
  *   Success: { success: true, order_id, order_number }
  *   Errors:  401 missing/invalid secret · 403 webhook disabled · 422 missing fields · 500
+ *
+ *   product_type field: "Die Cut" when die_cut=true, "Flat" otherwise (never null).
  */
 
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -198,7 +200,7 @@ export async function sendOrderWebhook(
 
     // ORDER DETAILS — from first line item
     product:       firstLine?.product_type ?? null,
-    product_type:  firstLine?.die_cut ? "Die Cut" : null,
+    product_type:  firstLine ? (firstLine.die_cut ? "Die Cut" : "Flat") : null,
     finished_size: firstLine ? buildFinishedSize(firstLine) : null,
     materials:     firstLine?.material ?? null,
     finishing:     firstLine ? buildFinishing(firstLine) : null,

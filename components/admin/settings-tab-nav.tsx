@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown, Webhook, UserRoundPlus } from "lucide-react";
+import { Users, KeyRound, ListFilter, Building2, Package, Plug, CreditCard, MessageSquare, Mail, ArrowUpDown, Webhook, UserRoundPlus, PackagePlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -17,6 +17,7 @@ const TABS = [
   { label: "Payment",             href: "/admin/settings/payment",       icon: CreditCard     },
   { label: "Lead import",         href: "/admin/settings/import-export",    icon: ArrowUpDown    },
   { label: "Customer import",     href: "/admin/settings/customer-import", icon: UserRoundPlus  },
+  { label: "Order import",        href: "/admin/settings/order-import",     icon: PackagePlus    },
   { label: "Webhook",             href: "/admin/settings/webhook",          icon: Webhook        },
 ] as const;
 

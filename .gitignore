@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local scratch files
 Jamanka
+
+# scripts — local data conversion tools and import batches, not needed in production
+/scripts/

@@ -27,6 +27,8 @@ interface LineItemsFormProps {
   ticketRef?: string | null;
   displayLines?: TicketLineDisplayRow[];
   error?: string;
+  rowErrors?: Record<number, string>;
+  variantErrors?: Record<number, string>;
 }
 
 export function LineItemsForm({
@@ -42,6 +44,8 @@ export function LineItemsForm({
   ticketRef,
   displayLines,
   error,
+  rowErrors,
+  variantErrors,
 }: LineItemsFormProps) {
   const lastRowRef = useRef<HTMLDivElement>(null);
   const prevLengthRef = useRef(skus.length);
@@ -133,6 +137,8 @@ export function LineItemsForm({
                 onLineAttachmentChange={onLineAttachmentChange}
                 onVariantsChange={onVariantsChange}
                 ticketRef={ticketRef}
+                rowError={rowErrors?.[idx]}
+                variantError={variantErrors?.[idx]}
               />
             </div>
           );

@@ -1,13 +1,14 @@
 import { randomUUID } from "crypto";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { digitsOnly as _digitsOnly } from "@/lib/utils/phone";
+import { nextOrderNumber, formatOrderReference } from "@/lib/utils/reference-codes";
+import { normalizeWebsite } from "@/lib/utils/website";
 
 /** Strip non-digits and remove leading US country code (1) from 11-digit numbers. */
 function digitsOnly(value: string): string {
   const d = _digitsOnly(value);
   return d.length === 11 && d.startsWith("1") ? d.slice(1) : d;
 }
-import { normalizeWebsite } from "@/lib/utils/website";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -49,6 +50,7 @@ export interface BulkOrderImportRowInput {
   total?: unknown;
   subtotal?: unknown;
   discount_amount?: unknown;
+  tax_amount?: unknown;
   order_date?: unknown;
   due_date?: unknown;
   notes?: unknown;
@@ -204,6 +206,7 @@ export function buildOrderImportTemplate(): Record<string, unknown> {
           total: "number — full order total",
           subtotal: "number — subtotal before discount",
           discount_amount: "number — discount applied",
+          tax_amount: "number — sales tax in dollars (e.g. 14.25). Sets quote_tax_amount and quote_pre_tax_total in DB.",
           order_date: "string — ISO date, e.g. 2025-11-15 (when the order was placed)",
           due_date: "string — ISO date (optional deadline)",
           notes: "string — internal notes / special requirements",
@@ -489,7 +492,7 @@ export async function commitBulkOrderImport(
     // ── Build ticket status timestamps ──
     const orderDate = preview.order_date ?? new Date().toISOString();
     const extraTimestamps: Record<string, string | null> = {};
-    if (preview.ticket_status === "completed") extraTimestamps.completed_at = orderDate;
+    // Note: no completed_at column in schema — completed status is set via ticket_status only
     if (preview.ticket_status === "in_production" || preview.ticket_status === "completed") {
       extraTimestamps.production_released_at = orderDate;
     }
@@ -503,6 +506,31 @@ export async function commitBulkOrderImport(
       if (preview.total != null) paymentExtra.payment_amount_received = preview.total;
     }
 
+    // ── Resolve reference code (auto-assign ORD-YYYY-NNN if not provided) ──
+    // Use the year from order_date so a 2025 import gets ORD-2025-NNN, not ORD-2026-NNN.
+    let resolvedReferenceCode = trimStr(input.reference_code) || null;
+    if (!resolvedReferenceCode) {
+      try {
+        const refYear = new Date(orderDate).getFullYear();
+        const seq = await nextOrderNumber(admin, refYear);
+        resolvedReferenceCode = formatOrderReference(refYear, seq);
+      } catch {
+        // Proceed without reference code if sequence increment fails
+      }
+    }
+
+    // ── Compute tax / pre-tax fields when tax_amount is provided ──
+    const taxAmount = parseNumber(input.tax_amount);
+    const subtotalVal = parseNumber(input.subtotal);
+    const discountVal = parseNumber(input.discount_amount);
+    // quote_pre_tax_total = total before tax (subtotal minus any discount)
+    const preTaxTotal =
+      taxAmount != null && preview.total != null
+        ? Math.round((preview.total - taxAmount) * 100) / 100
+        : subtotalVal != null && discountVal != null
+          ? Math.round((subtotalVal - discountVal) * 100) / 100
+          : subtotalVal ?? null;
+
     // ── Insert ticket ──
     const { data: ticket, error: tErr } = await admin
       .from("job_tickets")
@@ -514,13 +542,17 @@ export async function commitBulkOrderImport(
         contact_phone: preview.customer_phone,
         contact_name: preview.customer_name,
         title: preview.title,
-        reference_code: trimStr(input.reference_code) || null,
+        reference_code: resolvedReferenceCode,
         order_source: "direct",
         payment_status: preview.payment_status as "unpaid" | "partial" | "paid",
         payment_type: preview.payment_method,
         total: preview.total,
-        subtotal: parseNumber(input.subtotal),
-        discount_amount: parseNumber(input.discount_amount),
+        subtotal: subtotalVal,
+        discount_amount: discountVal,
+        // Rich pricing columns — populated when tax info is available
+        quote_pre_tax_total: preTaxTotal,
+        quote_tax_amount: taxAmount,
+        quote_final_total: preview.total,
         special_requirements: trimStr(input.notes) || null,
         due_date: parseDate(input.due_date) ? parseDate(input.due_date)!.slice(0, 10) : null,
         created_at: orderDate,
@@ -579,7 +611,8 @@ export async function commitBulkOrderImport(
     // ── Activity log ──
     await admin.from("activities").insert({
       customer_id: customerId,
-      type: "order_created",
+      ticket_id: ticket.id,
+      type: "order_ticket_created",
       by_user_id: staffUserId,
       payload: {
         via: "bulk_import",
