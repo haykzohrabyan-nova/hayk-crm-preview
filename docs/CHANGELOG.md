@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — Fix session tracking for trusted-device logins
+
+### Fixed
+- `app/(auth)/login/page.tsx` — call `session/start` immediately after successful `signInWithPassword()` so trusted-device logins (where 2FA is skipped and `verify-2fa` is never reached) still create a `user_sessions` row; users with "Remember me" active now show as "Active now" on the admin dashboard
+
 ## [2026-06-15] — Fix "active now" for long-lived sessions
 
 ### Fixed

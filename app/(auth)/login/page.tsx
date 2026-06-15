@@ -45,6 +45,17 @@ function LoginForm() {
       return;
     }
     setRememberMfaPreference(rememberDevice);
+
+    // Fire session start — records an open user_sessions row so the admin
+    // dashboard shows this user as active. This covers the trusted-device path
+    // where 2FA is skipped and verify-2fa/page.tsx never runs.
+    // Fails silently for non-trusted users (AAL1 only) — they get it via verify-2fa.
+    fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "start" }),
+    }).catch(() => {});
+
     const next = safeReturnPath(searchParams.get("next")) ?? "/dashboard";
     router.push(next);
   }
