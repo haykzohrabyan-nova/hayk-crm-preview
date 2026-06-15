@@ -5,13 +5,7 @@ function esc(s: string | null | undefined): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function fmtUsd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(n);
-}
+import { fmtEmailCurrency } from "@/lib/integrations/email-format";
 
 export function paymentReminderExtraHtml(referenceCode: string, finalTotal: number): string {
   return `<table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:0 0 16px;"><tr>
@@ -21,7 +15,7 @@ export function paymentReminderExtraHtml(referenceCode: string, finalTotal: numb
 </td>
 <td bgcolor="#f9fafb" style="background-color:#f9fafb;padding:14px 18px;font-family:Arial,Helvetica,sans-serif;text-align:right;vertical-align:middle;white-space:nowrap;">
 <span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:4px;">Amount Due</span>
-<strong style="font-size:22px;color:#c9a84c;">${fmtUsd(finalTotal)}</strong>
+<strong style="font-size:22px;color:#c9a84c;">${fmtEmailCurrency(finalTotal)}</strong>
 </td></tr></table>`;
 }
 
@@ -52,7 +46,7 @@ export function paymentConfirmedExtraHtml(referenceCode: string, amountConfirmed
 </td>
 <td bgcolor="#f0fdf4" style="background-color:#f0fdf4;padding:14px 18px;font-family:Arial,Helvetica,sans-serif;text-align:right;vertical-align:middle;white-space:nowrap;">
 <span style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;display:block;margin-bottom:4px;">Confirmed</span>
-<strong style="font-size:22px;color:#16a34a;">${fmtUsd(amountConfirmed)}</strong>
+<strong style="font-size:22px;color:#16a34a;">${fmtEmailCurrency(amountConfirmed)}</strong>
 </td></tr></table>`;
 }
 

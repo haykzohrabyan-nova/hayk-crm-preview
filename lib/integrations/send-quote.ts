@@ -171,10 +171,7 @@ function invoiceStatusLine(ticket: TicketForSend): string {
   return `Here is your link to view order ${ref}, see your invoice, and complete payment if needed.`;
 }
 
-function fmtUsd(amount: number | null | undefined): string {
-  if (amount == null) return "";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
-}
+import { fmtEmailCurrency } from "@/lib/integrations/email-format";
 
 export function firstNameFromTicket(ticket: {
   customer?: TicketForSend["customer"];
@@ -192,7 +189,7 @@ function baseSmsVars(
     companyName: company.company_name ?? "BazaarPrinting",
     ref: ticketDisplayReference(ticket),
     link: publicUrl(ticket.public_token),
-    total: fmtUsd(ticket.quote_final_total),
+    total: fmtEmailCurrency(ticket.quote_final_total),
   };
 }
 
@@ -413,7 +410,7 @@ export async function sendPaymentReminder(
       firstName: customerName.split(" ")[0] || "there",
       ref: ticket.reference_code,
       companyName,
-      total: fmtUsd(ticket.quote_final_total),
+      total: fmtEmailCurrency(ticket.quote_final_total),
       link: paymentUrl,
     });
     const normalised = toE164(destination);
@@ -658,7 +655,7 @@ export async function sendPaymentConfirmed(
             : "payment_confirmed";
     const body = renderStoredSms(templates, templateKey, {
       firstName: firstNameFromTicket(ticket),
-      amount: fmtUsd(opts.amountConfirmed),
+      amount: fmtEmailCurrency(opts.amountConfirmed),
       ref: ticket.reference_code,
       companyName,
       link: orderUrl,
@@ -735,7 +732,7 @@ export async function sendTaxExemptApproved(
       : "tax_exempt_approved_total_unchanged";
     const body = renderStoredSms(templates, templateKey, {
       firstName: firstNameFromTicket(ticket),
-      amount: fmtUsd(opts.newFinalTotal),
+      amount: fmtEmailCurrency(opts.newFinalTotal),
       ref: ticket.reference_code,
       companyName,
       link: orderUrl,
@@ -807,7 +804,7 @@ export async function sendQuoteFollowUpReminder(
     }
 
     const templates = await loadTemplatesForSend();
-    const totalFmt = fmtUsd(total);
+    const totalFmt = fmtEmailCurrency(total);
     const body = renderStoredSms(
       templates,
       totalFmt ? "quote_follow_up" : "quote_follow_up_no_total",

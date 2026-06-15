@@ -2,6 +2,8 @@
  * Sent after an accountant approves tax-exempt documentation on a ticket.
  */
 
+import { fmtEmailCurrency } from "./email-format";
+
 interface CompanySettings {
   company_name?: string | null;
   logo_url?: string | null;
@@ -25,9 +27,6 @@ export interface TaxExemptApprovedData {
   company: CompanySettings;
 }
 
-function fmt(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
-}
 
 function esc(s: string | null | undefined): string {
   if (!s) return "";
@@ -46,8 +45,8 @@ export function buildTaxExemptApprovedEmail(data: TaxExemptApprovedData): { subj
   const headline = "Your tax-exempt documentation is verified";
 
   const totalLine = totalChanged
-    ? `Your updated order total is <strong style="color:#374151;">${fmt(newFinalTotal)}</strong> (previously ${fmt(previousFinalTotal)}). If you already paid, your balance may be adjusted.`
-    : `Your order total remains <strong style="color:#374151;">${fmt(newFinalTotal)}</strong>.`;
+    ? `Your updated order total is <strong style="color:#374151;">${fmtEmailCurrency(newFinalTotal)}</strong> (previously ${fmtEmailCurrency(previousFinalTotal)}). If you already paid, your balance may be adjusted.`
+    : `Your order total remains <strong style="color:#374151;">${fmtEmailCurrency(newFinalTotal)}</strong>.`;
 
   const bodyLine = `We&rsquo;ve verified the tax-exempt permit for order <strong style="color:#374151;">${esc(referenceCode)}</strong>. ${totalLine}`;
 

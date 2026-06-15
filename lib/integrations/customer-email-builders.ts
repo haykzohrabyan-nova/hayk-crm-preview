@@ -35,13 +35,7 @@ function companyName(company: CompanyForSend): string {
   return company.company_name ?? "BazaarPrinting";
 }
 
-function fmtUsd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(n);
-}
+import { fmtEmailCurrency } from "@/lib/integrations/email-format";
 
 export function buildQuoteDeliveryEmail(
   templates: Record<EmailTemplateKey, LoadedEmailTemplate>,
@@ -85,7 +79,7 @@ export function buildPaymentReminderFromTemplates(
     firstName: fn,
     ref: data.referenceCode,
     companyName: cn,
-    total: fmtUsd(data.finalTotal),
+    total: fmtEmailCurrency(data.finalTotal),
     link: data.paymentUrl,
   };
   const paymentList = data.paymentTypes.map((k) => PAYMENT_LABELS[k] ?? k).join(", ");
@@ -121,7 +115,7 @@ export function buildInvoiceLinkFromTemplates(
     firstName: fn,
     ref: data.referenceCode,
     companyName: cn,
-    total: fmtUsd(data.finalTotal),
+    total: fmtEmailCurrency(data.finalTotal),
     link: data.orderUrl,
     statusLine: data.revisionNotice ? "" : data.statusLine,
   };
@@ -197,7 +191,7 @@ export function buildPaymentConfirmedFromTemplates(
   });
   const vars: EmailTemplateVars = {
     firstName: fn,
-    amount: fmtUsd(data.amountConfirmed),
+    amount: fmtEmailCurrency(data.amountConfirmed),
     ref: data.referenceCode,
     companyName: cn,
     link: data.orderUrl,
@@ -230,11 +224,11 @@ export function buildTaxExemptApprovedFromTemplates(
     : "tax_exempt_approved_total_unchanged";
   const vars: EmailTemplateVars = {
     firstName: fn,
-    amount: fmtUsd(data.newFinalTotal),
+    amount: fmtEmailCurrency(data.newFinalTotal),
     ref: data.referenceCode,
     companyName: cn,
     link: data.orderUrl,
-    previousTotal: fmtUsd(data.previousFinalTotal),
+    previousTotal: fmtEmailCurrency(data.previousFinalTotal),
   };
 
   return buildSimpleAdminEmail(templates, key, vars, {
@@ -262,7 +256,7 @@ export function buildQuoteFollowUpFromTemplates(
     firstName: fn,
     ref: data.referenceCode,
     companyName: cn,
-    total: hasTotal ? fmtUsd(data.finalTotal) : undefined,
+    total: hasTotal ? fmtEmailCurrency(data.finalTotal) : undefined,
     link: data.confirmUrl,
   };
 

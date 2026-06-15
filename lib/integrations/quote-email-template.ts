@@ -17,6 +17,7 @@
 
 import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
+import { fmtEmailCurrency } from "@/lib/integrations/email-format";
 
 interface CompanySettings {
   company_name?: string | null;
@@ -63,9 +64,6 @@ export interface QuoteEmailData {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmt(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
-}
 
 function esc(s: string | null | undefined): string {
   if (!s) return "";
@@ -119,7 +117,7 @@ export function buildQuoteEmail(data: QuoteEmailData): { subject: string; html: 
       ? Math.round(finalTotal * (val / 100) * 100) / 100
       : Math.round(Math.min(val, finalTotal) * 100) / 100;
     const balance = Math.max(Math.round((finalTotal - dueNow) * 100) / 100, 0);
-    const label = prepaymentType === "percent" ? `${val}% deposit` : `${fmt(val)} deposit`;
+    const label = prepaymentType === "percent" ? `${val}% deposit` : `${fmtEmailCurrency(val)} deposit`;
     return { dueNow, balance, label };
   })();
 
@@ -172,14 +170,14 @@ export function buildQuoteEmail(data: QuoteEmailData): { subject: string; html: 
           `<br><span style="font-size:12px; color:#4b5563;">${esc(formatTicketLineVariantLabel(v, vi + 1))}</span>`,
       )
       .join("");
-    return `<tr><td bgcolor="${bg}" style="${cell}">${esc(sku.product_type)}${specs ? `<br><span style="font-size:12px; color:#6b7280;">${specs}</span>` : ""}${variantLines}${sku.comment ? `<br><span style="font-size:12px; color:#9ca3af; font-style:italic;">${esc(sku.comment)}</span>` : ""}</td><td bgcolor="${bg}" style="${cell} text-align:center; white-space:nowrap;">${sku.quantity ?? 0}</td><td bgcolor="${bg}" style="${cell} text-align:right; white-space:nowrap;">${fmt(sku.unit_price ?? 0)}</td><td bgcolor="${bg}" style="${cell} font-weight:bold; text-align:right; white-space:nowrap;">${fmt(lineTotal)}</td></tr>`;
+    return `<tr><td bgcolor="${bg}" style="${cell}">${esc(sku.product_type)}${specs ? `<br><span style="font-size:12px; color:#6b7280;">${specs}</span>` : ""}${variantLines}${sku.comment ? `<br><span style="font-size:12px; color:#9ca3af; font-style:italic;">${esc(sku.comment)}</span>` : ""}</td><td bgcolor="${bg}" style="${cell} text-align:center; white-space:nowrap;">${sku.quantity ?? 0}</td><td bgcolor="${bg}" style="${cell} text-align:right; white-space:nowrap;">${fmtEmailCurrency(sku.unit_price ?? 0)}</td><td bgcolor="${bg}" style="${cell} font-weight:bold; text-align:right; white-space:nowrap;">${fmtEmailCurrency(lineTotal)}</td></tr>`;
   }).join("");
 
   // ── Pricing rows ───────────────────────────────────────────────────────────
-  const pricingPairs: [string, string][] = [["Subtotal", fmt(subtotal)]];
-  if (shipping > 0) pricingPairs.push(["Shipping", fmt(shipping)]);
-  if (discountAmount > 0) pricingPairs.push(["Discount", `&minus;${fmt(discountAmount)}`]);
-  if (taxRate > 0) pricingPairs.push([`Tax (${taxRate}%)`, fmt(taxAmount)]);
+  const pricingPairs: [string, string][] = [["Subtotal", fmtEmailCurrency(subtotal)]];
+  if (shipping > 0) pricingPairs.push(["Shipping", fmtEmailCurrency(shipping)]);
+  if (discountAmount > 0) pricingPairs.push(["Discount", `&minus;${fmtEmailCurrency(discountAmount)}`]);
+  if (taxRate > 0) pricingPairs.push([`Tax (${taxRate}%)`, fmtEmailCurrency(taxAmount)]);
   const pricingRows = pricingPairs.map(([label, val]) =>
     `<tr><td style="padding:3px 0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#6b7280;">${label}</td><td style="padding:3px 0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#374151; text-align:right;">${val}</td></tr>`
   ).join("");
@@ -210,8 +208,8 @@ ${HR}
 <tr><td style="padding:12px 28px 6px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#6b7280;">Line Items</td></tr>
 <tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse; border:1px solid #e5e7eb;"><tr bgcolor="#1b2b4b" style="background-color:#1b2b4b;"><th align="left" style="padding:9px 14px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#a0aec0;">Product</th><th align="center" style="padding:9px 14px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#a0aec0; white-space:nowrap;">Qty</th><th align="right" style="padding:9px 14px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#a0aec0; white-space:nowrap;">Unit Price</th><th align="right" style="padding:9px 14px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#a0aec0; white-space:nowrap;">Total</th></tr>${skuRows}</table></td></tr>
 <tr><td style="padding:14px 28px 6px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#6b7280;">Pricing Summary</td></tr>
-<tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${pricingRows}<tr><td colspan="2" bgcolor="#e5e7eb" style="background-color:#e5e7eb; height:1px; padding:0; padding-top:8px; font-size:1px; line-height:1px; mso-line-height-rule:exactly;">&nbsp;</td></tr><tr><td style="padding:8px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; font-weight:bold; color:#111827;">Order Total</td><td style="padding:8px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:20px; line-height:1.4; font-weight:bold; color:#c9a84c; text-align:right;">${fmt(finalTotal)}</td></tr></table></td></tr>
-${prepay ? `${HR}<tr><td style="padding:12px 28px 6px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#1b2b4b;">Payment Schedule &mdash; ${esc(prepay.label)}</td></tr><tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#fffbeb" style="background-color:#fffbeb; border-left:3px solid #f59e0b; padding:10px 14px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#92400e; font-weight:bold;">Deposit Due Now</td><td bgcolor="#fffbeb" style="background-color:#fffbeb; border-left:3px solid #f59e0b; padding:10px 14px; font-family:Arial,Helvetica,sans-serif; font-size:18px; line-height:1.4; color:#92400e; font-weight:bold; text-align:right; white-space:nowrap;">${fmt(prepay.dueNow)}</td></tr><tr><td style="padding:8px 14px 2px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#6b7280;">Balance Remaining</td><td style="padding:8px 14px 2px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#374151; text-align:right; white-space:nowrap; font-weight:bold;">${fmt(prepay.balance)}</td></tr><tr><td colspan="2" style="padding:2px 14px 8px; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.4; color:#9ca3af; font-style:italic;">Balance due upon completion / delivery</td></tr></table></td></tr>` : ""}
+<tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${pricingRows}<tr><td colspan="2" bgcolor="#e5e7eb" style="background-color:#e5e7eb; height:1px; padding:0; padding-top:8px; font-size:1px; line-height:1px; mso-line-height-rule:exactly;">&nbsp;</td></tr><tr><td style="padding:8px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; font-weight:bold; color:#111827;">Order Total</td><td style="padding:8px 0 0; font-family:Arial,Helvetica,sans-serif; font-size:20px; line-height:1.4; font-weight:bold; color:#c9a84c; text-align:right;">${fmtEmailCurrency(finalTotal)}</td></tr></table></td></tr>
+${prepay ? `${HR}<tr><td style="padding:12px 28px 6px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#1b2b4b;">Payment Schedule &mdash; ${esc(prepay.label)}</td></tr><tr><td style="padding:0 28px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#fffbeb" style="background-color:#fffbeb; border-left:3px solid #f59e0b; padding:10px 14px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#92400e; font-weight:bold;">Deposit Due Now</td><td bgcolor="#fffbeb" style="background-color:#fffbeb; border-left:3px solid #f59e0b; padding:10px 14px; font-family:Arial,Helvetica,sans-serif; font-size:18px; line-height:1.4; color:#92400e; font-weight:bold; text-align:right; white-space:nowrap;">${fmtEmailCurrency(prepay.dueNow)}</td></tr><tr><td style="padding:8px 14px 2px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#6b7280;">Balance Remaining</td><td style="padding:8px 14px 2px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#374151; text-align:right; white-space:nowrap; font-weight:bold;">${fmtEmailCurrency(prepay.balance)}</td></tr><tr><td colspan="2" style="padding:2px 14px 8px; font-family:Arial,Helvetica,sans-serif; font-size:12px; line-height:1.4; color:#9ca3af; font-style:italic;">Balance due upon completion / delivery</td></tr></table></td></tr>` : ""}
 ${paymentList ? `<tr><td style="padding:14px 28px 4px; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:1.4; font-weight:bold; text-transform:uppercase; letter-spacing:1px; color:#6b7280;">Accepted Payment Methods</td></tr><tr><td style="padding:0 28px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.4; color:#374151;">${paymentList}</td></tr>` : ""}
 ${HR}
 <tr><td align="center" style="padding:20px 28px 8px;"><a href="${esc(confirmUrl)}" target="_blank" style="display:inline-block; background-color:#e8c97a; color:#1b2b4b; font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:bold; text-decoration:none; padding:13px 32px; border-radius:6px; letter-spacing:0.3px;">${ctaLabel}</a></td></tr>

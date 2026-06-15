@@ -2,6 +2,8 @@
  * Short quote follow-up email — reminder to view/confirm an already-sent quote.
  */
 
+import { fmtEmailCurrency } from "./email-format";
+
 interface CompanySettings {
   company_name?: string | null;
   logo_url?: string | null;
@@ -17,9 +19,6 @@ export interface QuoteFollowUpEmailData {
   company: CompanySettings;
 }
 
-function fmt(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
-}
 
 function esc(s: string | null | undefined): string {
   if (!s) return "";
@@ -30,7 +29,7 @@ export function buildQuoteFollowUpEmail(data: QuoteFollowUpEmailData): { subject
   const companyName = esc(data.company.company_name ?? "BazaarPrinting");
   const firstName = esc(data.customerName.split(" ")[0] || "there");
   const ref = esc(data.referenceCode);
-  const total = fmt(data.finalTotal);
+  const total = fmtEmailCurrency(data.finalTotal);
   const url = esc(data.confirmUrl);
 
   const subject = `Reminder: your quote ${data.referenceCode} from ${data.company.company_name ?? "BazaarPrinting"}`;

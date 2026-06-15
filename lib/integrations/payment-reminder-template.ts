@@ -12,6 +12,8 @@
  * - Explicit line-height on all text cells
  */
 
+import { fmtEmailCurrency } from "./email-format";
+
 interface CompanySettings {
   company_name?: string | null;
   logo_url?: string | null;
@@ -25,6 +27,7 @@ interface CompanySettings {
   website?: string | null;
 }
 
+
 interface PaymentReminderData {
   customerName: string;
   referenceCode: string;
@@ -34,9 +37,6 @@ interface PaymentReminderData {
   company: CompanySettings;
 }
 
-function fmt(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 }).format(n);
-}
 
 function esc(s: string | null | undefined): string {
   if (!s) return "";
@@ -81,7 +81,7 @@ export function buildPaymentReminderEmail(data: PaymentReminderData): { subject:
 <tr><td bgcolor="#ffffff" style="background-color:#ffffff; padding:0; border-left:1px solid #e5e7eb; border-right:1px solid #e5e7eb;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
 <tr><td style="padding:24px 28px 8px; font-family:Arial,Helvetica,sans-serif; font-size:20px; line-height:1.3; font-weight:bold; color:#111827;">Hi ${esc(firstName)},</td></tr>
 <tr><td style="padding:0 28px 20px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; color:#6b7280;">Your order with <strong style="color:#374151;">${esc(companyName)}</strong> has been confirmed. Please complete your payment to start production.</td></tr>
-<tr><td style="padding:0 28px 20px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#f9fafb" style="background-color:#f9fafb; border-left:3px solid #1b2b4b; padding:14px 18px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; vertical-align:middle;"><span style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">Order Reference</span><br><strong style="font-size:18px; color:#111827;">${esc(referenceCode)}</strong></td><td bgcolor="#f9fafb" style="background-color:#f9fafb; padding:14px 18px; font-family:Arial,Helvetica,sans-serif; text-align:right; vertical-align:middle; white-space:nowrap;"><span style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:4px;">Amount Due</span><strong style="font-size:22px; color:#c9a84c; font-family:Arial,Helvetica,sans-serif;">${fmt(finalTotal)}</strong></td></tr></table></td></tr>
+<tr><td style="padding:0 28px 20px;"><table width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;"><tr><td bgcolor="#f9fafb" style="background-color:#f9fafb; border-left:3px solid #1b2b4b; padding:14px 18px; font-family:Arial,Helvetica,sans-serif; font-size:14px; line-height:1.5; vertical-align:middle;"><span style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:1px;">Order Reference</span><br><strong style="font-size:18px; color:#111827;">${esc(referenceCode)}</strong></td><td bgcolor="#f9fafb" style="background-color:#f9fafb; padding:14px 18px; font-family:Arial,Helvetica,sans-serif; text-align:right; vertical-align:middle; white-space:nowrap;"><span style="font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:1px; display:block; margin-bottom:4px;">Amount Due</span><strong style="font-size:22px; color:#c9a84c; font-family:Arial,Helvetica,sans-serif;">${fmtEmailCurrency(finalTotal)}</strong></td></tr></table></td></tr>
 ${paymentList ? `<tr><td style="padding:0 28px 20px; font-family:Arial,Helvetica,sans-serif; font-size:13px; line-height:1.5; color:#6b7280;">Accepted payment method${paymentTypes.length > 1 ? "s" : ""}: <strong style="color:#374151;">${paymentList}</strong></td></tr>` : ""}
 <tr><td bgcolor="#e5e7eb" style="background-color:#e5e7eb; height:1px; padding:0; font-size:1px; line-height:1px; mso-line-height-rule:exactly;">&nbsp;</td></tr>
 <tr><td align="center" style="padding:24px 28px 8px;"><a href="${esc(paymentUrl)}" target="_blank" style="display:inline-block; background-color:#e8c97a; color:#1b2b4b; font-family:Arial,Helvetica,sans-serif; font-size:15px; font-weight:bold; text-decoration:none; padding:14px 36px; border-radius:6px; letter-spacing:0.3px;">Pay Now</a></td></tr>
