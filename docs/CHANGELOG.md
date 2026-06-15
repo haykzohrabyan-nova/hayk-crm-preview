@@ -3,6 +3,15 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — Refactor duplicated user session card into shared component
+
+### Added
+- `components/admin/user-session-card.tsx` — new shared `UserSessionCard` component (and exported helpers `formatSessionDuration`, `sessionRelativeTime`, `sessionAbsoluteTime`, `RoleSessionPill`) used by both the admin dashboard and the team activity page
+
+### Changed
+- `components/admin/admin-dashboard.tsx` — replaced 60-line inline card block with `<UserSessionCard>`; removed duplicated helpers `formatDuration`, `relativeTime`, `ROLE_STYLES`
+- `components/admin/user-activity-section.tsx` — replaced local `UserCard`, `RolePill`, and helper functions with the shared component and its exports
+
 ## [2026-06-15] — Persist "Remember this device" checkbox across visits
 
 ### Changed

@@ -2,155 +2,15 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Users, ChevronDown, Clock, AlertTriangle, Circle } from "lucide-react";
+import {
+  UserSessionCard,
+  RoleSessionPill,
+  formatSessionDuration,
+  sessionAbsoluteTime,
+} from "@/components/admin/user-session-card";
 import { Button } from "@/components/ui/button";
 import type { UserSession, UserSessionSummary } from "@/lib/types";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function formatDuration(minutes: number): string {
-  if (minutes < 1) return "< 1m";
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
-}
-
-function absoluteTime(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
-}
-
-const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin: { bg: "var(--color-badge-bg)",   color: "var(--color-badge-text)" },
-  sdr:   { bg: "var(--color-info-bg)",    color: "var(--color-info-text)" },
-  sales: { bg: "var(--color-success-bg)", color: "var(--color-success)" },
-};
-
-function RolePill({ role }: { role: string | null }) {
-  if (!role) return null;
-  const style = ROLE_STYLES[role] ?? { bg: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" };
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-      style={{ background: style.bg, color: style.color }}
-    >
-      {role}
-    </span>
-  );
-}
-
-// ─── User KPI Card ────────────────────────────────────────────────────────────
-
-function UserCard({ user }: { user: UserSessionSummary }) {
-  return (
-    <div
-      className="rounded-[10px] border p-4 space-y-3"
-      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-    >
-      {/* Header row */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
-          {/* Avatar */}
-          <div
-            className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 text-[13px] font-semibold"
-            style={{ background: "var(--color-topbar)", color: "var(--color-accent)" }}
-          >
-            {(user.full_name ?? "?")[0].toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <span
-                className="font-semibold text-[13px] truncate"
-                style={{ color: "var(--color-text-primary)" }}
-              >
-                {user.full_name ?? "Unknown"}
-              </span>
-              {user.currently_active && (
-                <Circle
-                  className="h-2 w-2 shrink-0 fill-current"
-                  style={{ color: "#16A34A" }}
-                />
-              )}
-            </div>
-            <div className="mt-0.5">
-              <RolePill role={user.role_name} />
-            </div>
-          </div>
-        </div>
-
-        {/* Auto sign-out warning badge */}
-        {user.auto_signouts > 0 && (
-          <div
-            className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium shrink-0"
-            style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
-          >
-            <AlertTriangle className="h-3 w-3" />
-            {user.auto_signouts} idle {user.auto_signouts === 1 ? "sign-out" : "sign-outs"}
-          </div>
-        )}
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-2">
-        <div>
-          <p
-            className="text-[10px] font-medium uppercase tracking-wide mb-0.5"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            Sessions
-          </p>
-          <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-            {user.total_sessions}
-          </p>
-        </div>
-        <div>
-          <p
-            className="text-[10px] font-medium uppercase tracking-wide mb-0.5"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            Active time
-          </p>
-          <p className="text-[15px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-            {formatDuration(user.total_minutes)}
-          </p>
-        </div>
-        <div>
-          <p
-            className="text-[10px] font-medium uppercase tracking-wide mb-0.5"
-            style={{ color: "var(--color-text-muted)" }}
-          >
-            Last seen
-          </p>
-          <p
-            className="text-[12px] font-medium"
-            style={{ color: "var(--color-text-muted)" }}
-            title={user.last_signed_in_at ? absoluteTime(user.last_signed_in_at) : undefined}
-          >
-            {user.last_signed_in_at
-              ? user.currently_active
-                ? "Active now"
-                : relativeTime(user.last_signed_in_at)
-              : "—"}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Skeleton ─────────────────────────────────────────────────────────────────
 
@@ -324,7 +184,16 @@ export function UserActivitySection() {
       {!loading && summary.length > 0 && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {summary.map((u) => (
-            <UserCard key={u.user_id} user={u} />
+            <UserSessionCard
+              key={u.user_id}
+              fullName={u.full_name}
+              roleName={u.role_name}
+              active={u.currently_active}
+              autoSignouts={u.auto_signouts}
+              totalSessions={u.total_sessions}
+              totalMinutes={u.total_minutes}
+              lastSignedInAt={u.last_signed_in_at}
+            />
           ))}
         </div>
       )}
@@ -417,14 +286,14 @@ export function UserActivitySection() {
                         <span className="font-medium text-[13px]" style={{ color: "var(--color-text-primary)" }}>
                           {s.full_name ?? "Unknown"}
                         </span>
-                        <RolePill role={s.role_name} />
+                        <RoleSessionPill roleName={s.role_name} />
                       </div>
                     </td>
 
                     {/* Signed in */}
                     <td className="px-4 py-3">
                       <span className="text-[13px]" style={{ color: "var(--color-text-primary)" }}>
-                        {absoluteTime(s.signed_in_at)}
+                        {sessionAbsoluteTime(s.signed_in_at)}
                       </span>
                     </td>
 
@@ -432,7 +301,7 @@ export function UserActivitySection() {
                     <td className="px-4 py-3">
                       {s.signed_out_at ? (
                         <span className="text-[13px]" style={{ color: "var(--color-text-primary)" }}>
-                          {absoluteTime(s.signed_out_at)}
+                          {sessionAbsoluteTime(s.signed_out_at)}
                         </span>
                       ) : (
                         <span
@@ -449,7 +318,7 @@ export function UserActivitySection() {
                     <td className="px-4 py-3">
                       <span className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>
                         {s.duration_minutes != null
-                          ? formatDuration(s.duration_minutes)
+                          ? formatSessionDuration(s.duration_minutes)
                           : "—"}
                       </span>
                     </td>
@@ -523,7 +392,7 @@ export function UserActivitySection() {
                     <span className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>
                       {s.full_name ?? "Unknown"}
                     </span>
-                    <RolePill role={s.role_name} />
+                    <RoleSessionPill roleName={s.role_name} />
                   </div>
                   {s.sign_out_reason === "auto" && (
                     <AlertTriangle className="h-3.5 w-3.5 shrink-0" style={{ color: "var(--color-warning)" }} />
@@ -532,12 +401,12 @@ export function UserActivitySection() {
                 <div className="text-[12px] space-y-1" style={{ color: "var(--color-text-muted)" }}>
                   <div className="flex justify-between">
                     <span className="uppercase tracking-wide font-medium text-[10px]">Signed in</span>
-                    <span>{absoluteTime(s.signed_in_at)}</span>
+                    <span>{sessionAbsoluteTime(s.signed_in_at)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="uppercase tracking-wide font-medium text-[10px]">Signed out</span>
                     <span>
-                      {s.signed_out_at ? absoluteTime(s.signed_out_at) : (
+                      {s.signed_out_at ? sessionAbsoluteTime(s.signed_out_at) : (
                         <span style={{ color: "var(--color-success)" }}>Active now</span>
                       )}
                     </span>
@@ -545,7 +414,7 @@ export function UserActivitySection() {
                   {s.duration_minutes != null && (
                     <div className="flex justify-between">
                       <span className="uppercase tracking-wide font-medium text-[10px]">Duration</span>
-                      <span>{formatDuration(s.duration_minutes)}</span>
+                      <span>{formatSessionDuration(s.duration_minutes)}</span>
                     </div>
                   )}
                   <div className="flex justify-between">

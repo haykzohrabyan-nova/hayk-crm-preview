@@ -12,9 +12,9 @@ import {
   Clock,
   CheckCircle,
   DollarSign,
-  AlertTriangle,
   Circle,
 } from "lucide-react";
+import { UserSessionCard } from "@/components/admin/user-session-card";
 import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
 import {
   defaultDashboardDateRangeFilterValue,
@@ -122,31 +122,6 @@ function isOnline(lastSignIn: string | null): boolean {
   return Date.now() - new Date(lastSignIn).getTime() < 8 * 60 * 60 * 1000;
 }
 
-function formatDuration(minutes: number): string {
-  if (minutes < 1) return "< 1m";
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
-  if (h === 0) return `${m}m`;
-  if (m === 0) return `${h}h`;
-  return `${h}h ${m}m`;
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
-}
-
-const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin:     { bg: "var(--color-badge-bg)",    color: "var(--color-badge-text)" },
-  sdr:       { bg: "var(--color-info-bg)",     color: "var(--color-info-text)" },
-  sales:     { bg: "var(--color-success-bg)",  color: "var(--color-success)" },
-  accountant: { bg: "var(--color-warning-bg)", color: "var(--color-warning)" },
-};
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 
@@ -452,107 +427,28 @@ function TeamSection({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {members.map((m) => {
-          const initial = m.full_name?.trim()[0]?.toUpperCase() ?? "?";
           const sess = sessionMap.get(m.id);
           const active = sess?.currently_active ?? false;
-          const roleStyle = ROLE_STYLES[m.role_name] ?? { bg: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" };
 
           return (
-            <div
+            <UserSessionCard
               key={m.id}
-              className="rounded-[10px] border p-4 space-y-3"
-              style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
+              fullName={m.full_name}
+              roleName={m.role_name}
+              roleLabel={m.role_display_name}
+              active={active}
+              autoSignouts={sess?.auto_signouts ?? 0}
+              totalSessions={sess?.total_sessions ?? 0}
+              totalMinutes={sess?.total_minutes ?? 0}
+              lastSignedInAt={sess?.last_signed_in_at ?? null}
+              valuesHidden={valuesHidden}
             >
-              {/* Header: avatar + name + role + online */}
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="relative shrink-0">
-                    <div
-                      className="flex h-9 w-9 items-center justify-center rounded-full text-[14px] font-semibold"
-                      style={{ background: "var(--color-btn-verify-bg)", color: "var(--color-btn-verify-text)" }}
-                    >
-                      {initial}
-                    </div>
-                    <span
-                      className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full"
-                      style={{
-                        background: active ? "var(--color-success)" : "var(--color-border)",
-                        outline: "2px solid var(--color-surface)",
-                      }}
-                    />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-                      {m.full_name ?? "—"}
-                    </p>
-                    <span
-                      className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                      style={{ background: roleStyle.bg, color: roleStyle.color }}
-                    >
-                      {m.role_display_name}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Auto sign-out warning */}
-                {!valuesHidden && sess && sess.auto_signouts > 0 && (
-                  <div
-                    className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium shrink-0"
-                    style={{ background: "var(--color-warning-bg)", color: "var(--color-warning)" }}
-                  >
-                    <AlertTriangle className="h-2.5 w-2.5" />
-                    {sess.auto_signouts} idle
-                  </div>
-                )}
-              </div>
-
-              {/* Stats row */}
-              <div className="grid grid-cols-3 gap-2 pt-1" style={{ borderTop: "1px solid var(--color-border)" }}>
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
-                    Sessions
-                  </p>
-                  {valuesHidden ? (
-                    <DashboardHiddenValue size="sm" kind="count" />
-                  ) : (
-                    <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-                      {sess?.total_sessions ?? 0}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
-                    Active time
-                  </p>
-                  {valuesHidden ? (
-                    <DashboardHiddenValue size="sm" kind="count" />
-                  ) : (
-                    <p className="text-[14px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
-                      {sess ? formatDuration(sess.total_minutes) : "—"}
-                    </p>
-                  )}
-                </div>
-                <div>
-                  <p className="text-[10px] font-medium uppercase tracking-wide mb-0.5" style={{ color: "var(--color-text-muted)" }}>
-                    Last seen
-                  </p>
-                  <p className="text-[12px] font-medium" style={{ color: active ? "var(--color-success)" : "var(--color-text-muted)" }}>
-                    {active
-                      ? "Active now"
-                      : sess?.last_signed_in_at
-                        ? relativeTime(sess.last_signed_in_at)
-                        : "—"}
-                  </p>
-                </div>
-              </div>
-
               <TeamMemberWorkMetrics
                 role={m.role_name}
                 metrics={teamMetrics[m.id]}
                 periodLabel={periodLabel}
                 valuesHidden={valuesHidden}
               />
-
               {m.role_name === "sales" && valuesHidden && (
                 <MetricCell label="Active deals" value={0} valuesHidden />
               )}
@@ -561,7 +457,7 @@ function TeamSection({
                   {m.claimed_leads} active deal{m.claimed_leads !== 1 ? "s" : ""}
                 </p>
               )}
-            </div>
+            </UserSessionCard>
           );
         })}
       </div>
