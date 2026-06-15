@@ -41,6 +41,7 @@ import { Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { followUpReasonLabel } from "@/lib/constants/follow-up-reasons";
 import { formatPhone } from "@/lib/utils/phone";
+import { relativeTime, displayContactName } from "@/lib/utils/format";
 import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { LeadHistoryTable, type LeadHistoryRow } from "@/components/leads/lead-history-table";
 import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-interests";
@@ -79,24 +80,7 @@ interface Toast {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`;
-}
 
-function displayName(lead: Lead): string {
-  const c = lead.customer;
-  const name = [c?.first_name, c?.last_name].filter(Boolean).join(" ");
-  return name || "—";
-}
 
 function productInterestsText(lead: Lead): string {
   return formatLeadProductInterests(lead.interests, lead.quantities);
@@ -738,7 +722,7 @@ export function LeadsPage() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
-                        {displayName(lead)}
+                        {displayContactName(lead.customer, { preferPerson: true })}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
                         {lead.customer?.company || "—"}
@@ -860,7 +844,7 @@ export function LeadsPage() {
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</p>
+                      <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</p>
                       {lead.customer?.company && (
                         <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.customer.company}</p>
                       )}
@@ -977,7 +961,7 @@ export function LeadsPage() {
                       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
-                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
+                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{followUpReasonLabel(lead.follow_up_reason)}</td>
@@ -1026,7 +1010,7 @@ export function LeadsPage() {
               filtered.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</p>
+                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</p>
                     <StatusPill status="Follow Up Later" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
@@ -1085,7 +1069,7 @@ export function LeadsPage() {
                       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
-                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
+                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{holdReasonLabel(lead.hold_reason)}</td>
@@ -1135,7 +1119,7 @@ export function LeadsPage() {
               filtered.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</p>
+                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</p>
                     <StatusPill status="On Hold" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
@@ -1234,7 +1218,7 @@ export function LeadsPage() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                       onClick={() => { if (!leadActionDisabled()) void handleViewLead(lead); }}
                     >
-                      <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
+                      <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <td className="px-3 py-2.5 max-w-[220px]" style={{ color: "var(--color-text-muted)" }}>
                         <span className="block truncate" title={productInterestsText(lead) !== "—" ? productInterestsText(lead) : undefined}>
@@ -1296,7 +1280,7 @@ export function LeadsPage() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</p>
+                      <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</p>
                       {lead.customer?.company && (
                         <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer.company}</p>
                       )}
@@ -1372,7 +1356,7 @@ export function LeadsPage() {
                       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
-                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</td>
+                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.rejection_reason || "—"}</td>
@@ -1408,7 +1392,7 @@ export function LeadsPage() {
               filtered.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3 opacity-75" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayName(lead)}</p>
+                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</p>
                     <StatusPill status="Rejected" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
@@ -1515,7 +1499,7 @@ export function LeadsPage() {
           {reassignLead && (
             <div className="space-y-4 pt-1">
               <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-                {displayName(reassignLead)}
+                {displayContactName(reassignLead.customer, { preferPerson: true })}
               </p>
               <div>
                 <label

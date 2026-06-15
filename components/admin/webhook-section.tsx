@@ -13,34 +13,7 @@ import {
   X,
 } from "lucide-react";
 import type { WebhookOrderRow, WebhookPageData, WebhookDelivery } from "@/app/api/admin/webhook/page-data/route";
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmtUsd(val: number | null): string {
-  if (val == null) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(val);
-}
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
-function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  });
-}
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  return `${Math.floor(hrs / 24)}d ago`;
-}
+import { formatCurrency, formatDate, formatDateTime, relativeTime } from "@/lib/utils/format";
 
 type FilterTab = "all" | "success" | "failed" | "not_sent";
 
@@ -254,7 +227,7 @@ function DeliveryModal({
               {row.title ?? "—"}
             </p>
             <p className="text-[13px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-              {customer} · {fmtUsd(row.quote_final_total)}
+              {customer} · {formatCurrency(row.quote_final_total)}
             </p>
           </div>
           <button
@@ -312,7 +285,7 @@ function DeliveryModal({
             <div className="space-y-2 text-[13px]">
               <div className="flex justify-between">
                 <span style={{ color: "var(--color-text-muted)" }}>Sent at</span>
-                <span style={{ color: "var(--color-text-primary)" }}>{fmtDateTime(d.sent_at)}</span>
+                <span style={{ color: "var(--color-text-primary)" }}>{formatDateTime(d.sent_at)}</span>
               </div>
               {d.via && (
                 <div className="flex justify-between">
@@ -473,10 +446,10 @@ function OrderTableRow({
         <p className="text-[12px] truncate" style={{ color: "var(--color-text-muted)" }}>{customer}</p>
       </td>
       <td className="px-4 py-3 text-[13px]" style={{ color: "var(--color-text-primary)" }}>
-        {fmtUsd(row.quote_final_total)}
+        {formatCurrency(row.quote_final_total)}
       </td>
       <td className="px-4 py-3 text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-        {fmtDate(row.order_created_at)}
+        {formatDate(row.order_created_at)}
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
@@ -562,8 +535,8 @@ function OrderMobileCard({
         <DeliveryBadge delivery={row.latest_delivery} />
       </div>
       <div className="flex items-center justify-between text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-        <span>{fmtDate(row.order_created_at)}</span>
-        <span className="font-medium" style={{ color: "var(--color-text-primary)" }}>{fmtUsd(row.quote_final_total)}</span>
+        <span>{formatDate(row.order_created_at)}</span>
+        <span className="font-medium" style={{ color: "var(--color-text-primary)" }}>{formatCurrency(row.quote_final_total)}</span>
       </div>
       <button
         onClick={() => onOpenModal(row)}

@@ -27,6 +27,7 @@ import {
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { displayContactName, relativeTime, isOverdue } from "@/lib/utils/format";
 import { formatQuoteListDueNow, getQuoteListDueNowAmount } from "@/lib/utils/quote-list-due-now";
 import { quoteListStatus } from "@/lib/utils/quote-list-status";
 import { quoteDetailPath, ticketPathSegment } from "@/lib/utils/reference-codes";
@@ -101,33 +102,6 @@ const STATUS_STYLE: Record<string, { bg: string; text: string; label: string }> 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`;
-}
-
-function displayName(q: QuoteTicket): string {
-  const c = q.customer;
-  return [c?.first_name, c?.last_name].filter(Boolean).join(" ") || "—";
-}
-
-// Parse a YYYY-MM-DD date string as local midnight (not UTC midnight)
-function parseLocalDate(dateStr: string): Date {
-  return new Date(dateStr + "T00:00:00");
-}
-
-function isOverdue(dateStr: string | null): boolean {
-  if (!dateStr) return false;
-  return parseLocalDate(dateStr) < new Date();
-}
 
 function QuoteMobileCard({
   quote: q,
@@ -155,7 +129,7 @@ function QuoteMobileCard({
             {q.reference_code ?? "—"}
           </span>
           <p className="font-semibold text-sm mt-1.5 truncate" style={{ color: "var(--color-text-primary)" }}>
-            {displayName(q)}
+            {displayContactName(q.customer, { preferPerson: true })}
           </p>
           {q.customer?.company && (
             <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
@@ -241,7 +215,7 @@ function RoutedQuoteMobileCard({
         </span>
         <div className="min-w-0 flex-1">
         <p className="font-semibold text-sm truncate" style={{ color: "var(--color-text-primary)" }}>
-          {displayName(q)}
+          {displayContactName(q.customer, { preferPerson: true })}
         </p>
         {q.customer?.company && (
           <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
@@ -613,7 +587,7 @@ export default function QuotesPage() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(q)}</p>
+                    <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(q.customer, { preferPerson: true })}</p>
                     {q.customer?.company && (
                       <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
                     )}
@@ -750,7 +724,7 @@ export default function QuotesPage() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
-                      <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(q)}</p>
+                      <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(q.customer, { preferPerson: true })}</p>
                       {q.customer?.company && (
                         <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
                       )}

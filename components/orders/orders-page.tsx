@@ -161,9 +161,6 @@ const PRIORITY_STYLE: Record<string, { color: string }> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function displayName(o: OrderTicket): string {
-  return displayContactName(o.customer, { preferPerson: true });
-}
 
 /** Due today and still open on Orders (not cancelled). */
 function isDueTodayAlert(o: OrderTicket): boolean {
@@ -265,7 +262,7 @@ function OrderMobileCard({
             <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Draft</span>
           )}
           <p className="font-semibold text-sm mt-1.5 truncate" style={{ color: "var(--color-text-primary)" }}>
-            {displayName(o)}
+            {displayContactName(o.customer, { preferPerson: true })}
           </p>
           {o.customer?.company && (
             <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
@@ -496,7 +493,7 @@ function OrdersTableDesktop({
                 )}
               </td>
               <td className="px-4 py-3" style={cellStyle}>
-                <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayName(o)}</p>
+                <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(o.customer, { preferPerson: true })}</p>
                 {o.customer?.company && (
                   <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
                 )}

@@ -23,6 +23,7 @@ import {
 } from "@/lib/utils/lead-activity-display";
 import { URGENCY_NOT_DEFINED, urgencyDbToForm, urgencyFormToDb } from "@/lib/utils/urgency-form";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
+import { relativeTime } from "@/lib/utils/format";
 import { validateEmail } from "@/lib/utils/email";
 import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
 import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
@@ -126,18 +127,6 @@ function rowsFromLead(lead: Lead): LeadProductInterestRow[] {
     }));
 }
 
-function relativeTimeAct(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  return months < 12 ? `${months}mo ago` : `${Math.floor(months / 12)}y ago`;
-}
 
 function hasContactChanged(lead: Lead, form: DrawerForm): boolean {
   const c = lead.customer;
@@ -1052,7 +1041,7 @@ export function VerifyDrawer({
                           </p>
                         ))}
                         <p className="mt-0.5 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
-                          {a.by_user?.full_name ?? "System"} · {relativeTimeAct(a.created_at)}
+                          {a.by_user?.full_name ?? "System"} · {relativeTime(a.created_at)}
                         </p>
                       </div>
                     </li>
