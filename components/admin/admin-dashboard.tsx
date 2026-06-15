@@ -5,7 +5,7 @@ import Link from "next/link";
 import { formatCurrency as formatMoney } from "@/lib/utils/format";
 import { KPI_HELP } from "@/lib/utils/kpi-help-text";
 import type { TeamMemberMetrics } from "@/lib/utils/team-dashboard-metrics";
-import { KpiHelpLine } from "@/components/ui/kpi-help-line";
+import { KpiCard, KpiCardSkeleton } from "@/components/dashboard/kpi-card";
 import {
   Users,
   TrendingUp,
@@ -125,118 +125,6 @@ function isOnline(lastSignIn: string | null): boolean {
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────
 
-function KpiCard({
-  label,
-  value,
-  subtext,
-  help,
-  icon,
-  accent = false,
-  subStats,
-  valuesHidden = false,
-  valueKind = "count",
-}: {
-  label: string;
-  value: string | number;
-  subtext: string;
-  help?: string;
-  icon: React.ReactNode;
-  accent?: boolean;
-  subStats?: { label: string; value: number; color: string }[];
-  valuesHidden?: boolean;
-  valueKind?: "currency" | "count";
-}) {
-  return (
-    <div
-      className="rounded-[10px] border p-5 flex flex-col gap-3"
-      style={{
-        background: accent ? "var(--color-btn-verify-bg)" : "var(--color-surface)",
-        borderColor: accent ? "transparent" : "var(--color-border)",
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <span
-          className="text-[11px] font-medium uppercase tracking-[0.06em]"
-          style={{
-            color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-muted)",
-            opacity: accent ? 0.75 : 1,
-          }}
-        >
-          {label}
-        </span>
-        <div
-          className="flex h-8 w-8 items-center justify-center rounded-[8px]"
-          style={{
-            background: accent
-              ? "rgba(255,255,255,0.15)"
-              : "color-mix(in srgb, var(--color-accent) 12%, transparent)",
-          }}
-        >
-          <span style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-accent)" }}>
-            {icon}
-          </span>
-        </div>
-      </div>
-      <div>
-        {valuesHidden ? (
-          <DashboardHiddenValue kind={valueKind} accent={accent} />
-        ) : (
-          <p
-            className="text-[28px] font-semibold leading-none"
-            style={{ color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-primary)" }}
-          >
-            {value}
-          </p>
-        )}
-        <p
-          className="mt-1 text-[12px]"
-          style={{
-            color: accent ? "var(--color-btn-verify-text)" : "var(--color-text-muted)",
-            opacity: accent ? 0.7 : 1,
-          }}
-        >
-          {subtext}
-        </p>
-        {help && <KpiHelpLine text={help} variant={accent ? "accent" : "default"} />}
-        {!valuesHidden && subStats && subStats.length > 0 && (
-          <div className="mt-2.5 flex items-center gap-2 flex-wrap">
-            {subStats.map((s) => (
-              <span
-                key={s.label}
-                className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium"
-                style={{ background: `color-mix(in srgb, ${s.color} 12%, transparent)`, color: s.color }}
-              >
-                <span
-                  className="h-1.5 w-1.5 rounded-full shrink-0"
-                  style={{ background: s.color }}
-                />
-                {s.label}: {s.value}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function KpiCardSkeleton() {
-  return (
-    <div
-      className="rounded-[10px] border p-5 flex flex-col gap-3"
-      style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
-    >
-      <div className="flex items-center justify-between">
-        <div className="h-3 w-24 animate-pulse rounded" style={{ background: "var(--color-border)" }} />
-        <div className="h-8 w-8 animate-pulse rounded-[8px]" style={{ background: "var(--color-border)" }} />
-      </div>
-      <div className="space-y-2">
-        <div className="h-8 w-20 animate-pulse rounded" style={{ background: "var(--color-border)" }} />
-        <div className="h-3 w-16 animate-pulse rounded" style={{ background: "var(--color-border)" }} />
-      </div>
-    </div>
-  );
-}
 
 // ─── Quick Action ─────────────────────────────────────────────────────────────
 
@@ -566,7 +454,7 @@ export function AdminDashboard() {
               valuesHidden={metricsHidden}
               valueKind="currency"
               value={formatMoney(data.cash_collected ?? 0)}
-              subtext={periodLabel.toLowerCase()}
+              sub={periodLabel.toLowerCase()}
               help={KPI_HELP.cash_collected}
               icon={<DollarSign className="h-4 w-4" />}
               accent
@@ -576,7 +464,7 @@ export function AdminDashboard() {
               valuesHidden={metricsHidden}
               valueKind="currency"
               value={formatCurrency(data.pipeline_value ?? 0)}
-              subtext="current total"
+              sub="current total"
               help={KPI_HELP.pipeline_value}
               icon={<DollarSign className="h-4 w-4" />}
             />
@@ -584,7 +472,7 @@ export function AdminDashboard() {
               label="Total Leads"
               valuesHidden={metricsHidden}
               value={data.total_leads ?? 0}
-              subtext={periodLabel.toLowerCase()}
+              sub={periodLabel.toLowerCase()}
               help={KPI_HELP.total_leads}
               icon={<Users className="h-4 w-4" />}
               subStats={metricsHidden ? undefined : buildTotalLeadsSubStats(data)}
@@ -593,7 +481,7 @@ export function AdminDashboard() {
               label="In Inbox"
               valuesHidden={metricsHidden}
               value={data.inbox_leads ?? 0}
-              subtext="waiting for SDR"
+              sub="waiting for SDR"
               help={KPI_HELP.inbox_leads}
               icon={<Clock className="h-4 w-4" />}
             />
@@ -601,7 +489,7 @@ export function AdminDashboard() {
               label="Routed to Sales"
               valuesHidden={metricsHidden}
               value={data.routed_leads ?? 0}
-              subtext="active pipeline"
+              sub="active pipeline"
               help={KPI_HELP.routed_to_sales}
               icon={<TrendingUp className="h-4 w-4" />}
             />
@@ -609,7 +497,7 @@ export function AdminDashboard() {
               label="Won"
               valuesHidden={metricsHidden}
               value={data.won_leads ?? 0}
-              subtext={periodLabel.toLowerCase()}
+              sub={periodLabel.toLowerCase()}
               help={KPI_HELP.won}
               icon={<CheckCircle className="h-4 w-4" />}
             />

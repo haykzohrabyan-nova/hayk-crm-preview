@@ -22,7 +22,7 @@ import { PERIOD_LABELS } from "@/lib/utils/get-period-start";
 import { formatCurrency, formatCompact } from "@/lib/utils/format";
 import { RoleSessionPill } from "@/components/admin/user-session-card";
 import { KPI_HELP } from "@/lib/utils/kpi-help-text";
-import { KpiHelpLine } from "@/components/ui/kpi-help-line";
+import { KpiCard } from "@/components/dashboard/kpi-card";
 import { formatReportDateRange } from "@/lib/utils/reports-date-range";
 import { RepScorecardTable, type RepScorecardRow } from "@/components/reports/rep-scorecard-table";
 import { PaymentLedgerSection, type LedgerRow } from "@/components/reports/payment-ledger-section";
@@ -104,96 +104,6 @@ interface ReportsSummary {
 
 
 
-function KpiCard({
-  label,
-  value,
-  sub,
-  help,
-  icon,
-  accent,
-  warning,
-}: {
-  label: string;
-  value: string | number;
-  sub?: string;
-  help?: string;
-  icon: React.ReactNode;
-  accent?: boolean;
-  warning?: boolean;
-}) {
-  const bg = accent
-    ? "var(--color-btn-verify-bg)"
-    : "var(--color-surface)";
-  const border = accent
-    ? "transparent"
-    : warning
-      ? "var(--color-warning-border)"
-      : "var(--color-border)";
-  const labelColor = accent
-    ? "var(--color-btn-verify-text)"
-    : warning
-      ? "var(--color-warning-text-deep)"
-      : "var(--color-text-muted)";
-  const valueColor = accent
-    ? "var(--color-btn-verify-text)"
-    : warning
-      ? "var(--color-warning)"
-      : "var(--color-text-primary)";
-  const iconBg = accent
-    ? "color-mix(in srgb, white 15%, transparent)"
-    : warning
-      ? "var(--color-warning-bg)"
-      : "color-mix(in srgb, var(--color-accent) 12%, transparent)";
-  const iconColor = accent
-    ? "var(--color-btn-verify-text)"
-    : warning
-      ? "var(--color-warning)"
-      : "var(--color-accent)";
-  const helpVariant = accent ? "accent" : warning ? "warning" : "default";
-
-  return (
-    <div
-      className="rounded-[10px] border p-5 flex flex-col gap-3"
-      style={{
-        background: bg,
-        borderColor: border,
-        ...(warning ? { borderLeftWidth: "3px", borderLeftColor: "var(--color-warning)" } : {}),
-      }}
-    >
-      <div className="flex items-center justify-between">
-        <span
-          className="text-[11px] font-medium uppercase tracking-[0.06em]"
-          style={{ color: labelColor, opacity: accent || warning ? 0.85 : 1 }}
-        >
-          {label}
-        </span>
-        <div
-          className="flex h-8 w-8 items-center justify-center rounded-[8px]"
-          style={{ background: iconBg }}
-        >
-          <span style={{ color: iconColor }}>{icon}</span>
-        </div>
-      </div>
-      <div>
-        <p className="text-[28px] font-semibold leading-none tabular-nums" style={{ color: valueColor }}>
-          {value}
-        </p>
-        {sub && (
-          <p
-            className="mt-2 text-[12px]"
-            style={{
-              color: warning ? "var(--color-text-primary)" : labelColor,
-              opacity: accent ? 0.75 : 1,
-            }}
-          >
-            {sub}
-          </p>
-        )}
-        {help && <KpiHelpLine text={help} variant={helpVariant} />}
-      </div>
-    </div>
-  );
-}
 
 function BreakdownBars({
   items,

@@ -18,55 +18,11 @@ import type {
   LookupOption,
 } from "@/lib/utils/bulk-import-customers";
 import { ImportProgressModal, type ImportProgress } from "@/components/admin/import-progress-modal";
+import { LookupOptionsTable, IMPORT_CHUNK_SIZE } from "@/components/admin/bulk-import-shared";
 
-const IMPORT_CHUNK_SIZE = 25;
 
 type Step = "upload" | "preview" | "done";
 
-function LookupOptionsTable({
-  title,
-  options,
-}: {
-  title: string;
-  options: LookupOption[];
-}) {
-  return (
-    <div className="min-w-0">
-      <h3 className="text-xs font-semibold uppercase tracking-wide mb-2" style={{ color: "var(--color-text-muted)" }}>
-        {title}
-      </h3>
-      <div
-        className="overflow-x-auto rounded-lg border max-h-[220px] overflow-y-auto"
-        style={{ borderColor: "var(--color-border)" }}
-      >
-        <table className="w-full text-left text-xs">
-          <thead className="sticky top-0" style={{ background: "var(--color-bg)" }}>
-            <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
-              <th className="px-2.5 py-1.5 font-semibold" style={{ color: "var(--color-text-muted)" }}>
-                value
-              </th>
-              <th className="px-2.5 py-1.5 font-semibold" style={{ color: "var(--color-text-muted)" }}>
-                label
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {options.map((opt) => (
-              <tr key={opt.value} style={{ borderBottom: "1px solid var(--color-border)" }}>
-                <td className="px-2.5 py-1.5 font-mono" style={{ color: "var(--color-text-primary)" }}>
-                  {opt.value}
-                </td>
-                <td className="px-2.5 py-1.5" style={{ color: "var(--color-text-muted)" }}>
-                  {opt.label}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 function statusStyle(status: BulkCustomerImportRowResult["status"]) {
   if (status === "valid") {

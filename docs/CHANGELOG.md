@@ -3,6 +3,25 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — DRY refactor: eliminate duplicated code across all pages
+
+### Added
+- `lib/integrations/email-format.ts` — shared `fmtEmailCurrency` used by all 9 email/SMS integration files
+- `lib/utils/bulk-import-shared.ts` — shared `LookupOption`, `slugToLookupLabel`, `formatLookupOptionsHint` for bulk import utils
+- `lib/utils/order-styles.ts` — `PRIORITY_STYLE` and `PAYMENT_STYLE` maps for order list pages
+- `lib/utils/form-field-styles.ts` — shared Tailwind and inline form field style constants
+- `components/ui/toast-banner.tsx` — shared `ToastBanner` used by leads, sales, crm, customer-profile, roles pages
+- `components/dashboard/kpi-card.tsx` — unified `KpiCard` / `KpiCardSkeleton` for both dashboard and reports page
+- `components/admin/bulk-import-shared.tsx` — `LookupOptionsTable`, `IMPORT_CHUNK_SIZE` for import wizards
+- `formatCompact` added to `lib/utils/format.ts`
+
+### Changed
+- **Phase 1**: Removed 9 copies of `relativeTime`, 7 `displayName`/`leadName` wrappers, local `isOverdue`/`parseLocalDate` in `quotes-page.tsx`, and all local format helpers in `webhook-section.tsx` — all now import from `lib/utils/format`
+- **Phase 2**: All email template files (`send-quote`, `customer-email-builders`, `customer-email-extra-html`, `quote-email-template`, and 5 others) now share `fmtEmailCurrency`
+- **Phase 3**: `LookupOption` type consolidated to `components/quotes/shared/types.ts` (5 UI files updated); bulk-import utils share helpers from `bulk-import-shared.ts`
+- **Phase 4**: `PRIORITY_STYLE`/`PAYMENT_STYLE` centralised; form field styles centralised; `RoleSessionPill` replaces local `ROLE_STYLES`+`RolePill` in 3 files; `ToastBanner` deduped across 5 files; urgency ternary in `verify-drawer` replaced with `<UrgencyPill>`; `formatCompact` deduped from 2 report components
+- **Phase 5**: `KpiCard` unified across admin-dashboard and reports-page; `LookupOptionsTable` and `IMPORT_CHUNK_SIZE` shared across both import wizards
+
 ## [2026-06-15] — Refactor duplicated user session card into shared component
 
 ### Added
