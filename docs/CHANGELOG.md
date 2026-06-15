@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — Fix "active now" for long-lived sessions
+
+### Fixed
+- `app/api/admin/sessions/route.ts` — sessions open for more than 7 days were not detected as `currently_active` because the query only covered `signed_in_at >= 7 days ago`; now overlays a separate `WHERE signed_out_at IS NULL` check so any open session (regardless of age) is correctly marked active
+
 ## [2026-06-15] — Show admin users on team dashboard
 
 ### Changed

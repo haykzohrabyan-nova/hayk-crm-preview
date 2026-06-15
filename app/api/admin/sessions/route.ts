@@ -140,6 +140,46 @@ export async function GET(request: Request) {
     }
   }
 
+  // Overlay currently-active status from any open session, regardless of date range.
+  // This handles the case where a user has been continuously logged in for > 7 days —
+  // their open session row (signed_out_at IS NULL) won't appear in the date-range query.
+  const { data: openSessions } = await admin
+    .from("user_sessions")
+    .select("user_id")
+    .is("signed_out_at", null);
+
+  for (const s of openSessions ?? []) {
+    const entry = userMap.get(s.user_id);
+    if (entry) {
+      entry.currently_active = true;
+    } else {
+      // User has an open session but no activity in the date window — still show them as active.
+      // Fetch their profile if not already loaded.
+      let prof = profileMap.get(s.user_id);
+      if (!prof) {
+        const { data: p } = await admin
+          .from("user_profiles")
+          .select("id, full_name, roles(name, display_name)")
+          .eq("id", s.user_id)
+          .single();
+        if (p) {
+          const roles = p.roles as unknown as { name: string; display_name: string } | null;
+          prof = { full_name: p.full_name ?? null, role_name: roles?.name ?? null, role_display_name: roles?.display_name ?? null };
+          profileMap.set(s.user_id, prof);
+        }
+      }
+      userMap.set(s.user_id, {
+        user_id: s.user_id,
+        ...(prof ?? { full_name: null, role_name: null, role_display_name: null }),
+        total_sessions: 0,
+        auto_signouts: 0,
+        total_minutes: 0,
+        last_signed_in_at: null,
+        currently_active: true,
+      });
+    }
+  }
+
   const summary = Array.from(userMap.values()).sort(
     (a, b) => (b.last_signed_in_at ?? "").localeCompare(a.last_signed_in_at ?? "")
   );
