@@ -42,10 +42,15 @@ function applyDbFilters(query: AnyQuery, filters: CrmListFilters): any {
     query = (query as AnyQuery).eq("heat_tag", filters.heat);
   }
   if (filters.search?.trim()) {
-    const q = `%${filters.search.trim()}%`;
-    query = (query as AnyQuery).or(
-      `first_name.ilike.${q},last_name.ilike.${q},email.ilike.${q},phone.ilike.${q},company.ilike.${q}`,
-    );
+    // Split by whitespace so "John Smith" matches first_name=John + last_name=Smith.
+    // Each word must appear in at least one searchable field (AND between words).
+    const words = filters.search.trim().split(/\s+/).filter(Boolean);
+    for (const word of words) {
+      const q = `%${word}%`;
+      query = (query as AnyQuery).or(
+        `first_name.ilike.${q},last_name.ilike.${q},email.ilike.${q},phone.ilike.${q},company.ilike.${q}`,
+      );
+    }
   }
   return query;
 }

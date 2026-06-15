@@ -3,6 +3,16 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — Fix CRM full-name search (first + last)
+
+### Fixed
+- `lib/utils/fetch-crm-data.ts` — searching "Tae Tae" or "John Smith" now matches
+  customers correctly. Previously the search was treated as a single string and
+  compared against each column individually, so multi-word queries never matched.
+  Now each word is matched independently across all fields (AND between words,
+  OR across fields per word) — e.g. "John Smith" finds customers where "John"
+  appears in any field AND "Smith" appears in any field.
+
 ## [2026-06-15] — DRY refactor: eliminate duplicated code across all pages
 
 ### Added
