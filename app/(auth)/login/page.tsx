@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Lock, ShieldCheck } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { safeReturnPath } from "@/lib/auth/safe-return-path";
-import { setRememberMfaPreference } from "@/lib/auth/remember-mfa-client";
+import { setRememberMfaPreference, getRememberDevicePref, saveRememberDevicePref } from "@/lib/auth/remember-mfa-client";
 import { EmailInput } from "@/components/ui/email-input";
 
 function StepDots({ step }: { step: 1 | 2 }) {
@@ -29,7 +29,9 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
-  const [rememberDevice, setRememberDevice] = useState(false);
+  const [rememberDevice, setRememberDevice] = useState(() =>
+    typeof window !== "undefined" ? getRememberDevicePref() : false
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -45,6 +47,7 @@ function LoginForm() {
       return;
     }
     setRememberMfaPreference(rememberDevice);
+    saveRememberDevicePref(rememberDevice);
 
     // Fire session start — records an open user_sessions row so the admin
     // dashboard shows this user as active. This covers the trusted-device path

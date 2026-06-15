@@ -3,6 +3,25 @@
 // to keep this module free of server-only transitive imports.
 const REMEMBER_MFA_STORAGE_KEY = "bazaar_remember_mfa";
 
+/** localStorage key — persists the checkbox preference across page visits. */
+const REMEMBER_DEVICE_PREF_KEY = "bazaar_remember_device_pref";
+
+/** Read the saved checkbox preference (true = was checked last time). */
+export function getRememberDevicePref(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(REMEMBER_DEVICE_PREF_KEY) === "1";
+}
+
+/** Save the checkbox preference so it pre-fills on the next visit. */
+export function saveRememberDevicePref(remember: boolean) {
+  if (typeof window === "undefined") return;
+  if (remember) {
+    localStorage.setItem(REMEMBER_DEVICE_PREF_KEY, "1");
+  } else {
+    localStorage.removeItem(REMEMBER_DEVICE_PREF_KEY);
+  }
+}
+
 export function setRememberMfaPreference(remember: boolean) {
   if (typeof window === "undefined") return;
   if (remember) {

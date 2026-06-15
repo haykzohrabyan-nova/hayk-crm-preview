@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — Persist "Remember this device" checkbox across visits
+
+### Changed
+- `lib/auth/remember-mfa-client.ts` — added `getRememberDevicePref` / `saveRememberDevicePref` helpers using `localStorage` key `bazaar_remember_device_pref`
+- `app/(auth)/login/page.tsx` — checkbox now initialises from saved preference and saves on submit; if you checked it last time it stays checked on your next visit
+
 ## [2026-06-15] — Fix session tracking for trusted-device logins
 
 ### Fixed
