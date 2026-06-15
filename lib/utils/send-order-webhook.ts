@@ -18,7 +18,12 @@
  *   Success: { success: true, order_id, order_number }
  *   Errors:  401 missing/invalid secret · 403 webhook disabled · 422 missing fields · 500
  *
- *   product_type field: "Die Cut" when die_cut=true, "Flat" otherwise (never null).
+ * Payload shape (multi-item format):
+ *   - Top-level customer + order metadata fields (always present)
+ *   - items[]: one entry per line item with its own product details + skus array
+ *   - Legacy flat product fields from the first line item retained for backward compat
+ *
+ * product_type: sent as null — no Roll/Sheet/Flat/Folded classification exists in the DB.
  */
 
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -63,7 +68,7 @@ function buildFinishing(line: LineItem): string | null {
   if (line.foil) parts.push("Foil");
   if (line.lamination) parts.push(line.lamination);
   if (line.perforation) parts.push("Perforation");
-  return parts.length > 0 ? parts.join(", ") : null;
+  return parts.length > 0 ? parts.join(" + ") : null;
 }
 
 function buildFinishedSize(line: LineItem): string | null {
@@ -75,6 +80,40 @@ function buildFinishedSize(line: LineItem): string | null {
 function normalizePriority(priority: string | null | undefined): string {
   if (!priority) return "normal";
   return priority.toLowerCase();
+}
+
+type WebhookSku = { sku_name: string; quantity: number; artwork_url?: string };
+
+/** Build the skus array for a single line item. */
+async function buildLineSkus(
+  line: LineItem,
+  fileByVariant: Map<string, string>,
+  fileByLine: Map<string, string>,
+  admin: AdminClient,
+): Promise<WebhookSku[]> {
+  const variants = line.ticket_line_variants ?? [];
+  const result: WebhookSku[] = [];
+
+  if (variants.length > 0) {
+    for (const v of variants) {
+      const storagePath = fileByVariant.get(v.id) ?? fileByLine.get(line.id) ?? null;
+      const artworkUrl = storagePath ? await signedArtworkUrl(admin, storagePath) : null;
+      const sku: WebhookSku = { sku_name: v.name, quantity: Number(v.quantity) };
+      if (artworkUrl) sku.artwork_url = artworkUrl;
+      result.push(sku);
+    }
+  } else if (line.quantity != null) {
+    const storagePath = fileByLine.get(line.id) ?? null;
+    const artworkUrl = storagePath ? await signedArtworkUrl(admin, storagePath) : null;
+    const sku: WebhookSku = {
+      sku_name: line.description ?? line.product_type ?? "Item",
+      quantity: Number(line.quantity),
+    };
+    if (artworkUrl) sku.artwork_url = artworkUrl;
+    result.push(sku);
+  }
+
+  return result;
 }
 
 export async function sendOrderWebhook(
@@ -149,35 +188,38 @@ export async function sendOrderWebhook(
   );
   const firstLine = lines[0] ?? null;
 
-  // Build skus with signed artwork URLs per variant (or line-level fallback).
-  const skus: Array<{ sku_name: string; quantity: number; artwork_url?: string }> = [];
+  // Build the multi-item items array — one entry per line item with its own skus.
+  type WebhookItem = {
+    title: string;
+    product: string;
+    product_type: string | null;
+    finished_size: string | null;
+    materials: string | null;
+    finishing: string | null;
+    sides: string | null;
+    color: string | null;
+    order_qty: number | null;
+    skus: WebhookSku[];
+  };
+
+  const items: WebhookItem[] = [];
   for (const line of lines) {
-    const variants = line.ticket_line_variants ?? [];
-    if (variants.length > 0) {
-      for (const v of variants) {
-        // Prefer variant-level file; fall back to the line-level file for this line item.
-        const storagePath = fileByVariant.get(v.id) ?? fileByLine.get(line.id) ?? null;
-        const artworkUrl = storagePath ? await signedArtworkUrl(admin, storagePath) : null;
-        const sku: { sku_name: string; quantity: number; artwork_url?: string } = {
-          sku_name: v.name,
-          quantity: Number(v.quantity),
-        };
-        if (artworkUrl) sku.artwork_url = artworkUrl;
-        skus.push(sku);
-      }
-    } else if (line.quantity != null) {
-      const storagePath = fileByLine.get(line.id) ?? null;
-      const artworkUrl = storagePath ? await signedArtworkUrl(admin, storagePath) : null;
-      const sku: { sku_name: string; quantity: number; artwork_url?: string } = {
-        sku_name: line.description ?? line.product_type ?? "Item",
-        quantity: Number(line.quantity),
-      };
-      if (artworkUrl) sku.artwork_url = artworkUrl;
-      skus.push(sku);
-    }
+    const lineSkus = await buildLineSkus(line, fileByVariant, fileByLine, admin);
+    items.push({
+      title:         line.description ?? line.product_type,
+      product:       line.product_type,
+      product_type:  null,
+      finished_size: buildFinishedSize(line),
+      materials:     line.material ?? null,
+      finishing:     buildFinishing(line),
+      sides:         line.sides ?? null,
+      color:         line.color_mode ?? null,
+      order_qty:     line.quantity != null ? Number(line.quantity) : null,
+      skus:          lineSkus,
+    });
   }
 
-  // Top-level artwork_url: first available file across all line items (for single-SKU orders).
+  // Top-level artwork_url: first available file (for backward compat with single-item receivers).
   let topLevelArtworkUrl: string | null = null;
   if (firstLine) {
     const firstVariant = (firstLine.ticket_line_variants ?? [])[0];
@@ -187,20 +229,35 @@ export async function sendOrderWebhook(
     if (firstPath) topLevelArtworkUrl = await signedArtworkUrl(admin, firstPath);
   }
 
+  // Flat top-level skus from all items combined (legacy compat).
+  const allSkus: WebhookSku[] = items.flatMap((item) => item.skus);
+
   const payload: Record<string, unknown> = {
     // REQUIRED
     customer_name:    ticket.contact_company ?? ticket.contact_name ?? null,
     customer_contact: ticket.contact_email ?? ticket.contact_phone ?? null,
 
-    // RECOMMENDED
+    // ORDER METADATA
     order_number: resolvedRef,
     title:        ticket.title ?? null,
     priority:     normalizePriority(ticket.priority),
     due_date:     ticket.due_date ?? null,
 
-    // ORDER DETAILS — from first line item
+    // CUSTOMER INFO
+    customer_phone: ticket.contact_phone ?? null,
+
+    // NOTES
+    description: ticket.notes ?? ticket.special_requirements ?? null,
+
+    // ARTWORK — 7-day signed URL from first line item (for single-item receivers).
+    ...(topLevelArtworkUrl ? { artwork_url: topLevelArtworkUrl } : {}),
+
+    // MULTI-ITEM — full line item breakdown (primary format).
+    items,
+
+    // LEGACY FLAT FIELDS from the first line item (retained for backward compat).
     product:       firstLine?.product_type ?? null,
-    product_type:  firstLine ? (firstLine.die_cut ? "Die Cut" : "Flat") : null,
+    product_type:  null,
     finished_size: firstLine ? buildFinishedSize(firstLine) : null,
     materials:     firstLine?.material ?? null,
     finishing:     firstLine ? buildFinishing(firstLine) : null,
@@ -208,18 +265,8 @@ export async function sendOrderWebhook(
     color:         firstLine?.color_mode ?? null,
     order_qty:     firstLine?.quantity != null ? Number(firstLine.quantity) : null,
 
-    // CUSTOMER INFO
-    customer_phone: ticket.contact_phone ?? null,
-
-    // ARTWORK — 7-day signed URL from private Supabase storage.
-    // The external system should download immediately on webhook receipt.
-    ...(topLevelArtworkUrl ? { artwork_url: topLevelArtworkUrl } : {}),
-
-    // NOTES
-    description: ticket.notes ?? ticket.special_requirements ?? null,
-
-    // SKUs — each includes an artwork_url if a file is attached to that variant
-    ...(skus.length > 0 ? { skus } : {}),
+    // LEGACY flat skus (all variants combined).
+    ...(allSkus.length > 0 ? { skus: allSkus } : {}),
   };
 
   // Fire and log the result — never blocks the caller.

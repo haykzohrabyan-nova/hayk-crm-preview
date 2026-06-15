@@ -217,10 +217,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!title?.trim()) {
-    return NextResponse.json({ error: "title is required.", code: "VALIDATION_ERROR" }, { status: 400 });
-  }
-
   if (ticket_status === "routed" && routed_reason != null && String(routed_reason).trim() === "") {
     return NextResponse.json(
       { error: "A route reason is required when routing to Sales.", code: "VALIDATION_ERROR" },

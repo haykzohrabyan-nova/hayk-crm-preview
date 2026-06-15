@@ -431,9 +431,6 @@ export default function NewQuoteForm() {
     }
 
     if (tab === "info") {
-      if (!title.trim()) {
-        errors.title = "A title is required.";
-      }
       if (dueDate) {
         const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
         if (dueErr) errors.dueDate = dueErr;
@@ -539,13 +536,6 @@ export default function NewQuoteForm() {
   ) {
     // Keep the ref current so the HV countdown timer can always call the latest version
     handleSaveRef.current = handleSave;
-
-    if (!title.trim()) {
-      setFieldErrors({ title: "A title is required." });
-      setTab("info");
-      scrollToFormField(tabContentRef, "title");
-      return;
-    }
 
     if (dueDate) {
       const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
@@ -764,9 +754,6 @@ export default function NewQuoteForm() {
   function handleRouteToSalesClick() {
     const errors: Record<string, string> = {};
 
-    if (!title.trim()) {
-      errors.title = "A title is required.";
-    }
     if (dueDate) {
       const dueErr = validateDueDateAgainstCreated(dueDate, new Date().toISOString());
       if (dueErr) errors.dueDate = dueErr;

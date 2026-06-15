@@ -3,10 +3,39 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
-# Changelog
+## [2026-06-15] — Webhook payload fix + title optional + delete-one-order script
 
-All notable changes to BazaarPrinting CRM are documented here.
-Format: `## [version or date] — description`, newest first.
+### Added
+- `scripts/delete-one-order.mjs` — deletes a single order by reference code including storage files; usage: `ORDER_REF=ORD-2026-005 node --env-file=.env.local scripts/delete-one-order.mjs`
+- `supabase/patches/2026-06-15-delete-completed-test-order-ORD-2026-085.sql` — SQL-only patch to delete a specific completed test order
+
+### Changed
+- `lib/utils/send-order-webhook.ts` — payload now includes `items[]` array (one entry per line item with its own `product`, `finished_size`, `materials`, `finishing`, `sides`, `color`, `order_qty`, `skus`); `product_type` sends as `null`; finishing separator changed to ` + `; legacy flat top-level fields retained for backward compat
+- `components/quotes/shared/info-form.tsx` — Title field no longer shows required asterisk
+- `components/quotes/new-quote-form.tsx` — removed title validation from all three check points (tab step, save, route-to-sales)
+- `app/api/tickets/route.ts` — removed server-side title required validation (DB column is nullable)
+
+## [2026-06-15] — Title field made optional in quote creation
+
+### Changed
+- `components/quotes/shared/info-form.tsx` — removed required asterisk from Title label
+- `components/quotes/new-quote-form.tsx` — removed all three title validation checks (tab validation, save, route-to-sales)
+- `app/api/tickets/route.ts` — removed server-side `title is required` validation; DB column is nullable so no migration needed
+
+## [2026-06-15] — Webhook payload: multi-item format + finishing fix
+
+### Changed
+- `lib/utils/send-order-webhook.ts` — payload now includes an `items[]` array with one entry per line item (each with its own `product`, `finished_size`, `materials`, `finishing`, `sides`, `color`, `order_qty`, and `skus`); matches the multi-item format expected by the external workflow system
+- `finishing` now joins values with ` + ` (e.g. `"Spot UV + Foil"`) instead of `, `
+- `product_type` field sends as `null` — no Roll/Sheet/Flat/Folded classification in DB
+- Legacy flat top-level fields (`product`, `materials`, etc.) retained from first line item for backward compat
+
+## [2026-06-15] — Test-data reset script for orders + leads
+
+### Added
+- `scripts/delete-production-cancelled-orders.mjs` — deletes all `in_production` + `cancelled` orders, their linked leads, and all associated storage files (`ticket-attachments` bucket: design files + sales permits; `payment-evidence` bucket)
+- `npm run delete-test-orders` script in `package.json`
+- `supabase/patches/2026-06-15-delete-production-cancelled-orders.sql` — SQL-only fallback (no storage cleanup)
 
 ## [2026-06-13] — Add missing performance indexes
 

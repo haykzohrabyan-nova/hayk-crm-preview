@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "reset-test-data": "node --env-file=.env.local scripts/full-test-reset.mjs"
+    "reset-test-data": "node --env-file=.env.local scripts/full-test-reset.mjs",
+    "delete-test-orders": "node --env-file=.env.local scripts/delete-production-cancelled-orders.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.1",

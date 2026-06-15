@@ -67,7 +67,7 @@ export function InfoForm(p: InfoFormProps) {
       <div className="grid grid-cols-2 gap-4">
         <div data-field-anchor="title">
           <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-            Title <span style={{ color: "var(--color-danger)" }}>*</span>
+            Title
           </label>
           <input
             value={p.title}
