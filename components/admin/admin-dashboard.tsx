@@ -142,9 +142,10 @@ function relativeTime(iso: string): string {
 }
 
 const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin: { bg: "var(--color-badge-bg)",   color: "var(--color-badge-text)" },
-  sdr:   { bg: "var(--color-info-bg)",    color: "var(--color-info-text)" },
-  sales: { bg: "var(--color-success-bg)", color: "var(--color-success)" },
+  admin:     { bg: "var(--color-badge-bg)",    color: "var(--color-badge-text)" },
+  sdr:       { bg: "var(--color-info-bg)",     color: "var(--color-info-text)" },
+  sales:     { bg: "var(--color-success-bg)",  color: "var(--color-success)" },
+  accountant: { bg: "var(--color-warning-bg)", color: "var(--color-warning)" },
 };
 
 // ─── KPI Card ────────────────────────────────────────────────────────────────

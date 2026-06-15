@@ -22,25 +22,12 @@ export async function GET() {
   const admin = createAdminClient();
   const valuesHidden = await getDashboardValuesHidden(admin, userId!);
 
-  // Resolve admin role_id so we can exclude admins from the team list
-  const { data: adminRole } = await admin
-    .from("roles")
-    .select("id")
-    .eq("name", "admin")
-    .single();
-
-  // Fetch all active non-admin user profiles with their role
-  let profileQuery = admin
+  // Fetch all active user profiles with their role (including admins)
+  const { data: profiles } = await admin
     .from("user_profiles")
     .select("id, full_name, is_active, roles(name, display_name)")
     .eq("is_active", true)
     .order("full_name");
-
-  if (adminRole?.id) {
-    profileQuery = profileQuery.neq("role_id", adminRole.id);
-  }
-
-  const { data: profiles } = await profileQuery;
 
   if (!profiles?.length) return NextResponse.json({ members: [] });
 
@@ -78,7 +65,7 @@ export async function GET() {
     };
   });
 
-  const ROLE_ORDER: Record<string, number> = { sdr: 0, sales: 1, accountant: 2 };
+  const ROLE_ORDER: Record<string, number> = { admin: 0, sdr: 1, sales: 2, accountant: 3 };
   members.sort((a, b) => {
     const byRole = (ROLE_ORDER[a.role_name] ?? 99) - (ROLE_ORDER[b.role_name] ?? 99);
     if (byRole !== 0) return byRole;

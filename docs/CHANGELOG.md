@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — Show admin users on team dashboard
+
+### Changed
+- `app/api/admin/team/route.ts` — removed admin exclusion filter; admin users now appear as cards on the team dashboard; sort order updated to admin → sdr → sales → accountant
+- `components/admin/admin-dashboard.tsx` — added `accountant` role badge style (amber); the "1 active now" badge now correctly reflects all visible team members including admins
+
 ## [2026-06-15] — Webhook payload fix + title optional + delete-one-order script
 
 ### Added
