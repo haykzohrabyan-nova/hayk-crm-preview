@@ -16,7 +16,7 @@ import { validateEmail } from "@/lib/utils/email";
 import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
 import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
 
-type LookupOption = { value: string; label: string };
+import type { LookupOption } from "@/components/quotes/shared/types";
 
 const AUTHORITY_OPTIONS = [
   { value: "yes", label: "Yes" },

@@ -18,7 +18,7 @@ import {
   type PaginationMeta,
 } from "@/lib/utils/pagination";
 
-type LookupOption = { value: string; label: string };
+import type { LookupOption } from "@/components/quotes/shared/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

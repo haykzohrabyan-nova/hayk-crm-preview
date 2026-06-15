@@ -23,10 +23,7 @@ interface CustomerForCard {
   } | null;
 }
 
-interface LookupOption {
-  value: string;
-  label: string;
-}
+import type { LookupOption } from "@/components/quotes/shared/types";
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);

@@ -9,6 +9,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { relativeTime } from "@/lib/utils/format";
+import type { LookupOption } from "@/components/quotes/shared/types";
 import { validateEmail } from "@/lib/utils/email";
 import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
 import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
@@ -63,11 +64,6 @@ interface TicketSummary {
   rush: boolean;
   created_at: string;
   lead?: { source: string | null } | null;
-}
-
-interface LookupOption {
-  value: string;
-  label: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

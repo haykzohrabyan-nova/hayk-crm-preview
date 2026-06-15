@@ -25,7 +25,7 @@ export interface LinkedLeadInfo {
   } | null;
 }
 
-interface LookupOption { value: string; label: string; }
+import type { LookupOption } from "@/components/quotes/shared/types";
 
 interface LinkedLeadCardProps {
   lead: LinkedLeadInfo;
