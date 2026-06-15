@@ -42,6 +42,7 @@ import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { followUpReasonLabel } from "@/lib/constants/follow-up-reasons";
 import { formatPhone } from "@/lib/utils/phone";
 import { relativeTime, displayContactName } from "@/lib/utils/format";
+import { ToastBanner } from "@/components/ui/toast-banner";
 import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { LeadHistoryTable, type LeadHistoryRow } from "@/components/leads/lead-history-table";
 import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-interests";
@@ -169,30 +170,6 @@ function RoutedLeadStatusCell({ lead }: { lead: RoutedLeadRow }) {
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
-function ToastBanner({ message, type, onDismiss }: Toast & { onDismiss: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onDismiss, 4000);
-    return () => clearTimeout(t);
-  }, [onDismiss]);
-
-  return (
-    <div
-      className="fixed bottom-4 right-4 z-[100] flex min-w-[260px] items-center gap-3 rounded-lg border px-4 py-3 text-sm shadow-lg"
-      style={{
-        background: "var(--color-surface)",
-        borderColor: "var(--color-border)",
-        borderLeftWidth: 4,
-        borderLeftColor: type === "success" ? "var(--color-success)" : "var(--color-danger)",
-        color: "var(--color-text-primary)",
-      }}
-    >
-      <span className="flex-1">{message}</span>
-      <button onClick={onDismiss} style={{ color: "var(--color-text-muted)" }}>
-        <X className="h-3.5 w-3.5" />
-      </button>
-    </div>
-  );
-}
 
 // ─── Table skeleton — see components/ui/table-skeleton.tsx ───────────────────
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { isOtherCancelReason } from "@/lib/utils/cancel-reason-category";
+import { labelStyleInline as labelStyle, inputStyleInline as inputStyle } from "@/lib/utils/form-field-styles";
 
 export interface RouteToSalesForm {
   routed_reason: string;
@@ -21,26 +22,6 @@ interface RouteToSalesModalProps {
   saving?: boolean;
 }
 
-const labelStyle = {
-  fontSize: 11,
-  fontWeight: 500,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.06em",
-  color: "var(--color-text-muted)",
-  display: "block",
-  marginBottom: 4,
-};
-
-const inputStyle = {
-  width: "100%",
-  borderRadius: 6,
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
-  color: "var(--color-text-primary)",
-  padding: "6px 10px",
-  fontSize: 13,
-  outline: "none",
-};
 
 export function RouteToSalesModal({
   reasons,

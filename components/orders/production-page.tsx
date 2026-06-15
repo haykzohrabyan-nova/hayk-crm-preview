@@ -21,6 +21,7 @@ import {
   type PaginationMeta,
 } from "@/lib/utils/pagination";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { PRIORITY_STYLE } from "@/lib/utils/order-styles";
 import {
   displayContactName,
   isDueSoon,
@@ -60,11 +61,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "balance_due", label: "Balance Due" },
 ];
 
-const PRIORITY_STYLE: Record<string, { color: string }> = {
-  High:   { color: "var(--color-danger)" },
-  Normal: { color: "var(--color-text-muted)" },
-  Low:    { color: "var(--color-success)" },
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

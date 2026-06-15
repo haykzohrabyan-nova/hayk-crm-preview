@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Activity, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { relativeTime, formatDateTime } from "@/lib/utils/format";
+import { RoleSessionPill } from "@/components/admin/user-session-card";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -61,25 +62,6 @@ function customerName(c: ActivityCustomer | null): string | null {
   if (!c) return null;
   const name = [c.first_name, c.last_name].filter(Boolean).join(" ");
   return name || c.company || null;
-}
-
-const ROLE_STYLES: Record<string, { bg: string; color: string }> = {
-  admin: { bg: "var(--color-badge-bg)", color: "var(--color-badge-text)" },
-  sdr:   { bg: "var(--color-info-bg)", color: "var(--color-info-text)" },
-  sales: { bg: "var(--color-success-bg)", color: "var(--color-success)" },
-};
-
-function RolePill({ role }: { role: string | null }) {
-  if (!role) return null;
-  const style = ROLE_STYLES[role] ?? { bg: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" };
-  return (
-    <span
-      className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-      style={{ background: style.bg, color: style.color }}
-    >
-      {role}
-    </span>
-  );
 }
 
 // ─── Table skeleton ─────────────────────────────────────────────────────────
@@ -237,7 +219,7 @@ export function ActivityLogSection() {
                       <span className="font-medium text-[13px]" style={{ color: "var(--color-text-primary)" }}>
                         {a.actor?.full_name ?? "System"}
                       </span>
-                      <RolePill role={a.actor?.role_name ?? null} />
+                      <RoleSessionPill roleName={a.actor?.role_name ?? null} />
                     </div>
                   </td>
 
@@ -313,7 +295,7 @@ export function ActivityLogSection() {
                   <span className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>
                     {a.actor?.full_name ?? "System"}
                   </span>
-                  <RolePill role={a.actor?.role_name ?? null} />
+                  <RoleSessionPill roleName={a.actor?.role_name ?? null} />
                 </div>
                 <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
                   {relativeTime(a.created_at)}

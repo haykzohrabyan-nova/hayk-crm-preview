@@ -27,6 +27,7 @@ import {
   type PaginationMeta,
 } from "@/lib/utils/pagination";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { PRIORITY_STYLE, PAYMENT_STYLE } from "@/lib/utils/order-styles";
 import { displayContactName, formatDate } from "@/lib/utils/format";
 import { createClient } from "@/lib/supabase/client";
 import { AdminUserFilter } from "@/components/ui/admin-user-filter";
@@ -69,17 +70,6 @@ interface CompletedOrder {
   created_by?: { id: string; full_name: string | null } | null;
 }
 
-const PAYMENT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  unpaid:  { bg: "var(--color-danger-bg)",  text: "var(--color-danger)",  label: "Unpaid" },
-  partial: { bg: "var(--color-warning-bg)", text: "var(--color-warning)", label: "Partial" },
-  paid:    { bg: "var(--color-success-bg)", text: "var(--color-success)", label: "Paid" },
-};
-
-const PRIORITY_STYLE: Record<string, { color: string }> = {
-  High:   { color: "var(--color-danger)" },
-  Normal: { color: "var(--color-text-muted)" },
-  Low:    { color: "var(--color-success)" },
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 

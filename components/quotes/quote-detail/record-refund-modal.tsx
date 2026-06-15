@@ -26,26 +26,7 @@ export interface RecordRefundForm {
 
 const REFUND_METHODS = ["cash", "wire", "ach", "zelle", "check", "card", "offline", "other"] as const;
 
-const labelStyle = {
-  fontSize: 11,
-  fontWeight: 500,
-  textTransform: "uppercase" as const,
-  letterSpacing: "0.06em",
-  color: "var(--color-text-muted)",
-  display: "block",
-  marginBottom: 4,
-};
-
-const inputStyle = {
-  width: "100%",
-  borderRadius: 6,
-  border: "1px solid var(--color-border)",
-  background: "var(--color-surface)",
-  color: "var(--color-text-primary)",
-  padding: "6px 10px",
-  fontSize: 13,
-  outline: "none",
-};
+import { labelStyleInline as labelStyle, inputStyleInline as inputStyle } from "@/lib/utils/form-field-styles";
 
 export function RecordRefundModal({
   open,

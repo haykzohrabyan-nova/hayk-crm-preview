@@ -19,7 +19,8 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { PERIOD_LABELS } from "@/lib/utils/get-period-start";
-import { formatCurrency } from "@/lib/utils/format";
+import { formatCurrency, formatCompact } from "@/lib/utils/format";
+import { RoleSessionPill } from "@/components/admin/user-session-card";
 import { KPI_HELP } from "@/lib/utils/kpi-help-text";
 import { KpiHelpLine } from "@/components/ui/kpi-help-line";
 import { formatReportDateRange } from "@/lib/utils/reports-date-range";
@@ -101,16 +102,7 @@ interface ReportsSummary {
   };
 }
 
-function formatCompact(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
 
-const ROLE_PILL: Record<string, { bg: string; color: string }> = {
-  sales: { bg: "var(--color-success-bg)", color: "var(--color-success)" },
-  sdr: { bg: "var(--color-info-bg)", color: "var(--color-info-text)" },
-};
 
 function KpiCard({
   label,
@@ -565,16 +557,8 @@ export function ReportsPage() {
                 </>
               )}
             </span>
-            {data.filter_user.role_name && ROLE_PILL[data.filter_user.role_name] && (
-              <span
-                className="rounded-full px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                style={{
-                  background: ROLE_PILL[data.filter_user.role_name].bg,
-                  color: ROLE_PILL[data.filter_user.role_name].color,
-                }}
-              >
-                {data.filter_user.role_name}
-              </span>
+            {data.filter_user.role_name && (
+              <RoleSessionPill roleName={data.filter_user.role_name} />
             )}
           </div>
           <button

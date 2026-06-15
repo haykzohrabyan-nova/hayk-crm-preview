@@ -91,3 +91,10 @@ export function displayContactName(
   const name = [customer.first_name, customer.last_name].filter(Boolean).join(" ");
   return name || customer.company || "—";
 }
+
+/** Compact currency for dashboard KPI cards (e.g. $1.2K, $3.5M). */
+export function formatCompact(n: number): string {
+  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}

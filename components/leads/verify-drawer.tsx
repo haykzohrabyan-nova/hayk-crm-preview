@@ -13,6 +13,7 @@ import {
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { StatusPill } from "@/components/ui/status-pill";
+import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { HoldSubForm } from "@/components/leads/hold-sub-form";
 import { FollowUpSubForm } from "@/components/leads/follow-up-sub-form";
 import { Activity, FollowUpForm, HoldForm, Lead, LookupMap } from "@/lib/types";
@@ -76,16 +77,7 @@ interface VerifyDrawerProps {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const labelCls =
-  "block text-[11px] font-medium uppercase tracking-[0.06em] mb-1";
-const labelStyle = { color: "var(--color-text-muted)" };
-const inputCls =
-  "w-full h-9 rounded-[6px] border px-3 text-sm outline-none transition-all";
-const inputStyle = {
-  background: "var(--color-surface)",
-  borderColor: "var(--color-border)",
-  color: "var(--color-text-primary)",
-};
+import { labelCls, labelStyle, inputCls, inputStyle } from "@/lib/utils/form-field-styles";
 
 const AUTHORITY_OPTIONS = [
   { value: "yes", label: "Yes" },
@@ -608,14 +600,7 @@ export function VerifyDrawer({
               </p>
               <div className="flex items-center gap-2 mt-0.5">
                 <StatusPill status={lead.status} />
-                {lead.urgency && (
-                  <span
-                    className="text-[11px] font-medium"
-                    style={{ color: lead.urgency === "High" ? "var(--color-danger)" : lead.urgency === "Medium" ? "var(--color-warning)" : "var(--color-success)" }}
-                  >
-                    {lead.urgency} urgency
-                  </span>
-                )}
+                {lead.urgency && <UrgencyPill urgency={lead.urgency} />}
               </div>
             </div>
           </div>

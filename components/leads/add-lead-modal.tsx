@@ -49,14 +49,7 @@ const AUTHORITY_OPTIONS = [
 
 const URGENCY_NOT_DEFINED = { value: "not_defined", label: "Not Defined" };
 
-const labelCls = "block text-[11px] font-medium uppercase tracking-[0.06em] mb-1";
-const labelStyle = { color: "var(--color-text-muted)" };
-const inputCls = "w-full h-9 rounded-[6px] border px-3 text-sm outline-none transition-all";
-const inputStyle = {
-  background: "var(--color-surface)",
-  borderColor: "var(--color-border)",
-  color: "var(--color-text-primary)",
-};
+import { labelCls, labelStyle, inputCls, inputStyle } from "@/lib/utils/form-field-styles";
 
 interface AddForm {
   phone: string;

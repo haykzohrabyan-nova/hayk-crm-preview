@@ -1,6 +1,7 @@
 "use client";
 
 import { Trophy } from "lucide-react";
+import { formatCompact } from "@/lib/utils/format";
 
 export interface RepScorecardRow {
   id: string;
@@ -13,11 +14,6 @@ export interface RepScorecardRow {
   leads_routed?: number;
 }
 
-function formatCompact(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
 
 function CollectionBar({ pct }: { pct: number | null }) {
   if (pct == null) {

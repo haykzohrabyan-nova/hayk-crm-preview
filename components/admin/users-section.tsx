@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { validateEmail } from "@/lib/utils/email";
+import { RoleSessionPill } from "@/components/admin/user-session-card";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -109,11 +110,6 @@ function relativeTime(iso: string): string {
   return `${Math.floor(months / 12)}y ago`;
 }
 
-const ROLE_BADGE: Record<string, string> = {
-  admin:  "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-950/40 dark:text-blue-300 dark:border-blue-800/50",
-  sdr:    "bg-green-100 text-green-800 border-green-200 dark:bg-green-950/40 dark:text-green-300 dark:border-green-800/50",
-  sales:  "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/50",
-};
 
 function initials(name: string | null, email: string): string {
   if (name) {
@@ -802,9 +798,7 @@ export function UsersSection() {
                   <td className="px-3 py-2.5 text-sm" style={{ color: "var(--color-text-muted)" }}>{user.email}</td>
                   {/* Role */}
                   <td className="px-3 py-2.5">
-                    <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold", ROLE_BADGE[user.role_name] ?? "bg-muted text-muted-foreground border-border")}>
-                      {user.role_display_name}
-                    </span>
+                    <RoleSessionPill roleName={user.role_name} label={user.role_display_name} />
                   </td>
                   {/* Status */}
                   <td className="px-3 py-2.5"><StatusBadge active={user.is_active} /></td>
@@ -913,9 +907,7 @@ export function UsersSection() {
                 </div>
                 <div className="flex justify-between items-center gap-2">
                   <span className="font-medium">Role</span>
-                  <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal", ROLE_BADGE[user.role_name] ?? "bg-muted text-muted-foreground border-border")}>
-                    {user.role_display_name}
-                  </span>
+                  <RoleSessionPill roleName={user.role_name} label={user.role_display_name} />
                 </div>
                 <div className="flex justify-between items-center gap-2">
                   <span className="font-medium">Joined</span>

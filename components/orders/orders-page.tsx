@@ -20,6 +20,7 @@ import {
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
 import { Zap, ListFilter } from "lucide-react";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { PRIORITY_STYLE, PAYMENT_STYLE } from "@/lib/utils/order-styles";
 import {
   displayContactName,
   isDueSoon,
@@ -96,11 +97,6 @@ interface OrderTicket {
   created_by: { id: string; full_name: string | null } | null;
 }
 
-const PAYMENT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
-  unpaid:  { bg: "var(--color-danger-bg)",  text: "var(--color-danger)",  label: "Unpaid" },
-  partial: { bg: "var(--color-warning-bg)", text: "var(--color-warning)", label: "Partial" },
-  paid:    { bg: "var(--color-success-bg)", text: "var(--color-success)", label: "Paid" },
-};
 
 const REFUND_PAYMENT_STYLE: Record<string, { bg: string; text: string; label: string }> = {
   partial: {
@@ -153,11 +149,6 @@ const STATUS_TONE_STYLE: Record<OrderListStatusTone, { bg: string; text: string 
   cancelled:              { bg: "var(--color-danger-bg)",  text: "var(--color-danger)" },
 };
 
-const PRIORITY_STYLE: Record<string, { color: string }> = {
-  High:   { color: "var(--color-danger)" },
-  Normal: { color: "var(--color-text-muted)" },
-  Low:    { color: "var(--color-success)" },
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
