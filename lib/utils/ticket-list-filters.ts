@@ -168,12 +168,13 @@ export async function resolveTicketSearchCustomerIds(
   const term = search.trim();
   if (!term) return [];
 
-  const pattern = ticketSearchPattern(term);
-  const { data, error } = await admin
-    .from("customers")
-    .select("id")
-    .or(`first_name.ilike.${pattern},last_name.ilike.${pattern},company.ilike.${pattern}`);
-
+  const words = term.split(/\s+/).filter(Boolean);
+  let q = admin.from("customers").select("id");
+  for (const word of words) {
+    const pattern = ticketSearchPattern(word);
+    q = (q as any).or(`first_name.ilike.${pattern},last_name.ilike.${pattern},company.ilike.${pattern}`);
+  }
+  const { data, error } = await q;
   if (error) throw error;
   return (data ?? []).map((row) => row.id as string);
 }

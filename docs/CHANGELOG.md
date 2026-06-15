@@ -3,6 +3,13 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — Fix multi-word search across all list pages
+
+### Fixed
+- `lib/utils/leads-workspace-query.ts` — `resolveLeadSearchCustomerIds` now splits search terms by whitespace and applies each word as a separate `ilike` condition; fixes Sales Pipeline and Leads Workspace full-name search (e.g. "John Smith")
+- `lib/utils/ticket-list-filters.ts` — `resolveTicketSearchCustomerIds` same fix; applies to Quotes, Orders, Completed, and In-Production search
+- `lib/utils/fetch-payments-data.ts` — `resolvePaymentSearchCustomerIds` same fix; applies to Payments page search
+
 ## [2026-06-15] — Fix CRM full-name search (first + last)
 
 ### Fixed

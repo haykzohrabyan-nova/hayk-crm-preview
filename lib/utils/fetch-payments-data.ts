@@ -411,11 +411,14 @@ export async function fetchPaymentsTabCounts(admin: AdminClient) {
  * Amount/method searches still require in-memory filtering and are handled after.
  */
 async function resolvePaymentSearchCustomerIds(admin: AdminClient, search: string): Promise<string[]> {
-  const q = `%${search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`;
-  const { data } = await admin
-    .from("customers")
-    .select("id")
-    .or(`first_name.ilike.${q},last_name.ilike.${q},company.ilike.${q}`);
+  const words = search.trim().split(/\s+/).filter(Boolean);
+  let q = admin.from("customers").select("id");
+  for (const word of words) {
+    const escaped = word.replace(/[%_\\]/g, (c) => `\\${c}`);
+    const pattern = `%${escaped}%`;
+    q = (q as any).or(`first_name.ilike.${pattern},last_name.ilike.${pattern},company.ilike.${pattern}`);
+  }
+  const { data } = await q;
   return (data ?? []).map((r) => r.id as string);
 }
 
