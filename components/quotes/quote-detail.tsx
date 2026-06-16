@@ -662,12 +662,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
     // ── Required field validation ────────────────────────────────────────────
     let hasValidationError = false;
-    if (!title.trim()) {
-      setTitleError("A title is required.");
-      hasValidationError = true;
-    } else {
-      setTitleError(undefined);
-    }
+    setTitleError(undefined);
     if (dueDate && ticket?.created_at) {
       const dueErr = validateDueDateAgainstCreated(dueDate, ticket.created_at);
       if (dueErr) {

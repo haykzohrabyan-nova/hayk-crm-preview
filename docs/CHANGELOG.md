@@ -3,6 +3,13 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-16] — Fix: title no longer blocks Send Quote in quote detail
+
+### Fixed
+- `components/quotes/quote-detail.tsx` — removed the "A title is required" validation from `handleSave`; title was made optional in the previous commit but the send/submit flow in the detail view still blocked submission when the title was empty
+
+---
+
 ## [2026-06-15] — schema.sql: merge all patches through 2026-06-15
 
 ### Changed
