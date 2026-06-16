@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   // Verify the ticket is an order and exists.
   const { data: ticket, error: ticketErr } = await admin
     .from("job_tickets")
-    .select("id, reference_code, ticket_kind")
+    .select("id, reference_code, ticket_kind, order_source")
     .eq("id", ticketId)
     .single();
 
@@ -44,6 +44,14 @@ export async function POST(request: NextRequest) {
   if (ticket.ticket_kind !== "order") {
     return NextResponse.json(
       { error: "Ticket is not an order.", code: "VALIDATION_ERROR" },
+      { status: 422 },
+    );
+  }
+
+  // Legacy imported orders must never be sent to the external webhook.
+  if (ticket.order_source === "legacy_import") {
+    return NextResponse.json(
+      { error: "Legacy imported orders cannot be sent to the webhook.", code: "LEGACY_IMPORT" },
       { status: 422 },
     );
   }

@@ -3,6 +3,18 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — Order Webhook: date filter, ListPagination (25/50/100), legacy guard
+
+### Added
+- `app/api/admin/webhook/page-data/route.ts` — accepts `tab`, `search`, `date_from`, `date_to`, `limit` (default 25), `offset` query params; returns paginated results with `pagination` metadata
+- `components/admin/webhook-section.tsx` — search bar (300 ms debounce, filters by order #), `DashboardDateRangeFilter` (same date presets as Orders page, defaults to last month), `ListPagination` component (25 / 50 / 100 rows per page, persisted to `localStorage`)
+
+### Changed
+- Webhook page API now **excludes all `order_source = legacy_import` orders** — historical imported orders will never appear in the webhook panel or be sent to the external system
+- `app/api/admin/webhook/resend/route.ts` — blocks resend for `legacy_import` orders at the API level with a `422 LEGACY_IMPORT` error code
+- Tab counts (All / Delivered / Failed / Not Sent) always reflect totals across all non-legacy orders for the selected date range, regardless of current search or page
+- Page size default changed to 25; user preference persists across sessions (same `localStorage` key used by all other list pages)
+
 ## [2026-06-15] — Fix multi-word search across all list pages
 
 ### Fixed

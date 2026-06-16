@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { requirePageAccess } from "@/lib/auth/require-page-access";
@@ -39,24 +39,55 @@ export interface WebhookPageData {
     not_sent: number;
   };
   webhook_configured: boolean;
+  pagination: {
+    total: number;
+    offset: number;
+    limit: number;
+  };
 }
 
-export async function GET() {
+export type WebhookFilterTab = "all" | "success" | "failed" | "not_sent";
+
+const DEFAULT_LIMIT = 25;
+
+export async function GET(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
 
   const deny = await requirePageAccess(userId!, roleName, "/admin");
   if (deny) return deny;
 
+  const params = request.nextUrl.searchParams;
+  const tab = (params.get("tab") ?? "all") as WebhookFilterTab;
+  const search = params.get("search")?.trim() ?? "";
+  const dateFrom = params.get("date_from")?.trim() || undefined;
+  const dateTo = params.get("date_to")?.trim() || undefined;
+  const limit = Math.min(Math.max(parseInt(params.get("limit") ?? String(DEFAULT_LIMIT)), 1), 100);
+  const offset = Math.max(parseInt(params.get("offset") ?? "0"), 0);
+
   const admin = createAdminClient();
 
-  // All order-stage tickets, most recent first.
-  const { data: tickets, error: ticketsErr } = await admin
+  // Fetch non-legacy order-stage tickets, most recent first.
+  // legacy_import orders are excluded — they are historical and must never be sent to the webhook.
+  let query = admin
     .from("job_tickets")
     .select("id, reference_code, title, contact_name, contact_company, contact_email, quote_final_total, ticket_status, created_at")
     .eq("ticket_kind", "order")
     .in("ticket_status", ["order", "in_production", "completed", "cancelled"])
+    .or("order_source.is.null,order_source.neq.legacy_import")
     .order("created_at", { ascending: false });
+
+  if (search) {
+    query = (query as typeof query).ilike("reference_code", `%${search}%`);
+  }
+  if (dateFrom) {
+    query = (query as typeof query).gte("created_at", dateFrom);
+  }
+  if (dateTo) {
+    query = (query as typeof query).lte("created_at", dateTo);
+  }
+
+  const { data: tickets, error: ticketsErr } = await query;
 
   if (ticketsErr) {
     return NextResponse.json({ error: ticketsErr.message }, { status: 500 });
@@ -67,6 +98,7 @@ export async function GET() {
       orders: [],
       counts: { total: 0, success: 0, failed: 0, not_sent: 0 },
       webhook_configured: !!process.env.ORDER_WEBHOOK_URL,
+      pagination: { total: 0, offset, limit },
     } satisfies WebhookPageData);
   }
 
@@ -96,22 +128,18 @@ export async function GET() {
     deliveriesByTicket.set(d.ticket_id, list);
   }
 
+  // Build all order rows (unfiltered) for accurate tab counts.
   let successCount = 0;
   let failedCount = 0;
   let notSentCount = 0;
 
-  const orders: WebhookOrderRow[] = tickets.map((t) => {
+  const allOrders: WebhookOrderRow[] = tickets.map((t) => {
     const dels = deliveriesByTicket.get(t.id) ?? [];
-    // deliveries already sorted newest-first
     const latest = dels[0] ?? null;
 
-    if (!latest) {
-      notSentCount++;
-    } else if (latest.status === "success") {
-      successCount++;
-    } else {
-      failedCount++;
-    }
+    if (!latest)                      notSentCount++;
+    else if (latest.status === "success") successCount++;
+    else                              failedCount++;
 
     return {
       id:                t.id,
@@ -128,14 +156,23 @@ export async function GET() {
     };
   });
 
+  // Apply tab filter then paginate.
+  const filtered = tab === "all"       ? allOrders
+                 : tab === "not_sent"  ? allOrders.filter((o) => !o.latest_delivery)
+                 : tab === "success"   ? allOrders.filter((o) => o.latest_delivery?.status === "success")
+                 :                      allOrders.filter((o) => o.latest_delivery?.status === "failed");
+
+  const page = filtered.slice(offset, offset + limit);
+
   return NextResponse.json({
-    orders,
+    orders: page,
     counts: {
-      total:    orders.length,
+      total:    allOrders.length,
       success:  successCount,
       failed:   failedCount,
       not_sent: notSentCount,
     },
     webhook_configured: !!process.env.ORDER_WEBHOOK_URL,
+    pagination: { total: filtered.length, offset, limit },
   } satisfies WebhookPageData);
 }

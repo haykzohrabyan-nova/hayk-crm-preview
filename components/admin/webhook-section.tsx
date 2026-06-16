@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   Webhook,
@@ -11,11 +11,24 @@ import {
   AlertTriangle,
   Loader2,
   X,
+  Search,
 } from "lucide-react";
-import type { WebhookOrderRow, WebhookPageData, WebhookDelivery } from "@/app/api/admin/webhook/page-data/route";
+import type { WebhookOrderRow, WebhookPageData, WebhookDelivery, WebhookFilterTab } from "@/app/api/admin/webhook/page-data/route";
 import { formatCurrency, formatDate, formatDateTime, relativeTime } from "@/lib/utils/format";
+import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
+import {
+  defaultDashboardDateRangeFilterValue,
+  resolveDashboardDateRangeFilter,
+  type DashboardDateRangeFilterValue,
+} from "@/lib/utils/dashboard-date-range-filter";
+import { ListPagination } from "@/components/ui/list-pagination";
+import {
+  readStoredListPageSize,
+  writeStoredListPageSize,
+  type ListPageSize,
+} from "@/lib/utils/pagination";
 
-type FilterTab = "all" | "success" | "failed" | "not_sent";
+type FilterTab = WebhookFilterTab;
 
 // ─── Delivery status badge ─────────────────────────────────────────────────────
 
@@ -566,13 +579,41 @@ export function WebhookSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<FilterTab>("all");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
+    defaultDashboardDateRangeFilterValue("last_week"),
+  );
   const [modalRow, setModalRow] = useState<WebhookOrderRow | null>(null);
 
-  const load = useCallback(async () => {
+  // Debounce search input.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Reset to first page on any filter change.
+  useEffect(() => { setOffset(0); }, [tab, debouncedSearch, dateFilter, pageSize]);
+
+  const dateRange = useMemo(() => resolveDashboardDateRangeFilter(dateFilter), [dateFilter]);
+
+  const loadUrl = useMemo(() => {
+    const params = new URLSearchParams({ tab, limit: String(pageSize), offset: String(offset) });
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (dateRange) {
+      params.set("date_from", dateRange.start.toISOString());
+      params.set("date_to", dateRange.end.toISOString());
+    }
+    return `/api/admin/webhook/page-data?${params}`;
+  }, [tab, debouncedSearch, pageSize, offset, dateRange]);
+
+  const load = useCallback(async (url: string) => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/webhook/page-data");
+      const res = await fetch(url);
       if (!res.ok) throw new Error(await res.text());
       setData(await res.json());
     } catch (err) {
@@ -582,15 +623,22 @@ export function WebhookSection() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(loadUrl); }, [load, loadUrl]);
 
-  const orders = (data?.orders ?? []).filter((row) => {
-    if (tab === "all") return true;
-    if (tab === "not_sent") return !row.latest_delivery;
-    return row.latest_delivery?.status === tab;
-  });
+  function handleTabChange(newTab: FilterTab) {
+    setTab(newTab);
+    setOffset(0);
+  }
 
+  function handlePageSizeChange(size: ListPageSize) {
+    setPageSize(size);
+    writeStoredListPageSize(size);
+  }
+
+  const orders = data?.orders ?? [];
   const counts = data?.counts;
+  const pagination = data?.pagination;
+  const totalInTab = pagination?.total ?? 0;
 
   function tabCount(t: FilterTab): number {
     if (!counts) return 0;
@@ -602,7 +650,11 @@ export function WebhookSection() {
 
   function handleResent() {
     setModalRow(null);
-    load();
+    load(loadUrl);
+  }
+
+  function handleRefresh() {
+    load(loadUrl);
   }
 
   return (
@@ -624,11 +676,11 @@ export function WebhookSection() {
           </h2>
           <p className="mt-1 text-sm" style={{ color: "var(--color-text-muted)" }}>
             Every new order is automatically posted to the workflow automation webhook. Use this panel to monitor
-            delivery status and resend any orders that failed.
+            delivery status and resend any orders that failed. Legacy imported orders are excluded.
           </p>
         </div>
         <button
-          onClick={load}
+          onClick={handleRefresh}
           disabled={loading}
           className="shrink-0 inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-[13px] font-medium transition-opacity hover:opacity-80 disabled:opacity-50"
           style={{ background: "color-mix(in srgb, var(--color-border) 60%, transparent)", color: "var(--color-text-primary)" }}
@@ -680,6 +732,28 @@ export function WebhookSection() {
         </div>
       )}
 
+      {/* Search + date filter row */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+        {/* Search */}
+        <div className="relative flex-1 max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
+            placeholder="Search order #…"
+            className="w-full pl-9 pr-3 py-2 rounded-md text-[13px] border outline-none transition-colors"
+            style={{
+              background:  "var(--color-surface)",
+              borderColor: "var(--color-border)",
+              color:       "var(--color-text-primary)",
+            }}
+          />
+        </div>
+        {/* Date filter */}
+        <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
+      </div>
+
       {/* Filter tabs */}
       <div className="flex items-center gap-0 border-b" style={{ borderColor: "var(--color-border)" }}>
         {TABS.map((t) => {
@@ -687,7 +761,7 @@ export function WebhookSection() {
           return (
             <button
               key={t.id}
-              onClick={() => setTab(t.id)}
+              onClick={() => handleTabChange(t.id)}
               className="relative inline-flex items-center gap-1.5 px-4 py-2.5 text-[13px] font-medium transition-colors"
               style={{
                 color:        active ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
@@ -696,19 +770,17 @@ export function WebhookSection() {
               }}
             >
               {t.label}
-              {data && (
-                <span
-                  className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
-                  style={{
-                    background: active
-                      ? "var(--color-badge-bg)"
-                      : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
-                    color: "var(--color-badge-text)",
-                  }}
-                >
-                  {tabCount(t.id)}
-                </span>
-              )}
+              <span
+                className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+                style={{
+                  background: active
+                    ? "var(--color-badge-bg)"
+                    : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
+                  color: "var(--color-badge-text)",
+                }}
+              >
+                {tabCount(t.id)}
+              </span>
             </button>
           );
         })}
@@ -766,7 +838,7 @@ export function WebhookSection() {
             </thead>
             <tbody>
               {orders.map((row) => (
-                <OrderTableRow key={row.id} row={row} onOpenModal={setModalRow} onResent={load} />
+                <OrderTableRow key={row.id} row={row} onOpenModal={setModalRow} onResent={handleResent} />
               ))}
             </tbody>
           </table>
@@ -781,6 +853,16 @@ export function WebhookSection() {
           ))}
         </div>
       )}
+
+      {/* Pagination */}
+      <ListPagination
+        total={totalInTab}
+        offset={offset}
+        pageSize={pageSize}
+        onOffsetChange={setOffset}
+        onPageSizeChange={handlePageSizeChange}
+        loading={loading}
+      />
     </div>
   );
 }

@@ -76,7 +76,7 @@ export interface BulkOrderImportRowPreview {
   title: string | null;
   ticket_status: string;
   payment_status: string;
-  payment_method: string | null;
+  payment_method: string;
   total: number | null;
   line_item_count: number;
   order_date: string | null;
@@ -322,13 +322,15 @@ export async function validateBulkOrderRow(
   if (!VALID_PAYMENT_STATUSES.has(paymentStatusRaw))
     errors.push(`payment_status "${paymentStatusRaw}" is invalid — use: unpaid, partial, paid.`);
 
-  // ── Payment method ──
+  // ── Payment method — default to Cash when not provided ──
   const paymentMethodRaw = trimStr(row.payment_method).toLowerCase();
-  let paymentMethod: string | null = null;
+  let paymentMethod: string = "Cash"; // historical orders without a method default to Cash
   if (paymentMethodRaw) {
-    paymentMethod = PAYMENT_METHOD_MAP[paymentMethodRaw] ?? null;
-    if (!paymentMethod) {
-      warnings.push(`payment_method "${paymentMethodRaw}" not recognised — use: cash, check, card, zelle, wire, offline.`);
+    const mapped = PAYMENT_METHOD_MAP[paymentMethodRaw] ?? null;
+    if (!mapped) {
+      warnings.push(`payment_method "${paymentMethodRaw}" not recognised — defaulted to Cash.`);
+    } else {
+      paymentMethod = mapped;
     }
   }
 
@@ -449,6 +451,10 @@ export async function commitBulkOrderImport(
   const batchId = randomUUID();
   let created_count = 0;
 
+  // created_by_id = the admin running the import.
+  // Visibility for all roles is handled by order_source = "legacy_import" — no user attribution needed.
+  const resolvedCreatorId = staffUserId;
+
   for (const rowResult of validation.rows) {
     if (rowResult.status !== "valid" || !rowResult.preview) continue;
 
@@ -502,8 +508,10 @@ export async function commitBulkOrderImport(
     const paymentExtra: Record<string, unknown> = {};
     if (preview.payment_status === "paid") {
       paymentExtra.payment_paid_at = orderDate;
-      if (preview.payment_method) paymentExtra.payment_method_used = preview.payment_method;
+      paymentExtra.payment_method_used = preview.payment_method;
       if (preview.total != null) paymentExtra.payment_amount_received = preview.total;
+      // Placeholder receipt ID — required by the UI edit form; set to 000000 for historical imports.
+      paymentExtra.ticket_receipt_id = "000000";
     }
 
     // ── Resolve reference code (auto-assign ORD-YYYY-NNN if not provided) ──
@@ -519,10 +527,14 @@ export async function commitBulkOrderImport(
       }
     }
 
-    // ── Compute tax / pre-tax fields when tax_amount is provided ──
-    const taxAmount = parseNumber(input.tax_amount);
+    // ── Compute tax / pre-tax fields ──
     const subtotalVal = parseNumber(input.subtotal);
     const discountVal = parseNumber(input.discount_amount);
+    // Use explicit tax_amount when provided; otherwise pre-calculate at 9.75% of subtotal.
+    let taxAmount = parseNumber(input.tax_amount);
+    if (taxAmount == null && subtotalVal != null) {
+      taxAmount = Math.round(subtotalVal * 0.0975 * 100) / 100;
+    }
     // quote_pre_tax_total = total before tax (subtotal minus any discount)
     const preTaxTotal =
       taxAmount != null && preview.total != null
@@ -538,12 +550,12 @@ export async function commitBulkOrderImport(
         ticket_kind: "order",
         ticket_status: preview.ticket_status,
         customer_id: customerId,
-        created_by_id: staffUserId,
+        created_by_id: resolvedCreatorId,
         contact_phone: preview.customer_phone,
         contact_name: preview.customer_name,
         title: preview.title,
         reference_code: resolvedReferenceCode,
-        order_source: "direct",
+        order_source: "legacy_import",
         payment_status: preview.payment_status as "unpaid" | "partial" | "paid",
         payment_type: preview.payment_method,
         total: preview.total,
@@ -613,7 +625,7 @@ export async function commitBulkOrderImport(
       customer_id: customerId,
       ticket_id: ticket.id,
       type: "order_ticket_created",
-      by_user_id: staffUserId,
+      by_user_id: resolvedCreatorId,
       payload: {
         via: "bulk_import",
         batch_id: batchId,
@@ -628,7 +640,7 @@ export async function commitBulkOrderImport(
   if (created_count > 0) {
     await admin.from("activities").insert({
       type: "orders_bulk_imported",
-      by_user_id: staffUserId,
+      by_user_id: resolvedCreatorId,
       payload: {
         batch_id: batchId,
         created_count,

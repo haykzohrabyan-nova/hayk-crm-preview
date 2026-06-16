@@ -18,6 +18,9 @@ export async function countExact(
   return count ?? 0;
 }
 
+/** Legacy-imported orders are visible to every role — no ownership filter applied. */
+const LEGACY_IMPORT_SOURCE = "legacy_import";
+
 /** Match GET /api/tickets role scoping for job_tickets list/count queries. */
 export function scopeJobTicketsQuery<T extends CountQuery>(
   query: T,
@@ -34,19 +37,19 @@ export function scopeJobTicketsQuery<T extends CountQuery>(
     return query.in("ticket_status", ["sent", "order", "in_production", "completed", "cancelled"]) as T;
   }
   if (roleName === "sales" && userId) {
-    return query.or(`created_by_id.eq.${userId},ticket_status.eq.routed`) as T;
+    return query.or(`created_by_id.eq.${userId},ticket_status.eq.routed,order_source.eq.${LEGACY_IMPORT_SOURCE}`) as T;
   }
-  /** SDR: own tickets only — same rule as Quotes list and Completed (not routed_by_id). */
+  /** SDR: own tickets + legacy imports. */
   if (roleName === "sdr" && userId) {
-    return query.eq("created_by_id", userId) as T;
+    return query.or(`created_by_id.eq.${userId},order_source.eq.${LEGACY_IMPORT_SOURCE}`) as T;
   }
   if (userId) {
-    return query.or(`created_by_id.eq.${userId},routed_by_id.eq.${userId}`) as T;
+    return query.or(`created_by_id.eq.${userId},routed_by_id.eq.${userId},order_source.eq.${LEGACY_IMPORT_SOURCE}`) as T;
   }
   return query;
 }
 
-/** Completed list: SDR sees only tickets they created — not orders Sales completed after a routed hand-off. */
+/** Completed list: SDR sees only tickets they created + legacy imports. */
 export function scopeCompletedTicketsQuery<T extends CountQuery>(
   query: T,
   roleName: string | null,
@@ -58,7 +61,7 @@ export function scopeCompletedTicketsQuery<T extends CountQuery>(
   }
   if (roleName === "admin" || roleName === "accountant") return query;
   if (userId) {
-    return query.eq("created_by_id", userId) as T;
+    return query.or(`created_by_id.eq.${userId},order_source.eq.${LEGACY_IMPORT_SOURCE}`) as T;
   }
   return query;
 }
