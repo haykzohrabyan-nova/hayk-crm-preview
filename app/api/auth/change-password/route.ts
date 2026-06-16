@@ -50,12 +50,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Update password within the current session so the AAL2 session stays alive.
-  // Using the session-aware client here (vs admin updateUserById) prevents Supabase
-  // from invalidating the refresh token, which would force the user back to /login.
-  const { error: updateError } = await supabase.auth.updateUser({
-    password: new_password,
-  });
+  // Use the admin client to update the password so it works regardless of the
+  // session's AAL level. supabase.auth.updateUser() requires AAL2 when MFA is
+  // enabled, but users hitting /change-password are still on AAL1 (they haven't
+  // completed MFA yet). The admin/service-role call bypasses that restriction.
+  const adminClient = createAdminClient();
+
+  const { error: updateError } = await adminClient.auth.admin.updateUserById(
+    user.id,
+    { password: new_password }
+  );
 
   if (updateError) {
     return NextResponse.json(
@@ -64,9 +68,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // Clear the must_change_password flag (admin client required for service-role write)
-  const adminClient = createAdminClient();
-
+  // Clear the must_change_password flag
   const { error: profileError } = await adminClient
     .from("user_profiles")
     .update({ must_change_password: false })

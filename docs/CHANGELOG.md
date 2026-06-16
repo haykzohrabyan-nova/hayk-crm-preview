@@ -3,6 +3,13 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-16] — Fix: change-password works when MFA is enabled (AAL2 error)
+
+### Fixed
+- `app/api/auth/change-password/route.ts` — switched password update from `supabase.auth.updateUser()` (session-aware) to `adminClient.auth.admin.updateUserById()` (service-role). The session client requires an AAL2 session when MFA is enabled, but users on the forced `/change-password` flow are still AAL1 (they haven't completed MFA verification yet). The admin client bypasses the AAL level check entirely.
+
+---
+
 ## [2026-06-16] — Fix: title no longer blocks Send Quote in quote detail
 
 ### Fixed
