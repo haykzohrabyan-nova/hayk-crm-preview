@@ -1,6 +1,6 @@
 # BazarCRM — TODO Tracker
 
-**Last updated:** 2026-06-06 (bulk lead import, tax-exempt portal closure, TODO-009 decided)
+**Last updated:** 2026-06-15 (multi-word search, webhook page filters, legacy import guard, bulk order import, doc cleanup, data management plan)
 
 Open and future work only. **Shipped features** → [`docs/CHANGELOG.md`](./CHANGELOG.md). **Specs** → [`docs/feature-specs/`](./feature-specs/). **Larger designs** → [`docs/FuturePlan/`](./FuturePlan/).
 
@@ -15,7 +15,7 @@ Open and future work only. **Shipped features** → [`docs/CHANGELOG.md`](./CHAN
 | Action | Notes |
 |--------|--------|
 | Enable Vercel Pro + redeploy | No code change if `CRON_SECRET` is already set |
-| Until then | Manual run — [`docs/cron-follow-ups.md`](./cron-follow-ups.md) |
+| Until then | Manual run — [`docs/guides/cron-follow-ups.md`](./guides/cron-follow-ups.md) |
 
 ---
 
@@ -41,6 +41,10 @@ Phase 1–3 core + Jun 2026 perf is **done** — page-data, 45s session cache, `
 |------|----------------|
 | Tax-exempt resubmit portal | **Done** — OTP `/permit`, Request flow, staff replace on `/payments`, internal denial notes. **Won't build:** customer declare-unavailable (staff use **Deny tax-exempt** instead) — [FuturePlan/tax-exempt-resubmit-portal/](./FuturePlan/tax-exempt-resubmit-portal/README.md) |
 | Bulk lead import (JSON) | **Done** — Admin → Settings → **Lead import** (`/admin/settings/import-export`); AI template + validate-first; `docs/feature-specs/lead-import.md` |
+| Bulk order import (JSON) | **Done** — Admin → Settings → **Order import**; cash-default, 9.75% tax backfill, `000000` receipt placeholder, `legacy_import` source for universal visibility; `docs/feature-specs/order-import.md` |
+| Multi-word search (all list pages) | **Done** — CRM, Sales Pipeline, Leads Workspace, Quotes, Orders, Completed, Payments all split search terms and run separate `ilike` per word |
+| Order Webhook page — pagination + filters | **Done** — 25-per-page default, date range (last 7 days default), search; `legacy_import` orders blocked from display and resend |
+| Data management — delete & export | **Planned** — `docs/Data Management/data-management-plan.md`; SQL patch + API routes + admin UI not yet built |
 | Admin broadcast notifications | `/admin/settings/notifications` — form not built |
 | Per-user notification bell (V2) | `feature-specs/notifications.md` |
 | Reports extras | JSON export (not CSV), product/source charts, bonus % preview, forecast — `feature-specs/reports.md` |

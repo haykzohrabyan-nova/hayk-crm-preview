@@ -3,6 +3,34 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-15] — schema.sql: merge all patches through 2026-06-15
+
+### Changed
+- `supabase/schema.sql` — merged all 5 patches that had been applied to production but not reflected in the consolidated schema file:
+  - `permissions` + `role_action_grants` tables, full permissions catalog seed, and role grants (RBAC Slice 0, `2026-06-09-action-permissions.sql`)
+  - `record_ticket_payment_atomic` function + service_role grant (`2026-06-09-atomic-payment-rpc.sql`)
+  - `webhook_deliveries` table + 3 indexes + RLS policy (`2026-06-12-webhook-deliveries.sql`)
+  - 10 composite/partial performance indexes on `leads`, `customers`, `job_tickets`, `activities` (`2026-06-13-performance-indexes.sql`)
+  - `/admin/settings/import-export` page added to pages seed
+  - RLS enables and policies for all 3 new tables
+  - Schema header updated to list all applied patches through 2026-06-15
+
+---
+
+## [2026-06-15] — Docs cleanup: archive historical planning files, remove noise
+
+### Removed
+- `docs/sibling-project-stack-bootstrap.md` — bootstrap guide for a different project, not BazarCRM-specific
+- `docs/realtime-agent-setup-guide.md` — generic Realtime guide for other projects, not BazarCRM-specific
+- `docs/Notification/Notification.md` — content already covered by `feature-specs/notifications.md`
+- `docs/owner-color-picker.html` — standalone HTML tool, not documentation
+
+### Changed
+- `docs/TODO.md` — updated to 2026-06-15; added Done rows for bulk order import, multi-word search, webhook pagination/filters; added Planned row for data management
+- Moved 11 historical planning files to `docs/archive/`: `mvp-scope.md`, `session-summary.md`, `UserSessions.md`, and 8 `order-ticket/` planning docs (shadow-project analysis, integration plan, open questions, owner questionnaire, pricing proposal, product catalog) — work is shipped, lifecycle-flow.md kept as ongoing reference
+
+---
+
 ## [2026-06-15] — Order Webhook: date filter, ListPagination (25/50/100), legacy guard
 
 ### Added

@@ -6,11 +6,19 @@
 -- Run in the Supabase SQL Editor (or `psql`) on an empty `public` schema.
 --
 -- Includes: tables (final column set), indexes, RLS, functions, triggers, views,
--- Realtime publication, grants, and seed data (roles, pages, permissions, lookups,
--- product catalog, company_settings).
+-- Realtime publication, grants, and seed data (roles, pages, role_permissions,
+-- action permissions catalog, lookup values, product catalog, company_settings).
 --
--- Excludes: dev/test seed data, one-time backfills, and reset scripts
--- (use `npm run reset-test-data` for local test wipes).
+-- All patches applied through 2026-06-15:
+--   2026-06-04 payment-evidence-otp         → columns in job_tickets
+--   2026-06-09 action-permissions           → permissions + role_action_grants tables + seed
+--   2026-06-09 atomic-payment-rpc           → record_ticket_payment_atomic function
+--   2026-06-12 webhook-deliveries           → webhook_deliveries table
+--   2026-06-13 performance-indexes          → 10 composite/partial indexes
+--   2026-06-15 create-system-created-customer → data patch only (not schema, run separately)
+--
+-- Excludes: dev/test seed data, one-time data backfills, Storage file contents.
+-- Auth users exist in auth.users (Supabase-managed) — export via Supabase Dashboard.
 --
 -- Safe to re-run: DDL uses IF NOT EXISTS / OR REPLACE / ON CONFLICT DO NOTHING.
 -- Realtime `ADD TABLE` may log "already member" on re-run — harmless.
@@ -49,6 +57,28 @@ create table if not exists public.role_permissions (
   role_id   uuid  not null references public.roles(id) on delete cascade,
   page_id   uuid  not null references public.pages(id) on delete cascade,
   primary key (role_id, page_id)
+);
+
+-- ── permissions ──────────────────────────────────────────────────────────────
+-- Action-permission catalog (RBAC Slice 0 — 2026-06-09)
+
+create table if not exists public.permissions (
+  id           uuid default gen_random_uuid() primary key,
+  key          text unique not null,
+  display_name text not null,
+  area         text not null,
+  description  text,
+  sort_order   int  not null default 0,
+  created_at   timestamptz default now()
+);
+
+-- ── role_action_grants ────────────────────────────────────────────────────────
+-- Maps roles to action permissions (many-to-many).
+
+create table if not exists public.role_action_grants (
+  role_id       uuid not null references public.roles(id) on delete cascade,
+  permission_id uuid not null references public.permissions(id) on delete cascade,
+  primary key (role_id, permission_id)
 );
 
 -- ── user_profiles ─────────────────────────────────────────────────────────────
@@ -590,6 +620,27 @@ create table if not exists public.quote_sequence_counters (
 );
 
 
+-- ── webhook_deliveries ────────────────────────────────────────────────────────
+-- Tracks every outbound POST to ORDER_WEBHOOK_URL (2026-06-12)
+
+create table if not exists public.webhook_deliveries (
+  id             uuid        primary key default gen_random_uuid(),
+  ticket_id      uuid        not null references public.job_tickets(id) on delete cascade,
+  reference_code text,
+  attempt        int         not null default 1,
+  status         text        not null check (status in ('success', 'failed')),
+  http_status    int,
+  response_body  text,
+  error_message  text,
+  via            text,
+  sent_at        timestamptz not null default now()
+);
+
+create index if not exists webhook_deliveries_ticket_id_idx on public.webhook_deliveries (ticket_id);
+create index if not exists webhook_deliveries_sent_at_idx   on public.webhook_deliveries (sent_at desc);
+create index if not exists webhook_deliveries_status_idx    on public.webhook_deliveries (status);
+
+
 -- =============================================================================
 -- 1b. DEFERRED COLUMNS — FKs that require job_tickets to exist first (105, 103–108)
 -- =============================================================================
@@ -733,6 +784,35 @@ create index if not exists user_sessions_signed_in_at_idx on public.user_session
 create index if not exists mfa_trusted_devices_user_id_idx    on public.mfa_trusted_devices(user_id);
 create index if not exists mfa_trusted_devices_expires_at_idx on public.mfa_trusted_devices(expires_at);
 
+-- permissions / role_action_grants
+create index if not exists permissions_area_idx           on public.permissions(area, sort_order);
+create index if not exists role_action_grants_role_id_idx on public.role_action_grants(role_id);
+
+-- performance indexes (2026-06-13)
+create index if not exists leads_inbox_status_updated_idx
+  on public.leads (is_inbox, status, updated_at desc);
+create index if not exists leads_inbox_status_sales_status_idx
+  on public.leads (is_inbox, status, sales_status);
+create index if not exists leads_updated_at_idx
+  on public.leads (updated_at desc);
+create index if not exists customers_updated_at_idx
+  on public.customers (updated_at desc);
+create index if not exists customers_heat_tag_updated_idx
+  on public.customers (heat_tag, updated_at desc)
+  where heat_tag is not null;
+create index if not exists tickets_status_updated_idx
+  on public.job_tickets (ticket_status, updated_at desc);
+create index if not exists tickets_updated_at_idx
+  on public.job_tickets (updated_at desc);
+create index if not exists tickets_tax_exempt_pending_idx
+  on public.job_tickets (tax_exempt, sales_permit_reviewed_at)
+  where tax_exempt = true and sales_permit_reviewed_at is null;
+create index if not exists activities_type_idx
+  on public.activities (type);
+create index if not exists activities_type_lead_idx
+  on public.activities (type, lead_id)
+  where lead_id is not null;
+
 
 -- =============================================================================
 -- 3. ENABLE ROW LEVEL SECURITY
@@ -760,6 +840,9 @@ alter table public.email_templates         enable row level security;
 alter table public.ticket_shipping_destinations enable row level security;
 alter table public.user_sessions           enable row level security;
 alter table public.mfa_trusted_devices     enable row level security;
+alter table public.permissions             enable row level security;
+alter table public.role_action_grants      enable row level security;
+alter table public.webhook_deliveries      enable row level security;
 
 
 -- =============================================================================
@@ -829,6 +912,39 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   create policy "admin_write_role_permissions" on public.role_permissions
     for all using (public.current_user_role() = 'admin');
+exception when duplicate_object then null; end $$;
+
+-- ── permissions ───────────────────────────────────────────────────────────────
+
+do $$ begin
+  create policy "authenticated_read_permissions" on public.permissions
+    for select using (auth.uid() is not null);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "admin_write_permissions" on public.permissions
+    for all using (public.current_user_role() = 'admin');
+exception when duplicate_object then null; end $$;
+
+-- ── role_action_grants ────────────────────────────────────────────────────────
+
+do $$ begin
+  create policy "authenticated_read_role_action_grants" on public.role_action_grants
+    for select using (auth.uid() is not null);
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create policy "admin_write_role_action_grants" on public.role_action_grants
+    for all using (public.current_user_role() = 'admin');
+exception when duplicate_object then null; end $$;
+
+-- ── webhook_deliveries ────────────────────────────────────────────────────────
+-- Server-side admin client only — no row-level user access.
+
+do $$ begin
+  create policy "admin_only_webhook_deliveries" on public.webhook_deliveries
+    using (false)
+    with check (false);
 exception when duplicate_object then null; end $$;
 
 -- ── user_profiles ─────────────────────────────────────────────────────────────
@@ -1369,6 +1485,91 @@ revoke all on function public.increment_quote_sequence(int) from public, anon, a
 grant execute on function public.increment_order_sequence(int) to service_role;
 grant execute on function public.increment_quote_sequence(int) to service_role;
 
+-- Atomic payment recording — prevents double-payment race conditions (2026-06-09)
+create or replace function record_ticket_payment_atomic(
+  p_ticket_id   uuid,
+  p_amount      numeric,
+  p_mode        text,
+  p_method      text,
+  p_now         timestamptz,
+  p_receipt_id  text default null
+)
+returns table (
+  payment_amount_received   numeric,
+  quote_final_total         numeric,
+  ticket_status             text,
+  deposit_paid_at           timestamptz,
+  balance_paid_at           timestamptz,
+  payment_paid_at           timestamptz,
+  payment_status            text
+)
+language plpgsql security definer
+as $$
+declare
+  v_already_paid  numeric;
+  v_total         numeric;
+  v_new_total     numeric;
+  v_fully_paid    boolean;
+begin
+  select
+    coalesce(t.payment_amount_received, 0),
+    coalesce(t.quote_final_total, 0)
+  into v_already_paid, v_total
+  from job_tickets t
+  where t.id = p_ticket_id
+  for update;
+
+  if not found then
+    raise exception 'ticket_not_found' using errcode = 'P0002';
+  end if;
+
+  v_new_total  := least(v_already_paid + p_amount, v_total);
+  v_fully_paid := v_new_total >= v_total - 0.01;
+
+  return query
+  update job_tickets t set
+    payment_amount_received = v_new_total,
+    updated_at              = p_now,
+    deposit_amount     = case when p_mode = 'deposit' and t.deposit_paid_at is null then p_amount     else t.deposit_amount     end,
+    deposit_paid_at    = case when p_mode = 'deposit' and t.deposit_paid_at is null then p_now        else t.deposit_paid_at    end,
+    deposit_receipt_id = case when p_mode = 'deposit' and t.deposit_paid_at is null then p_receipt_id else t.deposit_receipt_id end,
+    deposit_method     = case when p_mode = 'deposit' and t.deposit_paid_at is null then p_method     else t.deposit_method     end,
+    balance_paid_at     = case when p_mode in ('balance', 'full') then p_now    else t.balance_paid_at     end,
+    payment_method_used = case when p_mode in ('balance', 'full') then p_method else t.payment_method_used end,
+    payment_paid_at = case when v_fully_paid and t.payment_paid_at is null then p_now else t.payment_paid_at end,
+    payment_status  = case
+                        when v_fully_paid       then 'paid'
+                        when v_new_total > 0.01 then 'partial'
+                        else t.payment_status
+                      end,
+    payment_evidence_reviewed_at = case
+      when (t.payment_evidence_url is not null or t.stripe_payment_intent_id is not null)
+           and t.payment_evidence_reviewed_at is null
+      then p_now
+      else t.payment_evidence_reviewed_at
+    end,
+    payment_evidence_resubmit_requested_at    = null,
+    payment_evidence_resubmit_requested_by_id = null,
+    payment_evidence_resubmit_reason          = null,
+    payment_evidence_resubmit_received_at     = null,
+    payment_evidence_resubmit_token           = null,
+    payment_evidence_otp_hash                 = null,
+    payment_evidence_otp_expires_at           = null
+  where t.id = p_ticket_id
+  returning
+    t.payment_amount_received,
+    t.quote_final_total,
+    t.ticket_status,
+    t.deposit_paid_at,
+    t.balance_paid_at,
+    t.payment_paid_at,
+    t.payment_status;
+end;
+$$;
+
+grant execute on function record_ticket_payment_atomic(uuid, numeric, text, text, timestamptz, text)
+  to service_role;
+
 
 -- =============================================================================
 -- 9. GRANTS
@@ -1450,7 +1651,8 @@ insert into public.pages (route, display_name, icon, section, sort_order) values
   ('/admin/settings/notifications', 'Notifications',        'Megaphone',         'admin-sub', 40),
   ('/admin/settings/audit-log',     'Audit Log',            'ClipboardList',     'admin-sub', 50),
   ('/admin/settings/company',       'Company Info',         'Building2',         'admin-sub', 60),
-  ('/admin/settings/products',      'Products',             'Package',           'admin-sub', 70)
+  ('/admin/settings/products',      'Products',             'Package',           'admin-sub', 70),
+  ('/admin/settings/import-export', 'Import / Export',      'Upload',            'admin-sub', 80)
 on conflict (route) do nothing;
 
 
@@ -1498,7 +1700,126 @@ on conflict do nothing;
 
 
 -- =============================================================================
--- 14. SEED — LOOKUP VALUES (020 + 044 + 048)
+-- 14. SEED — ACTION PERMISSIONS CATALOG (RBAC Slice 0 — 2026-06-09)
+-- =============================================================================
+-- Seeds the permissions catalog and grants that exactly match current hardcoded
+-- behavior. NO behavior changes — existing roleName checks are untouched.
+
+insert into public.permissions (key, display_name, area, description, sort_order) values
+-- LEADS — data scope
+('leads.scope.inbox_pool',  'View unclaimed inbox pool',           'leads', 'See leads not yet claimed by any SDR',                        10),
+('leads.scope.own',         'View own / assigned leads',           'leads', 'See leads where you are the SDR or sales owner',              20),
+('leads.scope.all',         'View all leads',                      'leads', 'See every lead regardless of ownership',                      30),
+('leads.scope.routed',      'View routed-to-sales pipeline',       'leads', 'See leads routed to the sales pipeline',                      40),
+-- LEADS — actions
+('leads.create',            'Manually add a lead',                 'leads', 'POST /api/leads/manual',                                      50),
+('leads.edit',              'Edit lead fields',                    'leads', 'PATCH /api/leads/[id]',                                       60),
+('leads.lock',              'Lock / claim lead (SDR ownership)',   'leads', 'POST /api/leads/[id]/lock',                                   70),
+('leads.unlock_own',        'Release own lock',                    'leads', 'POST /api/leads/[id]/unlock',                                 80),
+('leads.unlock_any',        'Force-release any lock',              'leads', 'Admin-only override',                                         90),
+('leads.route_to_sales',    'Route lead to Sales',                 'leads', 'Set status = Routed to Sales',                               100),
+('leads.reject',            'Reject a lead',                       'leads', 'Set status = Rejected',                                      110),
+('leads.hold',              'Put lead on hold',                    'leads', 'POST /api/leads/[id]/hold',                                  120),
+('leads.resume',            'Resume from hold / follow-up',        'leads', 'POST /api/leads/[id]/resume',                                130),
+('leads.follow_up',         'Mark follow-up later',                'leads', 'POST /api/leads/[id]/follow-up',                             140),
+('leads.claim',             'Claim a routed lead (Sales)',         'leads', 'POST /api/leads/[id]/claim',                                 150),
+('leads.reassign',          'Reassign lead to another SDR',        'leads', 'POST /api/leads/[id]/reassign — admin reassign',             160),
+('leads.override_terminal', 'Edit rejected leads',                 'leads', 'Modify a lead in Rejected status (admin only)',               170),
+-- SALES
+('sales.view_pipeline',     'View the Sales pipeline',             'sales', 'Access /sales',                                               10),
+('sales.hold',              'Put sales lead on hold',              'sales', 'POST /api/leads/[id]/hold with role=sales',                   20),
+('sales.resume',            'Resume a sales lead',                 'sales', 'POST /api/leads/[id]/resume with role=sales',                 30),
+('sales.follow_up',         'Follow up on a sales lead',           'sales', 'POST /api/leads/[id]/follow-up with role=sales',              40),
+-- QUOTES
+('quotes.create',              'Create a quote',                         'quotes', 'POST /api/tickets',                                    10),
+('quotes.edit',                'Edit quote fields',                      'quotes', 'PATCH /api/tickets/[id]',                              20),
+('quotes.send',                'Send quote to customer',                 'quotes', 'PATCH /api/tickets/[id] with send_quote=true',         30),
+('quotes.claim',               'Claim a routed quote',                   'quotes', 'Sales claim of a ticket',                             40),
+('quotes.cancel',              'Cancel a quote',                         'quotes', 'ticket_status=cancelled',                             50),
+('quotes.upload_sales_permit', 'Upload / replace tax-exempt permit',     'quotes', 'POST /api/tickets/[id]/sales-permit',                 60),
+-- ORDERS
+('orders.view_own',          'View own orders',                    'orders', 'See orders where you are the creator',                        10),
+('orders.view_all',          'View all orders',                    'orders', 'See every order regardless of creator',                      20),
+('orders.release_production','Release order to production',        'orders', 'PATCH release_production=true',                             30),
+('orders.mark_complete',     'Mark order as completed',            'orders', 'PATCH mark_completed=true',                                 40),
+('orders.convert_manual',    'Manually convert quote to order',   'orders', 'Admin only',                                                 50),
+('orders.cancel',            'Cancel an order',                    'orders', 'Admin + accountant',                                        60),
+-- PAYMENTS
+('payments.record_payment',            'Confirm / record a payment',             'payments', 'PATCH record_payment=true',                   10),
+('payments.approve_tax_exempt',        'Approve tax-exempt documentation',       'payments', 'PATCH approve_tax_exempt=true',              20),
+('payments.deny_tax_exempt',           'Deny tax-exempt documentation',          'payments', 'PATCH deny_tax_exempt=true',                 30),
+('payments.request_resubmit',          'Request evidence / permit resubmission', 'payments', 'PATCH request_payment_evidence_resubmit=true', 40),
+('payments.resend_invoice',            'Resend invoice link to customer',        'payments', 'PATCH resend_invoice=true',                  50),
+('payments.send_reminder',             'Send payment reminder to customer',      'payments', 'PATCH send_payment_reminder=true',           60),
+('payments.view_evidence',             'View payment & refund evidence files',   'payments', 'GET /api/tickets/[id]/evidence',             70),
+('payments.view_sales_permit',         'View / download tax-exempt permit file', 'payments', 'GET /api/tickets/[id]/sales-permit',         80),
+('payments.refund',                    'Issue a refund',                         'payments', 'POST /api/tickets/[id]/refund',              90),
+-- CRM
+('crm.view',   'View customer profiles',    'crm', 'Read customer details and history',        10),
+('crm.edit',   'Edit customer information', 'crm', 'PATCH /api/customers/[id]',               20),
+('crm.merge',  'Merge duplicate customers', 'crm', 'POST /api/customers/[id]/merge',          30),
+('crm.create', 'Create a new customer',     'crm', 'POST /api/customers during lead creation', 40),
+-- ADMIN
+('admin.manage_users',        'Manage users',                  'admin', 'Create, edit, deactivate users',  10),
+('admin.manage_roles',        'Manage roles & permissions',    'admin', 'Edit role grants',                20),
+('admin.manage_dropdowns',    'Manage dropdown options',       'admin', 'Lookup values CRUD',              30),
+('admin.manage_products',     'Manage product catalog',        'admin', 'Product types, materials',        40),
+('admin.manage_company',      'Edit company info',             'admin', 'Company settings',                50),
+('admin.import_export',       'Bulk import / export data',     'admin', 'Lead, customer, order import',   60),
+('admin.view_audit_log',      'View audit / activity log',     'admin', 'Activity log full access',        70),
+('admin.manage_webhooks',     'Manage outbound webhooks',      'admin', 'Webhook delivery panel + resend', 80),
+('admin.view_dashboard',      'View admin dashboard metrics',  'admin', 'Team sessions, counters',         90),
+('admin.view_reports',        'View reports',                  'admin', 'Reports page',                   100)
+on conflict (key) do nothing;
+
+-- ── Role grants (mirrors current hardcoded behavior) ──────────────────────────
+
+-- SDR grants
+insert into public.role_action_grants (role_id, permission_id)
+select r.id, p.id from public.roles r cross join public.permissions p
+where r.name = 'sdr' and p.key in (
+  'leads.scope.inbox_pool','leads.scope.own',
+  'leads.create','leads.edit','leads.lock','leads.unlock_own',
+  'leads.route_to_sales','leads.reject','leads.hold','leads.resume','leads.follow_up',
+  'leads.reassign',
+  'quotes.create','quotes.edit','quotes.send','quotes.cancel','quotes.upload_sales_permit',
+  'orders.view_own',
+  'crm.view','crm.create'
+) on conflict do nothing;
+
+-- Sales grants
+insert into public.role_action_grants (role_id, permission_id)
+select r.id, p.id from public.roles r cross join public.permissions p
+where r.name = 'sales' and p.key in (
+  'leads.scope.own','leads.scope.routed',
+  'leads.edit','leads.hold','leads.resume','leads.follow_up','leads.claim',
+  'sales.view_pipeline','sales.hold','sales.resume','sales.follow_up',
+  'quotes.create','quotes.edit','quotes.send','quotes.claim','quotes.cancel','quotes.upload_sales_permit',
+  'orders.view_own',
+  'payments.resend_invoice','payments.send_reminder',
+  'crm.view','crm.create','crm.edit'
+) on conflict do nothing;
+
+-- Accountant grants
+insert into public.role_action_grants (role_id, permission_id)
+select r.id, p.id from public.roles r cross join public.permissions p
+where r.name = 'accountant' and p.key in (
+  'orders.view_all','orders.mark_complete','orders.cancel',
+  'payments.record_payment','payments.approve_tax_exempt','payments.deny_tax_exempt',
+  'payments.request_resubmit','payments.resend_invoice','payments.send_reminder',
+  'payments.view_evidence','payments.view_sales_permit','payments.refund',
+  'crm.view','crm.edit'
+) on conflict do nothing;
+
+-- Admin gets all permissions
+insert into public.role_action_grants (role_id, permission_id)
+select r.id, p.id from public.roles r cross join public.permissions p
+where r.name = 'admin'
+on conflict do nothing;
+
+
+-- =============================================================================
+-- 15. SEED — LOOKUP VALUES (020 + 044 + 048)
 -- =============================================================================
 
 insert into public.lookup_values (category, value, label, sort_order) values
@@ -1669,7 +1990,7 @@ on conflict (category, value) do nothing;
 
 
 -- =============================================================================
--- 15. SEED — PRODUCT CATALOG (migration 041)
+-- 16. SEED — PRODUCT CATALOG (migration 041)
 -- =============================================================================
 
 -- ── product_types ─────────────────────────────────────────────────────────────
@@ -1923,7 +2244,7 @@ on conflict do nothing;
 
 
 -- =============================================================================
--- 16. SEED — STORAGE BUCKETS (101)
+-- 17. SEED — STORAGE BUCKETS (101)
 -- =============================================================================
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
@@ -1938,7 +2259,7 @@ on conflict (id) do nothing;
 
 
 -- =============================================================================
--- 17. SEED — SMS & EMAIL TEMPLATES (migrations 084, 109, 110)
+-- 18. SEED — SMS & EMAIL TEMPLATES (migrations 084, 109, 110)
 -- =============================================================================
 
 insert into public.sms_templates (template_key, body) values
@@ -2033,7 +2354,7 @@ on conflict (template_key) do nothing;
 
 
 -- =============================================================================
--- 18. SEED — COMPANY SETTINGS
+-- 19. SEED — COMPANY SETTINGS
 -- =============================================================================
 
 insert into public.company_settings (id) values (1)
