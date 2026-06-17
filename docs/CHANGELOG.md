@@ -3,6 +3,14 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-17] — Rename Roll Direction lookup labels to numbered short form
+
+### Changed
+- `supabase/patches/2026-06-17-roll-direction-labels.sql` — updated `lookup_values` labels for `roll_direction` category: "Top Off First" → "1-Top", "Bottom Off First" → "2-Bottom", "Right Off First" → "3-Right", "Left Off First" → "4-Left"
+- `supabase/schema.sql` — updated seed values to match
+
+---
+
 ## [2026-06-16] — Fix: change-password works when MFA is enabled (AAL2 error)
 
 ### Fixed

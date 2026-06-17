@@ -1967,10 +1967,10 @@ insert into public.lookup_values (category, value, label, sort_order) values
   ('sides', 'double_sided', 'Double-sided', 2),
 
   -- ── roll direction ─────────────────────────────────────────────────────────
-  ('roll_direction', 'top_off_first',    'Top Off First',    1),
-  ('roll_direction', 'bottom_off_first', 'Bottom Off First', 2),
-  ('roll_direction', 'right_off_first',  'Right Off First',  3),
-  ('roll_direction', 'left_off_first',   'Left Off First',   4),
+  ('roll_direction', 'top_off_first',    '1-Top',    1),
+  ('roll_direction', 'bottom_off_first', '2-Bottom', 2),
+  ('roll_direction', 'right_off_first',  '3-Right',  3),
+  ('roll_direction', 'left_off_first',   '4-Left',   4),
 
   -- ── Stripe refund reasons (099) ────────────────────────────────────────────
   ('stripe_refund_reason', 'refund_order_issue',        'Order / production issue', 0),
