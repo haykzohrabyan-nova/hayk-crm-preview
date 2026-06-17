@@ -3,6 +3,18 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-17] — Auto-generate Receipt ID when Cash is selected
+
+### Changed
+- `components/quotes/quote-payment-config.tsx` — when Cash is selected (full cash-only or partial cash deposit), a 6-digit random Receipt ID is auto-generated if the field is empty; user can edit it freely
+- `components/quotes/quote-payment-config.tsx` — Receipt ID field now accepts any characters (not digits-only); label updated to "auto-generated, edit if needed"
+- `lib/utils/validate-quote-send.ts` — removed the digits-only regex check; Receipt ID just needs to be non-empty
+
+## [2026-06-17] — Fix industry not prefilling from existing customer on new-quote form
+
+### Fixed
+- `components/quotes/new-quote-form.tsx` — when an existing CRM customer is selected, the `industry` field is now prefilled from their customer record (previously it was always blank, causing "Industry is required" to block the quote)
+
 ## [2026-06-17] — Instant lookup refresh via Supabase realtime
 
 ### Changed

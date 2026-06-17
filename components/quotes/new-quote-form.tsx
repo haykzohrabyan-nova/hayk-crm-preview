@@ -274,6 +274,7 @@ export default function NewQuoteForm() {
         if (c.company) setContactCompany((prev) => prev || c.company || "");
         if (c.website) setContactWebsite((prev) => prev || c.website || "");
         if (c.authority) setContactAuthority((prev) => prev || c.authority || "");
+        if (c.industry) setContactIndustry((prev) => prev || c.industry || "");
         const last: CustomerTaxExemptLastFields = {
           tax_exempt_last_permit_number: c.tax_exempt_last_permit_number,
           tax_exempt_last_storage_path: c.tax_exempt_last_storage_path,

@@ -104,6 +104,10 @@ function todayIso() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function generateReceiptId(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 function addDaysIso(days: number) {
   const d = new Date();
   d.setDate(d.getDate() + days);
@@ -274,6 +278,7 @@ export default function QuotePaymentConfig({
       patch({
         ticket_full_channels: selectingCash ? ["cash"] : [...DEFAULT_FULL_CHANNELS],
         ...(selectingCash ? { ticket_require_client_confirm: false } : {}),
+        ...(selectingCash && !cfg.ticket_receipt_id.trim() ? { ticket_receipt_id: generateReceiptId() } : {}),
       });
       return;
     }
@@ -546,7 +551,10 @@ export default function QuotePaymentConfig({
                   <button
                     key={mode}
                     type="button"
-                    onClick={() => patch({ ticket_dep_handling: mode })}
+                    onClick={() => patch({
+                      ticket_dep_handling: mode,
+                      ...(mode === "cash" && !cfg.ticket_receipt_id.trim() ? { ticket_receipt_id: generateReceiptId() } : {}),
+                    })}
                     className="flex flex-col text-left rounded-[10px] border p-3 transition-all"
                     style={{
                       borderColor: active ? "var(--color-accent)" : "var(--color-border)",
@@ -572,16 +580,15 @@ export default function QuotePaymentConfig({
                 <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>
                   Receipt ID{" "}
                   <span className="font-normal text-[11px]" style={{ color: "var(--color-text-muted)" }}>
-                    — required for cash / offline
+                    — auto-generated, edit if needed
                   </span>
                 </label>
                 <input
                   type="text"
                   inputMode="numeric"
-                  pattern="[0-9]*"
-                  placeholder="e.g. 10482"
+                  placeholder="Auto-generated on cash select"
                   value={cfg.ticket_receipt_id}
-                  onChange={(e) => patch({ ticket_receipt_id: digitsOnly(e.target.value) })}
+                  onChange={(e) => patch({ ticket_receipt_id: e.target.value.replace(/\D/g, "") })}
                   style={field}
                 />
               </div>
@@ -668,16 +675,15 @@ export default function QuotePaymentConfig({
               <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>
                 Receipt ID{" "}
                 <span className="font-normal text-[11px]" style={{ color: "var(--color-text-muted)" }}>
-                  — required for cash
+                  — auto-generated, edit if needed
                 </span>
               </label>
               <input
                 type="text"
                 inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="e.g. 10482"
+                placeholder="Auto-generated on cash select"
                 value={cfg.ticket_receipt_id}
-                onChange={(e) => patch({ ticket_receipt_id: digitsOnly(e.target.value) })}
+                onChange={(e) => patch({ ticket_receipt_id: e.target.value.replace(/\D/g, "") })}
                 style={field}
               />
             </div>
