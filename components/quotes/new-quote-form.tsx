@@ -306,48 +306,63 @@ export default function NewQuoteForm() {
     industry: [],
   });
 
+  const applyQuotesBootstrap = useCallback((d: Record<string, unknown>) => {
+    const lookups = d.lookups as Record<string, LookupOption[]> | undefined;
+    if (lookups && d.company && d.products) {
+      seedTicketFormBootstrapFromQuotesBootstrap({
+        company: d.company as Parameters<typeof seedTicketFormBootstrapFromQuotesBootstrap>[0]["company"],
+        lookups: lookups as Record<string, unknown[]>,
+        products: d.products as unknown[],
+      });
+    }
+    if (d.products) setProducts(d.products as typeof products);
+    if (d.company && (d.company as Record<string, unknown>).settings) {
+      const settings = (d.company as Record<string, unknown>).settings as Record<string, unknown>;
+      setCompanyCfg({
+        default_tax_rate: (settings.default_tax_rate as number | null) ?? null,
+        high_value_threshold: (settings.high_value_threshold as number | null) ?? null,
+      });
+      if (settings.default_tax_rate != null) setTaxRate(settings.default_tax_rate as number);
+    }
+    if (lookups) {
+      setSkuLookups({
+        lamination: lookups.lamination ?? [],
+        color_mode: lookups.color_mode ?? [],
+        sides: lookups.sides ?? [],
+        roll_direction: lookups.roll_direction ?? [],
+        finishing: lookups.finishing ?? [],
+      });
+      setQuoteLookups({
+        ticket_priority: lookups.ticket_priority ?? [],
+        quote_channel: lookups.quote_channel ?? [],
+        ticket_payment: lookups.ticket_payment ?? [],
+        follow_up_freq: lookups.follow_up_freq ?? [],
+      });
+      setCustomerLookups({
+        source: lookups.source ?? [],
+        industry: lookups.industry ?? [],
+      });
+      setRouteReasons(lookups.route_reason ?? []);
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     fetch("/api/quotes/form-bootstrap")
       .then((r) => r.json())
-      .then((d) => {
-        const lookups = d.lookups as Record<string, LookupOption[]> | undefined;
-        if (lookups && d.company && d.products) {
-          seedTicketFormBootstrapFromQuotesBootstrap({
-            company: d.company,
-            lookups: lookups as Record<string, unknown[]>,
-            products: d.products,
-          });
-        }
-        if (d.products) setProducts(d.products);
-        if (d.company?.settings) {
-          setCompanyCfg(d.company.settings);
-          if (d.company.settings.default_tax_rate != null) {
-            setTaxRate(d.company.settings.default_tax_rate);
-          }
-        }
-        if (lookups) {
-          setSkuLookups({
-            lamination: lookups.lamination ?? [],
-            color_mode: lookups.color_mode ?? [],
-            sides: lookups.sides ?? [],
-            roll_direction: lookups.roll_direction ?? [],
-            finishing: lookups.finishing ?? [],
-          });
-          setQuoteLookups({
-            ticket_priority: lookups.ticket_priority ?? [],
-            quote_channel: lookups.quote_channel ?? [],
-            ticket_payment: lookups.ticket_payment ?? [],
-            follow_up_freq: lookups.follow_up_freq ?? [],
-          });
-          setCustomerLookups({
-            source: lookups.source ?? [],
-            industry: lookups.industry ?? [],
-          });
-          setRouteReasons(lookups.route_reason ?? []);
-        }
-      })
+      .then(applyQuotesBootstrap)
       .catch(() => {});
-  }, []);
+  }, [applyQuotesBootstrap]);
+
+  useEffect(() => {
+    function onLookupsChanged() {
+      fetch("/api/quotes/form-bootstrap")
+        .then((r) => r.json())
+        .then(applyQuotesBootstrap)
+        .catch(() => {});
+    }
+    window.addEventListener("bazaar:lookups-changed", onLookupsChanged);
+    return () => window.removeEventListener("bazaar:lookups-changed", onLookupsChanged);
+  }, [applyQuotesBootstrap]);
 
   // ─── SKU helpers ─────────────────────────────────────────────────────────
 

@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/layout/theme-provider";
 import { createClient } from "@/lib/supabase/client";
 import { revokeMfaTrustOnSignOut } from "@/lib/auth/remember-mfa-client";
+import { clearTicketFormBootstrapClientCache } from "@/lib/client/ticket-form-bootstrap-cache";
 import { useAppSession } from "@/components/layout/app-session-provider";
 import type { Page } from "@/lib/types";
 import type { NavSection } from "@/lib/auth/nav-sections";
@@ -262,10 +263,26 @@ export function Sidebar() {
           console.log("[Realtime] customers-realtime status:", status, err ?? "");
         });
 
+      const lookupsChannel = supabase
+        .channel("lookups-realtime")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "lookup_values" },
+          (payload) => {
+            console.log("[Realtime] lookup_values changed:", payload.eventType);
+            clearTicketFormBootstrapClientCache();
+            window.dispatchEvent(new Event("bazaar:lookups-changed"));
+          }
+        )
+        .subscribe((status, err) => {
+          console.log("[Realtime] lookups-realtime status:", status, err ?? "");
+        });
+
       (supabase as unknown as Record<string, unknown>)["_sidebarLeadsCh"] = leadsChannel;
       (supabase as unknown as Record<string, unknown>)["_sidebarTicketsCh"] = ticketsChannel;
       (supabase as unknown as Record<string, unknown>)["_sidebarActivitiesCh"] = activitiesChannel;
       (supabase as unknown as Record<string, unknown>)["_sidebarCustomersCh"] = customersChannel;
+      (supabase as unknown as Record<string, unknown>)["_sidebarLookupsCh"] = lookupsChannel;
     });
 
     return () => {
@@ -286,6 +303,10 @@ export function Sidebar() {
       if (refs["_sidebarCustomersCh"]) {
         supabase.removeChannel(refs["_sidebarCustomersCh"] as Parameters<typeof supabase.removeChannel>[0]);
         delete refs["_sidebarCustomersCh"];
+      }
+      if (refs["_sidebarLookupsCh"]) {
+        supabase.removeChannel(refs["_sidebarLookupsCh"] as Parameters<typeof supabase.removeChannel>[0]);
+        delete refs["_sidebarLookupsCh"];
       }
     };
   }, []);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { clearTicketFormBootstrapServerCache } from "@/lib/utils/ticket-form-bootstrap-server-cache";
 
 // PATCH /api/admin/lookups/[id] — update label, sort_order, or is_active
 export async function PATCH(
@@ -32,6 +33,7 @@ export async function PATCH(
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  clearTicketFormBootstrapServerCache();
   return NextResponse.json({ item: data });
 }
 
@@ -114,5 +116,6 @@ export async function DELETE(
   const { error } = await admin.from("lookup_values").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  clearTicketFormBootstrapServerCache();
   return NextResponse.json({ ok: true });
 }

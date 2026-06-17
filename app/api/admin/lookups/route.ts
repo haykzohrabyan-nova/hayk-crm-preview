@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { clearTicketFormBootstrapServerCache } from "@/lib/utils/ticket-form-bootstrap-server-cache";
 
 // Human-readable display names for each category, in the order they appear in the UI
 export const CATEGORY_META: Record<string, { label: string; section: "leads" | "order" }> = {
@@ -142,5 +143,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  clearTicketFormBootstrapServerCache();
   return NextResponse.json({ item: data }, { status: 201 });
 }

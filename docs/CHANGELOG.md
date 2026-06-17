@@ -3,6 +3,30 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-17] — Instant lookup refresh via Supabase realtime
+
+### Changed
+- `components/layout/sidebar.tsx` — subscribes to `postgres_changes` on `lookup_values`; on any change clears the client bootstrap cache and dispatches `bazaar:lookups-changed`
+- `components/quotes/quote-detail.tsx` — listens for `bazaar:lookups-changed` and immediately re-fetches the bootstrap so all dropdowns (refund reasons, cancel reasons, payment options, etc.) update without a page reload
+- `components/quotes/new-quote-form.tsx` — same listener; re-fetches the quotes form bootstrap so SKU options, payment methods, and all other dropdowns refresh instantly
+
+## [2026-06-17] — Fix stale bootstrap cache after admin lookup changes
+
+### Fixed
+- `app/api/admin/lookups/route.ts` — POST now calls `clearTicketFormBootstrapServerCache()` after inserting a new lookup value
+- `app/api/admin/lookups/[id]/route.ts` — PATCH and DELETE now call `clearTicketFormBootstrapServerCache()` after mutating a lookup value
+- `lib/client/ticket-form-bootstrap-cache.ts` — bumped sessionStorage key from `v1` to `v2` so all browsers fetch fresh data on next load (fixes empty Refund Reason / Cancel Reason dropdowns after admin edits)
+
+## [2026-06-17] — Seed payment refund reason lookup values
+
+### Fixed
+- `supabase/patches/2026-06-17-payment-refund-reasons.sql` — inserted missing `payment_refund_reason` rows into `lookup_values` so the Refund Reason dropdown in the Record Refund modal is no longer empty
+
+## [2026-06-17] — Title not required when saving/sending a quote
+
+### Fixed
+- `lib/utils/validate-quote-send.ts` — removed Title from required fields check; "Save & Send Quote" button no longer blocked by a missing title
+
 ## [2026-06-17] — Rename Roll Direction lookup labels to numbered short form
 
 ### Changed

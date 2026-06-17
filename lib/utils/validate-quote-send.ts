@@ -47,7 +47,6 @@ export function isCashReceiptRequired(
 export function getQuoteSendMissingFields(input: QuoteSendValidationInput): string[] {
   const missing: string[] = [];
   const {
-    title,
     skus,
     taxExempt,
     salesPermit,
@@ -57,8 +56,6 @@ export function getQuoteSendMissingFields(input: QuoteSendValidationInput): stri
     shipToDestinations,
     paymentDraft: d,
   } = input;
-
-  if (!title.trim()) missing.push("Title");
 
   const hasLineItem = skus.some(
     (s) => s.product_type?.trim() && (s.quantity ?? 0) > 0 && (s.unit_price ?? 0) > 0,

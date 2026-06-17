@@ -1,6 +1,6 @@
 import type { TicketFormBootstrapPayload } from "@/lib/utils/ticket-form-bootstrap-server-cache";
 
-const STORAGE_KEY = "bazaar-ticket-form-bootstrap-v1";
+const STORAGE_KEY = "bazaar-ticket-form-bootstrap-v2";
 const CLIENT_TTL_MS = 30 * 60 * 1000;
 
 let memory: TicketFormBootstrapPayload | null = null;

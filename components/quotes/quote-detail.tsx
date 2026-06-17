@@ -548,6 +548,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     return () => window.removeEventListener("bazaar:leads-changed", onLeadChange);
   }, [fetchTicket]);
 
+  useEffect(() => {
+    function onLookupsChanged() {
+      getTicketFormBootstrap().then(applyFormBootstrap).catch(() => null);
+    }
+    window.addEventListener("bazaar:lookups-changed", onLookupsChanged);
+    return () => window.removeEventListener("bazaar:lookups-changed", onLookupsChanged);
+  }, [applyFormBootstrap]);
+
   // ─── SKU helpers ──────────────────────────────────────────────────────────
 
   const updateSku = useCallback((idx: number, field: keyof QuoteSku, value: unknown) => {
