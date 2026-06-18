@@ -1165,7 +1165,7 @@ Releases production if `computeCheckout(...).canReleaseProduction` is true. May 
 | `release_production: true` | Only sets `production_released_at` (no status change alone) |
 | `resend_invoice: true` | `sendInvoiceLinkToCustomer` |
 | `send_payment_reminder: true` | `sendPaymentReminder` |
-| `ticket_status: "order"` (admin) | Manual convert; generates ORD reference |
+| `ticket_status: "order"` (admin) | Manual convert; generates ORD reference; fire-and-forgets `sendOrderWebhook()` with `via: "manual_convert"` |
 | `ticket_status: "completed"` | Mark complete from `in_production`; sends order-ready notification |
 | `ticket_status: "cancelled"` | Requires `cancel_reason` (+ notes if "other") |
 | `acknowledge_outstanding_balance: true` | Admin or Sales completing with balance due |

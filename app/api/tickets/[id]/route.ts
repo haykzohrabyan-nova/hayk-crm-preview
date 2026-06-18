@@ -47,6 +47,7 @@ import {
   syncTicketShippingDestinations,
 } from "@/lib/utils/ticket-shipping-destinations";
 import { fetchManualConvertMeta } from "@/lib/utils/manual-convert-meta";
+import { sendOrderWebhook } from "@/lib/utils/send-order-webhook";
 import { isPaymentStaffRole } from "@/lib/auth/role-checks";
 import { canAccessTicket, canPatchTicket, canAccountantMutateTicket, canResendTicketNotifications } from "@/lib/utils/ticket-access";
 import { isPaymentEvidencePending } from "@/lib/utils/payment-evidence-pending";
@@ -1426,6 +1427,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             || !!existing.payment_paid_at,
         },
         created_at: now,
+      });
+
+      // Fire webhook for every convert-to-order path — regardless of who triggered it.
+      const webhookRef = typeof patch.reference_code === "string"
+        ? patch.reference_code
+        : typeof (existing as { reference_code?: unknown }).reference_code === "string"
+          ? (existing as { reference_code: string }).reference_code
+          : null;
+      sendOrderWebhook(admin, ticketId, webhookRef, "manual_convert", now).catch((err: unknown) => {
+        console.error("[order-webhook] manual-convert fire failed:", err);
       });
     } else if (body.ticket_status === "cancelled" && existing.ticket_status !== "cancelled") {
       await admin.from("activities").insert({

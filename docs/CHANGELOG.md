@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-18] — Fix: admin manual convert-to-order now fires webhook
+
+### Fixed
+- `app/api/tickets/[id]/route.ts` — admin manual quote→order conversion (`PATCH ticket_status: "order"`) now calls `sendOrderWebhook()` with `via: "manual_convert"` fire-and-forget, same as all other conversion paths. Previously these orders showed "Not sent" in the webhook panel permanently until manually resent.
+
 ## [2026-06-18] — Quote sent — internal staff notification email
 
 ### Added
@@ -455,7 +460,7 @@ Format: `## [version or date] — description`, newest first.
 - `.env.local.example` — documented `ORDER_WEBHOOK_URL` and `ORDER_WEBHOOK_SECRET`.
 
 ### Changed
-- `lib/utils/maybe-convert-quote-to-order.ts` — awaits `sendOrderWebhook` after every successful quote→order conversion (covers: admin override, payment confirm, Stripe checkout, customer confirm, net-terms, cash).
+- `lib/utils/maybe-convert-quote-to-order.ts` — awaits `sendOrderWebhook` after every successful quote→order conversion via the customer/payment path (covers: payment confirm, Stripe checkout, customer confirm, net-terms, cash). Note: admin manual convert via `PATCH ticket_status: "order"` bypasses this utility and was added separately (see 2026-06-18 fix).
 - `app/api/tickets/route.ts` — awaits `sendOrderWebhook` when `POST /api/tickets` creates a ticket directly as `ticket_kind: "order"`.
 
 ## [2026-06-09] — RBAC Slice 0 — SQL patch verified, docs finalized

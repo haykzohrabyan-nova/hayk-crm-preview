@@ -606,7 +606,7 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 |--------|-----------|--------|
 | Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; also fire-and-forgets `sendQuoteSentStaffNotification()` to creator; logs `ticket_sent` |
 | Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers both customer delivery and creator notification; logs `ticket_sent` with `resend: true` in payload |
-| Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`. **Does not** set lead Won until production |
+| Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`; fire-and-forgets `sendOrderWebhook()` (`via: "manual_convert"`). **Does not** set lead Won until production |
 
 **Order / production / completed stage (same sidebar block):**
 
@@ -854,7 +854,7 @@ No login required — `proxy.ts` allows `/q/` paths without auth. Staff can prev
 
 SDR/Sales **Convert to Order** button is hidden; API returns `403` for non-admin.
 
-**Admin** sees convert with confirmation modal (`lib/utils/admin-convert-preview.ts`) listing missing send fields, missing customer confirmation, and whether production may auto-release. Orders list/detail show **Admin converted — customer confirm missing** (etc.) when applicable.
+**Admin** sees convert with confirmation modal (`lib/utils/admin-convert-preview.ts`) listing missing send fields, missing customer confirmation, and whether production may auto-release. Orders list/detail show **Admin converted — customer confirm missing** (etc.) when applicable. On successful convert, `sendOrderWebhook()` fires fire-and-forget with `via: "manual_convert"` — same as all other order creation paths.
 
 ### New API Routes
 
