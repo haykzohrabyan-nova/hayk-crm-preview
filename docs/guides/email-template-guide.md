@@ -357,9 +357,9 @@ Use a nested `<table>` + `<td>`, NOT `display:inline-block` on a `<span>`:
 
 ---
 
-## Customer email templates (admin-editable) ✅
+## Customer and staff email templates (admin-editable) ✅
 
-All **customer-facing** emails sent via Instantly use **Admin → Settings → Email Templates**. Copy is stored in `email_templates` (migrations `109`, `110`) and merged with coded defaults in `load-email-templates.ts`.
+All **customer-facing** and **internal staff notification** emails sent via Instantly use **Admin → Settings → Email Templates**. Copy is stored in `email_templates` (migrations `109`, `110`) and merged with coded defaults in `load-email-templates.ts`.
 
 | Source | Purpose |
 |--------|---------|
@@ -371,15 +371,15 @@ All **customer-facing** emails sent via Instantly use **Admin → Settings → E
 | `lib/integrations/customer-email-extra-html.ts` | Auto-appended blocks (amount due, pickup address, revision banner) |
 | `GET` / `PATCH` `/api/admin/email-templates` | Admin CRUD |
 
-**Send paths:** `lib/integrations/send-quote.ts` — quote/order delivery, payment reminder, invoice link, order ready, payment confirmed, tax-exempt approved, quote follow-up. `lib/integrations/resubmit-requested-outreach.ts` — payment evidence + tax-exempt resubmit request.
+**Send paths:** `lib/integrations/send-quote.ts` — quote/order delivery, payment reminder, invoice link, order ready, payment confirmed, tax-exempt approved, quote follow-up. `lib/integrations/resubmit-requested-outreach.ts` — payment evidence + tax-exempt resubmit request. `lib/integrations/send-quote-sent-notification.ts` — internal staff notification to quote creator on send/resend.
 
-**Template keys (21):** `quote_sent`, `order_sent`, `quote_sent_revision`, `order_sent_revision`, `payment_reminder`, `invoice_link`, `invoice_link_in_production_paid`, `invoice_link_in_production_unpaid`, `invoice_link_revision`, `order_ready_pickup`, `order_ready_shipped`, `payment_confirmed`, `payment_confirmed_full`, `payment_confirmed_in_production`, `payment_confirmed_full_in_production`, `tax_exempt_approved`, `tax_exempt_approved_total_unchanged`, `payment_evidence_resubmit_requested`, `tax_exempt_resubmit_requested`, `quote_follow_up`, `quote_follow_up_no_total`.
+**Template keys (22):** `quote_sent`, `order_sent`, `quote_sent_revision`, `order_sent_revision`, `payment_reminder`, `invoice_link`, `invoice_link_in_production_paid`, `invoice_link_in_production_unpaid`, `invoice_link_revision`, `order_ready_pickup`, `order_ready_shipped`, `payment_confirmed`, `payment_confirmed_full`, `payment_confirmed_in_production`, `payment_confirmed_full_in_production`, `tax_exempt_approved`, `tax_exempt_approved_total_unchanged`, `payment_evidence_resubmit_requested`, `tax_exempt_resubmit_requested`, `quote_follow_up`, `quote_follow_up_no_total`, `quote_sent_staff_notification` (**Staff notifications** group).
 
 **Quote / order HTML layout:** `lib/integrations/quote-email-template.ts` still renders line items and pricing. Admin supplies **subject**, **intro** (`body`), and **CTA** via `buildQuoteDeliveryEmail()`. Preview: `GET /api/dev/quote-email-preview` (uses coded intro until you wire preview to DB — dev preview may not reflect saved admin copy).
 
 **Simple emails:** Subject + plain body + CTA are wrapped by `wrap-transactional-email.ts`. Do not put HTML in admin body fields — line breaks become `<br/>`.
 
-**Staff-only (not in admin UI):** `lib/integrations/welcome-email-template.ts` — new user welcome + admin password reset. Preview: `?template=welcome` or `?template=password-reset` on the dev preview route.
+**Staff-only (not in admin UI):** `lib/integrations/welcome-email-template.ts` — new user welcome + admin password reset only. Preview: `?template=welcome` or `?template=password-reset` on the dev preview route. Note: `quote_sent_staff_notification` **is** admin-editable (Staff notifications group).
 
 **Migrations required:** Run `109_email_templates.sql` before Save works in admin. Run `110_email_templates_customer_emails.sql` to seed all keys in the database.
 

@@ -243,7 +243,7 @@ BazarCRM/
 │   │   ├── leads-import-section.tsx      ✓ Bulk JSON lead import (validate-first, template download)
 │   │   ├── integrations-section.tsx      ✓ Twilio SMS + Instantly AI live (Stripe/Zelle out of scope)
 │   │   ├── sms-templates-section.tsx       ✓ Admin-editable SMS/WhatsApp bodies
-│   │   ├── email-templates-section.tsx     ✓ Admin-editable customer email subject/body/CTA
+│   │   ├── email-templates-section.tsx     ✓ Admin-editable customer and staff email subject/body/CTA
 │   │   ├── activity-log-section.tsx      ✓ Paginated system activity feed
 │   │   └── user-activity-section.tsx     ✓ Per-user session KPI cards + history table
 │   ├── auth/

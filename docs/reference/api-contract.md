@@ -1050,7 +1050,7 @@ Create a new ticket.
 - If `linked_lead_id` is provided, updates the linked lead's `status` to `'Quoted'` or `'Validated'`
 - Sets `routed_by_id = userId` when `ticket_status = 'routed'`; persists `routed_reason` / `routed_notes` when provided (migration **095**)
 - Client may prefill `ticket_dest_phone` / `ticket_dest_email` / `ticket_quote_channel` from customer contact when Quote tab was skipped (`resolveQuoteDeliveryFromContact()`)
-- If `ticket_status = 'sent'` on create (Save & Send): logs `ticket_sent` and triggers `sendQuoteToCustomer()` — same activity shape as PATCH send
+- If `ticket_status = 'sent'` on create (Save & Send): logs `ticket_sent` and triggers `sendQuoteToCustomer()` — same activity shape as PATCH send. Also fire-and-forgets `sendQuoteSentStaffNotification()` to the quote creator (`created_by_id` auth email).
 - May auto-record cash deposit/full payment when configured — logs `ticket_payment_recorded` via `lib/utils/log-ticket-payment-recorded.ts` (counts in Reports/dashboard cash); **does not** set `client_confirmed` when `ticket_require_client_confirm = true`
 - **Fulfillment:** when `requires_shipping = false`, server clears `ship_to_*`, deletes `ticket_shipping_destinations`, and sets `quote_shipping = 0`. When `requires_shipping = true`, accepts **`shipping_destinations[]`** (synced via `syncTicketShippingDestinations()`); per-destination **Shipping ($)** is optional (may be `0`); address fields optional; ZIP validated when non-empty. Legacy `ship_to_*` on `job_tickets` mirrors the primary destination. See `lib/utils/ticket-shipping-destinations.ts` and `lib/utils/address.ts`.
 - **Tax-exempt permit file:** not in this body. After create, client uploads via `POST /api/tickets/{reference_code}/sales-permit` (multipart `file`). Send/readiness on the client also requires the file when `tax_exempt = true` (`validate-quote-send.ts`).
@@ -1343,7 +1343,7 @@ Body: Any subset of ticket fields plus optional:
   - **Does not** set `leads.sales_status = 'Won'` — Won is deferred until production release (`markLeadWonOnProduction()`)
 - On every PATCH, **`ticketKindForReference()`** reconciles `ticket_kind` with the merged `reference_code` (prevents `QUO-*` + `ticket_kind: order` drift)
 - Auto convert via `maybeConvertQuoteToOrder()` (payment / net terms / release paths): requires successful `ORD-*` assignment — convert is skipped if sequence fails
-- If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload.
+- If `ticket_status` is set to `"sent"` → triggers `sendQuoteToCustomer()` (email/SMS/WhatsApp delivery); logs `ticket_sent` with `{ channel, destination }`. If status was already `"sent"` (resend), adds `resend: true` to payload. Also fire-and-forgets `sendQuoteSentStaffNotification()` to the quote creator on every send and resend.
 - Optional `notify_revision`: `"standard"` (SDR/Sales resend after edit) or `"admin"` — revision banner in quote email / SMS prefix; use with resend (`ticket_status: "sent"`) or `resend_invoice: true`.
 - **`line_items`** in body: upserts `ticket_line_items` + `ticket_line_variants` via `syncTicketLines()`; orphan variants delete Storage files. Variant files uploaded separately via `POST /api/tickets/[id]/files`.
 - **Fulfillment fields** (`requires_shipping`, `shipping_destinations[]`, `ship_to_*`, `quote_shipping`): same validation as POST — optional per-destination charges; ZIP validation when ship-to-customer; pickup clears destinations and zeroes `quote_shipping`.
@@ -2889,7 +2889,7 @@ Upsert one or more templates. **Admin only.**
 
 **Response `200`:** `{ "ok": true }` or `{ "ok": true, "dbAvailable": false }` when table missing (no-op save).
 
-**Outbound:** `load-email-templates.ts` + `customer-email-builders.ts` — see `docs/email-template-guide.md`.
+**Outbound:** Customer emails: `load-email-templates.ts` + `customer-email-builders.ts`. Staff notifications (e.g. `quote_sent_staff_notification`): `send-quote-sent-notification.ts` + `wrap-transactional-email.ts`. See `docs/email-template-guide.md`.
 
 ---
 

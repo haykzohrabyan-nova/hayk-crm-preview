@@ -21,7 +21,7 @@ The page lives at `app/(app)/admin/page.tsx`. A sub-nav strip (Overview / Settin
 | Products | `/admin/settings/products` | ✅ Built | Product types, materials, material–product links |
 | Integrations | `/admin/settings/integrations` | ✅ Built | Twilio SMS + Instantly AI live; Stripe/Zelle out of scope this stage |
 | SMS Templates | `/admin/settings/sms-templates` | ✅ Built | Editable SMS/WhatsApp bodies for quote send, reminders, payment confirmed, etc. |
-| Email Templates | `/admin/settings/email-templates` | ✅ Built | Editable customer email subject, body, and CTA for all Instantly outbound messages |
+| Email Templates | `/admin/settings/email-templates` | ✅ Built | Editable customer and staff email subject, body, and CTA for all Instantly outbound messages |
 | Payment | `/admin/settings/payment` | ✅ Built | Bank / Wire / ACH and Zelle remittance shown on public quote page |
 | Lead import | `/admin/settings/import-export` | ✅ Built | Bulk JSON lead import — validate-first preview, AI template download, optional auto-add missing dropdown slugs |
 | Customer import | `/admin/settings/import-export` (Customers tab) | ✅ Built | Bulk JSON customer import — same 3-step validate/preview/commit flow; supports `customer_since` → `created_at`; real-time progress modal |
@@ -338,13 +338,13 @@ Admin-editable text for all customer **SMS** and **WhatsApp** messages sent via 
 
 ## `/admin/settings/email-templates` — Email Templates ✅ Built
 
-Admin-editable **subject**, **message body**, and **button label (CTA)** for all customer **email** messages sent via Instantly (`lib/integrations/send-quote.ts`, `lib/integrations/resubmit-requested-outreach.ts`).
+Admin-editable **subject**, **message body**, and **button label (CTA)** for all customer **and staff** email messages sent via Instantly (`lib/integrations/send-quote.ts`, `lib/integrations/send-quote-sent-notification.ts`, `lib/integrations/resubmit-requested-outreach.ts`).
 
 **Component:** `components/admin/email-templates-section.tsx`
 
-**Groups:** Quote & order delivery · Payment reminders & confirmations · Invoice / portal links · Ready for pickup / shipped · Quote follow-up (resubmit-request keys live under Payment group in the catalog)
+**Groups:** Quote & order delivery · Payment reminders & confirmations · Invoice / portal links · Ready for pickup / shipped · Quote follow-up · **Staff notifications** (resubmit-request keys live under Payment group in the catalog)
 
-**Placeholders:** `{firstName}`, `{companyName}`, `{ref}`, `{total}`, `{link}`, `{amount}`, `{statusLine}`, `{previousTotal}`, `{otpCode}` — see in-editor labels. Invoice-link templates use `{statusLine}` for the main paragraph (filled at send time from ticket status). Tax-exempt resubmit emails should include `{otpCode}` in the body.
+**Placeholders:** `{firstName}`, `{companyName}`, `{ref}`, `{total}`, `{link}`, `{amount}`, `{statusLine}`, `{previousTotal}`, `{otpCode}`, `{salesPersonName}`, `{clientName}`, `{sentDate}` — see in-editor labels. Invoice-link templates use `{statusLine}` for the main paragraph (filled at send time from ticket status). Tax-exempt resubmit emails should include `{otpCode}` in the body. Staff notification templates use `{salesPersonName}`, `{clientName}`, and `{sentDate}`.
 
 **Quote / order delivery emails:** Admin controls subject, intro paragraph, and CTA only. Line items, pricing summary, prepayment schedule, and payment-method list remain in `lib/integrations/quote-email-template.ts`.
 
@@ -358,7 +358,7 @@ Admin-editable **subject**, **message body**, and **button label (CTA)** for all
 
 **Database:** `email_templates` table (migrations `109_email_templates.sql`, `110_email_templates_customer_emails.sql`). Server merges DB rows over catalog defaults via `load-email-templates.ts`.
 
-**Do not** change production email copy in `*-template.ts` builders for customer sends — use the admin UI so ops can tune wording without deploys. Staff welcome / password-reset emails remain code-only (`welcome-email-template.ts`).
+**Do not** change production email copy in `*-template.ts` builders for customer sends — use the admin UI so ops can tune wording without deploys. Staff welcome / password-reset emails remain code-only (`welcome-email-template.ts`); the `quote_sent_staff_notification` is admin-editable via the **Staff notifications** group.
 
 ---
 

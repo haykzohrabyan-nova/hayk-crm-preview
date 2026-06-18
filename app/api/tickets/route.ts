@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { requirePageAccess, requireAnyPageAccess } from "@/lib/auth/require-page-access";
 import { sendQuoteToCustomer } from "@/lib/integrations/send-quote";
+import { sendQuoteSentStaffNotification } from "@/lib/integrations/send-quote-sent-notification";
 import { fetchQuotesList } from "@/lib/utils/fetch-quotes-data";
 import { scopeJobTicketsQuery } from "@/lib/utils/db-counts";
 import { isAccountantQuoteWorkflowDenied } from "@/lib/utils/ticket-access";
@@ -632,6 +633,36 @@ export async function POST(request: NextRequest) {
       const sendResult = await sendQuoteToCustomer(fullTicket, companyRow);
       if (!sendResult.ok) {
         console.error("[send-quote] POST delivery failed:", sendResult.error, { ticketId: ticket.id });
+      }
+
+      // Internal notification — email the quote creator when their quote is delivered.
+      const creatorId = fullTicket.created_by_id as string | null;
+      if (creatorId) {
+        Promise.all([
+          admin.from("user_profiles").select("full_name").eq("user_id", creatorId).single(),
+          admin.auth.admin.getUserById(creatorId),
+        ]).then(([profileResult, authResult]) => {
+          const staffEmail = authResult.data.user?.email;
+          const staffName  = (profileResult.data?.full_name as string | null) ?? "";
+          const clientName =
+            fullTicket.customer?.first_name || fullTicket.customer?.last_name
+              ? [fullTicket.customer?.first_name, fullTicket.customer?.last_name].filter(Boolean).join(" ")
+              : (fullTicket.contact_name as string | null) ?? "Valued Customer";
+          const ref = (fullTicket.reference_code as string | null) ?? ticket.id.slice(0, 8);
+          if (staffEmail) {
+            sendQuoteSentStaffNotification({
+              admin,
+              staffEmail,
+              staffFullName: staffName,
+              clientName,
+              ref,
+              ticketId: ticket.id,
+              companyName: (companyRow.company_name as string | null) ?? "BazaarPrinting",
+            });
+          }
+        }).catch((err: unknown) => {
+          console.error("[quote-sent-notification] POST profile lookup error:", err);
+        });
       }
     }
   }

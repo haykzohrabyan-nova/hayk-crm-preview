@@ -24,7 +24,8 @@ export type EmailTemplateKey =
   | "payment_evidence_resubmit_requested"
   | "tax_exempt_resubmit_requested"
   | "quote_follow_up"
-  | "quote_follow_up_no_total";
+  | "quote_follow_up_no_total"
+  | "quote_sent_staff_notification";
 
 export type EmailPlaceholderKey =
   | "firstName"
@@ -35,13 +36,16 @@ export type EmailPlaceholderKey =
   | "amount"
   | "statusLine"
   | "otpCode"
-  | "previousTotal";
+  | "previousTotal"
+  | "salesPersonName"
+  | "clientName"
+  | "sentDate";
 
 export type EmailTemplateDefinition = {
   key: EmailTemplateKey;
   label: string;
   description: string;
-  group: "delivery" | "payment" | "invoice" | "pickup" | "follow_up";
+  group: "delivery" | "payment" | "invoice" | "pickup" | "follow_up" | "staff_notifications";
   placeholders: EmailPlaceholderKey[];
   defaultSubject: string;
   defaultBody: string;
@@ -54,6 +58,7 @@ export const EMAIL_TEMPLATE_GROUPS: { id: EmailTemplateDefinition["group"]; labe
   { id: "invoice", label: "Invoice & portal links" },
   { id: "pickup", label: "Ready for pickup / shipped" },
   { id: "follow_up", label: "Quote follow-up" },
+  { id: "staff_notifications", label: "Staff notifications" },
 ];
 
 export const EMAIL_TEMPLATE_DEFINITIONS: EmailTemplateDefinition[] = [
@@ -291,6 +296,24 @@ export const EMAIL_TEMPLATE_DEFINITIONS: EmailTemplateDefinition[] = [
       "We wanted to follow up on quote {ref} from {companyName}.\n\n" +
       "You can review the details and confirm online anytime using the button below.",
     defaultCtaLabel: "View quote",
+  },
+  {
+    key: "quote_sent_staff_notification",
+    label: "Quote sent — staff notification",
+    group: "staff_notifications",
+    description:
+      "Internal email sent to the quote creator when their quote is delivered to the customer. " +
+      "The CTA button always links to the quote in the CRM — only the button label is editable here.",
+    placeholders: ["salesPersonName", "clientName", "ref", "sentDate"],
+    defaultSubject: "Quote {ref} has been sent to {clientName}",
+    defaultBody:
+      "This is an automated notification to let you know that Quote {ref} has been successfully sent to your client, {clientName}.\n\n" +
+      "Details:\n" +
+      "• Quote Number: {ref}\n" +
+      "• Client: {clientName}\n" +
+      "• Sent On: {sentDate}\n\n" +
+      "You can track the status of this quote directly in the CRM system.",
+    defaultCtaLabel: "View Quote in CRM",
   },
 ];
 

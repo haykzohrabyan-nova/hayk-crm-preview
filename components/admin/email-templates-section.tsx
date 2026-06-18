@@ -35,6 +35,9 @@ const PLACEHOLDER_LABELS: Record<EmailPlaceholderKey, string> = {
   statusLine: "Invoice link intro (filled automatically when resending portal link)",
   previousTotal: "Previous order total (tax-exempt total changed)",
   otpCode: "6-digit verification code (tax-exempt permit only)",
+  salesPersonName: "Sales rep first name (staff notification only)",
+  clientName: "Client / customer full name (staff notification only)",
+  sentDate: "Date the quote was sent (staff notification only)",
 };
 
 function Toast({

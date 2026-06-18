@@ -857,11 +857,11 @@ Single-row configuration table (always `id = 1`). Seeded in migration 045. Exten
 
 ### `email_templates`
 
-Admin-editable customer **email** subject, body, and CTA (migrations `109_email_templates.sql`, `110_email_templates_customer_emails.sql`). Keys match `lib/integrations/email-template-catalog.ts`.
+Admin-editable customer and staff **email** subject, body, and CTA (migrations `109_email_templates.sql`, `110_email_templates_customer_emails.sql`). Keys match `lib/integrations/email-template-catalog.ts`. New catalog keys (e.g. `quote_sent_staff_notification`) work via `defaultEmailTemplatesMap()` merge even before a DB row exists.
 
 | Column | Type | Notes |
 |--------|------|-------|
-| `template_key` | `text` PK | e.g. `quote_sent`, `payment_reminder`, `payment_evidence_resubmit_requested` |
+| `template_key` | `text` PK | e.g. `quote_sent`, `payment_reminder`, `payment_evidence_resubmit_requested`, `quote_sent_staff_notification` |
 | `subject` | `text` NOT NULL | Subject line with `{placeholder}` tokens |
 | `body` | `text` NOT NULL | Plain-text body (line breaks allowed) |
 | `cta_label` | `text` NOT NULL DEFAULT `''` | Button label on wrapped transactional emails |

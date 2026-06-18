@@ -1159,7 +1159,7 @@ Releases production if `computeCheckout(...).canReleaseProduction` is true. May 
 
 | Body field | Behavior |
 |-----------|---------|
-| `ticket_status: "sent"` | Send quote to customer, schedule follow-up, log `ticket_sent` |
+| `ticket_status: "sent"` | Send quote to customer, schedule follow-up, log `ticket_sent`; also fire-and-forgets `sendQuoteSentStaffNotification()` to quote creator |
 | `claim_ownership: true` | Claim routed quote → `draft`, `created_by_id = userId` |
 | `record_payment: true` | Accountant confirms payment; may convert + auto-release production |
 | `release_production: true` | Only sets `production_released_at` (no status change alone) |
@@ -1385,7 +1385,7 @@ Required: `ticket_kind`, `title`
 4. `syncTicketLines(ticketId, lineItems)` — create relational line item rows
 5. `syncTicketShippingDestinations` — create shipping destination rows
 6. Activity `order_ticket_created`
-7. If `ticket_status = "sent"`: `sendQuoteToCustomer()` async
+7. If `ticket_status = "sent"`: `sendQuoteToCustomer()` async + `sendQuoteSentStaffNotification()` fire-and-forget to creator
 8. `maybeAutoRecordCashPayment()`, `maybeAutoReleaseProduction()` for cash-in-person flows
 
 ---
@@ -1612,6 +1612,7 @@ SMS bodies come from DB (`sms_templates` table, keyed by `template_key`) merged 
 | Function | Trigger |
 |----------|---------|
 | `sendQuoteToCustomer` | `ticket_status = "sent"` (create or PATCH) |
+| `sendQuoteSentStaffNotification` | `ticket_status = "sent"` (create or PATCH, including resend) — internal email to quote creator |
 | `sendPaymentReminder` | `PATCH` with `send_payment_reminder: true` |
 | `sendInvoiceLinkToCustomer` | `PATCH` with `resend_invoice: true` |
 | `sendPaymentConfirmed` | After accountant confirms evidence |
@@ -1632,7 +1633,7 @@ Modes:
 
 Pre-fills current `ticket_dest_email` / `ticket_dest_phone`. Validates email format and phone format. Channel toggle: email / SMS / both.
 
-### Customer email templates (admin-editable)
+### Customer and staff email templates (admin-editable)
 
 All Instantly customer emails load from `email_templates` (migrations `109`, `110`) via `load-email-templates.ts` + `customer-email-builders.ts`. Defaults in `email-template-catalog.ts`. Admin UI: `/admin/settings/email-templates`.
 
@@ -1646,8 +1647,9 @@ All Instantly customer emails load from `email_templates` (migrations `109`, `11
 | `order_ready_pickup` / `order_ready_shipped` | `buildOrderReadyFromTemplates` |
 | `quote_follow_up` / `quote_follow_up_no_total` | `buildQuoteFollowUpFromTemplates` |
 | `payment_evidence_resubmit_requested` / `tax_exempt_resubmit_requested` | `resubmit-requested-outreach.ts` |
+| `quote_sent_staff_notification` (**Staff notifications** group) | `sendQuoteSentStaffNotification` → `send-quote-sent-notification.ts`; uses `wrapTransactionalEmailHtml`; placeholders: `{salesPersonName}`, `{clientName}`, `{ref}`, `{sentDate}`; CTA → `/quotes/{id}` |
 
-**Staff-only HTML (not admin):** `welcome-email-template.ts` — welcome + password reset.
+**Staff-only HTML (not admin-editable):** `welcome-email-template.ts` — new user welcome + password reset only.
 
 Legacy `*-template.ts` files remain for reference; outbound customer email uses admin copy.
 
@@ -1805,7 +1807,7 @@ Access: `requireAdmin()` on all admin API routes.
 | Products | `/admin/settings/products` | Product types, materials, groups, links |
 | Integrations | `/admin/settings/integrations` | Test Twilio + Instantly sends |
 | SMS Templates | `/admin/settings/sms-templates` | Edit SMS body templates |
-| Email Templates | `/admin/settings/email-templates` | Edit customer email subject / body / CTA |
+| Email Templates | `/admin/settings/email-templates` | Edit customer and staff email subject / body / CTA |
 | Payment | `/admin/settings/payment` | Bank + Zelle info shown on public portal |
 | Import / Export | `/admin/settings/import-export` | Bulk JSON import: Leads / Customers / Orders (tabbed) |
 
@@ -2355,7 +2357,8 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 | File | Purpose |
 |------|---------|
 | `send-quote.ts` | All send functions + `resolveTicketOutreach` |
-| `email-template-catalog.ts` | Customer email keys + defaults |
+| `send-quote-sent-notification.ts` | Internal staff email to quote creator on send / resend |
+| `email-template-catalog.ts` | Customer + staff email keys + defaults |
 | `load-email-templates.ts` | DB merge for outbound email |
 | `customer-email-builders.ts` | Admin copy → HTML per send type |
 | `quote-email-template.ts` | Quote/order email HTML (line items + admin intro/CTA) |

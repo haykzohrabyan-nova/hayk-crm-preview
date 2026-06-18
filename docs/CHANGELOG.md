@@ -3,6 +3,25 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-18] — Quote sent — internal staff notification email
+
+### Added
+- `lib/integrations/send-quote-sent-notification.ts` — `sendQuoteSentStaffNotification()` sends a branded internal email to the quote creator whenever a quote is delivered to the customer; fires fire-and-forget alongside `sendQuoteToCustomer`; loads subject/body/CTA from the admin-editable `quote_sent_staff_notification` template
+- `lib/integrations/email-template-catalog.ts` — new template key `"quote_sent_staff_notification"` in new group `"Staff notifications"`; new placeholder keys `salesPersonName`, `clientName`, `sentDate`; new group `"staff_notifications"` added to `EMAIL_TEMPLATE_GROUPS`
+
+### Changed
+- `app/api/tickets/[id]/route.ts` — PATCH `ticket_status: "sent"` now fire-and-forgets `sendQuoteSentStaffNotification()` after `sendQuoteToCustomer()`, for both first-send and resend
+- `app/api/tickets/route.ts` — POST create-as-sent also fire-and-forgets `sendQuoteSentStaffNotification()`
+- `components/admin/email-templates-section.tsx` — added `PLACEHOLDER_LABELS` entries for `salesPersonName`, `clientName`, `sentDate` so the new placeholders show descriptive labels in the admin editor
+- **Docs updated** — `docs/TECHNICAL_REFERENCE.md`, `docs/reference/api-contract.md`, `docs/feature-specs/admin.md`, `docs/feature-specs/tickets.md`, `docs/guides/email-template-guide.md`, `docs/reference/schema.md`, `docs/reference/architecture.md`, `docs/guides/component-architecture.md` — all updated to reflect the new Staff notifications group, 22nd email template key, new placeholders, and `sendQuoteSentStaffNotification` send function
+
+### Changed
+- `components/admin/email-templates-section.tsx` — `PLACEHOLDER_LABELS` updated with `salesPersonName`, `clientName`, `sentDate`; "Staff notifications" group now appears in Admin → Settings → Email Templates
+- `app/api/tickets/[id]/route.ts` — PATCH `ticket_status: "sent"` block: after `sendQuoteToCustomer`, looks up creator's `user_profiles.full_name` and auth email, then fires `sendQuoteSentStaffNotification` fire-and-forget
+- `app/api/tickets/route.ts` — POST create-as-sent path: same notification wired after `sendQuoteToCustomer`
+
+---
+
 ## [2026-06-17] — RBAC seed update: sales cancel/complete grants
 
 ### Added

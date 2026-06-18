@@ -13,6 +13,7 @@ import {
   type OutreachRevisionNotice,
   type TicketForSend,
 } from "@/lib/integrations/send-quote";
+import { sendQuoteSentStaffNotification } from "@/lib/integrations/send-quote-sent-notification";
 import { initializeTicketFollowUpSchedule } from "@/lib/utils/initialize-ticket-follow-up";
 import { logTicketPaymentRecorded } from "@/lib/utils/log-ticket-payment-recorded";
 import { inferPaymentEvidenceMode } from "@/lib/utils/payment-evidence-type";
@@ -1477,6 +1478,36 @@ export async function PATCH(request: NextRequest, { params }: Params) {
             console.error("[send-quote] delivery failed:", result.error, { ticketId: ticketId, channel: result.channel });
           }
         });
+
+        // Internal notification — email the quote creator when their quote is delivered.
+        const creatorId = fullTicket.created_by_id as string | null;
+        if (creatorId) {
+          Promise.all([
+            admin.from("user_profiles").select("full_name").eq("user_id", creatorId).single(),
+            admin.auth.admin.getUserById(creatorId),
+          ]).then(([profileResult, authResult]) => {
+            const staffEmail   = authResult.data.user?.email;
+            const staffName    = (profileResult.data?.full_name as string | null) ?? "";
+            const clientName   =
+              fullTicket.customer?.first_name || fullTicket.customer?.last_name
+                ? [fullTicket.customer?.first_name, fullTicket.customer?.last_name].filter(Boolean).join(" ")
+                : (fullTicket.contact_name as string | null) ?? "Valued Customer";
+            const ref = (fullTicket.reference_code as string | null) ?? ticketId.slice(0, 8);
+            if (staffEmail) {
+              sendQuoteSentStaffNotification({
+                admin,
+                staffEmail,
+                staffFullName: staffName,
+                clientName,
+                ref,
+                ticketId,
+                companyName: (companyRow.company_name as string | null) ?? "BazaarPrinting",
+              });
+            }
+          }).catch((err: unknown) => {
+            console.error("[quote-sent-notification] profile lookup error:", err);
+          });
+        }
       }
     } catch (err) {
       console.error("[send-quote] unexpected error:", err);
