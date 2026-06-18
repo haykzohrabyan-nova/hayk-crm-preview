@@ -1334,8 +1334,8 @@ Body: Any subset of ticket fields plus optional:
 **Business rules (Mode 5):**
 - If `ticket_status` transitions to `"completed"` from `"in_production"`: sends order-ready notification via `sendOrderReadyToCustomer()` (pickup copy or **shipped to [address]** when `requires_shipping`; same `/q/{public_token}` URL); logs `ticket_order_ready_sent` or `ticket_order_ready_failed`
 - **Accountant** may set `ticket_status = "completed"` only on in-production orders that are **paid in full** (`isTicketPaidInFull()`)
-- **Tax-exempt pending** blocks completion unless **Admin** passes `acknowledge_tax_exempt_unapproved: true` (same pattern as outstanding balance)
-- **Admin** may mark completed with outstanding balance only when body includes `acknowledge_outstanding_balance: true` (UI shows confirmation modal); **accountant blocked** — owner policy **Option B** (open-questions **B7**)
+- **Tax-exempt pending** blocks completion unless **Admin or Sales** passes `acknowledge_tax_exempt_unapproved: true` (same pattern as outstanding balance)
+- **Admin or Sales** may mark completed with outstanding balance only when body includes `acknowledge_outstanding_balance: true` (UI shows confirmation modal); **accountant blocked** — owner policy **Option B** (open-questions **B7**)
 - If `ticket_status` transitions to `"order"` (manual "Convert to Order"):
   - **Admin only** — non-admin receives `403`
   - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`; sets `ticket_kind = "order"`
@@ -1357,9 +1357,9 @@ Body: Any subset of ticket fields plus optional:
 - If `client_confirmed` transitions to `true` → logs `ticket_client_confirmed`; creates `follow_up_due` notification
 - Otherwise → logs `order_ticket_updated` with `payload.fields`
 - `payment_status` and `prepayment_status` can be updated on `order` status tickets even by non-admins (special relaxed guard)
-- **Accountants** may update payment fields on any ticket; non-admins on locked `order` tickets may only update payment-related fields
+- **Accountants** may update payment fields on any ticket; non-admins (except Sales on own tickets) on locked `order` tickets may only update payment-related fields
 
-**Mode 6 — Cancel ticket (Admin + Accountant):**
+**Mode 6 — Cancel ticket (Admin + Accountant + Sales):**
 ```json
 {
   "ticket_status": "cancelled",
@@ -1367,7 +1367,7 @@ Body: Any subset of ticket fields plus optional:
   "cancel_notes": "string | null"
 }
 ```
-- Caller must have `roleName === 'admin'` or `roleName === 'accountant'` — others receive `403`
+- Caller must have `roleName === 'admin'`, `roleName === 'accountant'`, or `roleName === 'sales'` (own tickets only) — others receive `403`
 - Sets `cancelled_at` on the ticket; GET resolves `cancelled_at` from column or `ticket_cancelled` activity
 - Allowed from any status except already **`cancelled`** (includes **draft**, **sent**, **order**, **in_production**, **completed** — paid or unpaid)
 - `cancel_reason` must be an active lookup in **Quote Cancellation Reasons** (draft/sent) or **Order Cancellation Reasons** (order / in_production / completed); label snapshotted to `cancel_reason_label`
@@ -1376,8 +1376,8 @@ Body: Any subset of ticket fields plus optional:
 - Gate helper: `lib/utils/can-admin-cancel-ticket.ts`; reason category: `lib/utils/cancel-reason-category.ts`
 
 **Mode 7 — Field guard notes:**
-- Once `ticket_status = 'order'`, non-admins (except accountant payment updates) cannot edit non-payment fields
-- Customer-confirmed orders are locked for SDR/Sales in the UI; admin may still edit/cancel
+- Once `ticket_status = 'order'`, non-admins (except Sales on own tickets) cannot edit non-payment fields
+- Customer-confirmed orders are locked for **SDR** in the UI; **Admin and Sales** (owner) may still edit/cancel
 
 **Response `200`:**
 ```json

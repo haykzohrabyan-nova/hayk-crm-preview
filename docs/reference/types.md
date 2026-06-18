@@ -884,5 +884,5 @@ Markup pattern: wrap each validatable field in `<div data-field-anchor="source">
 | `appendReturnPath()` | `lib/utils/ticket-detail-href.ts` | Safe internal return query param |
 | `inferPaymentEvidenceMode()` | `lib/utils/payment-evidence-type.ts` | `deposit` \| `balance` \| `full` for evidence queue + `record_payment.payment_mode` |
 | `paymentEvidenceTypeLabel()` | `lib/utils/payment-evidence-type.ts` | UI: Deposit / Balance / Full payment |
-| `cancelActionLabel()` | `lib/utils/cancel-reason-category.ts` | Admin sidebar: Cancel Quote vs Cancel Order by ticket status |
+| `cancelActionLabel()` | `lib/utils/cancel-reason-category.ts` | Staff quick actions (Sales/Admin/Accountant): Cancel Quote vs Cancel Order by ticket status |
 | `logTicketPaymentRecorded()` | `lib/utils/log-ticket-payment-recorded.ts` | Inserts canonical payment activity for Reports cash |

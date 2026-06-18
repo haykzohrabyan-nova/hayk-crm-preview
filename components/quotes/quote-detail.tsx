@@ -1146,13 +1146,13 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   // Once a quote is customer-approved and becomes an order, the record is locked.
   // Non-admins cannot edit or cancel. Admins retain full control.
   const isCustomerApproved = ticket.ticket_status === "order" || ticket.ticket_status === "in_production" || ticket.ticket_status === "completed";
-  const isLocked = ticket.ticket_status === "cancelled" || (isCustomerApproved && userRole !== "admin");
+  const isLocked = ticket.ticket_status === "cancelled" || (isCustomerApproved && userRole !== "admin" && userRole !== "sales");
   // SDR read-only: this SDR created the quote but it was routed to Sales.
   const isRoutedReadOnly = userRole === "sdr" && ticket.routed_by_id != null && ticket.routed_by_id === userId;
   const canEditTicket =
     !editing &&
     !isRoutedReadOnly &&
-    (userRole === "admin"
+    (userRole === "admin" || userRole === "sales"
       ? ticket.ticket_status !== "cancelled"
       : !isLocked && !ticket.client_confirmed);
   const showPaymentSummary = !editing && (
@@ -1468,14 +1468,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         </div>
       )}
 
-      {/* Record-locked notice for non-admin users */}
-      {isCustomerApproved && userRole !== "admin" && !isOverviewLayout && (
+      {/* Record-locked notice for non-admin, non-sales users */}
+      {isCustomerApproved && userRole !== "admin" && userRole !== "sales" && !isOverviewLayout && (
         <div
           className="mx-4 mt-3 md:mx-6 md:mt-4 flex items-center gap-2 rounded-lg px-4 py-3 text-sm"
           style={{ background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)", border: "1px solid var(--color-warning-border)" }}
         >
           <Lock size={15} />
-          This record is locked. The customer has approved this quote — only an admin can make changes or cancel.
+          This record is locked. The customer has approved this quote — only an admin or sales user can make changes or cancel.
         </div>
       )}
 

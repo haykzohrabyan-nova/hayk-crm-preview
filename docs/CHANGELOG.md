@@ -3,6 +3,29 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-17] — RBAC seed update: sales cancel/complete grants
+
+### Added
+- `supabase/patches/2026-06-17-sales-cancel-complete-grants.sql` — adds `quotes.cancel`, `orders.cancel`, and `orders.mark_complete` grants to the Sales role in `role_action_grants`; updates permission catalog descriptions for `orders.cancel` and `orders.mark_complete` to mention sales
+
+### Changed
+- `app/api/tickets/[id]/route.ts` — added `TODO RBAC Slice 3/4` comments on the 3 new `roleName` checks pointing to the future `hasPermission()` keys (`quotes.edit`, `orders.mark_complete`, `quotes.cancel` / `orders.cancel`)
+- `docs/rbac-migration/plan.md` — stability gate note updated: Orders/Quotes slice clock starts 2026-06-17; doc timestamp updated
+
+---
+
+
+
+### Changed
+- `lib/utils/should-warn-partial-refund-before-cancel.ts` — `canStaffCancelTicket` now includes `"sales"` role; Cancel Quote / Cancel Order button is shown to sales users
+- `components/quotes/quote-detail/detail-quick-actions.tsx` — `canMarkComplete` now includes `"sales"` (same override flow as admin — balance-due and tax-exempt acknowledgment modals)
+- `components/quotes/quote-detail.tsx` — `isLocked` and `canEditTicket` now exempt sales from the customer-approved edit lock; sales users can edit quotes and orders at any non-cancelled status (same as admin); locked notice updated to mention admin or sales
+- `app/api/tickets/[id]/route.ts` — three server-side gates updated: (1) `PAYMENT_ALLOWED_IN_ORDER` content lock now exempt for `"sales"` alongside admin; (2) balance-due check on mark-complete extended to `"sales"`; (3) cancel role check updated to allow `"sales"` with updated error message
+- `docs/reference/rbac.md` — Sales role definition updated with Edit/Cancel/Mark Complete capabilities; API Endpoint Matrix rows updated for `PATCH /api/tickets/[id]` and `ticket_status: cancelled`; Role-Aware UI Rendering table updated with 3 new rows
+- `docs/TECHNICAL_REFERENCE.md` — quick-actions context table updated to reflect sales/admin/accountant access
+
+---
+
 ## [2026-06-17] — Update TECHNICAL_REFERENCE and TODO with Jun 2026 changes
 
 ### Changed

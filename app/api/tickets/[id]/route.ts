@@ -312,7 +312,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "payment_evidence_url",
     "payment_evidence_submitted_at",
   ]);
-  if (existing.ticket_status === "order" && roleName !== "admin") {
+  // TODO RBAC Slice 3: replace `roleName !== "admin" && roleName !== "sales"`
+  //      with `!hasPermission(session, "quotes.edit")` once wired.
+  if (existing.ticket_status === "order" && roleName !== "admin" && roleName !== "sales") {
     const locked = Object.keys(body).filter((k) => !PAYMENT_ALLOWED_IN_ORDER.has(k));
     if (locked.length > 0) {
       return NextResponse.json(
@@ -354,7 +356,9 @@ export async function PATCH(request: NextRequest, { params }: Params) {
         },
         { status: 400 },
       );
-    } else if (roleName === "admin" && !isTicketPaidInFull(existing) && body.acknowledge_outstanding_balance !== true) {
+    // TODO RBAC Slice 4: replace `(roleName === "admin" || roleName === "sales")`
+    //      with `hasPermission(session, "orders.mark_complete")` once wired.
+    } else if ((roleName === "admin" || roleName === "sales") && !isTicketPaidInFull(existing) && body.acknowledge_outstanding_balance !== true) {
       const total = Number(existing.quote_final_total ?? 0);
       const paid = Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0);
       const balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
@@ -1173,9 +1177,12 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     body.ticket_status === "cancelled" &&
     existing.ticket_status !== "cancelled"
   ) {
-    if (!isPaymentStaffRole(roleName)) {
+    // TODO RBAC Slice 3/4: replace `!isPaymentStaffRole(roleName) && roleName !== "sales"`
+    //      with `!hasPermission(session, "quotes.cancel")` (quote stage) or
+    //      `!hasPermission(session, "orders.cancel")` (order stage) once wired.
+    if (!isPaymentStaffRole(roleName) && roleName !== "sales") {
       return NextResponse.json(
-        { error: "Only administrators and accountants can cancel quotes and orders.", code: "FORBIDDEN" },
+        { error: "Only administrators, accountants, and sales users can cancel quotes and orders.", code: "FORBIDDEN" },
         { status: 403 },
       );
     }

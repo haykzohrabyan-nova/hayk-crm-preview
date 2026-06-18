@@ -42,12 +42,15 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - Manage sales pipeline (claim, update status, hold, create orders)
 - See "Routed to Sales" tab on `/quotes` page — quotes routed from SDR HVT block
 - **Claim** routed quotes (transfers ownership and sets status back to `draft`)
+- **Edit** owned quotes and orders at **any non-cancelled status** — same as Admin; not blocked by `client_confirmed` or `order`/`in_production` lock
+- **Cancel Quote / Cancel Order** on owned tickets — same `CancelTicketModal` flow as Admin/Accountant (reason + notes required; partial-refund warning when applicable)
+- **Mark Completed** on in-production orders they own — same override flow as Admin (`acknowledge_outstanding_balance` and `acknowledge_tax_exempt_unapproved` confirmation modals)
 
 ### Admin
 - Default pages: all pages including `/admin/*`, `/payments`, `/orders`, `/completed`
 - All SDR and Sales capabilities
 - Manage users, roles, system settings; **bulk lead import** at `/admin/settings/import-export` (JSON validate-first)
-- **Mark Completed** on in-production orders — paid in full, or with outstanding balance after acknowledgment modal (`acknowledge_outstanding_balance: true`; **Option B** — accountants cannot)
+- **Mark Completed** on in-production orders — paid in full, or with outstanding balance after acknowledgment modal (`acknowledge_outstanding_balance: true`). Sales users share the same override flow; accountants cannot
 - **Resend invoice link** on production/completed detail
 
 ### Accountant
@@ -88,7 +91,7 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/quotes/new` | ✓ | ✓ | ✓ | ✗ | Create new quote/order |
 | `/quotes/[id]` | ✓ | ✓ | ✓ | ✗ | View/edit ticket detail |
 | `/orders` | ✓ | ✓ | ✓ | ✓ | Orders list: pending payment, in production, cancelled **orders** (`ticket_kind = 'order'` only; cancelled quotes on `/quotes`) |
-| `/orders/[id]` | ✓ | ✓ | ✓ | ✓ | Order / in-production detail via `GET /api/tickets/[id]` — sales/SDR read-only during payment review; accountant confirms on `/payments` or here |
+| `/orders/[id]` | ✓ | ✓ | ✓ | ✓ | Order / in-production detail via `GET /api/tickets/[id]` — **SDR** read-only on order-stage hand-offs; **Sales** can edit/cancel/mark-complete **own** tickets; accountant confirms payment on `/payments` or here |
 | `/payments` | ✗ | ✗ | ✓ | ✓ | Payment review queue |
 | `/payments/[id]` | ✗ | ✗ | ✓ | ✓ | Payment / tax-exempt review detail — Confirm payment or tax-exempt; view evidence/permit (accountant/admin) |
 | `/production` | — | — | — | — | **Removed from nav** — redirects to `/orders?tab=in_production` |
@@ -137,13 +140,13 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET /api/quotes/counts` | ✓ | ✓ | ✓ | Accountant → `403` |
 | `POST /api/tickets` | ✓ | ✓ | ✓ | Accountant → `403` |
 | `GET /api/tickets/[id]` | ✓ (own) | ✓ (own + routed) | ✓ (all) | `canAccessTicket()` + ticket-detail page access |
-| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed) | ✓ (all) | `canPatchTicket()` — accountant: payment/cancel/complete/refund only |
+| `PATCH /api/tickets/[id]` | ✓ (own, non-order) | ✓ (own + claim routed; edit/cancel/complete any non-cancelled owned ticket) | ✓ (all) | `canPatchTicket()` — accountant: payment/cancel/complete/refund only |
 | `PATCH … { record_payment: true }` | ✗ | ✗ | ✓ | Accountant + Admin only |
 | `PATCH … { approve_tax_exempt: true }` | ✗ | ✗ | ✓ | Accountant + Admin only |
 | `PATCH … { deny_tax_exempt: true }` | ✗ | ✗ | ✓ | Accountant + Admin only |
 | `GET /api/tickets/[id]/sales-permit` | ✗ | ✗ | ✓ | Accountant + Admin only (signed URL) |
 | `GET /api/crm/customers/[id]/tax-exempt-history` | ✓ | ✓ | ✓ | CRM page access — tax-exempt See more modal |
-| `PATCH … { ticket_status: 'cancelled' }` | ✗ | ✗ | ✓ | Admin + Accountant — reason + notes required |
+| `PATCH … { ticket_status: 'cancelled' }` | ✗ | ✓ (own tickets) | ✓ | Admin + Accountant + Sales — reason + notes required |
 | `POST /api/tickets/[id]/refund` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin — unified manual + Stripe |
 | `GET /api/tickets/[id]/refund-evidence/[refundId]` | ✗ | ✗ | ✓ | ✓ | Accountant + Admin |
 | `GET /api/payments/page-data` | ✗ | ✗ | ✓ | Pending + Tax-exempt pending + Approved + Refunded tabs (Accountant + Admin) |
@@ -386,6 +389,9 @@ Role is read directly from Supabase (`user_profiles.roles(name)`) in each compon
 | Quotes: Claim button (routed → draft + ownership transfer) | ✗ | ✓ | ✓ |
 | Quotes/New Quote: HVT blocking modal | ✓ (triggered when total > threshold) | ✗ | ✗ |
 | Quotes/New Quote: Route to Sales (Line Items or Quote, below threshold) | ✓ | ✗ | ✗ |
+| Quotes/Orders: **Cancel Quote / Cancel Order** button | ✗ | ✓ (own tickets) | ✓ |
+| Quotes/Orders: **Mark Completed** button | ✗ | ✓ (own, `in_production`; override modals) | ✓ |
+| Quotes/Orders: **Edit** button on locked (order/in_production/completed) tickets | ✗ | ✓ (own tickets) | ✓ |
 ---
 
 ## Default Post-Login Destination

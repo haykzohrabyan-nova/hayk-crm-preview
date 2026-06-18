@@ -12,5 +12,5 @@ export function canStaffCancelTicket(
   ticket: { ticket_status: string },
 ): boolean {
   if (ticket.ticket_status === "cancelled") return false;
-  return roleName === "admin" || roleName === "accountant";
+  return roleName === "admin" || roleName === "accountant" || roleName === "sales";
 }

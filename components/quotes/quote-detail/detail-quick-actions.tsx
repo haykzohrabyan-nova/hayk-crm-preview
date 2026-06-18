@@ -106,7 +106,7 @@ export function DetailQuickActions({
 
   const canMarkComplete =
     ticket.ticket_status === "in_production" &&
-    (userRole === "admin" || (userRole === "accountant" && paidInFull));
+    (userRole === "admin" || userRole === "sales" || (userRole === "accountant" && paidInFull));
 
   const showQuoteLink =
     !!publicUrl &&
@@ -287,7 +287,7 @@ export function DetailQuickActions({
                 disabled={saving}
                 onClick={onMarkComplete}
                 title={
-                  !paidInFull && userRole === "admin"
+                  !paidInFull && (userRole === "admin" || userRole === "sales")
                     ? `Mark completed — ${formatCurrency(balanceDue)} balance still due`
                     : undefined
                 }

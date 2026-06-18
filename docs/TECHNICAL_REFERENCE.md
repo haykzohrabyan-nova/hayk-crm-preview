@@ -1120,7 +1120,7 @@ routed       → SDR routed to Sales (internal); Sales rep will claim and work i
 order        → Converted from quote; payment/confirm gates satisfied
 in_production → production_released_at set; shop floor is working on it
 completed    → Fulfillment done; customer notified
-cancelled    → Admin/accountant cancelled; requires cancel_reason
+cancelled    → Admin/Accountant/Sales cancelled (own tickets for Sales); requires cancel_reason
 approved     → Legacy/list filter (prefer "sent + client_confirmed" in new flows)
 rejected     → Legacy
 ```
@@ -1168,11 +1168,11 @@ Releases production if `computeCheckout(...).canReleaseProduction` is true. May 
 | `ticket_status: "order"` (admin) | Manual convert; generates ORD reference |
 | `ticket_status: "completed"` | Mark complete from `in_production`; sends order-ready notification |
 | `ticket_status: "cancelled"` | Requires `cancel_reason` (+ notes if "other") |
-| `acknowledge_outstanding_balance: true` | Admin completing with balance due |
+| `acknowledge_outstanding_balance: true` | Admin or Sales completing with balance due |
 
 **Locking rules in `order` status:**
-- Non-admins can only PATCH payment-related fields (`PAYMENT_ALLOWED_IN_ORDER` set)
-- After customer confirmation, reps cannot edit unless admin
+- Non-admins (except Sales) can only PATCH payment-related fields (`PAYMENT_ALLOWED_IN_ORDER` set)
+- After customer confirmation, SDR cannot edit; **Admin and Sales** (owner) retain full edit access
 - SDR read-only if they routed but Sales claimed
 
 ### `QuoteDetail` context prop
@@ -1194,7 +1194,7 @@ The same component (`components/quotes/quote-detail.tsx`) handles all detail pag
 | Overview | Multi-tab edit (draft) or overview sections | Overview | Overview + PaymentDetailOverview | ProductionDetailOverview |
 | Totals label | "Quote Total" | "Order Total" | "Order Total" | "Order Total" |
 | Line items default | Collapsed | Expanded | Expanded | Expanded |
-| Quick actions | Send, resend, admin convert | Mark complete, resend link, refund | Payment review | Read-only |
+| Quick actions | Send, resend, admin convert | Edit (sales/admin), cancel (sales/admin/accountant), mark complete (sales/admin/accountant), resend link, refund | Payment review | Read-only |
 
 **Overview component selection** (`TicketDetailOverview`):
 1. `context === "payment"` OR evidence pending → `PaymentDetailOverview`
@@ -1348,7 +1348,7 @@ Migration: `supabase/migrations/103_sales_permit_file.sql`.
 **Gates (blocked while tax-exempt pending):**
 
 - `record_payment: true` → `400` `TAX_EXEMPT_APPROVAL_REQUIRED`
-- `ticket_status: "completed"` → same unless admin passes `acknowledge_tax_exempt_unapproved: true` (UI modal)
+- `ticket_status: "completed"` → same unless **Admin or Sales** passes `acknowledge_tax_exempt_unapproved: true` (UI modal)
 
 **Payments UI (`/payments`):** Fourth tab **Tax-exempt pending** — same queue pattern as offline evidence (Submitted column, View file or **Upload file** link for legacy rows, inline Confirm → `ApproveTaxExemptModal`). `fetchPendingTaxExemptOrders` merges file-present rows (ordered by `sales_permit_submitted_at`) with legacy rows (ordered by `created_at`). **Approved** tab merges payment-evidence-approved rows with tax-exempt-reviewed rows (`fetchPaymentsPageData` in `lib/utils/fetch-payments-data.ts`). Detail: `TaxExemptReviewSection` on payment/order contexts (legacy warning + link to order); `context=payment` returns to `/payments` after confirm.
 

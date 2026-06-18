@@ -83,6 +83,7 @@ Active work (tickets, line items, public quotes, realtime, security) can add mor
 - [ ] Sales claim pipeline
 - [ ] Quote create, send, HVT route, claim
 - [ ] Order convert, payment confirm, production release, complete, cancel
+  *(last changed 2026-06-17 — sales granted cancel + complete + edit-locked tickets; stability clock starts today)*
 - [ ] CRM customer edit/merge scope agreed
 
 ---
@@ -151,7 +152,7 @@ Tickets/CRM/Payments follow the same `{area}.scope.*` + `{area}.{action}` patter
 | `/sales` | No access | Claim pipeline | Full + filter | No access |
 | `/quotes` | Own list + Routed tab | Own + routed; claim | All + filter | No access |
 | `/quotes/new` | HVT + Route to Sales | Normal | Admin convert | No access |
-| `/quotes/[id]` | Edit own; read-only if routed hand-off | Claim routed | Full control | Read / payment |
+| `/quotes/[id]` | Edit own; read-only if routed hand-off | Claim routed; edit/cancel/complete own tickets at any non-cancelled status | Full control | Read / payment |
 | `/orders` | Own | Own | All | Read |
 | `/completed` | Created by me | No access | All | All |
 | `/payments` | No access | No access | Queue | Queue |
@@ -333,4 +334,4 @@ Wire routes one at a time within a slice, or wire an entire slice together if yo
 
 ---
 
-*Last captured: May 2026 — from planning session before deferring implementation.*
+*Last captured: May 2026 — from planning session before deferring implementation. Seed updated 2026-06-17 for sales cancel/complete grants.*
