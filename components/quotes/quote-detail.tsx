@@ -457,7 +457,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
           ticket_follow_up_enabled:      t.ticket_follow_up_enabled      ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_enabled,
           ticket_follow_up_count:        t.ticket_follow_up_count        ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_count,
           ticket_follow_up_freq:         t.ticket_follow_up_freq         ?? PAYMENT_CONFIG_DEFAULTS.ticket_follow_up_freq,
-          quote_reminder_date:           t.quote_reminder_date           ?? PAYMENT_CONFIG_DEFAULTS.quote_reminder_date,
+          quote_reminder_date:           t.quote_reminder_date           ?? "",
         },
         t.contact_phone ?? t.customer?.phone ?? "",
         t.contact_email ?? t.customer?.email ?? "",

@@ -75,7 +75,7 @@ export const PAYMENT_CONFIG_DEFAULTS: TicketPaymentDraft = {
   ticket_follow_up_enabled:      true,
   ticket_follow_up_count:        3,
   ticket_follow_up_freq:         "daily",
-  quote_reminder_date:           new Date().toISOString().slice(0, 10),
+  quote_reminder_date:           "",
 };
 
 interface Props {

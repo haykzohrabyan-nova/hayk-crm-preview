@@ -1278,6 +1278,14 @@ Component: `components/quotes/new-quote-form.tsx`
 
 Client-side pricing via `computePricing()`. Send readiness via `canSendQuote()` / `getQuoteSendMissingFields()`.
 
+**Required fields for Send:** At least one complete line item, delivery channel + destination, payment receipt ID (cash only), tax-exempt permit fields. **Title is optional** — omitting it does not block save or send.
+
+**Customer prefill (Jun 2026):** When an existing customer is selected or a lead is linked, the form prefills `first_name`, `last_name`, `company`, `phone`, `email`, `industry`, `website`, and `authority` from the customer record. A `fetchedCustomerRef` stores the fetched customer immediately so the POST body has the correct values even if React state hasn't updated yet (race-condition fix).
+
+**Customer sync-back (Jun 2026):** On `POST /api/tickets`, if an existing `customer_id` is present, the API fetches the current customer record, diffs each contact field, and writes back only fields that actually changed. Empty/blank values never overwrite existing data.
+
+**Receipt ID auto-generation:** When Cash is selected as the payment method (full cash-only or partial cash deposit), a random 6-digit number is auto-generated in the Receipt ID field if the field is currently empty. The user can edit or replace it. The field accepts digits only.
+
 ### Shared quote pricing UI (`components/quotes/shared/quote-form.tsx`)
 
 Used on the **Quote** tab of new-quote, on quote detail edit, and read-only inside `TicketOverviewSections`.
@@ -1438,7 +1446,7 @@ computeInvoicePaymentSummary(ticket) → {
 |--------|----------------|
 | `card` | Stripe Checkout button |
 | `wire`, `ach`, `zelle`, `check` | Evidence upload (file + optional receipt ID) |
-| `cash` | Cash receipt ID field (auto-records on confirm in some flows) |
+| `cash` | Cash receipt ID field (auto-records on confirm in some flows); 6-digit ID auto-generated on selection (Jun 2026), digits-only, user-editable |
 
 ### Stripe integration
 
@@ -1610,6 +1618,8 @@ SMS bodies come from DB (`sms_templates` table, keyed by `template_key`) merged 
 | `sendOrderReadyToCustomer` | `ticket_status = "completed"` |
 | `sendQuoteFollowUpReminder` | Cron job (`GET /api/cron/follow-ups`, daily 14:00 UTC) |
 | `sendWelcomeEmail` | Admin creates/resets user password |
+
+**`quote_reminder_date` (Jun 2026):** The `quote_reminder_date` field on `job_tickets` schedules when the cron job sends a follow-up. **No default is set by the system** — blank means no reminder will fire. Users must explicitly choose a date from the Quote tab. Creating or re-saving a quote never silently populates this field.
 
 ### Resend Quote Modal
 
@@ -1839,9 +1849,11 @@ Guards: cannot self-demote/deactivate, cannot deactivate last admin, cannot disa
 
 ### Dropdown options
 
-Category `CATEGORY_META` includes: `source`, `industry`, `urgency`, `hold_reason`, `follow_up_reason`, `reject_reason`, `route_reason`, `lamination`, `cancel_reason`, `refund_reason`, `payment_method`, `color_mode`, `sides`, `roll_direction`, and more.
+Category `CATEGORY_META` includes: `source`, `industry`, `urgency`, `hold_reason`, `follow_up_reason`, `reject_reason`, `route_reason`, `lamination`, `cancel_reason`, `payment_refund_reason`, `refund_reason`, `payment_method`, `color_mode`, `sides`, `roll_direction`, and more.
 
 `GET /api/admin/lookups` / `GET /api/lookups` (public for forms) — filtered by category.
+
+**Cache invalidation (Jun 2026):** `POST`, `PATCH`, and `DELETE` on `/api/admin/lookups` call `clearTicketFormBootstrapServerCache()` after every mutation. The sidebar subscribes to `postgres_changes` on `lookup_values`; on any change it calls `clearTicketFormBootstrapClientCache()` and dispatches `bazaar:lookups-changed` so all open ticket detail and new-quote forms re-fetch the bootstrap immediately (see §21).
 
 ### Product catalog
 
@@ -1969,7 +1981,7 @@ Separate bucket: `refund-evidence`. Uploaded via `POST /api/tickets/[id]/refund`
 
 **Layer 1 — List pages (window events + Supabase postgres_changes via sidebar):**
 
-The sidebar subscribes to Supabase `postgres_changes` on `leads`, `job_tickets`, `activities`, `customers`. On any change, it dispatches browser window events:
+The sidebar subscribes to Supabase `postgres_changes` on `leads`, `job_tickets`, `activities`, `customers`, and `lookup_values`. On any change, it dispatches browser window events:
 
 | Event | Source table |
 |-------|-------------|
@@ -1978,8 +1990,11 @@ The sidebar subscribes to Supabase `postgres_changes` on `leads`, `job_tickets`,
 | `bazaar:activities-changed` | `activities` |
 | `bazaar:customers-changed` | `customers` |
 | `bazaar:refresh-counts` | After any mutation (sidebar + action handlers) |
+| `bazaar:lookups-changed` | `lookup_values` (Jun 2026) |
 
 List pages use **`useListPageData`** (`hooks/use-list-page-data.ts` → `useStaleWhileRevalidate`) to subscribe to these events and refetch the active `GET …/page-data` URL.
+
+**Bootstrap cache refresh (Jun 2026):** When `bazaar:lookups-changed` fires, the sidebar also calls `clearTicketFormBootstrapClientCache()`. `quote-detail.tsx` and `new-quote-form.tsx` each listen for this event and immediately re-fetch their bootstrap endpoint so all dropdowns (refund reasons, cancel reasons, payment methods, etc.) update without a page reload. The server-side in-memory cache is cleared at the source by the admin lookup mutation routes.
 
 **Layer 2 — Detail pages:**
 

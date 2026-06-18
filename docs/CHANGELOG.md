@@ -3,6 +3,34 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-17] — Update TECHNICAL_REFERENCE and TODO with Jun 2026 changes
+
+### Changed
+- `docs/TECHNICAL_REFERENCE.md` — §12 Quote Creation: added notes on optional title, customer prefill race-condition fix, customer sync-back, Receipt ID auto-generation; §13 Payment System: documented 6-digit cash Receipt ID auto-gen and `quote_reminder_date` no-default rule; §18 Admin Settings: documented lookup cache invalidation chain; §21 Real-time Updates: added `bazaar:lookups-changed` event and bootstrap refresh flow
+- `docs/TODO.md` — updated last-updated date and summary
+
+---
+
+## [2026-06-17] — Sync changed customer fields back to CRM on quote save
+
+### Changed
+- `app/api/tickets/route.ts` — when saving a new quote for an existing customer, fetches current customer record and writes back only fields that actually changed (`first_name`, `last_name`, `company`, `phone`, `email`, `industry`, `website`); no-op if nothing differs
+- `app/api/tickets/[id]/route.ts` — same diff-and-sync on quote/order detail save (PATCH); only runs when contact fields are present in the request body
+
+## [2026-06-17] — Fix quote_reminder_date silently defaulting to today
+
+### Fixed
+- `components/quotes/quote-payment-config.tsx` — `PAYMENT_CONFIG_DEFAULTS.quote_reminder_date` changed from today's date to `""` so new quotes never get a reminder date unless the user explicitly sets one
+- `components/quotes/quote-detail.tsx` — `populateEditState` no longer falls back to `PAYMENT_CONFIG_DEFAULTS.quote_reminder_date` (today) when the ticket has no reminder date; uses `""` instead so re-saving an old draft cannot silently schedule cron follow-ups
+
+## [2026-06-17] — Proactive audit fixes: new-quote-form prefill and validation gaps
+
+### Fixed
+- `components/quotes/new-quote-form.tsx` — added `fetchedCustomerRef` to store customer data on fetch; POST body now falls back to ref for `industry` and `website` even if React state hasn't updated yet (fixes race condition when saving immediately after selecting a CRM customer)
+- `components/quotes/new-quote-form.tsx` — `fetchLead` now also prefills `first_name`, `last_name`, and `company` from the linked customer (previously these were missing from the contact state on the lead flow)
+- `components/quotes/new-quote-form.tsx` — website validation is now skipped when the Customer tab is hidden (`skipCustomerTab`); the user has no way to correct a malformed DB website value from the quote form, and the field is already saved on the customer record
+- `components/quotes/new-quote-form.tsx` — website error navigation corrected from `"info"` to `"customer"` tab (where the website field actually lives) in both `handleSave` and `handleRouteToSalesClick`
+
 ## [2026-06-17] — Auto-generate Receipt ID when Cash is selected
 
 ### Changed

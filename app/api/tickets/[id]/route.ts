@@ -1289,6 +1289,50 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: updateErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
+  // Sync changed contact fields back to the customer record (only fields that actually differ).
+  const contactFieldsInBody =
+    "contact_name" in body ||
+    "contact_email" in body ||
+    "contact_company" in body ||
+    "contact_phone" in body ||
+    "industry" in body ||
+    "website" in body;
+
+  if (contactFieldsInBody && existing.customer_id) {
+    const { data: existingCustomer } = await admin
+      .from("customers")
+      .select("first_name, last_name, company, phone, email, industry, website")
+      .eq("id", existing.customer_id)
+      .single();
+
+    if (existingCustomer) {
+      const { digitsOnly: dOnly } = await import("@/lib/utils/phone").catch(() => ({ digitsOnly: (s: string) => s }));
+      const rawName = (body.contact_name as string | undefined) ?? "";
+      const nameParts = rawName.trim().split(" ");
+      const incomingFirst = nameParts[0] ?? null;
+      const incomingLast = nameParts.slice(1).join(" ") || null;
+      const incomingPhone = body.contact_phone ? dOnly(String(body.contact_phone)) : null;
+      const incomingEmail = body.contact_email ? String(body.contact_email).trim() : null;
+      const incomingCompany = body.contact_company ? String(body.contact_company).trim() : null;
+      const incomingIndustry = body.industry ? String(body.industry).trim() : null;
+      const incomingWebsite = body.website ? String(body.website).trim() : null;
+
+      const customerPatch: Record<string, unknown> = {};
+      if (incomingFirst && incomingFirst !== existingCustomer.first_name) customerPatch.first_name = incomingFirst;
+      if (incomingLast && incomingLast !== existingCustomer.last_name) customerPatch.last_name = incomingLast;
+      if (incomingCompany && incomingCompany !== (existingCustomer.company ?? "")) customerPatch.company = incomingCompany;
+      if (incomingEmail && incomingEmail !== (existingCustomer.email ?? "")) customerPatch.email = incomingEmail;
+      if (incomingPhone && incomingPhone !== (existingCustomer.phone ?? "")) customerPatch.phone = incomingPhone;
+      if (incomingIndustry && incomingIndustry !== (existingCustomer.industry ?? "")) customerPatch.industry = incomingIndustry;
+      if (incomingWebsite && incomingWebsite !== (existingCustomer.website ?? "")) customerPatch.website = incomingWebsite;
+
+      if (Object.keys(customerPatch).length > 0) {
+        customerPatch.updated_at = now;
+        await admin.from("customers").update(customerPatch).eq("id", existing.customer_id);
+      }
+    }
+  }
+
   if (shippingDestinationsToSync != null) {
     try {
       await syncTicketShippingDestinations(

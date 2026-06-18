@@ -296,15 +296,35 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (resolvedCustomerId && !isNewCustomerFromContact && (industry || normalizedWebsite)) {
-    await admin
+  // Sync changed contact fields back to the customer record (only fields that actually differ).
+  if (resolvedCustomerId && !isNewCustomerFromContact) {
+    const { data: existingCustomer } = await admin
       .from("customers")
-      .update({
-        ...(industry ? { industry } : {}),
-        ...(normalizedWebsite ? { website: normalizedWebsite } : {}),
-        updated_at: now,
-      })
-      .eq("id", resolvedCustomerId);
+      .select("first_name, last_name, company, phone, email, industry, website")
+      .eq("id", resolvedCustomerId)
+      .single();
+
+    if (existingCustomer) {
+      const { digitsOnly: dOnly } = await import("@/lib/utils/phone").catch(() => ({ digitsOnly: (s: string) => s }));
+      const nameParts = contact_name ? contact_name.trim().split(" ") : [];
+      const incomingFirst = nameParts[0] ?? null;
+      const incomingLast = nameParts.slice(1).join(" ") || null;
+      const incomingPhone = contact_phone ? dOnly(contact_phone) : null;
+
+      const customerPatch: Record<string, unknown> = {};
+      if (incomingFirst && incomingFirst !== existingCustomer.first_name) customerPatch.first_name = incomingFirst;
+      if (incomingLast && incomingLast !== existingCustomer.last_name) customerPatch.last_name = incomingLast;
+      if (contact_company && contact_company.trim() !== (existingCustomer.company ?? "")) customerPatch.company = contact_company.trim();
+      if (contact_email && contact_email.trim() !== (existingCustomer.email ?? "")) customerPatch.email = contact_email.trim();
+      if (incomingPhone && incomingPhone !== (existingCustomer.phone ?? "")) customerPatch.phone = incomingPhone;
+      if (industry && industry.trim() !== (existingCustomer.industry ?? "")) customerPatch.industry = industry.trim();
+      if (normalizedWebsite && normalizedWebsite !== (existingCustomer.website ?? "")) customerPatch.website = normalizedWebsite;
+
+      if (Object.keys(customerPatch).length > 0) {
+        customerPatch.updated_at = now;
+        await admin.from("customers").update(customerPatch).eq("id", resolvedCustomerId);
+      }
+    }
   }
 
   if (isNewCustomerFromContact) {

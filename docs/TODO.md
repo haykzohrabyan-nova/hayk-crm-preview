@@ -1,6 +1,6 @@
 # BazarCRM — TODO Tracker
 
-**Last updated:** 2026-06-15 (multi-word search, webhook page filters, legacy import guard, bulk order import, doc cleanup, data management plan)
+**Last updated:** 2026-06-17 (Title optional, Receipt ID auto-gen, industry/name prefill, customer field sync-back, lookup cache invalidation, quote_reminder_date default removed)
 
 Open and future work only. **Shipped features** → [`docs/CHANGELOG.md`](./CHANGELOG.md). **Specs** → [`docs/feature-specs/`](./feature-specs/). **Larger designs** → [`docs/FuturePlan/`](./FuturePlan/).
 

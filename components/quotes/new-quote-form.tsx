@@ -162,6 +162,9 @@ export default function NewQuoteForm() {
   const [hvModal, setHvModal] = useState(false);
   const [hvCountdown, setHvCountdown] = useState(30);
   const hvTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Stores the last fetched customer record so the POST body can use it even if
+  // state hasn't updated yet (race condition when saving immediately after selection).
+  const fetchedCustomerRef = useRef<{ industry?: string | null; website?: string | null } | null>(null);
   // Clear countdown timer on unmount to prevent state updates on an unmounted component.
   useEffect(() => () => { if (hvTimerRef.current) clearInterval(hvTimerRef.current); }, []);
   // Keep a stable ref to handleSave so the interval always calls the latest version
@@ -245,6 +248,9 @@ export default function NewQuoteForm() {
           const l: LeadInfo = d.lead;
           setLead(l);
           if (l.source) setContactSource(l.source);
+          if (l.customer?.first_name) setContactFirstName((prev) => prev || l.customer!.first_name || "");
+          if (l.customer?.last_name) setContactLastName((prev) => prev || l.customer!.last_name || "");
+          if (l.customer?.company) setContactCompany((prev) => prev || l.customer!.company || "");
           if (l.customer?.phone) setContactPhone((prev) => prev || l.customer!.phone || "");
           if (l.customer?.email) setContactEmail((prev) => prev || l.customer!.email || "");
           if (l.customer?.industry) setContactIndustry((prev) => prev || l.customer!.industry || "");
@@ -271,6 +277,7 @@ export default function NewQuoteForm() {
       .then((d) => {
         const c = d.customer;
         if (!c) return;
+        fetchedCustomerRef.current = { industry: c.industry ?? null, website: c.website ?? null };
         if (c.company) setContactCompany((prev) => prev || c.company || "");
         if (c.website) setContactWebsite((prev) => prev || c.website || "");
         if (c.authority) setContactAuthority((prev) => prev || c.authority || "");
@@ -617,13 +624,17 @@ export default function NewQuoteForm() {
       return;
     }
 
-    const websiteToValidate = contactWebsite || lead?.customer?.website || "";
-    const websiteErr = validateWebsite(websiteToValidate);
-    if (websiteErr) {
-      setFieldErrors({ customerWebsite: websiteErr });
-      setTab("info");
-      scrollToFormField(tabContentRef, "customerWebsite");
-      return;
+    // Only validate website when the customer tab is visible — if it's hidden the user
+    // has no way to correct it, and the DB value is already saved on the customer record.
+    if (!skipCustomerTab) {
+      const websiteToValidate = contactWebsite || lead?.customer?.website || "";
+      const websiteErr = validateWebsite(websiteToValidate);
+      if (websiteErr) {
+        setFieldErrors({ customerWebsite: websiteErr });
+        setTab("customer");
+        scrollToFormField(tabContentRef, "customerWebsite");
+        return;
+      }
     }
 
     setSaving(true);
@@ -657,8 +668,8 @@ export default function NewQuoteForm() {
       contact_email: resolvedContactEmail || undefined,
       contact_company: contactCompany || lead?.customer?.company || undefined,
       contact_phone: resolvedContactPhone || undefined,
-      industry: contactIndustry || lead?.customer?.industry || undefined,
-      website: contactWebsite || lead?.customer?.website || undefined,
+      industry: contactIndustry || lead?.customer?.industry || fetchedCustomerRef.current?.industry || undefined,
+      website: contactWebsite || lead?.customer?.website || fetchedCustomerRef.current?.website || undefined,
       ...(leadId
         ? {}
         : {
@@ -829,33 +840,25 @@ export default function NewQuoteForm() {
       if (zipErr) errors.shipToZip = zipErr;
     }
 
-    const websiteToValidate = contactWebsite || lead?.customer?.website || "";
-    const websiteErr = validateWebsite(websiteToValidate);
-    if (websiteErr) {
-      errors.customerWebsite = websiteErr;
+    if (!skipCustomerTab) {
+      const websiteToValidate = contactWebsite || lead?.customer?.website || "";
+      const websiteErr = validateWebsite(websiteToValidate);
+      if (websiteErr) {
+        errors.customerWebsite = websiteErr;
+      }
     }
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
-      if (errors.salesPermit || errors.shipToZip) {
-        setTab("quote");
-      } else if (errors.lineItems) {
-        setTab("lines");
-      } else if (errors.customerWebsite) {
-        setTab(skipCustomerTab ? "info" : "customer");
-      } else if (errors.title || errors.dueDate || errors.customerSource) {
-        setTab("info");
-      }
       const errorTab: Tab =
         errors.salesPermit || errors.salesPermitFile || errors.shipToZip
           ? "quote"
           : errors.lineItems
             ? "lines"
             : errors.customerWebsite
-              ? skipCustomerTab
-                ? "info"
-                : "customer"
+              ? "customer"
               : "info";
+      setTab(errorTab);
       scrollToValidationError(errors, errorTab);
       return;
     }
