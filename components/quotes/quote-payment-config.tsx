@@ -85,6 +85,12 @@ interface Props {
   /** Customer contact from New Quote form — used to prefill quote delivery destination. */
   customerPhone?: string;
   customerEmail?: string;
+  /**
+   * When a deposit has already been recorded, pass the recorded deposit amount here.
+   * An informational banner will explain that changing the strategy/deposit will
+   * automatically recalculate and update the recorded payment to match.
+   */
+  recordedDepositAmount?: number | null;
 }
 
 function quoteDestFromCustomer(
@@ -193,6 +199,7 @@ export default function QuotePaymentConfig({
   onChange,
   customerPhone = "",
   customerEmail = "",
+  recordedDepositAmount,
 }: Props) {
   const [cfg, setCfg] = useState<TicketPaymentDraft>({
     ...PAYMENT_CONFIG_DEFAULTS,
@@ -211,9 +218,32 @@ export default function QuotePaymentConfig({
     }
   }, [cfg.ticket_payment_strategy, cfg.ticket_net_terms_label]);
 
-  // Raw string states for deposit inputs — prevents leading-zero display issues
-  const [depositPctRaw, setDepositPctRaw] = useState(String(initialConfig?.ticket_deposit_value ?? PAYMENT_CONFIG_DEFAULTS.ticket_deposit_value));
-  const [depositFixedRaw, setDepositFixedRaw] = useState("");
+  // When the form loads with "partial + cash" already selected but no receipt ID,
+  // auto-generate one so the deposit gets auto-recorded on save.
+  useEffect(() => {
+    if (
+      cfg.ticket_payment_strategy === "partial" &&
+      cfg.ticket_dep_handling === "cash" &&
+      !cfg.ticket_receipt_id.trim()
+    ) {
+      patch({ ticket_receipt_id: generateReceiptId() });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally runs only on mount
+
+  // Raw string states for deposit inputs — prevents leading-zero display issues.
+  // When the saved type is "fixed", seed the $ field with the saved value and keep
+  // the % field at its default; otherwise seed % and leave $ empty.
+  const [depositPctRaw, setDepositPctRaw] = useState(
+    initialConfig?.ticket_deposit_type === "fixed"
+      ? String(PAYMENT_CONFIG_DEFAULTS.ticket_deposit_value)
+      : String(initialConfig?.ticket_deposit_value ?? PAYMENT_CONFIG_DEFAULTS.ticket_deposit_value),
+  );
+  const [depositFixedRaw, setDepositFixedRaw] = useState(
+    initialConfig?.ticket_deposit_type === "fixed"
+      ? String(initialConfig?.ticket_deposit_value ?? "")
+      : "",
+  );
 
   // Notify parent on any change — stable callback avoids infinite loop
   useEffect(() => {
@@ -388,6 +418,24 @@ export default function QuotePaymentConfig({
   return (
     <div className="space-y-3">
 
+      {/* ── Deposit-recorded info banner ─────────────────────────────────────── */}
+      {recordedDepositAmount != null && (
+        <div
+          className="flex items-start gap-2.5 px-3 py-2.5 rounded-lg text-xs leading-relaxed"
+          style={{
+            background: "var(--color-info-bg)",
+            border: "1px solid var(--color-info-border)",
+            color: "var(--color-info-text-deep)",
+          }}
+        >
+          <span className="mt-0.5 flex-shrink-0 font-bold" style={{ color: "var(--color-info-text)" }}>ℹ</span>
+          <span>
+            <strong>Deposit already recorded ({fmt(recordedDepositAmount)})</strong> — if you change the payment strategy or deposit amount
+            and save, the recorded deposit will be automatically recalculated to match the new settings and the order balance will update.
+          </span>
+        </div>
+      )}
+
       {/* ── 1. Payment strategy ─────────────────────────────────────────────── */}
       <div style={card} className="space-y-3">
         <p className={sectionLabel} style={{ color: "var(--color-text-muted)" }}>
@@ -404,6 +452,11 @@ export default function QuotePaymentConfig({
                   ticket_payment_strategy: s,
                   // Auto-disable follow-up when switching to full — it doesn't apply
                   ...(s === "full" ? { ticket_follow_up_enabled: false } : {}),
+                  // If switching to partial with cash already selected but no receipt ID,
+                  // generate one now so the deposit auto-records on the very first save.
+                  ...(s === "partial" && cfg.ticket_dep_handling === "cash" && !cfg.ticket_receipt_id.trim()
+                    ? { ticket_receipt_id: generateReceiptId() }
+                    : {}),
                 })}
                 className="flex flex-col text-left rounded-[10px] border-2 p-[10px] transition-all h-full"
                 style={{
@@ -502,20 +555,39 @@ export default function QuotePaymentConfig({
                   onKeyDown={(e) => {
                     if (/^[0-9]$/.test(e.key) && depositFixedRaw === "0") {
                       e.preventDefault();
-                      if (e.key !== "0") { setDepositFixedRaw(e.key); patch({ ticket_deposit_type: "fixed", ticket_deposit_value: parseFloat(e.key) }); }
+                      if (e.key !== "0") {
+                        const n = Math.min(parseFloat(e.key), quoteTotal);
+                        setDepositFixedRaw(e.key);
+                        patch({ ticket_deposit_type: "fixed", ticket_deposit_value: n });
+                        if (quoteTotal > 0) setDepositPctRaw(String(Math.round((n / quoteTotal) * 1000) / 10));
+                      }
                     }
                   }}
                   onChange={(e) => {
                     const v = e.target.value.replace(/[^0-9.]/g, "").replace(/^0+([1-9])/, "$1").replace(/(\..*)\./g, "$1");
                     setDepositFixedRaw(v);
                     const n = parseFloat(v);
-                    if (!isNaN(n)) patch({ ticket_deposit_type: "fixed", ticket_deposit_value: Math.max(n, 0) });
+                    if (!isNaN(n)) {
+                      const clamped = Math.min(Math.max(n, 0), quoteTotal);
+                      patch({ ticket_deposit_type: "fixed", ticket_deposit_value: clamped });
+                      if (quoteTotal > 0) {
+                        const pct = Math.round((clamped / quoteTotal) * 1000) / 10;
+                        setDepositPctRaw(String(pct));
+                      }
+                    }
                   }}
                   onBlur={() => {
                     const n = parseFloat(depositFixedRaw);
-                    const normalized = isNaN(n) ? "" : String(n);
-                    setDepositFixedRaw(normalized);
-                    if (!isNaN(n)) patch({ ticket_deposit_type: "fixed", ticket_deposit_value: Math.max(n, 0) });
+                    const clamped = isNaN(n) ? 0 : Math.min(Math.max(n, 0), quoteTotal);
+                    // Snap display value back to clamped amount if user typed over the total
+                    setDepositFixedRaw(isNaN(n) ? "" : String(clamped));
+                    if (!isNaN(n)) {
+                      patch({ ticket_deposit_type: "fixed", ticket_deposit_value: clamped });
+                      if (quoteTotal > 0) {
+                        const pct = Math.round((clamped / quoteTotal) * 1000) / 10;
+                        setDepositPctRaw(String(pct));
+                      }
+                    }
                   }}
                   style={field}
                 />

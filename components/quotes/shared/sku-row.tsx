@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Trash2, ChevronDown, AlertCircle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Trash2, ChevronDown, AlertCircle, Eye, FileText } from "lucide-react";
 import { formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
 import { renderLookupOptions } from "./utils";
 import type { ProductType, SkuLookups } from "./types";
@@ -28,6 +28,245 @@ interface SkuRowProps {
   ticketRef?: string | null;
   rowError?: string;
   variantError?: string;
+}
+
+// ── Finishings multi-select dropdown ─────────────────────────────────────────
+
+interface FinishingsDropdownProps {
+  idx: number;
+  sku: QuoteSku;
+  skuLookups: SkuLookups;
+  onUpdate: (idx: number, field: keyof QuoteSku, value: unknown) => void;
+  hasVariants: boolean;
+  hasLineAttachment: boolean;
+  lineAttachment?: import("./line-item-attachment").FormLineAttachment;
+  ticketRef?: string | null;
+  onLineAttachmentChange?: (idx: number, att: import("./line-item-attachment").FormLineAttachment | undefined) => void;
+}
+
+function FinishingsDropdown({
+  idx, sku, skuLookups, onUpdate,
+  hasVariants, hasLineAttachment, lineAttachment, ticketRef, onLineAttachmentChange,
+}: FinishingsDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  const hasFile = Boolean(lineAttachment?.file || lineAttachment?.pendingFile);
+
+  // Auto-open preview when a new file is attached; close when cleared
+  useEffect(() => {
+    if (hasFile) setShowPreview(true);
+    else setShowPreview(false);
+  }, [hasFile]);
+
+  // Object URL for pending (local) files — revoke on cleanup
+  const [pendingUrl, setPendingUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const pending = lineAttachment?.pendingFile;
+    if (!pending) { setPendingUrl(null); return; }
+    const url = URL.createObjectURL(pending);
+    setPendingUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [lineAttachment?.pendingFile]);
+
+  const previewUrl =
+    pendingUrl ??
+    (lineAttachment?.file?.id && ticketRef
+      ? `/api/tickets/${ticketRef}/files/${lineAttachment.file.id}`
+      : null);
+  const mimeType = lineAttachment?.pendingFile?.type ?? lineAttachment?.file?.mime_type;
+  const isImage  = Boolean(mimeType?.startsWith("image/"));
+
+  const options: { key: keyof QuoteSku; label: string }[] = (
+    skuLookups.finishing.length
+      ? skuLookups.finishing.map((o) => ({ key: o.value as keyof QuoteSku, label: o.label }))
+      : [
+          { key: "spot_uv", label: "Spot UV" },
+          { key: "foil", label: "Foil" },
+          { key: "perforation", label: "Perforation" },
+        ]
+  ).concat([
+    { key: "design_required", label: "Need a design" },
+    { key: "die_cut", label: "Die Cut" },
+  ]);
+
+  const selected = options.filter(({ key }) => !!sku[key]);
+  const label = selected.length === 0
+    ? "None selected"
+    : selected.map((o) => o.label).join(", ");
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const showAttachmentControl = (!hasVariants || hasLineAttachment) && !!onLineAttachmentChange;
+
+  return (
+    <div className="pt-3 border-t" style={{ borderColor: "var(--color-border)" }}>
+      <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "var(--color-text-muted)" }}>
+        Add-on Finishings
+      </p>
+
+      {/* Single row: [dropdown] [attach] [visible checkbox] */}
+      <div className="flex items-center gap-2">
+        {/* Dropdown trigger — takes remaining space */}
+        <div ref={ref} className="relative flex-1 min-w-0">
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-sm border transition-all"
+            style={{
+              background: "var(--color-surface)",
+              borderColor: open ? "var(--color-accent)" : "var(--color-border)",
+              color: selected.length ? "var(--color-text-primary)" : "var(--color-text-muted)",
+            }}
+          >
+            <span className="truncate text-left">{label}</span>
+            <ChevronDown
+              size={14}
+              className="shrink-0 transition-transform"
+              style={{
+                color: "var(--color-text-muted)",
+                transform: open ? "rotate(180deg)" : "rotate(0deg)",
+              }}
+            />
+          </button>
+
+          {open && (
+            <div
+              className="absolute z-50 left-0 right-0 mt-1 rounded-[10px] border py-1 shadow-lg"
+              style={{ background: "var(--color-bg)", borderColor: "var(--color-border)" }}
+            >
+              {options.map(({ key, label: optLabel }) => {
+                const checked = !!sku[key];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => onUpdate(idx, key, !checked)}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm transition-colors text-left"
+                    style={{
+                      background: checked ? "var(--color-row-hover)" : "transparent",
+                      color: "var(--color-text-primary)",
+                    }}
+                    onMouseEnter={(e) => { if (!checked) (e.currentTarget as HTMLElement).style.background = "var(--color-row-alt)"; }}
+                    onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = checked ? "var(--color-row-hover)" : "transparent"; }}
+                  >
+                    <span
+                      className="w-4 h-4 rounded-sm border shrink-0 flex items-center justify-center"
+                      style={checked
+                        ? { background: "var(--color-accent)", borderColor: "var(--color-accent)" }
+                        : { borderColor: "var(--color-border)", background: "var(--color-surface)" }
+                      }
+                    >
+                      {checked && (
+                        <svg width="9" height="9" viewBox="0 0 8 8" fill="none">
+                          <path d="M1 4l2 2 4-4" stroke="var(--color-btn-primary-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </span>
+                    {optLabel}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Attach file — same row as dropdown */}
+        {showAttachmentControl ? (
+          <LineItemAttachmentControl
+            compact
+            attachment={lineAttachment}
+            ticketRef={ticketRef}
+            onChange={(att) => onLineAttachmentChange!(idx, att)}
+          />
+        ) : hasVariants ? (
+          <p className="text-[11px] shrink-0 max-w-[180px] text-right" style={{ color: "var(--color-text-muted)" }}>
+            Attach per SKU ↓
+          </p>
+        ) : null}
+
+        {/* Eye toggle — only when a file is attached */}
+        {showAttachmentControl && hasFile && (
+          <button
+            type="button"
+            onClick={() => setShowPreview((v) => !v)}
+            className="p-2 rounded-md border h-[38px] flex items-center shrink-0 transition-all"
+            style={{
+              borderColor: showPreview ? "var(--color-accent)" : "var(--color-border)",
+              background: showPreview ? "var(--color-badge-bg)" : "var(--color-surface)",
+              color: showPreview ? "var(--color-accent)" : "var(--color-text-muted)",
+            }}
+            title={showPreview ? "Hide preview" : "Show preview"}
+            aria-label={showPreview ? "Hide file preview" : "Show file preview"}
+          >
+            <Eye size={15} />
+          </button>
+        )}
+      </div>
+
+      {/* Inline file preview — rendered BELOW the row so layout is unaffected */}
+      {showPreview && previewUrl && (
+        <div
+          className="mt-2 rounded-lg overflow-hidden border"
+          style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", maxWidth: 220 }}
+        >
+          {isImage ? (
+            <img
+              src={previewUrl}
+              alt={lineAttachment?.pendingFile?.name ?? lineAttachment?.file?.file_name ?? "preview"}
+              className="w-full object-contain block"
+              style={{ maxHeight: 180 }}
+            />
+          ) : (
+            <div className="flex flex-col items-center justify-center gap-1.5 py-4 px-3">
+              <FileText size={28} style={{ color: "var(--color-text-muted)" }} />
+              <span
+                className="text-[10px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded"
+                style={{ background: "var(--color-danger-bg)", color: "var(--color-danger)" }}
+              >
+                PDF
+              </span>
+              <span className="text-[11px] truncate max-w-full text-center" style={{ color: "var(--color-text-muted)" }}>
+                {lineAttachment?.pendingFile?.name ?? lineAttachment?.file?.file_name}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Selected chips */}
+      {selected.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {selected.map(({ key, label: chipLabel }) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium"
+              style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}
+            >
+              {chipLabel}
+              <button
+                type="button"
+                onClick={() => onUpdate(idx, key, false)}
+                className="ml-0.5 opacity-60 hover:opacity-100"
+                style={{ lineHeight: 1 }}
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function SkuRow({
@@ -289,63 +528,17 @@ export function SkuRow({
       )}
 
       {/* Add-on finishings + line attachment */}
-      <div className="pt-3 border-t" style={{ borderColor: "var(--color-border)" }}>
-        <div className="flex flex-wrap items-start justify-between gap-3 mb-2">
-          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
-            Add-on Finishings
-          </p>
-          {(!hasVariants || hasLineAttachment) && onLineAttachmentChange ? (
-            <LineItemAttachmentControl
-              compact
-              attachment={lineAttachment}
-              ticketRef={ticketRef}
-              onChange={(att) => onLineAttachmentChange(idx, att)}
-            />
-          ) : hasVariants ? (
-            <p className="text-[11px] text-right max-w-[200px]" style={{ color: "var(--color-text-muted)" }}>
-              Line file below · attach per SKU in Additional SKUs
-            </p>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {(skuLookups.finishing.length
-            ? skuLookups.finishing.map((o) => ({ key: o.value as keyof QuoteSku, label: o.label }))
-            : [
-                { key: "spot_uv" as keyof QuoteSku, label: "Spot UV" },
-                { key: "foil" as keyof QuoteSku, label: "Foil" },
-                { key: "perforation" as keyof QuoteSku, label: "Perforation" },
-              ]
-          ).concat([
-            { key: "design_required" as keyof QuoteSku, label: "Need a design" },
-            { key: "die_cut" as keyof QuoteSku, label: "Die Cut" },
-          ]).map(({ key, label }) => {
-            const checked = !!sku[key];
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => onUpdate(idx, key, !checked)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-all"
-                style={checked
-                  ? { background: "var(--color-badge-bg)", color: "var(--color-badge-text)", borderColor: "var(--color-accent)" }
-                  : { background: "transparent", color: "var(--color-text-muted)", borderColor: "var(--color-border)" }
-                }
-              >
-                <span
-                  className="w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0"
-                  style={checked
-                    ? { background: "var(--color-accent)", borderColor: "var(--color-accent)" }
-                    : { borderColor: "var(--color-border)" }
-                  }
-                >
-                  {checked && <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M1 4l2 2 4-4" stroke="var(--color-btn-primary-text)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                </span>
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <FinishingsDropdown
+        idx={idx}
+        sku={sku}
+        skuLookups={skuLookups}
+        onUpdate={onUpdate}
+        hasVariants={hasVariants}
+        hasLineAttachment={hasLineAttachment}
+        lineAttachment={lineAttachment}
+        ticketRef={ticketRef}
+        onLineAttachmentChange={onLineAttachmentChange}
+      />
 
       {/* Line Item Comment */}
       <div className="mt-3">

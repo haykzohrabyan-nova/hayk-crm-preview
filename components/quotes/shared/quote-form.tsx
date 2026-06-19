@@ -59,6 +59,8 @@ interface QuoteFormProps {
   onPaymentChange: (cfg: TicketPaymentDraft) => void;
   customerPhone?: string;
   customerEmail?: string;
+  /** Recorded deposit amount — shows an info banner explaining that saving will auto-recalculate. */
+  recordedDepositAmount?: number | null;
   /** When true, hides the pricing breakdown (shown elsewhere, e.g. combined payment review card). */
   hidePricingSummary?: boolean;
   /** When true, fulfillment block is rendered by the parent (e.g. collapsible section). */
@@ -407,6 +409,7 @@ export function QuoteForm(p: QuoteFormProps) {
         onChange={p.onPaymentChange}
         customerPhone={p.customerPhone}
         customerEmail={p.customerEmail}
+        recordedDepositAmount={p.recordedDepositAmount}
       />
     </div>
   );

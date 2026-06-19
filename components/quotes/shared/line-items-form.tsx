@@ -153,7 +153,7 @@ export function LineItemsForm({
           color: "var(--color-btn-primary-text)",
         }}
       >
-        Add Line Item
+        + Add New Line
       </button>
     </div>
   );

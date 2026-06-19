@@ -230,6 +230,7 @@ export function TicketOverviewSections({
                 salesPermitViewHref={ticket.sales_permit_file_name && ticketRef ? `/api/tickets/${ticketRef}/sales-permit` : null}
                 paymentDraft={paymentDraft}
                 onPaymentChange={onPaymentChange}
+                recordedDepositAmount={ticket.deposit_paid_at ? (ticket.deposit_amount ?? null) : null}
               />
             </div>
           </DetailCollapsibleSection>

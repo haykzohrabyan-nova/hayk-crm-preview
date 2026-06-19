@@ -131,6 +131,10 @@ function OptionsPanel({
     setEditingId(null);
   }, [category.category]);
 
+  function notifyLookupsChanged() {
+    window.dispatchEvent(new Event("bazaar:lookups-changed"));
+  }
+
   async function handleAdd() {
     if (!newLabel.trim()) return;
     setSaving(true);
@@ -146,6 +150,7 @@ function OptionsPanel({
     setShowAdd(false);
     setNewLabel("");
     onReload();
+    notifyLookupsChanged();
   }
 
   async function handleSaveEdit(item: LookupItem) {
@@ -165,6 +170,7 @@ function OptionsPanel({
     showToast("Saved", "success");
     setEditingId(null);
     onReload();
+    notifyLookupsChanged();
   }
 
   async function handleToggleActive(item: LookupItem) {
@@ -177,6 +183,7 @@ function OptionsPanel({
     setBusyId(null);
     if (!res.ok) { showToast("Failed to update", "error"); return; }
     onReload();
+    notifyLookupsChanged();
   }
 
   async function handleDelete(item: LookupItem) {
@@ -188,6 +195,7 @@ function OptionsPanel({
     if (!res.ok) { showToast(data.error, "error"); return; }
     showToast(`"${item.label}" deleted`, "success");
     onReload();
+    notifyLookupsChanged();
   }
 
   return (

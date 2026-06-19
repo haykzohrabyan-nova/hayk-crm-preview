@@ -3,6 +3,67 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-19] — Log balance payment collected on mark-complete modal
+
+### Fixed
+- `app/api/tickets/[id]/route.ts` — when staff collect a cash balance through the "Mark Completed" modal (`collect_cash`), a `ticket_payment_recorded` activity is now inserted with `via: "staff_cash_collect_on_complete"`. Previously the balance was silently recorded in the DB (via the RPC) with no entry in the order's activity history, making it impossible to see who collected it or when.
+
+## [2026-06-19] — Admin lookup changes instantly update open quote forms
+
+### Fixed
+- `components/admin/dropdowns-section.tsx` — after every successful add, rename, toggle-active, or delete in the Dropdowns section, dispatches `bazaar:lookups-changed`. The new/edit quote form already listens for this event and re-fetches `form-bootstrap`, so finishings, lamination, and all other lookup lists update live in the same browser session without a page reload.
+
+## [2026-06-19] — Finishings + attachment on one row with inline file preview
+
+### Changed
+- `components/quotes/shared/sku-row.tsx` — "Add-on Finishings" dropdown and the "Attach file" button are now on the same horizontal row.
+- `components/quotes/shared/line-item-attachment.tsx` — `LineItemAttachmentControl` gains a `showVisibilityToggle` prop. When enabled and a file is attached, an eye-button appears in the row; clicking it reveals an inline thumbnail preview of the uploaded image (or a PDF label card) directly below the row. Preview auto-opens when a new file is picked and closes when the file is removed.
+
+## [2026-06-19] — Replace inline finishing pills with multi-select dropdown
+
+### Changed
+- `components/quotes/shared/sku-row.tsx` — "Add-on Finishings" section replaced inline pill-button checkboxes with a compact dropdown multi-select. Clicking the trigger opens a panel listing all options with checkboxes; selections are shown as removable chips below the trigger. Closes on outside click.
+
+## [2026-06-19] — Clamp fixed deposit to order total
+
+### Fixed
+- `components/quotes/quote-payment-config.tsx` — "Deposit ($)" field now caps at `quoteTotal`. If a user types an amount exceeding the order total, it is clamped to the total on `onChange` (passed to state) and snapped back in the display on `onBlur`. Prevents saving a deposit larger than the order.
+
+## [2026-06-19] — Sync Deposit (%) when Deposit ($) is edited
+
+### Fixed
+- `components/quotes/quote-payment-config.tsx` — When typing a fixed dollar amount in "Deposit ($)", the "Deposit (%)" field now live-updates to show the equivalent percentage (`fixedAmt / total × 100`). Previously the % field stayed frozen at the last saved percent value. The sync happens on `onChange`, `onBlur`, and the first-keystroke `onKeyDown` path.
+
+## [2026-06-19] — Fix fixed deposit amount showing in wrong field on form load
+
+### Fixed
+- `components/quotes/quote-payment-config.tsx` — `depositFixedRaw` was always initialized to `""` regardless of `ticket_deposit_type`. When a ticket had `ticket_deposit_type = "fixed"`, the saved dollar amount appeared in the "Deposit (%)" field and "Deposit ($)" showed 0. Now: if type is `"fixed"`, `depositFixedRaw` is seeded with the saved value and `depositPctRaw` resets to the default percent; if type is `"percent"`, behavior is unchanged.
+
+## [2026-06-19] — Fix deposit not recording on first save when switching net → partial cash
+
+### Fixed
+- `components/quotes/quote-payment-config.tsx` — When the user clicks the "Partial payment" strategy button while "Cash / offline" is already selected but has no receipt ID, a receipt ID is now auto-generated immediately on the button click. Previously the mount-time `useEffect` only fired if the form *loaded* with partial+cash, so switching from net→partial required two saves before the deposit was recorded.
+
+## [2026-06-19] — Fix payment recalculation for all strategy transitions
+
+### Fixed
+- **API: "net" strategy transition was unhandled** — `app/api/tickets/[id]/route.ts`: When `ticket_payment_strategy` was changed to `"net"` on a ticket with a recorded deposit, the recalculation block had no branch for it, leaving `deposit_paid_at` and `deposit_amount` set while the strategy said "0 upfront", producing a contradictory display. Now the "net" branch clears all deposit/payment fields (deposit was for the partial strategy and no longer applies). Exception: if a full balance payment was already recorded (`payment_paid_at` set), the received amount is preserved and status set to "paid".
+- **ORD-2026-028 data correction**: After user changed from "partial" → "net terms", payment fields were not cleared (code fix wasn't yet active). Manually cleared `deposit_amount`, `deposit_paid_at`, `payment_amount_received`, `payment_status → "unpaid"`, and related fields.
+
+## [2026-06-19] — Auto-generate receipt ID when cash deposit loads with no ID
+
+### Fixed
+- **ORD-2026-028 data correction**: Ticket was changed from "net terms" to "partial 30% cash" and saved, but the receipt ID field was empty, so `maybeAutoRecordCashPayment` skipped auto-recording. The $2.96 deposit was manually applied to the DB (`deposit_amount`, `payment_amount_received`, `deposit_paid_at`, `payment_status = "partial"`).
+- **Code fix**: `components/quotes/quote-payment-config.tsx` — Added a mount-time `useEffect` that auto-generates a `ticket_receipt_id` when the form loads with `ticket_payment_strategy = "partial"` + `ticket_dep_handling = "cash"` but an empty receipt ID. This ensures the deposit is auto-recorded on save even when the user didn't explicitly click the "Cash" button during that editing session.
+
+## [2026-06-19] — Fix payment config locked after deposit recorded
+
+### Fixed
+- **ORD-2026-027 data correction**: The order was incorrectly recorded as fully paid ($384.13) when only a 31% deposit ($119.08) had been collected. Root cause: the ticket was originally saved with `ticket_payment_strategy = "full"` + receipt ID, which caused `maybeAutoRecordCashPayment` to auto-record the full amount. Someone then changed the strategy to `"partial 31%"` to reflect the intended plan, leaving the payment data and display settings inconsistent. Corrected `deposit_amount` → `$119.08`, `payment_amount_received` → `$119.08`, `payment_status` → `"partial"`, cleared `balance_paid_at` and `payment_paid_at`.
+- **API guard**: `app/api/tickets/[id]/route.ts` — Added a `PAYMENT_CONFIG_LOCKED` guard (HTTP 422) that blocks changes to `ticket_payment_strategy`, `ticket_deposit_type`, `ticket_deposit_value`, and `ticket_dep_handling` once a deposit or payment has been recorded (`deposit_paid_at` or `payment_paid_at` set). Prevents the recorded amounts from ever silently diverging from the displayed payment plan. Admins can override with `force_payment_config_change: true`.
+- **Automatic recalculation on edit**: `app/api/tickets/[id]/route.ts` — When `ticket_payment_strategy`, `ticket_deposit_type`, or `ticket_deposit_value` changes on a ticket that already has `deposit_paid_at` set, the API automatically recalculates `deposit_amount`, `payment_amount_received`, and `payment_status` to match the new settings. Switching to "partial 31%" on a ticket that was wrongly recorded as full automatically corrects the deposit to 31% and marks the balance as outstanding. Logs a `ticket_payment_recalculated` activity.
+- **UI info banner**: `components/quotes/quote-payment-config.tsx` — Added `recordedDepositAmount` prop. When a deposit is already recorded, a blue informational banner explains: "Deposit already recorded — if you change the payment strategy or deposit amount and save, the recorded deposit will be automatically recalculated to match the new settings." Fields remain fully editable (no lock). Threaded through `components/quotes/shared/quote-form.tsx` and `components/quotes/quote-detail/ticket-overview-sections.tsx`.
+
 ## [2026-06-19] — Add Sentry error monitoring
 
 ### Added

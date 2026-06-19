@@ -296,6 +296,7 @@ export function LineItemAttachmentControl({
           </button>
         )}
       </div>
+    
       {pending && (
         <p className="text-xs max-w-[220px] truncate text-right" style={{ color: "var(--color-text-muted)" }}>
           {pending.name} · uploads on save

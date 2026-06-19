@@ -1066,7 +1066,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       );
     }
     const ccNow = new Date().toISOString();
-    const { error: ccErr } = await admin
+    const { data: ccPay, error: ccErr } = await admin
       .rpc("record_ticket_payment_atomic", {
         p_ticket_id:  ticketId,
         p_amount:     ccAmount,
@@ -1079,6 +1079,25 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     if (ccErr) {
       return NextResponse.json({ error: ccErr.message, code: "DB_ERROR" }, { status: 500 });
     }
+
+    // Log the balance collection so it appears in the order's activity history
+    const ccResult = ccPay as { payment_amount_received?: number; quote_final_total?: number } | null;
+    const ccNewTotal  = Number(ccResult?.payment_amount_received ?? 0);
+    const ccQuoteTotal = Number(ccResult?.quote_final_total ?? existing.quote_final_total ?? 0);
+    await logTicketPaymentRecorded(admin, {
+      ticketId,
+      leadId:     existing.linked_lead_id ?? null,
+      customerId: existing.customer_id    ?? null,
+      byUserId:   userId,
+      mode:       "balance",
+      method:     "cash",
+      amount:     ccAmount,
+      receiptId:  ccReceiptId,
+      newTotal:   ccNewTotal,
+      fullyPaid:  ccNewTotal >= ccQuoteTotal - 0.01,
+      via:        "staff_cash_collect_on_complete",
+      createdAt:  ccNow,
+    });
   }
 
   const ALLOWED_FIELDS = [
@@ -1396,6 +1415,117 @@ export async function PATCH(request: NextRequest, { params }: Params) {
   // Uses the merged final state of the ticket so edits that add a receipt ID trigger correctly.
   if (updated) {
     await maybeAutoRecordCashPayment(admin, updated, now, { byUserId: userId });
+
+    // ── Payment config recalculation ──────────────────────────────────────────
+    // When the user edits ticket_payment_strategy, ticket_deposit_type, or
+    // ticket_deposit_value on a ticket that ALREADY had a deposit recorded before
+    // this save, recalculate the deposit amount and payment totals to match the new
+    // settings. This corrects cases where the wrong strategy was saved initially
+    // (e.g. "full" instead of "partial 31%"), causing an incorrect deposit amount
+    // to be auto-recorded.
+    const paymentConfigChanged = existing.deposit_paid_at && (
+      ("ticket_payment_strategy" in body && body.ticket_payment_strategy !== existing.ticket_payment_strategy) ||
+      ("ticket_deposit_type"     in body && body.ticket_deposit_type     !== existing.ticket_deposit_type) ||
+      ("ticket_deposit_value"    in body && Number(body.ticket_deposit_value) !== Number(existing.ticket_deposit_value))
+    );
+
+    if (paymentConfigChanged) {
+      const newStrategy  = (patch.ticket_payment_strategy ?? existing.ticket_payment_strategy) as string;
+      const newDepType   = (patch.ticket_deposit_type    ?? existing.ticket_deposit_type   ?? "percent") as "percent" | "fixed";
+      const newDepValue  = Number(patch.ticket_deposit_value ?? existing.ticket_deposit_value ?? 0);
+      const total        = Number(patch.quote_final_total  ?? existing.quote_final_total  ?? 0);
+      const currentDepositAmt = Number(existing.deposit_amount ?? 0);
+      const currentAmountReceived = Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0);
+
+      let newDepositAmt: number;
+      const recalcPatch: Record<string, unknown> = { updated_at: now };
+
+      if (newStrategy === "partial" && total > 0) {
+        newDepositAmt = newDepType === "percent"
+          ? Math.round(total * (newDepValue / 100) * 100) / 100
+          : Math.min(newDepValue, total);
+
+        if (Math.abs(newDepositAmt - currentDepositAmt) > 0.01) {
+          recalcPatch.deposit_amount         = newDepositAmt;
+          recalcPatch.payment_amount_received = newDepositAmt;
+          recalcPatch.payment_status         = "partial";
+          // Clear full-payment markers — balance is now outstanding
+          recalcPatch.balance_paid_at  = null;
+          recalcPatch.payment_paid_at  = null;
+          recalcPatch.payment_method_used = null;
+
+          await admin.from("job_tickets").update(recalcPatch).eq("id", ticketId);
+
+          await admin.from("activities").insert({
+            type:        "ticket_payment_recalculated",
+            lead_id:     existing.linked_lead_id ?? null,
+            customer_id: existing.customer_id    ?? null,
+            ticket_id:   ticketId,
+            by_user_id:  userId,
+            payload: {
+              reason:               "payment_config_changed",
+              previous_deposit_amt: currentDepositAmt,
+              new_deposit_amt:      newDepositAmt,
+              new_strategy:         newStrategy,
+              new_dep_type:         newDepType,
+              new_dep_value:        newDepValue,
+            },
+            created_at: now,
+          });
+        }
+      } else if (newStrategy === "full" && total > 0) {
+        // Changing to full — full amount now due immediately; if deposit < total, leave
+        // payment_status as-is (partial) until the full payment is actually collected.
+        // Only update deposit_amount to reflect total if it was auto-recorded correctly.
+        newDepositAmt = total;
+        if (Math.abs(newDepositAmt - currentDepositAmt) > 0.01) {
+          recalcPatch.deposit_amount          = newDepositAmt;
+          recalcPatch.payment_amount_received = newDepositAmt;
+          recalcPatch.payment_status          = "paid";
+          recalcPatch.balance_paid_at         = now;
+          recalcPatch.payment_paid_at         = now;
+          await admin.from("job_tickets").update(recalcPatch).eq("id", ticketId);
+        }
+      } else if (newStrategy === "net") {
+        // Changing to net terms (0 upfront) — no upfront deposit required.
+        // Always clear deposit-related fields. Only keep payment_amount_received
+        // if a full balance payment was already recorded (payment_paid_at set);
+        // a deposit-only payment was for the partial strategy and should be wiped.
+        const hadFullPayment = !!existing.payment_paid_at;
+        recalcPatch.deposit_amount     = null;
+        recalcPatch.deposit_paid_at    = null;
+        recalcPatch.deposit_method     = null;
+        recalcPatch.deposit_receipt_id = null;
+        recalcPatch.balance_paid_at    = null;
+        recalcPatch.payment_paid_at    = null;
+        recalcPatch.payment_method_used = null;
+        if (!hadFullPayment) {
+          // Deposit-only → wipe the received amount so the order shows $0 received
+          recalcPatch.payment_amount_received = null;
+          recalcPatch.payment_status = "unpaid";
+        } else {
+          // Full balance was already paid → preserve the amount, mark as paid
+          recalcPatch.payment_status = currentAmountReceived >= total - 0.01 ? "paid" : "partial";
+        }
+
+        await admin.from("job_tickets").update(recalcPatch).eq("id", ticketId);
+
+        await admin.from("activities").insert({
+          type:        "ticket_payment_recalculated",
+          lead_id:     existing.linked_lead_id ?? null,
+          customer_id: existing.customer_id    ?? null,
+          ticket_id:   ticketId,
+          by_user_id:  userId,
+          payload: {
+            reason:               "payment_config_changed_to_net",
+            previous_deposit_amt: currentDepositAmt,
+            cleared_deposit:      !hadFullPayment,
+            new_strategy:         newStrategy,
+          },
+          created_at: now,
+        });
+      }
+    }
 
     const { data: releaseRow } = await admin
       .from("job_tickets")
