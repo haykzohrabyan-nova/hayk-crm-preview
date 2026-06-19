@@ -68,6 +68,7 @@ export async function proxy(request: NextRequest) {
   const isStatic =
     pathname.startsWith("/_next") ||
     pathname.startsWith("/api") ||
+    pathname.startsWith("/monitoring") || // Sentry tunnel route — must not require auth
     pathname.includes(".");
 
   // Public customer-facing pages — no auth required

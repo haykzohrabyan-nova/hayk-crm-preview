@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 import {
   buildContentSecurityPolicy,
   buildPublicQuoteFileContentSecurityPolicy,
@@ -51,4 +52,19 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: "ai-automation-la-llc",
+  project: "bazarcrm",
+
+  // Auth token for source map upload (set in .env.sentry-build-plugin or Vercel env vars)
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+
+  // Upload wider set of client source files for better stack trace resolution
+  widenClientFileUpload: true,
+
+  // Proxy Sentry requests through /monitoring to bypass ad-blockers and CSP
+  tunnelRoute: "/monitoring",
+
+  // Suppress non-CI build output
+  silent: !process.env.CI,
+});

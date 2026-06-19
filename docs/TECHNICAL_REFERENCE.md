@@ -142,6 +142,14 @@ lib/supabase/admin.ts  → createAdminClient()    SUPABASE_SECRET_KEY
 | Instantly.ai | HTTP REST | Transactional email delivery |
 | `@react-pdf/renderer` | PDF generation | Server-rendered quote/invoice PDFs |
 
+### Observability
+
+| Service | Library | Purpose |
+|---------|---------|---------|
+| Sentry | `@sentry/nextjs ^9.x` | Error monitoring, tracing, session replay. Captures client errors, server API crashes, and React render failures. Every error is tagged with the logged-in user's ID and role via `SentryUserIdentity`. Tunnel route `/monitoring` proxies events to sentry.io to bypass ad-blockers. |
+
+Config files: `instrumentation-client.ts` (browser), `sentry.server.config.ts` (Node.js), `sentry.edge.config.ts` (Edge), `instrumentation.ts` (server hook + `onRequestError`), `app/global-error.tsx` (React boundary).
+
 ### Deployment
 
 - **Vercel** — production hosting; every push to `main` triggers a build+deploy
@@ -2372,6 +2380,9 @@ Search inputs are **`w-full`** on mobile (below `lg`) and a fixed width (`lg:w-5
 | `TWILIO_WHATSAPP_FROM` | Server only | WhatsApp "from" number |
 | `INSTANTLY_API_KEY` | Server only | Instantly.ai API key |
 | `INSTANTLY_SENDING_ACCOUNT` | Server only | Sending account email for Instantly |
+| `NEXT_PUBLIC_SENTRY_DSN` | Browser | Sentry DSN for client-side error capture |
+| `SENTRY_DSN` | Server only | Sentry DSN for server/edge error capture |
+| `SENTRY_AUTH_TOKEN` | Build only | Sentry auth token for source map upload (store in `.env.sentry-build-plugin`, never commit) |
 
 ---
 

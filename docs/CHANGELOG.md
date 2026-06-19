@@ -3,6 +3,25 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-19] — Add Sentry error monitoring
+
+### Added
+- `@sentry/nextjs` dependency for error monitoring, tracing, and session replay
+- `instrumentation-client.ts` — browser SDK init with Session Replay and `/monitoring` tunnel route
+- `sentry.server.config.ts` — Node.js server SDK init with local variable capture
+- `sentry.edge.config.ts` — Edge runtime SDK init
+- `instrumentation.ts` — server registration hook; `onRequestError` auto-captures all unhandled API route errors
+- `app/global-error.tsx` — App Router root error boundary that forwards React render crashes to Sentry
+- `components/layout/sentry-user-identity.tsx` — client component that tags every error with userId, role, and display name via `Sentry.setUser()`
+- `.env.sentry-build-plugin` — gitignored build auth token file for local source map uploads
+
+### Changed
+- `next.config.ts` — wrapped with `withSentryConfig()` (org: `ai-automation-la-llc`, project: `bazarcrm`); tunnel route `/monitoring` for ad-blocker bypass; source map upload on every build
+- `proxy.ts` — added `/monitoring` to `isStatic` so the Sentry tunnel route bypasses the auth redirect
+- `app/(app)/layout.tsx` — renders `<SentryUserIdentity />` inside `AppSessionProvider` to tag all errors with the logged-in user
+- `.env.local.example` — documented `NEXT_PUBLIC_SENTRY_DSN`, `SENTRY_DSN`, `SENTRY_AUTH_TOKEN`
+- `.gitignore` — added `.env.sentry-build-plugin`
+
 ## [2026-06-19] — Unified mobile breakpoint (lg) across all pages
 
 ### Changed
