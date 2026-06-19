@@ -630,7 +630,7 @@ export function SalesPage() {
                       </td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{followUpReasonLabel(lead.follow_up_reason)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString() : "—"}
+                        {lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString("en-US") : "—"}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {lead.follow_up_at ? relativeTime(lead.follow_up_at) : "—"}
@@ -687,7 +687,7 @@ export function SalesPage() {
                         <span className="normal-case tracking-normal text-right truncate max-w-[200px]">{formatLeadProductInterests(lead.interests, lead.quantities)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between"><span>Follow up on</span><span className="normal-case tracking-normal">{lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString() : "—"}</span></div>
+                    <div className="flex justify-between"><span>Follow up on</span><span className="normal-case tracking-normal">{lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString("en-US") : "—"}</span></div>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -756,7 +756,7 @@ export function SalesPage() {
                       </td>
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{holdReasonLabel(lead.hold_reason)}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {lead.hold_until ? new Date(lead.hold_until).toLocaleDateString() : "—"}
+                        {lead.hold_until ? new Date(lead.hold_until).toLocaleDateString("en-US") : "—"}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {lead.held_at ? relativeTime(lead.held_at) : "—"}
@@ -814,7 +814,7 @@ export function SalesPage() {
                         <span className="normal-case tracking-normal text-right truncate max-w-[200px]">{formatLeadProductInterests(lead.interests, lead.quantities)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between"><span>Until</span><span className="normal-case tracking-normal">{lead.hold_until ? new Date(lead.hold_until).toLocaleDateString() : "—"}</span></div>
+                    <div className="flex justify-between"><span>Until</span><span className="normal-case tracking-normal">{lead.hold_until ? new Date(lead.hold_until).toLocaleDateString("en-US") : "—"}</span></div>
                     <div className="flex justify-between"><span>Company</span><span className="normal-case tracking-normal">{lead.customer?.company || "—"}</span></div>
                   </div>
                   <div className="flex gap-2">

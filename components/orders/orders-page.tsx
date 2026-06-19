@@ -326,7 +326,7 @@ function OrderMobileCard({
           label="Due Date"
           value={
             o.due_date
-              ? `${new Date(o.due_date + "T00:00:00").toLocaleDateString()}${overdue ? " · Overdue" : ""}`
+              ? `${new Date(o.due_date + "T00:00:00").toLocaleDateString("en-US")}${overdue ? " · Overdue" : ""}`
               : "—"
           }
           valueColor={dueToday || overdue ? "var(--color-danger)" : dueSoon ? "var(--color-warning)" : undefined}
@@ -581,7 +581,7 @@ function OrdersTableDesktop({
                              "var(--color-text-muted)",
                     }}
                   >
-                    {new Date(o.due_date + "T00:00:00").toLocaleDateString()}
+                    {new Date(o.due_date + "T00:00:00").toLocaleDateString("en-US")}
                     {overdue ? " · Overdue" : ""}
                   </span>
                 ) : (

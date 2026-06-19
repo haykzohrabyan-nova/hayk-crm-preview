@@ -525,7 +525,7 @@ export function CompanySection() {
           )}
           {!dirty && settings && (
             <span className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-              Last saved {new Date(settings.updated_at).toLocaleDateString()}
+              Last saved {new Date(settings.updated_at).toLocaleDateString("en-US")}
             </span>
           )}
         </div>

@@ -712,6 +712,36 @@ Ownership is only released by a terminal action:
 
 ---
 
+## SSR / Hydration Rules
+
+Next.js App Router SSR-renders `"use client"` components on the server before hydrating in the browser. Avoid these patterns that cause `Hydration failed` errors:
+
+**Locale-dependent date formatting** — always pin `"en-US"`:
+```tsx
+// ❌ Server (Vercel, en-US) renders "6/15/2026", European browser renders "15/06/2026"
+new Date(dateStr).toLocaleDateString()
+
+// ✅ Pinned locale — identical output on server and client
+new Date(dateStr + "T00:00:00").toLocaleDateString("en-US")
+// or use the shared helper:
+import { parseLocalDate } from "@/lib/utils/format";
+parseLocalDate(dateStr).toLocaleDateString("en-US")
+```
+
+**`localStorage` in `useState` initializer** — guard with `typeof window`:
+```tsx
+// ❌ Server renders default; client reads a stored value — strings differ on hydrate
+const [size, setSize] = useState(() => localStorage.getItem("k") ?? "25");
+
+// ✅ Returns same default on both server and client for initial render
+const [size, setSize] = useState(() => {
+  if (typeof window === "undefined") return "25";
+  return localStorage.getItem("k") ?? "25";
+});
+```
+
+---
+
 ## Data Fetching Strategy
 
 | Layer | Where | How |

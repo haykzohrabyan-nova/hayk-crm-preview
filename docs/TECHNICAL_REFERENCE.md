@@ -1907,6 +1907,12 @@ Category `CATEGORY_META` includes: `source`, `industry`, `urgency`, `hold_reason
 
 Product types (`id` = slug), materials (grouped), material links (many-to-many). The line item builder in new quote uses these to populate product type dropdown and filter materials by selection.
 
+**Drag-to-reorder (Jun 2026):**
+- Product types: grip handle on each row in left panel → `PATCH /api/admin/product-types/[id]` with `{ sort_order }` for all items on drop.
+- Materials within a product: grip handle on each material row → `PATCH /api/admin/materials/[id]` with `{ sort_order }` for all linked materials on drop. Because `sort_order` lives on the material itself (not the link), the new order applies globally across all products sharing that material.
+
+**Export JSON (Jun 2026):** "Export" button beside "Add Product" — downloads `bazaar-products-export-YYYY-MM-DD.json` with all product types (+ their linked materials) and all material groups. Client-side only — no API call, uses in-memory state.
+
 ### Company settings
 
 Editable by admin: branding, address, `default_tax_rate`, `high_value_threshold`, `rush_surcharge_percent`, `session_idle_timeout_minutes`, bank info, Zelle info.
@@ -2158,6 +2164,41 @@ Same rendering path, token authentication, rate-limited.
 
 > **Full color guide:** [`docs/color-system.md`](./color-system.md) — token list, dark mode, Tailwind bridge, exceptions.
 
+### SSR / Hydration rules (Jun 2026)
+
+Next.js App Router SSR-renders even `"use client"` components on the server before hydrating them in the browser. Two patterns that cause hydration mismatches to **always avoid**:
+
+**1. Bare `toLocaleDateString()` (no locale argument)**
+
+```tsx
+// ❌ BAD — server renders in server locale (en-US on Vercel), browser renders in user's locale
+new Date(dateStr).toLocaleDateString()
+
+// ✅ GOOD — pin locale so server and client always produce the same string
+new Date(dateStr).toLocaleDateString("en-US")
+
+// ✅ BETTER — use shared helper that already pins locale + handles null
+import { formatDate } from "@/lib/utils/format";
+formatDate(dateStr)   // → "Jun 19, 2026"
+
+// ✅ For YYYY-MM-DD date-only strings (avoid UTC-midnight shift):
+import { parseLocalDate } from "@/lib/utils/format";
+parseLocalDate(dateStr).toLocaleDateString("en-US")
+```
+
+**2. `localStorage` reads in `useState` initializer**
+
+```tsx
+// ❌ BAD — server has no localStorage; returns default. Client reads persisted value. Mismatch.
+const [size, setSize] = useState(() => localStorage.getItem("size") ?? "25");
+
+// ✅ GOOD — guard with typeof window check; returns same default on both server + client initial render
+const [size, setSize] = useState(() => {
+  if (typeof window === "undefined") return "25";
+  return localStorage.getItem("size") ?? "25";
+});
+```
+
 ### Color token system
 
 All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex in components.**
@@ -2385,6 +2426,45 @@ Search inputs are **`w-full`** on mobile (below `lg`) and a fixed width (`lg:w-5
 | `SENTRY_AUTH_TOKEN` | Build only | Sentry auth token for source map upload (store in `.env.sentry-build-plugin`, never commit) |
 
 ---
+
+## 27. Performance Notes (Jun 2026)
+
+### Measured baseline (Vercel production, warm instance)
+
+| Endpoint | Auth-fast-path (401) | Notes |
+|---|---|---|
+| `GET /quotes` (HTML) | ~270ms | Vercel SSR |
+| `GET /api/quotes/page-data` | ~150ms auth-only | Full authenticated: +200–400ms DB |
+| `GET /api/lookups/products` | ~280ms auth-only | Catalog small; rarely changes |
+| `GET /api/admin/materials` | ~270ms auth-only | 58 rows, 63ms direct query |
+| `GET /api/admin/product-types` | ~270ms auth-only | 21 rows, 64ms direct query |
+
+### `GET /api/quotes/page-data` — DB round-trip structure
+
+```
+┌─ Promise.all ──────────────────────────────────────────────────────┐
+│  fetchQuotesList          →  main tickets query (customer joined)  │
+│    └─ enrichQuoteRows     →  extra user_profiles IN query (*)      │
+│  fetchQuotesTabCounts     →  5–6 count queries (Promise.all)       │
+└────────────────────────────────────────────────────────────────────┘
+       ↓ sequential after both complete
+┌─ fetchTicketLinePreviewsBatch ─────────────────────────────────────┐
+│  3 parallel IN queries: line_items, line_variants, ticket_files    │
+│  Batch across all 25 tickets — no N+1                              │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**(*) Known optimization opportunity:** `enrichQuoteRows` fires an extra `user_profiles` query to resolve `created_by_name`. This could be eliminated by adding `created_by:user_profiles(id,full_name)` to `TICKET_QUOTE_LIST_SELECT` and reading the join result directly. Saves ~1 DB round trip (~30–60ms) per page-data call.
+
+**Double customer ID lookup on search:** When `?search=` is set, `resolveTicketSearchCustomerIds` runs independently inside both `fetchQuotesList` and `fetchQuotesTabCounts` (they run in parallel so no latency impact, but it duplicates the DB query). Can be shared between the two callers in a future refactor.
+
+### Line preview batch — no N+1
+
+`fetchTicketLinePreviewBundlesBatch` fetches line items for all tickets on the page with 3 `IN` queries (not one query per ticket). This is correct and efficient.
+
+### No cold-start problems
+
+All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start delays. The region is co-located with the Supabase project.
 
 ## 27. Key File Index
 

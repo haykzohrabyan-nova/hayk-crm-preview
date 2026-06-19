@@ -286,7 +286,7 @@ export function SdrDashboard() {
             <p className="mt-1 text-[13px]" style={{ color: "var(--color-text-muted)" }}>
               {rangeLabel}
               {data.range.preset === "custom" &&
-                ` · ${new Date(data.range.start_iso).toLocaleDateString()} – ${new Date(data.range.end_iso).toLocaleDateString()}`}
+                ` · ${new Date(data.range.start_iso).toLocaleDateString("en-US")} – ${new Date(data.range.end_iso).toLocaleDateString("en-US")}`}
             </p>
           )}
         </div>

@@ -582,7 +582,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
           </div>
           <div>
             <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>Customer Since</p>
-            <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>{new Date(c.created_at).toLocaleDateString()}</p>
+            <p className="text-[13px]" style={{ color: "var(--color-text-muted)" }}>{new Date(c.created_at).toLocaleDateString("en-US")}</p>
           </div>
         </div>
       </div>

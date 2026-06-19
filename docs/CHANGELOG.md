@@ -3,6 +3,17 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-19] — Fix hydration error on /quotes (and all list pages)
+
+### Fixed
+- All `toLocaleDateString()` calls in 10 client components were missing a locale argument. Vercel's server always rendered dates in the server locale (`en-US`), while the user's browser rendered in their own locale (e.g. European `dd/mm/yyyy`). React detected the HTML mismatch and threw a hydration error. Fixed by pinning `"en-US"` as the locale argument on every call across:
+  `quotes-page.tsx`, `orders-page.tsx`, `completed-page.tsx`, `production-page.tsx`, `sales-page.tsx`, `sdr-dashboard.tsx`, `sales-dashboard.tsx`, `leads-page.tsx`, `customer-profile.tsx`, `company-section.tsx`
+
+### Changed
+- `docs/TECHNICAL_REFERENCE.md`: added **§24 SSR / Hydration rules** documenting the `toLocaleDateString` locale pattern and `localStorage` initializer guard; added **§27 Performance Notes** with measured baseline timings and DB round-trip map for `GET /api/quotes/page-data`
+- `docs/guides/component-architecture.md`: added **SSR / Hydration Rules** section with code examples for both anti-patterns
+- `docs/TECHNICAL_REFERENCE.md` §18: documented drag-to-reorder and Export JSON for the Products admin tab
+
 ## [2026-06-19] — Drag-to-reorder materials within a product
 
 ### Changed

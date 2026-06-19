@@ -140,7 +140,7 @@ function CompletedMobileCard({
         <MobileListCardRow label="Priority" value={o.priority ?? "—"} valueColor={priorityStyle.color} />
         <MobileListCardRow
           label="Due Date"
-          value={o.due_date ? new Date(o.due_date + "T00:00:00").toLocaleDateString() : "—"}
+          value={o.due_date ? new Date(o.due_date + "T00:00:00").toLocaleDateString("en-US") : "—"}
         />
         <MobileListCardRow label="Completed" value={formatDate(o.updated_at)} />
       </MobileListCardFields>
@@ -435,7 +435,7 @@ export function CompletedPage() {
                     {/* Due date */}
                     <td className="px-4 py-3">
                       <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {o.due_date ? new Date(o.due_date + "T00:00:00").toLocaleDateString() : "—"}
+                        {o.due_date ? new Date(o.due_date + "T00:00:00").toLocaleDateString("en-US") : "—"}
                       </span>
                     </td>
 

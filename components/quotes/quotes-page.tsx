@@ -163,7 +163,7 @@ function QuoteMobileCard({
           label="Follow-up"
           value={
             q.quote_reminder_date
-              ? new Date(q.quote_reminder_date + "T00:00:00").toLocaleDateString()
+              ? new Date(q.quote_reminder_date + "T00:00:00").toLocaleDateString("en-US")
               : "—"
           }
           valueColor={overdue ? "var(--color-danger)" : undefined}
@@ -780,7 +780,7 @@ export default function QuotesPage() {
                           style={{ color: overdue ? "var(--color-danger)" : "var(--color-text-muted)" }}
                         >
                           <Clock size={12} />
-                          {new Date(q.quote_reminder_date + "T00:00:00").toLocaleDateString()}
+                          {new Date(q.quote_reminder_date + "T00:00:00").toLocaleDateString("en-US")}
                         </span>
                       ) : (
                         <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>
