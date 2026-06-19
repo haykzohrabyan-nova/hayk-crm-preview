@@ -471,7 +471,7 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `ticket_full_channels` | `text[]` | Accepted channels for full payment |
 | `ticket_require_client_confirm` | `boolean` | If true, customer must confirm quote before production gate opens |
 | `ticket_net_terms_label` | `text` | `'net-10'` \| `'net-15'` \| `'net-20'` \| `'net-30'` \| `'net-45'` \| `'net-60'` |
-| `ticket_quote_channel` | `text` | `'sms'` \| `'email'` \| `'both'` |
+| `ticket_quote_channel` | `text` | `'sms'` \| `'email'` \| `'both'` \| `'none'` — `'none'` means no customer notification; public page still accessible |
 | `ticket_dest_phone` | `text` | Phone number the quote was sent to |
 | `ticket_dest_email` | `text` | Email address the quote was sent to |
 | `ticket_follow_up_enabled` | `boolean` | Whether automated follow-up reminders are enabled |
@@ -908,7 +908,7 @@ Defined in `supabase/schema.sql`.
 
 Admin-managed product catalog for quote line items. Created and seeded in migration 041. Managed from **Admin → Products tab**.
 
-- `product_types` — text slug PK (e.g. `labels-roll`), 15 types seeded
+- `product_types` — text slug PK (e.g. `labels-roll`), 15 types seeded; `default_print_type` values: `'Roll'` | `'Sheet'` | `'Unit'`; ordered by `sort_order` (admin drag-to-reorder)
 - `material_groups` — uuid PK, internal grouping only (hidden from admin UI), 9 groups seeded
 - `materials` — text slug PK (e.g. `bopp-white`), 37 materials seeded
 - `product_material_links` — junction table linking materials to product types

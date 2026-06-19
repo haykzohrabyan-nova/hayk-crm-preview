@@ -625,7 +625,7 @@ ticket_dep_handling text      -- "cash" | "gateway"
 ticket_partial_channels text[] -- ["cash","wire","ach","zelle","check","card"]
 ticket_full_channels text[]
 ticket_require_client_confirm boolean default true
-ticket_quote_channel text     -- "sms" | "email" | "both"
+ticket_quote_channel text     -- "sms" | "email" | "both" | "none"
 ticket_dest_email text
 ticket_dest_phone text
 
@@ -781,9 +781,9 @@ PRIMARY KEY (category, value)
 ```
 id text PK               -- slug e.g. "stickers", "banners"
 name text
-default_print_type text  -- "Roll" | "Sheet"
+default_print_type text  -- "Roll" | "Sheet" | "Unit"
 facility text
-sort_order int
+sort_order int           -- controls order in admin list + quote form selector; drag-to-reorder in Admin UI
 is_active boolean
 notes text
 ```
@@ -1201,7 +1201,45 @@ The same component (`components/quotes/quote-detail.tsx`) handles all detail pag
 2. `in_production` or `completed` → `ProductionDetailOverview`
 3. Otherwise → `QuoteStageOverview`
 
----
+### Orders list display conventions (`components/orders/orders-page.tsx`)
+
+**Order # column:** Strips `ORD-` prefix for display — shows `2026-024` instead of `ORD-2026-024`. Plain monospace text, no badge styling.
+
+**Status column (`status_tone` → display label):**
+
+| Tone | Table display | Full label (hover `title`) |
+|---|---|---|
+| `"converted"` | `"Converted"` | e.g. "Converted by Gary" |
+| `"admin_override"` | `"Converted"` | e.g. "Gary converted — confirm missing" |
+| `"in_production"` | `"In Production"` | same |
+| `"confirmed"` | `"Confirmed by Customer"` | same |
+| `"awaiting_confirmation"` | full label | same |
+| `"cancelled"` | `"Cancelled"` | same |
+
+Helper: `shortStatusLabel(tone, fullLabel)` in `orders-page.tsx`.
+
+**Payment column short labels (table only):**
+
+| Full label | Table label |
+|---|---|
+| "Tax-exempt pending approval" | "Pending Tax Review" |
+| "Tax-exempt approved" | "Tax Exempt" |
+| "Partially refunded" | "Partially Refunded" |
+| "Fully refunded" | "Fully Refunded" |
+| "Awaiting deposit confirmation" | "Awaiting Deposit Confirmation" |
+| "Awaiting balance confirmation" | "Awaiting Balance Confirmation" |
+| "Awaiting full payment confirmation" | "Awaiting Full Payment Confirmation" |
+
+Short variants live in `lib/utils/tax-exempt-list-label.ts` (`TAX_EXEMPT_PENDING_LABEL_SHORT`, `TAX_EXEMPT_APPROVED_LABEL_SHORT`). Title-case awaiting labels in `lib/utils/payment-evidence-type.ts`.
+
+**Responsive table layout:**
+- `lg` (1024–1279px): `table-fixed` + percentage `<colgroup>` + `truncate` on text cells
+- `xl` (1280–1535px, typical laptop): same as lg — compact, no scroll
+- `2xl` (1536px+, large monitors): `table-auto` — browser sizes columns to content, truncation lifted
+
+**Expanded row:** Background `var(--color-surface)`; each `DetailLineItemCard` has `background: #ffffff; border: 1px solid #e8c97a` to stand out clearly.
+
+
 
 ## 11. Line Items, Pricing & Attachments
 
@@ -1244,7 +1282,7 @@ All computed totals are persisted on `job_tickets`: `quote_subtotal`, `quote_pre
 
 - **`LineItemsForm`** — wraps edit (`SkuRow` per line) and read-only (`DetailLineItemCard` + `AdditionalSkusOverviewList`) modes
 - **`SkuRow`** — one editable line: product type, material, dimensions, quantity, unit price, finishings, file attach
-- **`DetailLineItemCard`** — read-only card: name+specs left, price right, optional thumbnail panel on far right (160px wide, fills card height)
+- **`DetailLineItemCard`** — read-only card: name+specs left, price right, optional thumbnail panel on far right (160px wide, fills card height). Background `#ffffff`, border `#e8c97a` (gold) so cards stand out in expanded table rows.
 - **`AdditionalSkusOverviewList`** — renders variant sub-rows inside the card footer; each variant shows its thumbnail on the right (100px panel)
 - **`LineItemFileThumbnail`** — clickable image/PDF preview that opens `LineItemFilePreviewModal`; supports `fill` mode for full-height card panel
 
@@ -1385,7 +1423,7 @@ Required: `ticket_kind`, `title`
 4. `syncTicketLines(ticketId, lineItems)` — create relational line item rows
 5. `syncTicketShippingDestinations` — create shipping destination rows
 6. Activity `order_ticket_created`
-7. If `ticket_status = "sent"`: `sendQuoteToCustomer()` async + `sendQuoteSentStaffNotification()` fire-and-forget to creator
+7. If `ticket_status = "sent"` **and** `ticket_quote_channel != "none"`: `sendQuoteToCustomer()` async + `sendQuoteSentStaffNotification()` fire-and-forget to creator. When `ticket_quote_channel = "none"` the public token is still created but no SMS/email is sent to the customer.
 8. `maybeAutoRecordCashPayment()`, `maybeAutoReleaseProduction()` for cash-in-person flows
 
 ---
@@ -1611,7 +1649,7 @@ SMS bodies come from DB (`sms_templates` table, keyed by `template_key`) merged 
 
 | Function | Trigger |
 |----------|---------|
-| `sendQuoteToCustomer` | `ticket_status = "sent"` (create or PATCH) |
+| `sendQuoteToCustomer` | `ticket_status = "sent"` (create or PATCH) **and** `ticket_quote_channel != "none"` — skipped silently when channel is `"none"` |
 | `sendQuoteSentStaffNotification` | `ticket_status = "sent"` (create or PATCH, including resend) — internal email to quote creator |
 | `sendPaymentReminder` | `PATCH` with `send_payment_reminder: true` |
 | `sendInvoiceLinkToCustomer` | `PATCH` with `resend_invoice: true` |
@@ -2169,6 +2207,62 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 - No `max-w-screen-xl` on page-level wrappers — full width
 - Detail/form pages: `w-full px-6 py-6`
 
+### Unified mobile breakpoint — `lg` (1024 px)
+
+`MobileNav` (`components/layout/mobile-nav.tsx`) is `lg:hidden` — the hamburger/top-bar appears **below 1024 px**. **Every layout breakpoint in page-level components must use `lg:` as the mobile/desktop flip point** so the page content switches to its mobile layout at the exact same moment as the navigation.
+
+**Rules:**
+- ✅ Use `flex-col lg:flex-row` for page headers and toolbars
+- ✅ Use `lg:hidden` / `hidden lg:block` for mobile/desktop table switching
+- ❌ Never use `sm:flex-row` or `xl:flex-row` for page-level layout splits
+- `xl:` and `2xl:` are allowed only for **within-desktop** refinements (e.g. table column sizing at very wide screens)
+
+### Page header patterns
+
+All list pages follow one of two header patterns:
+
+**Pattern A — title + action button only (no date filter):**
+Used by: Leads, Sales Pipeline, CRM
+```tsx
+<div className="flex items-center justify-between gap-4">
+  <h1 className="text-[20px] font-semibold">Page Title</h1>
+  <button className="... shrink-0">Action</button>
+</div>
+```
+Always a single row on all screen sizes. No stacking. Button is compact, right-aligned, never full-width.
+
+**Pattern B — title + date filter (with optional action button):**
+Used by: Orders, Completed Orders, Payments, Quoted Requests
+```tsx
+{/* Title row — always inline */}
+<div className="flex items-center justify-between gap-4 mb-3">
+  <h1>Page Title</h1>
+  <button className="... shrink-0">Action</button>  {/* if present */}
+</div>
+{/* Date filter — full-width on mobile, right-aligned on desktop */}
+<div className="flex justify-end mb-4 lg:mb-6">
+  <DashboardDateRangeFilter className="w-full lg:w-auto" />
+</div>
+```
+
+**Dashboard headers** use `flex-col lg:flex-row lg:justify-between` since they contain both a date filter and a Hide values toggle in the controls area.
+
+### Toolbar rows (below header)
+
+All list pages use a toolbar row for tabs + search/filters:
+```tsx
+<div className="flex flex-col gap-2 lg:flex-row lg:items-center border-b">
+  {/* Left: tabs (scrollable) or filter pills */}
+  <div className="flex overflow-x-auto ...flex-1 min-w-0">...</div>
+  {/* Right: search + admin filter — full-width on mobile */}
+  <div className="flex flex-col gap-2 lg:flex-row lg:items-center w-full lg:w-auto lg:shrink-0">
+    <div className="relative w-full lg:w-52">search input</div>
+    <AdminUserFilter className="w-full lg:w-auto" />
+  </div>
+</div>
+```
+Search inputs are **`w-full`** on mobile (below `lg`) and a fixed width (`lg:w-52`) on desktop.
+
 ### Border radius
 
 | Size | Use |
@@ -2211,6 +2305,13 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 **Shared UI components (`components/ui/`):**
 `badge`, `button`, `card`, `dialog`, `input`, `select`, `separator`, `tooltip`, `date-picker`, `phone-input`, `email-input`, `status-pill`, `urgency-pill`, `list-pagination`, `table-skeleton`, `mobile-list-card` (+variants), `ticket-list-toolbar`, `dashboard-date-range-filter`, `kpi-help-line`, `back-button`, `spec-preview`, `stripe-evidence-panel`, `open-in-stripe-link`, `linked-lead-card`, `outreach-channel-icons`
 
+**`mobile-list-card.tsx` key components:**
+- `MobileListCardRow` — label (11px uppercase) + value (`text-sm` 14px, `font-medium`). Value color override via `valueColor` prop.
+- `MobileListCardFields` — wraps rows with uppercase label styling; values override to `text-sm` for readability.
+- `TicketListExpandChevronCell` — the `>` chevron `<td>` at the start of every table row. `p-0 w-5` (no padding, 20px wide). Accepts optional `style` prop for per-row styling (e.g. due-today red indicator via `boxShadow: "inset 3px 0 0 var(--color-danger)"`).
+- `TicketListExpandPreviewRow` — expanded row `<tr>` spanning all columns; background `var(--color-surface)` so white `DetailLineItemCard`s contrast against it.
+- `TicketListToolbar` — tabs (left, scrollable) + search + optional end adornment (right). Outer: `flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between border-b`. Search row: `flex flex-col gap-2 lg:flex-row lg:items-center w-full lg:w-auto`. Search input: `w-full lg:w-52`. All breakpoints use `lg:` to match the mobile nav breakpoint.
+
 ### Collapsible detail sections
 
 `DetailCollapsibleSection` from `components/quotes/quote-detail/detail-layout-primitives.tsx` — long optional sections (Timeline, Pricing, Payment settings).
@@ -2251,7 +2352,7 @@ All colors defined as CSS variables in `app/globals.css`. **Never hardcode hex i
 
 ### Mobile navigation
 
-`MobileNav` component shown below `lg` breakpoint — same badge/event pattern as sidebar.
+`MobileNav` component shown below `lg` breakpoint (1024 px) — same badge/event pattern as sidebar. **All page-level layout breakpoints must use `lg:` to match this flip point** (see [Unified mobile breakpoint](#unified-mobile-breakpoint--lg-1024-px) in §24).
 
 ---
 

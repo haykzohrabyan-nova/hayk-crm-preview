@@ -9,7 +9,7 @@ import {
   seedLinePreviewFromListRows,
 } from "@/lib/client/seed-line-preview-from-page-data";
 import { TableDivSkeleton } from "@/components/ui/table-skeleton";
-import { Plus, Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
+import { Clock, ExternalLink, UserCheck, AlertTriangle } from "lucide-react";
 import { TicketLineItemsQuickPreview } from "@/components/quotes/ticket-line-items-quick-preview";
 import { ExpandChevron, TicketListViewButton } from "@/components/ui/ticket-list-expand";
 import {
@@ -475,25 +475,22 @@ export default function QuotesPage() {
     <div className="space-y-5" style={{ color: "var(--color-text-primary)" }}>
 
       {/* Page header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between mb-4 sm:mb-6">
-        <div>
-          <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
-            Quoted Requests
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-            All formal quotes sent or drafted for clients
-          </p>
-        </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 shrink-0">
-          <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
-          <button
-            onClick={() => router.push("/quotes/new")}
-            className="flex items-center justify-center gap-1.5 px-4 py-2.5 sm:py-2 rounded-md text-sm font-medium transition-opacity hover:opacity-80 shrink-0"
-            style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
-          >
-            <Plus size={15} /> New Quote
-          </button>
-        </div>
+      <div className="flex items-center justify-between gap-4 mb-3">
+        <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
+          Quoted Requests
+        </h1>
+        <button
+          onClick={() => router.push("/quotes/new")}
+          className="flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium transition-opacity hover:opacity-80 shrink-0"
+          style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+        >
+          New Quote
+        </button>
+      </div>
+
+      {/* Date filter row */}
+      <div className="flex justify-end mb-4 lg:mb-6">
+        <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} className="w-full lg:w-auto" />
       </div>
 
       {claimNotice && (

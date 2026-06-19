@@ -283,32 +283,33 @@ export function CompletedPage() {
           <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Completed Orders
           </h1>
-          <p className="text-sm mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-            Finished orders — filter by completion date
-          </p>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-3 shrink-0">
-          <ListRefreshingNotice refreshing={refreshing} />
+        <div className="shrink-0">
           <DashboardDateRangeFilter value={dateFilter} onChange={setDateFilter} />
-          {isAdmin && (
-            <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />
-          )}
+        </div>
+      </div>
 
-          <div className="relative w-full sm:w-52 shrink-0">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search orders…"
-              className="w-full pl-8 pr-3 py-2 lg:py-1.5 text-sm rounded-md border outline-none"
-              style={{
-                background: "var(--color-bg)",
-                border:     "1px solid var(--color-border)",
-                color:      "var(--color-text-primary)",
-              }}
-            />
-          </div>
+      {/* Toolbar row: team member filter + search */}
+      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-end border-b pb-3"
+        style={{ borderColor: "var(--color-border)" }}>
+        <ListRefreshingNotice refreshing={refreshing} />
+        {isAdmin && (
+          <AdminUserFilter value={filterUserId} onChange={setFilterUserId} />
+        )}
+        <div className="relative w-full lg:w-52 shrink-0">
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--color-text-muted)" }} />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search orders…"
+            className="w-full pl-8 pr-3 py-2 lg:py-1.5 text-sm rounded-md border outline-none"
+            style={{
+              background: "var(--color-bg)",
+              border:     "1px solid var(--color-border)",
+              color:      "var(--color-text-primary)",
+            }}
+          />
         </div>
       </div>
 

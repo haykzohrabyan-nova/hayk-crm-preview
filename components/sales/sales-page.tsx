@@ -5,7 +5,7 @@ import dynamic from "next/dynamic";
 import { TableRowsSkeleton } from "@/components/ui/table-skeleton";
 import { useListPageData } from "@/hooks/use-list-page-data";
 import { ListRefreshingNotice } from "@/components/ui/mobile-list-card";
-import { Search, RefreshCw, X } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -344,49 +344,52 @@ export function SalesPage() {
         </h1>
       </div>
 
-      {/* Tab bar */}
-      <div className="flex overflow-x-auto border-b" style={{ borderColor: "var(--color-border)" }}>
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => selectTab(tab.id)}
-            className="whitespace-nowrap px-4 py-2.5 text-[13px] font-medium transition-colors"
-            style={{
-              borderBottom: activeTab === tab.id ? "2px solid var(--color-tab-underline)" : "2px solid transparent",
-              color: activeTab === tab.id ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
-            }}
-          >
-            {tab.label}
-            {tab.count > 0 && (
-              <span
-                className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
-                style={{
-                  background: activeTab === tab.id ? "var(--color-badge-bg)" : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
-                  color: "var(--color-badge-text)",
-                }}
-              >
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Search + Refresh */}
-      <div className="flex items-center gap-2">
-        <ListRefreshingNotice refreshing={refreshing} />
-        <div className="relative flex-1" style={{ maxWidth: 320 }}>
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Search name, email, company…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm"
-          />
+      {/* Tab bar + Search + Refresh — same row on desktop */}
+      <div
+        className="flex flex-col gap-2 lg:flex-row lg:items-center border-b"
+        style={{ borderColor: "var(--color-border)" }}
+      >
+        {/* Tabs */}
+        <div className="flex overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden flex-1 min-w-0">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => selectTab(tab.id)}
+              className="whitespace-nowrap px-4 py-2.5 text-[13px] font-medium transition-colors shrink-0"
+              style={{
+                borderBottom: activeTab === tab.id ? "2px solid var(--color-tab-underline)" : "2px solid transparent",
+                color: activeTab === tab.id ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
+              }}
+            >
+              {tab.label}
+              {tab.count > 0 && (
+                <span
+                  className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-semibold"
+                  style={{
+                    background: activeTab === tab.id ? "var(--color-badge-bg)" : "color-mix(in srgb, var(--color-badge-bg) 70%, transparent)",
+                    color: "var(--color-badge-text)",
+                  }}
+                >
+                  {tab.count}
+                </span>
+              )}
+            </button>
+          ))}
         </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleRefresh} title="Refresh">
-          <RefreshCw className="h-4 w-4" />
-        </Button>
+
+        {/* Search + Refresh — right side */}
+        <div className="flex items-center gap-2 pb-2 lg:pb-0 w-full lg:w-auto lg:shrink-0">
+          <div className="relative flex-1 lg:flex-none lg:w-52">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="Search name, email, company…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-8 h-8 text-sm w-full"
+            />
+          </div>
+          <ListRefreshingNotice refreshing={refreshing} />
+        </div>
       </div>
 
       {/* ── Pipeline tab ── */}

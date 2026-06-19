@@ -308,6 +308,8 @@ export interface InvoicePDFProps {
   documentBanner?: CustomerDocumentBanner;
   /** Omit totals / deposit / balance (cancelled or refunded customer documents) */
   hidePricingSummary?: boolean;
+  /** Omit all financial data — unit prices, line totals, and the entire pricing summary block. Qty is kept. */
+  hidePricing?: boolean;
 }
 
 function fmtDate(iso: string) {
@@ -367,6 +369,7 @@ export function InvoicePDF({
   paymentSummary,
   documentBanner = null,
   hidePricingSummary = false,
+  hidePricing = false,
 }: InvoicePDFProps) {
   const docType = isOrder ? "INVOICE" : "QUOTE";
   const isOrderDoc = isOrder;
@@ -546,8 +549,8 @@ export function InvoicePDF({
               <Text style={[s.thText, s.colProduct]}>Product</Text>
               <Text style={[s.thText, s.colSpec]}>Specification</Text>
               <Text style={[s.thText, s.colQty]}>Qty</Text>
-              <Text style={[s.thText, s.colUnit]}>Unit Price</Text>
-              <Text style={[s.thText, s.colTotal]}>Total</Text>
+              {!hidePricing && <Text style={[s.thText, s.colUnit]}>Unit Price</Text>}
+              {!hidePricing && <Text style={[s.thText, s.colTotal]}>Total</Text>}
             </View>
             {/* Rows */}
             {skus.map((sku, i) => {
@@ -597,12 +600,16 @@ export function InvoicePDF({
                     {specParts || "—"}
                   </Text>
                   <Text style={[s.tdText, s.colQty]}>{sku.quantity ?? "—"}</Text>
-                  <Text style={[s.tdText, s.colUnit]}>
-                    {sku.unit_price != null ? formatCurrency(sku.unit_price) : "—"}
-                  </Text>
-                  <Text style={[s.tdText, s.colTotal, s.tdBold]}>
-                    {lineTotal > 0 ? formatCurrency(lineTotal) : "—"}
-                  </Text>
+                  {!hidePricing && (
+                    <Text style={[s.tdText, s.colUnit]}>
+                      {sku.unit_price != null ? formatCurrency(sku.unit_price) : "—"}
+                    </Text>
+                  )}
+                  {!hidePricing && (
+                    <Text style={[s.tdText, s.colTotal, s.tdBold]}>
+                      {lineTotal > 0 ? formatCurrency(lineTotal) : "—"}
+                    </Text>
+                  )}
                 </View>
               );
             })}
@@ -610,7 +617,7 @@ export function InvoicePDF({
         ) : null}
 
         {/* ── Pricing Summary ── */}
-        {hidePricingSummary &&
+        {!hidePricing && hidePricingSummary &&
         ticket.refundStatus &&
         (ticket.totalRefundedAmount ?? 0) > 0 ? (
           <View style={s.pricingWrap}>
@@ -625,7 +632,7 @@ export function InvoicePDF({
               </View>
             </View>
           </View>
-        ) : !hidePricingSummary ? (
+        ) : (!hidePricing && !hidePricingSummary) ? (
         <View style={s.pricingWrap}>
           <View style={s.pricingBox}>
             {ticket.quoteSubtotal != null ? (
@@ -765,9 +772,9 @@ export function InvoicePDF({
         ) : null}
 
         {/* ── Details (payment, channel, special requirements) ── */}
-        {((!hidePricingSummary && paymentMethods) || ticket.quoteChannel || ticket.specialRequirements) ? (
+        {((!hidePricing && !hidePricingSummary && paymentMethods) || ticket.quoteChannel || ticket.specialRequirements) ? (
           <View style={s.detailsWrap}>
-            {!hidePricingSummary && paymentMethods ? (
+            {!hidePricing && !hidePricingSummary && paymentMethods ? (
               <View style={s.detailBlock}>
                 <Text style={s.sectionLabel}>Payment Methods</Text>
                 <Text style={s.detailValue}>{paymentMethods}</Text>

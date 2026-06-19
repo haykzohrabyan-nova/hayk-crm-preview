@@ -166,7 +166,7 @@ export function DetailLineItemCard({
   return (
     <div
       className="rounded-lg border overflow-hidden"
-      style={{ background: "var(--color-row-alt)", borderColor: "var(--color-border)" }}
+      style={{ background: "#ffffff", borderColor: "#e8c97a" }}
     >
       <div className="flex items-stretch">
         {/* Main content: name, specs, price */}

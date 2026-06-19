@@ -17,6 +17,7 @@ import {
   Zap,
   ChevronDown,
   Printer,
+  FileDown,
   Lock,
   Link,
   Copy,
@@ -352,6 +353,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [convertModal, setConvertModal] = useState<ReturnType<typeof buildAdminConvertPreview> | null>(null);
   const [completeModalBalance, setCompleteModalBalance] = useState<number | null>(null);
   const [completeModalTaxExempt, setCompleteModalTaxExempt] = useState(false);
+  const [collectNow, setCollectNow] = useState(true);
+  const [collectAmount, setCollectAmount] = useState(0);
+  const [collectReceiptId, setCollectReceiptId] = useState("");
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
   const [partialRefundCancelWarnOpen, setPartialRefundCancelWarnOpen] = useState(false);
   const [cancelForm, setCancelForm] = useState<CancelTicketForm>({ cancel_reason: "", cancel_notes: "" });
@@ -1085,11 +1089,18 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     void handleSave("order", undefined, { skipSendValidation: true });
   }
 
+  function openCompleteModal(balance: number) {
+    setCompleteModalBalance(balance);
+    setCollectNow(true);
+    setCollectAmount(balance);
+    setCollectReceiptId(String(Math.floor(100000 + Math.random() * 900000)));
+  }
+
   function requestMarkComplete() {
     if (!ticket) return;
     if (userRole === "admin" && isTaxExemptApprovalPending(ticket)) {
       if (!isTicketPaidInFull(ticket)) {
-        setCompleteModalBalance(computeInvoicePaymentSummary(ticket).balanceDue);
+        openCompleteModal(computeInvoicePaymentSummary(ticket).balanceDue);
       }
       setCompleteModalTaxExempt(true);
       return;
@@ -1098,17 +1109,20 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       void handleSave(undefined, { ticket_status: "completed" });
       return;
     }
-    if (userRole === "admin") {
-      const balance = computeInvoicePaymentSummary(ticket).balanceDue;
-      setCompleteModalBalance(balance);
+    if (userRole === "admin" || userRole === "sales") {
+      openCompleteModal(computeInvoicePaymentSummary(ticket).balanceDue);
     }
   }
 
   function confirmMarkCompleteWithBalance() {
+    if (collectNow && !collectReceiptId.trim()) return;
     setCompleteModalBalance(null);
     void handleSave(undefined, {
       ticket_status: "completed",
       acknowledge_outstanding_balance: true,
+      ...(collectNow ? {
+        collect_cash: { amount: collectAmount, receipt_id: collectReceiptId.trim() },
+      } : {}),
     });
   }
 
@@ -1379,6 +1393,18 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         >
           <Printer size={14} />
           <span className="hidden sm:inline">Save PDF</span>
+        </a>
+
+        {/* Download PDF without pricing */}
+        <a
+          href={`/api/tickets/${ticketId}/pdf/no-pricing`}
+          download
+          className="flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium rounded-md transition-opacity hover:opacity-80 shrink-0"
+          style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-muted)", textDecoration: "none" }}
+          title="Download PDF without pricing"
+        >
+          <FileDown size={14} />
+          <span className="hidden sm:inline">No Pricing PDF</span>
         </a>
 
         {canEditTicket && (
@@ -2203,7 +2229,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         >
           <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
             <AlertTriangle size={28} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: 2 }} />
-            <div>
+            <div style={{ flex: 1 }}>
               <h2 style={{ fontSize: 18, fontWeight: 600, color: "var(--color-text-primary)", marginBottom: 8 }}>
                 Mark completed with balance due?
               </h2>
@@ -2212,14 +2238,109 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                 <strong style={{ color: "var(--color-warning-text-deep)" }}>
                   {formatCurrency(completeModalBalance)}
                 </strong>{" "}
-                outstanding. If you continue:
+                outstanding.
               </p>
-              <ul style={{ margin: "12px 0 0", paddingLeft: 20, fontSize: 14, color: "var(--color-text-muted)", lineHeight: 1.6 }}>
-                <li>The order moves to <strong>Completed</strong> and the customer receives a pickup-ready notification.</li>
-                <li>The balance remains on the order until the customer pays via the public quote link.</li>
-                <li>Accountants cannot mark orders complete until paid in full.</li>
-              </ul>
+
+              {/* Customer notification summary */}
+              {(() => {
+                const ch = (ticket?.ticket_quote_channel ?? ticket?.quote_channel ?? "").toLowerCase();
+                const destEmail = ticket?.ticket_dest_email ?? ticket?.customer?.email ?? null;
+                const destPhone = ticket?.ticket_dest_phone ?? ticket?.customer?.phone ?? null;
+                if (ch === "none") {
+                  return (
+                    <p style={{ margin: "10px 0 0", fontSize: 13, padding: "7px 10px", borderRadius: 6, background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}>
+                      No customer notification will be sent (channel is set to &ldquo;None&rdquo;).
+                    </p>
+                  );
+                }
+                const isEmail = ch === "email" || ch === "both";
+                const isSms   = ch === "sms"   || ch === "both";
+                const dest = isEmail ? destEmail : destPhone;
+                if (!dest) {
+                  return (
+                    <p style={{ margin: "10px 0 0", fontSize: 13, padding: "7px 10px", borderRadius: 6, background: "var(--color-warning-bg)", color: "var(--color-warning-text-deep)" }}>
+                      No customer contact on file — &ldquo;Your order is ready&rdquo; notification may not be delivered.
+                    </p>
+                  );
+                }
+                return (
+                  <p style={{ margin: "10px 0 0", fontSize: 13, padding: "7px 10px", borderRadius: 6, background: "var(--color-info-bg)", color: "var(--color-info-text-deep)" }}>
+                    Customer will receive a <strong>&ldquo;Your order is ready&rdquo;</strong>{" "}
+                    {isSms ? "SMS" : "email"} to <strong>{dest}</strong>.
+                  </p>
+                );
+              })()}
             </div>
+          </div>
+
+          {/* Collect cash toggle */}
+          <div style={{
+            border: `1px solid ${collectNow ? "var(--color-accent)" : "var(--color-border)"}`,
+            borderRadius: 8,
+            padding: "14px 16px",
+            marginBottom: 16,
+            background: collectNow ? "color-mix(in srgb, var(--color-accent) 8%, transparent)" : "var(--color-surface)",
+            transition: "all 0.15s",
+          }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={collectNow}
+                onChange={(e) => setCollectNow(e.target.checked)}
+                style={{ width: 16, height: 16, flexShrink: 0, accentColor: "var(--color-accent)" }}
+              />
+              <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text-primary)" }}>
+                Collect cash payment now
+              </span>
+            </label>
+
+            {collectNow && (
+              <div style={{ marginTop: 14, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--color-text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Amount collected ($)
+                  </label>
+                  <input
+                    type="number"
+                    min={0.01}
+                    step={0.01}
+                    value={collectAmount}
+                    onChange={(e) => setCollectAmount(Number(e.target.value))}
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      padding: "8px 10px", fontSize: 14, borderRadius: 6,
+                      border: "1px solid var(--color-border)",
+                      background: "var(--color-bg)",
+                      color: "var(--color-text-primary)",
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 500, color: "var(--color-text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Receipt # <span style={{ color: "var(--color-danger)", fontWeight: 600 }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={collectReceiptId}
+                    onChange={(e) => setCollectReceiptId(e.target.value)}
+                    placeholder="6-digit receipt number"
+                    style={{
+                      width: "100%", boxSizing: "border-box",
+                      padding: "8px 10px", fontSize: 14, borderRadius: 6,
+                      border: `1px solid ${!collectReceiptId.trim() ? "var(--color-danger)" : "var(--color-border)"}`,
+                      background: "var(--color-bg)",
+                      color: "var(--color-text-primary)",
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {!collectNow && (
+              <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--color-text-muted)", lineHeight: 1.5 }}>
+                The balance stays on the order — the customer can pay via the public quote link.
+              </p>
+            )}
           </div>
 
           <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
@@ -2242,18 +2363,19 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             <button
               type="button"
               onClick={confirmMarkCompleteWithBalance}
+              disabled={collectNow && !collectReceiptId.trim()}
               style={{
-                background: "var(--color-btn-primary-bg)",
-                color: "var(--color-btn-primary-text)",
+                background: collectNow && !collectReceiptId.trim() ? "var(--color-border)" : "var(--color-btn-primary-bg)",
+                color: collectNow && !collectReceiptId.trim() ? "var(--color-text-muted)" : "var(--color-btn-primary-text)",
                 border: "none",
                 borderRadius: 6,
                 padding: "8px 16px",
                 fontSize: 14,
                 fontWeight: 500,
-                cursor: "pointer",
+                cursor: collectNow && !collectReceiptId.trim() ? "not-allowed" : "pointer",
               }}
             >
-              Yes, mark completed
+              {collectNow ? "Collect & Complete" : "Yes, mark completed"}
             </button>
           </div>
         </div>

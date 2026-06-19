@@ -425,11 +425,11 @@ export function AdminDashboard() {
     <div className="space-y-8">
 
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <h1 className="text-[20px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
           Dashboard
         </h1>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:gap-2">
           <DashboardValuesPrivacyToggle
             valuesHidden={privacy.valuesHidden}
             onRequestToggle={privacy.requestToggle}

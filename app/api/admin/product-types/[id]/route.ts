@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
+import { clearTicketFormBootstrapServerCache } from "@/lib/utils/ticket-form-bootstrap-server-cache";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -37,6 +38,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  clearTicketFormBootstrapServerCache();
   return NextResponse.json({ product_type: data });
 }
 
@@ -71,5 +73,6 @@ export async function DELETE(_request: Request, { params }: Ctx) {
   const { error } = await admin.from("product_types").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  clearTicketFormBootstrapServerCache();
   return NextResponse.json({ ok: true });
 }

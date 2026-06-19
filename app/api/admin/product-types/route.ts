@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireAdmin } from "@/lib/auth/require-admin";
 import { requireSession } from "@/lib/auth/require-session";
+import { clearTicketFormBootstrapServerCache } from "@/lib/utils/ticket-form-bootstrap-server-cache";
 
 export async function GET() {
   const { errorResponse } = await requireSession();
@@ -45,8 +46,8 @@ export async function POST(request: Request) {
 
   if (!id?.trim()) return NextResponse.json({ error: "ID (slug) is required" }, { status: 400 });
   if (!name?.trim()) return NextResponse.json({ error: "Name is required" }, { status: 400 });
-  if (!["Roll", "Sheet"].includes(default_print_type)) {
-    return NextResponse.json({ error: "default_print_type must be Roll or Sheet" }, { status: 400 });
+  if (!["Roll", "Sheet", "Unit"].includes(default_print_type)) {
+    return NextResponse.json({ error: "default_print_type must be Roll, Sheet, or Unit" }, { status: 400 });
   }
 
   const { data, error } = await admin
@@ -69,5 +70,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  clearTicketFormBootstrapServerCache();
   return NextResponse.json({ product_type: { ...data, material_ids: [] } }, { status: 201 });
 }

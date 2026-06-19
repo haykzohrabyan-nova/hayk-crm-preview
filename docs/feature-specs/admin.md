@@ -269,7 +269,7 @@ Admin-managed product catalog for quote line items. Backed by `product_types`, `
 
 Two-panel: product list on the left, materials for the selected product on the right.
 
-**Left panel — product list:** Add Product (name + Roll/Sheet), active toggle, rename, delete (blocked if in any quote).
+**Left panel — product list:** Add Product (name + Roll/Sheet/Unit type selector), active toggle, rename, delete (blocked if in any quote). **Drag to reorder** — each row has a grip handle; drag-and-drop saves new `sort_order` values immediately and busts the form bootstrap cache so the quote/order product selector reflects the change on the next form load.
 
 **Right panel — materials for selected product:** Link existing or create new material; active toggle, rename, unlink, delete from library (blocked if in any quote).
 

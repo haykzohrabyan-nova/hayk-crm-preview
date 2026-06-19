@@ -37,9 +37,9 @@ export function TicketListViewButton({
   );
 }
 
-export function TicketListExpandChevronCell({ open }: { open: boolean }) {
+export function TicketListExpandChevronCell({ open, style }: { open: boolean; style?: React.CSSProperties }) {
   return (
-    <td className="px-3 py-3 w-10">
+    <td className="p-0 w-5" style={style}>
       <span style={{ color: "var(--color-text-muted)" }}>
         <ExpandChevron open={open} />
       </span>
@@ -59,7 +59,7 @@ export function TicketListExpandPreviewRow({
   previewId: string;
 }) {
   return (
-    <tr style={{ background: "var(--color-row-alt)" }}>
+    <tr style={{ background: "var(--color-surface)" }}>
       <td colSpan={colSpan} className="p-0 border-b" style={{ borderColor: "var(--color-border)" }}>
         <TicketLineItemsQuickPreview
           ticketId={ticketId}

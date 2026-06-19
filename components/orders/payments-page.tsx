@@ -559,14 +559,11 @@ export function PaymentsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Payment Evidence
           </h1>
-          <p className="text-sm mt-1 max-w-xl" style={{ color: "var(--color-text-muted)" }}>
-            Review payment proof on Pending approval, tax-exempt permits on Tax-exempt pending, confirmed evidence on Approved, and refunds on Refunded.
-          </p>
         </div>
         {isTaxExemptTab && !loading && !debouncedSearch.trim() && tabCounts.tax_exempt > 0 && (
           <div

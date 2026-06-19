@@ -70,9 +70,9 @@ export function paymentEvidenceTypeLabelForTicket(
 
 /** Orders list / stats row — which payment is awaiting accountant confirm. */
 export const PAYMENT_EVIDENCE_AWAITING_LABELS: Record<PaymentEvidenceMode, string> = {
-  deposit: "Awaiting deposit confirmation",
-  balance: "Awaiting balance confirmation",
-  full: "Awaiting full payment confirmation",
+  deposit: "Awaiting Deposit Confirmation",
+  balance: "Awaiting Balance Confirmation",
+  full: "Awaiting Full Payment Confirmation",
 };
 
 export function paymentEvidenceAwaitingConfirmationLabel(

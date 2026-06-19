@@ -250,7 +250,7 @@ export function CRMPage() {
         <button
           type="button"
           onClick={() => setAddCustomerOpen(true)}
-          className="flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium transition-opacity hover:opacity-90"
+          className="flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium transition-opacity hover:opacity-90 shrink-0"
           style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
         >
           <UserPlus size={15} />
@@ -258,11 +258,84 @@ export function CRMPage() {
         </button>
       </div>
 
-      {/* Search + Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        <ListRefreshingNotice refreshing={refreshing} />
-        <div className="relative" style={{ minWidth: 260 }}>
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+      {/* Search + Filters toolbar */}
+      <div
+        className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between border-b pb-3"
+        style={{ borderColor: "var(--color-border)" }}
+      >
+        {/* Filter pills — left side, scrollable on mobile */}
+        <div className="flex items-center gap-2 overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden pb-0.5 lg:pb-0">
+          <ListRefreshingNotice refreshing={refreshing} />
+
+          {/* Status filter pills */}
+          <div className="flex gap-1 shrink-0">
+            {STATUS_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => selectStatusFilter(f.id)}
+                className="rounded-full px-3 py-1 text-[12px] font-medium transition-all whitespace-nowrap"
+                style={{
+                  background: statusFilter === f.id ? "var(--color-btn-verify-bg)" : "var(--color-surface)",
+                  color: statusFilter === f.id ? "var(--color-btn-verify-text)" : "var(--color-text-muted)",
+                  border: "1px solid",
+                  borderColor: statusFilter === f.id ? "transparent" : "var(--color-border)",
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="h-5 w-px shrink-0" style={{ background: "var(--color-border)" }} />
+
+          {/* Heat filter pills */}
+          <div className="flex gap-1 shrink-0">
+            {HEAT_FILTERS.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => selectHeatFilter(heatFilter === f.id ? "all" : f.id)}
+                className="rounded-full px-3 py-1 text-[12px] font-medium transition-all capitalize whitespace-nowrap"
+                style={{
+                  background: heatFilter === f.id ? "var(--color-btn-primary-bg)" : "var(--color-surface)",
+                  color: heatFilter === f.id ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
+                  border: "1px solid",
+                  borderColor: heatFilter === f.id ? "transparent" : "var(--color-border)",
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Divider */}
+          <div className="h-5 w-px shrink-0" style={{ background: "var(--color-border)" }} />
+
+          {/* Duplicates toggle */}
+          <button
+            onClick={() => { setShowDuplicates((v) => !v); setOffset(0); }}
+            className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-all shrink-0 whitespace-nowrap"
+            style={{
+              background: showDuplicates ? "var(--color-warning-bg)" : "var(--color-surface)",
+              color: showDuplicates ? "var(--color-warning)" : "var(--color-text-muted)",
+              border: "1px solid",
+              borderColor: showDuplicates ? "var(--color-warning-border)" : "var(--color-border)",
+            }}
+          >
+            <CopyX size={12} />
+            Duplicates
+          </button>
+
+          {!loading && pagination.total > 0 && (
+            <span className="text-[12px] shrink-0" style={{ color: "var(--color-text-muted)" }}>
+              {pagination.total} customer{pagination.total !== 1 ? "s" : ""}
+            </span>
+          )}
+        </div>
+
+        {/* Search — right side, full width on mobile */}
+        <div className="relative w-full lg:w-64 shrink-0">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5" style={{ color: "var(--color-text-muted)" }} />
           <Input
             type="search"
             name="crm-list-search"
@@ -270,74 +343,9 @@ export function CRMPage() {
             placeholder="Search name, email, phone, company…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="pl-8 h-8 text-sm"
+            className="pl-8 h-8 text-sm w-full"
           />
         </div>
-
-        {/* Status filter pills */}
-        <div className="flex gap-1">
-          {STATUS_FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => selectStatusFilter(f.id)}
-              className="rounded-full px-3 py-1 text-[12px] font-medium transition-all"
-              style={{
-                background: statusFilter === f.id ? "var(--color-btn-verify-bg)" : "var(--color-surface)",
-                color: statusFilter === f.id ? "var(--color-btn-verify-text)" : "var(--color-text-muted)",
-                border: "1px solid",
-                borderColor: statusFilter === f.id ? "transparent" : "var(--color-border)",
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Divider */}
-        <div className="h-5 w-px" style={{ background: "var(--color-border)" }} />
-
-        {/* Heat filter pills — click to select, click again to deselect */}
-        <div className="flex gap-1">
-          {HEAT_FILTERS.map((f) => (
-            <button
-              key={f.id}
-              onClick={() => selectHeatFilter(heatFilter === f.id ? "all" : f.id)}
-              className="rounded-full px-3 py-1 text-[12px] font-medium transition-all capitalize"
-              style={{
-                background: heatFilter === f.id ? "var(--color-btn-primary-bg)" : "var(--color-surface)",
-                color: heatFilter === f.id ? "var(--color-btn-primary-text)" : "var(--color-text-muted)",
-                border: "1px solid",
-                borderColor: heatFilter === f.id ? "transparent" : "var(--color-border)",
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Divider */}
-        <div className="h-5 w-px" style={{ background: "var(--color-border)" }} />
-
-        {/* Duplicates toggle */}
-        <button
-          onClick={() => { setShowDuplicates((v) => !v); setOffset(0); }}
-          className="flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-medium transition-all"
-          style={{
-            background: showDuplicates ? "var(--color-warning-bg)" : "var(--color-surface)",
-            color: showDuplicates ? "var(--color-warning)" : "var(--color-text-muted)",
-            border: "1px solid",
-            borderColor: showDuplicates ? "var(--color-warning-border)" : "var(--color-border)",
-          }}
-        >
-          <CopyX size={12} />
-          Duplicates
-        </button>
-
-        {!loading && pagination.total > 0 && (
-          <span className="text-[12px]" style={{ color: "var(--color-text-muted)" }}>
-            {pagination.total} customer{pagination.total !== 1 ? "s" : ""}
-          </span>
-        )}
       </div>
 
       {/* Desktop Table */}

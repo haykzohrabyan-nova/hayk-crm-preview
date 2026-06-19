@@ -604,8 +604,8 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 
 | Action | Condition | Effect |
 |--------|-----------|--------|
-| Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()`; also fire-and-forgets `sendQuoteSentStaffNotification()` to creator; logs `ticket_sent` |
-| Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers both customer delivery and creator notification; logs `ticket_sent` with `resend: true` in payload |
+| Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()` **unless** `ticket_quote_channel = 'none'` (public token still created); also fire-and-forgets `sendQuoteSentStaffNotification()` to creator; logs `ticket_sent` |
+| Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers both customer delivery and creator notification (delivery skipped if channel is `'none'`); logs `ticket_sent` with `resend: true` in payload |
 | Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`; fire-and-forgets `sendOrderWebhook()` (`via: "manual_convert"`). **Does not** set lead Won until production |
 
 **Order / production / completed stage (same sidebar block):**
@@ -807,7 +807,7 @@ When a quote is saved (draft or sent) from `new-quote-form.tsx`:
 
 ### Send Quote
 
-When a rep clicks **Send Quote** on `/quotes/[id]`, `PATCH /api/tickets/[id]` sets `ticket_status = "sent"` and triggers `sendQuoteToCustomer()` from `lib/integrations/send-quote.ts`. After the customer email is dispatched, `sendQuoteSentStaffNotification()` (`lib/integrations/send-quote-sent-notification.ts`) is fire-and-forgotten to the quote creator using the admin-editable `quote_sent_staff_notification` template.
+When a rep clicks **Send Quote** on `/quotes/[id]`, `PATCH /api/tickets/[id]` sets `ticket_status = "sent"` and triggers `sendQuoteToCustomer()` from `lib/integrations/send-quote.ts` — **unless** `ticket_quote_channel = 'none'`, in which case the public page token is still created but no SMS/email is sent to the customer. After the customer email is dispatched, `sendQuoteSentStaffNotification()` (`lib/integrations/send-quote-sent-notification.ts`) is fire-and-forgotten to the quote creator using the admin-editable `quote_sent_staff_notification` template.
 
 Delivery by channel (stored in `quote_channel`):
 

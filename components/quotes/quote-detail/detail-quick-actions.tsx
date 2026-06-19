@@ -18,7 +18,7 @@ interface QuickActionsTicket {
   created_by_id?: string | null;
   ticket_status: string;
   public_token: string | null;
-  ticket_quote_channel: "sms" | "email" | "both" | null;
+  ticket_quote_channel: "sms" | "email" | "both" | "none" | null;
   quote_channel: string | null;
   quote_final_total: number | null;
   payment_status: "unpaid" | "partial" | "paid" | null;
@@ -81,7 +81,7 @@ export function DetailQuickActions({
   isLocked?: boolean;
   isRoutedReadOnly?: boolean;
   clientConfirmed?: boolean;
-  sendChannel?: "email" | "sms" | "both" | null;
+  sendChannel?: "email" | "sms" | "both" | "none" | null;
   sendEmail?: string;
   sendPhone?: string;
 }) {
@@ -136,7 +136,9 @@ export function DetailQuickActions({
   );
 
   // Effective prefill values — prefer sendEmail/sendPhone props, fall back to channel-appropriate value
-  const modalInitialChannel = sendChannel ?? ticket.ticket_quote_channel ?? "email";
+  // Fall back to "email" if channel is "none" (resend should always pick a real channel)
+  const rawModalChannel = sendChannel ?? ticket.ticket_quote_channel ?? "email";
+  const modalInitialChannel = rawModalChannel === "none" ? "email" : rawModalChannel;
   const modalInitialEmail   = sendEmail;
   const modalInitialPhone   = sendPhone;
 

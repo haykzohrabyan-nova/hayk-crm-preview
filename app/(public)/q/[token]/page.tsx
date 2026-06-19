@@ -639,15 +639,45 @@ function FileUpload({
           onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
           style={{
             border: `2px dashed ${dragOver ? GOLD_DK : BORDER}`,
-            borderRadius: 8, padding: "20px 16px", textAlign: "center", cursor: "pointer",
-            background: dragOver ? "#FFFBEB" : BG, transition: "all 0.15s",
+            borderRadius: 10,
+            padding: "28px 16px",
+            textAlign: "center",
+            cursor: "pointer",
+            background: dragOver ? "#FFFBEB" : "#FFFFFF",
+            boxShadow: dragOver ? "none" : "0 1px 4px rgba(0,0,0,0.08)",
+            transition: "all 0.15s",
           }}
         >
-          <Upload size={20} style={{ color: dragOver ? GOLD_DK : MUTED, marginBottom: 6 }} />
-          <p style={{ margin: 0, fontSize: 13, color: MUTED }}>
-            <span style={{ fontWeight: 600, color: dragOver ? GOLD_DK : TEXT }}>Click to upload</span> or drag &amp; drop
+          {/* Upload icon circle */}
+          <div style={{
+            width: 52, height: 52, borderRadius: "50%",
+            background: dragOver ? "#FEF3C7" : "#F3F4F6",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            margin: "0 auto 12px",
+            transition: "background 0.15s",
+          }}>
+            <Upload size={24} style={{ color: dragOver ? GOLD_DK : "#6B7280" }} />
+          </div>
+
+          {/* Big tap-target button */}
+          <div style={{
+            display: "inline-flex", alignItems: "center", gap: 7,
+            background: dragOver ? GOLD_DK : "#1B2B4B",
+            color: "#FFFFFF",
+            fontWeight: 600, fontSize: 14,
+            padding: "10px 22px", borderRadius: 8,
+            marginBottom: 10,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.18)",
+            transition: "background 0.15s",
+          }}>
+            <Upload size={15} />
+            Tap here to upload screenshot
+          </div>
+
+          <p style={{ margin: "0 0 4px", fontSize: 13, color: MUTED }}>
+            or drag &amp; drop your file here
           </p>
-          <p style={{ margin: "4px 0 0", fontSize: 11, color: MUTED }}>JPEG, PNG, WEBP, HEIC or PDF — up to 10 MB</p>
+          <p style={{ margin: 0, fontSize: 11, color: MUTED }}>JPEG, PNG, WEBP, HEIC or PDF — up to 10 MB</p>
         </div>
       )}
       <input

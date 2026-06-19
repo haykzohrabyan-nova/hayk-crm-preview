@@ -347,17 +347,14 @@ export function ReportsPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div>
           <h1 className="text-[20px] font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Reports
           </h1>
-          <p className="mt-1 max-w-xl text-[13px] leading-relaxed" style={{ color: "var(--color-text-muted)" }}>
-            Cash collected, rep performance, and quote funnel — built for bonus tracking on payments actually received.
-          </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
             onClick={() => setFiltersOpen(true)}

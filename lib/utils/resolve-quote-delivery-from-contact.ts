@@ -1,6 +1,6 @@
 /** Quote delivery channel + destination fields (Send quote via). */
 export type QuoteDeliveryFields = {
-  ticket_quote_channel: "sms" | "email" | "both";
+  ticket_quote_channel: "sms" | "email" | "both" | "none";
   ticket_dest_phone: string;
   ticket_dest_email: string;
 };

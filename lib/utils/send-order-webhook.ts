@@ -76,7 +76,16 @@ function buildFinishedSize(line: LineItem): string | null {
   return `${line.width} x ${line.height} in`;
 }
 
-/** Map our priority values ("Low" | "Normal" | "High") to lowercase. */
+function buildDueDateForWebhook(dueDate: string | null | undefined): string | null {
+  if (!dueDate) return null;
+  // The external system rejects past due dates. Send null so it accepts the
+  // order — the admin can update the due date and resend if needed.
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const d = new Date(dueDate);
+  d.setHours(0, 0, 0, 0);
+  return d < today ? null : dueDate;
+}
 function normalizePriority(priority: string | null | undefined): string {
   if (!priority) return "normal";
   return priority.toLowerCase();
@@ -241,7 +250,7 @@ export async function sendOrderWebhook(
     order_number: resolvedRef,
     title:        ticket.title ?? null,
     priority:     normalizePriority(ticket.priority),
-    due_date:     ticket.due_date ?? null,
+    due_date:     buildDueDateForWebhook(ticket.due_date),
 
     // CUSTOMER INFO
     customer_phone: ticket.contact_phone ?? null,

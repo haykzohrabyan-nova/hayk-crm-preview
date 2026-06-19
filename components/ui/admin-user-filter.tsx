@@ -46,12 +46,11 @@ export function AdminUserFilter({
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value || null)}
       aria-label="Filter by team member"
-      className={className ?? "rounded-[6px] border px-3 py-2 text-[13px] font-medium outline-none h-8"}
+      className={className ?? "rounded-[6px] border px-3 py-2 text-[13px] font-medium outline-none h-8 min-w-[180px]"}
       style={{
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
         color: "var(--color-text-primary)",
-        minWidth: "180px",
       }}
     >
       <option value="">All team members</option>

@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     .from("activities")
     .select(
       `id, type, channel, payload, created_at, by_user_id, ticket_id, lead_id,
-       customer:customers!job_tickets_customer_id_fkey(first_name, last_name, company)`,
+       customer:customers(first_name, last_name, company)`,
       { count: "exact" }
     )
     .order("created_at", { ascending: false })

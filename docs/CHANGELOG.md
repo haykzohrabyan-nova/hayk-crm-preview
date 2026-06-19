@@ -3,6 +3,121 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-19] — Unified mobile breakpoint (lg) across all pages
+
+### Changed
+- **`components/ui/dashboard-date-range-filter.tsx`**: Moved all responsive splits from `sm` (640 px) to `lg` (1024 px) to match the navigation's mobile breakpoint. Preset buttons expand equally below `lg`; Custom button appears full-width on its own row below `lg` and inline inside the pill at `lg+`.
+- **`components/ui/mobile-list-card.tsx`** (`TicketListToolbar`): Changed `sm:flex-row`, `sm:items-center`, `sm:py-1.5`, and `sm:px-4` to their `lg:` equivalents so the toolbar filter row and search input stack on mobile and go inline at the same breakpoint as the nav.
+- **`components/orders/orders-page.tsx`**: Outer header flex direction flips at `lg` (was `xl`).
+- **`components/orders/completed-page.tsx`**: Outer header and toolbar flex direction flip at `lg` (was `xl` and `sm`).
+- **`components/quotes/quotes-page.tsx`**: Outer header and inner filter+button group both flip at `lg` (were `xl` and `sm`).
+- **`components/orders/payments-page.tsx`**: Outer header flips at `lg` (was `xl`).
+- **`components/leads/leads-page.tsx`**: Tab+filter row flips at `lg` (was `xl`).
+- **`components/sales/sales-page.tsx`**: Tab+filter row flips at `lg` (was `xl`).
+- **`components/admin/admin-dashboard.tsx`**: Dashboard header changed from `flex-wrap justify-between` to `flex-col lg:flex-row lg:justify-between`; controls row (`Hide values` + date filter) stacks vertically below `lg`.
+- **`components/sales/sales-dashboard.tsx`**: Same header pattern fix as admin dashboard.
+- **`components/sales/sdr-dashboard.tsx`**: Same header pattern fix.
+- **`components/admin/accountant-dashboard.tsx`**: Payments Dashboard header changed to `flex-col lg:flex-row lg:justify-between` for mobile consistency.
+
+## [2026-06-19] — CRM, Quotes & search mobile polish
+
+### Changed
+- **`components/crm/crm-page.tsx`**: Restructured header and toolbar. Header is now always a single inline row (`flex items-center justify-between`) matching Leads/CRM pattern — "Add Customer" button is compact right-aligned, never full-width. Toolbar: filter pills (status, heat, duplicates) on the left scrollable row; search input full-width on mobile (`w-full`), fixed `lg:w-64` on desktop (right side). All breakpoints use `lg:`.
+- **`components/quotes/quotes-page.tsx`**: "New Quote" button moved into the title row (always inline, never full-width). Date filter moved to its own row below. Removed `+` icon from "New Quote" button. Removed unused `Plus` import.
+- **`components/leads/leads-page.tsx`**: Search input `w-full` on mobile; `AdminUserFilter` passed `className="w-full lg:w-auto"` so team member select also fills full width on mobile. Container changed from `flex-wrap` to `flex-col lg:flex-row`.
+- **`components/sales/sales-page.tsx`**: Search input `w-full` on mobile, `lg:w-52` on desktop. Container `shrink-0` → `w-full lg:w-auto lg:shrink-0`.
+- **`components/ui/admin-user-filter.tsx`**: Removed `minWidth: 180px` inline style (moved to default `className` as Tailwind `min-w-[180px]`) so callers can override with `w-full` on mobile.
+- **`components/dashboard/dashboard-privacy.tsx`** (`DashboardValuesPrivacyToggle`): "Hide values" / "Show values" button is now `w-full justify-center` on mobile and `lg:w-auto lg:justify-start` on desktop, matching the date preset pill style.
+- **`docs/TECHNICAL_REFERENCE.md`**: Added "Unified mobile breakpoint" and "Page header patterns" sections to §24 UI Design System. Updated `TicketListToolbar` component description to document `lg:` breakpoints.
+
+### Fixed (audit)
+- **`components/orders/payments-page.tsx`**: Removed duplicate `gap-3`/`gap-4` classes on the header div (pre-existing, surfaced during audit).
+- **`components/reports/reports-page.tsx`**: Header changed from `flex-wrap items-start justify-between` to `flex-col lg:flex-row lg:items-start lg:justify-between` — missed in the initial `lg` breakpoint rollout.
+
+## [2026-06-19] — Orders table UI polish
+
+### Changed
+- `components/orders/orders-page.tsx`:
+  - **Order # column**: strips `ORD-` prefix — displays `2026-024` instead of `ORD-2026-024`; plain monospace text (no badge/border)
+  - **Chevron column**: `p-0 w-5` — zero padding, minimal width; red due-today indicator moved from Order # cell to the chevron cell (far left edge)
+  - **Cell padding**: all `<td>` and `<th>` reduced from `lg:px-3/xl:px-4` to `lg:px-2 xl:px-2`, freeing ~130–200px of horizontal space
+  - **Responsive layout**: `lg:table-fixed 2xl:table-auto` — at 1366px (xl) table is fixed/compact with truncation; at 1536px+ (2xl) switches to `table-auto` so columns expand to content naturally
+  - **Overflow clipping**: added `overflow-hidden` to Contact, Title, and Created By `<td>` elements so `truncate` clips reliably at column boundary
+  - **Status column**: `shortStatusLabel()` helper shows `"Converted"` for both `"converted"` and `"admin_override"` tones; full label visible on hover via `title` attribute
+  - **Payment column**: shortened table-only labels — `"Tax-exempt pending approval"` → `"Pending Tax Review"`, `"Tax-exempt approved"` → `"Tax Exempt"`, `"Partially refunded"` → `"Partially Refunded"`, `"Fully refunded"` → `"Fully Refunded"`; full labels unchanged on detail pages
+- `lib/utils/tax-exempt-list-label.ts` — added `TAX_EXEMPT_PENDING_LABEL_SHORT` (`"Pending Tax Review"`) and `TAX_EXEMPT_APPROVED_LABEL_SHORT` (`"Tax Exempt"`) for use in list/table views only
+- `lib/utils/payment-evidence-type.ts` — `PAYMENT_EVIDENCE_AWAITING_LABELS` updated to title case: `"Awaiting Deposit Confirmation"`, `"Awaiting Balance Confirmation"`, `"Awaiting Full Payment Confirmation"`
+- `components/ui/ticket-list-expand.tsx`:
+  - `TicketListExpandChevronCell` now accepts an optional `style` prop for per-row styling
+  - Expanded row background changed from `var(--color-row-alt)` to `var(--color-surface)` so line item cards contrast against the container
+- `components/quotes/quote-detail/detail-layout-primitives.tsx` — `DetailLineItemCard` background changed to `#ffffff` with `#e8c97a` gold border, making each line item stand out clearly in the expanded preview
+- `components/ui/mobile-list-card.tsx` — `MobileListCardRow` value text size increased from inherited `11px` to `text-sm` (14px) for readable dollar amounts on mobile
+
+## [2026-06-19] — Collect cash payment inline on Mark Complete
+
+### Added
+- `app/api/tickets/[id]/route.ts` — mark-complete PATCH now accepts optional `collect_cash: { amount, receipt_id }`. When present, calls `record_ticket_payment_atomic` RPC (method always `"cash"`) before completing the order. Validation: positive amount and non-empty receipt ID required; gated inside the existing admin/sales mark-complete block.
+
+### Changed
+- `components/quotes/quote-detail.tsx` — outstanding-balance modal redesigned:
+  - **"Collect cash payment now" toggle defaults to ON** every time the modal opens
+  - Amount field pre-filled with the balance due (editable for partial collection)
+  - Receipt # field auto-filled with a random 6-digit number (editable, required)
+  - Confirm button reads "Collect & Complete" when toggle is on, disabled until receipt # is entered
+  - Toggle off restores original "Yes, mark completed" path with a note that balance stays on the order
+  - Fixed: sales users now see the modal (previously fell through silently when balance was due)
+
+## [2026-06-19] — Add "No Pricing" PDF download for quotes and orders
+
+### Added
+- `app/api/tickets/[id]/pdf/no-pricing/route.ts` — new GET endpoint that renders the same `InvoicePDF` layout with all financial data stripped: no unit prices, no line totals, no subtotal/tax/total/deposit/balance. Line items retain product name, specs, and Qty. File is named `WorkOrder-NoPricing-{ref}.pdf` / `Quote-NoPricing-{ref}.pdf`.
+
+### Changed
+- `lib/pdf/invoice-pdf.tsx` — added `hidePricing?: boolean` prop. When `true`: hides Unit Price and Total table columns, skips the entire pricing summary block, and removes the Payment Methods detail.
+- `components/quotes/quote-detail.tsx` — added **No Pricing PDF** button (with `FileDown` icon) next to the existing **Save PDF** button in the top action bar; visible on all quote/order detail pages.
+
+## [2026-06-19] — Improve public payment upload UX
+
+### Changed
+- `app/(public)/q/[token]/page.tsx` — `FileUpload` widget redesigned: replaced the small dashed-border box + tiny "Click to upload" text with a prominent icon circle, a solid navy "Tap here to upload screenshot" button, and supporting "or drag & drop" hint text. The click target is now unmistakable on both desktop and mobile.
+
+## [2026-06-19] — Add "No customer notification" option to quote delivery
+
+### Added
+- `supabase/patches/2026-06-19-quote-channel-none.sql` — alters the `ticket_quote_channel` CHECK constraint to allow `'none'` alongside `'sms'`, `'email'`, and `'both'`
+
+### Changed
+- `components/quotes/quote-payment-config.tsx` (section 4 — Send quote via): new **No customer notification** checkbox. When checked the Channel/Destination fields are hidden; when unchecked they reappear and prefill from customer contact. Saves `ticket_quote_channel = 'none'` to the DB.
+- `lib/utils/resolve-quote-delivery-from-contact.ts` — `QuoteDeliveryFields.ticket_quote_channel` union now includes `'none'`
+- `lib/utils/validate-quote-send.ts` — channel/destination fields are no longer required when `ticket_quote_channel` is `'none'`
+- `app/api/tickets/route.ts` — POST: skips `sendQuoteToCustomer` when `ticket_quote_channel === 'none'`; public page token is still created
+- `app/api/tickets/[id]/route.ts` — PATCH (send): same guard; resend action from quote detail also skips delivery
+- `components/quotes/quote-detail/detail-quick-actions.tsx` — type updated to include `'none'`; resend modal always opens with `'email'` as fallback when the stored channel is `'none'`
+
+## [2026-06-19] — Fix: Orders table — Order # and Payment pill no longer wrap
+
+### Fixed
+- `components/orders/orders-page.tsx` — added `whitespace-nowrap` to the Order # `<td>` and badge `<span>` so `ORD-2026-024` never breaks across two lines; added `whitespace-nowrap` to the Payment status pill `<span>` so labels like "Tax-exempt pending approval" stay on one line
+
+## [2026-06-18] — Add Unit as third product classification type
+
+### Added
+- `supabase/patches/2026-06-18-product-type-unit.sql` — drops and recreates the `product_types.default_print_type` CHECK constraint to allow `'Roll'`, `'Sheet'`, or `'Unit'`
+
+### Changed
+- `app/api/admin/product-types/route.ts` — POST validation now accepts `"Unit"` alongside `"Roll"` and `"Sheet"`
+- `components/admin/products-section.tsx` — type updated to `"Roll" | "Sheet" | "Unit"`; both the add and edit toggle groups now show three buttons (Sheet · Roll · Unit); `PrintTypePill` renders Unit in amber (`--color-warning-bg` / `--color-warning`)
+
+## [2026-06-18] — Admin products: drag-to-reorder
+
+### Added
+- `components/admin/products-section.tsx` — drag-to-reorder product list. Each row now has a `GripVertical` handle; click-hold and drag to a new position. On drop, all items' `sort_order` values are saved to the DB in one batch (optimistic update — list moves instantly). Order is reflected immediately in the quote/order line item product selector.
+
+## [2026-06-18] — Fix: webhook rejects past due dates
+
+### Fixed
+- `lib/utils/send-order-webhook.ts` — added `buildDueDateForWebhook()` which sends `null` instead of a past date in the `due_date` payload field. The external system validates that `due_date` is not in the past at delivery time, but BazarCRM allows same-day due dates at creation — these become stale on future resends or delayed deliveries. Past dates now send as `null` so the webhook is accepted; admin can update the due date on the order and resend.
+
 ## [2026-06-18] — Fix: admin manual convert-to-order now fires webhook
 
 ### Fixed

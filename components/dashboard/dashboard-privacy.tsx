@@ -154,13 +154,13 @@ export function DashboardValuesPrivacyToggle({
   return (
     <>
       <div
-        className="rounded-[8px] border p-0.5 shrink-0"
+        className="rounded-[8px] border p-0.5 shrink-0 w-full lg:w-auto"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
         <button
           type="button"
           onClick={onRequestToggle}
-          className="inline-flex items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all"
+          className="inline-flex w-full justify-center lg:w-auto lg:justify-start items-center gap-1.5 rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all"
           style={{ color: "var(--color-text-primary)" }}
         >
           {valuesHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}

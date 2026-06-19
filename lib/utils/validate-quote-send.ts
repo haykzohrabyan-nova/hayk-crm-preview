@@ -20,7 +20,7 @@ export interface QuoteSendValidationInput {
     ticket_dep_handling: "cash" | "gateway";
     ticket_receipt_id: string;
     ticket_full_channels: string[];
-    ticket_quote_channel: "sms" | "email" | "both";
+    ticket_quote_channel: "sms" | "email" | "both" | "none";
     ticket_dest_phone: string;
     ticket_dest_email: string;
   };
@@ -88,18 +88,21 @@ export function getQuoteSendMissingFields(input: QuoteSendValidationInput): stri
   const email = d.ticket_dest_email.trim();
   const phone = d.ticket_dest_phone.trim();
 
-  if (channel === "email" || channel === "both") {
-    if (!email) missing.push("Email address");
-    else {
-      const emailErr = validateEmail(email);
-      if (emailErr) missing.push("Valid email address");
+  // "none" = no customer notification — channel/destination not required.
+  if (channel !== "none") {
+    if (channel === "email" || channel === "both") {
+      if (!email) missing.push("Email address");
+      else {
+        const emailErr = validateEmail(email);
+        if (emailErr) missing.push("Valid email address");
+      }
     }
-  }
-  if (channel === "sms" || channel === "both") {
-    if (!phone) missing.push("Phone number");
-    else {
-      const phoneErr = validatePhone(phone);
-      if (phoneErr) missing.push("Valid phone number");
+    if (channel === "sms" || channel === "both") {
+      if (!phone) missing.push("Phone number");
+      else {
+        const phoneErr = validatePhone(phone);
+        if (phoneErr) missing.push("Valid phone number");
+      }
     }
   }
 

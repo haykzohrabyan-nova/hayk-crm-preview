@@ -1,14 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pencil, Trash2, X, Check, ChevronRight } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, ChevronRight, GripVertical } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ProductType = {
   id: string;
   name: string;
-  default_print_type: "Roll" | "Sheet";
+  default_print_type: "Roll" | "Sheet" | "Unit";
   sort_order: number;
   is_active: boolean;
   notes: string | null;
@@ -72,13 +72,15 @@ function Toast({
   );
 }
 
-function PrintTypePill({ type }: { type: "Roll" | "Sheet" }) {
+function PrintTypePill({ type }: { type: "Roll" | "Sheet" | "Unit" }) {
   return (
     <span
       className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
       style={
         type === "Roll"
           ? { background: "var(--color-info-bg)", color: "var(--color-info-text)" }
+          : type === "Unit"
+          ? { background: "var(--color-warning-bg)", color: "var(--color-warning)" }
           : { background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }
       }
     >
@@ -491,12 +493,16 @@ export function ProductsSection() {
   // Product list controls
   const [adding, setAdding] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newPrintType, setNewPrintType] = useState<"Roll" | "Sheet">("Sheet");
+  const [newPrintType, setNewPrintType] = useState<"Roll" | "Sheet" | "Unit">("Sheet");
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
-  const [editPrintType, setEditPrintType] = useState<"Roll" | "Sheet">("Sheet");
+  const [editPrintType, setEditPrintType] = useState<"Roll" | "Sheet" | "Unit">("Sheet");
   const [confirmDelete, setConfirmDelete] = useState<ProductType | null>(null);
+
+  // Drag-to-reorder state
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
   const showToast = useCallback(
     (message: string, type: "success" | "error") => setToast({ message, type }),
@@ -578,6 +584,25 @@ export function ProductsSection() {
     reload();
   }
 
+  async function handleReorder(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    const reordered = [...productTypes];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    // Optimistic update — feels instant
+    setProductTypes(reordered);
+    // Persist new sort_orders for all items
+    await Promise.all(
+      reordered.map((pt, idx) =>
+        fetch(`/api/admin/product-types/${pt.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sort_order: idx * 10 }),
+        })
+      )
+    );
+  }
+
   if (loading) {
     return (
       <div className="space-y-3">
@@ -623,7 +648,7 @@ export function ProductsSection() {
               style={{ borderColor: "var(--color-border)", background: "var(--color-bg)", color: "var(--color-text-primary)" }}
             />
             <div className="flex gap-2">
-              {(["Sheet", "Roll"] as const).map((t) => (
+              {(["Sheet", "Roll", "Unit"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setNewPrintType(t)}
@@ -665,9 +690,31 @@ export function ProductsSection() {
           {productTypes.map((pt, i) => {
             const isSelected = selectedId === pt.id;
             const isEditing = editingId === pt.id;
+            const isDragging = dragIndex === i;
+            const isDropTarget = dragOverIndex === i && dragIndex !== null && dragIndex !== i;
             return (
               <div
                 key={pt.id}
+                draggable={!isEditing}
+                onDragStart={(e) => {
+                  setDragIndex(i);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragOverIndex !== i) setDragOverIndex(i);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (dragIndex !== null) handleReorder(dragIndex, i);
+                  setDragIndex(null);
+                  setDragOverIndex(null);
+                }}
+                onDragEnd={() => {
+                  setDragIndex(null);
+                  setDragOverIndex(null);
+                }}
                 onClick={() => { if (!isEditing) setSelectedId(pt.id); }}
                 className="flex items-center gap-2 px-3 py-2.5 cursor-pointer"
                 style={{
@@ -675,7 +722,9 @@ export function ProductsSection() {
                     ? "var(--color-row-hover)"
                     : i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
                   borderBottom: i < productTypes.length - 1 ? "1px solid var(--color-border)" : undefined,
-                  opacity: pt.is_active ? 1 : 0.5,
+                  opacity: isDragging ? 0.4 : pt.is_active ? 1 : 0.5,
+                  borderTop: isDropTarget ? "2px solid var(--color-accent)" : undefined,
+                  transition: "opacity 0.15s",
                 }}
               >
                 {isEditing ? (
@@ -692,7 +741,7 @@ export function ProductsSection() {
                       style={{ borderColor: "var(--color-accent)", background: "var(--color-bg)", color: "var(--color-text-primary)" }}
                     />
                     <div className="flex gap-1">
-                      {(["Sheet", "Roll"] as const).map((t) => (
+                      {(["Sheet", "Roll", "Unit"] as const).map((t) => (
                         <button
                           key={t}
                           onClick={() => setEditPrintType(t)}
@@ -727,6 +776,11 @@ export function ProductsSection() {
                   </div>
                 ) : (
                   <>
+                    {/* Drag handle */}
+                    <GripVertical
+                      className="h-3.5 w-3.5 shrink-0 cursor-grab active:cursor-grabbing"
+                      style={{ color: "var(--color-text-muted)", opacity: 0.5 }}
+                    />
                     {isSelected && (
                       <ChevronRight
                         className="h-3.5 w-3.5 shrink-0"

@@ -50,7 +50,7 @@ export interface TicketPaymentDraft {
   ticket_full_channels:          string[];
   ticket_require_client_confirm: boolean;
   ticket_net_terms_label:        string;
-  ticket_quote_channel:          "sms" | "email" | "both";
+  ticket_quote_channel:          "sms" | "email" | "both" | "none";
   ticket_dest_phone:             string;
   ticket_dest_email:             string;
   ticket_follow_up_enabled:      boolean;
@@ -802,6 +802,35 @@ export default function QuotePaymentConfig({
           Send quote via
         </p>
 
+        {/* No-notification toggle */}
+        <label className="flex gap-2.5 items-center cursor-pointer">
+          <input
+            type="checkbox"
+            checked={quoteChannel === "none"}
+            onChange={(e) => {
+              if (e.target.checked) {
+                patch({ ticket_quote_channel: "none" });
+              } else {
+                const fallback = customerEmail.trim() ? "email" : customerPhone.trim() ? "sms" : "sms";
+                patch({
+                  ticket_quote_channel: fallback as "sms" | "email",
+                  ...quoteDestFromCustomer(fallback as "sms" | "email", customerPhone.trim(), customerEmail.trim()),
+                });
+              }
+            }}
+            className="w-4 h-4 flex-shrink-0"
+            style={{ accentColor: "var(--color-accent)" }}
+          />
+          <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
+            No customer notification
+          </span>
+          <span className="text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+            — quote is saved and the public link stays active, but no email or SMS is sent
+          </span>
+        </label>
+
+        {quoteChannel !== "none" && (
+          <>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>
@@ -856,6 +885,8 @@ export default function QuotePaymentConfig({
               onChange={(e) => patch({ ticket_dest_email: e.target.value })}
             />
           </div>
+        )}
+          </>
         )}
       </div>
 

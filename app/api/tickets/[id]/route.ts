@@ -1047,6 +1047,40 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     body.die_cut = lineFlags.die_cut;
   }
 
+  // ── Collect cash on mark-complete ────────────────────────────────────────
+  // When staff check "Collect cash now" in the mark-complete modal, the body
+  // carries collect_cash: { amount, receipt_id }. Record the payment first so
+  // that isTicketPaidInFull() reflects the new state for the completion log.
+  if (
+    body.ticket_status === "completed" &&
+    body.collect_cash &&
+    typeof body.collect_cash === "object"
+  ) {
+    const cc = body.collect_cash as { amount?: unknown; receipt_id?: unknown };
+    const ccAmount = Number(cc.amount);
+    const ccReceiptId = String(cc.receipt_id ?? "").trim();
+    if (!Number.isFinite(ccAmount) || ccAmount <= 0 || !ccReceiptId) {
+      return NextResponse.json(
+        { error: "collect_cash requires a positive amount and a receipt ID.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+    const ccNow = new Date().toISOString();
+    const { error: ccErr } = await admin
+      .rpc("record_ticket_payment_atomic", {
+        p_ticket_id:  ticketId,
+        p_amount:     ccAmount,
+        p_mode:       "balance",
+        p_method:     "cash",
+        p_now:        ccNow,
+        p_receipt_id: ccReceiptId,
+      })
+      .maybeSingle();
+    if (ccErr) {
+      return NextResponse.json({ error: ccErr.message, code: "DB_ERROR" }, { status: 500 });
+    }
+  }
+
   const ALLOWED_FIELDS = [
     "title",
     "ticket_status",
@@ -1483,12 +1517,16 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           await initializeTicketFollowUpSchedule(admin, ticketId, fullTicket);
         }
         // Non-blocking: log the result but don't surface errors to the rep
-        const revisionNotice = parseNotifyRevision(body.notify_revision, roleName);
-        sendQuoteToCustomer(fullTicket, companyRow, revisionNotice ? { revisionNotice } : undefined).then((result) => {
-          if (!result.ok) {
-            console.error("[send-quote] delivery failed:", result.error, { ticketId: ticketId, channel: result.channel });
-          }
-        });
+        // Skip delivery when channel is "none" — public page stays active, no SMS/email sent.
+        const suppressNotification = (fullTicket.ticket_quote_channel as string | null) === "none";
+        if (!suppressNotification) {
+          const revisionNotice = parseNotifyRevision(body.notify_revision, roleName);
+          sendQuoteToCustomer(fullTicket, companyRow, revisionNotice ? { revisionNotice } : undefined).then((result) => {
+            if (!result.ok) {
+              console.error("[send-quote] delivery failed:", result.error, { ticketId: ticketId, channel: result.channel });
+            }
+          });
+        }
 
         // Internal notification — email the quote creator when their quote is delivered.
         const creatorId = fullTicket.created_by_id as string | null;

@@ -29,7 +29,7 @@ import {
   relativeTime,
 } from "@/lib/utils/format";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
-import { taxExemptListLabel, taxExemptListStyle } from "@/lib/utils/tax-exempt-list-label";
+import { taxExemptListLabel, taxExemptListStyle, TAX_EXEMPT_PENDING_LABEL, TAX_EXEMPT_APPROVED_LABEL, TAX_EXEMPT_PENDING_LABEL_SHORT, TAX_EXEMPT_APPROVED_LABEL_SHORT } from "@/lib/utils/tax-exempt-list-label";
 import { paymentEvidenceAwaitingConfirmationLabel } from "@/lib/utils/payment-evidence-type";
 import type { OrderListStatusTone } from "@/lib/utils/order-list-status";
 import { createClient } from "@/lib/supabase/client";
@@ -102,12 +102,12 @@ const REFUND_PAYMENT_STYLE: Record<string, { bg: string; text: string; label: st
   partial: {
     bg: "var(--color-warning-bg)",
     text: "var(--color-warning-text-deep)",
-    label: "Partially refunded",
+    label: "Partially Refunded",
   },
   full: {
     bg: "var(--color-warning-bg)",
     text: "var(--color-warning-text-deep)",
-    label: "Fully refunded",
+    label: "Fully Refunded",
   },
 };
 
@@ -119,7 +119,13 @@ function paymentDisplay(o: OrderTicket): { bg: string; text: string; label: stri
   const taxLabel = taxExemptListLabel(o);
   if (taxLabel) {
     const style = taxExemptListStyle(o)!;
-    return { bg: style.bg, text: style.text, label: taxLabel };
+    const shortLabel =
+      taxLabel === TAX_EXEMPT_PENDING_LABEL
+        ? TAX_EXEMPT_PENDING_LABEL_SHORT
+        : taxLabel === TAX_EXEMPT_APPROVED_LABEL
+        ? TAX_EXEMPT_APPROVED_LABEL_SHORT
+        : taxLabel;
+    return { bg: style.bg, text: style.text, label: shortLabel };
   }
   if (isPaymentEvidencePending(o)) {
     return {
@@ -148,6 +154,11 @@ const STATUS_TONE_STYLE: Record<OrderListStatusTone, { bg: string; text: string 
   in_production:          { bg: "var(--color-info-bg)",    text: "var(--color-info-text)" },
   cancelled:              { bg: "var(--color-danger-bg)",  text: "var(--color-danger)" },
 };
+
+function shortStatusLabel(tone: OrderListStatusTone, fullLabel: string): string {
+  if (tone === "converted" || tone === "admin_override") return "Converted";
+  return fullLabel;
+}
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -246,8 +257,8 @@ function OrderMobileCard({
           </span>
           <div className="min-w-0">
           {o.reference_code ? (
-            <span className="text-xs font-mono px-1.5 py-0.5 rounded inline-block" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
-              {o.reference_code}
+            <span className="text-xs font-mono inline-block" style={{ color: "var(--color-text-primary)" }}>
+              {o.reference_code.replace(/^ORD-/, "")}
             </span>
           ) : (
             <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Draft</span>
@@ -266,7 +277,7 @@ function OrderMobileCard({
             title={o.status_label}
             style={{ background: statusStyle.bg, color: statusStyle.text }}
           >
-            {o.status_label}
+            {shortStatusLabel(o.status_tone, o.status_label)}
           </span>
           <span
             className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium"
@@ -379,7 +390,23 @@ function OrdersTableDesktop({
   const colCount = (showCreator ? 12 : 11) + 2;
 
   return (
-    <table className="w-full">
+    <table className="w-full lg:table-fixed 2xl:table-auto">
+      <colgroup>
+        <col className="w-[1.5%]" />
+        <col className="w-[8%]" />
+        <col className="w-[11%]" />
+        <col className="w-[13%]" />
+        {showCreator && <col className="w-[9%]" />}
+        <col className="w-[7%]" />
+        <col className="w-[7%]" />
+        <col className="w-[8%]" />
+        <col className="w-[6%]" />
+        <col className="w-[8%]" />
+        <col className="w-[10%]" />
+        <col className="w-[8%]" />
+        <col className="w-[7%]" />
+        <col className="w-[5%]" />
+      </colgroup>
       <thead>
         <tr style={{ borderBottom: "1px solid var(--color-border)" }}>
           {[
@@ -404,7 +431,7 @@ function OrdersTableDesktop({
             return (
               <th
                 key={h}
-                className={`px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider${
+                className={`lg:px-2 lg:py-3 xl:px-2 xl:py-3 text-left text-[11px] font-medium uppercase tracking-wider${
                   isSortable ? " cursor-pointer select-none" : ""
                 }`}
                 style={{ color: isActive ? "var(--color-text-primary)" : "var(--color-text-muted)" }}
@@ -431,7 +458,7 @@ function OrdersTableDesktop({
               </th>
             );
           })}
-          <th className="px-4 py-3 w-16" />
+          <th className="lg:px-2 lg:py-3 xl:px-2 xl:py-3 w-16" />
         </tr>
       </thead>
       <tbody>
@@ -473,49 +500,49 @@ function OrdersTableDesktop({
               }}
               onClick={() => onToggleExpand(o.id)}
             >
-              <TicketListExpandChevronCell open={isOpen} />
-              <td className="px-4 py-3" style={{ ...cellStyle, ...(dueTodayRow ? { boxShadow: "inset 3px 0 0 var(--color-danger)" } : {}) }}>
+              <TicketListExpandChevronCell open={isOpen} style={{ ...cellStyle, ...(dueTodayRow ? { boxShadow: "inset 3px 0 0 var(--color-danger)" } : {}) }} />
+              <td className="lg:py-2 xl:py-3 whitespace-nowrap" style={cellStyle}>
                 {o.reference_code ? (
-                  <span className="text-xs font-mono px-1.5 py-0.5 rounded" style={{ background: "var(--color-badge-bg)", color: "var(--color-badge-text)" }}>
-                    {o.reference_code}
+                  <span className="text-xs font-mono whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
+                    {o.reference_code.replace(/^ORD-/, "")}
                   </span>
                 ) : (
                   <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Draft</span>
                 )}
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
-                <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(o.customer, { preferPerson: true })}</p>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3 overflow-hidden" style={cellStyle}>
+                <p className="lg:text-xs xl:text-sm font-medium truncate" style={{ color: "var(--color-text-primary)" }}>{displayContactName(o.customer, { preferPerson: true })}</p>
                 {o.customer?.company && (
-                  <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
+                  <p className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
                 )}
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
-                <div className="flex items-center gap-1.5">
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3 overflow-hidden" style={cellStyle}>
+                <div className="flex items-center gap-1.5 min-w-0">
                   {o.rush && (
                     <span title="Rush" style={{ color: "var(--color-danger)" }}>
                       <Zap size={13} />
                     </span>
                   )}
-                  <span className="text-sm truncate max-w-[180px]" style={{ color: "var(--color-text-primary)" }}>
+                  <span className="lg:text-xs xl:text-sm truncate 2xl:whitespace-normal 2xl:overflow-visible" style={{ color: "var(--color-text-primary)" }}>
                     {o.title ?? "—"}
                   </span>
                 </div>
               </td>
               {showCreator && (
-                <td className="px-4 py-3" style={cellStyle}>
-                  <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+                <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3 overflow-hidden" style={cellStyle}>
+                  <span className="lg:text-xs xl:text-sm truncate block" style={{ color: "var(--color-text-muted)" }}>
                     {o.created_by?.full_name ?? "—"}
                   </span>
                 </td>
               )}
-              <td className="px-4 py-3" style={cellStyle}>
-                <span className="text-sm font-medium tabular-nums" style={{ color: "var(--color-text-primary)" }}>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3" style={cellStyle}>
+                <span className="lg:text-xs xl:text-sm font-medium tabular-nums lg:truncate 2xl:whitespace-normal 2xl:overflow-visible block" style={{ color: "var(--color-text-primary)" }}>
                   {amounts.total}
                 </span>
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3" style={cellStyle}>
                 <span
-                  className="text-sm font-medium tabular-nums"
+                  className="lg:text-xs xl:text-sm font-medium tabular-nums"
                   style={{
                     color:
                       amounts.receivedValue != null && amounts.receivedValue > 0.01
@@ -526,9 +553,9 @@ function OrdersTableDesktop({
                   {amounts.received}
                 </span>
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3" style={cellStyle}>
                 <span
-                  className="text-sm font-medium tabular-nums"
+                  className="lg:text-xs xl:text-sm font-medium tabular-nums"
                   style={{
                     color:
                       amounts.balanceDueValue != null && amounts.balanceDueValue > 0.01
@@ -539,12 +566,12 @@ function OrdersTableDesktop({
                   {amounts.balanceDue}
                 </span>
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
-                <span className="text-sm font-medium" style={{ color: priorityStyle.color }}>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3" style={cellStyle}>
+                <span className="lg:text-xs xl:text-sm font-medium" style={{ color: priorityStyle.color }}>
                   {o.priority ?? "—"}
                 </span>
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3" style={cellStyle}>
                 {o.due_date ? (
                   <span
                     className="text-xs font-medium"
@@ -561,21 +588,21 @@ function OrdersTableDesktop({
                   <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>
                 )}
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3" style={cellStyle}>
                 <span
-                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium max-w-[180px] truncate"
+                  className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium lg:max-w-[180px] lg:truncate 2xl:max-w-none"
                   title={o.status_label}
                   style={{ background: statusStyle.bg, color: statusStyle.text }}
                 >
-                  {o.status_label}
+                  {shortStatusLabel(o.status_tone, o.status_label)}
                 </span>
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3" style={cellStyle}>
                 {(() => {
                   const ps = paymentDisplay(o);
                   return (
                     <span
-                      className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
+                      className="inline-flex items-center whitespace-nowrap px-2 py-0.5 rounded-full text-xs font-medium"
                       style={{ background: ps.bg, color: ps.text }}
                     >
                       {ps.label}
@@ -583,7 +610,7 @@ function OrdersTableDesktop({
                   );
                 })()}
               </td>
-              <td className="px-4 py-3" style={cellStyle}>
+              <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3" style={cellStyle}>
                 <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                   {relativeTime(o.created_at)}
                 </span>
@@ -755,7 +782,7 @@ export default function OrdersPage() {
     <div className="space-y-5" style={{ color: "var(--color-text-primary)" }}>
 
       {/* Page header */}
-      <div className="flex flex-wrap items-start justify-between gap-4 mb-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-4 lg:mb-6">
         <div>
           <h1 className="text-xl font-semibold" style={{ color: "var(--color-text-primary)" }}>
             Orders

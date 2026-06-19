@@ -43,7 +43,7 @@ export function MobileListCardRow({
     <div className="flex justify-between gap-3 items-start">
       <span className="shrink-0">{label}</span>
       <span
-        className="normal-case tracking-normal text-right font-medium truncate max-w-[58%]"
+        className="normal-case tracking-normal text-right font-medium truncate max-w-[58%] text-sm"
         style={{ color: valueColor ?? "var(--color-text-primary)" }}
       >
         {value}
@@ -145,7 +145,7 @@ export function TicketListToolbar({
               key={t.id}
               type="button"
               onClick={() => onTabChange(t.id)}
-              className="px-3 py-2.5 sm:px-4 text-sm relative transition-colors whitespace-nowrap shrink-0"
+              className="px-3 py-2.5 lg:px-4 text-sm relative transition-colors whitespace-nowrap shrink-0"
               style={{
                 color: active ? "var(--color-tab-active)" : "var(--color-tab-inactive)",
                 fontWeight: active ? 500 : 400,
@@ -171,7 +171,7 @@ export function TicketListToolbar({
         })}
       </div>
 
-      <div className="flex flex-col gap-2 mb-2 w-full lg:w-auto shrink-0 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 mb-2 w-full lg:w-auto shrink-0 lg:flex-row lg:items-center">
         <ListRefreshingNotice refreshing={refreshing} />
         {endAdornment}
         <div className="relative w-full lg:w-52 shrink-0">
@@ -180,7 +180,7 @@ export function TicketListToolbar({
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           placeholder={searchPlaceholder}
-          className="w-full pl-8 pr-3 py-2 sm:py-1.5 text-sm rounded-md border outline-none"
+          className="w-full pl-8 pr-3 py-2 lg:py-1.5 text-sm rounded-md border outline-none"
           style={{
             background: "var(--color-bg)",
             border: "1px solid var(--color-border)",

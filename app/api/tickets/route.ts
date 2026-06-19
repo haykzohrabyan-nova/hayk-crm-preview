@@ -626,13 +626,17 @@ export async function POST(request: NextRequest) {
       .select("*")
       .eq("id", 1)
       .single();
-    if (fullTicket && companyRow) {
+      if (fullTicket && companyRow) {
       if (fullTicket.ticket_follow_up_enabled) {
         await initializeTicketFollowUpSchedule(admin, ticket.id, fullTicket);
       }
-      const sendResult = await sendQuoteToCustomer(fullTicket, companyRow);
-      if (!sendResult.ok) {
-        console.error("[send-quote] POST delivery failed:", sendResult.error, { ticketId: ticket.id });
+      // Skip delivery when channel is "none" — public page stays active, no SMS/email sent.
+      const suppressNotification = (fullTicket.ticket_quote_channel as string | null) === "none";
+      if (!suppressNotification) {
+        const sendResult = await sendQuoteToCustomer(fullTicket, companyRow);
+        if (!sendResult.ok) {
+          console.error("[send-quote] POST delivery failed:", sendResult.error, { ticketId: ticket.id });
+        }
       }
 
       // Internal notification — email the quote creator when their quote is delivered.

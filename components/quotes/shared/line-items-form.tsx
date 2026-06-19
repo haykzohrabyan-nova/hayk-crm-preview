@@ -147,11 +147,10 @@ export function LineItemsForm({
       <button
         type="button"
         onClick={onAdd}
-        className="mt-4 w-full py-3 text-sm font-medium rounded-lg border-2 border-dashed transition-colors hover:opacity-80"
+        className="mt-4 w-full py-2.5 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-opacity hover:opacity-85 active:scale-[0.98]"
         style={{
-          borderColor: "var(--color-border)",
-          color: "var(--color-text-muted)",
-          background: "transparent",
+          background: "var(--color-btn-primary-bg)",
+          color: "var(--color-btn-primary-text)",
         }}
       >
         Add Line Item
