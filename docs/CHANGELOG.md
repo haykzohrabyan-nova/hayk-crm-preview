@@ -3,6 +3,16 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-19] — Drag-to-reorder materials within a product
+
+### Changed
+- `components/admin/products-section.tsx` (`MaterialPanel`): materials inside each product now support drag-to-reorder. Each row has a `GripVertical` drag handle; dropping reorders the list optimistically and persists `sort_order` values via `PATCH /api/admin/materials/[id]`. Mirrors the exact drag pattern used for product types in the left panel.
+
+## [2026-06-19] — Export Products & Materials as JSON
+
+### Added
+- `components/admin/products-section.tsx`: "Export" button next to "Add Product" in the admin Products tab. Clicking it downloads a dated JSON file (`bazaar-products-export-YYYY-MM-DD.json`) containing all product types (with their linked materials) and all material groups. Export is client-side using in-memory state — no API call needed.
+
 ## [2026-06-19] — Fix Deposit (%) showing wrong value on edit load
 
 ### Fixed

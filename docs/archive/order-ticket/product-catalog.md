@@ -383,16 +383,18 @@ Laminations, finishings, color modes, and sides remain as `lookup_values` catego
 **Product-centric layout — no separate Material Library tab:**
 
 **Left panel — product list:**
-- `Add Product` button → inline form (name + Roll/Sheet selector)
-- Each row: name, print type pill, active toggle, rename, delete
+- `Add Product` button → inline form (name + Roll/Sheet/Unit selector)
+- `Export JSON` button (beside Add Product) → client-side download of `bazaar-products-export-YYYY-MM-DD.json` containing all products with linked materials and all material groups
+- Each row: grip handle (**drag to reorder** — saves `sort_order` on drop), name, print type pill, active toggle, rename, delete
 - Clicking a product selects it and opens its materials in the right panel
 
 **Right panel — materials for selected product:**
 - Flat list of materials linked to this product (no group headers in the UI)
+- Each material row has a **grip handle** — drag to reorder within the product. Reorder saves new `sort_order` values on the `materials` table via `PATCH /api/admin/materials/[id]`. Because `sort_order` lives on the material (not the link), the new order applies globally to that material across all products.
 - `Add Material` button → inline search input:
   - Type to filter existing materials → click to **link existing**
   - Press Enter or click a "Create" option to **create new and link in one step**
-- Each material row: name, active toggle, rename (pencil), `×` remove from this product, 🗑 delete from library (with safety check)
+- Each material row: grip handle, name, active toggle, rename (pencil), `×` remove from this product, 🗑 delete from library (with safety check)
 - Deletion is blocked if the material appears in any `ticket_line_items` row
 
 > Material groups are an internal DB concept used for organisation only. The admin never sees or manages them directly.

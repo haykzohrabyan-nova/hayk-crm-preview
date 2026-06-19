@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Plus, Pencil, Trash2, X, Check, ChevronRight, GripVertical } from "lucide-react";
+import { Plus, Pencil, Trash2, X, Check, ChevronRight, GripVertical, Download } from "lucide-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -159,8 +159,21 @@ function MaterialPanel({
   const [confirmDelete, setConfirmDelete] = useState<Material | null>(null);
   const addInputRef = useRef<HTMLInputElement>(null);
 
-  // Materials linked to this product
-  const linked = allMaterials.filter((m) => product.material_ids.includes(m.id));
+  // Drag-to-reorder state for materials
+  const [matDragIndex, setMatDragIndex] = useState<number | null>(null);
+  const [matDragOverIndex, setMatDragOverIndex] = useState<number | null>(null);
+
+  // Local ordered copy of linked materials (optimistic reorder)
+  const [localLinked, setLocalLinked] = useState<Material[]>(() =>
+    allMaterials.filter((m) => product.material_ids.includes(m.id))
+  );
+
+  // Re-sync when the server data changes (after add / remove / reload)
+  useEffect(() => {
+    setLocalLinked(allMaterials.filter((m) => product.material_ids.includes(m.id)));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.material_ids.join(","), allMaterials]);
+
   // All materials not yet linked (for suggestions)
   const unlinked = allMaterials.filter((m) => !product.material_ids.includes(m.id));
 
@@ -252,6 +265,24 @@ function MaterialPanel({
     onReload();
   }
 
+  async function handleMatReorder(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    const reordered = [...localLinked];
+    const [moved] = reordered.splice(fromIndex, 1);
+    reordered.splice(toIndex, 0, moved);
+    setLocalLinked(reordered); // optimistic
+    await Promise.all(
+      reordered.map((mat, idx) =>
+        fetch(`/api/admin/materials/${mat.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sort_order: idx * 10 }),
+        })
+      )
+    );
+    onReload();
+  }
+
   return (
     <div
       className="rounded-[10px] border overflow-hidden flex flex-col"
@@ -267,7 +298,7 @@ function MaterialPanel({
         </span>
         <PrintTypePill type={product.default_print_type} />
         <span className="text-[12px] ml-auto" style={{ color: "var(--color-text-muted)" }}>
-          {linked.length} material{linked.length !== 1 ? "s" : ""}
+          {localLinked.length} material{localLinked.length !== 1 ? "s" : ""}
         </span>
         <button
           onClick={() => { setShowAdd(true); setAddingName(""); setSuggestions([]); }}
@@ -359,7 +390,7 @@ function MaterialPanel({
 
       {/* Material list */}
       <div className="overflow-y-auto max-h-[520px]">
-        {linked.length === 0 ? (
+        {localLinked.length === 0 ? (
           <div
             className="py-12 text-center text-[13px]"
             style={{ color: "var(--color-text-muted)" }}
@@ -367,14 +398,39 @@ function MaterialPanel({
             No materials yet — click &ldquo;Add Material&rdquo; above
           </div>
         ) : (
-          linked.map((mat, i) => (
+          localLinked.map((mat, i) => {
+            const isDragging = matDragIndex === i;
+            const isDropTarget = matDragOverIndex === i && matDragIndex !== null && matDragIndex !== i;
+            return (
             <div
               key={mat.id}
+              draggable={editingId !== mat.id}
+              onDragStart={(e) => {
+                setMatDragIndex(i);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (matDragOverIndex !== i) setMatDragOverIndex(i);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (matDragIndex !== null) handleMatReorder(matDragIndex, i);
+                setMatDragIndex(null);
+                setMatDragOverIndex(null);
+              }}
+              onDragEnd={() => {
+                setMatDragIndex(null);
+                setMatDragOverIndex(null);
+              }}
               className="flex items-center gap-2 px-4 py-2.5 border-b last:border-b-0"
               style={{
                 borderColor: "var(--color-border)",
                 background: i % 2 === 0 ? "var(--color-surface)" : "var(--color-row-alt)",
-                opacity: mat.is_active ? 1 : 0.5,
+                opacity: isDragging ? 0.4 : mat.is_active ? 1 : 0.5,
+                borderTop: isDropTarget ? "2px solid var(--color-accent)" : undefined,
+                transition: "opacity 0.15s",
               }}
             >
               {editingId === mat.id ? (
@@ -407,6 +463,11 @@ function MaterialPanel({
                 </div>
               ) : (
                 <>
+                  {/* Drag handle */}
+                  <GripVertical
+                    className="h-3.5 w-3.5 shrink-0 cursor-grab active:cursor-grabbing"
+                    style={{ color: "var(--color-text-muted)", opacity: 0.5 }}
+                  />
                   <span className="flex-1 text-[13px]" style={{ color: "var(--color-text-primary)" }}>
                     {mat.name}
                   </span>
@@ -457,7 +518,8 @@ function MaterialPanel({
                 </>
               )}
             </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -584,6 +646,56 @@ export function ProductsSection() {
     reload();
   }
 
+  function handleExportJSON() {
+    const allMats = groups.flatMap((g) => g.materials);
+    const payload = {
+      exported_at: new Date().toISOString(),
+      products: productTypes.map((pt) => ({
+        id: pt.id,
+        name: pt.name,
+        default_print_type: pt.default_print_type,
+        facility: pt.facility,
+        sort_order: pt.sort_order,
+        is_active: pt.is_active,
+        notes: pt.notes,
+        materials: allMats
+          .filter((m) => pt.material_ids.includes(m.id))
+          .map((m) => ({
+            id: m.id,
+            name: m.name,
+            category: m.category,
+            facility: m.facility,
+            sort_order: m.sort_order,
+            is_active: m.is_active,
+            default_unit: m.default_unit,
+          })),
+      })),
+      material_groups: groups.map((g) => ({
+        id: g.id,
+        name: g.name,
+        facility: g.facility,
+        sort_order: g.sort_order,
+        is_active: g.is_active,
+        materials: g.materials.map((m) => ({
+          id: m.id,
+          name: m.name,
+          facility: m.facility,
+          sort_order: m.sort_order,
+          is_active: m.is_active,
+          default_unit: m.default_unit,
+        })),
+      })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `bazaar-products-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast("Products & materials exported", "success");
+  }
+
   async function handleReorder(fromIndex: number, toIndex: number) {
     if (fromIndex === toIndex) return;
     const reordered = [...productTypes];
@@ -621,14 +733,26 @@ export function ProductsSection() {
     <div className="flex gap-6">
       {/* ── Left: product list ── */}
       <div className="w-72 shrink-0 flex flex-col gap-3">
+      <div className="flex gap-2">
         <button
           onClick={() => { setAdding(true); setNewName(""); setNewPrintType("Sheet"); }}
-          className="flex items-center gap-2 rounded-[6px] px-3 py-2 text-[13px] font-medium w-full"
+          className="flex items-center gap-2 rounded-[6px] px-3 py-2 text-[13px] font-medium flex-1"
           style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
         >
           <Plus className="h-4 w-4" />
           Add Product
         </button>
+        <button
+          onClick={handleExportJSON}
+          disabled={productTypes.length === 0}
+          title="Export Products & Materials as JSON"
+          className="flex items-center gap-1.5 rounded-[6px] px-3 py-2 text-[13px] font-medium border disabled:opacity-40"
+          style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)", background: "var(--color-surface)" }}
+        >
+          <Download className="h-4 w-4" />
+          Export
+        </button>
+      </div>
 
         {adding && (
           <div

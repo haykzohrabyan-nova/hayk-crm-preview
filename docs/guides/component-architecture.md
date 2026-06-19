@@ -112,6 +112,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `RequestEvidenceResubmitFlow` | `components/orders/request-evidence-resubmit-flow.tsx` | Channel/recipient modal → PATCH resubmit request (admin templates) |
 | `ApproveTaxExemptModal` | `components/orders/approve-tax-exempt-modal.tsx` | Approve/deny tax-exempt totals; deny step requires internal notes; footer **Request updated permit** |
 | `LeadsImportSection` | `components/admin/leads-import-section.tsx` | Admin bulk JSON lead import — validate-first, template download, optional `create_missing_lookups` |
+| `ProductsSection` | `components/admin/products-section.tsx` | Admin — product types + materials CRUD; drag-to-reorder both products and materials within a product; Export JSON button downloads full catalog |
 | `EmailTemplatesSection` | `components/admin/email-templates-section.tsx` | Admin — customer and staff email subject/body/CTA editor (includes Staff notifications group) |
 | `TaxExemptReviewSection` | `components/orders/tax-exempt-review-section.tsx` | Payment/order detail tax-exempt review card; legacy missing-file warning + link to order upload |
 | `CustomerTaxExemptModal` | `components/crm/customer-tax-exempt-modal.tsx` | CRM customer profile — tax-exempt history **See more** |

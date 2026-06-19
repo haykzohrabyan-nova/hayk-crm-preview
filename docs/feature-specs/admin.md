@@ -269,9 +269,28 @@ Admin-managed product catalog for quote line items. Backed by `product_types`, `
 
 Two-panel: product list on the left, materials for the selected product on the right.
 
-**Left panel — product list:** Add Product (name + Roll/Sheet/Unit type selector), active toggle, rename, delete (blocked if in any quote). **Drag to reorder** — each row has a grip handle; drag-and-drop saves new `sort_order` values immediately and busts the form bootstrap cache so the quote/order product selector reflects the change on the next form load.
+**Left panel — product list:** Add Product (name + Roll/Sheet/Unit type selector), active toggle, rename, delete (blocked if in any quote). **Drag to reorder** — each row has a grip handle; drag-and-drop saves new `sort_order` values immediately. **Export JSON** button (top-right, beside Add Product) — downloads a dated JSON file (`bazaar-products-export-YYYY-MM-DD.json`) containing all product types with their linked materials and all material groups; purely client-side (no API call).
 
-**Right panel — materials for selected product:** Link existing or create new material; active toggle, rename, unlink, delete from library (blocked if in any quote).
+**Right panel — materials for selected product:** Link existing or create new material; active toggle, rename, unlink, delete from library (blocked if in any quote). **Drag to reorder** — each material row has a grip handle; drag-and-drop reorders materials within the product and persists `sort_order` values on the `materials` table via `PATCH /api/admin/materials/[id]`. Note: `sort_order` is a property of the material itself, so reordering in one product affects the material's position in every product that shares it.
+
+**Export JSON format:**
+```json
+{
+  "exported_at": "ISO timestamp",
+  "products": [
+    {
+      "id": "labels-roll",
+      "name": "Labels (Roll)",
+      "default_print_type": "Roll",
+      "facility": "all",
+      "is_active": true,
+      "notes": null,
+      "materials": [ { "id": "bopp-clear", "name": "Clear BOPP", "category": "BOPP Films", … } ]
+    }
+  ],
+  "material_groups": [ { "id": "uuid", "name": "BOPP Films", "materials": [ … ] } ]
+}
+```
 
 **API calls:**
 - `GET/POST /api/admin/product-types` · `PATCH/DELETE /api/admin/product-types/[id]`

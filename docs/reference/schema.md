@@ -910,7 +910,7 @@ Admin-managed product catalog for quote line items. Created and seeded in migrat
 
 - `product_types` — text slug PK (e.g. `labels-roll`), 15 types seeded; `default_print_type` values: `'Roll'` | `'Sheet'` | `'Unit'`; ordered by `sort_order` (admin drag-to-reorder)
 - `material_groups` — uuid PK, internal grouping only (hidden from admin UI), 9 groups seeded
-- `materials` — text slug PK (e.g. `bopp-white`), 37 materials seeded
+- `materials` — text slug PK (e.g. `bopp-white`), 37 materials seeded; ordered by `sort_order` (admin drag-to-reorder within each product panel; `sort_order` is global on the material, so reordering in one product affects all products sharing that material)
 - `product_material_links` — junction table linking materials to product types
 
 Text slug PKs (e.g. `labels-roll`) are stored in `ticket_line_items.product_type` and `material` for delete guards. Defined in `supabase/schema.sql` (product catalog section).
