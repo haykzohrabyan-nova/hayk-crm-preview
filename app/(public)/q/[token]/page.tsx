@@ -823,7 +823,7 @@ function PublicPayModal({
 
         <div style={{ marginBottom: 20 }}>
           <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
-            Payment Method
+            Select Payment Method
           </label>
           <select
             value={selectedChannel}
