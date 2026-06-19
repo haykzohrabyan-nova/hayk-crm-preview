@@ -1,5 +1,5 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
-import { isPaymentEvidencePending, type TicketPaymentFields } from "@/lib/utils/invoice-payment-summary";
+import { getAmountPaid, isPaymentEvidencePending, type TicketPaymentFields } from "@/lib/utils/invoice-payment-summary";
 
 export type ManualConvertMeta = {
   by_admin: boolean;
@@ -12,7 +12,7 @@ type AdminClient = ReturnType<typeof createAdminClient>;
 
 function isPaymentMissing(ticket: TicketPaymentFields): boolean {
   if (isPaymentEvidencePending(ticket)) return false;
-  const received = Number(ticket.payment_amount_received ?? ticket.deposit_amount ?? 0);
+  const received = getAmountPaid(ticket);
   if (ticket.deposit_paid_at || ticket.payment_paid_at) return false;
   return received <= 0.01;
 }

@@ -1,3 +1,5 @@
+import { formatCurrency } from "@/lib/utils/format";
+
 /**
  * Shared currency formatter for outbound email templates.
  * Returns an empty string for null/undefined (intentional — emails omit missing amounts).
@@ -5,9 +7,5 @@
  */
 export function fmtEmailCurrency(n: number | null | undefined): string {
   if (n == null) return "";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 2,
-  }).format(n);
+  return formatCurrency(n);
 }

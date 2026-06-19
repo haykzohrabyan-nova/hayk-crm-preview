@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { formatCurrency as formatMoney } from "@/lib/utils/format";
+import { formatCurrency as formatMoney, formatCompact } from "@/lib/utils/format";
 import { KPI_HELP } from "@/lib/utils/kpi-help-text";
 import type { TeamMemberMetrics } from "@/lib/utils/team-dashboard-metrics";
 import { KpiCard, KpiCardSkeleton } from "@/components/dashboard/kpi-card";
@@ -109,12 +109,6 @@ function buildTotalLeadsSubStats(data: AdminKpis): { label: string; value: numbe
   }
 
   return stats;
-}
-
-function formatCurrency(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return `$${n.toLocaleString()}`;
 }
 
 function isOnline(lastSignIn: string | null): boolean {
@@ -463,7 +457,7 @@ export function AdminDashboard() {
               label="Pipeline Value"
               valuesHidden={metricsHidden}
               valueKind="currency"
-              value={formatCurrency(data.pipeline_value ?? 0)}
+              value={formatCompact(data.pipeline_value ?? 0)}
               sub="current total"
               help={KPI_HELP.pipeline_value}
               icon={<DollarSign className="h-4 w-4" />}

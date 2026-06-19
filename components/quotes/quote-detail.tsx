@@ -31,6 +31,7 @@ import { resolveQuoteDeliveryFromContact } from "@/lib/utils/resolve-quote-deliv
 import { buildAdminConvertPreview } from "@/lib/utils/admin-convert-preview";
 import type { ManualConvertMeta } from "@/lib/utils/manual-convert-meta";
 import {
+  getAmountPaid,
   isPaymentEvidencePending,
   isTaxExemptApprovalPending,
   isTicketPaidInFull,
@@ -410,6 +411,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [paymentDraft, setPaymentDraft] = useState<TicketPaymentDraft>(PAYMENT_CONFIG_DEFAULTS);
   const [salesPermitError, setSalesPermitError] = useState<string | undefined>();
   const [salesPermitFileError, setSalesPermitFileError] = useState<string | undefined>();
+  const [depositError, setDepositError] = useState<string | undefined>();
   const [titleError, setTitleError] = useState<string | undefined>();
   const [dueDateError, setDueDateError] = useState<string | undefined>();
   const [completionAt, setCompletionAt] = useState<string | null>(null);
@@ -771,6 +773,14 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       return;
     }
 
+    if (paymentDraft.ticket_payment_strategy === "partial" && !(paymentDraft.ticket_deposit_value > 0)) {
+      setDepositError("A deposit amount greater than 0 is required for Partial payment.");
+      setSaving(false);
+      hideLoading();
+      return;
+    }
+    setDepositError(undefined);
+
     beginSaveLoading(globalSaveMessage(newStatus));
 
     // Upload / remove permit file before the PATCH
@@ -852,7 +862,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         const paymentMissing =
           !saved.deposit_paid_at &&
           !saved.payment_paid_at &&
-          Number(saved.payment_amount_received ?? saved.deposit_amount ?? 0) <= 0.01;
+          getAmountPaid(saved) <= 0.01;
         const confirmMissing =
           saved.ticket_require_client_confirm !== false && !saved.client_confirmed;
         if (confirmMissing || paymentMissing) {
@@ -1882,7 +1892,8 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                     onClearSavedSalesPermit={() => { setClearSavedPermit(true); }}
                     salesPermitFileError={salesPermitFileError}
                     paymentDraft={paymentDraft}
-                    onPaymentChange={setPaymentDraft}
+                    onPaymentChange={(cfg) => { setPaymentDraft(cfg); setDepositError(undefined); }}
+                    depositError={depositError}
                     customerPhone={ticket.contact_phone ?? ticket.customer?.phone ?? ""}
                     customerEmail={ticket.contact_email ?? ticket.customer?.email ?? ""}
                   />

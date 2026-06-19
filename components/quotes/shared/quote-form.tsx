@@ -61,6 +61,8 @@ interface QuoteFormProps {
   customerEmail?: string;
   /** Recorded deposit amount — shows an info banner explaining that saving will auto-recalculate. */
   recordedDepositAmount?: number | null;
+  /** Validation error for the deposit fields — forwarded to QuotePaymentConfig. */
+  depositError?: string;
   /** When true, hides the pricing breakdown (shown elsewhere, e.g. combined payment review card). */
   hidePricingSummary?: boolean;
   /** When true, fulfillment block is rendered by the parent (e.g. collapsible section). */
@@ -410,6 +412,7 @@ export function QuoteForm(p: QuoteFormProps) {
         customerPhone={p.customerPhone}
         customerEmail={p.customerEmail}
         recordedDepositAmount={p.recordedDepositAmount}
+        depositError={p.depositError}
       />
     </div>
   );

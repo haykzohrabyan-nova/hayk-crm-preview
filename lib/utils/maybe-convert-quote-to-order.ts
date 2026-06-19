@@ -2,6 +2,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { computeCheckout } from "@/lib/utils/compute-checkout";
 import {
   computeDepositDueFromTicket,
+  getAmountPaid,
   isPaymentEvidencePending,
   isTaxExemptApprovalPending,
   type TicketPaymentFields,
@@ -42,7 +43,7 @@ function buildPaymentConfig(ticket: ConvertQuoteTicket): PaymentConfig {
 function isPaymentRecorded(ticket: ConvertQuoteTicket): boolean {
   const strategy = ticket.ticket_payment_strategy ?? "full";
   const total = Number(ticket.quote_final_total ?? 0);
-  const amountPaid = Number(ticket.payment_amount_received ?? ticket.deposit_amount ?? 0);
+  const amountPaid = getAmountPaid(ticket);
 
   if (strategy === "partial") {
     if (ticket.deposit_paid_at) return true;

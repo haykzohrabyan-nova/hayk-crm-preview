@@ -11,7 +11,7 @@ import {
   Clock,
 } from "lucide-react";
 import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
-import { formatCurrency as formatMoneyFull } from "@/lib/utils/format";
+import { formatCompact } from "@/lib/utils/format";
 import { KPI_HELP } from "@/lib/utils/kpi-help-text";
 import { KpiHelpLine } from "@/components/ui/kpi-help-line";
 import {
@@ -54,12 +54,6 @@ interface SalesTimeFilter {
   preset: SdrDashboardPreset;
   dateFrom: string;
   dateTo: string;
-}
-
-function formatCurrency(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return formatMoneyFull(n);
 }
 
 function formatPct(pct: number | null): string {
@@ -312,7 +306,7 @@ export function SalesDashboard() {
               label="Orders"
               valuesHidden={metricsHidden}
               valueKind="currency"
-              value={formatCurrency(data.order_value_breakdown?.total ?? 0)}
+              value={formatCompact(data.order_value_breakdown?.total ?? 0)}
               pctChange={metricsHidden ? undefined : data.order_value?.pct_change}
               priorLabel={priorLabel}
               subtext={metricsHidden ? "your orders → production" : `from ${orderCountPhrase(data.order_created!.value)} converted · your orders → production`}
@@ -324,7 +318,7 @@ export function SalesDashboard() {
               label="Received"
               valuesHidden={metricsHidden}
               valueKind="currency"
-              value={formatCurrency(data.order_value_breakdown?.received ?? 0)}
+              value={formatCompact(data.order_value_breakdown?.received ?? 0)}
               subtext="your orders → production"
               help={KPI_HELP.order_received_sales}
               icon={<Banknote className="h-4 w-4" />}
@@ -333,7 +327,7 @@ export function SalesDashboard() {
               label="Balance"
               valuesHidden={metricsHidden}
               valueKind="currency"
-              value={formatCurrency(data.order_value_breakdown?.balance ?? 0)}
+              value={formatCompact(data.order_value_breakdown?.balance ?? 0)}
               subtext="your orders → production"
               help={KPI_HELP.order_balance_sales}
               icon={<Scale className="h-4 w-4" />}

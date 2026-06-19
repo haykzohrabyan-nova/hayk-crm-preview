@@ -17,6 +17,7 @@ export interface LogTicketPaymentRecordedInput {
   via:
     | "staff_record"
     | "staff_cash_auto"
+    | "staff_cash_collect_on_complete"
     | "accountant_evidence_confirm"
     | "public_payment"
     | "staff_cash_auto_backfill";

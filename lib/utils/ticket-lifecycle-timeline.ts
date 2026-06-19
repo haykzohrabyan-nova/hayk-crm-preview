@@ -1,4 +1,4 @@
-import { formatCurrency, formatDate, formatDateTime } from "@/lib/utils/format";
+import { formatCurrencyOrNull, formatDate, formatDateTime } from "@/lib/utils/format";
 import { dueDateEndOfDayMs, isDueDateOverdue } from "@/lib/utils/due-date";
 import { isOrderReferenceCode, isQuoteReferenceCode } from "@/lib/utils/reference-codes";
 
@@ -66,11 +66,7 @@ const METHOD_LABELS: Record<string, string> = {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const REF_CODE_RE = /^(QUO|ORD)-\d{4}-\d+$/i;
 
-function fmtMoney(n: unknown): string | null {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return null;
-  return formatCurrency(v);
-}
+const fmtMoney = formatCurrencyOrNull;
 
 function amountsMatch(a: unknown, b: unknown): boolean {
   const x = Number(a);

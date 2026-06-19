@@ -1290,7 +1290,7 @@ All computed totals are persisted on `job_tickets`: `quote_subtotal`, `quote_pre
 
 - **`LineItemsForm`** — wraps edit (`SkuRow` per line) and read-only (`DetailLineItemCard` + `AdditionalSkusOverviewList`) modes
 - **`SkuRow`** — one editable line: product type, material, dimensions, quantity, unit price, finishings, file attach
-- **`DetailLineItemCard`** — read-only card: name+specs left, price right, optional thumbnail panel on far right (160px wide, fills card height). Background `#ffffff`, border `#e8c97a` (gold) so cards stand out in expanded table rows.
+- **`DetailLineItemCard`** — read-only card: name+specs left, price right, optional thumbnail panel on far right (160px wide, fills card height). Background `var(--color-surface)`, border `var(--color-accent)` — fully dark-mode aware.
 - **`AdditionalSkusOverviewList`** — renders variant sub-rows inside the card footer; each variant shows its thumbnail on the right (100px panel)
 - **`LineItemFileThumbnail`** — clickable image/PDF preview that opens `LineItemFilePreviewModal`; supports `fill` mode for full-height card panel
 
@@ -2395,7 +2395,7 @@ Search inputs are **`w-full`** on mobile (below `lg`) and a fixed width (`lg:w-5
 | `ticket-math.ts` | `skuLineTotal`, `computePricing` — all pricing calculations |
 | `ticket-line-items.ts` | `fetchTicketLinesBundle`, `syncTicketLines`, `lineItemsToApiPayload`, file types |
 | `compute-checkout.ts` | `computeCheckout` — 3-step production gate |
-| `invoice-payment-summary.ts` | `computeInvoicePaymentSummary`, `isTicketPaidInFull` |
+| `invoice-payment-summary.ts` | `computeInvoicePaymentSummary`, `isTicketPaidInFull`, `getAmountPaid` (canonical `payment_amount_received ?? deposit_amount ?? 0` helper) |
 | `maybe-convert-quote-to-order.ts` | Quote → Order conversion logic |
 | `maybe-auto-release-production.ts` | Auto-release production logic |
 | `ticket-access.ts` | `canAccessTicket`, `canMutateTicket`, `canPatchTicket` |
@@ -2407,7 +2407,8 @@ Search inputs are **`w-full`** on mobile (below `lg`) and a fixed width (`lg:w-5
 | `lead-activity-display.ts` | `leadActivityLabel`, `leadActivityDetailLines` |
 | `lead-routed-pipeline-stage.ts` | Routed lead stage badges |
 | `ticket-shipping-destinations.ts` | Multi-destination shipping helpers |
-| `format.ts` | `fmtDate`, `relativeTime`, `formatCurrency`, `digitsOnly` |
+| `format.ts` | `formatCurrency`, `formatCurrencyOrNull`, `formatDate`, `formatDateTime`, `formatDateLong`, `formatCompact`, `relativeTime`, `relativeDays`, `roundMoney`, `displayContactName` — **single source of truth for all display formatting** |
+| `validate-quote-skus.ts` | `validateLineItems` — canonical 6-field line item validation (product type, material, width, height, quantity, unit price + variants) |
 | `pagination.ts` | Shared pagination helpers |
 | `validate-quote-send.ts` | `canSendQuote`, `getQuoteSendMissingFields` (tax-exempt: permit # + `hasSalesPermitFile`) |
 | `tax-exempt-approval.ts` | `requiresTaxExemptAccountantReview`, `isTaxExemptApprovalPending`, `isLegacyTaxExemptMissingPermitFile`, `isTaxExemptReviewQueueItem`, `canMarkTicketCompleted`, `computeTotalsIfTaxExemptDenied` |

@@ -161,10 +161,6 @@ const CHANNEL_LABELS: Record<string, string> = {
   other:   "Other",
 };
 
-function fmt(n: number | null | undefined): string {
-  return formatCurrency(n);
-}
-
 function customerLabel(order: PaymentOrder): string {
   return displayContactName(order.customer);
 }
@@ -704,7 +700,7 @@ export function PaymentsPage() {
                           {customerLabel(order)}
                         </div>
                         <div className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                          Total {fmt(order.quote_final_total)}
+                          Total {formatCurrency(order.quote_final_total)}
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle whitespace-nowrap">
@@ -714,7 +710,7 @@ export function PaymentsPage() {
                       </td>
                       <td className="px-5 py-4 align-middle text-right whitespace-nowrap">
                         <span className="text-sm font-semibold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
-                          {fmt(order.quote_final_total)}
+                          {formatCurrency(order.quote_final_total)}
                         </span>
                       </td>
                       <td className="px-5 py-4 align-middle whitespace-nowrap">
@@ -822,7 +818,7 @@ export function PaymentsPage() {
                           {customerLabel(order)}
                         </div>
                         <div className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                          Order total {fmt(order.quote_final_total)}
+                          Order total {formatCurrency(order.quote_final_total)}
                         </div>
                       </td>
                       <td className="px-5 py-4 align-middle">
@@ -844,12 +840,12 @@ export function PaymentsPage() {
                       </td>
                       <td className="px-5 py-4 align-middle text-right whitespace-nowrap">
                         <div className="text-sm font-semibold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
-                          {fmt(order.total_refunded_amount)}
+                          {formatCurrency(order.total_refunded_amount)}
                         </div>
                         {order.refund_status !== "full" &&
                           Number(order.payment_amount_received ?? 0) > 0.01 && (
                           <div className="text-[11px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                            {fmt(order.payment_amount_received)} still on file
+                            {formatCurrency(order.payment_amount_received)} still on file
                           </div>
                         )}
                       </td>
@@ -917,7 +913,7 @@ export function PaymentsPage() {
                         {customerLabel(order)}
                       </div>
                       <div className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                        Total {fmt(order.quote_final_total)}
+                        Total {formatCurrency(order.quote_final_total)}
                         {order.payment_status === "partial" && " · Partial"}
                         {order.payment_status === "paid" && " · Paid"}
                       </div>
@@ -931,11 +927,11 @@ export function PaymentsPage() {
 
                     <td className="px-5 py-4 align-middle text-right whitespace-nowrap">
                       <div className="text-sm font-semibold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
-                        {fmt(claimed)}
+                        {formatCurrency(claimed)}
                       </div>
                       {order.quote_final_total != null && claimed < order.quote_final_total - 0.01 && (
                         <div className="text-[11px] mt-0.5" style={{ color: "var(--color-text-muted)" }}>
-                          of {fmt(order.quote_final_total)}
+                          of {formatCurrency(order.quote_final_total)}
                         </div>
                       )}
                     </td>
@@ -1118,7 +1114,7 @@ export function PaymentsPage() {
                     </div>
                     </div>
                     <span className="text-sm font-semibold tabular-nums shrink-0" style={{ color: "var(--color-text-primary)" }}>
-                      {fmt(order.quote_final_total)}
+                      {formatCurrency(order.quote_final_total)}
                     </span>
                   </div>
                   <MobileListCardFields>
@@ -1262,7 +1258,7 @@ export function PaymentsPage() {
                       className="text-sm font-semibold tabular-nums shrink-0"
                       style={{ color: "var(--color-text-primary)" }}
                     >
-                      {fmt(order.total_refunded_amount)}
+                      {formatCurrency(order.total_refunded_amount)}
                     </span>
                   </div>
                   <MobileListCardFields>
@@ -1283,7 +1279,7 @@ export function PaymentsPage() {
                           : refundStatusLabel(order.refund_status)
                       }
                     />
-                    <MobileListCardRow label="Order total" value={fmt(order.quote_final_total)} />
+                    <MobileListCardRow label="Order total" value={formatCurrency(order.quote_final_total)} />
                     <MobileListCardRow
                       label="Last refunded"
                       value={
@@ -1345,12 +1341,12 @@ export function PaymentsPage() {
                     className="text-sm font-semibold tabular-nums shrink-0"
                     style={{ color: "var(--color-text-primary)" }}
                   >
-                    {fmt(claimed)}
+                    {formatCurrency(claimed)}
                   </span>
                 </div>
 
                 <MobileListCardFields>
-                  <MobileListCardRow label="Order Total" value={fmt(order.quote_final_total)} />
+                  <MobileListCardRow label="Order Total" value={formatCurrency(order.quote_final_total)} />
                   <MobileListCardRow
                     label="Created by"
                     value={order.created_by?.full_name ?? "—"}

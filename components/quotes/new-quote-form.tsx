@@ -27,6 +27,7 @@ import {
   formatQuoteSendMissingMessage,
   getQuoteSendMissingFields,
 } from "@/lib/utils/validate-quote-send";
+import { validateLineItems } from "@/lib/utils/validate-quote-skus";
 import { resolveQuoteDeliveryFromContact } from "@/lib/utils/resolve-quote-delivery-from-contact";
 import {
   customerHasTaxExemptOnFile,
@@ -464,41 +465,7 @@ export default function NewQuoteForm() {
     }
 
     if (tab === "lines") {
-      const hasFullItem = skus.some(
-        (s) => s.product_type?.trim() && (s.quantity ?? 0) > 0 && (s.unit_price ?? 0) > 0
-      );
-      if (!hasFullItem) {
-        errors.lineItems = "Please fill in at least one complete line item (product, quantity, and unit price).";
-      }
-      for (let i = 0; i < skus.length; i++) {
-        const s = skus[i];
-        const missing: string[] = [];
-        if (!s.product_type?.trim()) missing.push("product type");
-        if (!s.material?.trim()) missing.push("material");
-        if (!(s.width != null && s.width > 0)) missing.push("width");
-        if (!(s.height != null && s.height > 0)) missing.push("height");
-        if (!((s.quantity ?? 0) > 0)) missing.push("quantity");
-        if (!((s.unit_price ?? 0) > 0)) missing.push("unit price");
-        if (missing.length > 0) {
-          errors[`lineItem-${i}`] = `Line ${i + 1}: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} required.`;
-        }
-      }
-      for (let i = 0; i < skus.length; i++) {
-        const formSku = skus[i] as FormLineItem;
-        const variants = formSku.variants ?? [];
-        for (let j = 0; j < variants.length; j++) {
-          const v = variants[j];
-          if (!String(v.name ?? "").trim()) {
-            errors[`lineVariants-${i}`] = `Additional SKU ${j + 1}: name is required.`;
-            break;
-          }
-          const qty = Number(v.quantity);
-          if (!Number.isFinite(qty) || qty <= 0) {
-            errors[`lineVariants-${i}`] = `Additional SKU ${j + 1}: quantity must be greater than 0.`;
-            break;
-          }
-        }
-      }
+      Object.assign(errors, validateLineItems(skus as FormLineItem[]));
     }
 
     if (tab === "quote") {
@@ -512,6 +479,9 @@ export default function NewQuoteForm() {
         requiresShipping ? shippingDestinations : [],
       );
       if (zipErr) errors.shipToZip = zipErr;
+      if (paymentDraft.ticket_payment_strategy === "partial" && !(paymentDraft.ticket_deposit_value > 0)) {
+        errors.depositValue = "A deposit amount greater than 0 is required for Partial payment.";
+      }
     }
 
     setFieldErrors(errors);
@@ -789,43 +759,7 @@ export default function NewQuoteForm() {
       errors.customerSource = "Source is required.";
     }
 
-    const hasFullItem = skus.some(
-      (s) => s.product_type?.trim() && (s.quantity ?? 0) > 0 && (s.unit_price ?? 0) > 0,
-    );
-    if (!hasFullItem) {
-      errors.lineItems = "Please fill in at least one complete line item (product, quantity, and unit price).";
-    }
-
-    for (let i = 0; i < skus.length; i++) {
-      const s = skus[i];
-      const missing: string[] = [];
-      if (!s.product_type?.trim()) missing.push("product type");
-      if (!s.material?.trim()) missing.push("material");
-      if (!(s.width != null && s.width > 0)) missing.push("width");
-      if (!(s.height != null && s.height > 0)) missing.push("height");
-      if (!((s.quantity ?? 0) > 0)) missing.push("quantity");
-      if (!((s.unit_price ?? 0) > 0)) missing.push("unit price");
-      if (missing.length > 0) {
-        errors[`lineItem-${i}`] = `Line ${i + 1}: ${missing.join(", ")} ${missing.length === 1 ? "is" : "are"} required.`;
-      }
-    }
-
-    for (let i = 0; i < skus.length; i++) {
-      const formSku = skus[i] as FormLineItem;
-      const variants = formSku.variants ?? [];
-      for (let j = 0; j < variants.length; j++) {
-        const v = variants[j];
-        if (!String(v.name ?? "").trim()) {
-          errors[`lineVariants-${i}`] = `Additional SKU ${j + 1}: name is required.`;
-          break;
-        }
-        const qty = Number(v.quantity);
-        if (!Number.isFinite(qty) || qty <= 0) {
-          errors[`lineVariants-${i}`] = `Additional SKU ${j + 1}: quantity must be greater than 0.`;
-          break;
-        }
-      }
-    }
+    Object.assign(errors, validateLineItems(skus as FormLineItem[]));
 
     if (tab === "quote") {
       if (taxExempt && !salesPermit.trim()) {
@@ -840,6 +774,10 @@ export default function NewQuoteForm() {
       if (zipErr) errors.shipToZip = zipErr;
     }
 
+    if (paymentDraft.ticket_payment_strategy === "partial" && !(paymentDraft.ticket_deposit_value > 0)) {
+      errors.depositValue = "A deposit amount greater than 0 is required for Partial payment.";
+    }
+
     if (!skipCustomerTab) {
       const websiteToValidate = contactWebsite || lead?.customer?.website || "";
       const websiteErr = validateWebsite(websiteToValidate);
@@ -851,7 +789,7 @@ export default function NewQuoteForm() {
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
       const errorTab: Tab =
-        errors.salesPermit || errors.salesPermitFile || errors.shipToZip
+        errors.salesPermit || errors.salesPermitFile || errors.shipToZip || errors.depositValue
           ? "quote"
           : errors.lineItems
             ? "lines"
@@ -1241,9 +1179,10 @@ export default function NewQuoteForm() {
                   }}
                   salesPermitFileError={fieldErrors.salesPermitFile}
                   paymentDraft={paymentDraft}
-                  onPaymentChange={setPaymentDraft}
+                  onPaymentChange={(cfg) => { setPaymentDraft(cfg); setFieldErrors((e) => ({ ...e, depositValue: "" })); }}
                   customerPhone={contactPhone || lead?.customer?.phone || ""}
                   customerEmail={contactEmail || lead?.customer?.email || ""}
+                  depositError={fieldErrors.depositValue}
                 />
               </div>
             )}

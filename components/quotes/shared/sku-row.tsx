@@ -78,18 +78,17 @@ function FinishingsDropdown({
   const mimeType = lineAttachment?.pendingFile?.type ?? lineAttachment?.file?.mime_type;
   const isImage  = Boolean(mimeType?.startsWith("image/"));
 
-  const options: { key: keyof QuoteSku; label: string }[] = (
-    skuLookups.finishing.length
-      ? skuLookups.finishing.map((o) => ({ key: o.value as keyof QuoteSku, label: o.label }))
-      : [
-          { key: "spot_uv", label: "Spot UV" },
-          { key: "foil", label: "Foil" },
-          { key: "perforation", label: "Perforation" },
-        ]
-  ).concat([
-    { key: "design_required", label: "Need a design" },
-    { key: "die_cut", label: "Die Cut" },
-  ]);
+  const options: { key: keyof QuoteSku; label: string }[] = [
+    ...(skuLookups.finishing.length
+      ? skuLookups.finishing.map((o): { key: keyof QuoteSku; label: string } => ({ key: o.value as keyof QuoteSku, label: o.label }))
+      : ([
+          { key: "spot_uv" as keyof QuoteSku, label: "Spot UV" },
+          { key: "foil" as keyof QuoteSku, label: "Foil" },
+          { key: "perforation" as keyof QuoteSku, label: "Perforation" },
+        ] satisfies { key: keyof QuoteSku; label: string }[])),
+    { key: "design_required" as keyof QuoteSku, label: "Need a design" },
+    { key: "die_cut" as keyof QuoteSku, label: "Die Cut" },
+  ];
 
   const selected = options.filter(({ key }) => !!sku[key]);
   const label = selected.length === 0

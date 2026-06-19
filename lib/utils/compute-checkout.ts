@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { PaymentConfig } from "@/lib/types";
+import { formatCurrency } from "@/lib/utils/format";
 
 // ── Payment remittance info (shown to customers for Wire / ACH / Zelle) ──────
 // These values are overridden at runtime by company_settings from the DB.
@@ -115,8 +116,7 @@ export function shouldAutoConfirmOnFullPayment(
 
 /** Plain-text description of the production gate shown in the payment config UI. */
 export function describeGatePreview(config: PaymentConfig, quoteTotal: number): string {
-  const fmt = (n: number) =>
-    n.toLocaleString("en-US", { style: "currency", currency: "USD" });
+  const fmt = formatCurrency;
 
   const needConfirm = config.requireClientConfirm !== false;
 

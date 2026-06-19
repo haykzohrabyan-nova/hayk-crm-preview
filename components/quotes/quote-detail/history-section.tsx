@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isOrderReferenceCode, isQuoteReferenceCode } from "@/lib/utils/reference-codes";
+import { formatCurrencyOrNull } from "@/lib/utils/format";
 import {
   User,
   Mail,
@@ -88,11 +89,7 @@ const METHOD_LABELS: Record<string, string> = {
   cash: "Cash",
 };
 
-function fmtMoney(n: unknown): string | null {
-  const v = Number(n);
-  if (!Number.isFinite(v)) return null;
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(v);
-}
+const fmtMoney = formatCurrencyOrNull;
 
 function actorLabel(a: ActivityRow): string {
   if (a.by_user?.full_name) return a.by_user.full_name;

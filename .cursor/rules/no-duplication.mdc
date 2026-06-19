@@ -1,0 +1,76 @@
+---
+description: Prevent duplicate functions and UI components — always reuse what already exists
+alwaysApply: true
+---
+
+# No Duplication — Always Reuse Before Creating
+
+Before writing ANY new function or component, search the codebase first. If an equivalent already exists, import and use it. Never create a second implementation.
+
+## Canonical utility locations
+
+| Need | Import from |
+|---|---|
+| Format USD (`$1,234.56`) | `formatCurrency` — `lib/utils/format.ts` |
+| Format USD or return null | `formatCurrencyOrNull` — `lib/utils/format.ts` |
+| Compact USD (`$1.2K`) | `formatCompact` — `lib/utils/format.ts` |
+| Format date (Jun 19, 2026) | `formatDate` — `lib/utils/format.ts` |
+| Format date + time | `formatDateTime` — `lib/utils/format.ts` |
+| Format date long (June 19, 2026) | `formatDateLong` — `lib/utils/format.ts` |
+| Relative time (5m ago, 3d ago) | `relativeTime` — `lib/utils/format.ts` |
+| Relative days (Today, Yesterday) | `relativeDays` — `lib/utils/format.ts` |
+| Round to cents | `roundMoney` — `lib/utils/format.ts` |
+| Amount received from ticket | `getAmountPaid` — `lib/utils/invoice-payment-summary.ts` |
+| Validate quote line items | `validateLineItems` — `lib/utils/validate-quote-skus.ts` |
+| Contact display name | `displayContactName` — `lib/utils/format.ts` |
+
+## Rules
+
+1. **Search before creating** — run a codebase search for the function name or its behavior before writing anything new.
+2. **One implementation per concept** — if you need to change how USD is formatted, change it in `lib/utils/format.ts` and it propagates everywhere.
+3. **No local wrappers** — do not write `const fmt = formatCurrency` or `function fmt(n) { return formatCurrency(n); }`. Call the shared function directly at every call site.
+4. **No inline `Intl.NumberFormat` or `toLocaleDateString`** — always use the shared helpers above instead.
+5. **No inline `payment_amount_received ?? deposit_amount ?? 0`** — use `getAmountPaid(ticket)`.
+6. **Extend, don't fork** — if a shared helper almost fits, add an optional parameter or a new export to `lib/utils/format.ts`; do not copy the logic into the component.
+
+## Before adding a new utility function
+
+Ask:
+- Does `lib/utils/format.ts` already export this?
+- Does `lib/utils/invoice-payment-summary.ts` already export this?
+- Does any file in `lib/utils/` already export this?
+
+If yes → import it. If no → add it to the correct `lib/utils/` file and import from there.
+
+## Examples
+
+```typescript
+// ❌ BAD — local re-implementation
+function fmt(n: number): string {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+// ✅ GOOD
+import { formatCurrency } from "@/lib/utils/format";
+
+// ❌ BAD — local alias wrapper
+const fmt = formatCurrency;
+
+// ✅ GOOD — call formatCurrency directly at each site
+formatCurrency(order.total)
+
+// ❌ BAD — inline fallback chain
+const paid = Number(ticket.payment_amount_received ?? ticket.deposit_amount ?? 0);
+
+// ✅ GOOD
+import { getAmountPaid } from "@/lib/utils/invoice-payment-summary";
+const paid = getAmountPaid(ticket);
+
+// ❌ BAD — local date formatter
+function fmtDate(iso: string) {
+  return new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+}
+
+// ✅ GOOD
+import { formatDateLong } from "@/lib/utils/format";
+```

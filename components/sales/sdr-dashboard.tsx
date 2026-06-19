@@ -13,7 +13,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { DashboardDateRangeFilter } from "@/components/ui/dashboard-date-range-filter";
-import { formatCurrency as formatMoneyFull } from "@/lib/utils/format";
+import { formatCompact } from "@/lib/utils/format";
 import { KPI_HELP } from "@/lib/utils/kpi-help-text";
 import { KpiHelpLine } from "@/components/ui/kpi-help-line";
 import {
@@ -60,12 +60,6 @@ export interface SdrTimeFilter {
   preset: SdrDashboardPreset;
   dateFrom: string;
   dateTo: string;
-}
-
-function formatCurrency(n: number): string {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
-  return formatMoneyFull(n);
 }
 
 function leadCountPhrase(count: number): string {
@@ -323,7 +317,7 @@ export function SdrDashboard() {
               label="Closed Order Value"
               valuesHidden={metricsHidden}
               valueKind="currency"
-              value={formatCurrency(data.order_value_breakdown?.total ?? 0)}
+              value={formatCompact(data.order_value_breakdown?.total ?? 0)}
               pctChange={metricsHidden ? undefined : data.order_value?.pct_change}
               priorLabel={priorLabel}
               help={KPI_HELP.order_total_with_count_sdr}
@@ -334,7 +328,7 @@ export function SdrDashboard() {
               label="Paid From Closed Orders"
               valuesHidden={metricsHidden}
               valueKind="currency"
-              value={formatCurrency(data.order_value_breakdown?.received ?? 0)}
+              value={formatCompact(data.order_value_breakdown?.received ?? 0)}
               help={KPI_HELP.order_received_sdr}
               icon={<Banknote className="h-4 w-4" />}
             />
@@ -342,7 +336,7 @@ export function SdrDashboard() {
               label="Remaining Balance for Closed Orders"
               valuesHidden={metricsHidden}
               valueKind="currency"
-              value={formatCurrency(data.order_value_breakdown?.balance ?? 0)}
+              value={formatCompact(data.order_value_breakdown?.balance ?? 0)}
               help={KPI_HELP.order_balance_sdr}
               icon={<Scale className="h-4 w-4" />}
             />

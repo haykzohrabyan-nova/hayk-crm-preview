@@ -1,5 +1,5 @@
 import { getPeriodStart, PERIOD_LABELS } from "@/lib/utils/get-period-start";
-import { parseLocalDate } from "@/lib/utils/format";
+import { formatDate, parseLocalDate } from "@/lib/utils/format";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -88,13 +88,7 @@ export function resolveReportDateRange(
 }
 
 export function formatReportDateRange(startIso: string, endIso: string): string {
-  const fmt = (iso: string) =>
-    new Date(iso).toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-    });
-  return `${fmt(startIso)} – ${fmt(endIso)}`;
+  return `${formatDate(startIso)} – ${formatDate(endIso)}`;
 }
 
 /** Format a Date as YYYY-MM-DD for `<input type="date">`. */

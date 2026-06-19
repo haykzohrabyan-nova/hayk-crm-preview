@@ -1,4 +1,5 @@
 /** Display label + tone for rows on GET /api/orders/orders */
+import { getAmountPaid } from "@/lib/utils/invoice-payment-summary";
 
 export type OrderListStatusTone =
   | "confirmed"
@@ -41,7 +42,7 @@ export function orderListStatus(input: {
     const confirmRequired = input.require_client_confirm !== false;
     const adminName = input.converted_by_name?.trim() || "Admin";
     const confirmMissing = confirmRequired && !confirmed;
-    const received = Number(input.payment_amount_received ?? input.deposit_amount ?? 0);
+    const received = getAmountPaid(input);
     const paymentMissing = !input.deposit_paid_at && !input.payment_paid_at && received <= 0.01;
 
     if (input.converted_by_admin && (confirmMissing || paymentMissing)) {

@@ -1,6 +1,7 @@
 "use client";
 
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { formatDateTime } from "@/lib/utils/format";
 import { computeCheckout, getChannelLabel } from "@/lib/utils/compute-checkout";
 import { isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
 import { paymentEvidenceTypeLabelForTicket } from "@/lib/utils/payment-evidence-type";
@@ -114,13 +115,7 @@ const PAYMENT_STATUS_LABEL: Record<string, string> = {
   paid:    "Paid in full",
 };
 
-function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-    hour: "numeric", minute: "2-digit",
-  });
-}
+const fmtDate = formatDateTime;
 
 /** `payment_method_used` is set when balance or full payment is recorded (not deposit). */
 function finalPaymentMethodRow(

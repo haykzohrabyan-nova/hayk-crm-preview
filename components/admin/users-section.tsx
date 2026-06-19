@@ -13,6 +13,7 @@ import {
   Shield,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { relativeDays } from "@/lib/utils/format";
 import { Input } from "@/components/ui/input";
 import { EmailInput } from "@/components/ui/email-input";
 import { Badge } from "@/components/ui/badge";
@@ -99,16 +100,6 @@ function emailDeliveryToast(
   };
 }
 
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const days = Math.floor(diff / 86400000);
-  if (days === 0) return "Today";
-  if (days === 1) return "Yesterday";
-  if (days < 30) return `${days}d ago`;
-  const months = Math.floor(days / 30);
-  if (months < 12) return `${months}mo ago`;
-  return `${Math.floor(months / 12)}y ago`;
-}
 
 
 function initials(name: string | null, email: string): string {
@@ -826,7 +817,7 @@ export function UsersSection() {
                   </td>
                   {/* Joined */}
                   <td className="px-3 py-2.5 text-sm whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
-                    {relativeTime(user.created_at)}
+                    {relativeDays(user.created_at)}
                   </td>
                   {/* Actions */}
                   <td className="px-3 py-2.5">
@@ -911,7 +902,7 @@ export function UsersSection() {
                 </div>
                 <div className="flex justify-between items-center gap-2">
                   <span className="font-medium">Joined</span>
-                  <span className="normal-case tracking-normal text-xs" style={{ color: "var(--color-text-primary)" }}>{relativeTime(user.created_at)}</span>
+                  <span className="normal-case tracking-normal text-xs" style={{ color: "var(--color-text-primary)" }}>{relativeDays(user.created_at)}</span>
                 </div>
                 <div className="flex justify-between items-center gap-2">
                   <span className="font-medium">2FA</span>

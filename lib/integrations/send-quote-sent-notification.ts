@@ -4,16 +4,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { instantlySendEmail } from "./instantly-send";
 import { wrapTransactionalEmailHtml } from "./wrap-transactional-email";
 import { renderEmailTemplate } from "./render-email-template";
+import { formatDateLong } from "@/lib/utils/format";
 import { loadEmailTemplatesMap, pickEmailTemplate } from "./load-email-templates";
 import type { SendResult } from "./send-quote";
-
-function formatSentDate(): string {
-  return new Date().toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-}
 
 function firstWordOf(name: string): string {
   return name.split(/\s+/)[0] ?? name;
@@ -42,7 +35,7 @@ export async function sendQuoteSentStaffNotification(params: {
     const template = pickEmailTemplate(templates, "quote_sent_staff_notification");
 
     const salesPersonFirstName = firstWordOf(params.staffFullName || "there");
-    const sentDate = formatSentDate();
+    const sentDate = formatDateLong(new Date().toISOString());
 
     const vars = {
       salesPersonName: salesPersonFirstName,

@@ -6,6 +6,7 @@ import {
   type TicketAttribution,
 } from "@/lib/utils/reports-attribution";
 import { roundMoney } from "@/lib/utils/format";
+import { getAmountPaid } from "@/lib/utils/invoice-payment-summary";
 import {
   excludeRefundedTickets,
   isExcludedFromRevenueKpis,
@@ -133,7 +134,7 @@ export async function sumProductionReleasedValue(
     let received = 0;
     for (const t of rows) {
       const total = Number(t.quote_final_total ?? 0);
-      const paid = Number(t.payment_amount_received ?? t.deposit_amount ?? 0);
+      const paid = getAmountPaid(t);
       value += total;
       received += paid;
     }

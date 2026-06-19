@@ -25,6 +25,7 @@ import { canAdminCancelTicket } from "@/lib/utils/can-admin-cancel-ticket";
 import { cancelReasonCategoryForStatus, isOtherCancelReason } from "@/lib/utils/cancel-reason-category";
 import {
   canMarkTicketCompleted,
+  getAmountPaid,
   isTaxExemptApprovalPending,
   isTicketPaidInFull,
 } from "@/lib/utils/invoice-payment-summary";
@@ -362,7 +363,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     //      with `hasPermission(session, "orders.mark_complete")` once wired.
     } else if ((roleName === "admin" || roleName === "sales") && !isTicketPaidInFull(existing) && body.acknowledge_outstanding_balance !== true) {
       const total = Number(existing.quote_final_total ?? 0);
-      const paid = Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0);
+      const paid = getAmountPaid(existing);
       const balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
       return NextResponse.json(
         {
@@ -1435,7 +1436,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
       const newDepValue  = Number(patch.ticket_deposit_value ?? existing.ticket_deposit_value ?? 0);
       const total        = Number(patch.quote_final_total  ?? existing.quote_final_total  ?? 0);
       const currentDepositAmt = Number(existing.deposit_amount ?? 0);
-      const currentAmountReceived = Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0);
+      const currentAmountReceived = getAmountPaid(existing);
 
       let newDepositAmt: number;
       const recalcPatch: Record<string, unknown> = { updated_at: now };
@@ -1586,7 +1587,7 @@ export async function PATCH(request: NextRequest, { params }: Params) {
           require_client_confirm: existing.ticket_require_client_confirm ?? true,
           client_confirmed: !!existing.client_confirmed,
           converted_by_role: roleName,
-          payment_received: Number(existing.payment_amount_received ?? existing.deposit_amount ?? 0) > 0.01
+          payment_received: getAmountPaid(existing) > 0.01
             || !!existing.deposit_paid_at
             || !!existing.payment_paid_at,
         },
@@ -1702,7 +1703,11 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 
   if (markedCompleted) {
     const total = Number((responseTicket ?? updated)?.quote_final_total ?? existing.quote_final_total ?? 0);
-    const paid = Number((responseTicket ?? updated)?.payment_amount_received ?? existing.payment_amount_received ?? existing.deposit_amount ?? 0);
+    const effectiveTicket = responseTicket ?? updated;
+    const paid = getAmountPaid({
+      payment_amount_received: effectiveTicket?.payment_amount_received ?? existing.payment_amount_received,
+      deposit_amount: existing.deposit_amount,
+    });
     const balanceDue = Math.max(0, Math.round((total - paid) * 100) / 100);
     const completedWithBalance = balanceDue > 0.01;
 

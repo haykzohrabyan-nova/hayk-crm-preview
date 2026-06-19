@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import { formatCurrency, formatDateLong } from "@/lib/utils/format";
 import { Printer } from "lucide-react";
 import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { PublicLineItemSkusGrid, publicSkuGridItems } from "@/components/public/public-line-item-skus-grid";
@@ -73,15 +74,9 @@ interface PublicTicketDoc {
   } | null;
 }
 
-function fmt(n: number | null | undefined): string {
-  if (n == null) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-}
+const fmt = formatCurrency;
 
-function fmtDocDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-}
+const fmtDocDate = formatDateLong;
 
 function customerDisplayName(ticket: PublicTicketDoc): string {
   if (ticket.customer?.first_name || ticket.customer?.last_name) {

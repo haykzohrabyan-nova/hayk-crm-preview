@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatDate } from "@/lib/utils/format";
 import { X, AlertTriangle, Check } from "lucide-react";
 
 export interface MergeSourceCustomer {
@@ -38,10 +39,8 @@ function displayVal(val: string | null | undefined): string {
 }
 
 function fmtCustomerSince(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  const result = formatDate(iso);
+  return result === "—" ? "" : result;
 }
 
 function candidateName(c: MergeCandidate): string {

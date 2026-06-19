@@ -8,7 +8,8 @@ import {
 import type { TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { PublicQuoteDocument } from "@/components/public/public-quote-document";
 import { AddressMapLink, AddressMapText } from "@/components/public/address-map-link";
-import { computeInvoicePaymentSummary, isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { computeInvoicePaymentSummary, getAmountPaid, isPaymentEvidencePending } from "@/lib/utils/invoice-payment-summary";
+import { formatCurrency, roundMoney } from "@/lib/utils/format";
 import { companyAddressFull, mapLinkStyle, publicContactLinkStyle } from "@/lib/utils/maps-link";
 import { digitsOnly } from "@/lib/utils/phone";
 import { createClient } from "@/lib/supabase/client";
@@ -134,10 +135,7 @@ const EVIDENCE_CHANNELS = new Set(["wire", "ach", "zelle", "check"]);
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmt(n: number | null | undefined): string {
-  if (n == null) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-}
+const fmt = formatCurrency;
 
 function customerName(ticket: PublicTicket): string {
   if (ticket.customer?.first_name || ticket.customer?.last_name) {
@@ -173,9 +171,7 @@ function computeDepositDue(ticket: PublicTicket): number {
   return total;
 }
 
-function computeAmountPaid(ticket: PublicTicket): number {
-  return Math.round(Number(ticket.payment_amount_received ?? ticket.deposit_amount ?? 0) * 100) / 100;
-}
+const computeAmountPaid = (ticket: PublicTicket): number => roundMoney(getAmountPaid(ticket));
 
 function isDepositPaid(ticket: PublicTicket, depositDue: number, amountPaid: number): boolean {
   const strategy = ticket.ticket_payment_strategy ?? "full";

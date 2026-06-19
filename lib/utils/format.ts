@@ -12,6 +12,17 @@ export function formatCurrency(value: number | null | undefined): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
 }
 
+/**
+ * Like formatCurrency but returns null instead of "—" when the value is
+ * non-finite (unknown / not-a-number). Used in timeline/history sections
+ * to decide whether to render a money field at all.
+ */
+export function formatCurrencyOrNull(n: unknown): string | null {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return null;
+  return formatCurrency(v);
+}
+
 export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("en-US", {
@@ -92,9 +103,39 @@ export function displayContactName(
   return name || customer.company || "—";
 }
 
+/**
+ * Long-form date for documents and print routes (e.g. "June 19, 2026").
+ * Use formatDate for short form ("Jun 19, 2026") or formatDateTime for date + time.
+ */
+export function formatDateLong(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 /** Compact currency for dashboard KPI cards (e.g. $1.2K, $3.5M). */
 export function formatCompact(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}K`;
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+}
+
+/**
+ * Calendar-day relative label for join/created dates — uses day granularity
+ * ("Today", "Yesterday", "5d ago") rather than the minute/hour granularity
+ * of relativeTime(). Use for displaying when a user account was created.
+ */
+export function relativeDays(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const diff = Date.now() - new Date(iso).getTime();
+  const days = Math.floor(diff / 86400000);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 30) return `${days}d ago`;
+  const months = Math.floor(days / 30);
+  if (months < 12) return `${months}mo ago`;
+  return `${Math.floor(months / 12)}y ago`;
 }

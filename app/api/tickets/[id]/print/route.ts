@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { formatDateLong } from "@/lib/utils/format";
 import { fetchTicketLinesBundle, lineItemsToDisplayRows } from "@/lib/utils/ticket-line-items";
 import { formatShipToAddress } from "@/lib/utils/address";
 import { formatPhone } from "@/lib/utils/phone";
@@ -10,13 +11,7 @@ import { requireSession } from "@/lib/auth/require-session";
 import { requireTicketDetailPageAccess } from "@/lib/auth/require-page-access";
 import { canAccessTicket } from "@/lib/utils/ticket-access";
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+const fmtDate = formatDateLong;
 
 function esc(s: string | null | undefined): string {
   if (!s) return "";

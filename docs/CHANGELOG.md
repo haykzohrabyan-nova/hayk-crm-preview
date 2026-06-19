@@ -3,6 +3,84 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-19] — Fix Deposit (%) showing wrong value on edit load
+
+### Fixed
+- `components/quotes/quote-payment-config.tsx`: when the saved deposit type is `"fixed"`, `depositPctRaw` was incorrectly seeded with the hardcoded default (30%) instead of the equivalent percentage derived from the saved fixed amount ÷ quote total. Now it computes `Math.round((fixedVal / quoteTotal) * 1000) / 10` on mount so the % field always reflects the actual deposit when entering edit mode.
+
+## [2026-06-19] — Required deposit validation for Partial payment
+
+### Added
+- `components/quotes/quote-payment-config.tsx`: `depositError` prop — displays an inline red error message below the deposit fields when validation fails.
+- `components/quotes/shared/quote-form.tsx`: `depositError` prop forwarded to `QuotePaymentConfig`.
+
+### Changed
+- Deposit (%) and Deposit ($) labels now show a red `*` when Partial payment is selected, indicating they are required fields.
+- `components/quotes/new-quote-form.tsx`: Both `validateAndAdvance` (tab navigation from Quote tab) and `handleRouteToSalesClick` (Route to Sales save) now block submission and show an inline error if `ticket_deposit_value` is 0 or empty when `ticket_payment_strategy === "partial"`. The form automatically navigates to the Quote tab to surface the error.
+- Changing the payment config (strategy / deposit value) clears the deposit validation error immediately.
+
+## [2026-06-19] — Fix Deposit (%) not clearing to 0 when Deposit ($) is emptied
+
+### Fixed
+- `components/quotes/quote-payment-config.tsx` — when the Deposit ($) field is fully cleared, the `onChange` handler now immediately sets Deposit (%) to "0" instead of leaving the stale percentage. The `onBlur` handler also always syncs the percentage (including the empty-field case where the clamped value is 0), so blur-after-clear also resets the % correctly.
+
+## [2026-06-19] — Fix dark mode on expanded row line item card
+
+### Fixed
+- `components/quotes/quote-detail/detail-layout-primitives.tsx` — `DetailLineItemCard` had hardcoded `background: "#ffffff"` and `borderColor: "#e8c97a"`; replaced with `var(--color-surface)` and `var(--color-accent)` so the card respects dark mode in the list-page expanded row preview
+
+## [2026-06-19] — Fix TypeScript build errors introduced by previous sessions
+
+### Fixed
+- `lib/utils/log-ticket-payment-recorded.ts` — added `"staff_cash_collect_on_complete"` to the `via` union type; the balance-payment logging added in the mark-complete flow used this value but the type was never extended, causing a TS2322 error
+- `components/quotes/shared/sku-row.tsx` — fixed TS2322 on the finishings `options` array by converting `.concat()` to array spread and annotating the fallback literals with `as keyof QuoteSku` + `satisfies`; TypeScript was widening `key` to `string` through the ternary/concat chain
+
+## [2026-06-19] — Third-pass deduplication audit — zero remaining duplicates
+
+### Added
+- `lib/utils/format.ts` — added `formatCurrencyOrNull(n: unknown): string | null` for timeline/history sections that need to omit absent money fields rather than show "—"
+
+### Changed
+- `lib/utils/ticket-math.ts` — removed own `Intl.NumberFormat` implementation of `formatCurrency`; now re-exports from `lib/utils/format` (single source of truth for all USD formatting)
+- `components/quotes/quote-detail/history-section.tsx`, `lib/utils/ticket-lifecycle-timeline.ts` — removed identical local `fmtMoney` implementations; both now import `formatCurrencyOrNull` from `lib/utils/format`
+- `components/ui/stripe-evidence-panel.tsx` — removed local `Intl.NumberFormat` in `formatCents`; now uses `formatCurrency(cents / 100)` from `lib/utils/format`
+- `lib/integrations/email-format.ts` — removed own `Intl.NumberFormat`; `fmtEmailCurrency` now delegates to `formatCurrency` for formatting while preserving its distinct empty-string null behavior
+- `components/orders/payments-page.tsx` — removed thin `fmt` wrapper that re-called `formatCurrency`; all 13 call sites now call `formatCurrency` directly
+- `app/(public)/q/[token]/page.tsx` — removed local `computeAmountPaid`; replaced with `roundMoney(getAmountPaid(ticket))`
+- `app/api/tickets/[id]/route.ts` — replaced last remaining inline `payment_amount_received ?? … deposit_amount` chain (line 1706) with `getAmountPaid()`
+- `components/public/public-quote-document.tsx` — removed local `fmtDocDate`; now imports `formatDateLong`
+- `components/crm/merge-customer-modal.tsx` — removed inline `toLocaleDateString` in `fmtCustomerSince`; now delegates to `formatDate`, maps "—" to `""` per the component's contract
+- `lib/integrations/send-quote-sent-notification.ts` — removed local `formatSentDate()`; call site now uses `formatDateLong(new Date().toISOString())`
+- `lib/utils/get-period-start.ts` — removed inline `fmt` closure in `formatPeriodRange`; now uses `formatDate` import
+- `lib/utils/reports-date-range.ts` — removed inline `fmt` closure in `formatReportDateRange`; now uses `formatDate` import
+- `components/reports/reports-filters-modal.tsx` — removed inline `toLocaleDateString` in `reportsTimeFilterLabel`; now uses `formatDate` import
+
+## [2026-06-19] — Second-pass deduplication audit
+
+### Added
+- `lib/utils/format.ts` — added `formatDateLong()` (month: "long", no time) for PDF and print routes; replaces two identical local `fmtDate` functions
+
+### Changed
+- `lib/pdf/invoice-pdf.tsx`, `app/api/tickets/[id]/print/route.ts` — removed local `fmtDate`; now import `formatDateLong` from `lib/utils/format`
+- `app/(public)/q/[token]/page.tsx` — removed local `fmt`; now imports `formatCurrency` from `lib/utils/format`
+- `app/api/tickets/[id]/route.ts` — replaced 3 inline `payment_amount_received ?? deposit_amount ?? 0` chains with `getAmountPaid()`
+- `components/quotes/quote-detail.tsx` — replaced inline fallback chain with `getAmountPaid()`
+- `lib/utils/compute-checkout.ts` — replaced inline `fmt` closure in `describeGatePreview` with `formatCurrency` import
+
+## [2026-06-19] — Eliminate duplicated utility code across the codebase
+
+### Added
+- `lib/utils/validate-quote-skus.ts` — new `validateLineItems()` helper; replaces two identical in-component validation blocks in `new-quote-form.tsx`
+- `lib/utils/format.ts` — added `relativeDays()` for calendar-day relative labels (Today / Yesterday / Nd ago) and exported `formatCompact` is now the single source for compact currency in dashboards
+
+### Changed
+- `lib/utils/invoice-payment-summary.ts` — added `getAmountPaid()` helper that replaces the repeated `payment_amount_received ?? deposit_amount ?? 0` fallback chain in 5 utility files (`order-list-status.ts`, `manual-convert-meta.ts`, `dashboard-metrics.ts`, `sdr-dashboard-metrics.ts`, `maybe-convert-quote-to-order.ts`)
+- `components/admin/users-section.tsx` — removed local `relativeTime`; now imports `relativeDays` from `lib/utils/format`
+- `components/sales/sales-dashboard.tsx`, `sdr-dashboard.tsx`, `components/admin/admin-dashboard.tsx` — removed local `formatCurrency` wrapper; now use `formatCompact` from `lib/utils/format`
+- `components/quotes/quote-payment-config.tsx`, `components/public/public-quote-document.tsx`, `components/public/public-shipping-addresses.tsx` — removed local `fmt` / `fmtUsd` wrappers; now import `formatCurrency` from `lib/utils/format`
+- `components/quotes/quote-detail/history-section.tsx` — `fmtMoney` now delegates to `formatCurrency` instead of inlining `Intl.NumberFormat`
+- `components/quotes/quote-detail/order-payment-summary.tsx` — removed local `fmtDate`; now imports `formatDateTime` from `lib/utils/format`
+
 ## [2026-06-19] — Log balance payment collected on mark-complete modal
 
 ### Fixed

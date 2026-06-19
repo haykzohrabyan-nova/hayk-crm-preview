@@ -1,6 +1,7 @@
 "use client";
 
 import { ExternalLink } from "lucide-react";
+import { formatCurrency } from "@/lib/utils/format";
 import { stripePaymentDashboardUrl } from "@/lib/stripe/dashboard-url";
 import { OpenInStripeLink } from "@/components/ui/open-in-stripe-link";
 
@@ -24,10 +25,8 @@ function formatCard(brand: string | null | undefined, last4: string | null | und
   return last4 ? `${b} •••• ${last4}` : b;
 }
 
-function formatCents(cents: number | null | undefined): string {
-  if (cents == null) return "—";
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
-}
+const formatCents = (cents: number | null | undefined): string =>
+  cents == null ? "—" : formatCurrency(cents / 100);
 
 function IdRow({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;

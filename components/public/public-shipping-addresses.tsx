@@ -1,6 +1,7 @@
 "use client";
 
 import { formatShipToAddress } from "@/lib/utils/address";
+import { formatCurrency } from "@/lib/utils/format";
 import {
   resolveTicketShippingDestinationsForDisplay,
   type ShippingDestinationDisplayRow,
@@ -11,9 +12,7 @@ const NAVY = "#1B2B4B";
 const MUTED = "#6B7280";
 const TEXT = "#1F2937";
 
-function fmtUsd(n: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-}
+const fmtUsd = (n: number) => formatCurrency(n);
 
 function AddressLines({ row }: { row: ShippingDestinationDisplayRow }) {
   const formatted = formatShipToAddress(row);

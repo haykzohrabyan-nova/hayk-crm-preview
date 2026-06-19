@@ -53,7 +53,9 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 | Ticket detail | `components/quotes/quote-detail.tsx` | Single component; `context` prop for `quote` \| `order` \| `payment` \| `completed` (`production` legacy in types; route redirects to `order`) |
 | Detail sections | `components/quotes/quote-detail/*`, `components/orders/*-detail-overview.tsx` | Extract shared blocks here |
 | Shared form blocks | `components/quotes/shared/` | Used by new-quote-form + quote-detail edit mode; includes `shipping-fulfillment-section.tsx`, `quote-form.tsx` |
-| Pure helpers | `lib/utils/format.ts`, `ticket-math.ts`, etc. | **Never copy** `relativeTime` / date formatters into components |
+| Pure helpers | `lib/utils/format.ts` | **Single source of truth** for all display formatting — `formatCurrency`, `formatDate`, `formatDateTime`, `formatDateLong`, `relativeTime`, `relativeDays`, `formatCompact`, `roundMoney`. **Never copy or re-implement these in components.** |
+| Line item validation | `lib/utils/validate-quote-skus.ts` | `validateLineItems()` — canonical 6-field validation; import from here, never duplicate inline |
+| Amount paid | `lib/utils/invoice-payment-summary.ts` | `getAmountPaid(ticket)` — canonical `payment_amount_received ?? deposit_amount ?? 0`; never inline this chain |
 | Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider, global-loading-provider, **error-boundary** |
 | Public customer UI | `components/public/` | `/q/[token]` only |
 

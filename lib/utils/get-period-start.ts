@@ -1,4 +1,5 @@
 import { endOfLocalDay } from "@/lib/utils/reports-date-range";
+import { formatDate } from "@/lib/utils/format";
 
 /** Shared period boundaries for dashboard and reports KPIs. */
 export function getPeriodStart(period: string): Date {
@@ -41,9 +42,5 @@ export const PERIOD_LABELS: Record<string, string> = {
 
 /** Human-readable range for the active period filter (start → today). */
 export function formatPeriodRange(periodStartIso: string): string {
-  const start = new Date(periodStartIso);
-  const end = new Date();
-  const fmt = (d: Date) =>
-    d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-  return `${fmt(start)} – ${fmt(end)}`;
+  return `${formatDate(periodStartIso)} – ${formatDate(new Date().toISOString())}`;
 }

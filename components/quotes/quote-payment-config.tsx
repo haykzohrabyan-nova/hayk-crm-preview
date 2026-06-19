@@ -6,6 +6,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { DatePicker } from "@/components/ui/date-picker";
 import { digitsOnly } from "@/lib/utils/phone";
+import { formatCurrency } from "@/lib/utils/format";
 
 // ── Payment channels (matches pulse-quote-payment.js PAY_CHANNELS) ────────────
 
@@ -91,6 +92,8 @@ interface Props {
    * automatically recalculate and update the recorded payment to match.
    */
   recordedDepositAmount?: number | null;
+  /** Validation error for the deposit value — shown inline below the deposit fields. */
+  depositError?: string;
 }
 
 function quoteDestFromCustomer(
@@ -134,9 +137,7 @@ function computeDeposit(total: number, type: "percent" | "fixed", value: number)
   return Math.min(Math.round(value * 100) / 100, total);
 }
 
-function fmt(n: number): string {
-  return n.toLocaleString("en-US", { style: "currency", currency: "USD" });
-}
+const fmt = (n: number) => formatCurrency(n);
 
 function buildGatePreview(cfg: TicketPaymentDraft, quoteTotal: number): string {
   const needConfirm = cfg.ticket_require_client_confirm !== false;
@@ -200,6 +201,7 @@ export default function QuotePaymentConfig({
   customerPhone = "",
   customerEmail = "",
   recordedDepositAmount,
+  depositError,
 }: Props) {
   const [cfg, setCfg] = useState<TicketPaymentDraft>({
     ...PAYMENT_CONFIG_DEFAULTS,
@@ -232,16 +234,21 @@ export default function QuotePaymentConfig({
   }, []); // intentionally runs only on mount
 
   // Raw string states for deposit inputs — prevents leading-zero display issues.
-  // When the saved type is "fixed", seed the $ field with the saved value and keep
-  // the % field at its default; otherwise seed % and leave $ empty.
-  const [depositPctRaw, setDepositPctRaw] = useState(
-    initialConfig?.ticket_deposit_type === "fixed"
-      ? String(PAYMENT_CONFIG_DEFAULTS.ticket_deposit_value)
-      : String(initialConfig?.ticket_deposit_value ?? PAYMENT_CONFIG_DEFAULTS.ticket_deposit_value),
-  );
+  // When the saved type is "fixed", derive the displayed % from the saved fixed amount
+  // and the current quote total so the two fields stay in sync on load.
+  const [depositPctRaw, setDepositPctRaw] = useState(() => {
+    if (initialConfig?.ticket_deposit_type === "fixed") {
+      const fixedVal = initialConfig?.ticket_deposit_value ?? 0;
+      if (quoteTotal > 0) {
+        return String(Math.round((fixedVal / quoteTotal) * 1000) / 10);
+      }
+      return "0";
+    }
+    return String(initialConfig?.ticket_deposit_value ?? PAYMENT_CONFIG_DEFAULTS.ticket_deposit_value);
+  });
   const [depositFixedRaw, setDepositFixedRaw] = useState(
     initialConfig?.ticket_deposit_type === "fixed"
-      ? String(initialConfig?.ticket_deposit_value ?? "")
+      ? String(initialConfig.ticket_deposit_value ?? "")
       : "",
   );
 
@@ -512,7 +519,7 @@ export default function QuotePaymentConfig({
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>
-                  Deposit (%)
+                  Deposit (%) <span style={{ color: "var(--color-danger)" }}>*</span>
                 </label>
                 <input
                   type="text"
@@ -542,7 +549,7 @@ export default function QuotePaymentConfig({
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1" style={{ color: "var(--color-text-muted)" }}>
-                  Deposit ($)
+                  Deposit ($) <span style={{ color: "var(--color-danger)" }}>*</span>
                 </label>
                 <input
                   type="text"
@@ -571,9 +578,13 @@ export default function QuotePaymentConfig({
                       const clamped = Math.min(Math.max(n, 0), quoteTotal);
                       patch({ ticket_deposit_type: "fixed", ticket_deposit_value: clamped });
                       if (quoteTotal > 0) {
-                        const pct = Math.round((clamped / quoteTotal) * 1000) / 10;
-                        setDepositPctRaw(String(pct));
+                        setDepositPctRaw(String(Math.round((clamped / quoteTotal) * 1000) / 10));
+                      } else {
+                        setDepositPctRaw("0");
                       }
+                    } else {
+                      // Field cleared — immediately reset % so it stays in sync
+                      setDepositPctRaw("0");
                     }
                   }}
                   onBlur={() => {
@@ -581,12 +592,12 @@ export default function QuotePaymentConfig({
                     const clamped = isNaN(n) ? 0 : Math.min(Math.max(n, 0), quoteTotal);
                     // Snap display value back to clamped amount if user typed over the total
                     setDepositFixedRaw(isNaN(n) ? "" : String(clamped));
-                    if (!isNaN(n)) {
-                      patch({ ticket_deposit_type: "fixed", ticket_deposit_value: clamped });
-                      if (quoteTotal > 0) {
-                        const pct = Math.round((clamped / quoteTotal) * 1000) / 10;
-                        setDepositPctRaw(String(pct));
-                      }
+                    patch({ ticket_deposit_type: "fixed", ticket_deposit_value: clamped });
+                    // Always sync % — when field is cleared, clamped=0 so % becomes 0
+                    if (quoteTotal > 0) {
+                      setDepositPctRaw(String(Math.round((clamped / quoteTotal) * 1000) / 10));
+                    } else {
+                      setDepositPctRaw("0");
                     }
                   }}
                   style={field}
@@ -609,6 +620,11 @@ export default function QuotePaymentConfig({
                 </div>
               </div>
             </div>
+            {depositError && (
+              <p className="mt-2 text-xs font-medium" style={{ color: "var(--color-danger)" }}>
+                {depositError}
+              </p>
+            )}
           </div>
 
           {/* Deposit collection method */}

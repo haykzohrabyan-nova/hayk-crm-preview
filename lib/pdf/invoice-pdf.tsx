@@ -8,6 +8,7 @@ import {
   StyleSheet,
 } from "@react-pdf/renderer";
 import { formatCurrency } from "@/lib/utils/ticket-math";
+import { formatDateLong } from "@/lib/utils/format";
 import type { TicketFileMeta, TicketLineDisplayRow } from "@/lib/utils/ticket-line-items";
 import { formatShipToAddress } from "@/lib/utils/address";
 import { formatTicketLineVariantLabel } from "@/lib/utils/format-ticket-line-variants";
@@ -312,13 +313,7 @@ export interface InvoicePDFProps {
   hidePricing?: boolean;
 }
 
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
+const fmtDate = formatDateLong;
 
 function fileLabel(file?: TicketFileMeta | null): string | null {
   if (!file?.file_name) return null;

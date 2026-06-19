@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CalendarRange, X } from "lucide-react";
 import { DatePicker } from "@/components/ui/date-picker";
 import { PERIOD_LABELS } from "@/lib/utils/get-period-start";
+import { formatDate } from "@/lib/utils/format";
 import {
   defaultCustomToDate,
   parseReportDateInput,
@@ -28,11 +29,11 @@ interface ReportsFiltersModalProps {
 
 export function reportsTimeFilterLabel(filter: ReportsTimeFilter): string {
   if (filter.useCustomRange && filter.dateFrom && filter.dateTo) {
-    const fmt = (s: string) => {
+    const fmtInput = (s: string) => {
       const d = parseReportDateInput(s);
-      return d?.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) ?? s;
+      return d ? formatDate(d.toISOString()) : s;
     };
-    return `${fmt(filter.dateFrom)} – ${fmt(filter.dateTo)}`;
+    return `${fmtInput(filter.dateFrom)} – ${fmtInput(filter.dateTo)}`;
   }
   return PERIOD_LABELS[filter.period];
 }

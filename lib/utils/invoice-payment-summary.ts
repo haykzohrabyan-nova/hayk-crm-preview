@@ -48,6 +48,16 @@ export {
   canMarkTicketCompleted,
 } from "@/lib/utils/tax-exempt-approval";
 
+/**
+ * Amount already collected — prefers payment_amount_received, falls back to deposit_amount.
+ * Use this instead of repeating the fallback chain inline across utility files.
+ */
+export function getAmountPaid(
+  ticket: Pick<TicketPaymentFields, "payment_amount_received" | "deposit_amount">,
+): number {
+  return Number(ticket.payment_amount_received ?? ticket.deposit_amount ?? 0);
+}
+
 export function computeDepositDueFromTicket(ticket: TicketPaymentFields): number {
   const total    = Number(ticket.quote_final_total ?? 0);
   const strategy = ticket.ticket_payment_strategy ?? "full";

@@ -1,5 +1,6 @@
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { roundMoney } from "@/lib/utils/format";
+import { getAmountPaid } from "@/lib/utils/invoice-payment-summary";
 import { leadIdsRoutedToSales } from "@/lib/utils/lead-sdr-won-filter";
 import {
   excludeRefundedTickets,
@@ -85,9 +86,7 @@ async function countLeadsCreated(
   return count ?? 0;
 }
 
-function paidAmount(ticket: SelfHandledTicket): number {
-  return Number(ticket.payment_amount_received ?? ticket.deposit_amount ?? 0);
-}
+const paidAmount = getAmountPaid;
 
 /** Quotes the SDR created and closed themselves — not routed to Sales. */
 async function filterSelfHandledTickets(
