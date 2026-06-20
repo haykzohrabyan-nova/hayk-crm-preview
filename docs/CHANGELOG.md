@@ -3,6 +3,16 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-19] — Truncate long contact names in Orders list
+
+### Changed
+- `components/orders/orders-page.tsx`: Contact names longer than 20 characters are now truncated to `20 chars + …` in both the mobile card and the desktop table. Hovering shows the full name via the native `title` tooltip.
+
+## [2026-06-19] — Fix recurring hydration error (list page cache)
+
+### Fixed
+- `hooks/use-stale-while-revalidate.ts`: `useState` initializers were reading directly from the in-memory `list-page-cache` on mount. On the server (Vercel SSR) the cache is always empty → skeleton HTML. On the client, returning users had populated cache → full row HTML. React's hydration comparison saw mismatched DOM → threw "Hydration failed" on every page using this hook (`/quotes`, `/orders`, `/leads`, etc.). Fixed by initializing `data = null` and `loading = true` unconditionally; the existing `useLayoutEffect` that runs before paint already restores cached data, so returning-visitor instant navigation is fully preserved with no visible flash.
+
 ## [2026-06-19] — Fix hydration error on /quotes (and all list pages)
 
 ### Fixed

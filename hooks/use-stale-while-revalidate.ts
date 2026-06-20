@@ -43,8 +43,12 @@ export function useStaleWhileRevalidate<T>(
   const realtimeDelay = options?.realtimeDelay ?? REALTIME_REFETCH_MS;
   const events = options?.events ?? [];
 
-  const [data, setData] = useState<T | null>(() => getListPageCache<T>(cacheKey));
-  const [loading, setLoading] = useState(() => getListPageCache<T>(cacheKey) == null);
+  // SSR-safe: always start with null/true so the server skeleton matches the
+  // client's initial render. The useLayoutEffect below restores any cached
+  // data before the browser paints, so returning visitors still see instant
+  // data with no visible flash.
+  const [data, setData] = useState<T | null>(null);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetcherRef = useRef(fetcher);

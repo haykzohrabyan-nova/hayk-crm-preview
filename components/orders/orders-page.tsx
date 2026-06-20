@@ -263,9 +263,18 @@ function OrderMobileCard({
           ) : (
             <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>Draft</span>
           )}
-          <p className="font-semibold text-sm mt-1.5 truncate" style={{ color: "var(--color-text-primary)" }}>
-            {displayContactName(o.customer, { preferPerson: true })}
-          </p>
+          {(() => {
+            const n = displayContactName(o.customer, { preferPerson: true });
+            return (
+              <p
+                className="font-semibold text-sm mt-1.5"
+                style={{ color: "var(--color-text-primary)" }}
+                title={n.length > 20 ? n : undefined}
+              >
+                {n.length > 20 ? `${n.slice(0, 20)}…` : n}
+              </p>
+            );
+          })()}
           {o.customer?.company && (
             <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
           )}
@@ -511,7 +520,18 @@ function OrdersTableDesktop({
                 )}
               </td>
               <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3 overflow-hidden" style={cellStyle}>
-                <p className="lg:text-xs xl:text-sm font-medium truncate" style={{ color: "var(--color-text-primary)" }}>{displayContactName(o.customer, { preferPerson: true })}</p>
+                {(() => {
+                  const n = displayContactName(o.customer, { preferPerson: true });
+                  return (
+                    <p
+                      className="lg:text-xs xl:text-sm font-medium"
+                      style={{ color: "var(--color-text-primary)" }}
+                      title={n.length > 20 ? n : undefined}
+                    >
+                      {n.length > 20 ? `${n.slice(0, 20)}…` : n}
+                    </p>
+                  );
+                })()}
                 {o.customer?.company && (
                   <p className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
                 )}

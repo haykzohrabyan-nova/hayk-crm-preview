@@ -1213,6 +1213,8 @@ The same component (`components/quotes/quote-detail.tsx`) handles all detail pag
 
 **Order # column:** Strips `ORD-` prefix for display — shows `2026-024` instead of `ORD-2026-024`. Plain monospace text, no badge styling.
 
+**Contact name truncation:** `displayContactName()` output is capped at 20 characters. Names longer than 20 chars render as `first 20 chars + …`; the native `title` attribute carries the full name so hovering shows it in full. Both the mobile card and the desktop table `<td>` apply this rule. The `title` attribute is omitted entirely for names ≤ 20 chars.
+
 **Status column (`status_tone` → display label):**
 
 | Tone | Table display | Full label (hover `title`) |
