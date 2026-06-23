@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-23] — Industry required in Add Customer modal
+
+### Changed
+- `components/crm/add-customer-modal.tsx` — Industry is now a required field; saving is blocked with an inline error message if no industry is selected.
+
 ## [2026-06-22] — Designer field on quote line items (webhook + DB save)
 
 ### Added

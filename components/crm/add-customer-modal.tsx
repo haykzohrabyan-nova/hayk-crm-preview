@@ -73,6 +73,7 @@ export function AddCustomerModal({
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [websiteError, setWebsiteError] = useState<string | null>(null);
+  const [industryError, setIndustryError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -83,36 +84,34 @@ export function AddCustomerModal({
     setPhoneError(null);
     setEmailError(null);
     setWebsiteError(null);
+    setIndustryError(null);
     setError(null);
     setSaving(false);
   }, [open]);
 
   if (!open) return null;
 
-  function failField(
-    anchor: string,
-    setFieldError: (msg: string | null) => void,
-    message: string,
-  ) {
-    setFieldError(message);
-    scrollToFormField(formRef, anchor);
-  }
-
   async function handleSave() {
     setError(null);
-    if (!form.phone.trim()) {
-      failField("phone", setPhoneError, "Phone is required.");
+
+    const pErr = !form.phone.trim() ? "Phone is required." : validatePhone(form.phone);
+    const eErr = form.email.trim() ? validateEmail(form.email) : null;
+    const iErr = !form.industry ? "Industry is required." : null;
+    const wErr = validateWebsite(form.website);
+
+    setPhoneError(pErr);
+    setEmailError(eErr);
+    setIndustryError(iErr);
+    setWebsiteError(wErr);
+
+    if (pErr || eErr || iErr || wErr) {
+      // Scroll to the first field with an error (top-to-bottom order)
+      if (pErr) scrollToFormField(formRef, "phone");
+      else if (eErr) scrollToFormField(formRef, "email");
+      else if (iErr) scrollToFormField(formRef, "industry");
+      else if (wErr) scrollToFormField(formRef, "website");
       return;
     }
-    const pErr = validatePhone(form.phone);
-    const eErr = form.email.trim() ? validateEmail(form.email) : null;
-    const wErr = validateWebsite(form.website);
-    setPhoneError(null);
-    setEmailError(null);
-    setWebsiteError(null);
-    if (pErr) { failField("phone", setPhoneError, pErr); return; }
-    if (eErr) { failField("email", setEmailError, eErr); return; }
-    if (wErr) { failField("website", setWebsiteError, wErr); return; }
 
     setSaving(true);
     try {
@@ -229,20 +228,36 @@ export function AddCustomerModal({
               placeholder="Company name"
             />
           </div>
-          <div>
-            <label className={labelCls} style={labelStyle}>Industry</label>
-            <Select value={form.industry} onValueChange={(v) => setForm((f) => ({ ...f, industry: v ?? "" }))}>
-              <SelectTrigger className="h-9 text-sm w-full">
-                <SelectValue placeholder="Select industry…">
-                  {industries.find((i) => i.value === form.industry)?.label ?? "Select industry…"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {industries.map((i) => (
-                  <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div data-field-anchor="industry">
+            <label className={labelCls} style={labelStyle}>Industry *</label>
+            <div
+              className="rounded-lg"
+              style={industryError ? { outline: "1.5px solid var(--color-danger)", outlineOffset: "0px", borderRadius: "8px" } : undefined}
+            >
+              <Select
+                value={form.industry}
+                onValueChange={(v) => {
+                  setForm((f) => ({ ...f, industry: v ?? "" }));
+                  setIndustryError(null);
+                }}
+              >
+                <SelectTrigger className="h-9 text-sm w-full" aria-invalid={!!industryError}>
+                  <SelectValue placeholder="Select industry…">
+                    {industries.find((i) => i.value === form.industry)?.label ?? "Select industry…"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {industries.map((i) => (
+                    <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {industryError && (
+              <p className="mt-1.5 text-[12px] font-medium" style={{ color: "var(--color-danger)" }} role="alert">
+                {industryError}
+              </p>
+            )}
           </div>
           <div>
             <label className={labelCls} style={labelStyle}>Decision Maker?</label>
