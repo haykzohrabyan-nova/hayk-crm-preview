@@ -712,6 +712,7 @@ die_cut boolean
 spot_uv boolean
 foil boolean
 perforation boolean
+designer text default 'Unassigned'   -- assigned designer name (managed via Admin → Designers)
 created_at timestamptz
 ```
 
@@ -1291,7 +1292,7 @@ All computed totals are persisted on `job_tickets`: `quote_subtotal`, `quote_pre
 ### UI components
 
 - **`LineItemsForm`** — wraps edit (`SkuRow` per line) and read-only (`DetailLineItemCard` + `AdditionalSkusOverviewList`) modes
-- **`SkuRow`** — one editable line: product type, material, dimensions, quantity, unit price, finishings, file attach
+- **`SkuRow`** — one editable line: product type, material, dimensions, quantity, unit price, finishings, designer, file attach
 - **`DetailLineItemCard`** — read-only card: name+specs left, price right, optional thumbnail panel on far right (160px wide, fills card height). Background `var(--color-surface)`, border `var(--color-accent)` — fully dark-mode aware.
 - **`AdditionalSkusOverviewList`** — renders variant sub-rows inside the card footer; each variant shows its thumbnail on the right (100px panel)
 - **`LineItemFileThumbnail`** — clickable image/PDF preview that opens `LineItemFilePreviewModal`; supports `fill` mode for full-height card panel

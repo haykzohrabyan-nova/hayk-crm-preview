@@ -41,6 +41,7 @@ const READ_ONLY_SKU_LOOKUPS: SkuLookups = {
   sides: [],
   roll_direction: [],
   finishing: [],
+  designer: [],
 };
 
 const noop = () => {};

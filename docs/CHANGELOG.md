@@ -3,6 +3,24 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-22] — Designer field on quote line items (webhook + DB save)
+
+### Added
+- `supabase/patches/2026-06-22-designer-field.sql` — Adds `designer text not null default 'Unassigned'` column to `ticket_line_items`; seeds `lookup_values` with `designer` category (Unassigned, Har Unusyan, Marianna, Christopher, Taron, Hayk).
+- `components/quotes/shared/sku-row.tsx` — Designer dropdown below Add-on Finishings on each line item row; falls back to hardcoded names if DB lookups are empty.
+- Admin panel (`/admin/settings/dropdowns`) now shows a "Designers" category under Order / Quote for managing designer names.
+
+### Changed
+- `lib/utils/ticket-math.ts` — `QuoteSku` gains `designer?: string`.
+- `components/quotes/shared/types.ts` — `SkuLookups` gains `designer: LookupOption[]`.
+- `lib/utils/ticket-line-items.ts` — `LineItemInput` and `TicketLineItemRow` gain `designer`; all save/load/convert functions updated.
+- `components/quotes/shared/utils.ts` — `emptySkuRow()` defaults `designer` to `"Unassigned"`; `bundleToFormLineItems` maps `designer` from DB rows.
+- `app/api/quotes/form-bootstrap/route.ts` — `designer` added to fetched lookup categories.
+- `lib/utils/ticket-form-bootstrap-server-cache.ts` + `lib/client/ticket-form-bootstrap-cache.ts` — `designer` included in `EDIT_LOOKUP_CATEGORIES`.
+- `app/api/admin/lookups/route.ts` — `designer` added to `CATEGORY_META` so it appears in the admin dropdowns panel.
+- `supabase/schema.sql` — `designer` column and seed values added.
+- `lib/utils/send-order-webhook.ts` — `designer` included in the webhook `items[]` payload per line item (sent as `null` when "Unassigned" so the external system can ignore it cleanly).
+
 ## [2026-06-19] — Truncate long contact names in Orders list
 
 ### Changed

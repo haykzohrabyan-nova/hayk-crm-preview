@@ -29,6 +29,7 @@ export const CATEGORY_META: Record<string, { label: string; section: "leads" | "
   color_mode:       { label: "Color Mode",            section: "order" },
   sides:            { label: "Sides",                  section: "order" },
   roll_direction:   { label: "Roll Direction",         section: "order" },
+  designer:         { label: "Designers",              section: "order" },
 };
 
 // GET /api/admin/lookups — all categories with their values

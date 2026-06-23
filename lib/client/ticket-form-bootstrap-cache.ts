@@ -67,6 +67,7 @@ const EDIT_LOOKUP_CATEGORIES = [
   "sides",
   "roll_direction",
   "finishing",
+  "designer",
   "ticket_priority",
   "quote_channel",
   "ticket_payment",

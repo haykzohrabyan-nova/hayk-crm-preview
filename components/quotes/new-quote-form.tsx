@@ -305,7 +305,7 @@ export default function NewQuoteForm() {
   }, [fetchLead]);
 
   const [skuLookups, setSkuLookups] = useState<SkuLookups>({
-    lamination: [], color_mode: [], sides: [], roll_direction: [], finishing: [],
+    lamination: [], color_mode: [], sides: [], roll_direction: [], finishing: [], designer: [],
   });
   const [quoteLookups, setQuoteLookups] = useState<QuoteLookups>({
     ticket_priority: [], quote_channel: [], ticket_payment: [], follow_up_freq: [],
@@ -340,6 +340,7 @@ export default function NewQuoteForm() {
         sides: lookups.sides ?? [],
         roll_direction: lookups.roll_direction ?? [],
         finishing: lookups.finishing ?? [],
+        designer: lookups.designer ?? [],
       });
       setQuoteLookups({
         ticket_priority: lookups.ticket_priority ?? [],

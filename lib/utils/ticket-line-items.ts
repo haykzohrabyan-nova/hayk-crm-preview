@@ -32,6 +32,7 @@ export interface LineItemInput {
   foil?: boolean;
   perforation?: boolean;
   comment?: string;
+  designer?: string;
   variants?: LineItemVariantInput[];
 }
 
@@ -76,6 +77,7 @@ export interface TicketLineItemRow {
   foil: boolean;
   perforation: boolean;
   comment: string | null;
+  designer: string | null;
   variants: TicketLineVariantRow[];
 }
 
@@ -139,6 +141,7 @@ export function lineItemInputToRowPayload(
     foil: boolVal(line.foil),
     perforation: boolVal(line.perforation),
     comment: line.comment?.trim() || null,
+    designer: line.designer?.trim() || "Unassigned",
     updated_at: new Date().toISOString(),
   };
 }
@@ -223,6 +226,7 @@ export function lineItemsToQuoteSkuRows(lines: TicketLineItemRow[]): QuoteSku[] 
     foil: row.foil,
     perforation: row.perforation,
     comment: row.comment ?? undefined,
+    designer: row.designer ?? undefined,
   }));
 }
 
@@ -248,6 +252,7 @@ export function lineItemInputsToQuoteSkuRows(lines: LineItemInput[]): QuoteSku[]
       foil: line.foil,
       perforation: line.perforation,
       comment: line.comment,
+      designer: line.designer,
     };
   });
 }
@@ -281,6 +286,7 @@ export function bundleToLineItemInputs(lines: TicketLineItemRow[]): LineItemInpu
     foil: row.foil,
     perforation: row.perforation,
     comment: row.comment ?? undefined,
+    designer: row.designer ?? undefined,
     variants: row.variants.map((v) => ({
       id: v.id,
       name: v.name,
@@ -382,6 +388,7 @@ function assembleBundle(
       foil: boolVal(row.foil),
       perforation: boolVal(row.perforation),
       comment: row.comment != null ? String(row.comment) : null,
+      designer: row.designer != null ? String(row.designer) : null,
       file: mapFileMeta(filesByLine.get(String(row.id))),
       variants: variantsByLine.get(String(row.id)) ?? [],
     }))
@@ -389,7 +396,7 @@ function assembleBundle(
 }
 
 const LINE_ITEM_PREVIEW_COLUMNS =
-  "id, ticket_id, sort_order, product_type, description, material, lamination, color_mode, sides, roll_direction, width, height, quantity, unit_price, line_total, design_required, die_cut, spot_uv, foil, perforation, comment";
+  "id, ticket_id, sort_order, product_type, description, material, lamination, color_mode, sides, roll_direction, width, height, quantity, unit_price, line_total, design_required, die_cut, spot_uv, foil, perforation, comment, designer";
 
 const LINE_VARIANT_PREVIEW_COLUMNS =
   "id, line_item_id, ticket_id, sort_order, name, quantity";

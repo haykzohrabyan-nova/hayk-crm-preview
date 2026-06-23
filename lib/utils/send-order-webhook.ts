@@ -58,6 +58,7 @@ interface LineItem {
   perforation: boolean;
   die_cut: boolean;
   comment: string | null;
+  designer: string | null;
   sort_order: number;
   ticket_line_variants: Array<{ id: string; name: string; quantity: number }>;
 }
@@ -152,7 +153,7 @@ export async function sendOrderWebhook(
         id, sort_order, product_type, description,
         material, lamination, color_mode, sides,
         width, height, quantity,
-        spot_uv, foil, perforation, die_cut, comment,
+        spot_uv, foil, perforation, die_cut, comment, designer,
         ticket_line_variants ( id, name, quantity )
       )
     `)
@@ -208,6 +209,7 @@ export async function sendOrderWebhook(
     sides: string | null;
     color: string | null;
     order_qty: number | null;
+    designer: string | null;
     skus: WebhookSku[];
   };
 
@@ -224,6 +226,7 @@ export async function sendOrderWebhook(
       sides:         line.sides ?? null,
       color:         line.color_mode ?? null,
       order_qty:     line.quantity != null ? Number(line.quantity) : null,
+      designer:      line.designer && line.designer !== "Unassigned" ? line.designer : null,
       skus:          lineSkus,
     });
   }

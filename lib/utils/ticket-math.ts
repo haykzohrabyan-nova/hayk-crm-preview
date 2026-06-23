@@ -23,6 +23,7 @@ export interface QuoteSku {
   foil?: boolean;
   perforation?: boolean;
   comment?: string;
+  designer?: string;
 }
 
 export interface PricingInputs {

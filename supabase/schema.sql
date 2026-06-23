@@ -378,6 +378,7 @@ create table if not exists public.ticket_line_items (
   foil             boolean     not null default false,
   perforation      boolean     not null default false,
   comment          text,
+  designer         text        not null default 'Unassigned',
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now()
 );
@@ -1929,6 +1930,14 @@ insert into public.lookup_values (category, value, label, sort_order) values
   ('finishing', 'spot_uv',     'Spot UV',     0),
   ('finishing', 'foil',        'Foil',        1),
   ('finishing', 'perforation', 'Perforation', 2),
+
+  -- ── designer (assigned designer per line item) ─────────────────────────────
+  ('designer', 'unassigned',  'Unassigned',  0),
+  ('designer', 'har_unusyan', 'Har Unusyan',  1),
+  ('designer', 'marianna',    'Marianna',     2),
+  ('designer', 'christopher', 'Christopher',  3),
+  ('designer', 'taron',       'Taron',        4),
+  ('designer', 'hayk',        'Hayk',         5),
 
   -- ── quote channel ──────────────────────────────────────────────────────────
   ('quote_channel', 'sms',       'SMS',       0),

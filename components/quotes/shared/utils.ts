@@ -26,6 +26,7 @@ export function emptySkuRow(): QuoteSku {
     spot_uv: false,
     foil: false,
     perforation: false,
+    designer: "Unassigned",
   };
 }
 
@@ -61,6 +62,7 @@ export function bundleToFormLineItems(
     foil: row.foil,
     perforation: row.perforation,
     comment: row.comment ?? undefined,
+    designer: row.designer ?? "Unassigned",
     variants: row.variants.map((v) => ({
       id: v.id,
       name: v.name,

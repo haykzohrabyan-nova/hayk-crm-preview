@@ -113,9 +113,9 @@ function FinishingsDropdown({
         Add-on Finishings
       </p>
 
-      {/* Single row: [dropdown] [attach] [visible checkbox] */}
-      <div className="flex items-center gap-2">
-        {/* Dropdown trigger — takes remaining space */}
+      {/* Controls row: [finishings dropdown] [designer col] [attach] [eye] */}
+      <div className="flex items-end gap-2">
+        {/* Finishings multi-select — takes remaining space */}
         <div ref={ref} className="relative flex-1 min-w-0">
           <button
             type="button"
@@ -179,7 +179,33 @@ function FinishingsDropdown({
           )}
         </div>
 
-        {/* Attach file — same row as dropdown */}
+        {/* Designer — label stacked above select */}
+        <div className="shrink-0 flex flex-col gap-1.5" style={{ width: "11rem" }}>
+          <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-text-muted)" }}>
+            Designer
+          </p>
+          <div className="relative">
+            <select
+              value={sku.designer ?? "Unassigned"}
+              onChange={(e) => onUpdate(idx, "designer", e.target.value || "Unassigned")}
+              className="w-full appearance-none px-3 py-2 pr-8 rounded-md text-sm outline-none"
+              style={{
+                background: "var(--color-surface)",
+                border: "1px solid var(--color-border)",
+                color: "var(--color-text-primary)",
+              }}
+            >
+              {renderLookupOptions(skuLookups.designer, sku.designer)}
+            </select>
+            <ChevronDown
+              size={14}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+              style={{ color: "var(--color-text-muted)" }}
+            />
+          </div>
+        </div>
+
+        {/* Attach file — same row as dropdowns */}
         {showAttachmentControl ? (
           <LineItemAttachmentControl
             compact

@@ -19,4 +19,5 @@ export type SkuLookups = {
   sides: LookupOption[];
   roll_direction: LookupOption[];
   finishing: LookupOption[];
+  designer: LookupOption[];
 };

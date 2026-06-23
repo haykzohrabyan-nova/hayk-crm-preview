@@ -307,7 +307,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [products, setProducts] = useState<ProductType[]>([]);
   const [skuLookups, setSkuLookups] = useState<SkuLookups>({
-    lamination: [], color_mode: [], sides: [], roll_direction: [], finishing: [],
+    lamination: [], color_mode: [], sides: [], roll_direction: [], finishing: [], designer: [],
   });
   const [quoteLookups, setQuoteLookups] = useState<{
     ticket_priority: LookupOption[];
@@ -512,6 +512,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       sides: edit.sides ?? [],
       roll_direction: edit.roll_direction ?? [],
       finishing: edit.finishing ?? [],
+      designer: edit.designer ?? [],
     });
     setQuoteLookups({
       ticket_priority: edit.ticket_priority ?? [],
