@@ -1174,7 +1174,7 @@ Releases production if `computeCheckout(...).canReleaseProduction` is true. May 
 | `release_production: true` | Only sets `production_released_at` (no status change alone) |
 | `resend_invoice: true` | `sendInvoiceLinkToCustomer` |
 | `send_payment_reminder: true` | `sendPaymentReminder` |
-| `ticket_status: "order"` (admin) | Manual convert; generates ORD reference; fire-and-forgets `sendOrderWebhook()` with `via: "manual_convert"` |
+| `ticket_status: "order"` (admin) | Manual convert; generates ORD reference; fire-and-forgets `sendOrderWebhook()` with `via: "manual_convert"`. Payload includes `items[]` with `designer` per line. |
 | `ticket_status: "completed"` | Mark complete from `in_production`; sends order-ready notification |
 | `ticket_status: "cancelled"` | Requires `cancel_reason` (+ notes if "other") |
 | `acknowledge_outstanding_balance: true` | Admin or Sales completing with balance due |
@@ -1183,6 +1183,59 @@ Releases production if `computeCheckout(...).canReleaseProduction` is true. May 
 - Non-admins (except Sales) can only PATCH payment-related fields (`PAYMENT_ALLOWED_IN_ORDER` set)
 - After customer confirmation, SDR cannot edit; **Admin and Sales** (owner) retain full edit access
 - SDR read-only if they routed but Sales claimed
+
+### Order webhook (`lib/utils/send-order-webhook.ts`)
+
+Fired on every quote→order conversion path (manual admin, Stripe payment, customer confirm, accountant record). Fire-and-forget — never blocks the response. Every attempt is logged to `webhook_deliveries` (admin panel can resend).
+
+**Payload shape:**
+```jsonc
+{
+  // Required
+  "customer_name": "Acme Corp",       // contact_company ?? contact_name
+  "customer_contact": "...",          // contact_email ?? contact_phone
+
+  // Order metadata
+  "order_number": "ORD-0042",
+  "title": "...",
+  "priority": "normal|high|urgent",
+  "due_date": "2026-07-01",           // null if date is in the past
+
+  // Notes
+  "description": "...",
+  "artwork_url": "...",               // 7-day signed URL from first line item
+
+  // Multi-item (primary format) — one entry per line item
+  "items": [
+    {
+      "title": "...",
+      "product": "Vinyl Banner",
+      "product_type": null,
+      "finished_size": "4 x 3 in",
+      "materials": "Vinyl",
+      "finishing": "Spot UV + Foil",
+      "sides": "Double-sided",
+      "color": "4/4",
+      "order_qty": 500,
+      "designer": "Har Unusyan",       // null when Unassigned
+      "skus": [
+        { "sku_name": "Small", "quantity": 250, "artwork_url": "..." },
+        { "sku_name": "Large", "quantity": 250 }
+      ]
+    }
+  ],
+
+  // Legacy flat fields (first line item, backward compat)
+  "product": "...",
+  "finished_size": "...",
+  "materials": "...",
+  "finishing": "...",
+  "sides": "...",
+  "color": "...",
+  "order_qty": 500,
+  "skus": [...]                        // all variants combined
+}
+```
 
 ### `QuoteDetail` context prop
 
@@ -1304,6 +1357,15 @@ All computed totals are persisted on `job_tickets`: `quote_subtotal`, `quote_pre
 3. On ticket save → `uploadPendingLineItemFiles(ticketId, pendingFiles[])` → `POST /api/tickets/[id]/files` (multipart with `variant_id` or `line_item_id`)
 4. Server stores in Supabase bucket `ticket-attachments`, inserts `ticket_files` row
 5. After upload, staff can view via `GET /api/tickets/[id]/files/[fileId]` (302 → 60s signed URL)
+
+### Designer field
+
+Each line item has a `designer` text column (default `'Unassigned'`) that tracks who is responsible for producing that line. Values are managed in **Admin → Dropdown Options → Designers**.
+
+- **Form:** `SkuRow` renders a Designer dropdown inline with the Add-on Finishings row. Label sits directly above the select.
+- **Lookup source:** `skuLookups.designer` — loaded via `GET /api/quotes/form-bootstrap` and the ticket detail bootstrap cache (same `EDIT_LOOKUP_CATEGORIES` list as lamination, finishing, etc.).
+- **Admin panel:** `designer` category is in `CATEGORY_META` (`section: "order"`), so it appears under the Order / Quote group in `/admin/settings/dropdowns`. Adding/renaming/deactivating a designer there is reflected immediately in all open forms via the `bazaar:lookups-changed` event.
+- **Webhook:** `designer` is included in each `items[]` entry in the order webhook payload. Sent as `null` when the value is `"Unassigned"` so the receiving system can ignore unassigned lines cleanly.
 
 ### API payload
 
@@ -1900,7 +1962,11 @@ Guards: cannot self-demote/deactivate, cannot deactivate last admin, cannot disa
 
 ### Dropdown options
 
-Category `CATEGORY_META` includes: `source`, `industry`, `urgency`, `hold_reason`, `follow_up_reason`, `reject_reason`, `route_reason`, `lamination`, `cancel_reason`, `payment_refund_reason`, `refund_reason`, `payment_method`, `color_mode`, `sides`, `roll_direction`, and more.
+Category `CATEGORY_META` includes:
+
+**Lead Forms:** `source`, `industry`, `urgency`, `hold_reason`, `follow_up_reason`, `reject_reason`, `route_reason`, `sales_drop_reason`
+
+**Order / Quote:** `lamination`, `finishing`, `quote_channel`, `follow_up_freq`, `ticket_priority`, `order_source`, `ticket_payment`, `quote_cancel_reason`, `order_cancel_reason`, `stripe_refund_reason`, `payment_refund_reason`, `color_mode`, `sides`, `roll_direction`, `designer`
 
 `GET /api/admin/lookups` / `GET /api/lookups` (public for forms) — filtered by category.
 
@@ -2475,8 +2541,9 @@ All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start d
 
 | File | Purpose |
 |------|---------|
-| `ticket-math.ts` | `skuLineTotal`, `computePricing` — all pricing calculations |
-| `ticket-line-items.ts` | `fetchTicketLinesBundle`, `syncTicketLines`, `lineItemsToApiPayload`, file types |
+| `ticket-math.ts` | `skuLineTotal`, `computePricing` — all pricing calculations; `QuoteSku` interface (includes `designer`) |
+| `ticket-line-items.ts` | `fetchTicketLinesBundle`, `syncTicketLines`, `lineItemInputToRowPayload`, `bundleToLineItemInputs` — save/load/convert for all line item fields including `designer` |
+| `send-order-webhook.ts` | `sendOrderWebhook` — fire-and-forget POST to `ORDER_WEBHOOK_URL` on quote→order conversion; payload includes `items[]` with `designer`, signed artwork URLs, and legacy flat fields |
 | `compute-checkout.ts` | `computeCheckout` — 3-step production gate |
 | `invoice-payment-summary.ts` | `computeInvoicePaymentSummary`, `isTicketPaidInFull`, `getAmountPaid` (canonical `payment_amount_received ?? deposit_amount ?? 0` helper) |
 | `maybe-convert-quote-to-order.ts` | Quote → Order conversion logic |
@@ -2518,6 +2585,7 @@ All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start d
 | `components/quotes/quote-detail/detail-layout-primitives.tsx` | `DetailLineItemCard`, `DetailCollapsibleSection`, `MoreSectionGroup` |
 | `components/quotes/quote-detail/resend-quote-modal.tsx` | Send/resend modal with channel selector |
 | `components/quotes/shared/line-items-form.tsx` | Line items edit + read-only list |
+| `components/quotes/shared/sku-row.tsx` | Single editable line item: product, material, dimensions, qty, price, finishings, designer, file attach |
 | `components/quotes/shared/line-item-variants.tsx` | Additional SKUs |
 | `components/quotes/shared/line-item-attachment.tsx` | `LineItemFileThumbnail`, `LineItemAttachmentControl` |
 | `components/quotes/shared/quote-form.tsx` | Quote tab pricing/tax; sales permit # + file attachment UI |
