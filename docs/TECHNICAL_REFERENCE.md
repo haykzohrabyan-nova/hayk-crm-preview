@@ -1194,12 +1194,13 @@ Fired on every quote→order conversion path (manual admin, Stripe payment, cust
   // Required
   "customer_name": "Acme Corp",       // contact_company ?? contact_name
   "customer_contact": "...",          // contact_email ?? contact_phone
+  "customer_phone": "+11234567890",   // formatted with +1 prefix for 10-digit US numbers
 
   // Order metadata
   "order_number": "ORD-0042",
   "title": "...",
   "priority": "normal|high|urgent",
-  "due_date": "2026-07-01",           // null if date is in the past
+  "due_date": "2026-07-01",           // null if no date set or date is in the past
 
   // Notes
   "description": "...",
@@ -1210,14 +1211,17 @@ Fired on every quote→order conversion path (manual admin, Stripe payment, cust
     {
       "title": "...",
       "product": "Vinyl Banner",
-      "product_type": null,
       "finished_size": "4 x 3 in",
       "materials": "Vinyl",
-      "finishing": "Spot UV + Foil",
-      "sides": "Double-sided",
-      "color": "4/4",
+      "lamination": "Matte",          // separate field; null if none
+      "spot_uv": false,               // explicit booleans
+      "foil": false,
+      "die_cut": false,
+      "sides": "1 Side",              // mapped: single_sided→"1 Side", double_sided→"2 Sides"
+      "color_mode": "CMYK",           // mapped: cmyk→"CMYK", pantone→"Pantones", full_color_white→"CMYK+White"
       "order_qty": 500,
-      "designer": "Har Unusyan",       // null when Unassigned
+      "designer": "Har Unusyan",      // omitted when Unassigned
+      "description": "Perforation",   // only present when perforation=true (not a target API field)
       "skus": [
         { "sku_name": "Small", "quantity": 250, "artwork_url": "..." },
         { "sku_name": "Large", "quantity": 250 }
@@ -1229,9 +1233,12 @@ Fired on every quote→order conversion path (manual admin, Stripe payment, cust
   "product": "...",
   "finished_size": "...",
   "materials": "...",
-  "finishing": "...",
-  "sides": "...",
-  "color": "...",
+  "lamination": "...",
+  "spot_uv": false,
+  "foil": false,
+  "die_cut": false,
+  "sides": "1 Side",
+  "color_mode": "CMYK",
   "order_qty": 500,
   "skus": [...]                        // all variants combined
 }
@@ -1365,7 +1372,7 @@ Each line item has a `designer` text column (default `'Unassigned'`) that tracks
 - **Form:** `SkuRow` renders a Designer dropdown inline with the Add-on Finishings row. Label sits directly above the select.
 - **Lookup source:** `skuLookups.designer` — loaded via `GET /api/quotes/form-bootstrap` and the ticket detail bootstrap cache (same `EDIT_LOOKUP_CATEGORIES` list as lamination, finishing, etc.).
 - **Admin panel:** `designer` category is in `CATEGORY_META` (`section: "order"`), so it appears under the Order / Quote group in `/admin/settings/dropdowns`. Adding/renaming/deactivating a designer there is reflected immediately in all open forms via the `bazaar:lookups-changed` event.
-- **Webhook:** `designer` is included in each `items[]` entry in the order webhook payload. Sent as `null` when the value is `"Unassigned"` so the receiving system can ignore unassigned lines cleanly.
+- **Webhook:** `designer` is included in each `items[]` entry in the order webhook payload only when the value is not `"Unassigned"` — the field is omitted entirely for unassigned lines.
 
 ### API payload
 
@@ -2543,7 +2550,7 @@ All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start d
 |------|---------|
 | `ticket-math.ts` | `skuLineTotal`, `computePricing` — all pricing calculations; `QuoteSku` interface (includes `designer`) |
 | `ticket-line-items.ts` | `fetchTicketLinesBundle`, `syncTicketLines`, `lineItemInputToRowPayload`, `bundleToLineItemInputs` — save/load/convert for all line item fields including `designer` |
-| `send-order-webhook.ts` | `sendOrderWebhook` — fire-and-forget POST to `ORDER_WEBHOOK_URL` on quote→order conversion; payload includes `items[]` with `designer`, signed artwork URLs, and legacy flat fields |
+| `send-order-webhook.ts` | `sendOrderWebhook` — fire-and-forget POST to `ORDER_WEBHOOK_URL` on quote→order conversion; payload includes `items[]` with explicit `lamination`, `spot_uv`, `foil`, `die_cut`, mapped `color_mode`/`sides`, signed artwork URLs, and legacy flat fields |
 | `compute-checkout.ts` | `computeCheckout` — 3-step production gate |
 | `invoice-payment-summary.ts` | `computeInvoicePaymentSummary`, `isTicketPaidInFull`, `getAmountPaid` (canonical `payment_amount_received ?? deposit_amount ?? 0` helper) |
 | `maybe-convert-quote-to-order.ts` | Quote → Order conversion logic |

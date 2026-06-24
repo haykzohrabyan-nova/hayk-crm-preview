@@ -23,7 +23,8 @@
  *   - items[]: one entry per line item with its own product details + skus array
  *   - Legacy flat product fields from the first line item retained for backward compat
  *
- * product_type: sent as null — no Roll/Sheet/Flat/Folded classification exists in the DB.
+ * Per-item fields: lamination, spot_uv, foil, die_cut as explicit fields; color_mode and
+ * sides mapped from DB keys to display labels; perforation appended to description.
  */
 
 import type { createAdminClient } from "@/lib/supabase/admin";
@@ -63,13 +64,34 @@ interface LineItem {
   ticket_line_variants: Array<{ id: string; name: string; quantity: number }>;
 }
 
-function buildFinishing(line: LineItem): string | null {
-  const parts: string[] = [];
-  if (line.spot_uv) parts.push("Spot UV");
-  if (line.foil) parts.push("Foil");
-  if (line.lamination) parts.push(line.lamination);
-  if (line.perforation) parts.push("Perforation");
-  return parts.length > 0 ? parts.join(" + ") : null;
+function mapColorMode(value: string | null): string | null {
+  if (!value) return null;
+  const map: Record<string, string> = {
+    cmyk:             "CMYK",
+    pantone:          "Pantones",
+    full_color_white: "CMYK+White",
+    black_only:       "Black Only",
+  };
+  return map[value.toLowerCase()] ?? value;
+}
+
+function mapSides(value: string | null): string | null {
+  if (!value) return null;
+  const map: Record<string, string> = {
+    single_sided: "1 Side",
+    double_sided: "2 Sides",
+    "1 side":     "1 Side",
+    "2 sides":    "2 Sides",
+  };
+  return map[value.toLowerCase()] ?? value;
+}
+
+function formatPhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith("1")) return `+${digits}`;
+  return phone;
 }
 
 function buildFinishedSize(line: LineItem): string | null {
@@ -87,6 +109,7 @@ function buildDueDateForWebhook(dueDate: string | null | undefined): string | nu
   d.setHours(0, 0, 0, 0);
   return d < today ? null : dueDate;
 }
+
 function normalizePriority(priority: string | null | undefined): string {
   if (!priority) return "normal";
   return priority.toLowerCase();
@@ -202,33 +225,41 @@ export async function sendOrderWebhook(
   type WebhookItem = {
     title: string;
     product: string;
-    product_type: string | null;
     finished_size: string | null;
     materials: string | null;
-    finishing: string | null;
+    lamination: string | null;
+    spot_uv: boolean;
+    foil: boolean;
+    die_cut: boolean;
     sides: string | null;
-    color: string | null;
+    color_mode: string | null;
     order_qty: number | null;
-    designer: string | null;
+    description?: string | null;
+    designer?: string;
     skus: WebhookSku[];
   };
 
   const items: WebhookItem[] = [];
   for (const line of lines) {
     const lineSkus = await buildLineSkus(line, fileByVariant, fileByLine, admin);
-    items.push({
+    const item: WebhookItem = {
       title:         line.description ?? line.product_type,
       product:       line.product_type,
-      product_type:  null,
       finished_size: buildFinishedSize(line),
       materials:     line.material ?? null,
-      finishing:     buildFinishing(line),
-      sides:         line.sides ?? null,
-      color:         line.color_mode ?? null,
+      lamination:    line.lamination ?? null,
+      spot_uv:       line.spot_uv,
+      foil:          line.foil,
+      die_cut:       line.die_cut,
+      sides:         mapSides(line.sides),
+      color_mode:    mapColorMode(line.color_mode),
       order_qty:     line.quantity != null ? Number(line.quantity) : null,
-      designer:      line.designer && line.designer !== "Unassigned" ? line.designer : null,
       skus:          lineSkus,
-    });
+    };
+    if (line.designer && line.designer !== "Unassigned") item.designer = line.designer;
+    if (line.perforation) item.description = line.comment ? `${line.comment} | Perforation` : "Perforation";
+    else if (line.comment) item.description = line.comment;
+    items.push(item);
   }
 
   // Top-level artwork_url: first available file (for backward compat with single-item receivers).
@@ -256,7 +287,7 @@ export async function sendOrderWebhook(
     due_date:     buildDueDateForWebhook(ticket.due_date),
 
     // CUSTOMER INFO
-    customer_phone: ticket.contact_phone ?? null,
+    customer_phone: formatPhone(ticket.contact_phone),
 
     // NOTES
     description: ticket.notes ?? ticket.special_requirements ?? null,
@@ -269,12 +300,14 @@ export async function sendOrderWebhook(
 
     // LEGACY FLAT FIELDS from the first line item (retained for backward compat).
     product:       firstLine?.product_type ?? null,
-    product_type:  null,
     finished_size: firstLine ? buildFinishedSize(firstLine) : null,
     materials:     firstLine?.material ?? null,
-    finishing:     firstLine ? buildFinishing(firstLine) : null,
-    sides:         firstLine?.sides ?? null,
-    color:         firstLine?.color_mode ?? null,
+    lamination:    firstLine?.lamination ?? null,
+    spot_uv:       firstLine?.spot_uv ?? false,
+    foil:          firstLine?.foil ?? false,
+    die_cut:       firstLine?.die_cut ?? false,
+    sides:         mapSides(firstLine?.sides ?? null),
+    color_mode:    mapColorMode(firstLine?.color_mode ?? null),
     order_qty:     firstLine?.quantity != null ? Number(firstLine.quantity) : null,
 
     // LEGACY flat skus (all variants combined).

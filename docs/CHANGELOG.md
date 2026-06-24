@@ -3,6 +3,18 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-24] — Fix webhook payload to match target API contract
+
+### Changed
+- `lib/utils/send-order-webhook.ts` — updated outgoing webhook payload to align with target API:
+  - Removed `finishing` string field; replaced with explicit `lamination`, `spot_uv`, `foil`, `die_cut` boolean fields per item and at top level
+  - Renamed `color` → `color_mode`; DB keys mapped to display labels (`cmyk` → `CMYK`, `pantone` → `Pantones`, `full_color_white` → `CMYK+White`)
+  - Mapped `sides` DB keys to display labels (`single_sided` → `1 Side`, `double_sided` → `2 Sides`)
+  - Removed `product_type` field (always `null`, not recognized by target API)
+  - Formatted `customer_phone` with `+1` country code prefix for 10-digit US numbers
+  - `perforation` (not in target API) now appended to item `description` instead of being silently dropped
+  - `designer` only sent on items where it is not null/Unassigned
+
 ## [2026-06-23] — Industry required in Add Customer modal
 
 ### Changed
