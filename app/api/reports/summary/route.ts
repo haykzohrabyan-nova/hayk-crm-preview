@@ -536,7 +536,7 @@ export async function GET(request: NextRequest) {
   const team_members = (activeProfiles ?? [])
     .map((p) => {
       const role = parseEmbeddedRole(p.roles);
-      if (!role || role.name === "admin" || role.name === "accountant") return null;
+      if (!role || role.name === "accountant") return null;
       return {
         id: p.id,
         full_name: p.full_name ?? "Unknown",

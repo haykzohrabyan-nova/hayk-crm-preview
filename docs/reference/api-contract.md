@@ -2279,6 +2279,7 @@ Admin only. Full reporting payload — see [`feature-specs/reports.md`](feature-
 - `released_order_value.total` / `order_count` — production releases in period
 - `awaiting_collection` — live balance-due snapshot (not period-filtered)
 - `sales_scorecard`, `sdr_scorecard`, `payment_ledger`, `win_rate`, `funnel`
+- `team_members` — active users available in the filter dropdown; includes sales, SDR, and admin roles; excludes accountants
 
 ---
 

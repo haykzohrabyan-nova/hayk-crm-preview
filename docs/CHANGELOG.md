@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-24] — Show admins in Reports team member filter
+
+### Changed
+- `app/api/reports/summary/route.ts` — admin users now appear in the Reports page team member dropdown; only accountants are excluded
+
 ## [2026-06-24] — Fix webhook payload to match target API contract
 
 ### Changed

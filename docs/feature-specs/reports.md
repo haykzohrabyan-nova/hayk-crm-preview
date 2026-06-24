@@ -55,7 +55,7 @@ All money totals use `roundMoney()` (2 decimal places) — matches dashboard **C
 | `payment_ledger` | Order rows with payment line items | Payments in period |
 | `win_rate` | Lead/quote win %, avg days to production | Cohort tickets + releases |
 | `funnel` | Quote lifecycle drop-off | Tickets created in period |
-| `team_members` | Filter dropdown options | Active sales + SDR profiles |
+| `team_members` | Filter dropdown options | Active sales, SDR, and admin profiles (accountants excluded) |
 
 ### Rep attribution (bonus-ready)
 
