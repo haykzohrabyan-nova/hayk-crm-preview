@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-24] — Show finishing flags, designer, and price override on line item cards
+
+### Changed
+- `components/quotes/shared/line-items-form.tsx` — read-only line item cards now display finishing add-ons (Spot UV, Foil, Perforation, Die Cut, Needs Design) as amber pills, the assigned designer name in the spec pills, and an "override" label when the line total is manually set
+- `components/quotes/quote-detail/detail-layout-primitives.tsx` — `DetailLineItemCard` accepts new `finishings?: string[]` and `isPriceOverride?: boolean` props; finishings render as amber-tinted pills beneath the main spec row
+
 ## [2026-06-24] — Show admins in Reports team member filter
 
 ### Changed

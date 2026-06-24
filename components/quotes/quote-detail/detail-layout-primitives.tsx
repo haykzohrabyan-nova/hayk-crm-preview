@@ -152,13 +152,19 @@ export function DetailSpecPill({ children }: { children: React.ReactNode }) {
 export function DetailLineItemCard({
   name,
   specs,
+  finishings,
   price,
+  isPriceOverride,
   footer,
   thumbnail,
 }: {
   name: string;
   specs: string[];
+  /** Add-on finishing flags (Spot UV, Foil, Die Cut, etc.) — rendered as amber-tinted pills. */
+  finishings?: string[];
   price: number;
+  /** When true, shows an "override" label next to the price. */
+  isPriceOverride?: boolean;
   footer?: React.ReactNode;
   /** Optional file thumbnail shown as a right-side panel filling the card height. */
   thumbnail?: React.ReactNode;
@@ -171,7 +177,7 @@ export function DetailLineItemCard({
       <div className="flex items-stretch">
         {/* Main content: name, specs, price */}
         <div className="flex-1 min-w-0 px-3.5 py-3.5 md:px-5 md:py-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-sm md:text-[15px] font-semibold leading-snug" style={{ color: "var(--color-text-primary)" }}>
               {name}
             </p>
@@ -182,11 +188,38 @@ export function DetailLineItemCard({
                 ))}
               </div>
             )}
+            {finishings && finishings.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {finishings.map((f) => (
+                  <span
+                    key={f}
+                    className="inline-flex items-center rounded px-2 py-0.5 text-[11px] font-medium"
+                    style={{
+                      background: "var(--color-warning-bg)",
+                      color: "var(--color-warning)",
+                      border: "1px solid var(--color-warning-border)",
+                    }}
+                  >
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           {price > 0 && (
-            <p className="text-lg md:text-xl font-semibold tabular-nums sm:text-right shrink-0" style={{ color: "var(--color-text-primary)" }}>
-              {formatCurrency(price)}
-            </p>
+            <div className="flex flex-col items-end shrink-0 gap-0.5">
+              <p className="text-lg md:text-xl font-semibold tabular-nums" style={{ color: "var(--color-text-primary)" }}>
+                {formatCurrency(price)}
+              </p>
+              {isPriceOverride && (
+                <span
+                  className="text-[10px] font-medium uppercase tracking-wide"
+                  style={{ color: "var(--color-text-muted)" }}
+                >
+                  override
+                </span>
+              )}
+            </div>
           )}
         </div>
 

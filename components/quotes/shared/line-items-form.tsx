@@ -67,19 +67,30 @@ export function LineItemsForm({
         {rows.map((sku, i) => {
           const computedLineTotal = (sku.quantity ?? 0) * (sku.unit_price ?? 0);
           const lineTotal = sku.line_total ?? computedLineTotal;
+          const isPriceOverride =
+            sku.line_total != null && sku.line_total > 0 && sku.line_total !== computedLineTotal;
           const name = [
             sku.product_type || "—",
             sku.material,
             sku.lamination && sku.lamination !== "None" ? sku.lamination : null,
           ].filter(Boolean).join(" · ");
           const specs: string[] = [];
-          if (sku.color_mode) specs.push(sku.color_mode);
-          if (sku.sides) specs.push(sku.sides);
-          if (sku.roll_direction) specs.push(sku.roll_direction);
-          if (sku.width && sku.height) specs.push(`${sku.width}" × ${sku.height}"`);
+          if (sku.color_mode) specs.push(`Color: ${sku.color_mode}`);
+          if (sku.sides) specs.push(`Sides: ${sku.sides}`);
+          if (sku.roll_direction) specs.push(`Roll: ${sku.roll_direction}`);
+          if (sku.width && sku.height) specs.push(`Size: ${sku.width}" × ${sku.height}"`);
           if (sku.quantity) specs.push(`Qty: ${sku.quantity}`);
-          if (sku.unit_price) specs.push(`${formatCurrency(sku.unit_price)} ea`);
-          if (sku.comment) specs.push(sku.comment);
+          if (sku.unit_price) specs.push(`Unit: ${formatCurrency(sku.unit_price)}`);
+          if (sku.comment) specs.push(`Note: ${sku.comment}`);
+          if (sku.designer && sku.designer !== "Unassigned") specs.push(`Designer: ${sku.designer}`);
+
+          const finishings: string[] = [];
+          if (sku.spot_uv) finishings.push("Spot UV");
+          if (sku.foil) finishings.push("Foil");
+          if (sku.perforation) finishings.push("Perforation");
+          if (sku.die_cut) finishings.push("Die Cut");
+          if (sku.design_required) finishings.push("Needs Design");
+
           const variants = "variants" in sku && Array.isArray(sku.variants) ? sku.variants : [];
           const lineFile =
             "lineFile" in sku && sku.lineFile
@@ -98,7 +109,9 @@ export function LineItemsForm({
               key={i}
               name={name}
               specs={specs}
+              finishings={finishings}
               price={lineTotal}
+              isPriceOverride={isPriceOverride}
               footer={footer}
               thumbnail={thumbnail}
             />

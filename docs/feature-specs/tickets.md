@@ -80,6 +80,14 @@ A new quote can be started from three places. The entry point controls the UI sh
 
 **Quick preview (Jun 2026):** Click a list row (desktop or mobile card) to expand line items without opening the detail page. Rows on the current list page include `line_preview` from `GET …/page-data` (instant expand); cache miss uses `GET /api/tickets/[id]/line-preview`. Renders read-only `LineItemsForm` (same cards, thumbnails, and `LineItemFilePreviewModal` as quote detail). **View** navigates to detail; **Claim** unchanged on Routed tab. Wired on **Quoted Requests**, **Orders**, **Completed**, and **Payment Evidence** tabs. One expanded row at a time; expand state clears on tab/filter/page change.
 
+**Line item card display (Jun 2026):** Each read-only card (`DetailLineItemCard`) shows:
+- **Title** — `Product Type · Material · Lamination` (lamination omitted when "None")
+- **Spec pills** — labelled: `Color:`, `Sides:`, `Roll:`, `Size:`, `Qty:`, `Unit:`, `Note:`, `Designer:` (designer hidden when "Unassigned")
+- **Finishing pills** (amber) — `Spot UV`, `Foil`, `Perforation`, `Die Cut`, `Needs Design`; shown only when the flag is set on the line
+- **Line total** — right-aligned; when the total is a manual override (not `qty × unit price`) an `OVERRIDE` label appears beneath it
+- **File thumbnail** — clickable image/PDF preview when a line-level file exists
+- **Additional SKUs** — name, qty, and optional file thumbnail per variant
+
 ### Tabs (count badge on all tabs)
 
 | Tab | Filter | Visible to |
@@ -559,7 +567,7 @@ Single scrollable view combining all three edit sections, separated by labelled 
 - Same fields as new-quote Info tab: Title, Priority, Due Date (optional), Rush, Special Requirements, Internal Notes
 
 **2. Line Items** (section divider: "LINE ITEMS")
-- Read-only: product, material, size, qty, unit price, line total cards
+- Read-only: `DetailLineItemCard` per line — labelled spec pills (`Color:`, `Sides:`, `Roll:`, `Size:`, `Qty:`, `Unit:`, `Note:`, `Designer:`), amber finishing pills (`Spot UV`, `Foil`, `Perforation`, `Die Cut`, `Needs Design`), line total with `OVERRIDE` label when manually set, file thumbnail, and additional SKU rows
 - Edit mode: full `EditableSkuRow` fields + Add Line Item button
 
 **3. Quote & Pricing** (section divider: "QUOTE & PRICING")
