@@ -19,6 +19,7 @@ const TABS = [
   { label: "Customer import",     href: "/admin/settings/customer-import", icon: UserRoundPlus  },
   { label: "Order import",        href: "/admin/settings/order-import",     icon: PackagePlus    },
   { label: "Webhook",             href: "/admin/settings/webhook",          icon: Webhook        },
+  { label: "Lead Webhook",        href: "/admin/settings/lead-webhook",     icon: Webhook        },
 ] as const;
 
 function cnTab(active: boolean) {

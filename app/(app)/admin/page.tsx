@@ -93,6 +93,13 @@ const CARDS = [
     icon: Webhook,
     built: true,
   },
+  {
+    title: "Lead Webhook",
+    description: "Monitor inbound leads submitted via the webhook API. View original JSON payloads, troubleshoot failures, and clear stored payloads when no longer needed.",
+    href: "/admin/settings/lead-webhook",
+    icon: Webhook,
+    built: true,
+  },
 ] as const;
 
 export default function AdminOverviewPage() {

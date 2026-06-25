@@ -3,6 +3,28 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-24] — Lead Webhook strict validation hardened
+
+### Changed
+- `app/api/webhook/leads/route.ts` — **Q1:** rejects with `409 DUPLICATE_CUSTOMER` when two or more customers share the incoming phone number (forces merge in CRM before resubmit); **Q3:** validates `source` and `industry` against the live `lookup_values` table and returns `400 VALIDATION_ERROR` listing all accepted slugs if value is unknown
+- `docs/LeadWebhook/Integration Guide.md` — updated error table (added `409 DUPLICATE_CUSTOMER`), source and industry notes now state unknown slugs are rejected, added duplicate-phone error example; removed dead Open Questions link
+- `docs/LeadWebhook/Open Questions.md` — deleted (all questions resolved and implemented)
+
+## [2026-06-24] — Inbound Lead Webhook
+
+### Added
+- `app/api/webhook/leads/route.ts` — `POST /api/webhook/leads` inbound endpoint; verifies `x-webhook-secret`, deduplicates customers by phone/email, creates `customers` + `leads` rows, logs activity (`lead_webhook_created`), logs every request to `webhook_lead_log`
+- `supabase/patches/2026-06-24-webhook-lead-log.sql` — `webhook_lead_log` table: status, http_status, error_message, `raw_payload` (jsonb, nullable), lead_id FK, customer_id FK, received_at
+- `app/api/admin/webhook/leads/page-data/route.ts` — admin GET: paginated log rows + tab counts + `payloads_stored` count
+- `app/api/admin/webhook/leads/clear-payloads/route.ts` — admin POST: sets `raw_payload = null` on all log rows (wipes JSONs, keeps history)
+- `components/admin/lead-webhook-section.tsx` — admin panel: stats bar (Total / Accepted / Failed), tabs with counts, search, date filter, desktop table + mobile cards, detail modal showing raw JSON payload, "Clear Payloads" button with confirmation modal
+- `app/(app)/admin/settings/lead-webhook/page.tsx` — thin page wrapper
+- `docs/LeadWebhook/Integration Guide.md` — full external developer reference
+
+### Changed
+- `components/admin/settings-tab-nav.tsx` — added "Lead Webhook" nav tab
+- `.env.local.example` — added `LEAD_WEBHOOK_SECRET` with generation instructions
+
 ## [2026-06-24] — Show finishing flags, designer, and price override on line item cards
 
 ### Changed
