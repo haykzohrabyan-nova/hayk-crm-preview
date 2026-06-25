@@ -146,9 +146,17 @@ lib/supabase/admin.ts  → createAdminClient()    SUPABASE_SECRET_KEY
 
 | Service | Library | Purpose |
 |---------|---------|---------|
-| Sentry | `@sentry/nextjs ^9.x` | Error monitoring, tracing, session replay. Captures client errors, server API crashes, and React render failures. Every error is tagged with the logged-in user's ID and role via `SentryUserIdentity`. Tunnel route `/monitoring` proxies events to sentry.io to bypass ad-blockers. |
+| Sentry | `@sentry/nextjs ^10.x` | Error monitoring, tracing, session replay. Captures client errors, server API crashes, and React render failures. Every error is tagged with the logged-in user's ID and role via `SentryUserIdentity`. Tunnel route `/monitoring` proxies events to sentry.io to bypass ad-blockers. |
 
 Config files: `instrumentation-client.ts` (browser), `sentry.server.config.ts` (Node.js), `sentry.edge.config.ts` (Edge), `instrumentation.ts` (server hook + `onRequestError`), `app/global-error.tsx` (React boundary).
+
+**Sample rates (current — development / pre-launch):**
+- Traces: 100% (`tracesSampleRate: 1.0`)
+- Session Replay: 100% of all sessions + 100% on error (`replaysSessionSampleRate: 1.0`, `replaysOnErrorSampleRate: 1.0`)
+- Reduce these after launch if Sentry quota becomes a concern.
+
+**`reportApiError` utility (`lib/utils/report-api-error.ts`):**
+Call this whenever `!res.ok` and you are showing an error to the user. It fires `Sentry.captureMessage()` tagged with the component name and HTTP status. Already wired into all 15 user-facing form/action components (quotes, orders, leads, CRM, admin). This ensures every 4xx/5xx a user encounters is visible in Sentry with the session replay attached — not just unhandled crashes.
 
 ### Deployment
 
