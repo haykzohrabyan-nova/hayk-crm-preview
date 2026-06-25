@@ -3,6 +3,18 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-24] — Enable Sentry Logs for full server-side visibility
+
+### Added
+- `enableLogs: true` in `instrumentation-client.ts`, `sentry.server.config.ts`, `sentry.edge.config.ts` — activates `Sentry.logger.*` structured logging in all runtimes
+
+### Changed
+- `lib/auth/require-session.ts` — logs `warn` on 401 (no session) and 403 (MFA not satisfied) so auth failures are traceable in Sentry Logs
+- `lib/auth/require-page-access.ts` — logs `warn` on every RBAC 403 with `userId`, `roleName`, and `requiredRoute`
+- `app/api/tickets/route.ts` — logs `info` on ticket created (kind, status, ref), `error` on DB failure and quote delivery failure
+- `app/api/leads/manual/route.ts` — logs `info` on lead created, `error` on DB failure
+- `app/api/webhook/leads/route.ts` — logs `warn` on invalid secret (401), `info` on accepted lead with masked phone
+
 ## [2026-06-24] — Full Sentry error coverage for all user-facing API calls
 
 ### Added

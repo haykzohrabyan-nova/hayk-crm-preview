@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
@@ -55,6 +56,10 @@ export async function POST(request: NextRequest) {
 
   const incomingSecret = request.headers.get("x-webhook-secret") ?? "";
   if (!safeEqual(incomingSecret, secret)) {
+    Sentry.logger.warn("POST /api/webhook/leads: invalid secret — 401", {
+      hasHeader: !!request.headers.get("x-webhook-secret"),
+      userAgent: request.headers.get("user-agent") ?? undefined,
+    });
     return err({
       error: "Authentication failed — the x-webhook-secret header is missing or incorrect.",
       code: "UNAUTHORIZED",
@@ -511,6 +516,14 @@ export async function POST(request: NextRequest) {
 
   // ── Log to webhook_lead_log ───────────────────────────────────────────────
   await logRequest(admin, "accepted", 201, null, rawBody, lead.id, resolvedCustomerId);
+
+  Sentry.logger.info("POST /api/webhook/leads: lead accepted", {
+    leadId: lead.id,
+    customerId: resolvedCustomerId,
+    status: isReturning ? "deduplicated" : "created",
+    source: source.trim(),
+    phone: phoneDigits.slice(0, 6) + "xxxx",
+  });
 
   return NextResponse.json(
     {

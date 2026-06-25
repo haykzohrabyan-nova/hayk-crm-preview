@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { isAdminOnlyPagePath, isNonAdminDeniedPage } from "@/lib/auth/admin-only-pages";
 import { getCachedAllowedPageRoutes } from "@/lib/auth/allowed-routes-cache";
 import { UNIVERSAL_ROUTES } from "@/lib/auth/resolve-allowed-page-routes";
@@ -31,11 +32,13 @@ export async function requirePageAccess(
   if (roleName === "admin") return null;
 
   if (isNonAdminDeniedPage(roleName, requiredRoute) || isAdminOnlyPagePath(requiredRoute)) {
+    Sentry.logger.warn("requirePageAccess: role denied by policy", { userId, roleName, requiredRoute });
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
   const allowedRoutes = await getCachedAllowedPageRoutes(userId, roleName);
   if (!hasPageRoute(allowedRoutes, requiredRoute)) {
+    Sentry.logger.warn("requirePageAccess: route not in allowedRoutes", { userId, roleName, requiredRoute });
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
@@ -53,6 +56,7 @@ export async function requireAnyPageAccess(
   const allowedRoutes = await getCachedAllowedPageRoutes(userId, roleName);
   const hasAny = requiredRoutes.some((required) => hasPageRoute(allowedRoutes, required));
   if (!hasAny) {
+    Sentry.logger.warn("requireAnyPageAccess: no matching route", { userId, roleName, requiredRoutes });
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
   return null;

@@ -8,6 +8,9 @@ Sentry.init({
   // 100% traces — reduce after launch if quota becomes a concern
   tracesSampleRate: 1.0,
 
+  // Enable structured logging via Sentry.logger.*
+  enableLogs: true,
+
   // Session Replay: record every session so all error reports come with a full replay
   replaysSessionSampleRate: 1.0,
   replaysOnErrorSampleRate: 1.0,

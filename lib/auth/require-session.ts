@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { isMfaRequired } from "@/lib/auth/mfa-required";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
@@ -64,6 +65,9 @@ export async function requireSession(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
+    Sentry.logger.warn("requireSession: no authenticated user — returning 401", {
+      cacheKey: cacheKey.slice(0, 32),
+    });
     return {
       userId: null,
       roleName: null,
@@ -103,6 +107,14 @@ export async function requireSession(
           current === "aal1" && next === "aal1"
             ? "MFA_SETUP_REQUIRED"
             : "MFA_VERIFY_REQUIRED";
+
+        Sentry.logger.warn("requireSession: MFA not satisfied — returning 403", {
+          userId: user.id,
+          roleName,
+          code,
+          aalCurrent: current ?? "none",
+          aalNext: next ?? "none",
+        });
 
         return {
           userId: null,

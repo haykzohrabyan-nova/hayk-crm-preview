@@ -10,4 +10,7 @@ Sentry.init({
 
   // Attach local variable values to stack frames for easier debugging
   includeLocalVariables: true,
+
+  // Enable structured logging via Sentry.logger.*
+  enableLogs: true,
 });

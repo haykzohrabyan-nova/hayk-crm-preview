@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { validateDueDateAgainstCreated } from "@/lib/utils/due-date";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
@@ -133,6 +134,7 @@ export async function POST(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
   if (errorResponse) return errorResponse;
   if (isAccountantQuoteWorkflowDenied(roleName)) {
+    Sentry.logger.warn("POST /api/tickets: accountant role blocked from quote workflow", { userId, roleName });
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
   const createPageDeny = await requireAnyPageAccess(userId!, roleName, ["/quotes", "/orders"]);
@@ -486,6 +488,7 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (insertErr) {
+    Sentry.logger.error("POST /api/tickets: DB insert failed", { userId, roleName, error: insertErr.message });
     return NextResponse.json({ error: insertErr.message, code: "DB_ERROR" }, { status: 500 });
   }
 
@@ -635,7 +638,7 @@ export async function POST(request: NextRequest) {
       if (!suppressNotification) {
         const sendResult = await sendQuoteToCustomer(fullTicket, companyRow);
         if (!sendResult.ok) {
-          console.error("[send-quote] POST delivery failed:", sendResult.error, { ticketId: ticket.id });
+          Sentry.logger.error("POST /api/tickets: quote delivery failed", { ticketId: ticket.id, error: sendResult.error });
         }
       }
 
@@ -665,7 +668,7 @@ export async function POST(request: NextRequest) {
             });
           }
         }).catch((err: unknown) => {
-          console.error("[quote-sent-notification] POST profile lookup error:", err);
+          Sentry.logger.error("POST /api/tickets: staff notification lookup failed", { ticketId: ticket.id, error: String(err) });
         });
       }
     }
@@ -682,6 +685,15 @@ export async function POST(request: NextRequest) {
   }
 
   notifyPublicQuoteUpdatedByTicketId(admin, (finalTicket ?? ticket).id);
+
+  Sentry.logger.info("POST /api/tickets: ticket created", {
+    ticketId: ticket.id,
+    referenceCode: reference_code ?? undefined,
+    ticketKind: resolvedTicketKind,
+    ticketStatus: ticket_status,
+    userId,
+    roleName,
+  });
 
   return NextResponse.json(
     { ticket: { ...(finalTicket ?? ticket), line_items, shipping_destinations } },

@@ -158,6 +158,16 @@ Config files: `instrumentation-client.ts` (browser), `sentry.server.config.ts` (
 **`reportApiError` utility (`lib/utils/report-api-error.ts`):**
 Call this whenever `!res.ok` and you are showing an error to the user. It fires `Sentry.captureMessage()` tagged with the component name and HTTP status. Already wired into all 15 user-facing form/action components (quotes, orders, leads, CRM, admin). This ensures every 4xx/5xx a user encounters is visible in Sentry with the session replay attached — not just unhandled crashes.
 
+**Sentry Logs (`enableLogs: true`):**
+Enabled in all three runtimes (client, server, edge). Use `Sentry.logger.info/warn/error()` for structured server-side log lines. Logs appear in the **Explore → Logs** tab in Sentry and are linked to traces/replays. Key instrumentation points:
+- `lib/auth/require-session.ts` — logs every 401 (no session) and 403 (MFA not satisfied)
+- `lib/auth/require-page-access.ts` — logs every RBAC 403 with userId, roleName, and requiredRoute (solves "not authorized" mystery errors)
+- `app/api/tickets/route.ts` — logs ticket creation success and delivery errors
+- `app/api/leads/manual/route.ts` — logs manual lead creation
+- `app/api/webhook/leads/route.ts` — logs bad-secret 401s and accepted leads
+
+Log levels: `trace` → fine-grained debug, `debug` → dev diagnostics, `info` → normal milestones, `warn` → RBAC/auth blocks, `error` → DB or delivery failures.
+
 ### Deployment
 
 - **Vercel** — production hosting; every push to `main` triggers a build+deploy

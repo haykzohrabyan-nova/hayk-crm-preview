@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import * as Sentry from "@sentry/nextjs";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { requirePageAccess } from "@/lib/auth/require-page-access";
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest) {
   if (errorResponse) return errorResponse;
 
   if (roleName !== "sdr" && roleName !== "admin") {
+    Sentry.logger.warn("POST /api/leads/manual: role not allowed", { userId, roleName });
     return NextResponse.json({ error: "Forbidden.", code: "FORBIDDEN" }, { status: 403 });
   }
 
@@ -133,8 +135,11 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (lErr) {
+    Sentry.logger.error("POST /api/leads/manual: DB insert failed", { userId, roleName, error: lErr.message });
     return NextResponse.json({ error: lErr.message, code: "DB_ERROR" }, { status: 500 });
   }
+
+  Sentry.logger.info("POST /api/leads/manual: lead created", { leadId: lead.id, userId, roleName, source });
 
   // Log activity
   await admin.from("activities").insert({
