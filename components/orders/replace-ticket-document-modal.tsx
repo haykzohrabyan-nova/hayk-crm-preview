@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { FileText, Loader2, RefreshCw, Upload, X } from "lucide-react";
+import { reportApiError } from "@/lib/utils/report-api-error";
 
 export type ReplaceDocumentKind = "payment_evidence" | "sales_permit";
 
@@ -91,7 +92,9 @@ export function ReplaceTicketDocumentModal({
       const res = await fetch(uploadPath, { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError((data as { error?: string }).error ?? "Upload failed.");
+        const msg = (data as { error?: string }).error ?? "Upload failed.";
+        setError(msg);
+        reportApiError(msg, res, "ReplaceTicketDocumentModal");
         setSaving(false);
         return;
       }
@@ -99,8 +102,10 @@ export function ReplaceTicketDocumentModal({
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
       onSuccess();
       onClose();
-    } catch {
-      setError("Network error — please try again.");
+    } catch (err) {
+      const msg = "Network error — please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: "upload" }, "ReplaceTicketDocumentModal", { originalError: String(err) });
       setSaving(false);
     }
   }

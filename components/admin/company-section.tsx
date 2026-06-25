@@ -5,6 +5,7 @@ import { Building2, X } from "lucide-react";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { digitsOnly, validatePhone } from "@/lib/utils/phone";
+import { reportApiError } from "@/lib/utils/report-api-error";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -236,7 +237,7 @@ export function CompanySection() {
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { showToast(data.error, "error"); return; }
+    if (!res.ok) { const m = data.error ?? "Failed to save settings."; showToast(m, "error"); reportApiError(m, res, "CompanySection"); return; }
     setSettings(data.settings);
     setDirty(false);
     showToast("Company settings saved", "success");

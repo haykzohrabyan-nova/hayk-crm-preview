@@ -9,6 +9,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { computePricing, formatCurrency, type QuoteSku } from "@/lib/utils/ticket-math";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { validatePhone } from "@/lib/utils/phone";
@@ -697,7 +698,9 @@ export default function NewQuoteForm() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Failed to save quote.");
+        const msg = json.error ?? "Failed to save quote.";
+        setError(msg);
+        reportApiError(msg, res, "NewQuoteForm");
         return;
       }
 
@@ -717,7 +720,9 @@ export default function NewQuoteForm() {
           });
           if (!reuseRes.ok) {
             const reuseJson = await reuseRes.json().catch(() => ({}));
-            setError(reuseJson.error ?? "Failed to copy customer tax-exempt permit.");
+            const msg = reuseJson.error ?? "Failed to copy customer tax-exempt permit.";
+            setError(msg);
+            reportApiError(msg, reuseRes, "NewQuoteForm");
             return;
           }
         } else if (salesPermitFile) {
@@ -726,7 +731,9 @@ export default function NewQuoteForm() {
           const permitRes = await fetch(`/api/tickets/${ticketRef}/sales-permit`, { method: "POST", body: fd });
           if (!permitRes.ok) {
             const permitJson = await permitRes.json().catch(() => ({}));
-            setError(permitJson.error ?? "Failed to upload sales permit file.");
+            const msg = permitJson.error ?? "Failed to upload sales permit file.";
+            setError(msg);
+            reportApiError(msg, permitRes, "NewQuoteForm");
             return;
           }
         }
@@ -741,8 +748,10 @@ export default function NewQuoteForm() {
       } else {
         router.push("/quotes");
       }
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (err) {
+      const msg = "Network error. Please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: "/api/tickets" }, "NewQuoteForm", { originalError: String(err) });
     } finally {
       setSaving(false);
       hideLoading();

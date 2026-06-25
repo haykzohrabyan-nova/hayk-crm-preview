@@ -23,6 +23,7 @@ import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { validateEmail } from "@/lib/utils/email";
 import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
 import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import {
   buildLeadProductInterestPayload,
   EMPTY_PRODUCT_ROW_ERRORS,
@@ -312,6 +313,7 @@ export function AddLeadModal({
 
     if (!res.ok) {
       const msg = data.error ?? "Failed to create lead.";
+      reportApiError(msg, res, "AddLeadModal", { code: data.code });
       if (data.code === "UNAUTHENTICATED") {
         setError("Your session expired. Please refresh the page and sign in again.");
         return;

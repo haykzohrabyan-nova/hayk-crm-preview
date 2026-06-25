@@ -25,6 +25,7 @@ import {
 import { URGENCY_NOT_DEFINED, urgencyDbToForm, urgencyFormToDb } from "@/lib/utils/urgency-form";
 import { formatPhone, validatePhone } from "@/lib/utils/phone";
 import { relativeTime } from "@/lib/utils/format";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import { validateEmail } from "@/lib/utils/email";
 import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
 import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
@@ -256,7 +257,9 @@ export function VerifyDrawer({
     });
     const data = await res.json();
     if (!res.ok) {
-      showToast(data.error ?? "Something went wrong.", "error");
+      const msg = data.error ?? "Something went wrong.";
+      showToast(msg, "error");
+      reportApiError(msg, res, "VerifyDrawer/patchLead");
       return null;
     }
     return data.lead as Lead;
@@ -445,7 +448,7 @@ export function VerifyDrawer({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    if (!res.ok) { const m = data.error ?? "Something went wrong."; showToast(m, "error"); reportApiError(m, res, "VerifyDrawer/resume"); return; }
     setLead(data.lead);
     onLeadUpdated(data.lead);
     fireCountsRefresh();
@@ -473,7 +476,7 @@ export function VerifyDrawer({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    if (!res.ok) { const m = data.error ?? "Something went wrong."; showToast(m, "error"); reportApiError(m, res, "VerifyDrawer/hold"); return; }
     // Soft lock: SDR retains ownership while lead is on hold.
     onLeadRemoved(lead.id);
     onLeadUpdated(data.lead);
@@ -506,7 +509,7 @@ export function VerifyDrawer({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    if (!res.ok) { const m = data.error ?? "Something went wrong."; showToast(m, "error"); reportApiError(m, res, "VerifyDrawer/followUp"); return; }
     onLeadRemoved(lead.id);
     onLeadUpdated(data.lead);
     fireCountsRefresh();

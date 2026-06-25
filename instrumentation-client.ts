@@ -5,11 +5,11 @@ Sentry.init({
 
   sendDefaultPii: true,
 
-  // 100% in dev, 10% in production
-  tracesSampleRate: process.env.NODE_ENV === "development" ? 1.0 : 0.1,
+  // 100% traces — reduce after launch if quota becomes a concern
+  tracesSampleRate: 1.0,
 
-  // Session Replay: record 10% of all sessions, 100% of sessions where an error occurs
-  replaysSessionSampleRate: 0.1,
+  // Session Replay: record every session so all error reports come with a full replay
+  replaysSessionSampleRate: 1.0,
   replaysOnErrorSampleRate: 1.0,
 
   integrations: [Sentry.replayIntegration()],

@@ -39,6 +39,7 @@ import {
 } from "@/lib/utils/invoice-payment-summary";
 import { formatPhone, digitsOnly } from "@/lib/utils/phone";
 import { resolveTicketDetailBackPath } from "@/lib/utils/ticket-detail-href";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { EmailInput } from "@/components/ui/email-input";
 import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
@@ -664,11 +665,15 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
             }
             setCompleteModalTaxExempt(true);
           } else {
-            setError(json.error ?? "Failed to update.");
+            const msg = json.error ?? "Failed to update.";
+            setError(msg);
+            reportApiError(msg, res, "QuoteDetail/extraFields");
           }
         }
-      } catch {
-        setError("Network error. Please try again.");
+      } catch (err) {
+        const msg = "Network error. Please try again.";
+        setError(msg);
+        reportApiError(msg, { status: 0, url: `/api/tickets/${ticketId}` }, "QuoteDetail/extraFields", { originalError: String(err) });
       } finally {
         endSaveLoading();
       }
@@ -795,7 +800,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       const permitRes = await fetch(`/api/tickets/${permitApiRef}/sales-permit`, { method: "POST", body: fd });
       if (!permitRes.ok) {
         const permitJson = await permitRes.json().catch(() => ({}));
-        setError(permitJson.error ?? "Failed to upload sales permit file.");
+        const msg = permitJson.error ?? "Failed to upload sales permit file.";
+        setError(msg);
+        reportApiError(msg, permitRes, "QuoteDetail/salesPermit");
         setSaving(false);
         hideLoading();
         return;
@@ -847,7 +854,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(json.error ?? "Failed to save.");
+        const msg = json.error ?? "Failed to save.";
+        setError(msg);
+        reportApiError(msg, res, "QuoteDetail/save");
         return;
       }
 
@@ -898,8 +907,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       if (newStatus === "routed") {
         router.push("/quotes");
       }
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (err) {
+      const msg = "Network error. Please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: `/api/tickets/${ticketId}` }, "QuoteDetail/save", { originalError: String(err) });
     } finally {
       endSaveLoading();
     }
@@ -932,7 +943,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         });
         const json = await res.json();
         if (!res.ok) {
-          setError(json.error ?? "Failed to send update to customer.");
+          const msg = json.error ?? "Failed to send update to customer.";
+          setError(msg);
+          reportApiError(msg, res, "QuoteDetail/resend");
           return;
         }
         setNoticeIsWarning(false);
@@ -940,8 +953,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         window.dispatchEvent(new Event("bazaar:refresh-counts"));
       }
       setResendPrompt(null);
-    } catch {
-      setError("Network error. Please try again.");
+    } catch (err) {
+      const msg = "Network error. Please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: `/api/tickets/${ticketId}` }, "QuoteDetail/resend", { originalError: String(err) });
     } finally {
       setResendSending(false);
       endSaveLoading();
@@ -958,9 +973,15 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       });
       const json = await res.json();
       if (res.ok) setTicket(json.ticket);
-      else setError(json.error ?? "Failed to release production.");
-    } catch {
-      setError("Network error.");
+      else {
+        const msg = json.error ?? "Failed to release production.";
+        setError(msg);
+        reportApiError(msg, res, "QuoteDetail/releaseProduction");
+      }
+    } catch (err) {
+      const msg = "Network error.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: `/api/tickets/${ticketId}` }, "QuoteDetail/releaseProduction", { originalError: String(err) });
     } finally {
       endSaveLoading();
     }
@@ -1055,7 +1076,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       });
       const data = await res.json();
       if (!res.ok) {
-        setRefundErr(data.error ?? "Refund failed.");
+        const msg = data.error ?? "Refund failed.";
+        setRefundErr(msg);
+        reportApiError(msg, res, "QuoteDetail/refund");
         return;
       }
       setRefundModalOpen(false);
@@ -1063,8 +1086,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
       const refreshed = await fetch(`/api/tickets/${ticket.id}`).then((r) => r.json());
       if (refreshed?.ticket) setTicket(refreshed.ticket);
-    } catch {
-      setRefundErr("Network error — please try again.");
+    } catch (err) {
+      const msg = "Network error — please try again.";
+      setRefundErr(msg);
+      reportApiError(msg, { status: 0, url: `/api/tickets/${ticket.id}/refund` }, "QuoteDetail/refund", { originalError: String(err) });
     } finally {
       setRefundProcessing(false);
     }

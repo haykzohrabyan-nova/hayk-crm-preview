@@ -17,6 +17,7 @@ import { formatPhone } from "@/lib/utils/phone";
 import { lookupLabel } from "@/lib/utils/lookups";
 import { authorityLabel } from "@/lib/utils/authority";
 import { formatCurrency, relativeTime } from "@/lib/utils/format";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import {
   Select,
   SelectContent,
@@ -142,7 +143,9 @@ export function SalesDrawer({
     });
     const data = await res.json();
     if (!res.ok) {
-      showToast(data.error ?? "Something went wrong.", "error");
+      const msg = data.error ?? "Something went wrong.";
+      showToast(msg, "error");
+      reportApiError(msg, res, "SalesDrawer/patchLead");
       return null;
     }
     return data.lead as Lead;
@@ -182,7 +185,7 @@ export function SalesDrawer({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    if (!res.ok) { const m = data.error ?? "Something went wrong."; showToast(m, "error"); reportApiError(m, res, "SalesDrawer/hold"); return; }
     unlockRef.current = true;
     onLeadRemoved(lead.id);
     onLeadUpdated(data.lead);
@@ -202,7 +205,7 @@ export function SalesDrawer({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    if (!res.ok) { const m = data.error ?? "Something went wrong."; showToast(m, "error"); reportApiError(m, res, "SalesDrawer/followUp"); return; }
     unlockRef.current = true;
     onLeadRemoved(lead.id);
     onLeadUpdated(data.lead);
@@ -221,7 +224,7 @@ export function SalesDrawer({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { showToast(data.error ?? "Something went wrong.", "error"); return; }
+    if (!res.ok) { const m = data.error ?? "Something went wrong."; showToast(m, "error"); reportApiError(m, res, "SalesDrawer/resume"); return; }
     setLead(data.lead);
     onLeadUpdated(data.lead);
     onLeadRemoved(lead.id);

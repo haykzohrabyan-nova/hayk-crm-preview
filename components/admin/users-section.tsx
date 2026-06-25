@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { validateEmail } from "@/lib/utils/email";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import { RoleSessionPill } from "@/components/admin/user-session-card";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -195,7 +196,7 @@ function CreateUserDialog({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { setError(data.error ?? "Failed to create user."); return; }
+    if (!res.ok) { const msg = data.error ?? "Failed to create user."; setError(msg); reportApiError(msg, res, "UsersSection/create"); return; }
     logEmailDelivery("create", data.user?.email ?? form.email, data.email_delivery);
     reset();
     onCreated(data.user, data.email_delivery);
@@ -385,7 +386,7 @@ function EditUserDialog({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { setError(data.error ?? "Failed to save."); return; }
+    if (!res.ok) { const msg = data.error ?? "Failed to save."; setError(msg); reportApiError(msg, res, "UsersSection/save"); return; }
     logEmailDelivery("reset", data.user?.email ?? user.email, data.email_delivery);
     onSaved(data.user, data.email_delivery);
   }
@@ -627,7 +628,7 @@ export function UsersSection() {
     });
     const data = await res.json();
     setDeactivatingId(null);
-    if (!res.ok) { showToast(data.error ?? "Failed.", "error"); return; }
+    if (!res.ok) { const m = data.error ?? "Failed."; showToast(m, "error"); reportApiError(m, res, "UsersSection/toggleActive"); return; }
     setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, is_active: !u.is_active } : u));
     showToast(user.is_active ? "User deactivated." : "User reactivated.");
   }
@@ -644,7 +645,9 @@ export function UsersSection() {
     const data = await res.json();
     setMfaSaving(false);
     if (!res.ok) {
-      showToast(data.error ?? "Failed to update 2FA setting.", "error");
+      const msg = data.error ?? "Failed to update 2FA setting.";
+      showToast(msg, "error");
+      reportApiError(msg, res, "UsersSection/mfa");
       return;
     }
     setUsers((prev) =>

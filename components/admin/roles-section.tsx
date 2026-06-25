@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Trash2, Lock, X, Shield, Zap } from "lucide-react";
 import { isAdminOnlyPageRoute } from "@/lib/auth/admin-only-pages";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import { ToastBanner } from "@/components/ui/toast-banner";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -98,7 +99,9 @@ function NewRoleForm({
     const data = await res.json();
     setSaving(false);
     if (!res.ok) {
-      setError(data.error ?? "Failed to create role.");
+      const msg = data.error ?? "Failed to create role.";
+      setError(msg);
+      reportApiError(msg, res, "RolesSection/create");
       return;
     }
     onCreated(data.role);
@@ -330,7 +333,9 @@ export function RolesSection() {
     const data = await res.json();
     setDeletingRoleId(null);
     if (!res.ok) {
-      showToast(data.error ?? "Failed to delete.", "error");
+      const msg = data.error ?? "Failed to delete.";
+      showToast(msg, "error");
+      reportApiError(msg, res, "RolesSection/delete");
       return;
     }
     setRoles((prev) => prev.filter((r) => r.id !== role.id));

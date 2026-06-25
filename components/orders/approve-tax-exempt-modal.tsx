@@ -5,6 +5,7 @@ import { AlertTriangle, CheckCircle2, FileText, Loader2, Mail, XCircle } from "l
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { displayContactName } from "@/lib/utils/format";
 import { computeTotalsIfTaxExemptDenied } from "@/lib/utils/tax-exempt-approval";
+import { reportApiError } from "@/lib/utils/report-api-error";
 
 export interface TaxExemptApproveTicket {
   id: string;
@@ -131,7 +132,9 @@ export function ApproveTaxExemptModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Failed to confirm tax-exempt documentation.");
+        const msg = data.error ?? "Failed to confirm tax-exempt documentation.";
+        setError(msg);
+        reportApiError(msg, res, "ApproveTaxExemptModal/approve");
         setSaving(null);
         return;
       }
@@ -139,8 +142,10 @@ export function ApproveTaxExemptModal({
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
       onApproved();
       onClose();
-    } catch {
-      setError("Network error — please try again.");
+    } catch (err) {
+      const msg = "Network error — please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: `/api/tickets/${ticket.id}` }, "ApproveTaxExemptModal/approve", { originalError: String(err) });
       setSaving(null);
     }
   }
@@ -166,7 +171,9 @@ export function ApproveTaxExemptModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Failed to deny tax-exempt documentation.");
+        const msg = data.error ?? "Failed to deny tax-exempt documentation.";
+        setError(msg);
+        reportApiError(msg, res, "ApproveTaxExemptModal/deny");
         setSaving(null);
         return;
       }
@@ -174,8 +181,10 @@ export function ApproveTaxExemptModal({
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
       onApproved();
       onClose();
-    } catch {
-      setError("Network error — please try again.");
+    } catch (err) {
+      const msg = "Network error — please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: `/api/tickets/${ticket.id}` }, "ApproveTaxExemptModal/deny", { originalError: String(err) });
       setSaving(null);
     }
   }

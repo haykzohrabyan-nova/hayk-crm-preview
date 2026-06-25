@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import Link from "next/link";
 import {
   AlertCircle,
@@ -126,7 +127,9 @@ export function CustomersImportSection() {
       const res = await fetch("/api/admin/customers/import/template");
       const data = (await res.json()) as { template?: Record<string, unknown>; error?: string };
       if (!res.ok || !data.template) {
-        setError(data.error ?? "Could not load sample file.");
+        const msg = data.error ?? "Could not load sample file.";
+        setError(msg);
+        reportApiError(msg, res, "CustomersImport/sample");
         setLoading(null);
         return;
       }
@@ -137,8 +140,10 @@ export function CustomersImportSection() {
       a.download = "bazaar-customers-import-sample.json";
       a.click();
       URL.revokeObjectURL(url);
-    } catch {
-      setError("Network error — could not download sample.");
+    } catch (err) {
+      const msg = "Network error — could not download sample.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: "/api/admin/customers/import/template" }, "CustomersImport/sample", { originalError: String(err) });
     }
     setLoading(null);
   }
@@ -155,14 +160,18 @@ export function CustomersImportSection() {
       });
       const data = (await res.json().catch(() => ({}))) as BulkCustomerImportSummary & { error?: string };
       if (!res.ok) {
-        setError(data.error ?? "Validation failed.");
+        const msg = data.error ?? "Validation failed.";
+        setError(msg);
+        reportApiError(msg, res, "CustomersImport/validate");
         setLoading(null);
         return;
       }
       setSummary(data);
       setStep("preview");
-    } catch {
-      setError("Network error — please try again.");
+    } catch (err) {
+      const msg = "Network error — please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: "/api/admin/customers/import" }, "CustomersImport/validate", { originalError: String(err) });
     }
     setLoading(null);
   }
@@ -191,7 +200,9 @@ export function CustomersImportSection() {
         });
         const data = (await res.json().catch(() => ({}))) as BulkCustomerImportSummary & { error?: string };
         if (!res.ok) {
-          setError(data.error ?? "Import failed.");
+          const msg = data.error ?? "Import failed.";
+          setError(msg);
+          reportApiError(msg, res, "CustomersImport/import");
           setLoading(null);
           setProgress(null);
           return;
@@ -209,8 +220,10 @@ export function CustomersImportSection() {
       setStep("done");
       window.dispatchEvent(new Event("bazaar:customers-changed"));
       window.dispatchEvent(new Event("bazaar:refresh-counts"));
-    } catch {
-      setError("Network error — please try again.");
+    } catch (err) {
+      const msg = "Network error — please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: "/api/admin/customers/import" }, "CustomersImport/import", { originalError: String(err) });
     }
     setLoading(null);
     setProgress(null);

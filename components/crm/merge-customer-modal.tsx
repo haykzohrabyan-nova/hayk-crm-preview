@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { formatDate } from "@/lib/utils/format";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import { X, AlertTriangle, Check } from "lucide-react";
 
 export interface MergeSourceCustomer {
@@ -121,7 +122,9 @@ export function MergeCustomerModal({
       const data = await res.json();
       if (!res.ok) {
         setMerging(false);
-        setError(data.error ?? "Merge failed.");
+        const msg = data.error ?? "Merge failed.";
+        setError(msg);
+        reportApiError(msg, res, "MergeCustomerModal");
         return;
       }
       // Only send overrides once (first merge applies them to keeper)

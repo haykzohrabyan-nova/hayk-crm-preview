@@ -14,6 +14,7 @@ import { ToastBanner } from "@/components/ui/toast-banner";
 import { validateEmail } from "@/lib/utils/email";
 import { normalizeWebsite, validateWebsite, WEBSITE_FIELD_PLACEHOLDER } from "@/lib/utils/website";
 import { scrollToFormField } from "@/lib/utils/scroll-field-into-view";
+import { reportApiError } from "@/lib/utils/report-api-error";
 import { quoteDetailPath } from "@/lib/utils/reference-codes";
 import { newQuoteUrlFromCustomer } from "@/lib/utils/new-quote-from-customer";
 import { authorityLabel } from "@/lib/utils/authority";
@@ -194,7 +195,7 @@ function EditCustomerModal({
     });
     const data = await res.json();
     setSaving(false);
-    if (!res.ok) { setError(data.error ?? "Failed to save."); return; }
+    if (!res.ok) { const msg = data.error ?? "Failed to save."; setError(msg); reportApiError(msg, res, "CustomerProfile"); return; }
     onSaved(data.customer);
     onClose();
   }

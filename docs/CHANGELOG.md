@@ -3,6 +3,30 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-24] — Full Sentry error coverage for all user-facing API calls
+
+### Added
+- `lib/utils/report-api-error.ts` — shared utility that calls `Sentry.captureMessage()` whenever a fetch returns a non-2xx response; tags each event with component name and HTTP status; 5xx = error severity, 4xx = warning
+
+### Changed
+- `instrumentation-client.ts` — `replaysSessionSampleRate` raised from 10% → 100% so every session has a replay; `tracesSampleRate` set to 100% unconditionally (was dev-only)
+- Added `reportApiError` to all components that show users an error message from an API call:
+  - `components/quotes/new-quote-form.tsx`
+  - `components/quotes/quote-detail.tsx` (save, resend, release-production, refund, sales-permit)
+  - `components/leads/add-lead-modal.tsx`
+  - `components/leads/verify-drawer.tsx`
+  - `components/sales/sales-drawer.tsx`
+  - `components/crm/add-customer-modal.tsx`
+  - `components/crm/customer-profile.tsx`
+  - `components/crm/merge-customer-modal.tsx`
+  - `components/orders/approve-tax-exempt-modal.tsx`
+  - `components/orders/replace-ticket-document-modal.tsx`
+  - `components/admin/users-section.tsx`
+  - `components/admin/roles-section.tsx`
+  - `components/admin/company-section.tsx`
+  - `components/admin/leads-import-section.tsx`
+  - `components/admin/customers-import-section.tsx`
+
 ## [2026-06-24] — Truncate long names and company names in Orders and Quotes tables
 
 ### Fixed

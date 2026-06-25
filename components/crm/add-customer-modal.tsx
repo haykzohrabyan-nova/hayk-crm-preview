@@ -33,6 +33,7 @@ const HEAT_TAG_OPTIONS = [
 const AC = "section-bazaar-add-customer";
 
 import { labelCls, labelStyle, inputCls, inputStyle } from "@/lib/utils/form-field-styles";
+import { reportApiError } from "@/lib/utils/report-api-error";
 
 interface CustomerForm {
   first_name: string;
@@ -132,13 +133,17 @@ export function AddCustomerModal({
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Failed to create customer.");
+        const msg = data.error ?? "Failed to create customer.";
+        setError(msg);
+        reportApiError(msg, res, "AddCustomerModal");
         return;
       }
       onCreated(data.customer.id as string);
       onClose();
-    } catch {
-      setError("Network error — please try again.");
+    } catch (err) {
+      const msg = "Network error — please try again.";
+      setError(msg);
+      reportApiError(msg, { status: 0, url: "/api/customers" }, "AddCustomerModal", { originalError: String(err) });
     } finally {
       setSaving(false);
     }
