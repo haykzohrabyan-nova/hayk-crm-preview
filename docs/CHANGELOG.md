@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-24] — Fix source labels in Leads table
+
+### Fixed
+- `components/leads/leads-page.tsx` — Source column now shows the human-readable label (e.g. "Walk In", "Instagram") instead of the raw slug value in both the desktop table and mobile cards; lookups are now fetched on mount so labels are available immediately without needing to open a modal first
+
 ## [2026-06-24] — Lead Webhook strict validation hardened
 
 ### Changed

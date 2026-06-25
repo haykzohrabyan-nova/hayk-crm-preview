@@ -198,6 +198,7 @@ export function LeadsPage() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [lookups, setLookups] = useState<LookupMap>({});
   const lookupsLoadedRef = useRef(false);
+  const sourceLabels = Object.fromEntries((lookups.source ?? []).map((s) => [s.value, s.label]));
 
   // Drawer state
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
@@ -302,9 +303,8 @@ export function LeadsPage() {
     setToast({ message, type });
   }
 
-  // Load lookups when Add Lead modal or verify drawer opens (once)
+  // Load lookups on mount (needed for source labels in the table) and again when modal/drawer opens
   useEffect(() => {
-    if (!addOpen && !drawerLead) return;
     if (lookupsLoadedRef.current) return;
     lookupsLoadedRef.current = true;
     fetch("/api/lookups?categories=source,industry,urgency,hold_reason,follow_up_reason,reject_reason,route_reason,sales_drop_reason")
@@ -313,7 +313,7 @@ export function LeadsPage() {
       .catch(() => {
         lookupsLoadedRef.current = false;
       });
-  }, [addOpen, drawerLead]);
+  }, []);
 
   function selectTab(next: Tab) {
     setActiveTab(next);
@@ -702,7 +702,7 @@ export function LeadsPage() {
                         {lead.customer?.company || "—"}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
-                        {lead.source || "—"}
+                        {(lead.source && (sourceLabels[lead.source] ?? lead.source)) || "—"}
                       </td>
                       <td className="px-3 py-2.5 max-w-[220px]" style={{ color: "var(--color-text-muted)" }}>
                         <span className="block truncate" title={productInterestsText(lead) !== "—" ? productInterestsText(lead) : undefined}>
@@ -832,7 +832,7 @@ export function LeadsPage() {
                     {lead.customer?.phone && (
                       <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>
                     )}
-                    <div className="flex justify-between"><span>Source</span><span className="normal-case tracking-normal">{lead.source || "—"}</span></div>
+                    <div className="flex justify-between"><span>Source</span><span className="normal-case tracking-normal">{(lead.source && (sourceLabels[lead.source] ?? lead.source)) || "—"}</span></div>
                     {productInterestsText(lead) !== "—" && (
                       <div className="flex justify-between gap-2">
                         <span className="shrink-0">Product Interests</span>
@@ -1392,7 +1392,7 @@ export function LeadsPage() {
       {activeTab === "won" && (
         <LeadHistoryTable
           leads={filtered as LeadHistoryRow[]}
-          sourceLabels={Object.fromEntries((lookups.source ?? []).map((s) => [s.value, s.label]))}
+          sourceLabels={sourceLabels}
           emptyMessage="No won leads yet. Leads appear here when you route them to Sales and the linked order enters production."
           loading={loading}
           showTitle={false}
