@@ -128,11 +128,16 @@ function QuoteMobileCard({
           <span className="text-xs font-mono font-medium" style={{ color: "var(--color-text-primary)" }}>
             {q.reference_code ?? "—"}
           </span>
-          <p className="font-semibold text-sm mt-1.5 truncate" style={{ color: "var(--color-text-primary)" }}>
-            {displayContactName(q.customer, { preferPerson: true })}
-          </p>
+          {(() => {
+            const n = displayContactName(q.customer, { preferPerson: true });
+            return (
+              <p className="font-semibold text-sm mt-1.5 truncate" title={n} style={{ color: "var(--color-text-primary)" }}>
+                {n}
+              </p>
+            );
+          })()}
           {q.customer?.company && (
-            <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
+            <p className="text-xs truncate" title={q.customer.company} style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
           )}
           </div>
         </div>
@@ -214,11 +219,16 @@ function RoutedQuoteMobileCard({
           <ExpandChevron open={expanded} />
         </span>
         <div className="min-w-0 flex-1">
-        <p className="font-semibold text-sm truncate" style={{ color: "var(--color-text-primary)" }}>
-          {displayContactName(q.customer, { preferPerson: true })}
-        </p>
+        {(() => {
+          const n = displayContactName(q.customer, { preferPerson: true });
+          return (
+            <p className="font-semibold text-sm truncate" title={n} style={{ color: "var(--color-text-primary)" }}>
+              {n}
+            </p>
+          );
+        })()}
         {q.customer?.company && (
-          <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
+          <p className="text-xs truncate" title={q.customer.company} style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
         )}
         </div>
       </div>
@@ -583,10 +593,15 @@ export default function QuotesPage() {
                       <ExpandChevron open={isOpen} />
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(q.customer, { preferPerson: true })}</p>
+                  <td className="px-4 py-3 overflow-hidden">
+                    {(() => {
+                      const n = displayContactName(q.customer, { preferPerson: true });
+                      return (
+                        <p className="text-sm font-medium truncate max-w-[200px]" title={n} style={{ color: "var(--color-text-primary)" }}>{n}</p>
+                      );
+                    })()}
                     {q.customer?.company && (
-                      <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
+                      <p className="text-xs mt-0.5 truncate max-w-[200px]" title={q.customer.company} style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -720,10 +735,15 @@ export default function QuotesPage() {
                         <ExpandChevron open={isOpen} />
                       </span>
                     </td>
-                    <td className="px-4 py-3">
-                      <p className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(q.customer, { preferPerson: true })}</p>
+                    <td className="px-4 py-3 overflow-hidden">
+                      {(() => {
+                        const n = displayContactName(q.customer, { preferPerson: true });
+                        return (
+                          <p className="text-sm font-medium truncate max-w-[200px]" title={n} style={{ color: "var(--color-text-primary)" }}>{n}</p>
+                        );
+                      })()}
                       {q.customer?.company && (
-                        <p className="text-xs mt-0.5" style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
+                        <p className="text-xs mt-0.5 truncate max-w-[200px]" title={q.customer.company} style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
                       )}
                     </td>
                     <td className="px-4 py-3">

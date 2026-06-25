@@ -276,7 +276,7 @@ function OrderMobileCard({
             );
           })()}
           {o.customer?.company && (
-            <p className="text-xs truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
+            <p className="text-xs truncate" title={o.customer.company} style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
           )}
           </div>
         </div>
@@ -533,7 +533,7 @@ function OrdersTableDesktop({
                   );
                 })()}
                 {o.customer?.company && (
-                  <p className="text-xs mt-0.5 truncate" style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
+                  <p className="text-xs mt-0.5 truncate max-w-[180px]" title={o.customer.company} style={{ color: "var(--color-text-muted)" }}>{o.customer.company}</p>
                 )}
               </td>
               <td className="lg:px-2 lg:py-2 xl:px-2 xl:py-3 overflow-hidden" style={cellStyle}>

@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-24] — Truncate long names and company names in Orders and Quotes tables
+
+### Fixed
+- `components/orders/orders-page.tsx` — Company name in both mobile card and desktop table now shows full text on hover (`title` attribute added); `truncate` was already present but had no tooltip
+- `components/quotes/quotes-page.tsx` — Contact name and company name in desktop table rows now have `truncate` class and `overflow-hidden` on their `<td>` so they no longer push the column wide; both show full text on hover; mobile card names also gained `title` tooltips
+
 ## [2026-06-24] — Fix source labels in Leads table
 
 ### Fixed
