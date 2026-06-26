@@ -3,6 +3,20 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-25] — Route to Sales modal with optional sales rep assignment
+
+### Added
+- `app/api/leads/sales-users/route.ts` — `GET /api/leads/sales-users`: returns all active sales users from `user_profiles_with_role` view; accessible to any authenticated user (SDRs need this, not just admins)
+- `components/leads/route-to-sales-modal.tsx` — overlay modal shown when clicking "Route to Sales"; displays all active sales reps as radio options plus an "Add to queue — don't assign yet" default; fetches the user list on open with a skeleton loading state
+
+### Changed
+- `app/api/leads/[id]/route.ts` — added `sales_owner_id` to `ALLOWED_PATCH_FIELDS` so routing and assignment can happen atomically; logs a `lead_reassigned` activity (role: "sales") when a rep is assigned at route time
+- `components/leads/verify-drawer.tsx` — "Route to Sales" button now opens `RouteToSalesModal` before executing; `doRoute()` accepts an optional `salesOwnerId` and includes it in the PATCH payload when provided
+- `components/leads/leads-page.tsx` — admin "Route to Sales" inline button now opens `RouteToSalesModal`; replaced `routingLeadId` spinner pattern with modal-based flow
+
+### Fixed
+- `app/api/leads/sales-users/route.ts` — queried `user_profiles_with_role` view (not `user_profiles` table directly) so the `role_name` filter works correctly; querying the base table returned an empty list because `role_name` is a computed column on the view
+
 ## [2026-06-25] — Redirect to login on expired session (401)
 
 ### Fixed

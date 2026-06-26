@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { RouteToSalesModal } from "@/components/leads/route-to-sales-modal";
 import {
   X,
   Lock,
@@ -167,6 +168,7 @@ export function VerifyDrawer({
   });
   const [saving, setSaving] = useState(false);
   const [showUpdateCustomer, setShowUpdateCustomer] = useState(false);
+  const [showRouteModal, setShowRouteModal] = useState(false);
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [websiteError, setWebsiteError] = useState<string | null>(null);
@@ -399,7 +401,7 @@ export function VerifyDrawer({
 
   // ── Action: Route to Sales ────────────────────────────────────────────────
 
-  async function doRoute() {
+  async function doRoute(salesOwnerId: string | null = null) {
     if (!validateContactFields()) return;
     const result = buildLeadPayload();
     if (!result.ok) {
@@ -412,10 +414,11 @@ export function VerifyDrawer({
       ...payload,
       status: "Routed to Sales",
       sales_status: "Ongoing",
+      ...(salesOwnerId ? { sales_owner_id: salesOwnerId } : {}),
     });
     setSaving(false);
     if (!updated) return;
-    // Ownership released — lead moves to Sales queue.
+    // Ownership released — lead moves to Sales queue (or directly to assigned rep).
     fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
     onLeadRemoved(lead.id);
     onLeadUpdated(updated);
@@ -425,7 +428,23 @@ export function VerifyDrawer({
   }
 
   function handleRoute() {
-    promptThenRun(doRoute);
+    // Validate form fields first — if they fail, don't even open the modal.
+    if (!validateContactFields()) return;
+    const result = buildLeadPayload();
+    if (!result.ok) {
+      showToast(result.error, "error");
+      return;
+    }
+    // Open the assignee modal. The actual route runs after the user confirms.
+    if (lead.customer_id && hasContactChanged(lead, form)) {
+      setPendingAction(() => () => {
+        setShowRouteModal(true);
+        return Promise.resolve();
+      });
+      setShowUpdateCustomer(true);
+    } else {
+      setShowRouteModal(true);
+    }
   }
 
   // ── Action: Resume (from On Hold) ────────────────────────────────────────
@@ -1257,6 +1276,16 @@ export function VerifyDrawer({
         )}
       </div>
       </div>
+
+      <RouteToSalesModal
+        open={showRouteModal}
+        onClose={() => setShowRouteModal(false)}
+        onConfirm={(salesOwnerId) => {
+          setShowRouteModal(false);
+          void doRoute(salesOwnerId);
+        }}
+        saving={saving}
+      />
     </>
   );
 }

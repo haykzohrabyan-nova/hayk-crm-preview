@@ -974,7 +974,7 @@ Handles all lead field updates. Key behaviors:
 - Strips `id`, `created_at` from body
 - 403 if lead is rejected (non-admin), locked by another user, or access denied
 - On `status: "Rejected"` → saves `prev_status` from current value
-- Logs activities: `lead_edited`, `lead_status_changed`, `lead_routed_to_sales`, `lead_rejected`
+- Logs activities: `lead_edited`, `lead_status_changed`, `lead_routed_to_sales`, `lead_rejected`; also `lead_reassigned` (role: "sales") when `sales_owner_id` is set during a "Routed to Sales" transition
 
 **Reject (both SDR and Sales):** No separate reject endpoint. Send `PATCH` with `{ status: "Rejected", rejection_reason, rejection_notes }`. Sales also sends `{ sales_status: null }`.
 
@@ -1055,7 +1055,7 @@ Activity: `lead_manual_created` with `{ source }`
 | Action | API call | Effect |
 |--------|----------|--------|
 | Save | `PATCH /api/leads/[id]` | Field updates only |
-| Route to Sales | `PATCH` + `status: "Routed to Sales"` + unlock | Moves lead to sales pipeline |
+| Route to Sales | Opens `RouteToSalesModal` → `PATCH` with `status: "Routed to Sales"` + optional `sales_owner_id` + unlock | Moves lead to Sales pipeline; optionally pre-assigns to a rep |
 | Hold | `POST /hold` | Removes from current view, keeps in workspace |
 | Follow-up | `POST /follow-up` | Schedules for later |
 | Resume | `POST /resume` | Restores prior status |

@@ -37,6 +37,10 @@ const AddLeadModal = dynamic(
   () => import("@/components/leads/add-lead-modal").then((m) => ({ default: m.AddLeadModal })),
   { ssr: false, loading: () => null },
 );
+const RouteToSalesModal = dynamic(
+  () => import("@/components/leads/route-to-sales-modal").then((m) => ({ default: m.RouteToSalesModal })),
+  { ssr: false, loading: () => null },
+);
 import { Lead, LookupMap } from "@/lib/types";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { followUpReasonLabel } from "@/lib/constants/follow-up-reasons";
@@ -214,7 +218,8 @@ export function LeadsPage() {
   const [reassignLead, setReassignLead] = useState<Lead | null>(null);
   const [reassignUserId, setReassignUserId] = useState<string>("unassign");
   const [reassigning, setReassigning] = useState(false);
-  const [routingLeadId, setRoutingLeadId] = useState<string | null>(null);
+  const [routeModalLead, setRouteModalLead] = useState<Lead | null>(null);
+  const [routeModalSaving, setRouteModalSaving] = useState(false);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
 
   // Owner filter (SDR users only): "all" = unclaimed pool, "mine" = leads I claimed
@@ -498,22 +503,31 @@ export function LeadsPage() {
   }
 
   async function handleRouteLeadToSales(lead: Lead) {
-    setRoutingLeadId(lead.id);
-    const res = await fetch(`/api/leads/${lead.id}`, {
+    setRouteModalLead(lead);
+  }
+
+  async function confirmRouteLeadToSales(salesOwnerId: string | null) {
+    if (!routeModalLead) return;
+    setRouteModalSaving(true);
+    const res = await fetch(`/api/leads/${routeModalLead.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "Routed to Sales", sales_status: "Ongoing" }),
+      body: JSON.stringify({
+        status: "Routed to Sales",
+        sales_status: "Ongoing",
+        ...(salesOwnerId ? { sales_owner_id: salesOwnerId } : {}),
+      }),
     });
     const data = await res.json();
+    setRouteModalSaving(false);
     if (!res.ok) {
-      setRoutingLeadId(null);
       showToast(data.error ?? "Failed to route lead.", "error");
       return;
     }
-    fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
-    setLeads((prev) => prev.filter((l) => l.id !== lead.id));
+    fetch(`/api/leads/${routeModalLead.id}/unlock`, { method: "POST" }).catch(() => {});
+    setLeads((prev) => prev.filter((l) => l.id !== routeModalLead.id));
     window.dispatchEvent(new Event("bazaar:refresh-counts"));
-    setRoutingLeadId(null);
+    setRouteModalLead(null);
     showToast("Lead routed to Sales.");
   }
 
@@ -764,7 +778,7 @@ export function LeadsPage() {
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => void handleViewLead(lead)}
-                              disabled={leadActionDisabled() || routingLeadId === lead.id}
+                              disabled={leadActionDisabled()}
                               className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                               style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                             >
@@ -772,7 +786,6 @@ export function LeadsPage() {
                             </button>
                             <button
                               onClick={() => { setReassignLead(lead); setReassignUserId(lead.locked_by_id ? "unassign" : ""); }}
-                              disabled={routingLeadId === lead.id}
                               className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 min-w-[72px] text-center"
                               style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
                             >
@@ -781,11 +794,11 @@ export function LeadsPage() {
                             {lead.status !== "Routed to Sales" && (
                               <button
                                 onClick={() => void handleRouteLeadToSales(lead)}
-                                disabled={routingLeadId === lead.id || leadActionDisabled()}
+                                disabled={leadActionDisabled()}
                                 className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                                 style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
                               >
-                                {routingLeadId === lead.id ? "Routing…" : "Route to Sales"}
+                                Route to Sales
                               </button>
                             )}
                           </div>
@@ -1555,6 +1568,13 @@ export function LeadsPage() {
           onDismiss={() => setToast(null)}
         />
       )}
+
+      <RouteToSalesModal
+        open={!!routeModalLead}
+        onClose={() => setRouteModalLead(null)}
+        onConfirm={(salesOwnerId) => void confirmRouteLeadToSales(salesOwnerId)}
+        saving={routeModalSaving}
+      />
     </div>
   );
 }

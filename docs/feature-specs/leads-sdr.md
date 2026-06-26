@@ -50,7 +50,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 - **View** (SDR, My Leads toggle) → opens drawer for owned lead (`POST /lock` refreshes `locked_at`; no new `lead_claimed`)
 - **Edit button** (Admin) → opens **Verify Drawer** in **edit mode** with no lock acquired — Admin can view and save any field changes via "Save Changes" button; the active SDR's lock is undisturbed
 - **Assign / Reassign button** (Admin only) → "Assign" label when `locked_by_id IS NULL`; "Reassign" label when lead is already owned. Fixed `min-w-[72px]` so both labels render at the same button width. Opens a modal with a dropdown of all active SDR users plus an "Unassign" option. Disabled until an SDR is selected. On confirm → updates `locked_by_id`, `locked_at`, and `sdr_id`; row updates in place and tab counts refresh
-- **Route to Sales button** (Admin only, gold CTA) → one-click inline route without opening the drawer. Hidden when `lead.status === "Routed to Sales"`. Calls `PATCH /api/leads/[id]` with `{ status: "Routed to Sales", sales_status: "Ongoing" }`, releases the lock via `POST /api/leads/[id]/unlock`, removes the row from the list, and fires `bazaar:refresh-counts`. Button shows "Routing…" while the request is in flight and disables all three action buttons on that row.
+- **Route to Sales button** (Admin only, gold CTA) → opens the **Route to Sales modal** to optionally assign a sales rep before routing. Hidden when `lead.status === "Routed to Sales"`. On confirm: calls `PATCH /api/leads/[id]` with `{ status: "Routed to Sales", sales_status: "Ongoing" }` (plus `sales_owner_id` if a rep was selected), releases the lock via `POST /api/leads/[id]/unlock`, removes the row from the list, and fires `bazaar:refresh-counts`.
 - **Empty state:** "No leads found." with muted text
 
 ### Badge
@@ -330,7 +330,7 @@ Actions available depending on drawer mode and current `status`. **All action bu
 | Action | When Available | What it does |
 |--------|---------------|--------------|
 | ~~**Validate**~~ | _Removed_ | The Validate step has been removed from the SDR workflow. SDRs go directly to Route to Sales, On Hold, or Reject. |
-| **Route to Sales** | Edit mode (SDR **and** Admin), any non-routed status | Full-screen reason sub-form (`route_reason` lookups); **Other** requires **Please specify**; saves form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'`. Admin also has a one-click **Route to Sales** button on each list row (no drawer required). |
+| **Route to Sales** | Edit mode (SDR **and** Admin), any non-routed status | Opens **Route to Sales modal** — radio list of active sales reps + "Add to queue — don't assign yet" (default). On confirm: saves form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'`, optionally sets `sales_owner_id`. Admin also has a **Route to Sales** button on each list row (opens the same modal, no drawer required). |
 | **Follow Up Later** | Edit mode, not On Hold / Follow Up Later / Rejected | Full-screen follow-up sub-form; `POST /api/leads/[id]/follow-up` |
 | **On Hold** | Edit mode, status not Rejected | Replaces drawer body with full-screen hold sub-form (tabs + lead form hidden until hold is confirmed or cancelled) |
 | **Resume** | Edit mode, `status = 'On Hold'` or `Follow Up Later` | Saves form edits + `POST /api/leads/[id]/resume` → restores `prev_status` |
@@ -358,12 +358,15 @@ Default seeded reasons: Awaiting customer response · Awaiting artwork / files �
 - Hold Until (date picker, optional)
 - **Confirm Hold** button → `POST /api/leads/[id]/hold`
 
-### Route to Sales Sub-form (full-screen in drawer body)
+### Route to Sales Modal (`components/leads/route-to-sales-modal.tsx`)
 
-Radio button grid (2 columns). **Reasons are admin-managed** — `route_reason` category (same list as quote **Route to Sales** modal on new quote Line Items and Quote tabs).
+Opens when the SDR or Admin clicks "Route to Sales" — from the Verify Drawer footer or the admin list row button.
 
-- Notes (textarea, optional except when **Other** is selected — then **Please specify** is required)
-- **Confirm Route** → `PATCH /api/leads/[id]` with `status: 'Routed to Sales'`
+- Fetches `GET /api/leads/sales-users` on open (active sales users, any auth)
+- Radio list: **"Add to queue — don't assign yet"** (pre-selected, `sales_owner_id` omitted) + one option per active sales rep
+- Skeleton placeholders while the user list loads
+- **Confirm Route** → `PATCH /api/leads/[id]` with `{ status: 'Routed to Sales', sales_status: 'Ongoing', sales_owner_id? }` + `POST /api/leads/[id]/unlock`
+- If a rep is selected, logs a `lead_reassigned` activity (role: "sales") in addition to `lead_routed_to_sales`
 
 ### Rejection Form (inline in drawer footer)
 
@@ -524,8 +527,8 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Admin Edit action (no lock) | Admin opens any lead in **edit mode** without acquiring a lock — "Save Changes" + "Route to Sales" buttons in footer; active SDR's lock untouched |
 | Admin "Working" column | All Leads table shows which SDR owns each lead; mobile cards too |
 | Admin Assign / Reassign action | "Assign" on unclaimed leads; "Reassign" on owned leads. Fixed `min-w` so both labels are same button width. Modal with active SDR dropdown + Unassign; logs `lead_reassigned` |
-| Admin Route to Sales — inline list button | Gold "Route to Sales" CTA in the Action column, hidden when `status = 'Routed to Sales'`. One-click: patches status + `sales_status = Ongoing`, releases lock, removes row, fires counts refresh |
-| Admin Route to Sales — drawer button | "Route to Sales" added to Verify Drawer footer for admin (sits between Close and Save Changes); uses same `handleRoute` / `doRoute` logic as SDR |
+| Admin Route to Sales — inline list button | Gold "Route to Sales" CTA in the Action column, hidden when `status = 'Routed to Sales'`. Opens **Route to Sales modal** to pick a rep or queue; on confirm: patches status + `sales_status = Ongoing` + optional `sales_owner_id`, releases lock, removes row, fires counts refresh |
+| Admin Route to Sales — drawer button | "Route to Sales" in Verify Drawer footer; opens same `RouteToSalesModal`; uses `handleRoute` / `doRoute(salesOwnerId)` logic |
 | Race condition safety net | If SDR clicks **Claim** on a stale lead, 409 → read-only drawer with locker banner |
 | Manual Add Lead modal | Phone lookup + dedup; per-field validation; lead stays **unclaimed** until Claim/Assign; shared component on CRM profile (SDR Add Lead) |
 | Verify Drawer (permanent lock, lock banner) | Lock acquired on **Claim**; ownership persists across close/save/hold until Route or Reject |

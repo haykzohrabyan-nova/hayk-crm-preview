@@ -8,8 +8,10 @@ import { canReadLead, canMutateLead } from "@/lib/utils/lead-access";
 import { validateLeadInterestsPayload } from "@/lib/utils/validate-lead-product-interests";
 
 // Only these fields may be written via a general PATCH.
-// Privileged columns (sales_owner_id, locked_by_id, sdr_id, hold_*, follow_up_*, etc.)
+// Privileged columns (locked_by_id, sdr_id, hold_*, follow_up_*, etc.)
 // are managed exclusively by their dedicated endpoints.
+// sales_owner_id is allowed here so the Route-to-Sales modal can optionally
+// assign a rep in the same atomic request that changes status.
 const ALLOWED_PATCH_FIELDS = [
   "urgency",
   "interests",
@@ -25,6 +27,7 @@ const ALLOWED_PATCH_FIELDS = [
   "status",
   "rejection_reason",
   "rejection_notes",
+  "sales_owner_id",
 ] as const;
 
 // ─── GET /api/leads/[id] ──────────────────────────────────────────────────────
@@ -253,6 +256,27 @@ export async function PATCH(
         by_user_id: userId,
         payload: {},
       });
+
+      if (update.sales_owner_id) {
+        const { data: assignee } = await admin
+          .from("user_profiles")
+          .select("full_name")
+          .eq("id", update.sales_owner_id)
+          .single();
+        await admin.from("activities").insert({
+          lead_id: id,
+          customer_id: lead.customer_id,
+          type: "lead_reassigned",
+          by_user_id: userId,
+          payload: {
+            from_user_id: null,
+            from_name: null,
+            to_user_id: update.sales_owner_id,
+            to_name: assignee?.full_name ?? null,
+            role: "sales",
+          },
+        });
+      }
     }
     if (update.status === "Rejected") {
       await admin.from("activities").insert({
