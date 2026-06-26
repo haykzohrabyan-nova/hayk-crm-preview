@@ -21,11 +21,10 @@ import {
 } from "@/components/ui/mobile-list-card";
 import { ListPagination } from "@/components/ui/list-pagination";
 import {
-  readStoredListPageSize,
-  writeStoredListPageSize,
   type ListPageSize,
   type PaginationMeta,
 } from "@/lib/utils/pagination";
+import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 import { formatCurrency } from "@/lib/utils/ticket-math";
 import { PRIORITY_STYLE, PAYMENT_STYLE } from "@/lib/utils/order-styles";
 import { displayContactName, formatDate } from "@/lib/utils/format";
@@ -178,7 +177,7 @@ export function CompletedPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [pageSize, setPageSize] = useStoredListPageSize();
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
     defaultDashboardDateRangeFilterValue("last_month"),
   );
@@ -263,7 +262,6 @@ export function CompletedPage() {
   }, [pageData]);
 
   function handlePageSizeChange(size: ListPageSize) {
-    writeStoredListPageSize(size);
     setPageSize(size);
     setOffset(0);
   }

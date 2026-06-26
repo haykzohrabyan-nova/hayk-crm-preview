@@ -28,11 +28,10 @@ import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-inte
 import { createClient } from "@/lib/supabase/client";
 import { ListPagination } from "@/components/ui/list-pagination";
 import {
-  readStoredListPageSize,
-  writeStoredListPageSize,
   type ListPageSize,
   type PaginationMeta,
 } from "@/lib/utils/pagination";
+import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -64,7 +63,7 @@ export function SalesPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [pageSize, setPageSize] = useStoredListPageSize();
   const [toast, setToast] = useState<Toast | null>(null);
   const [drawerLead, setDrawerLead] = useState<Lead | null>(null);
   const [drawerReadOnly, setDrawerReadOnly] = useState(false);
@@ -217,7 +216,6 @@ export function SalesPage() {
   const isLoading = loading;
 
   function handlePageSizeChange(size: ListPageSize) {
-    writeStoredListPageSize(size);
     setPageSize(size);
     setOffset(0);
   }

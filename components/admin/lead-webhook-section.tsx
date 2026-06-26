@@ -28,10 +28,9 @@ import {
 } from "@/lib/utils/dashboard-date-range-filter";
 import { ListPagination } from "@/components/ui/list-pagination";
 import {
-  readStoredListPageSize,
-  writeStoredListPageSize,
   type ListPageSize,
 } from "@/lib/utils/pagination";
+import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 
 type FilterTab = LeadWebhookFilterTab;
 
@@ -406,7 +405,7 @@ export function LeadWebhookSection() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [pageSize, setPageSize] = useStoredListPageSize();
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
     defaultDashboardDateRangeFilterValue("last_week")
   );
@@ -466,7 +465,6 @@ export function LeadWebhookSection() {
 
   function handlePageSizeChange(size: ListPageSize) {
     setPageSize(size);
-    writeStoredListPageSize(size);
   }
 
   const rows = data?.rows ?? [];

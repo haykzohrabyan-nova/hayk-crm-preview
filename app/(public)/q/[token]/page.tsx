@@ -175,7 +175,9 @@ const computeAmountPaid = (ticket: PublicTicket): number => roundMoney(getAmount
 function isDepositPaid(ticket: PublicTicket, depositDue: number, amountPaid: number): boolean {
   const strategy = ticket.ticket_payment_strategy ?? "full";
   if (strategy !== "partial") return false;
-  return !!ticket.deposit_paid_at || amountPaid >= depositDue - 0.01;
+  // Amount-based only — matches computeCheckout so partial approvals don't
+  // show the deposit as "paid" until the threshold is actually met.
+  return amountPaid >= depositDue - 0.01;
 }
 
 // ─── Portal phase — one link, UI adapts to what the customer needs next ────────
@@ -716,6 +718,8 @@ function PublicPayModal({
   const [selectedChannel, setSelectedChannel] = useState(channels[0] ?? "");
   const [receiptId, setReceiptId]             = useState("");
   const [evidenceFile, setEvidenceFile]       = useState<File | null>(null);
+  const [isPartialPay, setIsPartialPay]       = useState(false);
+  const [partialPayAmt, setPartialPayAmt]     = useState<string>("");
   const [submitting, setSubmitting]           = useState(false);
   const [stripeLoading, setStripeLoading]     = useState(false);
   const [submitErr, setSubmitErr]             = useState<string | null>(null);
@@ -725,6 +729,8 @@ function PublicPayModal({
     setSelectedChannel(channels[0] ?? "");
     setReceiptId("");
     setEvidenceFile(null);
+    setIsPartialPay(false);
+    setPartialPayAmt("");
     setSubmitErr(null);
     setSubmitting(false);
     setStripeLoading(false);
@@ -750,10 +756,13 @@ function PublicPayModal({
   }
 
   const needsEvidence = EVIDENCE_CHANNELS.has(selectedChannel);
+  const partialAmtNum = Number(partialPayAmt);
+  const partialAmtValid = !isNaN(partialAmtNum) && partialAmtNum > 0 && partialAmtNum < dueAmount;
+  const resolvedClaimedAmount = isPartialPay ? partialAmtNum : dueAmount;
   const canSubmit =
     !!selectedChannel && selectedChannel !== "card" &&
     dueAmount > 0 &&
-    (!needsEvidence || !!evidenceFile);
+    (!needsEvidence || (!!evidenceFile && (!isPartialPay || partialAmtValid)));
 
   async function handleSubmitPayment() {
     if (!canSubmit) return;
@@ -764,6 +773,7 @@ function PublicPayModal({
       form.set("method", selectedChannel);
       if (receiptId)    form.set("receiptId", receiptId);
       if (evidenceFile) form.set("file",      evidenceFile);
+      if (needsEvidence) form.set("claimedAmount", String(resolvedClaimedAmount));
       const res  = await fetch(`/api/public/quotes/${token}/submit-payment`, { method: "POST", body: form });
       const data = await res.json();
       if (!res.ok) {
@@ -849,6 +859,102 @@ function PublicPayModal({
               You will be redirected to our secure Stripe checkout to pay {fmt(dueAmount)} by card.
               After payment, our team will confirm your order — same as other payment methods.
             </p>
+          </div>
+        )}
+
+        {needsEvidence && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+              How much are you paying?
+            </label>
+            <div style={{ border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden" }}>
+              {/* Paying in full */}
+              <button
+                type="button"
+                onClick={() => { setIsPartialPay(false); setSubmitErr(null); }}
+                style={{
+                  width: "100%", display: "flex", alignItems: "center", gap: 12,
+                  padding: "12px 16px", textAlign: "left", background: !isPartialPay ? "#FFFBEB" : SURFACE,
+                  border: "none", borderBottom: `1px solid ${BORDER}`, cursor: "pointer",
+                }}
+              >
+                <span style={{
+                  flexShrink: 0, width: 18, height: 18, borderRadius: "50%",
+                  border: `2px solid ${!isPartialPay ? NAVY : BORDER}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {!isPartialPay && <span style={{ width: 8, height: 8, borderRadius: "50%", background: NAVY }} />}
+                </span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>
+                    Paying in full — {fmt(dueAmount)}
+                  </div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>
+                    I am sending the full amount shown above
+                  </div>
+                </div>
+              </button>
+
+              {/* Paying a partial amount */}
+              <button
+                type="button"
+                onClick={() => { setIsPartialPay(true); setSubmitErr(null); }}
+                style={{
+                  width: "100%", display: "flex", alignItems: "flex-start", gap: 12,
+                  padding: "12px 16px", textAlign: "left", background: isPartialPay ? "#FFFBEB" : SURFACE,
+                  border: "none", cursor: "pointer",
+                }}
+              >
+                <span style={{
+                  flexShrink: 0, marginTop: 2, width: 18, height: 18, borderRadius: "50%",
+                  border: `2px solid ${isPartialPay ? NAVY : BORDER}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}>
+                  {isPartialPay && <span style={{ width: 8, height: 8, borderRadius: "50%", background: NAVY }} />}
+                </span>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: TEXT }}>
+                    Paying a partial amount
+                  </div>
+                  <div style={{ fontSize: 12, color: MUTED, marginTop: 2, marginBottom: isPartialPay ? 10 : 0 }}>
+                    I am sending less than the full balance right now
+                  </div>
+                  {isPartialPay && (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: MUTED, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                        Amount I&apos;m sending ($)
+                      </label>
+                      <input
+                        type="number"
+                        min={0.01}
+                        max={dueAmount - 0.01}
+                        step={0.01}
+                        value={partialPayAmt}
+                        onChange={(e) => { setPartialPayAmt(e.target.value); setSubmitErr(null); }}
+                        placeholder="0.00"
+                        autoFocus
+                        style={{
+                          width: "100%", padding: "10px 14px",
+                          border: `1px solid ${partialPayAmt && !partialAmtValid ? "#DC2626" : BORDER}`,
+                          borderRadius: 8, fontSize: 14, color: TEXT, background: "#fff",
+                          outline: "none", boxSizing: "border-box",
+                        }}
+                      />
+                      {partialPayAmt && !partialAmtValid && (
+                        <p style={{ margin: "4px 0 0", fontSize: 12, color: "#DC2626" }}>
+                          {partialAmtNum <= 0
+                            ? "Enter an amount greater than $0."
+                            : `Must be less than the full balance of ${fmt(dueAmount)}.`}
+                        </p>
+                      )}
+                      <p style={{ margin: "6px 0 0", fontSize: 12, color: MUTED }}>
+                        Our team will confirm receipt and the remaining balance will stay due.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </button>
+            </div>
           </div>
         )}
 

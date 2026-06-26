@@ -1042,7 +1042,7 @@ Create a new ticket.
   - **`from_quote_page: true`** (Quotes page, no linked lead): requires `quote_source` + `industry`; stores `quote_source` on `job_tickets`; **does not** auto-create a linked lead
   - **Lead / CRM flows** (`linked_lead_id` or `source` without `from_quote_page`): may auto-create a linked lead with `source` when no lead exists yet
 - For `ticket_kind = 'quote'`: auto-generates `QUO-YYYY-NNNN` reference code via `increment_quote_sequence(year)`
-- For `ticket_kind = 'order'`: auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence(year)` PL/pgSQL function
+- For `ticket_kind = 'order'`: auto-generates `ORD-YYYY-NNNN` reference code via `increment_order_sequence(year)` PL/pgSQL function
 - After reference assignment, **`ticketKindForReference()`** forces `ticket_kind: quote` for `QUO-*` and `order` for `ORD-*` (reference is authoritative)
 - Logs `order_ticket_created` activity (legacy type name) with payload `{ ticket_kind, title, reference_code }` using the resolved kind
 - Sets `design_required = true` if any SKU has `design_required = true`; same for `die_cut`
@@ -1069,7 +1069,7 @@ Returns a single ticket with full detail (line items, payment config, linked lea
 
 **Auth:** Requires authenticated session.
 
-**URL segment:** UUID or human reference code (`QUO-YYYY-NNNN`, `ORD-YYYY-NNN`).
+**URL segment:** UUID or human reference code (`QUO-YYYY-NNNN`, `ORD-YYYY-NNNN`, or legacy `ORD-YYYY-NNN`).
 
 **Access scoping:**
 - **Admin / Accountant** — any ticket
@@ -1337,7 +1337,7 @@ Body: Any subset of ticket fields plus optional:
 - **Admin or Sales** may mark completed with outstanding balance only when body includes `acknowledge_outstanding_balance: true` (UI shows confirmation modal); **accountant blocked** — owner policy **Option B** (open-questions **B7**)
 - If `ticket_status` transitions to `"order"` (manual "Convert to Order"):
   - **Admin only** — non-admin receives `403`
-  - Auto-generates `ORD-YYYY-NNN` reference code via `increment_order_sequence()`; sets `ticket_kind = "order"`
+  - Auto-generates `ORD-YYYY-NNNN` reference code (reuses quote number when converting from `QUO-*`; draws from `increment_order_sequence()` for direct order creation); sets `ticket_kind = "order"`
   - Logs `ticket_converted` activity with `require_client_confirm`, `client_confirmed`, `converted_by_role`
   - **Does not** set `leads.sales_status = 'Won'` — Won is deferred until production release (`markLeadWonOnProduction()`)
 - On every PATCH, **`ticketKindForReference()`** reconciles `ticket_kind` with the merged `reference_code` (prevents `QUO-*` + `ticket_kind: order` drift)
@@ -1980,7 +1980,7 @@ Unified activity endpoint. Supports both lead-scoped and ticket-scoped queries.
 | Param | Type | Description |
 |-------|------|-------------|
 | `lead_id` | `uuid` | Activities for this lead |
-| `ticket_id` | `uuid` **or** reference code | Activities for this job ticket. Accepts ticket UUID or `QUO-YYYY-NNN` / `ORD-YYYY-NNN` — resolved via `resolveTicketId()` (same as `GET /api/tickets/[id]`). |
+| `ticket_id` | `uuid` **or** reference code | Activities for this job ticket. Accepts ticket UUID or `QUO-YYYY-NNNN` / `ORD-YYYY-NNNN` (or legacy `ORD-YYYY-NNN`) — resolved via `resolveTicketId()` (same as `GET /api/tickets/[id]`). |
 | `include_linked_lead` | `"true"` | When used with `ticket_id`: also fetches the ticket's linked lead activities, merges them chronologically (oldest first), adds `_source: "lead" | "ticket"` to each row |
 
 **Response `200`:**

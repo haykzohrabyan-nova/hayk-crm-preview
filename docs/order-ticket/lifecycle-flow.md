@@ -171,8 +171,19 @@ flowchart TD
 | Customer uploads wire evidence | **No** (queues for accountant; stays quote until confirmed payment) |
 | SDR/Sales **Convert to Order** button | **No** — hidden; **admin only** |
 | Net terms + customer confirm (if gates pass) | **Yes** — exception: may convert + auto-release on confirm |
-| Accountant **record_payment** / cash auto-record | **Yes** — when payment + confirm gates pass |
+| Accountant **record_payment** / cash auto-record | **Yes** — when payment + confirm gates pass. **Partial approval** (less than the full due amount) does NOT convert if payment gates are not fully met — quote stays until the remaining balance is paid. |
 | Admin manual convert | **Yes** — override (may show Admin converted banner) |
+
+### Partial payment approval (accountant)
+
+When a customer submits evidence for less than the full amount due (e.g. $1,700 against a $3,550.41 quote), the accountant's **Confirm Payment** modal shows a **Paid in full / Partial payment** toggle. Selecting **Partial payment** records the actual received amount. The ticket's `payment_status` becomes `"partial"`, and the customer's public portal (`/q/{token}`) shows the remaining balance with the same payment method options. The quote stays on `/quotes` until the full amount is received and confirmed.
+
+Customer partial payment flow:
+1. Customer submits evidence — optionally specifying the amount they are sending via the public portal "How much are you paying?" toggle.
+2. Accountant selects **Partial payment**, enters the received amount, and confirms.
+3. `payment_amount_received` is updated; `payment_status = "partial"`.
+4. Customer returns to `/q/{token}`, sees the remaining balance, and submits another payment.
+5. On full collection, normal conversion/production-release gates apply.
 
 ---
 

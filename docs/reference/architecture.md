@@ -413,7 +413,7 @@ List pages fetch **scoped, slim payloads** — no `line_items` on table views. F
 
 **Tab/sidebar counts:** Leads, Sales, Payments, Completed, and **sidebar nav** use parallel SQL `{ count: "exact", head: true }` via `lib/utils/db-counts.ts`. **Quotes & Orders tab badges** on list pages come from page-data `counts` under the same search/date/admin filters (not limited by pagination). **SDR** Quotes/Orders/Completed counts use `created_by_id` only (`scopeJobTicketsQuery` / `scopeCompletedTicketsQuery`).
 
-**Ticket references:** `lib/utils/reference-codes.ts` — `QUO-YYYY-NNNN` / `ORD-YYYY-NNN`, `ticketKindForReference()`, `ticketIsQuoteStage()`, `ticketIsOrderStage()`. Lifecycle timeline labels in `lib/utils/ticket-lifecycle-timeline.ts` (creation from activity payload; reference prefix over `ticket_kind`). Public portal/PDF use `ticketIsOrderStage()` so `ORD-*` stays **INVOICE** when cancelled.
+**Ticket references:** `lib/utils/reference-codes.ts` — `QUO-YYYY-NNNN` / `ORD-YYYY-NNNN` (order reuses quote number on conversion; legacy direct orders keep `ORD-YYYY-NNN`), `ticketKindForReference()`, `ticketIsQuoteStage()`, `ticketIsOrderStage()`. Lifecycle timeline labels in `lib/utils/ticket-lifecycle-timeline.ts` (creation from activity payload; reference prefix over `ticket_kind`). Public portal/PDF use `ticketIsOrderStage()` so `ORD-*` stays **INVOICE** when cancelled.
 
 **Routed quotes Realtime (086):** `job_tickets` RLS `sales_read_routed_tickets` so Sales browsers receive Realtime for SDR-owned `ticket_status = routed` rows; claim removal for other reps uses `activities` INSERT. List query: `lib/utils/fetch-quotes-data.ts` (`applyTicketScope`).
 

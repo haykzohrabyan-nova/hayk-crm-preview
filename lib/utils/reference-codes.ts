@@ -1,7 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const QUOTE_REF_RE = /^QUO-\d{4}-\d{4}$/i;
-const ORDER_REF_RE = /^ORD-\d{4}-\d{3}$/i;
+const ORDER_REF_RE = /^ORD-\d{4}-\d{3,4}$/i;
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -61,7 +61,7 @@ export function formatQuoteReference(year: number, seq: number): string {
 }
 
 export function formatOrderReference(year: number, seq: number): string {
-  return `ORD-${year}-${String(seq).padStart(3, "0")}`;
+  return `ORD-${year}-${String(seq).padStart(4, "0")}`;
 }
 
 /** Atomically increment the quote sequence counter for a year. */
@@ -84,14 +84,29 @@ export async function nextOrderNumber(
   return data as number;
 }
 
-/** Assign ORD-YYYY-NNN when converting a quote to an order (replaces QUO-*). */
+/** Assign ORD-YYYY-NNNN when converting a quote to an order (replaces QUO-*).
+ *
+ * When converting from a QUO-* reference the same sequence number is reused
+ * (e.g. QUO-2026-0082 → ORD-2026-0082) so staff can track the ticket by the
+ * same number throughout its lifecycle. For tickets created directly as orders
+ * (no quote reference) a fresh number is drawn from increment_order_sequence.
+ */
 export async function assignOrderReferenceCode(
   admin: ReturnType<typeof createAdminClient>,
   currentReference: string | null,
 ): Promise<string | null> {
+  // Already an ORD-* reference — keep it as-is
   if (currentReference && !currentReference.startsWith("QUO-")) {
     return currentReference;
   }
+  // Converting from a quote — reuse its number (QUO-2026-0082 → ORD-2026-0082)
+  if (currentReference) {
+    const match = currentReference.match(/^QUO-(\d{4})-(\d+)$/i);
+    if (match) {
+      return formatOrderReference(Number(match[1]), Number(match[2]));
+    }
+  }
+  // Direct order creation (no quote reference) — mint new from order sequence
   const year = new Date().getFullYear();
   const seq = await nextOrderNumber(admin, year);
   return formatOrderReference(year, seq);

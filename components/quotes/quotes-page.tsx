@@ -36,11 +36,10 @@ import { AdminUserFilter } from "@/components/ui/admin-user-filter";
 import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
 import { ListPagination } from "@/components/ui/list-pagination";
 import {
-  readStoredListPageSize,
-  writeStoredListPageSize,
   type ListPageSize,
   type PaginationMeta,
 } from "@/lib/utils/pagination";
+import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -302,7 +301,7 @@ export default function QuotesPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [pageSize, setPageSize] = useStoredListPageSize();
   const [userRole, setUserRole] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [claimingId, setClaimingId] = useState<string | null>(null);
@@ -459,7 +458,6 @@ export default function QuotesPage() {
   }
 
   function handlePageSizeChange(size: ListPageSize) {
-    writeStoredListPageSize(size);
     setPageSize(size);
     setOffset(0);
   }

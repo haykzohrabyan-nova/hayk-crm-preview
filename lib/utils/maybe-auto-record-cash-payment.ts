@@ -67,6 +67,8 @@ export async function maybeAutoRecordCashPayment(
         : Math.min(depValue, total);
   }
 
+  // Preserve any existing payment evidence the customer already submitted —
+  // staff recording a cash deposit should not erase uploaded proof of payment.
   const payPatch: Record<string, unknown> = {
     updated_at: now,
     deposit_amount: depositAmt,
@@ -74,9 +76,6 @@ export async function maybeAutoRecordCashPayment(
     deposit_receipt_id: receiptId,
     deposit_method: "cash",
     payment_amount_received: depositAmt,
-    payment_evidence_url: null,
-    payment_evidence_submitted_at: null,
-    payment_evidence_amount: null,
   };
 
   if (isPartialCash) {

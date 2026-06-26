@@ -514,8 +514,8 @@ export async function commitBulkOrderImport(
       paymentExtra.ticket_receipt_id = "000000";
     }
 
-    // ── Resolve reference code (auto-assign ORD-YYYY-NNN if not provided) ──
-    // Use the year from order_date so a 2025 import gets ORD-2025-NNN, not ORD-2026-NNN.
+    // ── Resolve reference code (auto-assign ORD-YYYY-NNNN if not provided) ──
+    // Use the year from order_date so a 2025 import gets ORD-2025-NNNN, not ORD-2026-NNNN.
     let resolvedReferenceCode = trimStr(input.reference_code) || null;
     if (!resolvedReferenceCode) {
       try {

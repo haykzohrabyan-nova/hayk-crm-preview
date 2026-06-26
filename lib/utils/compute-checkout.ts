@@ -189,9 +189,11 @@ export function computeCheckout(
   const balance = round2(clamp(quoteTotal - depositDue)); // residual after deposit
 
   // ── Payment status flags ──────────────────────────────────────────────────
+  // Gate is purely amount-based — deposit_paid_at alone is not sufficient.
+  // This prevents a partial deposit approval from auto-releasing to production
+  // before the full deposit threshold is met.
   const depositPaid =
-    ticket.deposit_paid_at != null ||
-    (strategy === "partial" && depositDue > 0 && amountPaid >= depositDue);
+    strategy === "partial" && depositDue > 0 && amountPaid >= depositDue;
 
   const fullyPaid =
     ticket.payment_paid_at != null ||

@@ -3,6 +3,42 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-26] — Same-number quote-to-order conversion
+
+### Changed
+- `lib/utils/reference-codes.ts` — `assignOrderReferenceCode` now reuses the quote's own sequence number when converting: `QUO-2026-0082` becomes `ORD-2026-0082` instead of consuming a new order sequence slot. Direct order creation (no quote) still draws from `increment_order_sequence`.
+- `formatOrderReference` padding changed from 3 to 4 digits to match the quote format (`ORD-YYYY-NNNN`). Existing `ORD-YYYY-NNN` codes are unaffected — they remain valid.
+- `ORDER_REF_RE` updated to `/^ORD-\d{4}-\d{3,4}$/i` to accept both legacy 3-digit and new 4-digit order codes.
+- `lib/types/index.ts` — updated `reference_code` comment to document all three formats.
+
+## [2026-06-26] — DB: Restore QUO-2026-0082 to original creation state
+
+### Fixed
+- `job_tickets` row `60c2b54b-e253-4174-819d-ef10d4f4364c` (QUO-2026-0082 "Bags with oz boxes"): restored payment settings to their original creation defaults (`ticket_payment_strategy: "full"`, `ticket_deposit_value: 30`, `ticket_dep_handling: "cash"`, `ticket_partial_channels: ["cash","wire","ach","zelle","card"]`). The staff edit at 19:57 UTC had changed the strategy to `"partial"` with 100% deposit and Zelle-only channels, which blocked the customer's $1,700 wire evidence from being visible. Customer's evidence (`payment_evidence_url`, `payment_evidence_submitted_at`, `payment_evidence_amount: $1,700`) is preserved and pending accountant review.
+
+## [2026-06-26] — Fix: hydration mismatch on "Rows per page" selector
+
+### Fixed
+- `hooks/use-stored-list-page-size.ts` (new) — extracted hydration-safe hook: always initialises to `DEFAULT_LIST_PAGE_SIZE` (25) so server HTML matches client first paint, then syncs the stored value from `localStorage` after mount via `useEffect`. Previously all list pages used `useState(() => readStoredListPageSize())` which called `localStorage` during React's hydration pass, causing a mismatch when the user had saved a different page size.
+- Applied the hook to all 9 affected list pages: `orders-page`, `payments-page`, `completed-page`, `quotes-page`, `sales-page`, `leads-page`, `crm-page`, `webhook-section`, `lead-webhook-section`.
+
+## [2026-06-26] — Partial payment approval + production gate fix
+
+### Added
+- `components/orders/confirm-payment-evidence-modal.tsx` — new "Paid in full / Partial payment" radio toggle in the accountant confirm dialog. When "Partial payment" is selected an editable amount field activates (pre-filled with the claimed amount, capped at it). The accountant's chosen amount is sent to `record_ticket_payment_atomic` instead of the auto-computed claimed amount. Works on both the Payments list page and the payment detail overview.
+- `app/(public)/q/[token]/page.tsx` — added "How much are you paying?" toggle to the public payment modal for wire/ach/zelle/check channels. Customer chooses "Paying in full — $X" (default) or "Paying a partial amount" (activates an amount input). The chosen amount populates `payment_evidence_amount` so the Payments → Pending CLAIMED column shows the real number and the accountant knows upfront whether the customer intended a partial payment.
+
+### Fixed
+- `lib/utils/compute-checkout.ts` — `depositPaid` for `partial` strategy now requires `amountPaid >= depositDue` (amount-based only). Previously `deposit_paid_at != null` alone was sufficient, so approving any partial deposit would satisfy the production gate and auto-release the ticket even when the collected amount was below the deposit threshold.
+- `app/(public)/q/[token]/page.tsx` — `isDepositPaid` now uses the same amount-based logic as `computeCheckout` (removed `deposit_paid_at` shortcut) so the public portal and admin views stay consistent.
+- `lib/utils/maybe-auto-record-cash-payment.ts` — removed explicit nullification of `payment_evidence_url`, `payment_evidence_submitted_at`, and `payment_evidence_amount` when recording a cash deposit. Evidence uploaded by the customer is now preserved.
+
+### Changed
+- `app/api/public/quotes/[token]/submit-payment/route.ts` — accepts optional `claimedAmount` form field; uses it as `payment_evidence_amount` when valid (≤ system due amount), otherwise falls back to the system-computed due amount.
+- `components/orders/payments-page.tsx` — `handleConfirm` now accepts `approvedAmount: number` from the modal instead of computing it internally.
+- `components/orders/payment-detail-overview.tsx` — same: `handleConfirm(approvedAmount)` wired through the modal's `onConfirm` callback.
+- Production data fix: reverted QUO-2026-0082 (incorrectly converted to ORD-2026-070 by the cash auto-record bug) back to `ticket_kind=quote`, `ticket_status=sent`, `payment_evidence_amount=1700`. Ticket now appears correctly in Payments → Pending for accountant review.
+
 ## [2026-06-25] — Allow 0 as valid Width/Height in New Quote line items
 
 ### Changed

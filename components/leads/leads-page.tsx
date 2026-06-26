@@ -68,11 +68,10 @@ import { AdminUserFilter } from "@/components/ui/admin-user-filter";
 import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
 import { ListPagination } from "@/components/ui/list-pagination";
 import {
-  readStoredListPageSize,
-  writeStoredListPageSize,
   type ListPageSize,
   type PaginationMeta,
 } from "@/lib/utils/pagination";
+import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -196,7 +195,7 @@ export function LeadsPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [pageSize, setPageSize] = useStoredListPageSize();
   const [filterUserId, setFilterUserId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [toast, setToast] = useState<Toast | null>(null);
@@ -337,7 +336,6 @@ export function LeadsPage() {
   }
 
   function handlePageSizeChange(size: ListPageSize) {
-    writeStoredListPageSize(size);
     setPageSize(size);
     setOffset(0);
   }

@@ -362,7 +362,7 @@ export interface JobTicket {
   contact_phone: string | null
   // Info tab
   title: string | null
-  reference_code: string | null     // QUO-YYYY-NNNN (quote) or ORD-YYYY-NNN (order); authoritative for stage in UI (see ticketIsQuoteStage)
+  reference_code: string | null     // QUO-YYYY-NNNN (quote) or ORD-YYYY-NNNN (order converted from quote) or ORD-YYYY-NNN (legacy/direct); authoritative for stage in UI (see ticketIsQuoteStage)
   priority: string | null           // from `ticket_priority` lookup
   due_date: string | null           // ISO date
   order_source: string | null       // from `order_source` lookup

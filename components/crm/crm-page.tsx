@@ -13,11 +13,10 @@ import { relativeTime } from "@/lib/utils/format";
 import { ToastBanner } from "@/components/ui/toast-banner";
 import { lookupLabel } from "@/lib/utils/lookups";
 import {
-  readStoredListPageSize,
-  writeStoredListPageSize,
   type ListPageSize,
   type PaginationMeta,
 } from "@/lib/utils/pagination";
+import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 
 import type { LookupOption } from "@/components/quotes/shared/types";
 
@@ -155,8 +154,7 @@ export function CRMPage() {
   const [heatFilter, setHeatFilter] = useState<HeatFilter>("all");
   const [showDuplicates, setShowDuplicates] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(25);
-  useEffect(() => { setPageSize(readStoredListPageSize()); }, []);
+  const [pageSize, setPageSize] = useStoredListPageSize();
   const [industryLookups, setIndustryLookups] = useState<LookupOption[]>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [addCustomerOpen, setAddCustomerOpen] = useState(false);
@@ -208,7 +206,6 @@ export function CRMPage() {
   }, []);
 
   function handlePageSizeChange(size: ListPageSize) {
-    writeStoredListPageSize(size);
     setPageSize(size);
     setOffset(0);
   }

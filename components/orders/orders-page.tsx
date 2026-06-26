@@ -37,11 +37,10 @@ import { AdminUserFilter } from "@/components/ui/admin-user-filter";
 import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
 import { ListPagination } from "@/components/ui/list-pagination";
 import {
-  readStoredListPageSize,
-  writeStoredListPageSize,
   type ListPageSize,
   type PaginationMeta,
 } from "@/lib/utils/pagination";
+import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 import type { OrdersListSortField } from "@/lib/utils/orders-list-sort";
 import {
   clearLinePreviewListCache,
@@ -678,7 +677,7 @@ export default function OrdersPage() {
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [tab, setTab] = useState<Tab>("all");
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [pageSize, setPageSize] = useStoredListPageSize();
   const [dateFilter, setDateFilter] = useState<DashboardDateRangeFilterValue>(() =>
     defaultDashboardDateRangeFilterValue("last_month"),
   );
@@ -785,7 +784,6 @@ export default function OrdersPage() {
   }, [pageData]);
 
   function handlePageSizeChange(size: ListPageSize) {
-    writeStoredListPageSize(size);
     setPageSize(size);
     setOffset(0);
   }

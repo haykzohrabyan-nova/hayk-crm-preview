@@ -72,16 +72,12 @@ export function PaymentDetailOverview({
   const claimed = submittedAmount(ticket);
 
   function openConfirmModal() {
-    if (claimed <= 0) {
-      setConfirmErr("No payment amount to confirm.");
-      return;
-    }
     setConfirmErr(null);
     setConfirmModalOpen(true);
   }
 
-  async function handleConfirm() {
-    if (claimed <= 0) {
+  async function handleConfirm(approvedAmount: number) {
+    if (approvedAmount <= 0) {
       setConfirmErr("No payment amount to confirm.");
       return;
     }
@@ -97,7 +93,7 @@ export function PaymentDetailOverview({
           record_payment: true,
           payment_mode: inferPaymentMode(ticket),
           payment_method: ticket.payment_method_used ?? "wire",
-          payment_amount: claimed,
+          payment_amount: approvedAmount,
         }),
       });
       const data = await res.json();
@@ -262,7 +258,7 @@ export function PaymentDetailOverview({
         methodLabel={methodLabel}
         confirming={confirming}
         error={confirmErr}
-        onConfirm={() => void handleConfirm()}
+        onConfirm={(approvedAmount) => void handleConfirm(approvedAmount)}
         onRequestEvidence={() => {
           setConfirmModalOpen(false);
           setResubmitModalOpen(true);

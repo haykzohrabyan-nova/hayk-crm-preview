@@ -611,7 +611,7 @@ RLS: own rows only.
 **`job_tickets`** — the central entity for all quotes and orders
 ```
 id uuid PK
-reference_code text       -- "QUO-YYYY-NNNN" | "ORD-YYYY-NNN"
+reference_code text       -- "QUO-YYYY-NNNN" | "ORD-YYYY-NNNN" (same number as source quote) | "ORD-YYYY-NNN" (legacy/direct)
 public_token uuid         -- customer portal URL token
 ticket_kind text          -- "quote" | "order"
 ticket_status text        -- lifecycle (see §10)
@@ -881,7 +881,7 @@ updated_at timestamptz
 year int PK
 last_number int            -- incremented atomically on each new ticket
 ```
-Generates `ORD-YYYY-NNN` / `QUO-YYYY-NNNN` reference codes.
+Generates `ORD-YYYY-NNNN` / `QUO-YYYY-NNNN` reference codes. On quote→order conversion the quote's own number is reused (`QUO-2026-0082` → `ORD-2026-0082`). Legacy direct-order codes remain `ORD-YYYY-NNN` (3 digits); the regex accepts both.
 
 ### Realtime publications
 
@@ -1554,16 +1554,24 @@ Step 1 — Quote Confirmed:
 
 Step 2 — Payment Collected:
   net     → always done
-  partial → deposit recorded
-  full    → fully paid
+  partial → depositPaid (amountPaid >= depositDue — amount-based only)
+  full    → fullyPaid (amountPaid >= quoteTotal)
 
 Step 3 — Can Release Production:
   step1Done AND step2Done
 ```
 
+**`depositPaid` is purely amount-based** — `deposit_paid_at != null` alone does not satisfy Step 2 for the `partial` strategy. This prevents a partial deposit approval from auto-releasing a ticket to production before the full deposit threshold (`amountPaid >= depositDue`) is met.
+
 Special cases:
 - Cash in-person (full strategy, only `cash` channel) → auto-record payment on create
 - Partial cash deposit (`dep_handling = "cash"`) → auto-record deposit on ticket sent
+
+### Partial payment approval (accountant)
+
+`components/orders/confirm-payment-evidence-modal.tsx` — when the accountant clicks **Confirm** on a payment evidence item, a **Paid in full / Partial payment** radio toggle is shown. Selecting **Partial payment** activates an amount input (pre-filled with `payment_evidence_amount`, capped at it). The chosen amount is passed as `payment_amount` to `PATCH /api/tickets/[id] { record_payment: true }`. When the approved amount is less than the total due, `payment_status` becomes `"partial"` and the customer's portal shows the remaining balance.
+
+Wired in `components/orders/payments-page.tsx` and `components/orders/payment-detail-overview.tsx` via `onConfirm={(approvedAmount) => handleConfirm(approvedAmount)}`.
 
 ### Invoice payment summary (`lib/utils/invoice-payment-summary.ts`)
 

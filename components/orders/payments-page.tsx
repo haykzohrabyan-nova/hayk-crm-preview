@@ -50,11 +50,10 @@ import {
 import { isLegacyTaxExemptMissingPermitFile } from "@/lib/utils/tax-exempt-approval";
 import { ListPagination } from "@/components/ui/list-pagination";
 import {
-  readStoredListPageSize,
-  writeStoredListPageSize,
   type ListPageSize,
   type PaginationMeta,
 } from "@/lib/utils/pagination";
+import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 import { ticketPathSegment } from "@/lib/utils/reference-codes";
 import {
   clearLinePreviewListCache,
@@ -239,7 +238,7 @@ export function PaymentsPage() {
     hasMore: false,
   });
   const [offset, setOffset] = useState(0);
-  const [pageSize, setPageSize] = useState<ListPageSize>(() => readStoredListPageSize());
+  const [pageSize, setPageSize] = useStoredListPageSize();
   const [confirmTarget, setConfirmTarget] = useState<PaymentOrder | null>(null);
   const [taxExemptTarget, setTaxExemptTarget] = useState<PaymentOrder | null>(null);
   const [resubmitTarget, setResubmitTarget] = useState<PaymentOrder | null>(null);
@@ -328,7 +327,6 @@ export function PaymentsPage() {
   }, [pageData, activeTab, offset]);
 
   function handlePageSizeChange(size: ListPageSize) {
-    writeStoredListPageSize(size);
     setPageSize(size);
     setOffset(0);
   }
@@ -428,11 +426,6 @@ export function PaymentsPage() {
 
   function openConfirmModal(order: PaymentOrder, e?: React.MouseEvent) {
     e?.stopPropagation();
-    const amount = claimedAmount(order);
-    if (amount <= 0) {
-      setConfirmErr("No payment amount to confirm.");
-      return;
-    }
     setConfirmErr(null);
     setConfirmTarget(order);
   }
@@ -493,9 +486,8 @@ export function PaymentsPage() {
     };
   }
 
-  async function handleConfirm(order: PaymentOrder) {
-    const amount = claimedAmount(order);
-    if (amount <= 0) {
+  async function handleConfirm(order: PaymentOrder, approvedAmount: number) {
+    if (approvedAmount <= 0) {
       setConfirmErr("No payment amount to confirm.");
       return;
     }
@@ -512,7 +504,7 @@ export function PaymentsPage() {
           record_payment: true,
           payment_mode: inferPaymentMode(order),
           payment_method: order.payment_method_used ?? "wire",
-          payment_amount: amount,
+          payment_amount: approvedAmount,
         }),
       });
       const data = await res.json();
@@ -1537,8 +1529,8 @@ export function PaymentsPage() {
         }
         confirming={confirmingId === confirmTarget?.id}
         error={confirmErr}
-        onConfirm={() => {
-          if (confirmTarget) void handleConfirm(confirmTarget);
+        onConfirm={(approvedAmount) => {
+          if (confirmTarget) void handleConfirm(confirmTarget, approvedAmount);
         }}
         onRequestEvidence={
           confirmTarget

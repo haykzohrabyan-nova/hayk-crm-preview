@@ -30,7 +30,8 @@
 | Code | Meaning | `ticket_kind` |
 |------|---------|---------------|
 | `QUO-YYYY-NNNN` | Quote-stage record | `quote` |
-| `ORD-YYYY-NNN` | Order-stage record | `order` |
+| `ORD-YYYY-NNNN` | Order-stage record (converted from quote — same number) | `order` |
+| `ORD-YYYY-NNN` | Order-stage record (legacy / direct order creation) | `order` |
 
 **Source of truth:** `reference_code` prefix wins over `ticket_kind` in UI helpers (`ticketIsQuoteStage()`, `ticketIsOrderStage()`, `resolveTicketQuoteStage()` in `lib/utils/reference-codes.ts` and `lib/utils/ticket-lifecycle-timeline.ts`). Public customer portal/PDF use `ticketIsOrderStage()` so cancelled `ORD-*` tickets still display as **INVOICE**. API create/update enforces alignment via `ticketKindForReference()` on `POST /api/tickets` and `PATCH /api/tickets/[id]`. `maybeConvertQuoteToOrder()` aborts if `ORD-*` assignment fails (no `ticket_kind: order` while reference stays `QUO-*`).
 - `in_production` — released to shop floor (`production_released_at` set). Partial orders may owe balance. **Linked lead `sales_status` → `Won`** via `markLeadWonOnProduction()`.
@@ -525,7 +526,7 @@ Helpers: `lib/utils/public-payment-evidence-resubmit.ts`, `lib/utils/record-paym
 ### Header (sticky)
 
 - Back button
-- Title + reference code badge (ORD-YYYY-NNN for orders)
+- Title + reference code badge (`ORD-YYYY-NNNN` for orders)
 - Status pill
 - Save PDF link (`/api/tickets/[id]/pdf`) — requires MFA-complete session + ticket read scope (`canAccessTicket()`). PDF includes multi-destination shipping (50/50 grid), `SKU{n}.` labels, attachment file names, **Need a design** addon (see `lib/pdf/invoice-pdf.tsx`).
 - **Edit button** — visibility rules:
@@ -585,7 +586,7 @@ Single scrollable view combining all three edit sections, separated by labelled 
 ### Header — status badges
 
 - **Quotes:** Standard status pill (draft / sent / cancelled). Short ID `/{XXXXXXXX}` shown next to title.
-- **Orders (customer-confirmed, `client_confirmed = true`):** Green "Confirmed by Customer" badge + payment status pill. `ORD-YYYY-NNN` is the primary heading, original title as subtitle.
+- **Orders (customer-confirmed, `client_confirmed = true`):** Green "Confirmed by Customer" badge + payment status pill. `ORD-YYYY-NNNN` is the primary heading (matches the original quote number), original title as subtitle.
 - **Orders (manually converted):** Blue "Converted to Order" badge + payment status pill.
 
 ### Record Locking
@@ -613,7 +614,7 @@ Send and Convert buttons are **disabled** when send validation fails; same amber
 |--------|-----------|--------|
 | Send Quote | `status = 'draft'` and validation passes | `PATCH → ticket_status = 'sent'`; triggers `sendQuoteToCustomer()` **unless** `ticket_quote_channel = 'none'` (public token still created); also fire-and-forgets `sendQuoteSentStaffNotification()` to creator; logs `ticket_sent` |
 | Resend Quote | `status = 'sent'` and validation passes | Same — re-triggers both customer delivery and creator notification (delivery skipped if channel is `'none'`); logs `ticket_sent` with `resend: true` in payload |
-| Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNN`; logs `ticket_converted`; fire-and-forgets `sendOrderWebhook()` (`via: "manual_convert"`). **Does not** set lead Won until production |
+| Convert to Order | **Admin only** — `status = 'draft'` or `'sent'` and validation passes | Opens confirmation modal → `PATCH → ticket_status = 'order'`; auto-generates `ORD-YYYY-NNNN` (reuses quote number); logs `ticket_converted`; fire-and-forgets `sendOrderWebhook()` (`via: "manual_convert"`). **Does not** set lead Won until production |
 
 **Order / production / completed stage (same sidebar block):**
 
@@ -714,7 +715,7 @@ When an SDR opens `/quotes/[id]` for a ticket where `routed_by_id = userId`:
 | `DELETE /api/tickets/[id]/files/[fileId]` | DELETE | Removes Storage object + `ticket_files` row. Broadcasts public portal update when applicable. |
 | `GET /api/public/quotes/[token]/files/[fileId]` | GET (no auth) | Customer: streamed file; `?download=1` for Download. Token must match ticket. |
 | `GET /api/orders/orders` | GET | Scoped orders list for `/orders` — `ticket_kind = 'order'` + `order` / `in_production` / `cancelled`; includes evidence-pending for owner; returns `status_label` / `status_tone`. |
-| `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders). Direct Quotes page: stores `quote_source` on ticket (no auto-lead). Lead/CRM flows: may create linked lead with `source`. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
+| `POST /api/tickets` | POST | Create ticket. Upserts customer. Auto-generates `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNNN` (direct orders). Direct Quotes page: stores `quote_source` on ticket (no auto-lead). Lead/CRM flows: may create linked lead with `source`. Logs activity. Updates linked lead status. Sets `routed_by_id = userId` when `ticket_status = 'routed'`. |
 | `GET /api/tickets/[id]` | GET | Single ticket by UUID or reference code (`QUO-*`, `ORD-*`). Sales/Admin can GET `routed` tickets they don't own. **Accountant** can GET any ticket (matches list scoping). |
 | `PATCH /api/tickets/[id]` | PATCH | Multi-mode: `claim_ownership`, `send_payment_reminder`, `resend_invoice`, `record_payment`, `release_production`, normal field update. See `docs/api-contract.md`. |
 | `GET /api/tickets/[id]/evidence` | GET | Signed URL for payment evidence file (Accountant + Admin) |

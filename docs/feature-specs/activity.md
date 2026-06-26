@@ -22,7 +22,7 @@ Used by:
 - **Verify Drawer** History tab — fetched lazily on first open
 
 ### Ticket-scoped (built — 2026-05-12, updated 2026-05-23)
-**`GET /api/activities?ticket_id=xxx`** — activities for a specific job ticket. **`ticket_id`** accepts UUID or reference code (`QUO-YYYY-NNN`, `ORD-YYYY-NNN`) via `resolveTicketId()`.
+**`GET /api/activities?ticket_id=xxx`** — activities for a specific job ticket. **`ticket_id`** accepts UUID or reference code (`QUO-YYYY-NNNN`, `ORD-YYYY-NNNN`, or legacy `ORD-YYYY-NNN`) via `resolveTicketId()`.
 
 **`GET /api/activities?ticket_id=xxx&include_linked_lead=true`** — fetches both the ticket's activities AND its linked lead's activities, merges them chronologically (oldest first), and adds a `_source` field (`"lead"` or `"ticket"`) to each row.
 

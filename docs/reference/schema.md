@@ -379,7 +379,7 @@ create table public.leads (
 
 ### `job_tickets`
 
-Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`reference_code`** (`QUO-YYYY-NNNN` vs `ORD-YYYY-NNN`) is the authoritative stage indicator in UI and API guards (`ticketKindForReference()`). Extended in migrations 042 and 066 with all fields required by the Quotes & Orders module and per-ticket payment configuration.
+Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`reference_code`** (`QUO-YYYY-NNNN` vs `ORD-YYYY-NNNN`) is the authoritative stage indicator in UI and API guards (`ticketKindForReference()`). Extended in migrations 042 and 066 with all fields required by the Quotes & Orders module and per-ticket payment configuration.
 
 > **Legacy columns** (`subtotal`, `discount_percent`, `discount_amount`, `total`, `payment_type`, `prepay_amount`, `product_lines`, `follow_up_at`) are preserved as nullable for backwards compatibility. New code uses the `quote_*` and `ticket_*` columns instead.
 
@@ -395,7 +395,7 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `contact_name` | `text` | Denormalized |
 | `contact_company` | `text` | Denormalized |
 | `title` | `text` | Human-readable ticket title (required on create) |
-| `reference_code` | `text` UNIQUE | `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNN` (orders) — auto-generated on create; quote convert assigns `ORD-*` |
+| `reference_code` | `text` UNIQUE | `QUO-YYYY-NNNN` (quotes) or `ORD-YYYY-NNNN` (orders) — auto-generated on create; quote convert reuses the quote's number (`QUO-2026-0082` → `ORD-2026-0082`); direct order creation draws from `order_sequence_counters` |
 | `contact_phone` | `text` | Denormalized phone for display |
 | `quote_channel` | `text` | `'SMS'` \| `'WhatsApp'` \| `'Email'` \| `'In-person'` |
 | `quote_destination` | `text` | Phone (digits) for SMS/WhatsApp; email address for Email |
@@ -616,7 +616,7 @@ Each catalog line conforms to:
 - `sent` — quote sent to client
 - `approved` — client confirmed (quote → order transition; moves to Orders page)
 - `routed` — **SDR-only.** Quote total exceeded the High-Value Threshold; automatically routed to Sales for claiming. SDR cannot edit; Sales/Admin can claim (moves to `draft` with new `created_by_id`).
-- `order` — confirmed production order (appears on Orders page, gets ORD-YYYY-NNN reference code)
+- `order` — confirmed production order (appears on Orders page, gets `ORD-YYYY-NNNN` reference code matching the original quote number)
 - `rejected` — client declined
 - `in_production` — order in production
 - `completed` — fulfilled
@@ -635,7 +635,7 @@ Each catalog line conforms to:
 
 ### `order_sequence_counters`
 
-Tracks the last-used sequence number per calendar year for `ORD-YYYY-NNN` reference codes. One row per year; incremented atomically when a new order is created.
+Tracks the last-used sequence number per calendar year for `ORD-YYYY-NNNN` reference codes (used when creating orders directly, not via quote conversion). One row per year; incremented atomically on direct order creation.
 
 | Column | Type | Notes |
 |--------|------|-------|
@@ -991,7 +991,7 @@ as $$
 $$;
 
 -- Atomic order sequence increment (migration 046)
--- Called by POST /api/tickets via service-role client to generate ORD-YYYY-NNN codes.
+-- Called by POST /api/tickets via service-role client to generate ORD-YYYY-NNNN codes (direct order creation only; quote-to-order conversion reuses the quote number).
 -- Migration 096: EXECUTE revoked from public/anon/authenticated — service_role only.
 create or replace function public.increment_order_sequence(p_year int)
 returns int language plpgsql security definer as $$

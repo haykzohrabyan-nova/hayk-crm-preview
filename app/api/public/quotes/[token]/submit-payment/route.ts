@@ -95,9 +95,11 @@ export async function POST(request: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Invalid form data." }, { status: 400 });
   }
 
-  const method    = String(formData.get("method") ?? "").trim();
-  const receiptId = String(formData.get("receiptId") ?? "").trim() || null;
-  const file      = formData.get("file") as File | null;
+  const method              = String(formData.get("method") ?? "").trim();
+  const receiptId           = String(formData.get("receiptId") ?? "").trim() || null;
+  const file                = formData.get("file") as File | null;
+  const claimedAmountRaw    = formData.get("claimedAmount");
+  const claimedAmountParsed = claimedAmountRaw != null ? Number(claimedAmountRaw) : null;
 
   if (resubmitReceived) {
     return NextResponse.json(
@@ -202,7 +204,14 @@ export async function POST(request: NextRequest, { params }: Params) {
   if (receiptId) patch.ticket_receipt_id = receiptId;
 
   if (needsAccountantReview) {
-    patch.payment_evidence_amount = amount;
+    // Use the customer's self-reported amount if provided and valid; otherwise
+    // fall back to the system-computed due amount. The accountant verifies the
+    // actual amount against the uploaded evidence before confirming.
+    const evidenceAmount =
+      claimedAmountParsed != null && claimedAmountParsed > 0 && claimedAmountParsed <= amount
+        ? claimedAmountParsed
+        : amount;
+    patch.payment_evidence_amount = evidenceAmount;
   } else {
     patch.payment_amount_received = newTotal;
 
