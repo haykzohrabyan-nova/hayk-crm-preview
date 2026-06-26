@@ -606,7 +606,7 @@ app/(public)/q/[token]/page.tsx  [Client Component "use client"]
       │    "Confirm & Accept Quote" → POST /api/public/quotes/[token]/confirm (sets client_confirmed only)
       │
       ├── Payment stepper (after price gate open):
-      │    Channel panels: Wire / ACH / Zelle / Check / Card / Cash
+      │    Channel panels: Wire / ACH / Zelle / Check / Card / Cash/Terminal
       │    POST /api/public/quotes/[token]/submit-payment (multipart; balance while in_production)
       │    evidence_pending → amber "under review" (balance copy when already in production)
       │    Pay remaining balance CTA under Step 3 when in_production + partial

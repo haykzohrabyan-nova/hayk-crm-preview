@@ -38,7 +38,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 | Status | All | `StatusPill` — Pending / Validated |
 | Owner | All | SDR name / "You" / "Unclaimed" badge |
 | Created | All | Relative time (e.g. "2 hours ago") |
-| Action | All | **Claim** / **View** (SDR — depends on All vs My toggle) / **Edit** + **Assign/Reassign** (Admin) |
+| Action | All | **Claim** / **View** (SDR — depends on All vs My toggle) / **Edit** + **Assign/Reassign** + **Route to Sales** (Admin) |
 
 ### Behaviors
 
@@ -49,7 +49,8 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 - **Claim** (SDR, All Leads toggle) → `POST /api/leads/[id]/lock` → global loading overlay + row spinner → opens **Verify Drawer** in edit mode
 - **View** (SDR, My Leads toggle) → opens drawer for owned lead (`POST /lock` refreshes `locked_at`; no new `lead_claimed`)
 - **Edit button** (Admin) → opens **Verify Drawer** in **edit mode** with no lock acquired — Admin can view and save any field changes via "Save Changes" button; the active SDR's lock is undisturbed
-- **Assign / Reassign button** (Admin only) → "Assign" label when `locked_by_id IS NULL`; "Reassign" label when lead is already owned. Opens a modal with a dropdown of all active SDR users plus an "Unassign" option. Disabled until an SDR is selected. On confirm → updates `locked_by_id`, `locked_at`, and `sdr_id`; row updates in place and tab counts refresh
+- **Assign / Reassign button** (Admin only) → "Assign" label when `locked_by_id IS NULL`; "Reassign" label when lead is already owned. Fixed `min-w-[72px]` so both labels render at the same button width. Opens a modal with a dropdown of all active SDR users plus an "Unassign" option. Disabled until an SDR is selected. On confirm → updates `locked_by_id`, `locked_at`, and `sdr_id`; row updates in place and tab counts refresh
+- **Route to Sales button** (Admin only, gold CTA) → one-click inline route without opening the drawer. Hidden when `lead.status === "Routed to Sales"`. Calls `PATCH /api/leads/[id]` with `{ status: "Routed to Sales", sales_status: "Ongoing" }`, releases the lock via `POST /api/leads/[id]/unlock`, removes the row from the list, and fires `bazaar:refresh-counts`. Button shows "Routing…" while the request is in flight and disables all three action buttons on that row.
 - **Empty state:** "No leads found." with muted text
 
 ### Badge
@@ -329,7 +330,7 @@ Actions available depending on drawer mode and current `status`. **All action bu
 | Action | When Available | What it does |
 |--------|---------------|--------------|
 | ~~**Validate**~~ | _Removed_ | The Validate step has been removed from the SDR workflow. SDRs go directly to Route to Sales, On Hold, or Reject. |
-| **Route to Sales** | Edit mode, any status | Full-screen reason sub-form (`route_reason` lookups); **Other** requires **Please specify**; saves form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'` |
+| **Route to Sales** | Edit mode (SDR **and** Admin), any non-routed status | Full-screen reason sub-form (`route_reason` lookups); **Other** requires **Please specify**; saves form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Ongoing'`. Admin also has a one-click **Route to Sales** button on each list row (no drawer required). |
 | **Follow Up Later** | Edit mode, not On Hold / Follow Up Later / Rejected | Full-screen follow-up sub-form; `POST /api/leads/[id]/follow-up` |
 | **On Hold** | Edit mode, status not Rejected | Replaces drawer body with full-screen hold sub-form (tabs + lead form hidden until hold is confirmed or cancelled) |
 | **Resume** | Edit mode, `status = 'On Hold'` or `Follow Up Later` | Saves form edits + `POST /api/leads/[id]/resume` → restores `prev_status` |
@@ -520,9 +521,11 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 |---------|-------|
 | All Leads / On Hold / Directed to Sales / Rejected / Won tabs | Tab counts visible before clicking; scoped correctly per SDR |
 | Lock-based lead visibility (permanent ownership) | **All Leads** toggle = unclaimed pool only; **My Leads** = claimed by me; other SDRs' locks hidden; closing drawer does NOT release lock |
-| Admin Edit action (no lock) | Admin opens any lead in **edit mode** without acquiring a lock — "Save Changes" button in footer; active SDR's lock untouched |
+| Admin Edit action (no lock) | Admin opens any lead in **edit mode** without acquiring a lock — "Save Changes" + "Route to Sales" buttons in footer; active SDR's lock untouched |
 | Admin "Working" column | All Leads table shows which SDR owns each lead; mobile cards too |
-| Admin Assign / Reassign action | "Assign" on unclaimed leads; "Reassign" on owned leads. Modal with active SDR dropdown + Unassign; logs `lead_reassigned` |
+| Admin Assign / Reassign action | "Assign" on unclaimed leads; "Reassign" on owned leads. Fixed `min-w` so both labels are same button width. Modal with active SDR dropdown + Unassign; logs `lead_reassigned` |
+| Admin Route to Sales — inline list button | Gold "Route to Sales" CTA in the Action column, hidden when `status = 'Routed to Sales'`. One-click: patches status + `sales_status = Ongoing`, releases lock, removes row, fires counts refresh |
+| Admin Route to Sales — drawer button | "Route to Sales" added to Verify Drawer footer for admin (sits between Close and Save Changes); uses same `handleRoute` / `doRoute` logic as SDR |
 | Race condition safety net | If SDR clicks **Claim** on a stale lead, 409 → read-only drawer with locker banner |
 | Manual Add Lead modal | Phone lookup + dedup; per-field validation; lead stays **unclaimed** until Claim/Assign; shared component on CRM profile (SDR Add Lead) |
 | Verify Drawer (permanent lock, lock banner) | Lock acquired on **Claim**; ownership persists across close/save/hold until Route or Reject |

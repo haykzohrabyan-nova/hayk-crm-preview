@@ -441,7 +441,6 @@ Unified model for both quotes and orders. `ticket_kind` distinguishes them; **`r
 | `quote_source` | `text` | Lead source for **direct quotes** (Quotes page only, no linked lead). From `source` lookup. |
 | `due_date` | `date` | Production due date |
 | `priority` | `text` | `'Low'` \| `'Normal'` \| `'High'` |
-| `special_requirements` | `text` | |
 | `design_required` | `boolean` NOT NULL DEFAULT `false` | Auto-set from SKUs |
 | `die_cut` | `boolean` NOT NULL DEFAULT `false` | Auto-set from SKUs |
 | *(removed)* | — | Line items moved to `ticket_line_items` (migration 089) |

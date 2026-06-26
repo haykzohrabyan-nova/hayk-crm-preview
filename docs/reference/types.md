@@ -368,7 +368,6 @@ export interface JobTicket {
   order_source: string | null       // from `order_source` lookup
   quote_source: string | null       // direct Quotes-page creates only (from `source` lookup)
   rush: boolean
-  special_requirements: string | null
   notes: string | null
   // Line items — loaded on detail GET as `line_items` (not stored on job_tickets row)
   line_items?: TicketLineItemRow[]  // see lib/utils/ticket-line-items.ts
@@ -739,7 +738,6 @@ export interface TicketForm {
   order_source: 'quoted' | 'direct' | ''
   priority: 'Low' | 'Normal' | 'High' | ''
   due_date: string
-  special_requirements: string
   rush: boolean
   design_required: boolean
   die_cut: boolean

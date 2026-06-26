@@ -281,7 +281,6 @@ export interface InvoicePDFProps {
     dueDate: string | null;
     rush: boolean | null;
     priority: string | null;
-    specialRequirements: string | null;
     quoteSubtotal: number | null;
     quoteShipping: number | null;
     discountReason: string | null;
@@ -766,8 +765,8 @@ export function InvoicePDF({
         </View>
         ) : null}
 
-        {/* ── Details (payment, channel, special requirements) ── */}
-        {((!hidePricing && !hidePricingSummary && paymentMethods) || ticket.quoteChannel || ticket.specialRequirements) ? (
+        {/* ── Details (payment, channel) ── */}
+        {((!hidePricing && !hidePricingSummary && paymentMethods) || ticket.quoteChannel) ? (
           <View style={s.detailsWrap}>
             {!hidePricing && !hidePricingSummary && paymentMethods ? (
               <View style={s.detailBlock}>
@@ -779,12 +778,6 @@ export function InvoicePDF({
               <View style={s.detailBlock}>
                 <Text style={s.sectionLabel}>Delivery Channel</Text>
                 <Text style={s.detailValue}>{ticket.quoteChannel}</Text>
-              </View>
-            ) : null}
-            {ticket.specialRequirements ? (
-              <View style={s.detailBlockFull}>
-                <Text style={s.sectionLabel}>Special Requirements</Text>
-                <Text style={s.detailValue}>{ticket.specialRequirements}</Text>
               </View>
             ) : null}
           </View>

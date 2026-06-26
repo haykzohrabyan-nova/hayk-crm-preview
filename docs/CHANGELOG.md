@@ -3,6 +3,54 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-25] — Remove Special Requirements field; migrate data to Internal Notes
+
+### Changed
+- **DB migration required** (run in Supabase SQL Editor before deploying):
+  ```sql
+  UPDATE public.job_tickets
+  SET notes = CASE
+    WHEN notes IS NULL OR notes = '' THEN special_requirements
+    ELSE notes || E'\n\n' || special_requirements
+  END
+  WHERE special_requirements IS NOT NULL AND special_requirements <> '';
+
+  ALTER TABLE public.job_tickets DROP COLUMN IF EXISTS special_requirements;
+  ```
+- `supabase/schema.sql` — removed `special_requirements text` column from `job_tickets`
+- `lib/types/index.ts` — removed `special_requirements` from `Ticket` and `QuoteFormState` types
+- `components/quotes/shared/info-form.tsx` — removed Special Requirements textarea and `specialRequirements` / `setSpecialRequirements` props
+- `components/quotes/new-quote-form.tsx` — removed state, payload field, and `InfoForm` prop
+- `components/quotes/quote-detail.tsx` — removed state, seed-from-ticket, payload field, and `InfoForm` prop
+- `components/quotes/quote-detail/ticket-overview-sections.tsx` — replaced "Notes & Requirements" section (Special Requirements + Notes) with a single "Notes" / Internal Notes section
+- `components/public/public-quote-document.tsx` — removed Special Requirements block from customer-facing quote document
+- `lib/pdf/invoice-pdf.tsx` — removed Special Requirements section from PDF output
+- `app/api/tickets/route.ts` — removed from POST body destructuring and DB insert
+- `app/api/tickets/[id]/route.ts` — removed from allowed PATCH fields
+- `app/api/tickets/[id]/pdf/route.ts`, `no-pricing/route.ts`, `app/api/public/quotes/[token]/pdf/route.ts` — removed from SELECT and PDF ticket payload
+- `app/api/tickets/[id]/print/route.ts` — removed from SELECT and HTML print template
+- `app/api/public/quotes/[token]/route.ts` — removed from SELECT
+- `app/(public)/q/[token]/page.tsx` — removed from quote type
+- `lib/utils/send-order-webhook.ts` — removed from SELECT; webhook `description` now falls back to `notes` only
+- `lib/utils/bulk-import-orders.ts` — fixed: import now writes `input.notes` → `notes` column (previously wrote to `special_requirements` by mistake)
+
+## [2026-06-25] — Add "Route to Sales" inline button for admin on leads list
+
+### Added
+- Admin rows on the Leads list now show a gold "Route to Sales" button next to Edit / Assign, providing a one-click route without opening the drawer
+- Button is hidden for leads already in "Routed to Sales" or "Won" status
+- Patches lead status to "Routed to Sales" + "Ongoing", releases the lock, removes the row from the list, and fires `bazaar:refresh-counts`
+
+## [2026-06-25] — Add "Route to Sales" button for admin in lead drawer
+
+### Added
+- Admin users now see a "Route to Sales" button in the `VerifyDrawer` footer alongside "Save Changes", using the exact same `handleRoute` / `doRoute` logic as SDRs
+
+## [2026-06-25] — Rename "Cash" payment method to "Cash/Terminal"
+
+### Changed
+- Renamed the "Cash" payment method label to "Cash/Terminal" across all UI components, display maps, timeline, history, payment detail, reports, and PDF routes
+
 ## [2026-06-24] — Enable Sentry Logs for full server-side visibility
 
 ### Added

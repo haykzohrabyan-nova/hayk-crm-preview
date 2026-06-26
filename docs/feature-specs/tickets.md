@@ -319,7 +319,6 @@ When entering from a **linked lead**, source comes from the lead — no Quote so
 - Priority (Low / Normal / High — from `ticket_priority` lookup; **Urgent** is system-set and filtered from user-facing dropdown)
 - Due Date (optional on create and edit; custom `DatePicker` — past dates disabled when a date is set)
 - Rush toggle — manual only. No automatic connection to the due date (auto-toggle was removed).
-- Special Requirements
 - Internal Notes
 
 ### Line Items Tab
@@ -564,7 +563,7 @@ Helpers: `lib/utils/public-payment-evidence-resubmit.ts`, `lib/utils/record-paym
 Single scrollable view combining all three edit sections, separated by labelled dividers:
 
 **1. General Info** (top, no divider header)
-- Same fields as new-quote Info tab: Title, Priority, Due Date (optional), Rush, Special Requirements, Internal Notes
+- Same fields as new-quote Info tab: Title, Priority, Due Date (optional), Rush, Internal Notes
 
 **2. Line Items** (section divider: "LINE ITEMS")
 - Read-only: `DetailLineItemCard` per line — labelled spec pills (`Color:`, `Sides:`, `Roll:`, `Size:`, `Qty:`, `Unit:`, `Note:`, `Designer:`), amber finishing pills (`Spot UV`, `Foil`, `Perforation`, `Die Cut`, `Needs Design`), line total with `OVERRIDE` label when manually set, file thumbnail, and additional SKU rows

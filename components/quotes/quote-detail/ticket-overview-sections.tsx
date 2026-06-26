@@ -35,7 +35,6 @@ type SectionTicket = OverviewTicket & QuoteFormTicket & SummaryTicket;
 interface OverviewTicket {
   line_items?: TicketLineItemRow[] | null;
   quote_skus?: QuoteSku[] | null;
-  special_requirements: string | null;
   notes: string | null;
   quote_subtotal: number | null;
   quote_shipping: number | null;
@@ -236,22 +235,14 @@ export function TicketOverviewSections({
           </DetailCollapsibleSection>
         </DetailSection>
 
-        {(ticket.special_requirements || ticket.notes) && (
+        {ticket.notes && (
           <DetailSection>
-            <DetailSectionTitle>Notes &amp; Requirements</DetailSectionTitle>
-            <div className="space-y-4">
-              <div>
-                <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                  Special Requirements
-                </p>
-                <DetailNotesBox>{ticket.special_requirements}</DetailNotesBox>
-              </div>
-              <div>
-                <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
-                  Internal Notes
-                </p>
-                <DetailNotesBox>{ticket.notes}</DetailNotesBox>
-              </div>
+            <DetailSectionTitle>Notes</DetailSectionTitle>
+            <div>
+              <p className="text-[11px] font-medium uppercase tracking-[0.07em] mb-1.5" style={{ color: "var(--color-text-muted)" }}>
+                Internal Notes
+              </p>
+              <DetailNotesBox>{ticket.notes}</DetailNotesBox>
             </div>
           </DetailSection>
         )}

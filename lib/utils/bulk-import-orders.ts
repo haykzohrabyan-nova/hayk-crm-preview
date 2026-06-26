@@ -19,7 +19,7 @@ const VALID_PAYMENT_STATUSES = new Set(["unpaid", "partial", "paid"]);
 
 // Human-friendly payment method labels accepted on import
 const PAYMENT_METHOD_MAP: Record<string, string> = {
-  cash: "Cash",
+  cash: "Cash/Terminal",
   check: "Check",
   card: "Card",
   zelle: "Zelle",
@@ -209,7 +209,7 @@ export function buildOrderImportTemplate(): Record<string, unknown> {
           tax_amount: "number — sales tax in dollars (e.g. 14.25). Sets quote_tax_amount and quote_pre_tax_total in DB.",
           order_date: "string — ISO date, e.g. 2025-11-15 (when the order was placed)",
           due_date: "string — ISO date (optional deadline)",
-          notes: "string — internal notes / special requirements",
+          notes: "string — internal notes",
           external_id: "string — id from your source system (stored in activity log)",
         },
       },
@@ -565,7 +565,7 @@ export async function commitBulkOrderImport(
         quote_pre_tax_total: preTaxTotal,
         quote_tax_amount: taxAmount,
         quote_final_total: preview.total,
-        special_requirements: trimStr(input.notes) || null,
+        notes: trimStr(input.notes) || null,
         due_date: parseDate(input.due_date) ? parseDate(input.due_date)!.slice(0, 10) : null,
         created_at: orderDate,
         updated_at: orderDate,

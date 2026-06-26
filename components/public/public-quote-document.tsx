@@ -42,7 +42,6 @@ interface PublicTicketDoc {
   priority?: string | null;
   rush: boolean;
   quote_channel?: string | null;
-  special_requirements?: string | null;
   quote_subtotal: number | null;
   quote_shipping: number | null;
   requires_shipping?: boolean;
@@ -452,27 +451,17 @@ export function PublicQuoteDocument({
       </div>
       )}
 
-      {(ticket.quote_channel || ticket.special_requirements) && (
+      {ticket.quote_channel && ticket.quote_channel !== "In-person" && (
         <div style={{
           display: "flex", flexWrap: "wrap", gap: 20, paddingTop: 16,
           borderTop: `1px solid ${BORDER}`, marginBottom: 8,
         }}>
-          {ticket.quote_channel && ticket.quote_channel !== "In-person" && (
-            <div style={{ minWidth: 180 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: MUTED, marginBottom: 4 }}>
-                Delivery Channel
-              </div>
-              <div style={{ fontSize: 13, color: TEXT }}>{ticket.quote_channel}</div>
+          <div style={{ minWidth: 180 }}>
+            <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: MUTED, marginBottom: 4 }}>
+              Delivery Channel
             </div>
-          )}
-          {ticket.special_requirements && (
-            <div style={{ flex: 1, minWidth: 220 }}>
-              <div style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em", color: MUTED, marginBottom: 4 }}>
-                Special Requirements
-              </div>
-              <div style={{ fontSize: 13, color: TEXT, lineHeight: 1.6 }}>{ticket.special_requirements}</div>
-            </div>
-          )}
+            <div style={{ fontSize: 13, color: TEXT }}>{ticket.quote_channel}</div>
+          </div>
         </div>
       )}
     </div>

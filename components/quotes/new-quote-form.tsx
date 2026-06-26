@@ -217,7 +217,6 @@ export default function NewQuoteForm() {
   const [dueDate, setDueDate] = useState("");
   const [rush, setRush] = useState(false);
   const [orderSource, setOrderSource] = useState<"quoted" | "direct">("quoted");
-  const [specialRequirements, setSpecialRequirements] = useState("");
   const [notes, setNotes] = useState("");
 
   // ── Line Items ────────────────────────────────────────────────────────────
@@ -654,7 +653,6 @@ export default function NewQuoteForm() {
       priority,
       due_date: dueDate || undefined,
       rush,
-      special_requirements: specialRequirements || undefined,
       quote_channel: effectivePaymentDraft.ticket_quote_channel,
       quote_destination:
         effectivePaymentDraft.ticket_quote_channel === "email"
@@ -1037,7 +1035,6 @@ export default function NewQuoteForm() {
                   priority={priority} setPriority={setPriority}
                   dueDate={dueDate} setDueDate={(v) => { setDueDate(v); setFieldErrors((e) => ({ ...e, dueDate: "" })); }}
                   rush={rush} setRush={setRush}
-                  specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
                   notes={notes} setNotes={setNotes}
                   priorityOpts={quoteLookups.ticket_priority}
                   titleError={fieldErrors.title}

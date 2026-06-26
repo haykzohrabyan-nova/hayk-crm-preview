@@ -1420,7 +1420,7 @@ Client-side pricing via `computePricing()`. Send readiness via `canSendQuote()` 
 
 **Customer sync-back (Jun 2026):** On `POST /api/tickets`, if an existing `customer_id` is present, the API fetches the current customer record, diffs each contact field, and writes back only fields that actually changed. Empty/blank values never overwrite existing data.
 
-**Receipt ID auto-generation:** When Cash is selected as the payment method (full cash-only or partial cash deposit), a random 6-digit number is auto-generated in the Receipt ID field if the field is currently empty. The user can edit or replace it. The field accepts digits only.
+**Receipt ID auto-generation:** When Cash/Terminal is selected as the payment method (full cash-only or partial cash deposit), a random 6-digit number is auto-generated in the Receipt ID field if the field is currently empty. The user can edit or replace it. The field accepts digits only.
 
 ### Shared quote pricing UI (`components/quotes/shared/quote-form.tsx`)
 

@@ -14,14 +14,12 @@ interface InfoFormProps {
     priority: string | null;
     due_date: string | null;
     rush: boolean;
-    special_requirements: string | null;
     notes: string | null;
   };
   title: string; setTitle: (v: string) => void;
   priority: string; setPriority: (v: string) => void;
   dueDate: string; setDueDate: (v: string) => void;
   rush: boolean; setRush: (v: boolean) => void;
-  specialRequirements: string; setSpecialRequirements: (v: string) => void;
   notes: string; setNotes: (v: string) => void;
   priorityOpts: LookupOption[];
   titleError?: string;
@@ -44,7 +42,6 @@ export function InfoForm(p: InfoFormProps) {
           ["Priority", p.ticket.priority],
           ["Due Date", p.ticket.due_date],
           ["Rush", p.ticket.rush ? "Yes — Rush order" : null],
-          ["Special Requirements", p.ticket.special_requirements],
           ["Notes", p.ticket.notes],
         ] as [string, string | null][]).map(([label, val]) => val ? (
           <div key={label} className="col-span-1">
@@ -191,19 +188,6 @@ export function InfoForm(p: InfoFormProps) {
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Special Requirements */}
-      <div>
-        <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Special Requirements</label>
-        <textarea
-          value={p.specialRequirements}
-          onChange={(e) => p.setSpecialRequirements(e.target.value)}
-          rows={3}
-          placeholder="Any special printing or finishing requirements…"
-          className="w-full px-3 py-2 rounded-md text-sm border outline-none resize-y"
-          style={{ background: "var(--color-bg)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
-        />
       </div>
 
       {/* Internal Notes */}

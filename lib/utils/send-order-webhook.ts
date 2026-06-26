@@ -171,7 +171,7 @@ export async function sendOrderWebhook(
       quote_subtotal, quote_shipping, quote_pre_tax_total,
       quote_tax_amount, quote_final_total,
       ticket_payment_strategy, rush, due_date, priority,
-      notes, special_requirements,
+      notes,
       ticket_line_items (
         id, sort_order, product_type, description,
         material, lamination, color_mode, sides,
@@ -290,7 +290,7 @@ export async function sendOrderWebhook(
     customer_phone: formatPhone(ticket.contact_phone),
 
     // NOTES
-    description: ticket.notes ?? ticket.special_requirements ?? null,
+    description: ticket.notes ?? null,
 
     // ARTWORK — 7-day signed URL from first line item (for single-item receivers).
     ...(topLevelArtworkUrl ? { artwork_url: topLevelArtworkUrl } : {}),

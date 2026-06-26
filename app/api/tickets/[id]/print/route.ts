@@ -47,7 +47,7 @@ export async function GET(
       .from("job_tickets")
       .select(
         `id, ticket_kind, ticket_status, title, reference_code, created_at,
-         due_date, rush, priority, special_requirements,
+         due_date, rush, priority,
          contact_name, contact_email, contact_company, contact_phone,
          quote_subtotal, quote_shipping,
          requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip,
@@ -552,7 +552,7 @@ export async function GET(
       </div>
 
       <!-- Payment + Details -->
-      ${paymentMethods || ticket.special_requirements || ticket.quote_channel ? `
+      ${paymentMethods || ticket.quote_channel ? `
       <div class="details">
         ${paymentMethods ? `
         <div class="detail-block">
@@ -563,11 +563,6 @@ export async function GET(
         <div class="detail-block">
           <div class="section-label">Delivery Channel</div>
           <div class="detail-value">${esc(ticket.quote_channel as string)}</div>
-        </div>` : ""}
-        ${ticket.special_requirements ? `
-        <div class="detail-block full">
-          <div class="section-label">Special Requirements</div>
-          <div class="detail-value">${esc(ticket.special_requirements as string)}</div>
         </div>` : ""}
       </div>` : ""}
 

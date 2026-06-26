@@ -115,8 +115,7 @@ flowchart TD
    - Gold border wrapping the entire block for prominence
    - Hidden entirely for Full Payment orders
 9. **Accepted Payment Methods** — green badge block
-10. **Special Requirements** — amber block (if set)
-11. **"Confirm & Accept Quote"** CTA — gold button, only when `ticket_status = "sent"`
+10. **"Confirm & Accept Quote"** CTA — gold button, only when `ticket_status = "sent"`
 12. **Footer** — company name, address, phone, email, website
 
 ### On Confirm

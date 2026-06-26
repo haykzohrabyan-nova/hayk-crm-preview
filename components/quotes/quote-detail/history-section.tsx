@@ -86,7 +86,7 @@ const METHOD_LABELS: Record<string, string> = {
   zelle: "Zelle",
   check: "Check",
   card: "Card",
-  cash: "Cash",
+  cash: "Cash/Terminal",
 };
 
 const fmtMoney = formatCurrencyOrNull;

@@ -1149,6 +1149,17 @@ export function VerifyDrawer({
                     Close
                   </button>
                   <button
+                    onClick={handleRoute}
+                    disabled={saving}
+                    className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                    style={{
+                      background: "var(--color-btn-primary-bg)",
+                      color: "var(--color-btn-primary-text)",
+                    }}
+                  >
+                    Route to Sales
+                  </button>
+                  <button
                     onClick={() => promptThenRun(handleSave)}
                     disabled={saving}
                     className="ml-auto rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"

@@ -59,7 +59,6 @@ export async function GET(_request: NextRequest, { params }: Params) {
        rush,
        design_required,
        die_cut,
-       special_requirements,
        client_confirmed,
        contact_name,
        contact_email,

@@ -1117,7 +1117,6 @@ export async function PATCH(request: NextRequest, { params }: Params) {
     "rush",
     "design_required",
     "die_cut",
-    "special_requirements",
     "quote_channel",
     "quote_destination",
     "quote_subtotal",

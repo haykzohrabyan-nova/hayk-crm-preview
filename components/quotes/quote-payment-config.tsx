@@ -11,7 +11,7 @@ import { formatCurrency } from "@/lib/utils/format";
 // ── Payment channels (matches pulse-quote-payment.js PAY_CHANNELS) ────────────
 
 const PAY_CHANNELS = [
-  { id: "cash",  label: "Cash" },
+  { id: "cash",  label: "Cash/Terminal" },
   { id: "wire",  label: "Wire" },
   { id: "ach",   label: "ACH" },
   { id: "zelle", label: "Zelle" },

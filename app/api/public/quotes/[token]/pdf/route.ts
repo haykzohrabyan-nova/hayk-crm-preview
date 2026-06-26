@@ -39,7 +39,7 @@ export async function GET(
       .from("job_tickets")
       .select(
         `id, ticket_kind, ticket_status, title, reference_code, created_at,
-         due_date, rush, priority, special_requirements,
+         due_date, rush, priority,
          contact_name, contact_email, contact_company, contact_phone,
          quote_subtotal, quote_shipping,
          requires_shipping, ship_to_line1, ship_to_line2, ship_to_city, ship_to_state, ship_to_zip,
@@ -134,7 +134,7 @@ export async function GET(
     ach: "ACH / Bank Transfer",
     zelle: "Zelle",
     check: "Check",
-    cash: "Cash (In Person)",
+    cash: "Cash/Terminal (In Person)",
     offline: "Offline / In-person",
   };
   const strategy = (ticket.ticket_payment_strategy as string | null) ?? "full";
@@ -187,7 +187,6 @@ export async function GET(
       dueDate: ticket.due_date as string | null,
       rush: ticket.rush as boolean | null,
       priority: ticket.priority as string | null,
-      specialRequirements: ticket.special_requirements as string | null,
       quoteSubtotal: ticket.quote_subtotal as number | null,
       quoteShipping: ticket.quote_shipping as number | null,
       discountReason: ticket.discount_reason as string | null,

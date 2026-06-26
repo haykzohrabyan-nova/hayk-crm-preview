@@ -31,7 +31,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   zelle:   "Zelle",
   check:   "Check",
   card:    "Card",
-  cash:    "Cash",
+  cash:    "Cash/Terminal",
   offline: "Offline",
   other:   "Other",
 };

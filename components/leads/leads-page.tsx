@@ -214,6 +214,7 @@ export function LeadsPage() {
   const [reassignLead, setReassignLead] = useState<Lead | null>(null);
   const [reassignUserId, setReassignUserId] = useState<string>("unassign");
   const [reassigning, setReassigning] = useState(false);
+  const [routingLeadId, setRoutingLeadId] = useState<string | null>(null);
   const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
 
   // Owner filter (SDR users only): "all" = unclaimed pool, "mine" = leads I claimed
@@ -496,6 +497,26 @@ export function LeadsPage() {
     );
   }
 
+  async function handleRouteLeadToSales(lead: Lead) {
+    setRoutingLeadId(lead.id);
+    const res = await fetch(`/api/leads/${lead.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "Routed to Sales", sales_status: "Ongoing" }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setRoutingLeadId(null);
+      showToast(data.error ?? "Failed to route lead.", "error");
+      return;
+    }
+    fetch(`/api/leads/${lead.id}/unlock`, { method: "POST" }).catch(() => {});
+    setLeads((prev) => prev.filter((l) => l.id !== lead.id));
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
+    setRoutingLeadId(null);
+    showToast("Lead routed to Sales.");
+  }
+
   async function handleResumeLead(lead: Lead) {
     const res = await fetch(`/api/leads/${lead.id}/resume`, {
       method: "POST",
@@ -743,7 +764,7 @@ export function LeadsPage() {
                           <div className="flex items-center gap-1.5">
                             <button
                               onClick={() => void handleViewLead(lead)}
-                              disabled={leadActionDisabled()}
+                              disabled={leadActionDisabled() || routingLeadId === lead.id}
                               className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
                               style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
                             >
@@ -751,11 +772,22 @@ export function LeadsPage() {
                             </button>
                             <button
                               onClick={() => { setReassignLead(lead); setReassignUserId(lead.locked_by_id ? "unassign" : ""); }}
-                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
+                              disabled={routingLeadId === lead.id}
+                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60 min-w-[72px] text-center"
                               style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
                             >
                               {lead.locked_by_id ? "Reassign" : "Assign"}
                             </button>
+                            {lead.status !== "Routed to Sales" && (
+                              <button
+                                onClick={() => void handleRouteLeadToSales(lead)}
+                                disabled={routingLeadId === lead.id || leadActionDisabled()}
+                                className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+                                style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                              >
+                                {routingLeadId === lead.id ? "Routing…" : "Route to Sales"}
+                              </button>
+                            )}
                           </div>
                         ) : lead.locked_by_id === userId ? (
                           <button

@@ -334,7 +334,7 @@ export function computeCheckout(
 // ── Payment channel display helpers ──────────────────────────────────────────
 
 export const PAYMENT_CHANNEL_LABELS: Record<string, string> = {
-  cash:    "Cash",
+  cash:    "Cash/Terminal",
   wire:    "Wire Transfer",
   ach:     "ACH / Bank Transfer",
   zelle:   "Zelle",
@@ -348,7 +348,7 @@ export function getChannelLabel(channel: string): string {
 }
 
 export const ALL_PAYMENT_CHANNELS = [
-  { value: "cash",    label: "Cash" },
+  { value: "cash",    label: "Cash/Terminal" },
   { value: "wire",    label: "Wire Transfer" },
   { value: "ach",     label: "ACH / Bank Transfer" },
   { value: "zelle",   label: "Zelle" },

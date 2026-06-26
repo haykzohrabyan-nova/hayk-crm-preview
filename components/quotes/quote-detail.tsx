@@ -163,7 +163,6 @@ interface Ticket {
   rush: boolean;
   design_required: boolean;
   die_cut: boolean;
-  special_requirements: string | null;
   quote_channel: string | null;
   quote_destination: string | null;
   quote_subtotal: number | null;
@@ -394,7 +393,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   const [dueDate, setDueDate] = useState("");
   const [rush, setRush] = useState(false);
   const [orderSource, setOrderSource] = useState("quoted");
-  const [specialRequirements, setSpecialRequirements] = useState("");
   const [notes, setNotes] = useState("");
   const [skus, setSkus] = useState<FormLineItem[]>([emptyFormLineItem()]);
   const [requiresShipping, setRequiresShipping] = useState(false);
@@ -425,7 +423,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
     setDueDate(t.due_date ?? "");
     setRush(t.rush ?? false);
     setOrderSource(t.order_source ?? "quoted");
-    setSpecialRequirements(t.special_requirements ?? "");
     setNotes(t.notes ?? "");
     setSkus(
       t.line_items?.length
@@ -817,7 +814,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       due_date: dueDate || null,
       rush,
       order_source: orderSource,
-      special_requirements: specialRequirements || null,
       notes: notes || null,
       line_items: lineItemsToApiPayload(skus),
       ...shippingDestinationsToApiFields(requiresShipping, shippingDestinations),
@@ -1839,7 +1835,6 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
                   priority={priority} setPriority={setPriority}
                   dueDate={dueDate} setDueDate={(v) => { setDueDate(v); setDueDateError(undefined); }}
                   rush={rush} setRush={setRush}
-                  specialRequirements={specialRequirements} setSpecialRequirements={setSpecialRequirements}
                   notes={notes} setNotes={setNotes}
                   priorityOpts={quoteLookups.ticket_priority}
                   titleError={titleError}

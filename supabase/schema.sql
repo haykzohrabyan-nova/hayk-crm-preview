@@ -252,7 +252,6 @@ create table if not exists public.job_tickets (
   order_source                       text,           -- 'quoted' | 'direct'
   due_date                           date,
   priority                           text,           -- 'Low' | 'Normal' | 'High'
-  special_requirements               text,
   design_required                    boolean        not null default false,
   die_cut                            boolean        not null default false,
 

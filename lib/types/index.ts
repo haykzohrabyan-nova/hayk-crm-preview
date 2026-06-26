@@ -357,7 +357,6 @@ export interface JobTicket {
   quote_source: string | null
   due_date: string | null
   priority: TicketPriority | null
-  special_requirements: string | null
   design_required: boolean
   die_cut: boolean
 
@@ -434,7 +433,6 @@ export interface TicketForm {
   order_source: OrderSource | ''
   priority: TicketPriority | ''
   due_date: string
-  special_requirements: string
   rush: boolean
   design_required: boolean
   die_cut: boolean

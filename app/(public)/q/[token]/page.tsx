@@ -49,7 +49,6 @@ interface PublicTicket {
   quote_tax_amount: number | null;
   quote_final_total: number | null;
   tax_exempt: boolean;
-  special_requirements: string | null;
   rush: boolean;
   client_confirmed: boolean;
   contact_name: string | null;
@@ -124,7 +123,7 @@ const CHANNEL_LABELS: Record<string, string> = {
   zelle:   "Zelle",
   check:   "Check",
   card:    "Credit / Debit Card",
-  cash:    "Cash (In Person)",
+  cash:    "Cash/Terminal (In Person)",
   offline: "Offline / In-Person",
   other:   "Other",
 };

@@ -60,7 +60,7 @@ const METHOD_LABELS: Record<string, string> = {
   zelle: "Zelle",
   check: "Check",
   card: "Card",
-  cash: "Cash",
+  cash: "Cash/Terminal",
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

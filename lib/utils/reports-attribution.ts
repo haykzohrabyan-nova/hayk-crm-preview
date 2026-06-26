@@ -32,7 +32,7 @@ export function resolveSdrId(
 }
 
 export const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cash: "Cash",
+  cash: "Cash/Terminal",
   wire: "Wire Transfer",
   ach: "ACH / Bank",
   zelle: "Zelle",

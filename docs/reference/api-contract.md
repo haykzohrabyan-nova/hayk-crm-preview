@@ -984,7 +984,6 @@ Create a new ticket.
   "due_date": "ISO date | null",
   "order_source": "string | null",
   "rush": "boolean",
-  "special_requirements": "string | null",
   "notes": "string | null",
   "line_items": "LineItemInput[] — catalog lines with optional variants[] (name, quantity required)",
   "quote_subtotal": "number | null",
@@ -1399,7 +1398,7 @@ Renders the ticket as a PDF binary and returns it for direct download.
 - `Content-Disposition: attachment; filename="Quote-REF.pdf"` (or `Invoice-REF.pdf` for orders where `ticket_status` is `order`, `in_production`, or `completed`)
 - Body: raw PDF binary rendered server-side by `@react-pdf/renderer`
 
-PDF sections: company header (logo or name, address, contact), Bill To, **Ship To** (single destination) or **Shipping addresses** (2-column 50/50 card grid when multiple), Prepared By, line items table (catalog specs, **`SKU{n}.`** additional SKUs, line/variant **file names**, addon **Need a design**), pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment schedule when partial, payment methods, special requirements, gold footer. Evidence-pending banner when applicable.
+PDF sections: company header (logo or name, address, contact), Bill To, **Ship To** (single destination) or **Shipping addresses** (2-column 50/50 card grid when multiple), Prepared By, line items table (catalog specs, **`SKU{n}.`** additional SKUs, line/variant **file names**, addon **Need a design**), pricing summary (subtotal → shipping → discount → pre-tax → tax → total), payment schedule when partial, payment methods, delivery channel, gold footer. Evidence-pending banner when applicable.
 
 Data: `fetchTicketLinesBundle()` → `lineItemsToDisplayRows()`; `fetchTicketShippingDestinations()` → `resolveTicketShippingDestinationsForDisplay()`.
 
