@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import { buildNavSections, type NavSection } from "@/lib/auth/nav-sections";
+import { createClient } from "@/lib/supabase/client";
 import type { Page } from "@/lib/types";
 
 export type AppMePayload = {
@@ -52,6 +53,22 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Keep the Supabase browser client alive so its built-in auto-refresh timer
+  // fires ~60 s before the access token expires. Without this, the client is
+  // never instantiated in the browser and tokens go stale after 1 hour.
+  // SIGNED_OUT (refresh token expired) sends the user to login immediately.
+  useEffect(() => {
+    const supabase = createClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_OUT") {
+        window.location.assign("/login");
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
 
   const sections = useMemo(
     () => (me?.pages ? buildNavSections(me.pages) : []),

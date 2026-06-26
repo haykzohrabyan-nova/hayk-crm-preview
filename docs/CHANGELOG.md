@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-25] — Redirect to login on expired session (401)
+
+### Fixed
+- `lib/utils/reportApiError` — when any API call returns 401 (session expired), the user is now automatically redirected to `/login?next=<current_path>` so they re-authenticate and land back where they were. Previously the error was only shown inline (e.g. "Not authenticated." in `AddCustomerModal`) with no recovery path.
+- `components/layout/AppSessionProvider` — added a `supabase.auth.onAuthStateChange` subscription so the browser client's built-in token auto-refresh timer is active for the entire app lifetime. Previously no browser client was kept alive, so access tokens went stale after 1 hour for users who stayed on the same page. Also handles `SIGNED_OUT` (expired refresh token) by redirecting to `/login` immediately.
+
 ## [2026-06-25] — Remove Special Requirements field; migrate data to Internal Notes
 
 ### Changed

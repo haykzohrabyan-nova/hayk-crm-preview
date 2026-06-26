@@ -8,6 +8,10 @@ import * as Sentry from "@sentry/nextjs";
  * auth failures, permission problems, and server errors are all visible in the
  * Sentry dashboard alongside the user identity and session replay.
  *
+ * If the response status is 401 (session expired / not authenticated), the
+ * user is automatically redirected to /login?next=<current_path> so they
+ * land back on the current page after re-authenticating.
+ *
  * Usage:
  *   if (!res.ok) {
  *     const msg = json.error ?? "Failed to save.";
@@ -33,4 +37,9 @@ export function reportApiError(
       ...extra,
     },
   });
+
+  if (res.status === 401 && typeof window !== "undefined") {
+    const next = encodeURIComponent(window.location.pathname + window.location.search);
+    window.location.assign(`/login?next=${next}`);
+  }
 }

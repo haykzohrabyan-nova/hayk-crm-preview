@@ -56,7 +56,7 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 | Pure helpers | `lib/utils/format.ts` | **Single source of truth** for all display formatting — `formatCurrency`, `formatDate`, `formatDateTime`, `formatDateLong`, `relativeTime`, `relativeDays`, `formatCompact`, `roundMoney`. **Never copy or re-implement these in components.** |
 | Line item validation | `lib/utils/validate-quote-skus.ts` | `validateLineItems()` — canonical 6-field validation; import from here, never duplicate inline |
 | Amount paid | `lib/utils/invoice-payment-summary.ts` | `getAmountPaid(ticket)` — canonical `payment_amount_received ?? deposit_amount ?? 0`; never inline this chain |
-| Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider, global-loading-provider, **error-boundary** |
+| Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider, global-loading-provider, **error-boundary**, **app-session-provider** (Supabase token auto-refresh + `SIGNED_OUT` redirect) |
 | Public customer UI | `components/public/` | `/q/[token]` only |
 
 **Anti-patterns to avoid:**

@@ -158,6 +158,8 @@ Config files: `instrumentation-client.ts` (browser), `sentry.server.config.ts` (
 **`reportApiError` utility (`lib/utils/report-api-error.ts`):**
 Call this whenever `!res.ok` and you are showing an error to the user. It fires `Sentry.captureMessage()` tagged with the component name and HTTP status. Already wired into all 15 user-facing form/action components (quotes, orders, leads, CRM, admin). This ensures every 4xx/5xx a user encounters is visible in Sentry with the session replay attached — not just unhandled crashes.
 
+**401 auto-redirect:** if the response status is 401, `reportApiError` automatically redirects the browser to `/login?next=<current_path>` so the user re-authenticates and returns to exactly where they were. This covers session expiry mid-session (e.g. user leaves a form open for > 1 hour) across every component in the app without any per-component handling.
+
 **Sentry Logs (`enableLogs: true`):**
 Enabled in all three runtimes (client, server, edge). Use `Sentry.logger.info/warn/error()` for structured server-side log lines. Logs appear in the **Explore → Logs** tab in Sentry and are linked to traces/replays. Key instrumentation points:
 - `lib/auth/require-session.ts` — logs every 401 (no session) and 403 (MFA not satisfied)
@@ -356,6 +358,12 @@ if (errorResponse) return errorResponse;
 - **401** `UNAUTHENTICATED` — no session
 - **403** `MFA_SETUP_REQUIRED` / `MFA_VERIFY_REQUIRED` — MFA not complete
 - 3-second in-memory cache keyed by cookie hash (`session-cache.ts`)
+
+### Token auto-refresh (client-side)
+
+`AppSessionProvider` (`components/layout/app-session-provider.tsx`) mounts a `supabase.auth.onAuthStateChange` subscription for the lifetime of the app shell. This keeps the `createBrowserClient` instance alive so its built-in timer fires ~60 seconds before the 1-hour access token expires and silently fetches a new one using the refresh token.
+
+Without this subscription, the browser client is never instantiated and access tokens go stale after 1 hour for users who stay on the same page without navigating (e.g. filling out a long form). The `SIGNED_OUT` event (triggered when the 7-day refresh token itself expires) immediately redirects to `/login`.
 
 ### Idle timeout
 
