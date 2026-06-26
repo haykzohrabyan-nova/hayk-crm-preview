@@ -3,6 +3,12 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-25] — Allow 0 as valid Width/Height in New Quote line items
+
+### Changed
+- `components/quotes/shared/sku-row.tsx` — Width and Height fields now accept `0` as a valid submittable value; red border on submit only triggers when the field is empty (not when it contains `0`). Leading-zero stripping behavior (e.g. `"04"` → `"4"`) is unchanged.
+- `lib/utils/validate-quote-skus.ts` — Width and Height validation now only checks that the field is filled in (`!= null`); previously rejected `0` as invalid (`> 0`).
+
 ## [2026-06-25] — Route to Sales modal with optional sales rep assignment
 
 ### Added

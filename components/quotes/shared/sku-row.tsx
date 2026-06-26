@@ -453,7 +453,7 @@ export function SkuRow({
             className="w-full px-3 py-2 rounded-md text-sm outline-none"
             style={{
               ...skuFieldStyle,
-              ...(rowError && !(sku.width != null && sku.width > 0) ? { borderColor: "var(--color-danger)" } : {}),
+              ...(rowError && sku.width == null ? { borderColor: "var(--color-danger)" } : {}),
             }}
           />
         </div>
@@ -468,7 +468,7 @@ export function SkuRow({
             className="w-full px-3 py-2 rounded-md text-sm outline-none"
             style={{
               ...skuFieldStyle,
-              ...(rowError && !(sku.height != null && sku.height > 0) ? { borderColor: "var(--color-danger)" } : {}),
+              ...(rowError && sku.height == null ? { borderColor: "var(--color-danger)" } : {}),
             }}
           />
         </div>

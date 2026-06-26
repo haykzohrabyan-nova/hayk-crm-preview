@@ -24,8 +24,8 @@ export function validateLineItems(skus: SkuWithVariants[]): Record<string, strin
     const missing: string[] = [];
     if (!s.product_type?.trim()) missing.push("product type");
     if (!s.material?.trim()) missing.push("material");
-    if (!(s.width != null && s.width > 0)) missing.push("width");
-    if (!(s.height != null && s.height > 0)) missing.push("height");
+    if (s.width == null) missing.push("width");
+    if (s.height == null) missing.push("height");
     if (!((s.quantity ?? 0) > 0)) missing.push("quantity");
     if (!((s.unit_price ?? 0) > 0)) missing.push("unit price");
     if (missing.length > 0) {
