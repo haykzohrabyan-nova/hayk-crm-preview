@@ -631,7 +631,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
       setError(null);
       setNotice(null);
       try {
-        const res = await fetch(`/api/tickets/${ticketId}`, {
+        // Prefer ticket.id (UUID) — reference_code may have changed via auto-conversion.
+        const stableId = ticket?.id ?? ticketId;
+        const res = await fetch(`/api/tickets/${stableId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(extraFields),
@@ -932,7 +934,10 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         });
       } else {
         beginSaveLoading(GLOBAL_LOADING_MESSAGES.sendingQuote);
-        const res = await fetch(`/api/tickets/${ticketId}`, {
+        // Use ticket.id (UUID) — ticketId is the URL param and can become stale if
+        // maybeAutoReleaseProduction converted QUO-* → ORD-* during the preceding save.
+        const stableId = ticket.id ?? ticketId;
+        const res = await fetch(`/api/tickets/${stableId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ resend_invoice: true, notify_revision: revision }),
@@ -962,7 +967,9 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
   async function handleReleaseProduction() {
     beginSaveLoading(GLOBAL_LOADING_MESSAGES.releasingProduction);
     try {
-      const res = await fetch(`/api/tickets/${ticketId}`, {
+      // Use ticket.id (UUID) so this still works if reference_code changed during the session.
+      const stableId = ticket?.id ?? ticketId;
+      const res = await fetch(`/api/tickets/${stableId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ release_production: true }),

@@ -346,6 +346,8 @@ Each SKU row:
 
 **Resend after edit (May 2026):** Saving changes does **not** auto-email the customer. **SDR/Sales** editing a **sent** quote before customer confirm see a modal to **Resend quote**. **Admin** edits on `sent`, `order`, `in_production`, or **completed** tickets see **Send update** (quote resend or invoice link with “revised by our team” copy). Portal `/q/{token}` always shows latest data after save.
 
+> **Post-save resend UUID rule (Jun 2026):** A field-only save can trigger `maybeAutoReleaseProduction` server-side, which internally calls `maybeConvertQuoteToOrder` and changes `reference_code` from `QUO-*` to `ORD-*` within the same response. Because `ticketId` (the URL param) is never updated in-session, all PATCH calls that fire *after* the initial save — `confirmResendAfterSave`, `handleReleaseProduction`, extra-field updates — use `ticket.id` (the immutable UUID) so the server-side lookup never goes stale.
+
 **Line attachment (May 2026, lifecycle May 29):** In **Add-on Finishings**, **Attach file** (image or PDF) on the line. **One shared line file** per catalog row — not duplicated across every SKU.
 
 | Step | Behavior |

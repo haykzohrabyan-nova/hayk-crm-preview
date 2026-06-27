@@ -1184,11 +1184,15 @@ Converts `sent`/`approved` → `order`. Gates:
 
 #### `maybeAutoReleaseProduction(ticket)` — `lib/utils/maybe-auto-release-production.ts`
 
-Releases production if `computeCheckout(...).canReleaseProduction` is true. May convert `sent/approved → order` first. Sets:
+Releases production if `computeCheckout(...).canReleaseProduction` is true. May convert `sent/approved → order` first via `maybeConvertQuoteToOrder`. Sets:
 - `production_released_at = now()`
 - `ticket_status = "in_production"`
 - `ticket_kind = "order"`
 - Calls `markLinkedLeadWonOnProduction` → `sales_status: "Won"` on linked lead
+
+> **Side-effect on `reference_code`:** `maybeConvertQuoteToOrder` (called internally) changes `reference_code` from `QUO-YYYY-NNNN` to `ORD-YYYY-NNNN` in the database. This happens **inside the same PATCH response** that the admin initiated. After the response, `ticketId` (the URL param, e.g. `QUO-2026-0085`) is stale — any further PATCH using it will get 404 because the lookup `WHERE reference_code = 'QUO-…'` finds nothing.
+>
+> **Rule:** `QuoteDetail` functions that run *after* the initial save — `confirmResendAfterSave`, `handleReleaseProduction`, the `extraFields` PATCH path — must use `ticket.id` (UUID) not `ticketId` for their fetch calls. The UUID is assigned at creation and never changes regardless of reference-code transitions.
 
 #### `PATCH /api/tickets/[id]` key operations
 
@@ -1198,7 +1202,7 @@ Releases production if `computeCheckout(...).canReleaseProduction` is true. May 
 | `claim_ownership: true` | Claim routed quote → `draft`, `created_by_id = userId` |
 | `record_payment: true` | Accountant confirms payment; may convert + auto-release production |
 | `release_production: true` | Only sets `production_released_at` (no status change alone) |
-| `resend_invoice: true` | `sendInvoiceLinkToCustomer` |
+| `resend_invoice: true` | `sendInvoiceLinkToCustomer`. Client must use `ticket.id` (UUID) — not the reference-code URL param — because the prior save may have converted `QUO-*` → `ORD-*`. |
 | `send_payment_reminder: true` | `sendPaymentReminder` |
 | `ticket_status: "order"` (admin) | Manual convert; generates ORD reference; fire-and-forgets `sendOrderWebhook()` with `via: "manual_convert"`. Payload includes `items[]` with `designer` per line. |
 | `ticket_status: "completed"` | Mark complete from `in_production`; sends order-ready notification |
@@ -1784,6 +1788,18 @@ Modes:
 - **`payment_evidence_resubmit`** / **`tax_exempt_resubmit`** — accountant **Request** on `/payments`; PATCH `request_*_resubmit`; channel/recipient only (message from admin templates)
 
 Pre-fills current `ticket_dest_email` / `ticket_dest_phone`. Validates email format and phone format. Channel toggle: email / SMS / both.
+
+**Post-save resend (`ResendAfterSaveModal`)** — `components/quotes/quote-detail/resend-after-save-modal.tsx`
+
+Shown automatically after a field-only save (no status change) when `shouldOfferResendAfterSave` returns a prompt kind:
+- `sdr-sales` — for SDR/Sales on `sent` tickets with no client confirm
+- `admin` — for admin on `sent`, `order`, `in_production`, `completed` tickets
+
+`confirmResendAfterSave` in `QuoteDetail` handles the confirm:
+- If `resendDeliveryMode(ticket.ticket_status) === "quote"` → calls `handleSave("sent")` (quote flow)
+- Otherwise → PATCH `{ resend_invoice: true }` using `ticket.id` (UUID)
+
+> **UUID rule:** `confirmResendAfterSave` uses `ticket.id` (not the `ticketId` URL prop) because the preceding save may have triggered `maybeAutoReleaseProduction` which converts `QUO-*` → `ORD-*` in-flight, making any subsequent reference-code lookup return 404.
 
 ### Customer and staff email templates (admin-editable)
 

@@ -3,6 +3,11 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-26] — Fix QuoteDetail resend/release 404 after auto-conversion
+
+### Fixed
+- `components/quotes/quote-detail.tsx` — `confirmResendAfterSave`, `handleReleaseProduction`, and the `extraFields` PATCH path now use `ticket.id` (UUID) instead of the URL prop `ticketId` for their PATCH requests. When `maybeAutoReleaseProduction` fires server-side during a save it converts the ticket from `QUO-*` to `ORD-*`, making the old reference-code lookup return 404 on subsequent calls. Using the immutable UUID avoids this entirely.
+
 ## [2026-06-26] — Leads: track and display who created each lead
 
 ### Added
