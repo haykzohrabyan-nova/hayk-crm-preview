@@ -171,6 +171,58 @@ function RoutedLeadStatusCell({ lead }: { lead: RoutedLeadRow }) {
   );
 }
 
+// ─── Created By ───────────────────────────────────────────────────────────────
+
+function CreatedByTableCell({ lead }: { lead: Lead }) {
+  if (lead.is_system_created) {
+    return (
+      <td className="px-3 py-2.5 whitespace-nowrap text-xs">
+        <span
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+          style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}
+        >
+          System
+        </span>
+      </td>
+    );
+  }
+  if (lead.created_by?.full_name) {
+    return (
+      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-primary)" }}>
+        {lead.created_by.full_name}
+      </td>
+    );
+  }
+  return <td className="px-3 py-2.5" />;
+}
+
+function CreatedByMobileRow({ lead }: { lead: Lead }) {
+  if (lead.is_system_created) {
+    return (
+      <div className="flex justify-between items-center">
+        <span>Created By</span>
+        <span
+          className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal"
+          style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}
+        >
+          System
+        </span>
+      </div>
+    );
+  }
+  if (lead.created_by?.full_name) {
+    return (
+      <div className="flex justify-between">
+        <span>Created By</span>
+        <span className="normal-case tracking-normal" style={{ color: "var(--color-text-primary)" }}>
+          {lead.created_by.full_name}
+        </span>
+      </div>
+    );
+  }
+  return null;
+}
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 
@@ -681,7 +733,7 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {(["Name", "Company", "Source", "Product Interests", "Phone", "Urgency", "Status", "Owner", "Created", "Action"] as const).map((h) => {
+                  {(["Name", "Created By", "Company", "Source", "Product Interests", "Phone", "Urgency", "Status", "Owner", "Created", "Action"] as const).map((h) => {
                     const isSortable = h === "Urgency" || h === "Created";
                     const field: SortField = h === "Urgency" ? "urgency" : "created";
                     const isActive = isSortable && sortField === field;
@@ -709,10 +761,10 @@ export function LeadsPage() {
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={10} />
+                  <TableRowsSkeleton cols={11} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={11} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads found.
                     </td>
                   </tr>
@@ -731,6 +783,8 @@ export function LeadsPage() {
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>
                         {displayContactName(lead.customer, { preferPerson: true })}
                       </td>
+                      {/* Created By column */}
+                      <CreatedByTableCell lead={lead} />
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
                         {lead.customer?.company || "—"}
                       </td>
@@ -872,6 +926,7 @@ export function LeadsPage() {
                     </div>
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <CreatedByMobileRow lead={lead} />
                     {lead.customer?.phone && (
                       <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>
                     )}
@@ -952,17 +1007,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Product Interests", "Reason", "Follow Up On", "Marked", "Actions"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Reason", "Follow Up On", "Marked", "Actions"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={7} />
+                  <TableRowsSkeleton cols={8} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads scheduled for follow-up.
                     </td>
                   </tr>
@@ -979,6 +1034,7 @@ export function LeadsPage() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
                       <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
+                      <CreatedByTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{followUpReasonLabel(lead.follow_up_reason)}</td>
@@ -1031,6 +1087,7 @@ export function LeadsPage() {
                     <StatusPill status="Follow Up Later" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <CreatedByMobileRow lead={lead} />
                     <ProductInterestsMobileRow lead={lead} />
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{followUpReasonLabel(lead.follow_up_reason)}</span></div>
                     <div className="flex justify-between"><span>Follow up on</span><span className="normal-case tracking-normal">{lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString("en-US") : "—"}</span></div>
@@ -1060,17 +1117,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Product Interests", "Hold Reason", "Hold Until", "Held", "Actions"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Hold Reason", "Hold Until", "Held", "Actions"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={7} />
+                  <TableRowsSkeleton cols={8} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads on hold.
                     </td>
                   </tr>
@@ -1087,6 +1144,7 @@ export function LeadsPage() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
                       <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
+                      <CreatedByTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{holdReasonLabel(lead.hold_reason)}</td>
@@ -1140,6 +1198,7 @@ export function LeadsPage() {
                     <StatusPill status="On Hold" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <CreatedByMobileRow lead={lead} />
                     <ProductInterestsMobileRow lead={lead} />
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{holdReasonLabel(lead.hold_reason)}</span></div>
                     <div className="flex justify-between"><span>Until</span><span className="normal-case tracking-normal">{lead.hold_until ? new Date(lead.hold_until).toLocaleDateString("en-US") : "—"}</span></div>
@@ -1206,17 +1265,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Product Interests", "Phone", "Stage", "Lead Status", "Sales Rep", "Updated"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Phone", "Stage", "Lead Status", "Sales Rep", "Updated"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={8} />
+                  <TableRowsSkeleton cols={9} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       {routedFilter === "all"
                         ? "No leads directed to sales."
                         : `No leads in ${ROUTED_FILTER_LABELS[routedFilter]}.`}
@@ -1236,6 +1295,7 @@ export function LeadsPage() {
                       onClick={() => { if (!leadActionDisabled()) void handleViewLead(lead); }}
                     >
                       <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
+                      <CreatedByTableCell lead={lead} />
                       <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <td className="px-3 py-2.5 max-w-[220px]" style={{ color: "var(--color-text-muted)" }}>
                         <span className="block truncate" title={productInterestsText(lead) !== "—" ? productInterestsText(lead) : undefined}>
@@ -1308,6 +1368,7 @@ export function LeadsPage() {
                     </div>
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <CreatedByMobileRow lead={lead} />
                     {lead.customer?.phone && (
                       <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>
                     )}
@@ -1348,17 +1409,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Product Interests", "Rejection Reason", "Rejected", "Action"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Rejection Reason", "Rejected", "Action"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={6} />
+                  <TableRowsSkeleton cols={7} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No rejected leads.</td>
+                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No rejected leads.</td>
                   </tr>
                 ) : (
                   filtered.map((lead, idx) => (
@@ -1374,6 +1435,7 @@ export function LeadsPage() {
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
                       <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
+                      <CreatedByTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.rejection_reason || "—"}</td>
@@ -1413,6 +1475,7 @@ export function LeadsPage() {
                     <StatusPill status="Rejected" />
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <CreatedByMobileRow lead={lead} />
                     <ProductInterestsMobileRow lead={lead} />
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{lead.rejection_reason || "—"}</span></div>
                   </div>

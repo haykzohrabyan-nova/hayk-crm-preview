@@ -19,11 +19,14 @@ export type LeadHistoryRow = {
   interests?: Record<string, boolean> | null;
   quantities?: Record<string, string | number> | null;
   created_at: string;
+  created_by_id?: string | null;
+  is_system_created?: boolean;
+  created_by?: { id: string; full_name: string | null } | null;
   /** Won-tab API embeds tickets on each lead */
   tickets?: LeadHistoryTicket[];
 };
 
-const COLUMNS = ["Status", "Source", "Product Interests", "Urgency", "Quote / Order", "Created"] as const;
+const COLUMNS = ["Status", "Created By", "Source", "Product Interests", "Urgency", "Quote / Order", "Created"] as const;
 
 function TicketRefBadges({ quoteRef, orderRef }: { quoteRef: string | null; orderRef: string | null }) {
   if (!quoteRef && !orderRef) {
@@ -95,6 +98,20 @@ function HistoryRowCells({
           <span style={{ color: "var(--color-text-muted)" }}>—</span>
         )}
       </td>
+      <td className="px-3 py-2.5 text-xs whitespace-nowrap">
+        {lead.is_system_created ? (
+          <span
+            className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+            style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}
+          >
+            System
+          </span>
+        ) : lead.created_by?.full_name ? (
+          <span style={{ color: "var(--color-text-primary)" }}>{lead.created_by.full_name}</span>
+        ) : (
+          <span style={{ color: "var(--color-text-muted)" }}>—</span>
+        )}
+      </td>
       <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>
         {leadSourceLabel(lead.source, sourceLabels)}
       </td>
@@ -149,6 +166,23 @@ function MobileCard({
         )}
       </div>
       <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+        {(lead.is_system_created || lead.created_by?.full_name) && (
+          <div className="flex justify-between items-center">
+            <span>Created By</span>
+            {lead.is_system_created ? (
+              <span
+                className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium normal-case tracking-normal"
+                style={{ background: "var(--color-neutral-bg)", color: "var(--color-neutral-text)" }}
+              >
+                System
+              </span>
+            ) : (
+              <span className="normal-case tracking-normal" style={{ color: "var(--color-text-primary)" }}>
+                {lead.created_by!.full_name}
+              </span>
+            )}
+          </div>
+        )}
         <div className="flex justify-between">
           <span>Source</span>
           <span className="normal-case tracking-normal">{leadSourceLabel(lead.source, sourceLabels)}</span>

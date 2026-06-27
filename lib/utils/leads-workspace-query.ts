@@ -16,13 +16,13 @@ import { parseListPaginationParams, type PaginationParams } from "@/lib/utils/pa
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 export const LEAD_WORKSPACE_LIST_SELECT =
-  "id, customer_id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, locked_by_id, sales_owner_id, sdr_id, hold_reason, hold_until, held_at, follow_up_reason, follow_up_until, follow_up_at, rejection_reason, prev_status, customer:customers(id, first_name, last_name, company, phone, email, industry, website, authority), sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name), locked_by:user_profiles!leads_locked_by_id_fkey(id, full_name)";
+  "id, customer_id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, locked_by_id, sales_owner_id, sdr_id, hold_reason, hold_until, held_at, follow_up_reason, follow_up_until, follow_up_at, rejection_reason, prev_status, created_by_id, is_system_created, customer:customers(id, first_name, last_name, company, phone, email, industry, website, authority), sales_owner:user_profiles!leads_sales_owner_id_fkey(id, full_name), locked_by:user_profiles!leads_locked_by_id_fkey(id, full_name), created_by:user_profiles!leads_created_by_id_fkey(id, full_name)";
 
 const LEAD_ROUTED_LIST_SELECT =
   `${LEAD_WORKSPACE_LIST_SELECT}, tickets:job_tickets(id, reference_code, ticket_kind, ticket_status, client_confirmed, ticket_require_client_confirm, linked_lead_id, updated_at)`;
 
 const LEAD_WON_LIST_SELECT =
-  "id, customer_id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, sdr_id, rejection_reason, tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)";
+  "id, customer_id, status, sales_status, source, urgency, interests, quantities, created_at, updated_at, sdr_id, rejection_reason, created_by_id, is_system_created, created_by:user_profiles!leads_created_by_id_fkey(id, full_name), tickets:job_tickets(id, reference_code, ticket_kind, ticket_status)";
 
 /** Minimal columns needed only for urgency sort — avoids fat JOIN for the full dataset. */
 const LEAD_SORT_ONLY_SELECT =

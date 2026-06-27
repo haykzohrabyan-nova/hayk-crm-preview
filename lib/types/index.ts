@@ -183,10 +183,13 @@ export interface Lead {
   sales_notes: string | null
   created_at: string
   updated_at: string
+  created_by_id: string | null
+  is_system_created: boolean
   // Joined (optional)
   customer?: Customer
   locked_by?: UserProfile
   sales_owner?: { id: string; full_name: string | null } | null
+  created_by?: { id: string; full_name: string | null } | null
 }
 
 export const PRODUCT_INTERESTS = [

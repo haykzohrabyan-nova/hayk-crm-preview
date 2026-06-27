@@ -28,12 +28,17 @@ export async function fetchSidebarCounts(
 
   await Promise.all([
     isSdr && shouldCount("/leads", visibleRoutes)
-      ? countExact(admin, "leads", (q) =>
-          q
+      ? countExact(admin, "leads", (q) => {
+          let query = q
             .eq("is_inbox", false)
             .in("status", ["Pending", "Validated"])
-            .is("locked_by_id", null),
-        ).then((n) => {
+            .or("sales_status.is.null,sales_status.neq.Won");
+          // SDR-only: only count unclaimed leads in the pool (matches the "All" tab behaviour for SDR)
+          if (roleName === "sdr") {
+            query = query.is("locked_by_id", null);
+          }
+          return query;
+        }).then((n) => {
           counts["/leads"] = n;
         })
       : Promise.resolve(),

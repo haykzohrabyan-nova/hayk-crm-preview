@@ -3,6 +3,37 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-26] — Leads: track and display who created each lead
+
+### Added
+- `supabase/migrations/20260626_leads_created_by.sql` — adds two nullable columns to `leads`:
+  - `created_by_id UUID` — FK to `user_profiles`, set when a CRM user manually creates a lead.
+  - `is_system_created BOOLEAN DEFAULT false` — set when the webhook creates a lead (no human actor). Old leads have both as null/false and show nothing in the UI.
+- `lib/types/index.ts` — `Lead` interface: `created_by_id`, `is_system_created`, and optional `created_by` join shape. `LeadHistoryRow` (Won tab) gains the same three optional fields.
+- **"Created By" column** — visible on all six tabs of the Leads page (All Leads, Follow Up Later, On Hold, Directed to Sales, Rejected, Won) on both desktop table and mobile cards:
+  - Manually-created lead → shows the creator's full name.
+  - Webhook-created lead → shows a grey "System" pill.
+  - Old lead (null) → cell is blank, nothing shown.
+  - Column is always the **second column** (right next to Name) for quick identification.
+
+### Changed
+- `lib/utils/leads-workspace-query.ts` — `LEAD_WORKSPACE_LIST_SELECT` and `LEAD_WON_LIST_SELECT` now select `created_by_id`, `is_system_created`, and join `created_by:user_profiles`.
+- `app/api/leads/manual/route.ts` — sets `created_by_id: userId` on every manually-created lead insert.
+- `app/api/webhook/leads/route.ts` — sets `is_system_created: true` on every webhook-created lead insert.
+- `lib/utils/sidebar-counts-query.ts` — Leads sidebar badge now matches the "All Leads" tab count exactly:
+  - **Admin**: counts all `Pending + Validated` leads (removed the old `locked_by_id IS NULL` filter that was hiding claimed leads from admins).
+  - **SDR**: still counts only unclaimed leads in the pool (behaviour unchanged).
+  - Added `sales_status != 'Won'` exclusion to match the tab-count query.
+- `components/leads/lead-history-table.tsx` — `LeadHistoryTable` / `LeadHistoryRow` extended to render the "Created By" column in the Won tab (desktop + mobile).
+
+### Fixed
+- Follow Up Later mobile card: missing closing `</div>` caused a Turbopack build error — restored correct JSX structure.
+
+## [2026-06-26] — Quoted Requests table: tighten column padding
+
+### Changed
+- `components/quotes/quotes-page.tsx` — changed all table `th` and `td` cell padding from `px-4` to `px-2` on both the standard tabs table and the Routed to Sales table, giving the list more horizontal breathing room.
+
 ## [2026-06-26] — Same-number quote-to-order conversion
 
 ### Changed

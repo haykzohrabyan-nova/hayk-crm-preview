@@ -497,6 +497,7 @@ export async function POST(request: NextRequest) {
       interests: isPlainObject(interests) ? interests : {},
       quantities: isPlainObject(quantities) ? quantities : {},
       has_design: isPlainObject(has_design) ? has_design : {},
+      is_system_created: true,
     })
     .select("id")
     .single();

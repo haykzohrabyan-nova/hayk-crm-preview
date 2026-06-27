@@ -564,7 +564,7 @@ export default function QuotesPage() {
                 {["", "Contact", "Quote #", "Title", "Total", "Due Now", "Routed By", "Date", ""].map((h) => (
                   <th
                     key={h}
-                    className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
+                    className="px-2 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
                     style={{ color: "var(--color-text-muted)" }}
                   >
                     {h}
@@ -591,7 +591,7 @@ export default function QuotesPage() {
                       <ExpandChevron open={isOpen} />
                     </span>
                   </td>
-                  <td className="px-4 py-3 overflow-hidden">
+                  <td className="px-2 py-3 overflow-hidden">
                     {(() => {
                       const n = displayContactName(q.customer, { preferPerson: true });
                       return (
@@ -602,22 +602,22 @@ export default function QuotesPage() {
                       <p className="text-xs mt-0.5 truncate max-w-[200px]" title={q.customer.company} style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-3">
                     <span className="text-sm font-mono font-medium" style={{ color: "var(--color-text-primary)" }}>
                       {q.reference_code ?? "—"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-3">
                     <p className="text-sm truncate max-w-[200px]" style={{ color: "var(--color-text-primary)" }}>
                       {q.title ?? "—"}
                     </p>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-3">
                     <span className="text-sm font-semibold" style={{ color: "var(--color-warning)" }}>
                       {q.quote_final_total != null ? formatCurrency(q.quote_final_total) : "—"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-3">
                     <span
                       className="text-sm font-medium"
                       style={{
@@ -629,17 +629,17 @@ export default function QuotesPage() {
                       {formatQuoteListDueNow(q)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-3">
                     <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
                       {q.created_by_name ?? "SDR"}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-3">
                     <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                       {relativeTime(q.created_at)}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-2 py-3">
                     {userRole === "sdr" ? (
                       <button
                         type="button"
@@ -700,13 +700,13 @@ export default function QuotesPage() {
                 ].map((h) => (
                   <th
                     key={h}
-                    className="px-4 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
+                    className="px-2 py-3 text-left text-[11px] font-medium uppercase tracking-wider"
                     style={{ color: "var(--color-text-muted)" }}
                   >
                     {h}
                   </th>
                 ))}
-                <th className="px-4 py-3 w-16" />
+                <th className="px-2 py-3 w-16" />
               </tr>
             </thead>
             <tbody>
@@ -733,7 +733,7 @@ export default function QuotesPage() {
                         <ExpandChevron open={isOpen} />
                       </span>
                     </td>
-                    <td className="px-4 py-3 overflow-hidden">
+                    <td className="px-2 py-3 overflow-hidden">
                       {(() => {
                         const n = displayContactName(q.customer, { preferPerson: true });
                         return (
@@ -744,34 +744,34 @@ export default function QuotesPage() {
                         <p className="text-xs mt-0.5 truncate max-w-[200px]" title={q.customer.company} style={{ color: "var(--color-text-muted)" }}>{q.customer.company}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <span className="text-sm font-mono font-medium" style={{ color: "var(--color-text-primary)" }}>
                         {q.reference_code ?? "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <p className="text-sm truncate max-w-[200px]" style={{ color: "var(--color-text-primary)" }}>
                         {q.title ?? "—"}
                       </p>
                     </td>
                     {isAdmin && (
-                      <td className="px-4 py-3">
+                      <td className="px-2 py-3">
                         <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
                           {q.created_by?.full_name ?? q.created_by_name ?? "—"}
                         </span>
                       </td>
                     )}
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <span className="text-sm" style={{ color: "var(--color-text-muted)" }}>
                         {q.quote_channel ?? "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <span className="text-sm font-medium" style={{ color: "var(--color-text-primary)" }}>
                         {q.quote_final_total != null ? formatCurrency(q.quote_final_total) : "—"}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <span
                         className="text-sm font-medium"
                         style={{
@@ -783,7 +783,7 @@ export default function QuotesPage() {
                         {formatQuoteListDueNow(q)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <span
                         className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium"
                         style={{ background: statusStyle.bg, color: statusStyle.text }}
@@ -791,7 +791,7 @@ export default function QuotesPage() {
                         {statusStyle.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       {q.quote_reminder_date ? (
                         <span
                           className="flex items-center gap-1 text-xs font-medium"
@@ -804,12 +804,12 @@ export default function QuotesPage() {
                         <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>—</span>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <span className="text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {relativeTime(q.created_at)}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-2 py-3">
                       <TicketListViewButton
                         label="View"
                         onClick={(e) => {

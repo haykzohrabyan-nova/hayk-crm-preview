@@ -130,6 +130,7 @@ export async function POST(request: NextRequest) {
       interests: interests ?? {},
       quantities: quantities ?? {},
       has_design: has_design ?? {},
+      created_by_id: userId,
     })
     .select("*, customer:customers(*)")
     .single();
