@@ -284,9 +284,10 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
 ```
 app/(app)/sales/page.tsx  [Server Component — thin wrapper]
   └── components/sales/sales-page.tsx  [Client Component "use client"]
-        ├── Tabs: Pipeline | Follow Up Later | On Hold | Rejected
+        ├── Tabs: Pipeline | Claimed | In Progress | Quote Sent | Follow Up Later | On Hold | Rejected
         ├── Tab state: local useState
         ├── Mount: GET /api/leads/sales/page-data?tab=…&limit=&offset= → { leads, counts, pagination }
+        ├── Admin search + team filter on Claimed, In Progress, Quote Sent only
         ├── Lookups / sales users: lazy on drawer/modal open
         ├── Drawer open: GET /api/leads/[id] via fetchLeadById() (full record)
         ├── List data: `useListPageData`; `enabled: !drawerLead` while Sales drawer open
@@ -298,12 +299,15 @@ app/(app)/sales/page.tsx  [Server Component — thin wrapper]
 
 | Tab | API params | Notes |
 |-----|------------|-------|
-| Pipeline | page-data `tab=pipeline` | Unclaimed + own (`sales_owner_id` OR null); excludes `Follow Up Later` |
+| Pipeline | page-data `tab=pipeline` | Unclaimed only (`sales_owner_id IS NULL`, `sales_status IS NULL`) |
+| Claimed | page-data `tab=claimed` | `sales_status = Claimed`; Sales rep owner-only; Admin all (+ `?user_id=` + search) |
+| In Progress | page-data `tab=in_progress` | `sales_status = In Progress`; same scope as Claimed |
+| Quote Sent | page-data `tab=quote_sent` | `sales_status = Quote Sent`; same scope as Claimed |
 | Follow Up Later | page-data `tab=follow_up` | `sales_status = Follow Up Later`; Sales rep owner-only |
 | On Hold | page-data `tab=hold` | `sales_status = On Hold` |
 | Rejected | page-data `tab=rejected` | `prev_status = Routed to Sales`; list lazy-fetched on first tab open |
 
-**Open vs Claim:** Unclaimed → `POST /claim`. Owned lead → modal without `POST /lock` when `sales_owner_id = you`.
+**Open vs Claim:** Unclaimed → `POST /claim` (sets `sales_status = Claimed`). Owned lead → modal without `POST /lock` when `sales_owner_id = you`. Rep clicks **In Progress** in modal (from Claimed) → `POST /in-progress` with `{ role: "sales" }`.
 
 **Count badge:** From page-data `counts` on mount; `GET /api/leads/sales-counts` still used for counts-only refresh. `rejected` count uses same `prev_status = 'Routed to Sales'` filter so badge matches list.
 

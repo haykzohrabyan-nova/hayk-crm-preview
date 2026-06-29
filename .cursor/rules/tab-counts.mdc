@@ -15,7 +15,7 @@ Users need to know at a glance how many items are in each section without clicki
 Every tabbed page must expose **all tab counts in one response**. Prefer combined **page-data** on mount (May 2026):
 
 ```
-GET /api/leads/sales/page-data?tab=pipeline  → { leads, counts: { pipeline, follow_up, hold, rejected } }
+GET /api/leads/sales/page-data?tab=pipeline  → { leads, counts: { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected } }
 GET /api/leads/workspace/page-data?…         → { leads, counts: { all, follow_up, hold, routed, rejected, won } }
 GET /api/orders/page-data                    → { orders, counts, pagination }
 GET /api/crm/page-data                       → { customers, pagination }
@@ -27,7 +27,7 @@ GET /api/completed/page-data                 → { orders, counts, pagination }
 Dedicated counts-only routes remain for lightweight realtime refresh:
 
 ```
-GET /api/leads/sales-counts   → { counts: { pipeline, follow_up, hold, rejected } }
+GET /api/leads/sales-counts   → { counts: { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected } }
 GET /api/leads/workspace/counts → { counts: { all, hold, routed, rejected, won } }
 ```
 

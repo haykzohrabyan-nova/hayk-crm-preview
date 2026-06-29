@@ -52,7 +52,7 @@ export async function POST(
   };
 
   if (isSales) {
-    update.sales_status = current.prev_sales_status ?? "Ongoing";
+    update.sales_status = current.prev_sales_status ?? "Claimed";
     update.prev_sales_status = null;
   } else {
     // Restore to prev_status if recorded; fall back to Pending.

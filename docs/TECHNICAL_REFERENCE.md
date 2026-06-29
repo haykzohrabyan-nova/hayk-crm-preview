@@ -912,8 +912,10 @@ Leads have **two independent status axes**:
 
 | Value | Meaning | Set by |
 |-------|---------|--------|
-| `Ongoing` | Actively working | `POST /api/leads/[id]/claim` |
-| `Quote Sent` | Quote sent to customer | Ticket `sent` status |
+| `Claimed` | Rep claimed; not yet marked in progress | `POST /api/leads/[id]/claim` or route-to-sales with rep assigned |
+| `In Progress` | Rep actively working the lead | `POST /api/leads/[id]/in-progress` with `{ role: "sales" }` (from Claimed) |
+| `Ongoing` | **Legacy** — migrated to `Claimed` | — |
+| `Quote Sent` | Quote sent to customer | `POST /api/tickets` when quote has line items |
 | `Won` | Order in production | `markLinkedLeadWonOnProduction` |
 | `Dropped` | Deal dropped | Sales drawer reject |
 | `On Hold` | Sales deferred | `POST /hold` with `role: "sales"` |
@@ -992,7 +994,7 @@ Response on conflict: `409 { locked: false, locked_by: { id, full_name } }`
 
 Roles: `sales`, `admin`; requires `/sales` page access
 
-Sets `sales_owner_id`, `sales_status: "Ongoing"`. 409 if already claimed.
+Sets `sales_owner_id`, **`sales_status: "Claimed"`**. 409 if already claimed.
 
 Activity: `lead_sales_claimed`
 
@@ -1027,7 +1029,7 @@ Activity: `lead_follow_up_later`
 
 Body: `{ role: "sdr" | "sales" }` (default `"sdr"`)
 
-Clears all hold + follow-up fields. Restores `status` / `sales_status` from `prev_*` fields (or defaults: `Ongoing` for sales, `Pending` for SDR — never restores to `Validated` manually).
+Clears all hold + follow-up fields. Restores `status` / `sales_status` from `prev_*` fields (or defaults: **`Claimed`** for sales, `Pending` for SDR — never restores to `Validated` manually).
 
 Activity: `lead_resumed` with `{ from: previousStatus }`
 
@@ -1076,33 +1078,38 @@ Component: `components/sales/sales-page.tsx`
 
 | Tab | Filter | Count key |
 |-----|--------|----------|
-| **Pipeline** | `status=Routed to Sales`, `sales_status` in `Ongoing, Quote Sent, null` | `pipeline` |
-| **Follow Up** | `sales_status=Follow Up Later`, `sales_owner_id = currentUser` | `follow_up` |
+| **Pipeline** | `status=Routed to Sales`, `sales_owner_id IS NULL`, `sales_status IS NULL` | `pipeline` |
+| **Claimed** | `sales_status=Claimed` — Sales: own; Admin: all (+ optional `user_id`) | `claimed` |
+| **In Progress** | `sales_status=In Progress` — same ownership rules | `in_progress` |
+| **Quote Sent** | `sales_status=Quote Sent` — same ownership rules | `quote_sent` |
+| **Follow Up** | `sales_status=Follow Up Later`, scoped to owner | `follow_up` |
 | **On Hold** | `sales_status=On Hold`, scoped to owner | `hold` |
 | **Rejected** | `status=Rejected`, `prev_status=Routed to Sales` | `rejected` |
 
-All counts loaded in single `GET /api/leads/sales/page-data` call.
+All counts loaded in single `GET /api/leads/sales/page-data` call. Admin **search + team filter** on Claimed, In Progress, Quote Sent only.
 
 ### Sales visibility rules
 
-Pipeline tab shows: leads where `sales_owner_id` is **null** (unclaimed) OR equals the current user (mine). This lets reps see both unowned leads and their own.
+- **Pipeline** tab: unclaimed pool only (not mixed with owned leads).
+- **Claimed / In Progress / Quote Sent**: Sales rep sees only `sales_owner_id = me`; Admin sees all (optional `?user_id=` filter).
 
 **Claim flow:**
-1. `POST /api/leads/[id]/claim` → sets `sales_owner_id`, `sales_status: "Ongoing"`
-2. Then open `SalesDrawer` (owned leads skip the lock step)
+1. `POST /api/leads/[id]/claim` → sets `sales_owner_id`, **`sales_status: "Claimed"`**
+2. Open `SalesDrawer` (owned leads skip the lock step)
+3. Rep clicks **In Progress** → `POST /api/leads/[id]/in-progress` with `{ role: "sales" }` → `sales_status: "In Progress"`
 
 ### Sales Drawer
 
 `components/sales/sales-drawer.tsx` — modal for working a sales lead:
 - View/edit lead + customer info
-- Hold / Follow-up / Resume / Reject
+- **In Progress** (from Claimed), Hold / Follow-up / Resume / Reject
 - Navigate to linked quote ticket
 - Unlock on close (unless read-only)
 - Reject via `PATCH /api/leads/[id]` (same as SDR)
 
 ### API
 
-`GET /api/leads/sales/page-data?tab=` → `{ leads, counts: { pipeline, follow_up, hold, rejected } }`
+`GET /api/leads/sales/page-data?tab=` → `{ leads, counts: { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected }, pagination }`
 
 `GET /api/leads/sales-counts` → lightweight `{ counts }` for realtime refresh
 

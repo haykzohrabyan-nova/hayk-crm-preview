@@ -57,7 +57,7 @@ export async function fetchSidebarCounts(
                 .eq("is_inbox", false)
                 .eq("status", "Routed to Sales")
                 .eq("sales_owner_id", userId)
-                .in("sales_status", ["Ongoing", "Quote Sent"]),
+                .in("sales_status", ["Claimed", "In Progress", "Quote Sent"]),
             ),
           ]).then(([unclaimed, myActive]) => {
             counts["/sales"] = unclaimed + myActive;
@@ -67,7 +67,7 @@ export async function fetchSidebarCounts(
               q
                 .eq("is_inbox", false)
                 .eq("status", "Routed to Sales")
-                .in("sales_status", ["Ongoing", "Quote Sent"]),
+                .in("sales_status", ["Claimed", "In Progress", "Quote Sent"]),
             ).then((n) => {
               counts["/sales"] = n;
             })

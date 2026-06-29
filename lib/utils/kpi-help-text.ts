@@ -26,7 +26,7 @@ export const KPI_HELP = {
   sourced_cash:
     "Payments recorded in this period on leads you routed (SDR credit).",
   new_in_pipeline: "Routed leads waiting for a sales rep to claim (live snapshot).",
-  active_deals: "Your leads with sales work in progress (Ongoing or Quote Sent).",
+  active_deals: "Your leads with sales work in progress (In Progress or Quote Sent).",
   on_hold_sales: "Your deals currently paused (On Hold).",
   on_hold_sdr: "Workspace leads you parked on hold (live snapshot).",
   handled: "Distinct leads you acted on this period (claim, route, hold, or reject).",

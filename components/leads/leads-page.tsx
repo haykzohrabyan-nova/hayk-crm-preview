@@ -574,7 +574,7 @@ export function LeadsPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         status: "Routed to Sales",
-        sales_status: "Ongoing",
+        sales_status: salesOwnerId ? "Claimed" : null,
         ...(salesOwnerId ? { sales_owner_id: salesOwnerId } : {}),
       }),
     });

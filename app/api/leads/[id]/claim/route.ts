@@ -45,7 +45,7 @@ export async function POST(
     .from("leads")
     .update({
       sales_owner_id: userId,
-      sales_status: "Ongoing",
+      sales_status: "Claimed",
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

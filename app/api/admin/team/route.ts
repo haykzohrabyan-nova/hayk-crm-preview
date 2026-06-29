@@ -36,7 +36,7 @@ export async function GET() {
     .from("leads")
     .select("sales_owner_id")
     .eq("status", "Routed to Sales")
-    .in("sales_status", ["Ongoing", "Quote Sent"])
+    .in("sales_status", ["Claimed", "In Progress", "Quote Sent"])
     .not("sales_owner_id", "is", null);
 
   const claimedMap: Record<string, number> = {};

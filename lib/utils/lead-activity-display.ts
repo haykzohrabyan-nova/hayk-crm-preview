@@ -19,7 +19,7 @@ export function leadActivityLabel(a: Activity): string {
     case "lead_routed_to_sales":
       return "Routed to Sales";
     case "lead_in_progress":
-      return "Marked as In Progress";
+      return p.role === "sales" ? "Marked as In Progress (Sales)" : "Marked as In Progress";
     case "lead_held":
       return `Put on hold${p.reason ? ` — ${holdReasonLabel(p.reason)}` : ""}`;
     case "lead_follow_up_later":
@@ -27,6 +27,7 @@ export function leadActivityLabel(a: Activity): string {
     case "lead_resumed": {
       if (p.from === "Follow Up Later") return "Resumed from Follow Up Later";
       if (p.from === "On Hold") return "Resumed from On Hold";
+      if (p.from === "Claimed") return "Resumed from Claimed";
       if (p.from === "In Progress") return "Resumed from In Progress";
       return "Resumed";
     }

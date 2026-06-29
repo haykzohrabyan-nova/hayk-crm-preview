@@ -133,6 +133,8 @@ export type LeadStatus =
   | 'Duplicate'
 
 export type SalesStatus =
+  | 'Claimed'
+  | 'In Progress'
   | 'Ongoing'
   | 'Quote Sent'
   | 'Won'

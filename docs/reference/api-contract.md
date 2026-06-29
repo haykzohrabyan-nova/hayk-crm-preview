@@ -287,29 +287,25 @@ Combined list + tab badge counts for `/sales`. One `requireSession()` pass.
 
 | Param | Values | Description |
 |-------|--------|-------------|
-| `tab` | `pipeline` \| `follow_up` \| `hold` \| `rejected` | Active tab list (default `pipeline`) |
+| `tab` | `pipeline` \| `claimed` \| `in_progress` \| `quote_sent` \| `follow_up` \| `hold` \| `rejected` | Active tab (default `pipeline`) |
 | `limit` | `25` \| `50` \| `100` | Page size (default 25) |
 | `offset` | number | Row offset (default 0) |
-| `search` | string | Optional customer/name/company filter |
+| `search` | string | Server-side filter — all roles on pipeline/follow_up/hold/rejected; **admin only** on claimed/in_progress/quote_sent |
+| `user_id` | uuid | **Admin only** on claimed/in_progress/quote_sent — filters `sales_owner_id` |
 
-**Response `200`:** `{ leads, counts: { pipeline, follow_up, hold, rejected }, pagination }`
+**Response `200`:** `{ leads, counts: { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected }, pagination }`
 
 **Tab filters (server-side via `lib/utils/leads-workspace-query.ts`):**
 
 | Tab | Filter |
 |-----|--------|
-| `pipeline` | `status = 'Routed to Sales'`, `sales_status IN ('Ongoing', 'Quote Sent', null)` — excludes `Follow Up Later` |
-| `follow_up` | `sales_status = 'Follow Up Later'` — Sales rep: `sales_owner_id = current user` only; Admin: all |
-| `hold` | `sales_status = 'On Hold'` — same ownership rules as pipeline OR filter |
-| `rejected` | `status = 'Rejected'` AND `prev_status = 'Routed to Sales'` |
-
-**Response `200`:**
-```json
-{
-  "leads": ["…slim Lead[]…"],
-  "counts": { "pipeline": 0, "follow_up": 0, "hold": 0, "rejected": 0 }
-}
-```
+| `pipeline` | `status = Routed to Sales`, `sales_owner_id IS NULL`, `sales_status IS NULL` |
+| `claimed` | `sales_status = Claimed` — Sales: own; Admin: all (+ optional `user_id`) |
+| `in_progress` | `sales_status = In Progress` — same ownership rules |
+| `quote_sent` | `sales_status = Quote Sent` — same ownership rules |
+| `follow_up` | `sales_status = Follow Up Later` — Sales: own; Admin: all |
+| `hold` | `sales_status = On Hold` — Sales: own; Admin: all |
+| `rejected` | `status = Rejected` AND `prev_status = Routed to Sales` |
 
 **Related:** `GET /api/leads/sales-counts` — counts-only refresh (same `counts` shape).
 
@@ -463,7 +459,7 @@ Restores a lead from hold or follow-up later to its previous status. Clears hold
 **Body (sales):** `{ "role": "sales" }` — workflow hint for admins acting in the sales pipeline. For Sales and SDR callers, the workflow branch is derived from session `roleName` and the body value is ignored. See `POST /api/leads/[id]/hold` for the full explanation.
 
 **Business rules:**
-- Restores `status` from `prev_status` (SDR) or `sales_status` from `prev_sales_status` (Sales, default `Ongoing`)
+- Restores `status` from `prev_status` (SDR) or `sales_status` from `prev_sales_status` (Sales, default **`Claimed`** when null)
 - Clears hold fields and follow-up fields (`follow_up_reason`, `follow_up_notes`, `follow_up_until`, `follow_up_at`, `follow_up_by_id`)
 - SDR: `403` if lead is another SDR's hold/follow-up (`sdr_id` scope)
 - Sales: `403` if `sales_owner_id` is not current user (except Admin)
@@ -505,7 +501,7 @@ Partial update of a lead. Only the following fields are accepted — all other k
 
 ### `POST /api/leads/[id]/claim`
 
-Sales rep claims an unclaimed routed lead. Sets `sales_owner_id = current_user`, `sales_status = 'Ongoing'`. Logs `lead_sales_claimed`.
+Sales rep claims an unclaimed routed lead. Sets `sales_owner_id = current_user`, **`sales_status = 'Claimed'`**. Logs `lead_sales_claimed`.
 
 **Auth:** Sales or admin only. Requires `/sales` page permission. `canClaimLead()` — lead must be unowned and `status = 'Routed to Sales'` (admin may claim any unowned sales-pipeline lead).
 
@@ -514,6 +510,32 @@ Sales rep claims an unclaimed routed lead. Sets `sales_owner_id = current_user`,
 **Response `200`:** `{ "lead": Lead }`  
 **Response `403`:** `FORBIDDEN` — wrong role, page permission, or lead not claimable  
 **Response `409`:** `ALREADY_CLAIMED` if `sales_owner_id` is already set (including concurrent claim race)
+
+---
+
+### `POST /api/leads/[id]/in-progress`
+
+Marks a lead as actively in progress. **Dual workflow** — SDR workspace vs Sales pipeline (same endpoint, different body/role rules).
+
+**Body:**
+```json
+{
+  "role": "sdr | sales"
+}
+```
+
+**Sales branch** (`roleName = sales`, or admin with `{ "role": "sales" }`):
+- Requires `/sales` page permission
+- Lead must be `status = 'Routed to Sales'` and **`sales_status = 'Claimed'`**
+- Sets `sales_status = 'In Progress'`, saves `prev_sales_status`
+- Logs `lead_in_progress` with `payload.role = "sales"`
+
+**SDR branch** (default for SDR callers; admin may pass `{ "role": "sdr" }`):
+- Sets `status = 'In Progress'`, saves `prev_status`, attributes `sdr_id`
+- Logs `lead_in_progress` with `payload.role = "sdr"`
+
+**Response `200`:** `{ "lead": Lead }`  
+**Response `403`:** Wrong role, page permission, scope, or lead not in correct prior status (sales: not Claimed)
 
 ---
 

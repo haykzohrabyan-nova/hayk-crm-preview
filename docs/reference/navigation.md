@@ -190,7 +190,7 @@ Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0*
 | Route | Shown on roles | What the number counts |
 |-------|----------------|------------------------|
 | `/leads` | SDR, Admin | `is_inbox = false` · `status IN ('Pending', 'Validated')` · `locked_by_id IS NULL` (unclaimed pool). **SDR:** matches **All Leads** tab. **Admin:** sidebar is unclaimed-only; Admin **All Leads** tab includes claimed rows too. |
-| `/sales` | Sales, Admin | **Sales rep:** unclaimed routed leads (`status = 'Routed to Sales'`, `sales_owner_id IS NULL`, any `sales_status`) **+** own active pipeline (`sales_owner_id = me`, `sales_status IN ('Ongoing', 'Quote Sent')`). **Admin:** `status = 'Routed to Sales'` AND `sales_status IN ('Ongoing', 'Quote Sent')`. Not identical to the **Pipeline** tab (tab filters `sales_status` on unclaimed rows and includes null `sales_status`). |
+| `/sales` | Sales, Admin | **Sales rep:** unclaimed pool (`status = 'Routed to Sales'`, `sales_owner_id IS NULL`, `sales_status IS NULL`) **+** own active work (`sales_owner_id = me`, `sales_status IN ('Claimed', 'In Progress', 'Quote Sent')`). **Admin:** all routed leads with `sales_status IN ('Claimed', 'In Progress', 'Quote Sent')` OR unclaimed pool (`sales_owner_id IS NULL`, `sales_status IS NULL`). |
 | `/quotes` | SDR, Sales, Admin, Accountant† | Sum of scoped **`draft` + `sent` + `approved`** quote tickets (`ticket_kind = 'quote'`). **Sales + Admin:** also add **all** company-wide **`routed`** tickets (unscoped). Excludes **Cancelled**. **SDR:** own tickets only (`created_by_id = me`). **Sales:** own tickets + company **Routed to Sales** queue. |
 | `/orders` | SDR, Sales, Admin, Accountant | Scoped sum of **`ticket_status = 'order'`** (pending payment) **+** **`in_production`**. Excludes cancelled and completed. Same role scoping as list pages (`created_by_id` for SDR; Sales sees own + `routed`; Admin/Accountant see all). All-time — not reduced by the Orders page date filter. |
 | `/payments` | Admin, Accountant | Tickets with **`payment_evidence_url` set**, **`payment_evidence_reviewed_at` null**, and `ticket_status IN ('sent', 'order', 'in_production', 'completed')`. Company-wide — not scoped to a user. Matches **Pending approval** tab on `/payments`. |
@@ -311,12 +311,15 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 
 | Tab | Content | Badge |
 |-----|---------|-------|
-| Pipeline | `status = 'Routed to Sales'` AND `sales_status IN ('Ongoing', 'Quote Sent')` | count |
+| Pipeline | Unclaimed routed leads — `sales_owner_id IS NULL`, `sales_status IS NULL` | count |
+| Claimed | `sales_status = 'Claimed'` — Sales rep: own; Admin: all (+ optional `?user_id=` + search) | count |
+| In Progress | `sales_status = 'In Progress'` — same ownership rules as Claimed | count |
+| Quote Sent | `sales_status = 'Quote Sent'` — same ownership rules as Claimed | count |
 | Follow Up Later | `sales_status = 'Follow Up Later'` — Sales rep sees own (`sales_owner_id`); Admin sees all | count |
 | On Hold | `sales_status = 'On Hold'` | count |
 | Rejected | `status = 'Rejected'` and `prev_status = 'Routed to Sales'` — leads rejected from the sales pipeline. Admin sees all; Sales rep sees only their own. | count |
 
-**List API:** `GET /api/leads/sales/page-data?tab=…&limit=&offset=` — paginated list + tab counts (`ListPagination` 25/50/100). **Claim** → `POST /claim`; **Open** (owned) → no `POST /lock`. See `docs/feature-specs/lead-locking.md`.
+**List API:** `GET /api/leads/sales/page-data?tab=…&limit=&offset=&search=&user_id=` — paginated list + tab counts (`ListPagination` 25/50/100). **Claim** → `POST /claim` (sets `sales_status = Claimed`); rep clicks **In Progress** in modal → `POST /in-progress` with `{ role: "sales" }`. **Open** (owned) → no `POST /lock`. See `docs/feature-specs/lead-locking.md`.
 
 **Sales list columns (all tabs):** Name, Company, **Product Interests** (`ProductName[quantity]`), then tab-specific fields (Phone, Sales Status, Hold Reason, etc.).
 

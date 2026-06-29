@@ -213,6 +213,31 @@ export function SalesDrawer({
     onClose();
   }
 
+  // ── Action: In Progress (sales — from Claimed) ───────────────────────────
+
+  async function handleInProgress() {
+    setSaving(true);
+    const res = await fetch(`/api/leads/${lead.id}/in-progress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ role: "sales" }),
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) {
+      const m = data.error ?? "Something went wrong.";
+      showToast(m, "error");
+      reportApiError(m, res, "SalesDrawer/in-progress");
+      return;
+    }
+    unlockRef.current = true;
+    onLeadRemoved(lead.id);
+    onLeadUpdated(data.lead);
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
+    showToast("Lead marked as in progress.");
+    onClose();
+  }
+
   // ── Action: Resume (from On Hold / Follow Up Later) ─────────────────────
 
   async function handleResume() {
@@ -739,6 +764,21 @@ export function SalesDrawer({
                 </button>
               ) : (
                 <>
+                  {lead.sales_status === "Claimed" && (
+                    <button
+                      onClick={handleInProgress}
+                      disabled={saving}
+                      className="rounded-[6px] px-3 py-1.5 text-[13px] font-medium transition-all disabled:opacity-50"
+                      style={{
+                        borderColor: "var(--color-in-progress-border)",
+                        color: "var(--color-in-progress-text)",
+                        background: "var(--color-in-progress-bg)",
+                        border: "1px solid var(--color-in-progress-border)",
+                      }}
+                    >
+                      {saving ? "…" : "In Progress"}
+                    </button>
+                  )}
                   <button
                     onClick={() => setFooterMode("follow_up")}
                     disabled={saving}

@@ -11,6 +11,7 @@ import {
   ROUTED_FILTER_OPTIONS,
   type RoutedPipelineFilter,
 } from "@/lib/utils/lead-routed-pipeline-stage";
+import { isSalesOwnedTab } from "@/lib/utils/lead-sales-scoped-tab";
 import { parseListPaginationParams, type PaginationParams } from "@/lib/utils/pagination";
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -66,7 +67,7 @@ export type LeadsWorkspaceQuery = {
   routed?: boolean;
   statuses?: string[];
   /** Sales pipeline tab filter when status is Routed to Sales */
-  salesTab?: "pipeline" | "hold" | "follow_up";
+  salesTab?: "pipeline" | "claimed" | "in_progress" | "quote_sent" | "hold" | "follow_up";
   /** Admin-only — filter by team member (`sdr_id` / lock holder) */
   filterUserId?: string | null;
   /** SDR All Leads tab — unclaimed + mine vs mine only */
@@ -158,8 +159,14 @@ function applyStandardLeadFilters(query: any, q: LeadsWorkspaceQuery, userId: st
     query = query.eq("sales_status", "On Hold");
   } else if (q.salesTab === "follow_up") {
     query = query.eq("sales_status", "Follow Up Later");
+  } else if (q.salesTab === "claimed") {
+    query = query.eq("sales_status", "Claimed");
+  } else if (q.salesTab === "in_progress") {
+    query = query.eq("sales_status", "In Progress");
+  } else if (q.salesTab === "quote_sent") {
+    query = query.eq("sales_status", "Quote Sent");
   } else if (q.salesTab === "pipeline") {
-    query = query.or("sales_status.eq.Ongoing,sales_status.eq.Quote Sent,sales_status.is.null");
+    query = query.is("sales_status", null);
   }
 
   if (q.prevStatus) {
@@ -170,7 +177,9 @@ function applyStandardLeadFilters(query: any, q: LeadsWorkspaceQuery, userId: st
     query = query.eq("sdr_id", userId);
   }
 
-  if (adminFilterUserId) {
+  if (adminFilterUserId && q.salesTab && ["claimed", "in_progress", "quote_sent"].includes(q.salesTab)) {
+    query = query.eq("sales_owner_id", adminFilterUserId);
+  } else if (adminFilterUserId && !q.salesTab) {
     const isAllTab = Boolean(q.statuses?.length) && !q.status && !q.routed && !q.won;
     query = applyAdminLeadUserFilter(
       query,
@@ -180,12 +189,12 @@ function applyStandardLeadFilters(query: any, q: LeadsWorkspaceQuery, userId: st
     );
   }
 
-  if (roleName === "sales" && userId) {
-    if (q.salesTab === "follow_up") {
-      query = query.eq("sales_owner_id", userId);
-    } else if (q.status === "Routed to Sales") {
-      query = query.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
-    }
+  if (roleName === "sales" && userId && q.salesTab && isSalesOwnedTab(q.salesTab)) {
+    query = query.eq("sales_owner_id", userId);
+  } else if (roleName === "sales" && userId && q.salesTab === "pipeline") {
+    query = query.is("sales_owner_id", null);
+  } else if (roleName === "admin" && q.salesTab === "pipeline") {
+    query = query.is("sales_owner_id", null);
   }
 
   if (roleName === "sdr" && userId && !q.status && !(q.statuses && q.statuses.length > 0)) {
@@ -540,18 +549,30 @@ export async function fetchLeadsSalesTabCounts(
   admin: AdminClient,
   userId: string,
   roleName: string,
+  filterUserId?: string | null,
 ) {
+  const adminFilterUserId = roleName === "admin" && filterUserId ? filterUserId : null;
+
   function routedCount(
     configure: (
       q: ReturnType<ReturnType<AdminClient["from"]>["select"]>,
     ) => ReturnType<ReturnType<AdminClient["from"]>["select"]>,
   ) {
     return countExact(admin, "leads", (q) => {
-      let query = q.eq("is_inbox", false).eq("status", "Routed to Sales");
-      if (roleName === "sales" && userId) {
-        query = query.or(`sales_owner_id.is.null,sales_owner_id.eq.${userId}`);
-      }
+      const query = q.eq("is_inbox", false).eq("status", "Routed to Sales");
       return configure(query);
+    });
+  }
+
+  function ownedSalesStatusCount(salesStatus: string) {
+    return routedCount((q) => {
+      let query = q.eq("sales_status", salesStatus);
+      if (roleName === "sales" && userId) {
+        query = query.eq("sales_owner_id", userId);
+      } else if (adminFilterUserId) {
+        query = query.eq("sales_owner_id", adminFilterUserId);
+      }
+      return query;
     });
   }
 
@@ -568,12 +589,26 @@ export async function fetchLeadsSalesTabCounts(
     });
   }
 
-  const [pipeline, follow_up, hold, rejected] = await Promise.all([
-    routedCount((q) =>
-      q.or("sales_status.eq.Ongoing,sales_status.eq.Quote Sent,sales_status.is.null"),
-    ),
+  function holdCount() {
+    return countExact(admin, "leads", (q) => {
+      let query = q
+        .eq("is_inbox", false)
+        .eq("status", "Routed to Sales")
+        .eq("sales_status", "On Hold");
+      if (roleName === "sales" && userId) {
+        query = query.eq("sales_owner_id", userId);
+      }
+      return query;
+    });
+  }
+
+  const [pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected] = await Promise.all([
+    routedCount((q) => q.is("sales_owner_id", null).is("sales_status", null)),
+    ownedSalesStatusCount("Claimed"),
+    ownedSalesStatusCount("In Progress"),
+    ownedSalesStatusCount("Quote Sent"),
     followUpCount(),
-    routedCount((q) => q.eq("sales_status", "On Hold")),
+    holdCount(),
     countExact(admin, "leads", (q) =>
       q
         .eq("is_inbox", false)
@@ -582,5 +617,5 @@ export async function fetchLeadsSalesTabCounts(
     ),
   ]);
 
-  return { pipeline, follow_up, hold, rejected };
+  return { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected };
 }

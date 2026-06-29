@@ -413,7 +413,7 @@ export function VerifyDrawer({
     const updated = await patchLead({
       ...payload,
       status: "Routed to Sales",
-      sales_status: "Ongoing",
+      sales_status: salesOwnerId ? "Claimed" : null,
       ...(salesOwnerId ? { sales_owner_id: salesOwnerId } : {}),
     });
     setSaving(false);

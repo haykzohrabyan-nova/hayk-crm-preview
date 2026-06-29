@@ -3,12 +3,43 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-29] — Sales Pipeline: Claimed, In Progress, Quote Sent tabs
+
+### Added
+- **In Progress** and **Quote Sent** tabs on `/sales` with per-tab count badges
+- Sales **In Progress** footer action in modal (from Claimed) — closes modal like Hold/Follow Up
+- `POST /api/leads/[id]/in-progress` — sales branch sets `sales_status = In Progress` (keeps `status = Routed to Sales`)
+- `supabase/migrations/20260629_sales_status_claimed_in_progress.sql` — legacy owned `Ongoing` → **Claimed** (not In Progress); fixes rows wrongly set to In Progress; Quote Sent unchanged
+- `Claimed` status pill; shared tab helpers in `lib/utils/lead-sales-scoped-tab.ts`
+
+### Changed
+- **Claim** sets `sales_status = Claimed` (was `Ongoing`); **Claimed** tab lists `sales_status = Claimed` only
+- **Pipeline** tab — unclaimed only (`sales_owner_id IS NULL`, `sales_status IS NULL`)
+- **Resume** (sales) defaults to `Claimed` when `prev_sales_status` is null (was `Ongoing`); otherwise restores `prev_sales_status` for Hold/Follow Up round-trips
+- Admin **search + team member filter** on Claimed, In Progress, and Quote Sent tabs (hidden for sales reps on those tabs)
+- Route-to-sales (admin/SDR) assigns `Claimed` when rep selected, `null` when queued unclaimed
+- Sidebar `/sales` badge counts `Claimed` + `In Progress` + `Quote Sent` for owned leads
+- Documentation synced: `leads-sales`, `leads-sdr`, `api-contract`, `navigation`, `component-architecture`, `TECHNICAL_REFERENCE`, `schema`, `types`, `lifecycle-flow`, `tab-counts` rule
+
 ## [2026-06-29] — Fix empty Cancel Order reasons when admin options exist
 
 ### Fixed
 - Cancel Order / Cancel Quote modal showed "No active cancellation reasons configured" even when **Order Cancellation Reasons** were set in Admin → Dropdown Options — `/quotes/new` was seeding the ticket bootstrap cache without cancel/refund lookup categories, so a later order detail open reused stale empty `lookups_actions`
 - `lib/client/ticket-form-bootstrap-cache.ts` — partial quotes cache marked `quotes-partial`; detail pages skip it and fetch full `/api/ticket-form-bootstrap`; preserve existing action lookups when re-seeding; bumped sessionStorage key to `v3`
 - `components/quotes/quote-detail.tsx` — clear client bootstrap cache on `bazaar:lookups-changed` before re-fetch
+
+## [2026-06-29] — Sales Pipeline: split Pipeline into unclaimed + Claimed tab
+
+### Changed
+- **Pipeline tab** (`/sales?tab=pipeline`) — Sales reps see **unclaimed** routed leads only (`sales_owner_id IS NULL`, `sales_status IS NULL`). Claim action only.
+- **Claimed tab** (new, `/sales?tab=claimed`) — Sales reps see **their own** active pipeline leads (`sales_owner_id = current user`). Open action only.
+- **On Hold tab** — Sales reps now see **owner-only** holds (was unclaimed + own).
+- `fetchLeadsSalesTabCounts` — returns separate `pipeline` and `claimed` counts; hold count scoped to owner for Sales.
+- Admin: Pipeline = unclaimed pool; Claimed = all assigned reps’ active pipeline leads.
+- **Claimed tab (Admin)** — team member filter next to search (`AdminUserFilter`, `?user_id=`) filters list and Claimed badge by `sales_owner_id`.
+
+### Added
+- `GET /api/leads/sales/page-data?tab=claimed` — paginated claimed-leads list with tab counts.
 
 ## [2026-06-29] — Leads: Replace "My Leads" toggle with "Claimed Leads" tab; add "In Progress" status and tab
 

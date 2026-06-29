@@ -192,7 +192,7 @@ Customer partial payment flow:
 ```mermaid
 flowchart LR
   A[Order conversion] --> B{Production released?}
-  B -->|No| C["Lead NOT Won yet<br/>still Quote Sent / Ongoing"]
+  B -->|No| C["Lead NOT Won yet<br/>still Quote Sent / Claimed / In Progress"]
   B -->|Yes in_production| D["Lead sales_status = Won"]
 ```
 

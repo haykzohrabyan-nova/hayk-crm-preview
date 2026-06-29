@@ -342,7 +342,7 @@ Sales reps do **not** use `locked_by_id` for day-to-day ownership. They use **`s
 
 | Action | `sales_owner_id` | `locked_by_id` |
 |--------|------------------|----------------|
-| Claim unclaimed lead | Set to current user | Unchanged |
+| Claim unclaimed lead | Set to current user (`sales_status = Claimed`) | Unchanged |
 | Open your claimed lead | Unchanged | **Not set** (May 2026) |
 | Close modal | Unchanged | Cleared via unlock if a temp lock existed |
 | On Hold / Follow Up Later | Unchanged | Cleared server-side on write |

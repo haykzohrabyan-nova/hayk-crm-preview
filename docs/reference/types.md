@@ -149,7 +149,9 @@ export type LeadStatus =
   | 'Duplicate'
 
 export type SalesStatus =
-  | 'Ongoing'
+  | 'Claimed'
+  | 'In Progress'
+  | 'Ongoing'       // legacy — migrated to Claimed
   | 'Quote Sent'
   | 'Won'
   | 'Dropped'

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { requirePageAccess } from "@/lib/auth/require-page-access";
+import { isSalesAdminFilterTab } from "@/lib/utils/lead-sales-scoped-tab";
 import {
   fetchLeadsSalesTabCounts,
   fetchLeadsWorkspace,
@@ -22,6 +23,8 @@ export async function GET(request: NextRequest) {
   const tab = params.get("tab") ?? "pipeline";
   const pagination = parseListPaginationParams(params);
   const base = parseLeadsWorkspaceQuery(params);
+  const adminFilterUserId =
+    roleName === "admin" && isSalesAdminFilterTab(tab) ? base.filterUserId ?? null : null;
 
   let workspaceQuery: LeadsWorkspaceQuery;
   if (tab === "rejected") {
@@ -36,10 +39,23 @@ export async function GET(request: NextRequest) {
       salesTab: "follow_up",
       search: base.search,
     };
+  } else if (tab === "hold") {
+    workspaceQuery = {
+      status: "Routed to Sales",
+      salesTab: "hold",
+      search: base.search,
+    };
+  } else if (tab === "claimed" || tab === "in_progress" || tab === "quote_sent") {
+    workspaceQuery = {
+      status: "Routed to Sales",
+      salesTab: tab,
+      search: roleName === "admin" ? base.search : undefined,
+      filterUserId: roleName === "admin" ? base.filterUserId : undefined,
+    };
   } else {
     workspaceQuery = {
       status: "Routed to Sales",
-      salesTab: tab === "hold" ? "hold" : "pipeline",
+      salesTab: "pipeline",
       search: base.search,
     };
   }
@@ -49,7 +65,7 @@ export async function GET(request: NextRequest) {
   try {
     const [result, counts] = await Promise.all([
       fetchLeadsWorkspace(admin, { ...workspaceQuery, pagination }, userId!, roleName),
-      fetchLeadsSalesTabCounts(admin, userId!, roleName),
+      fetchLeadsSalesTabCounts(admin, userId!, roleName, adminFilterUserId),
     ]);
     return NextResponse.json({
       leads: result.rows,

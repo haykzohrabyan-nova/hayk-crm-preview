@@ -32,10 +32,21 @@ import {
   type PaginationMeta,
 } from "@/lib/utils/pagination";
 import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
+import { AdminUserFilter } from "@/components/ui/admin-user-filter";
+import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
+import { isSalesAdminFilterTab } from "@/lib/utils/lead-sales-scoped-tab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "pipeline" | "follow_up" | "hold" | "rejected";
+type Tab = "pipeline" | "claimed" | "in_progress" | "quote_sent" | "follow_up" | "hold" | "rejected";
+
+type WorklistTab = "pipeline" | "claimed" | "in_progress" | "quote_sent";
+
+const WORKLIST_TABS: WorklistTab[] = ["pipeline", "claimed", "in_progress", "quote_sent"];
+
+function isWorklistTab(tab: Tab): tab is WorklistTab {
+  return (WORKLIST_TABS as readonly string[]).includes(tab);
+}
 
 interface Toast {
   message: string;
@@ -62,6 +73,7 @@ export function SalesPage() {
   });
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [filterUserId, setFilterUserId] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useStoredListPageSize();
   const [toast, setToast] = useState<Toast | null>(null);
@@ -74,6 +86,9 @@ export function SalesPage() {
   const [resumingId, setResumingId] = useState<string | null>(null);
   const [tabCounts, setTabCounts] = useState<{
     pipeline: number;
+    claimed: number;
+    in_progress: number;
+    quote_sent: number;
     follow_up: number;
     hold: number;
     rejected: number;
@@ -132,7 +147,10 @@ export function SalesPage() {
 
   useEffect(() => {
     setOffset(0);
-  }, [activeTab, debouncedSearch, pageSize]);
+  }, [activeTab, debouncedSearch, pageSize, filterUserId]);
+
+  const showAdminFilters = isAdmin && isSalesAdminFilterTab(activeTab);
+  const showSearch = !isSalesAdminFilterTab(activeTab) || isAdmin;
 
   const pageDataUrl = useMemo(() => {
     const params = new URLSearchParams({
@@ -140,9 +158,12 @@ export function SalesPage() {
       limit: String(pageSize),
       offset: String(offset),
     });
-    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (showSearch && debouncedSearch) params.set("search", debouncedSearch);
+    if (showAdminFilters) {
+      appendAdminFilterUserId(params, "admin", filterUserId);
+    }
     return `/api/leads/sales/page-data?${params}`;
-  }, [activeTab, debouncedSearch, offset, pageSize]);
+  }, [activeTab, debouncedSearch, filterUserId, offset, pageSize, showAdminFilters, showSearch]);
 
   const { data: pageData, loading, refreshing, refresh: refreshPageData } = useListPageData<{
     leads?: Lead[];
@@ -164,6 +185,9 @@ export function SalesPage() {
     if (pageData.counts) {
       setTabCounts({
         pipeline: pageData.counts.pipeline ?? 0,
+        claimed: pageData.counts.claimed ?? 0,
+        in_progress: pageData.counts.in_progress ?? 0,
+        quote_sent: pageData.counts.quote_sent ?? 0,
         follow_up: pageData.counts.follow_up ?? 0,
         hold: pageData.counts.hold ?? 0,
         rejected: pageData.counts.rejected ?? 0,
@@ -228,12 +252,18 @@ export function SalesPage() {
   const emptyMessage = debouncedSearch.trim()
     ? "No leads match your search."
     : activeTab === "pipeline"
-      ? "No leads in pipeline."
-      : activeTab === "follow_up"
-        ? "No follow-up leads."
-        : activeTab === "hold"
-          ? "No leads on hold."
-          : "No rejected leads.";
+      ? "No unclaimed leads in pipeline."
+      : activeTab === "claimed"
+        ? "No claimed leads."
+        : activeTab === "in_progress"
+          ? "No leads in progress."
+          : activeTab === "quote_sent"
+            ? "No quote sent leads."
+            : activeTab === "follow_up"
+              ? "No follow-up leads."
+              : activeTab === "hold"
+                ? "No leads on hold."
+                : "No rejected leads.";
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
@@ -246,7 +276,10 @@ export function SalesPage() {
       showToast(data.error ?? "Failed to claim.", "error");
       return;
     }
-    setLeads((prev) => prev.map((l) => (l.id === lead.id ? data.lead : l)));
+    setLeads((prev) =>
+      activeTab === "pipeline" ? prev.filter((l) => l.id !== lead.id) : prev.map((l) => (l.id === lead.id ? data.lead : l)),
+    );
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
     showToast("Lead claimed.");
     // Open the modal immediately after claiming — assignment is already persisted in DB
     await handleOpenLead(data.lead);
@@ -321,6 +354,9 @@ export function SalesPage() {
 
   const TABS: { id: Tab; label: string; count: number }[] = [
     { id: "pipeline", label: "Pipeline", count: tabCounts?.pipeline ?? 0 },
+    { id: "claimed", label: "Claimed", count: tabCounts?.claimed ?? 0 },
+    { id: "in_progress", label: "In Progress", count: tabCounts?.in_progress ?? 0 },
+    { id: "quote_sent", label: "Quote Sent", count: tabCounts?.quote_sent ?? 0 },
     { id: "follow_up", label: "Follow Up Later", count: tabCounts?.follow_up ?? 0 },
     { id: "hold", label: "On Hold", count: tabCounts?.hold ?? 0 },
     { id: "rejected", label: "Rejected", count: tabCounts?.rejected ?? 0 },
@@ -375,23 +411,38 @@ export function SalesPage() {
           ))}
         </div>
 
-        {/* Search + Refresh — right side */}
-        <div className="flex items-center gap-2 pb-2 lg:pb-0 w-full lg:w-auto lg:shrink-0">
-          <div className="relative flex-1 lg:flex-none lg:w-52">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search name, email, company…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8 text-sm w-full"
-            />
+        {showSearch && (
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-center pb-2 lg:pb-0 w-full lg:w-auto lg:shrink-0">
+            <div className="relative w-full lg:w-52">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search name, email, company…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-8 text-sm w-full"
+              />
+            </div>
+
+            {showAdminFilters && (
+              <AdminUserFilter
+                value={filterUserId}
+                onChange={setFilterUserId}
+                className="rounded-[6px] border px-3 py-2 text-[13px] font-medium outline-none h-8 w-full lg:w-auto"
+              />
+            )}
+
+            <ListRefreshingNotice refreshing={refreshing} />
           </div>
-          <ListRefreshingNotice refreshing={refreshing} />
-        </div>
+        )}
+        {!showSearch && (
+          <div className="flex items-center pb-2 lg:pb-0">
+            <ListRefreshingNotice refreshing={refreshing} />
+          </div>
+        )}
       </div>
 
-      {/* ── Pipeline tab ── */}
-      {activeTab === "pipeline" && (
+      {/* ── Pipeline / Claimed / In Progress / Quote Sent tabs ── */}
+      {isWorklistTab(activeTab) && (
         <>
           {/* Desktop table */}
           <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
@@ -411,7 +462,7 @@ export function SalesPage() {
                 ) : leads.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
-                      No leads in pipeline.
+                      {emptyMessage}
                     </td>
                   </tr>
                 ) : (
@@ -468,14 +519,14 @@ export function SalesPage() {
                               View
                             </button>
                             <button
-                              onClick={() => { setReassignLead(lead); setReassignSalesUserId("unassign"); }}
+                              onClick={() => { setReassignLead(lead); setReassignSalesUserId(lead.sales_owner_id ?? "unassign"); }}
                               className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97]"
                               style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
                             >
                               Reassign
                             </button>
                           </div>
-                        ) : !lead.sales_owner_id ? (
+                        ) : activeTab === "pipeline" ? (
                           <button
                             onClick={() => handleClaim(lead)}
                             disabled={claimingId === lead.id}
@@ -512,7 +563,7 @@ export function SalesPage() {
               ))
             ) : leads.length === 0 ? (
               <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>
-                No leads in pipeline.
+                {emptyMessage}
               </div>
             ) : (
               leads.map((lead) => (
@@ -549,14 +600,14 @@ export function SalesPage() {
                         View
                       </button>
                       <button
-                        onClick={() => { setReassignLead(lead); setReassignSalesUserId("unassign"); }}
+                        onClick={() => { setReassignLead(lead); setReassignSalesUserId(lead.sales_owner_id ?? "unassign"); }}
                         className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
                         style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
                       >
                         Reassign
                       </button>
                     </div>
-                  ) : !lead.sales_owner_id ? (
+                  ) : activeTab === "pipeline" ? (
                     <button
                       onClick={() => handleClaim(lead)}
                       disabled={claimingId === lead.id}

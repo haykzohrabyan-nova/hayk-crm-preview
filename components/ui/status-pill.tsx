@@ -31,6 +31,9 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }
   Duplicate: {
     bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", border: "var(--color-neutral-border)",
   },
+  Claimed: {
+    bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
+  },
   Ongoing: {
     bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
   },

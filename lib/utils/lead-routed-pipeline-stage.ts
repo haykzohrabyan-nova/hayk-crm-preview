@@ -129,7 +129,9 @@ export function getRoutedPipelineStage(lead: RoutedStageLead): RoutedPipelineSta
   if (hasSentQuote(lead, tickets)) return "quote_sent";
 
   if (
+    salesStatus === "In Progress" ||
     salesStatus === "Ongoing" ||
+    salesStatus === "Claimed" ||
     !salesStatus ||
     hasActiveOrder(tickets) ||
     lead.status === "Quoted" ||

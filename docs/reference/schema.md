@@ -362,10 +362,12 @@ create table public.leads (
 > These transitions are implemented in `app/api/tickets/route.ts` (`POST` handler). The `Validated` and `Quoted` statuses are **never set manually** — they are always the result of ticket creation logic.
 
 **`sales_status` (Sales pipeline):**
-- `Ongoing` — Sales rep has claimed the lead and is actively working it
-- `Quote Sent` — Sales has sent a formal quote
+- `Claimed` — Sales rep claimed the lead; appears on **Claimed** tab until rep clicks **In Progress**
+- `In Progress` — Rep marked lead as actively in progress (`POST /in-progress` with sales role)
+- `Ongoing` — **Legacy** value; migration maps owned rows to `Claimed`
+- `Quote Sent` — Sales has sent a formal quote (set by ticket creation with line items)
 - `Won` — linked ticket released to **`in_production`** (auto-set by `markLeadWonOnProduction()` — not at order conversion)
-- `On Hold` — Sales-initiated hold; restores to `prev_sales_status` (typically `Ongoing`) on resume
+- `On Hold` — Sales-initiated hold; restores to `prev_sales_status` (`Claimed`, `In Progress`, or `Quote Sent`) on resume
 - `Follow Up Later` — Sales deferred contact; `status` stays `Routed to Sales`; owner-only tab for reps (`sales_owner_id`)
 - `Rejected` — **TERMINAL** for Sales. Only Admin can change this. (Note: a Sales-rejected lead uses `sales_status = 'Rejected'`; the `status` field remains `Routed to Sales`)
 
