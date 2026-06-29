@@ -3,7 +3,35 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-29] — Order webhook sends CRM sides labels
+
+### Changed
+- `lib/utils/send-order-webhook.ts` — `sides` in webhook payload now sends CRM lookup labels (`Single-sided` / `Double-sided`) instead of mapping to `1 Side` / `2 Sides`
+
+## [2026-06-29] — Order webhook payload matches workflow target schema
+
+### Changed
+- `lib/utils/send-order-webhook.ts` — POST body now uses the exact workflow field set only (`customer_name`, `customer_contact`, `order_number`, `priority`, `due_date`, `owner`, `designer`, `design_task`, `description`, `items[]`); all string fields send `""` when empty; each SKU always includes `artwork_url` (empty string when no file); removed legacy top-level flat fields and `request_owner_*` aliases
+
+## [2026-06-29] — Fix designer not saving on quote line items
+
+### Fixed
+- `components/quotes/shared/line-item-variants.tsx` — `lineItemsToApiPayload()` now includes `designer` on PATCH/POST; previously omitted so every save reset the field to Unassigned in the DB
+
+## [2026-06-29] — Remove Quote Sent tab from Sales Pipeline
+
+### Removed
+- **Quote Sent** tab on `/sales` — quotes (draft and sent) live in **Quoted Requests** only; the tab duplicated that list and did not match lead status after quote save
+
+### Changed
+- Sales sidebar badge — counts unclaimed pipeline + **Claimed** + **In Progress** only (no longer includes `sales_status = Quote Sent`)
+- Admin search + team filter on Sales Pipeline — **Claimed** and **In Progress** tabs only
+- `GET /api/leads/sales/page-data` and `GET /api/leads/sales-counts` — `counts` shape drops `quote_sent`
+
 ## [2026-06-29] — Sales Pipeline: Claimed, In Progress, Quote Sent tabs
+
+### Changed
+- Order webhook — payload aligned with workflow target API: top-level `owner`, `designer`, and `design_task`; item fields `roll_direction`, `need_a_design`, `application`, `perforation`, and `die`; sales rep also sent via `request_owner_*` / `owner_email` aliases (no UUID)
 
 ### Fixed
 - Sales **Reassign** modal — dropdown now shows the sales rep name instead of a raw UUID while the user list loads

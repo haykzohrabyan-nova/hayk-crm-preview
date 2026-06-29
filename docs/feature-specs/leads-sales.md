@@ -8,13 +8,13 @@ Route: `/sales` (Sales + Admin only)
 
 The Sales Pipeline shows leads that have been routed from SDRs. **Assignment** is permanent via **`sales_owner_id`** (`POST /api/leads/[id]/claim`) — other Sales reps do not see claimed leads on their tabs. **Open** on a lead you already own does **not** acquire a session lock; see `docs/feature-specs/lead-locking.md` (Sales vs SDR).
 
-Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progress** → **In Progress** tab → create quote → **Quote Sent** tab. Reps may **Hold** or **Follow Up Later** from Claimed or In Progress; **Resume** restores `prev_sales_status` (Claimed, In Progress, or Quote Sent).
+Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progress** → **In Progress** tab → create quote in **Quoted Requests** (`/quotes`). Reps may **Hold** or **Follow Up Later** from Claimed or In Progress; **Resume** restores `prev_sales_status` (Claimed or In Progress).
 
 **Won credit** for linked leads is applied when the ticket enters **`in_production`**, not at order conversion.
 
 > **List vs drawer (2026-05-22):** Tab tables load a **slim** lead row from **`GET /api/leads/sales/page-data`**. Opening the Sales modal fetches the **full** record via `GET /api/leads/[id]` (`fetchLeadById()`).
 
-> **Page load (2026-06-29):** Seven tabs with count badges from one **`GET /api/leads/sales/page-data`** call. Admin **search + team member filter** on Claimed, In Progress, and Quote Sent tabs only.
+> **Page load (2026-06-29):** Six tabs with count badges from one **`GET /api/leads/sales/page-data`** call. Admin **search + team member filter** on Claimed and In Progress tabs only.
 
 ---
 
@@ -25,10 +25,11 @@ Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progres
 | **Pipeline** | `NULL` (unclaimed) | Unclaimed pool | All unclaimed |
 | **Claimed** | `Claimed` | Own only | All (+ `?user_id=` + search) |
 | **In Progress** | `In Progress` | Own only | All (+ `?user_id=` + search) |
-| **Quote Sent** | `Quote Sent` | Own only | All (+ `?user_id=` + search) |
 | **Follow Up Later** | `Follow Up Later` | Own only | All |
 | **On Hold** | `On Hold` | Own only | All |
 | **Rejected** | `status = Rejected`, `prev_status = Routed to Sales` | All sales rejections | All |
+
+> **Quotes:** After creating a quote from a lead, use **Quoted Requests** (`/quotes`) — Draft / Sent tabs. The lead may still have `sales_status = Quote Sent` internally but is no longer listed on a dedicated Sales tab.
 
 ---
 
@@ -69,18 +70,7 @@ Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progres
 
 ---
 
-## Tab: Quote Sent
-
-**Data:** `GET /api/leads/sales/page-data?tab=quote_sent`
-
-- `sales_status = 'Quote Sent'` (set by `POST /api/tickets` when quote has line items)
-- Same ownership / admin filter rules as Claimed
-
-**Action:** **Open** / View + Reassign
-
----
-
-## Shared worklist columns (Pipeline · Claimed · In Progress · Quote Sent)
+## Shared worklist columns (Pipeline · Claimed · In Progress)
 
 | Column | Notes |
 |--------|-------|
@@ -150,7 +140,7 @@ Centered modal (`780px`, `80vh`). See `components/sales/sales-drawer.tsx`.
 | **Follow Up Later** | Not deferred / terminal | → Follow Up tab; closes modal |
 | **On Hold** | Not Rejected | → Hold tab; closes modal |
 | **Resume** | On Hold / Follow Up | Restores `prev_sales_status`; closes modal |
-| **Create Quote / Order** | Edit mode | Navigate to `/quotes/new?lead_id=` → may set **Quote Sent** |
+| **Create Quote / Order** | Edit mode | Navigate to `/quotes/new?lead_id=` — quote appears in **Quoted Requests** |
 | **Reject** | Not Rejected | Terminal; → Rejected tab |
 
 **Reject:** `status = 'Rejected'`, `sales_status = null`, `prev_status = 'Routed to Sales'`
@@ -159,7 +149,7 @@ Centered modal (`780px`, `80vh`). See `components/sales/sales-drawer.tsx`.
 
 ## API
 
-- `GET /api/leads/sales/page-data?tab=&limit=&offset=&search=&user_id=` → `{ leads, counts: { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected }, pagination }`
+- `GET /api/leads/sales/page-data?tab=&limit=&offset=&search=&user_id=` → `{ leads, counts: { pipeline, claimed, in_progress, follow_up, hold, rejected }, pagination }`
 - `GET /api/leads/sales-counts` → lightweight `{ counts }` (same shape)
 - `POST /api/leads/[id]/claim` → `sales_status: "Claimed"`
 - `POST /api/leads/[id]/in-progress` with `{ role: "sales" }` → `sales_status: "In Progress"` (from Claimed only)

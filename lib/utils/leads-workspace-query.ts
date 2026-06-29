@@ -67,7 +67,7 @@ export type LeadsWorkspaceQuery = {
   routed?: boolean;
   statuses?: string[];
   /** Sales pipeline tab filter when status is Routed to Sales */
-  salesTab?: "pipeline" | "claimed" | "in_progress" | "quote_sent" | "hold" | "follow_up";
+  salesTab?: "pipeline" | "claimed" | "in_progress" | "hold" | "follow_up";
   /** Admin-only — filter by team member (`sdr_id` / lock holder) */
   filterUserId?: string | null;
   /** SDR All Leads tab — unclaimed + mine vs mine only */
@@ -163,8 +163,6 @@ function applyStandardLeadFilters(query: any, q: LeadsWorkspaceQuery, userId: st
     query = query.eq("sales_status", "Claimed");
   } else if (q.salesTab === "in_progress") {
     query = query.eq("sales_status", "In Progress");
-  } else if (q.salesTab === "quote_sent") {
-    query = query.eq("sales_status", "Quote Sent");
   } else if (q.salesTab === "pipeline") {
     query = query.is("sales_status", null);
   }
@@ -177,7 +175,7 @@ function applyStandardLeadFilters(query: any, q: LeadsWorkspaceQuery, userId: st
     query = query.eq("sdr_id", userId);
   }
 
-  if (adminFilterUserId && q.salesTab && ["claimed", "in_progress", "quote_sent"].includes(q.salesTab)) {
+  if (adminFilterUserId && q.salesTab && ["claimed", "in_progress"].includes(q.salesTab)) {
     query = query.eq("sales_owner_id", adminFilterUserId);
   } else if (adminFilterUserId && !q.salesTab) {
     const isAllTab = Boolean(q.statuses?.length) && !q.status && !q.routed && !q.won;
@@ -602,11 +600,10 @@ export async function fetchLeadsSalesTabCounts(
     });
   }
 
-  const [pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected] = await Promise.all([
+  const [pipeline, claimed, in_progress, follow_up, hold, rejected] = await Promise.all([
     routedCount((q) => q.is("sales_owner_id", null).is("sales_status", null)),
     ownedSalesStatusCount("Claimed"),
     ownedSalesStatusCount("In Progress"),
-    ownedSalesStatusCount("Quote Sent"),
     followUpCount(),
     holdCount(),
     countExact(admin, "leads", (q) =>
@@ -617,5 +614,5 @@ export async function fetchLeadsSalesTabCounts(
     ),
   ]);
 
-  return { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected };
+  return { pipeline, claimed, in_progress, follow_up, hold, rejected };
 }

@@ -361,6 +361,7 @@ export function lineItemsToApiPayload(
     foil: line.foil,
     perforation: line.perforation,
     comment: line.comment,
+    designer: line.designer,
     variants: (line.variants ?? []).map((v, j) => ({
       id: v.id,
       name: v.name.trim(),

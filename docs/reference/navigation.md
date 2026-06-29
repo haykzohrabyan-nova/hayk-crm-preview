@@ -314,7 +314,6 @@ All non-draft detail views use **Overview + History** tabs and shared overview s
 | Pipeline | Unclaimed routed leads — `sales_owner_id IS NULL`, `sales_status IS NULL` | count |
 | Claimed | `sales_status = 'Claimed'` — Sales rep: own; Admin: all (+ optional `?user_id=` + search) | count |
 | In Progress | `sales_status = 'In Progress'` — same ownership rules as Claimed | count |
-| Quote Sent | `sales_status = 'Quote Sent'` — same ownership rules as Claimed | count |
 | Follow Up Later | `sales_status = 'Follow Up Later'` — Sales rep sees own (`sales_owner_id`); Admin sees all | count |
 | On Hold | `sales_status = 'On Hold'` | count |
 | Rejected | `status = 'Rejected'` and `prev_status = 'Routed to Sales'` — leads rejected from the sales pipeline. Admin sees all; Sales rep sees only their own. | count |

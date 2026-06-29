@@ -287,13 +287,13 @@ Combined list + tab badge counts for `/sales`. One `requireSession()` pass.
 
 | Param | Values | Description |
 |-------|--------|-------------|
-| `tab` | `pipeline` \| `claimed` \| `in_progress` \| `quote_sent` \| `follow_up` \| `hold` \| `rejected` | Active tab (default `pipeline`) |
+| `tab` | `pipeline` \| `claimed` \| `in_progress` \| `follow_up` \| `hold` \| `rejected` | Active tab (default `pipeline`) |
 | `limit` | `25` \| `50` \| `100` | Page size (default 25) |
 | `offset` | number | Row offset (default 0) |
-| `search` | string | Server-side filter — all roles on pipeline/follow_up/hold/rejected; **admin only** on claimed/in_progress/quote_sent |
-| `user_id` | uuid | **Admin only** on claimed/in_progress/quote_sent — filters `sales_owner_id` |
+| `search` | string | Server-side filter — all roles on pipeline/follow_up/hold/rejected; **admin only** on claimed/in_progress |
+| `user_id` | uuid | **Admin only** on claimed/in_progress — filters `sales_owner_id` |
 
-**Response `200`:** `{ leads, counts: { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected }, pagination }`
+**Response `200`:** `{ leads, counts: { pipeline, claimed, in_progress, follow_up, hold, rejected }, pagination }`
 
 **Tab filters (server-side via `lib/utils/leads-workspace-query.ts`):**
 
@@ -302,7 +302,6 @@ Combined list + tab badge counts for `/sales`. One `requireSession()` pass.
 | `pipeline` | `status = Routed to Sales`, `sales_owner_id IS NULL`, `sales_status IS NULL` |
 | `claimed` | `sales_status = Claimed` — Sales: own; Admin: all (+ optional `user_id`) |
 | `in_progress` | `sales_status = In Progress` — same ownership rules |
-| `quote_sent` | `sales_status = Quote Sent` — same ownership rules |
 | `follow_up` | `sales_status = Follow Up Later` — Sales: own; Admin: all |
 | `hold` | `sales_status = On Hold` — Sales: own; Admin: all |
 | `rejected` | `status = Rejected` AND `prev_status = Routed to Sales` |

@@ -38,11 +38,11 @@ import { isSalesAdminFilterTab } from "@/lib/utils/lead-sales-scoped-tab";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "pipeline" | "claimed" | "in_progress" | "quote_sent" | "follow_up" | "hold" | "rejected";
+type Tab = "pipeline" | "claimed" | "in_progress" | "follow_up" | "hold" | "rejected";
 
-type WorklistTab = "pipeline" | "claimed" | "in_progress" | "quote_sent";
+type WorklistTab = "pipeline" | "claimed" | "in_progress";
 
-const WORKLIST_TABS: WorklistTab[] = ["pipeline", "claimed", "in_progress", "quote_sent"];
+const WORKLIST_TABS: WorklistTab[] = ["pipeline", "claimed", "in_progress"];
 
 function isWorklistTab(tab: Tab): tab is WorklistTab {
   return (WORKLIST_TABS as readonly string[]).includes(tab);
@@ -88,7 +88,6 @@ export function SalesPage() {
     pipeline: number;
     claimed: number;
     in_progress: number;
-    quote_sent: number;
     follow_up: number;
     hold: number;
     rejected: number;
@@ -187,7 +186,6 @@ export function SalesPage() {
         pipeline: pageData.counts.pipeline ?? 0,
         claimed: pageData.counts.claimed ?? 0,
         in_progress: pageData.counts.in_progress ?? 0,
-        quote_sent: pageData.counts.quote_sent ?? 0,
         follow_up: pageData.counts.follow_up ?? 0,
         hold: pageData.counts.hold ?? 0,
         rejected: pageData.counts.rejected ?? 0,
@@ -257,9 +255,7 @@ export function SalesPage() {
         ? "No claimed leads."
         : activeTab === "in_progress"
           ? "No leads in progress."
-          : activeTab === "quote_sent"
-            ? "No quote sent leads."
-            : activeTab === "follow_up"
+          : activeTab === "follow_up"
               ? "No follow-up leads."
               : activeTab === "hold"
                 ? "No leads on hold."
@@ -356,7 +352,6 @@ export function SalesPage() {
     { id: "pipeline", label: "Pipeline", count: tabCounts?.pipeline ?? 0 },
     { id: "claimed", label: "Claimed", count: tabCounts?.claimed ?? 0 },
     { id: "in_progress", label: "In Progress", count: tabCounts?.in_progress ?? 0 },
-    { id: "quote_sent", label: "Quote Sent", count: tabCounts?.quote_sent ?? 0 },
     { id: "follow_up", label: "Follow Up Later", count: tabCounts?.follow_up ?? 0 },
     { id: "hold", label: "On Hold", count: tabCounts?.hold ?? 0 },
     { id: "rejected", label: "Rejected", count: tabCounts?.rejected ?? 0 },
@@ -441,7 +436,7 @@ export function SalesPage() {
         )}
       </div>
 
-      {/* ── Pipeline / Claimed / In Progress / Quote Sent tabs ── */}
+      {/* ── Pipeline / Claimed / In Progress tabs ── */}
       {isWorklistTab(activeTab) && (
         <>
           {/* Desktop table */}

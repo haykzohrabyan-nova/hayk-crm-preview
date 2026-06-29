@@ -4,7 +4,6 @@
 export const SALES_OWNED_TABS = [
   "claimed",
   "in_progress",
-  "quote_sent",
   "follow_up",
   "hold",
 ] as const;
@@ -12,7 +11,7 @@ export const SALES_OWNED_TABS = [
 export type SalesOwnedTab = (typeof SALES_OWNED_TABS)[number];
 
 /** Admin-only search + team member filter on these tabs. */
-export const SALES_ADMIN_FILTER_TABS = ["claimed", "in_progress", "quote_sent"] as const;
+export const SALES_ADMIN_FILTER_TABS = ["claimed", "in_progress"] as const;
 
 export type SalesAdminFilterTab = (typeof SALES_ADMIN_FILTER_TABS)[number];
 

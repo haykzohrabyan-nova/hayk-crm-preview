@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
       salesTab: "hold",
       search: base.search,
     };
-  } else if (tab === "claimed" || tab === "in_progress" || tab === "quote_sent") {
+  } else if (tab === "claimed" || tab === "in_progress") {
     workspaceQuery = {
       status: "Routed to Sales",
       salesTab: tab,

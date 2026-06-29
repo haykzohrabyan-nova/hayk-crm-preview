@@ -1081,17 +1081,16 @@ Component: `components/sales/sales-page.tsx`
 | **Pipeline** | `status=Routed to Sales`, `sales_owner_id IS NULL`, `sales_status IS NULL` | `pipeline` |
 | **Claimed** | `sales_status=Claimed` — Sales: own; Admin: all (+ optional `user_id`) | `claimed` |
 | **In Progress** | `sales_status=In Progress` — same ownership rules | `in_progress` |
-| **Quote Sent** | `sales_status=Quote Sent` — same ownership rules | `quote_sent` |
 | **Follow Up** | `sales_status=Follow Up Later`, scoped to owner | `follow_up` |
 | **On Hold** | `sales_status=On Hold`, scoped to owner | `hold` |
 | **Rejected** | `status=Rejected`, `prev_status=Routed to Sales` | `rejected` |
 
-All counts loaded in single `GET /api/leads/sales/page-data` call. Admin **search + team filter** on Claimed, In Progress, Quote Sent only.
+All counts loaded in single `GET /api/leads/sales/page-data` call. Admin **search + team filter** on Claimed and In Progress only. Quotes live in **Quoted Requests** (`/quotes`), not a Sales tab.
 
 ### Sales visibility rules
 
 - **Pipeline** tab: unclaimed pool only (not mixed with owned leads).
-- **Claimed / In Progress / Quote Sent**: Sales rep sees only `sales_owner_id = me`; Admin sees all (optional `?user_id=` filter).
+- **Claimed / In Progress**: Sales rep sees only `sales_owner_id = me`; Admin sees all (optional `?user_id=` filter).
 
 **Claim flow:**
 1. `POST /api/leads/[id]/claim` → sets `sales_owner_id`, **`sales_status: "Claimed"`**
@@ -1109,7 +1108,7 @@ All counts loaded in single `GET /api/leads/sales/page-data` call. Admin **searc
 
 ### API
 
-`GET /api/leads/sales/page-data?tab=` → `{ leads, counts: { pipeline, claimed, in_progress, quote_sent, follow_up, hold, rejected }, pagination }`
+`GET /api/leads/sales/page-data?tab=` → `{ leads, counts: { pipeline, claimed, in_progress, follow_up, hold, rejected }, pagination }`
 
 `GET /api/leads/sales-counts` → lightweight `{ counts }` for realtime refresh
 
@@ -1227,59 +1226,40 @@ Releases production if `computeCheckout(...).canReleaseProduction` is true. May 
 
 Fired on every quote→order conversion path (manual admin, Stripe payment, customer confirm, accountant record). Fire-and-forget — never blocks the response. Every attempt is logged to `webhook_deliveries` (admin panel can resend).
 
-**Payload shape:**
+**Payload shape** (exact field set — empty strings, never null):
 ```jsonc
 {
-  // Required
-  "customer_name": "Acme Corp",       // contact_company ?? contact_name
-  "customer_contact": "...",          // contact_email ?? contact_phone
-  "customer_phone": "+11234567890",   // formatted with +1 prefix for 10-digit US numbers
-
-  // Order metadata
+  "customer_name": "Acme Corp",
+  "customer_contact": "hello@acme.com",
   "order_number": "ORD-0042",
-  "title": "...",
-  "priority": "normal|high|urgent",
-  "due_date": "2026-07-01",           // null if no date set or date is in the past
-
-  // Notes
-  "description": "...",
-  "artwork_url": "...",               // 7-day signed URL from first line item
-
-  // Multi-item (primary format) — one entry per line item
+  "priority": "normal",
+  "due_date": "2026-07-01",           // "" if unset or in the past
+  "owner": "Jane Sales",              // sales rep; "" if unassigned
+  "designer": "Har Unusyan",           // first assigned line designer, or ""
+  "design_task": "Line notes",        // line comments joined, or ""
+  "description": "Order notes",       // ticket notes, or ""
   "items": [
     {
-      "title": "...",
-      "product": "Vinyl Banner",
+      "title": "Roll Labels",
+      "product": "Labels (Roll)",
+      "materials": "White BOPP",
       "finished_size": "4 x 3 in",
-      "materials": "Vinyl",
-      "lamination": "Matte",          // separate field; null if none
-      "spot_uv": false,               // explicit booleans
+      "die": "",
+      "sides": "Single-sided",
+      "roll_direction": "1-Top",
+      "color_mode": "CMYK",
+      "lamination": "Matte",
+      "spot_uv": false,
       "foil": false,
+      "need_a_design": false,
       "die_cut": false,
-      "sides": "1 Side",              // mapped: single_sided→"1 Side", double_sided→"2 Sides"
-      "color_mode": "CMYK",           // mapped: cmyk→"CMYK", pantone→"Pantones", full_color_white→"CMYK+White"
-      "order_qty": 500,
-      "designer": "Har Unusyan",      // omitted when Unassigned
-      "description": "Perforation",   // only present when perforation=true (not a target API field)
+      "application": false,
+      "perforation": false,
       "skus": [
-        { "sku_name": "Small", "quantity": 250, "artwork_url": "..." },
-        { "sku_name": "Large", "quantity": 250 }
+        { "sku_name": "Flavor A", "quantity": 1000, "artwork_url": "https://…" }
       ]
     }
-  ],
-
-  // Legacy flat fields (first line item, backward compat)
-  "product": "...",
-  "finished_size": "...",
-  "materials": "...",
-  "lamination": "...",
-  "spot_uv": false,
-  "foil": false,
-  "die_cut": false,
-  "sides": "1 Side",
-  "color_mode": "CMYK",
-  "order_qty": 500,
-  "skus": [...]                        // all variants combined
+  ]
 }
 ```
 
