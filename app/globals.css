@@ -78,6 +78,11 @@
   --color-neutral-bg: #F2F2F0;
   --color-neutral-text: #999999;
   --color-neutral-border: #E0E0DC;
+
+  /* Semantic — in progress (violet) */
+  --color-in-progress-bg: #F5F3FF;
+  --color-in-progress-text: #7C3AED;
+  --color-in-progress-border: #DDD6FE;
 }
 
 .dark {
@@ -145,6 +150,11 @@
   --color-neutral-bg: #27272A;
   --color-neutral-text: #71717A;
   --color-neutral-border: #3F3F46;
+
+  /* Semantic — in progress (violet) */
+  --color-in-progress-bg: #2E1065;
+  --color-in-progress-text: #A78BFA;
+  --color-in-progress-border: #4C1D95;
 }
 
 /* ─── Tailwind theme bridge ──────────────────────────────────────────────── */

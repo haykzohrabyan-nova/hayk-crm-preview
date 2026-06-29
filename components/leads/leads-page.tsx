@@ -75,7 +75,7 @@ import { useStoredListPageSize } from "@/hooks/use-stored-list-page-size";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Tab = "all" | "follow_up" | "hold" | "routed" | "rejected" | "won";
+type Tab = "all" | "in_progress" | "follow_up" | "hold" | "routed" | "rejected" | "won";
 
 interface Toast {
   message: string;
@@ -408,9 +408,10 @@ export function LeadsPage() {
     routed?: boolean;
     scope?: string;
   }[] = [
-    { id: "all",      label: "All Leads",         status: null,              statuses: ["Pending", "Validated"] },
-    { id: "follow_up", label: "Follow Up Later",  status: "Follow Up Later", scope: "mine" },
-    { id: "hold",     label: "On Hold",            status: "On Hold",         scope: "mine" },
+    { id: "all",         label: "All Leads",      status: null,              statuses: ["Pending", "Validated"] },
+    { id: "in_progress", label: "In Progress",   status: "In Progress",     scope: "mine" },
+    { id: "follow_up",   label: "Follow Up Later", status: "Follow Up Later", scope: "mine" },
+    { id: "hold",        label: "On Hold",        status: "On Hold",         scope: "mine" },
     { id: "routed",   label: "Directed to Sales",  status: null,              routed: true, scope: "mine" },
     { id: "rejected", label: "Rejected",           status: "Rejected",        scope: "mine" },
     { id: "won",      label: "Won",                status: null,              scope: "mine" },
@@ -614,12 +615,13 @@ export function LeadsPage() {
 
   // ── Open drawer ───────────────────────────────────────────────────────────
   const TABS: { id: Tab; label: string }[] = [
-    { id: "all",      label: "All Leads" },
-    { id: "follow_up", label: "Follow Up Later" },
-    { id: "hold",     label: "On Hold" },
-    { id: "routed",   label: "Directed to Sales" },
-    { id: "rejected", label: "Rejected" },
-    { id: "won",      label: "Won" },
+    { id: "all",         label: "All Leads" },
+    { id: "in_progress", label: "In Progress" },
+    { id: "follow_up",   label: "Follow Up Later" },
+    { id: "hold",        label: "On Hold" },
+    { id: "routed",      label: "Directed to Sales" },
+    { id: "rejected",    label: "Rejected" },
+    { id: "won",         label: "Won" },
   ];
 
   // Filtered leads — server-side filters, sort, and pagination
@@ -993,6 +995,108 @@ export function LeadsPage() {
                       {leadActionLabel(lead.id, "Claim")}
                     </button>
                   )}
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── In Progress tab ── */}
+      {activeTab === "in_progress" && (
+        <>
+          <div className="hidden lg:block rounded-xl border overflow-hidden" style={{ borderColor: "var(--color-border)" }}>
+            <table className="w-full text-sm">
+              <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
+                <tr>
+                  {["Name", "Company", "Product Interests", "Working SDR", "Urgency", "Started", "Actions"].map((h) => (
+                    <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <TableRowsSkeleton cols={7} />
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                      No leads in progress.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((lead, idx) => (
+                    <tr
+                      key={lead.id}
+                      className="transition-colors"
+                      style={{
+                        background: idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)",
+                        borderTop: idx > 0 ? "1px solid var(--color-border)" : undefined,
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
+                    >
+                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
+                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
+                      <ProductInterestsTableCell lead={lead} />
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>
+                        {lead.locked_by?.full_name ?? "—"}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {lead.urgency ? <UrgencyPill urgency={lead.urgency} /> : <span style={{ color: "var(--color-text-muted)" }}>—</span>}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {relativeTime(lead.updated_at)}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <button
+                          onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
+                          disabled={leadActionDisabled()}
+                          className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                          style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                        >
+                          {leadActionLabel(lead.id, "View")}
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile: in progress cards */}
+          <div className="flex flex-col gap-3 lg:hidden">
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="rounded-[10px] border p-4 space-y-3 animate-pulse" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+                  <div className="h-4 w-32 rounded" style={{ background: "var(--color-border)" }} />
+                </div>
+              ))
+            ) : filtered.length === 0 ? (
+              <div className="rounded-[10px] border p-8 text-center text-sm" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}>No leads in progress.</div>
+            ) : (
+              filtered.map((lead) => (
+                <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</p>
+                    <StatusPill status="In Progress" />
+                  </div>
+                  <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
+                    <ProductInterestsMobileRow lead={lead} />
+                    <div className="flex justify-between">
+                      <span>Working SDR</span>
+                      <span className="normal-case tracking-normal font-medium" style={{ color: "var(--color-text-primary)" }}>{lead.locked_by?.full_name ?? "—"}</span>
+                    </div>
+                    <div className="flex justify-between"><span>Started</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
+                  </div>
+                  <button
+                    onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
+                    disabled={leadActionDisabled()}
+                    className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                    style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                  >
+                    {leadActionLabel(lead.id, "View")}
+                  </button>
                 </div>
               ))
             )}

@@ -474,6 +474,31 @@ export function VerifyDrawer({
     showToast("Lead resumed.");
   }
 
+  // ── Action: In Progress ───────────────────────────────────────────────────
+
+  async function handleInProgress() {
+    if (!validateContactFields()) return;
+    const result = buildLeadPayload();
+    if (!result.ok) {
+      showToast(result.error, "error");
+      return;
+    }
+    const payload = result.payload;
+    setSaving(true);
+    await patchLead(payload);
+    const res = await fetch(`/api/leads/${lead.id}/in-progress`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    const data = await res.json();
+    setSaving(false);
+    if (!res.ok) { const m = data.error ?? "Something went wrong."; showToast(m, "error"); reportApiError(m, res, "VerifyDrawer/in-progress"); return; }
+    setLead(data.lead);
+    onLeadUpdated(data.lead);
+    fireCountsRefresh();
+    showToast("Lead marked as in progress.");
+  }
+
   // ── Action: Hold ──────────────────────────────────────────────────────────
 
   async function doHold() {
@@ -1220,6 +1245,16 @@ export function VerifyDrawer({
                     </button>
                   ) : (
                     <>
+                      {lead.status !== "In Progress" && (
+                        <button
+                          onClick={() => promptThenRun(handleInProgress)}
+                          disabled={saving}
+                          className="rounded-[6px] border px-3 py-1.5 text-[13px] font-medium transition-all"
+                          style={{ borderColor: "var(--color-in-progress-border)", color: "var(--color-in-progress-text)", background: "var(--color-in-progress-bg)" }}
+                        >
+                          In Progress
+                        </button>
+                      )}
                       <button
                         onClick={() => setFooterMode("follow_up")}
                         disabled={saving}

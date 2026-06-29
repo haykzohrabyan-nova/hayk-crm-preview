@@ -3,6 +3,24 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-29] — Leads: Add "In Progress" status and tab
+
+### Added
+- `lib/types/index.ts` — `'In Progress'` added to `LeadStatus` union.
+- `app/globals.css` — `--color-in-progress-bg/text/border` CSS tokens (violet, light + dark).
+- `components/ui/status-pill.tsx` — "In Progress" style entry using new tokens.
+- `app/api/leads/[id]/in-progress/route.ts` — POST endpoint; sets `status = "In Progress"`, saves `prev_status`, attributes `sdr_id` to current user, logs `lead_in_progress` activity.
+- **"In Progress" tab** on the Leads page (between All Leads and Follow Up Later):
+  - SDRs see their own In Progress leads; Admins see everyone's.
+  - Columns: Name, Company, Product Interests, Working SDR, Urgency, Started, Actions.
+  - Tab badge count included in `GET /api/leads/workspace/page-data` response.
+- **"In Progress" button** in the lead verify drawer (before Follow Up Later); only shown when the lead is not already In Progress.
+
+### Changed
+- `lib/utils/leads-return-path.ts` — `LeadsTabParam` includes `"in_progress"`; aliases `in-progress` → `in_progress`.
+- `lib/utils/leads-workspace-query.ts` — `fetchLeadsWorkspaceTabCounts` returns `in_progress` count.
+- `components/leads/leads-page.tsx` — `Tab` type, `TAB_CONFIG`, `TABS`, and tab UI updated to include `in_progress`.
+
 ## [2026-06-26] — Fix QuoteDetail resend/release 404 after auto-conversion
 
 ### Fixed

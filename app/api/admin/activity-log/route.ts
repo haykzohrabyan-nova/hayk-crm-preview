@@ -9,6 +9,7 @@ const ACTION_LABELS: Record<string, string> = {
   lead_status_changed: "Changed lead status",
   lead_edited: "Edited lead",
   lead_rejected: "Rejected lead",
+  lead_in_progress: "Marked lead as in progress",
   lead_held: "Put lead on hold",
   lead_follow_up_later: "Marked follow up later",
   lead_resumed: "Resumed lead",

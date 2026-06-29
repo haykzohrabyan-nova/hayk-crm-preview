@@ -463,7 +463,7 @@ export async function fetchLeadsWorkspaceTabCounts(
   const adminFilterUserId = roleName === "admin" && filterUserId ? filterUserId : null;
   const routedOpts = { userId, roleName, adminFilterUserId };
 
-  const [all, follow_up, hold, routed, rejected, won] = await Promise.all([
+  const [all, in_progress, follow_up, hold, routed, rejected, won] = await Promise.all([
     countExact(admin, "leads", (q) => {
       let query = q
         .eq("is_inbox", false)
@@ -474,6 +474,16 @@ export async function fetchLeadsWorkspaceTabCounts(
       }
       if (adminFilterUserId) {
         query = applyAdminLeadUserFilter(query, roleName, adminFilterUserId, "all_tab");
+      }
+      return query;
+    }),
+    countExact(admin, "leads", (q) => {
+      let query = q.eq("is_inbox", false).eq("status", "In Progress");
+      if (roleName !== "admin" && userId) {
+        query = query.eq("sdr_id", userId);
+      }
+      if (adminFilterUserId) {
+        query = applyAdminLeadUserFilter(query, roleName, adminFilterUserId, "sdr_id");
       }
       return query;
     }),
@@ -511,7 +521,7 @@ export async function fetchLeadsWorkspaceTabCounts(
     countLeadsWonViaSalesRoute(admin, routedOpts),
   ]);
 
-  return { all, follow_up, hold, routed, rejected, won };
+  return { all, in_progress, follow_up, hold, routed, rejected, won };
 }
 
 export async function fetchLeadsSalesTabCounts(

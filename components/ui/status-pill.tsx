@@ -16,6 +16,9 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }
   "Routed to Sales": {
     bg: "var(--color-badge-bg)", text: "var(--color-badge-text)", border: "var(--color-info-border)",
   },
+  "In Progress": {
+    bg: "var(--color-in-progress-bg)", text: "var(--color-in-progress-text)", border: "var(--color-in-progress-border)",
+  },
   "On Hold": {
     bg: "var(--color-warning-bg)", text: "var(--color-warning)", border: "var(--color-warning-border)",
   },

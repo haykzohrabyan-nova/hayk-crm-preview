@@ -18,6 +18,8 @@ export function leadActivityLabel(a: Activity): string {
       return "Lead claimed by sales rep";
     case "lead_routed_to_sales":
       return "Routed to Sales";
+    case "lead_in_progress":
+      return "Marked as In Progress";
     case "lead_held":
       return `Put on hold${p.reason ? ` — ${holdReasonLabel(p.reason)}` : ""}`;
     case "lead_follow_up_later":
@@ -25,6 +27,7 @@ export function leadActivityLabel(a: Activity): string {
     case "lead_resumed": {
       if (p.from === "Follow Up Later") return "Resumed from Follow Up Later";
       if (p.from === "On Hold") return "Resumed from On Hold";
+      if (p.from === "In Progress") return "Resumed from In Progress";
       return "Resumed";
     }
     case "lead_merged":
@@ -50,6 +53,7 @@ export function leadActivityDotColor(type: Activity["type"]): string {
   if (type === "lead_routed_to_sales" || type === "lead_sales_claimed" || type === "lead_claimed") {
     return "var(--color-accent)";
   }
+  if (type === "lead_in_progress") return "var(--color-in-progress-text)";
   if (type === "lead_verified" || type === "lead_resumed") return "var(--color-success)";
   return "var(--color-text-muted)";
 }
