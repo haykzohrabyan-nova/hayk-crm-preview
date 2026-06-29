@@ -234,7 +234,9 @@ All tabs are reflected in the URL via `?tab=` query param. This enables bookmark
 
 ```
 /leads              → defaults to ?tab=all
-/leads?tab=all      → All Leads (SDR: All Leads / My Leads toggle via ?owner_scope=all|mine)
+/leads?tab=all      → All Leads (SDR: unclaimed pool only)
+/leads?tab=claimed  → Claimed Leads (SDR only — own claimed queue)
+/leads?tab=in_progress → In Progress (SDR: own; Admin: all)
 /leads?tab=follow-up → Follow Up Later (SDR deferred queue; admin-managed reasons)
 /leads?tab=hold     → On Hold
 /leads?tab=routed   → Directed to Sales

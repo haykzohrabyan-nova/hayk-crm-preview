@@ -164,7 +164,7 @@ Shared helpers:
 | `won` | — | `"true"` for Won tab |
 | `scope` | — | `mine` for SDR-scoped tabs |
 | `search` | — | Name, email, phone, company, status fields |
-| `owner_scope` | — | SDR All tab: `all` (unclaimed pool only) \| `mine` (claimed by me) |
+| `owner_scope` | — | SDR **Claimed Leads** tab only: `mine` → `locked_by_id = current user` |
 | `routed_filter` | `all` | Routed tab pipeline stage sub-filter |
 | `sort` / `sort_dir` | `created` / `desc` | `created` \| `urgency`; `asc` \| `desc` |
 | `user_id` | — | Admin only — team member filter |
@@ -193,8 +193,9 @@ Legacy list + count routes remain for compatibility. Shared query logic lives in
 ### `GET /api/leads/workspace`
 
 Returns workspace leads (`is_inbox = false`). Visibility is **role-scoped server-side**:
-- **SDR — All Leads tab (`owner_scope=all`):** only unclaimed leads (`locked_by_id IS NULL`) — open pool
-- **SDR — All Leads tab (`owner_scope=mine`):** only leads claimed by current user (`locked_by_id = currentUserId`)
+- **SDR — All Leads tab:** only unclaimed leads (`locked_by_id IS NULL`) — open pool
+- **SDR — Claimed Leads tab (`owner_scope=mine`):** only leads claimed by current user (`locked_by_id = currentUserId`)
+- **SDR — In Progress tab (`status=In Progress`, `scope=mine`):** own in-progress leads (`sdr_id = currentUserId`)
 - **SDR (with `status` or `statuses` param):** scoped to their own leads (`sdr_id = currentUserId`), used for Hold / Rejected / Directed-to-Sales tabs. When `statuses` is provided, Won leads are excluded via `applyExcludeSalesStatusWon()` (`sales_status IS NULL OR sales_status <> 'Won'`) — PostgREST `not.eq Won` alone would drop NULL rows.
 - **Admin:** all leads, no lock filter — also returns a `locked_by` profile join on each row
 - **Sales:** only leads where `status = 'Routed to Sales'` or `sales_owner_id = currentUserId`
@@ -231,7 +232,7 @@ Paginated workspace list + all tab badge counts in one auth pass. Used by `compo
 | Param | Type | Description |
 |-------|------|-------------|
 | *(tab filters)* | — | `status`, `statuses`, `routed`, `won`, `scope`, `search`, `prev_status` — see workspace route above |
-| `owner_scope` | `all` \| `mine` | SDR **All Leads** tab only — `all` = unclaimed pool; `mine` = locked by current user |
+| `owner_scope` | `mine` | SDR **Claimed Leads** tab only — locked by current user |
 | `routed_filter` | string | Routed tab pipeline stage (`all`, `awaiting`, `in_progress`, `quote_sent`, `on_hold`, `dropped`) |
 | `sort` | `created` \| `urgency` | Column sort (default `created`) |
 | `sort_dir` | `asc` \| `desc` | Sort direction (default `desc`) |
@@ -243,13 +244,13 @@ Paginated workspace list + all tab badge counts in one auth pass. Used by `compo
 ```json
 {
   "leads": [ "…Lead[]…" ],
-  "counts": { "all": 0, "follow_up": 0, "hold": 0, "routed": 0, "rejected": 0, "won": 0 },
+  "counts": { "all": 0, "claimed": 0, "in_progress": 0, "follow_up": 0, "hold": 0, "routed": 0, "rejected": 0, "won": 0 },
   "routedSubCounts": { "all": 0, "awaiting": 0, "in_progress": 0, "quote_sent": 0, "on_hold": 0, "dropped": 0 },
   "pagination": { "limit": 25, "offset": 0, "total": 200, "hasMore": true }
 }
 ```
 
-`routedSubCounts` is present when `routed=true`. Tab `counts.all` = unclaimed pool size for SDR (not affected by `owner_scope` toggle). Other tab counts exclude `limit`/`offset`.
+`routedSubCounts` is present when `routed=true`. Tab `counts.all` = unclaimed pool size for SDR. `counts.claimed` = SDR-only (0 for admin). Other tab counts exclude `limit`/`offset`.
 
 ---
 
@@ -262,6 +263,8 @@ Returns tab badge counts for the SDR leads workspace. Scoped per role same as th
 {
   "counts": {
     "all": 0,
+    "claimed": 0,
+    "in_progress": 0,
     "follow_up": 0,
     "hold": 0,
     "routed": 0,

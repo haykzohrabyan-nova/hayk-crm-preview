@@ -21,9 +21,9 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 **Data:** `GET /api/leads/workspace` — leads where `is_inbox = false` and `status` in `['Pending', 'Validated']`
 
 **Visibility filtering (server-side):**
-- **SDR — All Leads toggle:** only unclaimed leads (`locked_by_id IS NULL`); cannot see leads locked by another SDR
-- **SDR — My Leads toggle:** only leads claimed by the current user (`locked_by_id = currentUserId`)
-- **Admin:** receives all leads (no filter); also gets `locked_by` profile joined on each row
+- **SDR — All Leads tab:** only unclaimed leads (`locked_by_id IS NULL`); cannot see leads locked by another SDR
+- **SDR — Claimed Leads tab:** only leads claimed by the current user (`locked_by_id = currentUserId`)
+- **Admin:** receives all leads on All Leads (no lock filter); also gets `locked_by` profile joined on each row; no Claimed Leads tab
 
 ### Table Columns
 
@@ -38,7 +38,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 | Status | All | `StatusPill` — Pending / Validated |
 | Owner | All | SDR name / "You" / "Unclaimed" badge |
 | Created | All | Relative time (e.g. "2 hours ago") |
-| Action | All | **Claim** / **View** (SDR — depends on All vs My toggle) / **Edit** + **Assign/Reassign** + **Route to Sales** (Admin) |
+| Action | All | **Claim** (SDR, unclaimed) / **View** (SDR, claimed) / **Edit** + **Assign/Reassign** + **Route to Sales** (Admin) |
 
 ### Behaviors
 
@@ -46,8 +46,8 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 - **Sort:** server-side — **Created** or **Urgency** column headers (`?sort=created|urgency&sort_dir=`)
 - **Pagination:** `ListPagination` at bottom of list — Showing 1–25 of N
 - **Skeleton loader** while data fetches — never full-page spinner
-- **Claim** (SDR, All Leads toggle) → `POST /api/leads/[id]/lock` → global loading overlay + row spinner → opens **Verify Drawer** in edit mode
-- **View** (SDR, My Leads toggle) → opens drawer for owned lead (`POST /lock` refreshes `locked_at`; no new `lead_claimed`)
+- **Claim** (SDR, All Leads tab) → `POST /api/leads/[id]/lock` → global loading overlay + row spinner → opens **Verify Drawer** in edit mode
+- **View** (SDR, Claimed Leads tab) → opens drawer for owned lead (`POST /lock` refreshes `locked_at`; no new `lead_claimed`)
 - **Edit button** (Admin) → opens **Verify Drawer** in **edit mode** with no lock acquired — Admin can view and save any field changes via "Save Changes" button; the active SDR's lock is undisturbed
 - **Assign / Reassign button** (Admin only) → "Assign" label when `locked_by_id IS NULL`; "Reassign" label when lead is already owned. Fixed `min-w-[72px]` so both labels render at the same button width. Opens a modal with a dropdown of all active SDR users plus an "Unassign" option. Disabled until an SDR is selected. On confirm → updates `locked_by_id`, `locked_at`, and `sdr_id`; row updates in place and tab counts refresh
 - **Route to Sales button** (Admin only, gold CTA) → opens the **Route to Sales modal** to optionally assign a sales rep before routing. Hidden when `lead.status === "Routed to Sales"`. On confirm: calls `PATCH /api/leads/[id]` with `{ status: "Routed to Sales", sales_status: "Ongoing" }` (plus `sales_owner_id` if a rep was selected), releases the lock via `POST /api/leads/[id]/unlock`, removes the row from the list, and fires `bazaar:refresh-counts`.
@@ -236,14 +236,15 @@ A lead appears here when:
 
 ## Lead Visibility — Lock-Based Filtering
 
-The All Leads tab splits the SDR queue with the **All Leads / My Leads** toggle:
+SDR lead queues use separate tabs instead of an in-tab toggle:
 
 - **All Leads** — only **unlocked** leads (`locked_by_id IS NULL`) in the shared pool; any SDR can **Claim**
-- **My Leads** — leads the current SDR has **claimed** (`locked_by_id = currentUserId`)
+- **Claimed Leads** — leads the current SDR has **claimed** (`locked_by_id = currentUserId`); **View** action
+- **In Progress** — leads with `status = In Progress` scoped to the SDR (`sdr_id = me`); Admin sees all
 
 Leads currently locked by another SDR are **hidden from the queue entirely**. SDRs never see a lead that someone else is working — there is nothing to click on.
 
-**Admin** sees all leads regardless of lock state, plus a **Working** column showing which SDR has each lead open. Admin opens leads with a **View** action (no lock acquired) so they can inspect any lead without disrupting an active SDR.
+**Admin** sees all leads on All Leads regardless of lock state, plus a **Working** column showing which SDR has each lead open. Admin opens leads with a **View** action (no lock acquired) so they can inspect any lead without disrupting an active SDR. Admin has no Claimed Leads tab.
 
 ### Race Condition Safety Net
 
@@ -257,7 +258,7 @@ See `docs/feature-specs/lead-locking.md` for full lock spec.
 
 ## Verify Drawer
 
-A right-side drawer (slide-in panel) that opens when the SDR clicks **Claim** (All Leads) or **View** (My Leads / other tabs) on a workspace lead.
+A right-side drawer (slide-in panel) that opens when the SDR clicks **Claim** (All Leads) or **View** (Claimed Leads / other tabs) on a workspace lead.
 
 ### Drawer Tabs
 
@@ -523,7 +524,7 @@ When an SDR acts on a lead (verify, hold, reject), the row is **immediately remo
 | Feature | Notes |
 |---------|-------|
 | All Leads / On Hold / Directed to Sales / Rejected / Won tabs | Tab counts visible before clicking; scoped correctly per SDR |
-| Lock-based lead visibility (permanent ownership) | **All Leads** toggle = unclaimed pool only; **My Leads** = claimed by me; other SDRs' locks hidden; closing drawer does NOT release lock |
+| Lock-based lead visibility (permanent ownership) | **All Leads** = unclaimed pool only; **Claimed Leads** tab = claimed by me; other SDRs' locks hidden; closing drawer does NOT release lock |
 | Admin Edit action (no lock) | Admin opens any lead in **edit mode** without acquiring a lock — "Save Changes" + "Route to Sales" buttons in footer; active SDR's lock untouched |
 | Admin "Working" column | All Leads table shows which SDR owns each lead; mobile cards too |
 | Admin Assign / Reassign action | "Assign" on unclaimed leads; "Reassign" on owned leads. Fixed `min-w` so both labels are same button width. Modal with active SDR dropdown + Unassign; logs `lead_reassigned` |

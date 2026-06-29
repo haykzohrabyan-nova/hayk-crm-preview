@@ -245,7 +245,7 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
         ├── Refetch: `bazaar:leads-changed`, `bazaar:refresh-counts` (counts-only or full page-data); `enabled: !drawerLead || drawerReadOnly`
         ├── Search: server-side (debounced 300 ms) via `?search=`
         ├── Sort: server-side — `?sort=created|urgency&sort_dir=`
-        ├── Owner filter (SDR only): All Leads / My Leads → `?owner_scope=all|mine` (all = unclaimed pool; mine = claimed by me)
+        ├── Claimed Leads tab (SDR only): `?tab=claimed&owner_scope=mine`
         ├── Claim/View: `useGlobalLoading` overlay + row spinner while lock + `fetchLeadById` run
         ├── Routed tab sub-filters: server-side → `?routed_filter=`; badges from `routedSubCounts`
         ├── ListPagination: Showing 1–25 of N, prev/next, rows-per-page (25/50/100)
@@ -258,7 +258,9 @@ app/(app)/leads/page.tsx  [Server Component — thin wrapper]
 
 | Tab | API params | Notes |
 |-----|------------|-------|
-| All Leads | `statuses=Pending,Validated&owner_scope=all\|mine` | SDR **All** toggle → unclaimed only; **My** → claimed by me; Admin sees all |
+| All Leads | `statuses=Pending,Validated` | SDR → unclaimed only; Admin sees all |
+| Claimed Leads | `statuses=Pending,Validated&owner_scope=mine` | SDR only — own claimed queue |
+| In Progress | `status=In Progress&scope=mine` | SDR → own; Admin → all (no scope filter) |
 | On Hold | `status=On Hold&scope=mine` | SDR sees own; Admin sees all |
 | Directed to Sales | `status=Routed to Sales&scope=mine` | SDR sees own; Admin sees all |
 | Rejected | `status=Rejected&scope=mine` | SDR sees own (leads they rejected); Admin sees all SDR-rejected leads |

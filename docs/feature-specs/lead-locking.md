@@ -45,18 +45,20 @@ With multiple SDRs working concurrently, locking serves two purposes:
 
 ---
 
-## SDR queue visibility (All Leads tab)
+## SDR queue visibility (All Leads + Claimed Leads tabs)
 
-The **All Leads / My Leads** toggle on the All Leads tab controls `owner_scope`:
+SDR lead queues split **unclaimed** vs **claimed** into separate tabs:
 
-| Toggle | Filter | Action button |
-|--------|--------|---------------|
+| Tab | Filter | Action button |
+|-----|--------|---------------|
 | **All Leads** | `locked_by_id IS NULL` only — shared open pool | **Claim** |
-| **My Leads** | `locked_by_id = currentUserId` — leads I have claimed | **View** |
+| **Claimed Leads** | `locked_by_id = currentUserId` — leads I have claimed | **View** |
 
-Leads locked by **another** SDR never appear in either toggle. Tab badge count for **All Leads** = unclaimed pool size (always; not affected by toggle).
+Leads locked by **another** SDR never appear in either tab. Tab badge count for **All Leads** = unclaimed pool size.
 
-**Admin** sees all leads regardless of lock state.
+**In Progress** tab (`status = In Progress`): SDR sees own leads (`sdr_id = me`); Admin sees all and a **Working SDR** column.
+
+**Admin** sees all leads on All Leads regardless of lock state; no Claimed Leads tab.
 
 ---
 
@@ -77,14 +79,15 @@ All three fields are `null` when a lead is unowned/unlocked.
 ## Lock Lifecycle
 
 ```
-SDR loads All Leads tab (owner_scope from toggle)
+SDR loads All Leads or Claimed Leads tab
       │
       ▼
 GET /api/leads/workspace/page-data
       │
-      ├── owner_scope=all  → locked_by_id IS NULL (open pool)
-      ├── owner_scope=mine → locked_by_id = currentUserId
-      └── Admin            → no lock filter (all leads + locked_by join)
+      ├── All Leads (SDR)     → locked_by_id IS NULL (open pool)
+      ├── Claimed Leads (SDR) → owner_scope=mine → locked_by_id = currentUserId
+      ├── In Progress         → status = In Progress; SDR: sdr_id = me; Admin: all
+      └── Admin (All Leads)   → no lock filter (all leads + locked_by join)
 
 SDR clicks Claim on an unclaimed lead
       │

@@ -283,14 +283,17 @@ A lead is **claimed** when an SDR clicks **Claim** (or an Admin assigns). Lock s
 
 ### Lead Visibility (Queue Filtering)
 
-The All Leads tab uses an **All Leads / My Leads** toggle (`owner_scope`):
+SDR lead queues use **tabs** (not an in-tab toggle):
 
-| Role | Toggle | Sees |
-|------|--------|------|
-| SDR | **All Leads** (`owner_scope=all`) | Unclaimed pool only (`locked_by_id IS NULL`) |
-| SDR | **My Leads** (`owner_scope=mine`) | Leads claimed by current user (`locked_by_id = me`) |
-| SDR | *(either toggle)* | Never sees leads locked by another SDR |
-| Admin | — | All leads — includes leads locked by any SDR; also returns `locked_by` profile for the Working column |
+| Role | Tab | Sees |
+|------|-----|------|
+| SDR | **All Leads** | Unclaimed pool only (`locked_by_id IS NULL`) |
+| SDR | **Claimed Leads** | Leads claimed by current user (`locked_by_id = me`); tab hidden until role is confirmed |
+| SDR | **In Progress** | Own leads with `status = In Progress` (`sdr_id = me`) |
+| SDR | *(All / Claimed)* | Never sees leads locked by another SDR |
+| Admin | **All Leads** | All leads — includes leads locked by any SDR; also returns `locked_by` profile for the Working column |
+| Admin | **In Progress** | All in-progress leads (every SDR) |
+| Admin | — | No **Claimed Leads** tab (SDR-only) |
 | Sales | — | Not applicable — Sales users access `/sales`, not `/leads` |
 
 ### Acquiring a Lock
@@ -378,7 +381,7 @@ Role is read directly from Supabase (`user_profiles.roles(name)`) in each compon
 | Leads: **Edit** button (Admin — no lock, opens in edit mode) | ✗ | ✗ | ✓ |
 | Leads: **Reassign** button (owned leads only) | ✗ | ✗ | ✓ |
 | Leads: **Owner** column (SDR name or "Unclaimed" badge) | ✓ | ✗ | ✓ |
-| Leads: My Leads / All Leads toggle filter | ✓ | ✗ | ✗ |
+| Leads: **Claimed Leads** tab (own claimed queue) | ✓ | ✗ | ✗ |
 | Leads: sees other SDRs locked leads in queue | ✗ | ✗ | ✓ |
 | Leads: scoped tabs show own leads only | ✓ | ✗ | ✗ |
 | Leads: scoped tabs show ALL leads | ✗ | ✗ | ✓ |

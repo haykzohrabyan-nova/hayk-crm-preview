@@ -3,23 +3,48 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
-## [2026-06-29] — Leads: Add "In Progress" status and tab
+## [2026-06-29] — Leads: Replace "My Leads" toggle with "Claimed Leads" tab; add "In Progress" status and tab
 
 ### Added
-- `lib/types/index.ts` — `'In Progress'` added to `LeadStatus` union.
-- `app/globals.css` — `--color-in-progress-bg/text/border` CSS tokens (violet, light + dark).
-- `components/ui/status-pill.tsx` — "In Progress" style entry using new tokens.
-- `app/api/leads/[id]/in-progress/route.ts` — POST endpoint; sets `status = "In Progress"`, saves `prev_status`, attributes `sdr_id` to current user, logs `lead_in_progress` activity.
-- **"In Progress" tab** on the Leads page (between All Leads and Follow Up Later):
-  - SDRs see their own In Progress leads; Admins see everyone's.
-  - Columns: Name, Company, Product Interests, Working SDR, Urgency, Started, Actions.
-  - Tab badge count included in `GET /api/leads/workspace/page-data` response.
-- **"In Progress" button** in the lead verify drawer (before Follow Up Later); only shown when the lead is not already In Progress.
+- **Claimed Leads tab** on the Leads page (SDR only, between All Leads and In Progress):
+  - Shows all `Pending` / `Validated` leads where `locked_by_id = current SDR`.
+  - Each SDR sees only their own claimed leads; tab is hidden entirely for admin.
+  - Columns: Name, Created By, Company, Source, Product Interests, Phone, Urgency, Status, Created, Action.
+  - Tab badge count powered by `fetchLeadsWorkspaceTabCounts` (SDR only; returns 0 for admin).
+  - Uses existing `CreatedByTableCell`, `CreatedByMobileRow`, `ProductInterestsTableCell`, `ProductInterestsMobileRow` shared components.
+  - Server-side pagination via shared `ListPagination` + `GET /api/leads/workspace/page-data`.
+- `lib/utils/leads-return-path.ts` — `LeadsTabParam` includes `"claimed"`; alias `claimed` → `claimed`.
+- **In Progress status and tab** for the Leads page:
+  - `lib/types/index.ts` — `'In Progress'` added to `LeadStatus` union; `'lead_in_progress'` added to `ActivityType` union.
+  - `app/globals.css` — `--color-in-progress-bg/text/border` CSS tokens (violet, light + dark).
+  - `components/ui/status-pill.tsx` — "In Progress" style entry using new tokens.
+  - `app/api/leads/[id]/in-progress/route.ts` — POST endpoint; sets `status = "In Progress"`, saves `prev_status`, attributes `sdr_id` to current user, logs `lead_in_progress` activity.
+  - `app/api/admin/activity-log/route.ts` — added `lead_in_progress: "Marked lead as in progress"` label.
+  - `lib/utils/lead-activity-display.ts` — display label and color for `lead_in_progress`; "Resumed from In Progress" case in `lead_resumed`.
+  - **"In Progress" tab** (between Claimed Leads and Follow Up Later):
+    - SDRs see their own In Progress leads; Admins see everyone's.
+    - Columns: Name, Created By, Company, Product Interests, Working SDR, Urgency, Started, Actions.
+    - Admin gets Edit / Reassign / Route to Sales actions; SDR gets View.
+    - Tab badge count included in `GET /api/leads/workspace/page-data` + `GET /api/leads/workspace/counts`.
+    - Uses existing `CreatedByTableCell`, `CreatedByMobileRow`, `ProductInterestsTableCell`, `ProductInterestsMobileRow` shared components.
+    - Server-side pagination via shared `ListPagination`.
+  - **"In Progress" button** in the lead verify drawer (before Follow Up Later); only shown when lead is not already In Progress.
 
 ### Changed
+- `components/leads/leads-page.tsx`:
+  - Removed the **All Leads / My Leads** segmented toggle for SDR; replaced by the new Claimed Leads tab.
+  - `Tab` type, `TAB_CONFIG`, `TABS`, and tab UI updated to include `claimed` and `in_progress`.
+  - `handleResumeLead` auto-navigates to the correct tab after resuming (→ `in_progress` if restored to In Progress, → `all` otherwise).
+- `lib/utils/leads-workspace-query.ts` — `fetchLeadsWorkspaceTabCounts` returns `claimed` count (SDR only) and `in_progress` count.
 - `lib/utils/leads-return-path.ts` — `LeadsTabParam` includes `"in_progress"`; aliases `in-progress` → `in_progress`.
-- `lib/utils/leads-workspace-query.ts` — `fetchLeadsWorkspaceTabCounts` returns `in_progress` count.
-- `components/leads/leads-page.tsx` — `Tab` type, `TAB_CONFIG`, `TABS`, and tab UI updated to include `in_progress`.
+- `app/api/leads/[id]/hold/route.ts` — sets `sdr_id = userId` if null when an SDR puts a lead on hold (prevents attribution loss).
+- `app/api/leads/[id]/resume/route.ts` — sets `sdr_id = userId` if null when an SDR resumes a lead (prevents attribution loss).
+
+### Fixed
+- `components/leads/leads-page.tsx` — resume from On Hold now navigates SDR to **Claimed Leads** (not All Leads) when the lead is still claimed; **In Progress** when restored to that status.
+- `components/leads/leads-page.tsx` — Claimed Leads tab only renders/fetches after SDR role is confirmed; admin no longer briefly sees the tab or wrong data while role loads.
+- `components/leads/leads-page.tsx` — Claimed Leads and In Progress tabs use shared `CreatedByTableCell` / `CreatedByMobileRow` (consistent with other tabs).
+- Docs updated: `rbac.md`, `api-contract.md`, `TECHNICAL_REFERENCE.md`, `navigation.md`, `lead-locking.md`, `component-architecture.md`, `leads-sdr.md`.
 
 ## [2026-06-26] — Fix QuoteDetail resend/release 404 after auto-conversion
 

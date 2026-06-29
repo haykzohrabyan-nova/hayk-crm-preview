@@ -463,7 +463,18 @@ export async function fetchLeadsWorkspaceTabCounts(
   const adminFilterUserId = roleName === "admin" && filterUserId ? filterUserId : null;
   const routedOpts = { userId, roleName, adminFilterUserId };
 
-  const [all, in_progress, follow_up, hold, routed, rejected, won] = await Promise.all([
+  const claimedPromise = roleName === "sdr" && userId
+    ? countExact(admin, "leads", (q) => {
+        let query = q
+          .eq("is_inbox", false)
+          .in("status", ["Pending", "Validated"])
+          .eq("locked_by_id", userId);
+        query = applyExcludeSalesStatusWon(query);
+        return query;
+      })
+    : Promise.resolve(0);
+
+  const [all, in_progress, follow_up, hold, routed, rejected, won, claimed] = await Promise.all([
     countExact(admin, "leads", (q) => {
       let query = q
         .eq("is_inbox", false)
@@ -519,9 +530,10 @@ export async function fetchLeadsWorkspaceTabCounts(
       return query;
     }),
     countLeadsWonViaSalesRoute(admin, routedOpts),
+    claimedPromise,
   ]);
 
-  return { all, in_progress, follow_up, hold, routed, rejected, won };
+  return { all, claimed, in_progress, follow_up, hold, routed, rejected, won };
 }
 
 export async function fetchLeadsSalesTabCounts(

@@ -931,7 +931,9 @@ Component: `components/leads/leads-page.tsx`
 
 | Tab | Filter logic | Count key |
 |-----|-------------|----------|
-| **All Leads** | `status` in `Pending, Validated`; excludes Won; SDR: unclaimed unless `owner_scope=mine` | `all` |
+| **All Leads** | `status` in `Pending, Validated`; excludes Won; SDR: unclaimed only | `all` |
+| **Claimed Leads** | SDR only: `status` in `Pending, Validated` + `locked_by_id = me` | `claimed` |
+| **In Progress** | `status = In Progress`; SDR: `sdr_id = me`; Admin: all | `in_progress` |
 | **Follow Up Later** | `status = Follow Up Later`, scoped to current user | `follow_up` |
 | **On Hold** | `status = On Hold`, scoped to current user | `hold` |
 | **Directed to Sales** | Leads with `lead_routed_to_sales` activity; activity-based, not `status` field | `routed` |
@@ -956,7 +958,7 @@ Component: `components/leads/leads-page.tsx`
 
 Auth: session + `/leads` page access
 
-Query params: `tab`, `search`, `sort` (`created`|`urgency`), `sort_dir`, `limit`, `offset`, `owner_scope` (`all`|`mine`), `user_id` (admin filter), `routed_filter`
+Query params: `tab`, `search`, `sort` (`created`|`urgency`), `sort_dir`, `limit`, `offset`, `owner_scope` (`mine` on Claimed Leads tab only), `user_id` (admin filter), `routed_filter`
 
 Response:
 ```json
