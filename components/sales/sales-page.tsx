@@ -1034,7 +1034,13 @@ export function SalesPage() {
                 </label>
                 <Select value={reassignSalesUserId} onValueChange={(v) => setReassignSalesUserId(v ?? "unassign")}>
                   <SelectTrigger className="h-9 text-sm w-full">
-                    <SelectValue />
+                    <SelectValue placeholder="Select Sales rep…">
+                      {reassignSalesUserId === "unassign"
+                        ? "— Unassign (remove from Sales rep)"
+                        : salesUserList.find((u) => u.id === reassignSalesUserId)?.full_name
+                          ?? reassignLead.sales_owner?.full_name
+                          ?? "Select Sales rep…"}
+                    </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unassign">— Unassign (remove from Sales rep)</SelectItem>

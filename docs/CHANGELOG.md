@@ -5,6 +5,9 @@ Format: `## [version or date] — description`, newest first.
 
 ## [2026-06-29] — Sales Pipeline: Claimed, In Progress, Quote Sent tabs
 
+### Fixed
+- Sales **Reassign** modal — dropdown now shows the sales rep name instead of a raw UUID while the user list loads
+
 ### Added
 - **In Progress** and **Quote Sent** tabs on `/sales` with per-tab count badges
 - Sales **In Progress** footer action in modal (from Claimed) — closes modal like Hold/Follow Up
