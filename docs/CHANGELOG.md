@@ -3,6 +3,13 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-29] — Fix empty Cancel Order reasons when admin options exist
+
+### Fixed
+- Cancel Order / Cancel Quote modal showed "No active cancellation reasons configured" even when **Order Cancellation Reasons** were set in Admin → Dropdown Options — `/quotes/new` was seeding the ticket bootstrap cache without cancel/refund lookup categories, so a later order detail open reused stale empty `lookups_actions`
+- `lib/client/ticket-form-bootstrap-cache.ts` — partial quotes cache marked `quotes-partial`; detail pages skip it and fetch full `/api/ticket-form-bootstrap`; preserve existing action lookups when re-seeding; bumped sessionStorage key to `v3`
+- `components/quotes/quote-detail.tsx` — clear client bootstrap cache on `bazaar:lookups-changed` before re-fetch
+
 ## [2026-06-29] — Leads: Replace "My Leads" toggle with "Claimed Leads" tab; add "In Progress" status and tab
 
 ### Added

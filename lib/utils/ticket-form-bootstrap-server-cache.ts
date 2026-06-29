@@ -31,6 +31,8 @@ export type TicketFormBootstrapPayload = {
   lookups_edit: Record<string, unknown[]>;
   lookups_actions: Record<string, unknown[]>;
   products: unknown[];
+  /** Client-only: quotes/new seeds edit lookups without cancel/refund actions. */
+  _cacheSource?: "full" | "quotes-partial";
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;

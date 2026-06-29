@@ -1,10 +1,14 @@
 import type { TicketFormBootstrapPayload } from "@/lib/utils/ticket-form-bootstrap-server-cache";
 
-const STORAGE_KEY = "bazaar-ticket-form-bootstrap-v2";
+const STORAGE_KEY = "bazaar-ticket-form-bootstrap-v3";
 const CLIENT_TTL_MS = 30 * 60 * 1000;
 
 let memory: TicketFormBootstrapPayload | null = null;
 let memoryExpires = 0;
+
+function isUsableBootstrap(data: TicketFormBootstrapPayload): boolean {
+  return data._cacheSource !== "quotes-partial";
+}
 
 function readStorage(): TicketFormBootstrapPayload | null {
   if (typeof window === "undefined") return null;
@@ -34,10 +38,10 @@ function writeStorage(data: TicketFormBootstrapPayload) {
 
 /** Company + lookups + products — cached in tab after first detail or new-quote load. */
 export async function getTicketFormBootstrap(): Promise<TicketFormBootstrapPayload> {
-  if (memory && Date.now() < memoryExpires) return memory;
+  if (memory && Date.now() < memoryExpires && isUsableBootstrap(memory)) return memory;
 
   const stored = readStorage();
-  if (stored) {
+  if (stored && isUsableBootstrap(stored)) {
     memory = stored;
     memoryExpires = Date.now() + CLIENT_TTL_MS;
     return stored;
@@ -49,10 +53,11 @@ export async function getTicketFormBootstrap(): Promise<TicketFormBootstrapPaylo
     throw new Error(data.error ?? "Failed to load form bootstrap");
   }
 
-  memory = data;
+  const payload: TicketFormBootstrapPayload = { ...data, _cacheSource: "full" };
+  memory = payload;
   memoryExpires = Date.now() + CLIENT_TTL_MS;
-  writeStorage(data);
-  return data;
+  writeStorage(payload);
+  return payload;
 }
 
 export function seedTicketFormBootstrapCache(payload: TicketFormBootstrapPayload) {
@@ -80,25 +85,32 @@ const ACTION_LOOKUP_CATEGORIES = [
   "payment_refund_reason",
 ] as const;
 
-/** After `/api/quotes/form-bootstrap` — warms detail cache when user opens a ticket next. */
+/** After `/api/quotes/form-bootstrap` — warms edit lookups; never replaces cancel/refund actions. */
 export function seedTicketFormBootstrapFromQuotesBootstrap(d: {
   company: TicketFormBootstrapPayload["company"];
   lookups: Record<string, unknown[]>;
   products: unknown[];
 }) {
+  const existing = memory ?? readStorage();
   const lookups_edit: Record<string, unknown[]> = {};
-  const lookups_actions: Record<string, unknown[]> = {};
+  const lookups_actions: Record<string, unknown[]> = {
+    ...(existing?.lookups_actions ?? {}),
+  };
   for (const c of EDIT_LOOKUP_CATEGORIES) {
     if (d.lookups[c]) lookups_edit[c] = d.lookups[c];
   }
   for (const c of ACTION_LOOKUP_CATEGORIES) {
     if (d.lookups[c]) lookups_actions[c] = d.lookups[c];
   }
+  const hasActionLookups = ACTION_LOOKUP_CATEGORIES.some((c) =>
+    Array.isArray(lookups_actions[c]),
+  );
   seedTicketFormBootstrapCache({
     company: d.company,
     lookups_edit,
     lookups_actions,
     products: d.products,
+    _cacheSource: hasActionLookups ? "full" : "quotes-partial",
   });
 }
 

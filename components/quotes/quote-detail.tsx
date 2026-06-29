@@ -46,7 +46,10 @@ import { LinkedLeadCard } from "@/components/ui/linked-lead-card";
 
 import { createClient } from "@/lib/supabase/client";
 import { useTicketRealtimeSync } from "@/hooks/use-ticket-realtime-sync";
-import { getTicketFormBootstrap } from "@/lib/client/ticket-form-bootstrap-cache";
+import {
+  clearTicketFormBootstrapClientCache,
+  getTicketFormBootstrap,
+} from "@/lib/client/ticket-form-bootstrap-cache";
 import type { TicketFormBootstrapPayload } from "@/lib/utils/ticket-form-bootstrap-server-cache";
 import { type TicketPaymentDraft, PAYMENT_CONFIG_DEFAULTS } from "@/components/quotes/quote-payment-config";
 import { localDateStringFromIso, validateDueDateAgainstCreated } from "@/lib/utils/due-date";
@@ -555,6 +558,7 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
 
   useEffect(() => {
     function onLookupsChanged() {
+      clearTicketFormBootstrapClientCache();
       getTicketFormBootstrap().then(applyFormBootstrap).catch(() => null);
     }
     window.addEventListener("bazaar:lookups-changed", onLookupsChanged);
