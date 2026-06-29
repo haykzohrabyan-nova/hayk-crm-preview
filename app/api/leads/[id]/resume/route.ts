@@ -60,6 +60,10 @@ export async function POST(
     const restoredStatus = current.prev_status === "Validated" ? "Pending" : (current.prev_status ?? "Pending");
     update.status = restoredStatus;
     update.prev_status = null;
+    // Ensure the SDR is attributed so their scoped tabs (In Progress, etc.) can find the lead.
+    if (!current.sdr_id && roleName === "sdr") {
+      update.sdr_id = userId;
+    }
   }
 
   const { data: lead, error } = await admin

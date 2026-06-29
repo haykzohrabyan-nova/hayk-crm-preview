@@ -593,6 +593,15 @@ export function LeadsPage() {
     setLeads((prev) => prev.filter((l) => l.id !== lead.id));
     window.dispatchEvent(new Event("bazaar:refresh-counts"));
     showToast("Lead resumed.");
+    // Navigate to the tab that matches the restored status so the SDR can see the lead.
+    const restoredStatus: string | undefined = data.lead?.status;
+    if (restoredStatus === "In Progress") {
+      setActiveTab("in_progress");
+      setOffset(0);
+    } else if (!restoredStatus || restoredStatus === "Pending" || restoredStatus === "Validated") {
+      setActiveTab("all");
+      setOffset(0);
+    }
   }
 
   async function handleReassign() {
@@ -1009,7 +1018,7 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Company", "Product Interests", "Working SDR", "Urgency", "Started", "Actions"].map((h) => (
+                  {["Name", "Company", "Product Interests", "Working SDR", "Urgency", "Started", "Action"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
@@ -1035,27 +1044,57 @@ export function LeadsPage() {
                       onMouseEnter={(e) => (e.currentTarget.style.background = "var(--color-row-hover)")}
                       onMouseLeave={(e) => (e.currentTarget.style.background = idx % 2 === 1 ? "var(--color-row-alt)" : "var(--color-surface)")}
                     >
-                      <td className="px-3 py-2.5 font-medium" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
-                      <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
+                      <td className="px-3 py-2.5 font-medium whitespace-nowrap" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <ProductInterestsTableCell lead={lead} />
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs font-medium" style={{ color: "var(--color-text-primary)" }}>
                         {lead.locked_by?.full_name ?? "—"}
                       </td>
                       <td className="px-3 py-2.5">
-                        {lead.urgency ? <UrgencyPill urgency={lead.urgency} /> : <span style={{ color: "var(--color-text-muted)" }}>—</span>}
+                        <UrgencyPill urgency={lead.urgency} />
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
                         {relativeTime(lead.updated_at)}
                       </td>
                       <td className="px-3 py-2.5">
-                        <button
-                          onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
-                          disabled={leadActionDisabled()}
-                          className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                          style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                        >
-                          {leadActionLabel(lead.id, "View")}
-                        </button>
+                        {isAdmin ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => void handleViewLead(lead)}
+                              disabled={leadActionDisabled()}
+                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+                              style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                            >
+                              {leadActionLabel(lead.id, "Edit")}
+                            </button>
+                            <button
+                              onClick={() => { setReassignLead(lead); setReassignUserId(lead.locked_by_id ? "unassign" : ""); }}
+                              className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] min-w-[72px] text-center"
+                              style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                            >
+                              {lead.locked_by_id ? "Reassign" : "Assign"}
+                            </button>
+                            {lead.status !== "Routed to Sales" && (
+                              <button
+                                onClick={() => void handleRouteLeadToSales(lead)}
+                                disabled={leadActionDisabled()}
+                                className="rounded-[6px] px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+                                style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}
+                              >
+                                Route to Sales
+                              </button>
+                            )}
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => void handleWorkLead(lead)}
+                            disabled={leadActionDisabled()}
+                            className="rounded-[6px] border px-2.5 py-1 text-[12px] font-medium transition-all active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-60"
+                            style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                          >
+                            {leadActionLabel(lead.id, "View")}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -1078,8 +1117,16 @@ export function LeadsPage() {
               filtered.map((lead) => (
                 <div key={lead.id} className="rounded-[10px] border p-4 space-y-3" style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}>
                   <div className="flex items-start justify-between gap-2">
-                    <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</p>
-                    <StatusPill status="In Progress" />
+                    <div>
+                      <p className="font-semibold text-sm" style={{ color: "var(--color-text-primary)" }}>{displayContactName(lead.customer, { preferPerson: true })}</p>
+                      {lead.customer?.company && (
+                        <p className="text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.customer.company}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <UrgencyPill urgency={lead.urgency} />
+                      <StatusPill status="In Progress" />
+                    </div>
                   </div>
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
                     <ProductInterestsMobileRow lead={lead} />
@@ -1089,14 +1136,34 @@ export function LeadsPage() {
                     </div>
                     <div className="flex justify-between"><span>Started</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
                   </div>
-                  <button
-                    onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
-                    disabled={leadActionDisabled()}
-                    className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
-                    style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
-                  >
-                    {leadActionLabel(lead.id, "View")}
-                  </button>
+                  {isAdmin ? (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => void handleViewLead(lead)}
+                        disabled={leadActionDisabled()}
+                        className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                      >
+                        {leadActionLabel(lead.id, "Edit")}
+                      </button>
+                      <button
+                        onClick={() => { setReassignLead(lead); setReassignUserId(lead.locked_by_id ? "unassign" : ""); }}
+                        className="flex-1 rounded-[6px] border py-1.5 text-[13px] font-medium"
+                        style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+                      >
+                        {lead.locked_by_id ? "Reassign" : "Assign"}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => void handleWorkLead(lead)}
+                      disabled={leadActionDisabled()}
+                      className="w-full rounded-[6px] border py-1.5 text-[13px] font-medium disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ borderColor: "var(--color-border)", color: "var(--color-text-primary)" }}
+                    >
+                      {leadActionLabel(lead.id, "View")}
+                    </button>
+                  )}
                 </div>
               ))
             )}

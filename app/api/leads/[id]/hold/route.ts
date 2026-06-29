@@ -64,6 +64,10 @@ export async function POST(
   } else {
     update.prev_status = current.status;
     update.status = "On Hold";
+    // Ensure SDR attribution so the lead appears on their scoped On Hold tab.
+    if (!current.sdr_id && roleName === "sdr") {
+      update.sdr_id = userId;
+    }
   }
 
   const { data: lead, error } = await admin
