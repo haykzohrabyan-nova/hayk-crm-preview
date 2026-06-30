@@ -3,6 +3,256 @@
 All notable changes to BazaarPrinting CRM are documented here.
 Format: `## [version or date] — description`, newest first.
 
+## [2026-06-29] — Operations column grouping
+
+### Added
+- `lib/utils/operations-list-group.ts` — group keys and pipeline stage order for Operations list
+
+### Changed
+- Operations pipeline table — click **Stage**, **SDR**, or **Sales rep** column header to group rows on the current page (layers icon; click again to clear); mobile cards use matching section headers
+
+## [2026-07-01] — Customer Key Account sales rep
+
+### Added
+- `customers.key_account_sales_rep_id` — optional dedicated sales rep per customer (Admin assigns on CRM profile)
+- `lib/utils/resolve-key-account-sales-rep.ts` — resolve active Key Account rep for routing
+- Route to Sales modal — Key Account hint + pre-select when customer has active rep
+- Add Lead modal — Key Account banner + **Route to Key Account Holder** (creates lead routed + assigned in one step)
+- Sales page Admin reassign modal — advisory Key Account hint
+
+### Changed
+- `GET /api/leads/sales-users?customer_id=` — returns `key_account` alongside active sales users
+- `PATCH /api/leads/[id]` — auto-assigns Key Account rep on route when queue not explicitly chosen
+- `POST /api/leads/manual` — optional `route_to_key_account: true` for linked customers
+- `PATCH /api/customers/[id]` — Admin-only `key_account_sales_rep_id`; GET returns `key_account_rep` display metadata
+- Customer merge — preserves Key Account from merged record when survivor has none
+- `supabase/migrations/20260701_key_account_permissions.sql` — RBAC catalog: `crm.assign_key_account`, `leads.route_to_key_account` (+ SDR/Admin grants)
+
+### Changed (docs)
+- `docs/TECHNICAL_REFERENCE.md`, `docs/reference/architecture.md`, `docs/guides/component-architecture.md`, `docs/reference/security.md` — Key Account feature sync
+- `supabase/schema.sql` — `key_account_sales_rep_id` column + index
+
+## [2026-06-29] — Line item comment auto-height
+
+### Fixed
+- Quote line item **Comment** field — textarea grows with content (`overflow-hidden`, no inner scroll); still starts at two rows when empty
+
+## [2026-06-29] — Documentation sync: leads/sales list date columns
+
+### Changed
+- **`docs/feature-specs/leads-sdr.md`** — list date display note; All / Claimed / Won / Rejected / Directed to Sales / In Progress column tables; new Claimed Leads tab section
+- **`docs/feature-specs/leads-sales.md`** — list date display note; worklist milestone column; API enrichment (`routed_at`, `in_progress_at`)
+- **`docs/reference/api-contract.md`** — workspace + sales page-data list row enrichment
+- **`docs/TECHNICAL_REFERENCE.md`** — SDR/Sales list column notes; `formatTimeTodayOrDateNumeric`; `lead-in-progress-query.ts`, `lead-routed-to-sales-query.ts`
+- **`docs/guides/component-architecture.md`** — format/reason label helpers; updated tab lists in architecture diagram
+- **`docs/reference/architecture.md`** — `leads-page.tsx` / `sales-page.tsx` component descriptions
+
+## [2026-06-29] — Directed to Sales Created + Updated columns
+
+### Changed
+- Leads page **Directed to Sales** tab — **Created** column added; **Updated** uses time-today or numeric date instead of relative time (`4d ago`); desktop + mobile
+
+## [2026-06-29] — Leads In Progress tab milestone column
+
+### Changed
+- Leads page **In Progress** tab — **Started** renamed **In Progress**; shows SDR `lead_in_progress` activity time; **Created** column added (same date format as other tabs)
+- `GET /api/leads/workspace/page-data?status=In Progress` — enriches leads with `in_progress_at`
+- `lib/utils/lead-in-progress-query.ts` — shared `fetchInProgressAtByLeadIds` + `fetchSdrInProgressAtByLeadIds`
+
+## [2026-06-29] — In Progress tab milestone column
+
+### Changed
+- Sales Pipeline **In Progress** tab — **Routed** column renamed **In Progress**; shows when rep marked the lead in progress (`lead_in_progress` activity), not route-to-sales time
+- `GET /api/leads/sales/page-data?tab=in_progress` — enriches leads with `in_progress_at`
+- `lib/utils/lead-in-progress-query.ts` — `fetchSalesInProgressAtByLeadIds`
+
+## [2026-06-29] — Rejected tab dates + reason labels
+
+### Added
+- `lib/constants/reject-reasons.ts` — `rejectReasonLabel` maps stored values (e.g. `spam_bot`) to display labels (Spam / Bot)
+
+### Changed
+- Sales Pipeline **Rejected** tab — **Created** and **Sent to Rejected** columns; rejection reason shows label not raw slug
+- Leads page **Rejected** tab — same columns, date format, and `rejectReasonLabel` on desktop + mobile
+
+## [2026-06-29] — On Hold Created + sent date columns
+
+### Changed
+- Sales Pipeline **On Hold** tab — **Created** and **Sent to Hold** columns (time today or numeric date); renamed **Held** → **Sent to Hold**
+- Leads page **On Hold** tab — same columns and date format on desktop + mobile
+
+## [2026-06-29] — Follow Up Later Created + sent date columns
+
+### Changed
+- Sales Pipeline **Follow Up Later** tab — **Created** and **Sent to Follow Up** columns (time today or numeric date); renamed **Marked** → **Sent to Follow Up**
+- Leads page **Follow Up Later** tab — same **Created** / **Sent to Follow Up** columns and date format on desktop + mobile
+
+## [2026-06-29] — Created column + date format on leads lists
+
+### Changed
+- Sales Pipeline (Pipeline · Claimed · In Progress) — **Created** column added; uses `formatTimeTodayOrDateNumeric` (time if today, else `6/28/2026`)
+- Leads page — **Created** column (All · Claimed tabs + Won history table) uses the same format instead of relative time (`4d ago`)
+
+## [2026-06-29] — Sales Pipeline routed timestamp fix
+
+### Changed
+- Sales Pipeline **Routed** column — uses `lead_routed_to_sales` activity time (`routed_at` from API), not `updated_at` or `created_at`; falls back to `updated_at` for legacy rows without the activity
+- `GET /api/leads/sales/page-data` — enriches each lead with `routed_at`
+- `lib/utils/lead-routed-to-sales-query.ts` — `fetchRoutedToSalesAtByLeadIds`
+
+## [2026-06-29] — Sales Pipeline routed time display
+
+### Changed
+- Sales Pipeline **Routed** column — today shows local time (e.g. `2:30 PM`); earlier dates show numeric date (`6/28/2026`) instead of relative labels (`1h ago`, `2d ago`)
+- `lib/utils/format.ts` — added `formatTimeTodayOrDateNumeric`
+
+## [2026-06-30] — Operations Performance hints
+
+### Changed
+- Performance tab — “How to read this table” info callout; per-row plain-language breakdown under each name (e.g. `4 on hand — 2 quoted (1 sent, 1 not sent) · 2 ordered / in production`); clearer column tooltips
+
+## [2026-06-30] — Operations documentation sync
+
+### Changed
+- **`docs/feature-specs/operations.md`** — full admin Operations spec (tabs, Performance scorecard, API, live updates)
+- **`docs/reference/navigation.md`** — Operations route, sidebar order, `GitBranch` icon
+- **`docs/reference/api-contract.md`** — `GET /api/admin/operations/page-data` contract
+- **`docs/reference/rbac.md`** — `/operations` page + API in admin-only matrix
+- **`docs/reference/schema.md`** — `pages` row for Operations + nav `sort_order`
+- **`docs/reference/architecture.md`** — route, API, and component entries
+- **`docs/reference/security.md`** — admin-only page hard-block includes `/operations`
+- **`docs/feature-specs/admin.md`** — link to Operations spec
+- **`docs/guides/realtime-live-updates.md`** — Operations page event listeners
+- **`docs/TECHNICAL_REFERENCE.md`** — §28 Admin Operations Pipeline, key file index
+- **`.cursor/rules/no-duplication.mdc`** — `formatDateNumeric` canonical helper
+
+## [2026-06-30] — Operations Performance tab first
+
+### Changed
+- Operations **Performance** tab is the first filter pill (before All active)
+
+## [2026-06-30] — Operations Performance tab
+
+### Added
+- Operations **Performance** tab — totals row + per-user scorecard (pipeline counts, paid vs awaiting on orders)
+- `lib/utils/fetch-admin-operations-performance.ts` — aggregates lead pool by rep / SDR
+- `components/admin/operations-performance-panel.tsx` — performance table UI
+
+## [2026-06-30] — Operations sidebar position + icon
+
+### Changed
+- Sidebar — **Operations** moved directly below **Dashboard** (admin nav); `resolve-nav-pages` pins order even if DB `sort_order` is stale
+- Operations icon — **`GitBranch`** (was falling back to Dashboard icon because `GitBranch` was missing from `ICON_MAP`)
+
+## [2026-06-29] — Operations “Unclaimed leads” tab label
+
+### Changed
+- Operations filter pill **Sales queue** renamed to **Unclaimed leads** (routed to sales, not yet claimed by a rep)
+
+## [2026-06-29] — Operations table typography
+
+### Changed
+- Operations desktop table — cell text sizes, padding, and View button match Orders (`lg:text-xs xl:text-sm`, `text-xs` refs/dates, shared `TicketListViewButton`)
+
+## [2026-06-29] — Operations numeric dates
+
+### Changed
+- Operations table and deal detail — dates use numeric month format (`6/29/2026`) via shared `formatDateNumeric`
+
+## [2026-06-29] — Operations modal linked ticket UX
+
+### Changed
+- Deal detail dialog — Quote / Order use app-wide **`useGlobalLoading`** overlay (same as Leads / quote saves)
+- `quote-detail` clears global loading when ticket page-data finishes loading
+- Quote / Order rows remain full-width clickable with external-link icon
+- Recent activity is **collapsed by default** — loads in the background; tap the section header to expand (shows event count when ready); expanded list scrolls within remaining modal space while footer buttons stay pinned
+- Quote / Order linked rows and table ref cells show pointer cursor on hover
+
+## [2026-06-29] — Operations table column balance
+
+### Changed
+- Customer column narrowed (~11%) with truncation; Stage, Quote, Order, and Sales rep get more width (`table-fixed` + `colgroup`, same pattern as Orders)
+
+## [2026-06-29] — Operations matches list page design tokens
+
+### Fixed
+- `StatusPill` — ticket stages (`In Production`, `Completed`, `Sent`, `Converted`, etc.) use the same info/success/warning tokens as Orders and Quotes (no gray fallback)
+- Operations table shell — `rounded-b-xl border-t-0` attached to toolbar like other list pages
+- Owner hints use `--color-info-text` instead of gold accent
+
+## [2026-06-29] — Operations stage vs owner clarity
+
+### Changed
+- **Stage** column shows whether status comes from a ticket (`Ticket ORD-…`) or **Lead status**
+- **SDR / Sales rep** — active owner highlighted (bold + label); inactive column dimmed
+- Detail dialog explains ticket-driven vs lead-driven stage
+
+## [2026-06-29] — Operations rows per page
+
+### Changed
+- `/operations` — **Rows per page** (25 / 50 / 100) on list pagination, same as Orders / Quotes / Leads; preference stored in `localStorage`
+
+## [2026-06-29] — Operations Rejected tab (was Closed)
+
+### Changed
+- Filter pill **Closed** → **Rejected** — matches Sales / Leads Rejected tab and stage column label
+- `isOperationsRejectedLead()` — cancelled-only deals stay on Quoted/Order (Cancelled stage), not Rejected tab
+
+## [2026-06-29] — Operations Completed matches /completed page
+
+### Fixed
+- `hasOperationsCompletedOrder()` — Completed bucket requires `ticket_status === "completed"` on the resolved order (same as `/completed`); lead `sales_status: Won` (production release) no longer routes to Completed tab
+
+## [2026-06-29] — Operations Completed tab includes unlinked orders
+
+### Fixed
+- `fetchUnlinkedCompletedLeadsInRange()` — synthetic lead rows for completed tickets without `linked_lead_id`, matching `/completed` (`updated_at` window, excludes refunded)
+
+## [2026-06-29] — Operations shows QUO ref for converted orders
+
+### Fixed
+- `quoteReferenceFromOrderReference()` — ORD-2026-0098 → QUO-2026-0098 (same sequence after in-place conversion)
+- `resolveOperationsTicketRefs()` — derives quote ref from order ticket when quote and order share one row
+- Quote column links use the live ORD ref for navigation while displaying QUO-*
+
+## [2026-06-29] — Operations Order tab includes unlinked orders
+
+### Fixed
+- `lib/utils/fetch-admin-operations-data.ts` — include order tickets without `linked_lead_id` (same pattern as unlinked quotes); match orders by conversion activity, `updated_at`, and `created_at` in date range
+
+## [2026-06-29] — Fix Operations unlinked quotes query (PGRST201)
+
+### Fixed
+- `lib/utils/fetch-admin-operations-data.ts` — unlinked quote fetch uses `customers!job_tickets_customer_id_fkey` embed (ambiguous `customers` join caused 500)
+- `app/api/admin/operations/page-data/route.ts` — return Supabase/PostgREST error message to client
+
+## [2026-06-29] — Operations Quoted tab matches sent quotes
+
+### Fixed
+- `lib/utils/fetch-admin-operations-data.ts` — batch-loads linked `job_tickets` per lead (nested embed was unreliable); includes unlinked quote tickets from Quoted Requests; sent/approved quotes match date range on `updated_at`
+- `lib/utils/admin-deal-stage.ts` — Quoted bucket ignores cancelled-only ticket history; prefers active quote/order tickets; detects sent quotes like Sales pipeline
+
+## [2026-06-29] — Operations date filter matches ticket activity
+
+### Fixed
+- `lib/utils/fetch-admin-operations-data.ts` — date range now includes leads when a linked quote was **created**, order was **created/converted**, or order was **completed** (`updated_at`) in range — not only `lead.created_at`; also pulls in older leads via ticket activity and raises fetch limit
+- `lib/utils/admin-deal-stage.ts` — Quoted / Order buckets detect any linked quote or order ticket on the lead
+
+## [2026-06-29] — Fix Operations page empty (API 500)
+
+### Fixed
+- `lib/utils/fetch-admin-operations-data.ts` — SDR names now loaded via batch `user_profiles` lookup; removed invalid `leads_sdr_id_fkey` embed (`sdr_id` references `auth.users`, not `user_profiles`)
+
+## [2026-06-29] — Admin Operations pipeline page
+
+### Added
+- `/operations` — admin-only deal pipeline: lead → quote → order traceability with stage filter pills, date range (default Last 30 days), user filter, search, pagination, row detail dialog, and read-only VerifyDrawer
+- `GET /api/admin/operations/page-data` — paginated deals list + filter counts
+- `lib/utils/admin-deal-stage.ts` — stage labels, filter buckets, ticket ref resolution
+- `lib/utils/fetch-admin-operations-data.ts` — leads + nested tickets query
+- `components/admin/operations-page.tsx`, `components/admin/operations-deal-detail-dialog.tsx`
+- Migration `20260629_operations_page.sql` — `pages` row for Operations (`GitBranch`, admin-only via `ADMIN_ONLY_PAGE_ROUTES`)
+
 ## [2026-06-29] — Order webhook sends CRM sides labels
 
 ### Changed

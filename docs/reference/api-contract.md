@@ -57,6 +57,7 @@ Tabbed list pages should prefer **one** request on mount instead of separate lis
 | `GET /api/production/page-data` | `{ orders, counts, pagination }` | Production — server-side tab, search + pagination |
 | `GET /api/crm/page-data` | `{ customers, pagination }` | CRM page — server-side search, status, heat, duplicates filter + DB-level pagination; every row includes `is_duplicate_phone` |
 | `GET /api/leads/workspace/page-data?…` | `{ leads, counts, pagination, routedSubCounts? }` | Leads page — server-side tab, search, owner scope, routed sub-filter, sort + pagination |
+| `GET /api/admin/operations/page-data` | `{ deals, counts, pagination }` or `{ performance, counts, deals: [], pagination }` when `stage=performance` | Operations (admin-only) — pipeline list + tab counts, or Performance scorecard |
 
 **Slim count-only routes** (realtime refresh without full list): `GET /api/orders/counts`, `GET /api/quotes/counts`, plus existing `*/counts` routes.
 
@@ -252,6 +253,14 @@ Paginated workspace list + all tab badge counts in one auth pass. Used by `compo
 
 `routedSubCounts` is present when `routed=true`. Tab `counts.all` = unclaimed pool size for SDR. `counts.claimed` = SDR-only (0 for admin). Other tab counts exclude `limit`/`offset`.
 
+**List row enrichment (2026-06-29):**
+
+| When | Field on each lead | Source |
+|------|-------------------|--------|
+| `status=In Progress` | `in_progress_at` | Latest SDR `lead_in_progress` activity (`fetchSdrInProgressAtByLeadIds`) |
+
+UI fallback when activity missing: `updated_at`. Created/deferral columns use `created_at`, `follow_up_at`, `held_at` directly with `formatTimeTodayOrDateNumeric`.
+
 ---
 
 ### `GET /api/leads/workspace/counts`
@@ -295,6 +304,15 @@ Combined list + tab badge counts for `/sales`. One `requireSession()` pass.
 
 **Response `200`:** `{ leads, counts: { pipeline, claimed, in_progress, follow_up, hold, rejected }, pagination }`
 
+**List row enrichment (2026-06-29):**
+
+| When | Field on each lead | Source |
+|------|-------------------|--------|
+| All tabs | `routed_at` | Latest `lead_routed_to_sales` activity (`fetchRoutedToSalesAtByLeadIds`) |
+| `tab=in_progress` | `in_progress_at` | Latest sales `lead_in_progress` activity (`fetchSalesInProgressAtByLeadIds`) |
+
+List **Created** / milestone / deferral columns use `formatTimeTodayOrDateNumeric`. **Rejected** reason column uses `rejectReasonLabel`. Fallback when activity missing: `updated_at`.
+
 **Tab filters (server-side via `lib/utils/leads-workspace-query.ts`):**
 
 | Tab | Filter |
@@ -306,7 +324,24 @@ Combined list + tab badge counts for `/sales`. One `requireSession()` pass.
 | `hold` | `sales_status = On Hold` — Sales: own; Admin: all |
 | `rejected` | `status = Rejected` AND `prev_status = Routed to Sales` |
 
-**Related:** `GET /api/leads/sales-counts` — counts-only refresh (same `counts` shape).
+**Related:** `GET /api/leads/sales-counts` — counts-only refresh (same `counts` shape).  
+**Related:** `GET /api/leads/sales-users?customer_id=` — active sales users + optional `key_account` for Route to Sales / Add Lead modals.
+
+---
+
+### `GET /api/leads/sales-users`
+
+Returns active sales users for assignment modals. Any authenticated user (SDRs need this for Route to Sales).
+
+**Query:** `customer_id` (optional UUID) — when set, response includes `key_account` for that customer's active Key Account rep (or `null`).
+
+**Response `200`:**
+```json
+{
+  "users": [{ "id": "uuid", "full_name": "string" }],
+  "key_account": { "id": "uuid", "full_name": "string" } | null
+}
+```
 
 ---
 
@@ -334,7 +369,8 @@ Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id 
   "quantities": "object",
   "has_design": "object",
   "customer_id": "uuid | null",
-  "create_customer": "boolean"
+  "create_customer": "boolean",
+  "route_to_key_account": "boolean (optional)"
 }
 ```
 
@@ -350,13 +386,14 @@ Creates a new lead directly in the workspace (`is_inbox = false`). Sets `sdr_id 
 - **Customer linking:** pass either `customer_id` (selected existing) OR `create_customer: true` (create new from form data) OR neither (no customer yet — can be linked later)
 - If `create_customer: true`: server creates a `customers` row from the lead's contact fields (including **`authority`**), sets `customer_id` on the new lead
 - If `customer_id` is provided and **`authority`** is set: updates `customers.authority` (not `leads.authority`)
-- Default `status = 'Pending'`
+- Default `status = 'Pending'` unless `route_to_key_account: true` (requires linked `customer_id`, not `create_customer`) — then `status = 'Routed to Sales'`, `sales_status = 'Claimed'`, `sales_owner_id` = customer's active Key Account rep; logs `lead_routed_to_sales` + `lead_reassigned`
 - Logs `lead_manual_created` activity
 
 **Response `201`:**
 ```json
 {
-  "lead": Lead
+  "lead": Lead,
+  "key_account_rep": { "id": "uuid", "full_name": "string" } | null
 }
 ```
 
@@ -475,13 +512,14 @@ Restores a lead from hold or follow-up later to its previous status. Clears hold
 
 ### `PATCH /api/leads/[id]`
 
-Partial update of a lead. Only the following fields are accepted — all other keys are silently dropped (field whitelist, prevents mass-assignment of privileged columns like `sales_owner_id`, `locked_by_id`, `sdr_id`, hold/follow-up fields, etc.):
+Partial update of a lead. Only the following fields are accepted — all other keys are silently dropped (field whitelist):
 
-**Allowed fields:** `urgency`, `interests`, `quantities`, `has_design`, `sdr_comment`, `is_returning_customer`, `brand`, `source`, `quote_destination`, `sales_notes`, `sales_status`, `status`, `rejection_reason`, `rejection_notes`
+**Allowed fields:** `urgency`, `interests`, `quantities`, `has_design`, `sdr_comment`, `is_returning_customer`, `brand`, `source`, `quote_destination`, `sales_notes`, `sales_status`, `status`, `rejection_reason`, `rejection_notes`, `sales_owner_id`
 
 **Special field:** `authority` — routed to `customers.authority` (different table), not the leads table. Response includes refreshed `customer` join.
 
 **Business rules:**
+- When `status` → `'Routed to Sales'` and lead has `customer_id`: if `sales_owner_id` is omitted or not explicitly set to queue (`null` only when client sends explicit null to skip Key Account), server auto-assigns the customer's **active Key Account rep** (`sales_status = 'Claimed'`)
 - `quote_destination` is normalized to digits-only on every write
 - **Product interests:** when `interests` / `quantities` / `has_design` are sent, validated via `validateLeadProductInterests()` (product required; quantity **> 0** when product selected)
 - Logs `lead_status_changed` activity if `status` or `sales_status` changes
@@ -833,7 +871,8 @@ Full customer profile for `/crm/customers/[id]`. Returns customer row, `lead_cou
     }
   ],
   "lead_count": 0,
-  "customer_status": "new | known"
+  "customer_status": "new | known",
+  "key_account_rep": { "id": "uuid", "full_name": "string", "is_active": true } | null
 }
 ```
 
@@ -877,17 +916,19 @@ Update a customer profile. Called when SDR chooses "Yes, update profile" on the 
 
 **Body:** Any subset of customer fields (except `id`, `created_at`).
 
-**Allowed fields:** `first_name`, `last_name`, `email`, `phone`, `company`, `industry`, `website`, `authority`, `heat_tag`
+**Allowed fields:** `first_name`, `last_name`, `email`, `phone`, `company`, `industry`, `website`, `authority`, `heat_tag`, `key_account_sales_rep_id` (Admin only)
 
 **Business rules:**
 - Phone normalized to digits-only
+- **`key_account_sales_rep_id`:** Admin only — `403` for other roles. Must be an active sales user or `null` to clear.
 - **`website`:** if non-empty, validated and normalized (`https://` prefixed when protocol omitted; user may submit `example.com` without scheme); empty string clears to `null`
-- Logs `customer_updated` activity
+- Logs `contact_edited` activity
 
 **Response `200`:**
 ```json
 {
-  "customer": Customer
+  "customer": Customer,
+  "key_account_rep": { "id": "uuid", "full_name": "string", "is_active": true } | null
 }
 ```
 
@@ -895,7 +936,7 @@ Update a customer profile. Called when SDR chooses "Yes, update profile" on the 
 
 ### `POST /api/customers/[id]/merge`
 
-Merge duplicate customer **source** (`id` in path) into **target** (`target_id` in body). Optionally applies field overrides to the surviving record first. Moves all leads, **job tickets**, and activities to the target, logs a merge activity, then **deletes** the source customer.
+Merge duplicate customer **source** (`id` in path) into **target** (`target_id` in body). Optionally applies field overrides to the surviving record first. If target has no Key Account and source does, copies `key_account_sales_rep_id` to target. Moves all leads, **job tickets**, and activities to the target, logs a merge activity, then **deletes** the source customer.
 
 **Auth:** Admin or Sales only (`403` for SDR, Accountant, etc.).
 
@@ -2615,6 +2656,84 @@ Update a user's role, active status, full name, or reset their temp password.
 ```
 
 When Instantly is not configured or delivery fails, `email_delivery.ok` is `false` and `error` explains why (e.g. `"Instantly credentials not configured."`). Omitted when no password was reset.
+
+---
+
+### `GET /api/admin/operations/page-data`
+
+Admin Operations pipeline + Performance scorecard. **`requireAdmin()`** only.
+
+**Query params:**
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `stage` | `string` | `performance`, `all_active`, `sdr`, `sales_queue`, `sales_working`, `quoted`, `order`, `completed`, `hold`, `rejected` (default `all_active`) |
+| `date_preset` | `string` | Dashboard date preset (default `last_month`) |
+| `date_from`, `date_to` | `string` | Custom range (`YYYY-MM-DD`) |
+| `user_id` | `uuid` | Filter by SDR / sales owner / locker |
+| `search` | `string` | Pipeline tabs only — customer, company, refs, stage |
+| `limit`, `offset` | `number` | Pagination (default 25; pipeline tabs only) |
+
+**Response `200` (pipeline tab):**
+```json
+{
+  "deals": [{
+    "lead_id": "uuid",
+    "customer_name": "string",
+    "company": "string | null",
+    "stage": "string",
+    "stage_ticket_ref": "string | null",
+    "stage_from_ticket": "boolean",
+    "owner_highlight": "sdr | sales | unclaimed | null",
+    "sdr_name": "string | null",
+    "sales_owner_name": "string | null",
+    "quote_ref": "string | null",
+    "quote_id": "uuid | null",
+    "quote_created_at": "iso | null",
+    "order_ref": "string | null",
+    "order_id": "uuid | null",
+    "order_created_at": "iso | null",
+    "lead_created_at": "iso",
+    "ticket_only": "boolean | undefined"
+  }],
+  "counts": { "all_active": 0, "performance": 0, "sdr": 0, "sales_queue": 0, … },
+  "pagination": { "limit": 25, "offset": 0, "total": 0, "hasMore": false }
+}
+```
+
+**Response `200` (`stage=performance`):**
+```json
+{
+  "performance": {
+    "totals": {
+      "user_id": "__total__",
+      "full_name": "Total",
+      "role_name": "all",
+      "role_display_name": "All team",
+      "leads_on_hand": 0,
+      "unclaimed": 0,
+      "claimed": 0,
+      "in_progress": 0,
+      "on_hold": 0,
+      "rejected": 0,
+      "quoted": 0,
+      "sent_to_customer": 0,
+      "ordered": 0,
+      "completed": 0,
+      "paid_so_far": 0,
+      "awaiting_payment": 0,
+      "paid_so_far_label": "$0.00",
+      "awaiting_payment_label": "$0.00"
+    },
+    "users": [/* same shape per team member */]
+  },
+  "counts": { … },
+  "deals": [],
+  "pagination": { "total": 0, … }
+}
+```
+
+**Spec:** `docs/feature-specs/operations.md`
 
 ---
 

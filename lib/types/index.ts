@@ -101,6 +101,7 @@ export interface Customer {
   website: string | null
   authority: string | null
   heat_tag: HeatTag | null
+  key_account_sales_rep_id: string | null
   tax_exempt_last_permit_number: string | null
   tax_exempt_last_storage_path: string | null
   tax_exempt_last_file_name: string | null
@@ -193,6 +194,10 @@ export interface Lead {
   locked_by?: UserProfile
   sales_owner?: { id: string; full_name: string | null } | null
   created_by?: { id: string; full_name: string | null } | null
+  /** Enriched on sales list API — `lead_routed_to_sales` activity timestamp */
+  routed_at?: string | null
+  /** Enriched on In Progress lists — `lead_in_progress` activity (sales or SDR role) */
+  in_progress_at?: string | null
 }
 
 export const PRODUCT_INTERESTS = [

@@ -16,6 +16,8 @@ Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progres
 
 > **Page load (2026-06-29):** Six tabs with count badges from one **`GET /api/leads/sales/page-data`** call. Admin **search + team member filter** on Claimed and In Progress tabs only.
 
+> **List date display (2026-06-29):** List columns use **`formatTimeTodayOrDateNumeric`** (time if today, else `6/28/2026`). Milestone timestamps come from **activity enrichment** on page-data (`routed_at`, `in_progress_at`) with `updated_at` fallback. Rejection reasons use **`rejectReasonLabel`**. Drawer History timelines still use **`relativeTime`**.
+
 ---
 
 ## Tabs summary
@@ -81,7 +83,8 @@ Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progres
 | Sales Status | Pill: Claimed / In Progress / Quote Sent / — on Pipeline |
 | Urgency | `UrgencyPill` |
 | Owner | Unclaimed / You / rep name (Admin) |
-| Routed | `updated_at` relative time |
+| Created | `created_at` |
+| Milestone | **Pipeline · Claimed:** column header **Routed** — `routed_at` (`lead_routed_to_sales` activity). **In Progress tab:** column header **In Progress** — `in_progress_at` (sales `lead_in_progress` activity). Both use `formatTimeTodayOrDateNumeric`; fallback `updated_at`. |
 | Action | See per-tab above |
 
 ### Claim behavior
@@ -106,6 +109,8 @@ Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progres
 
 **Resume** → restores `prev_sales_status` (Claimed, In Progress, or Quote Sent)
 
+**Columns:** Name · Company · Product Interests · Reason · Follow Up On · Created · Sent to Follow Up · Actions — Created and Sent to Follow Up use time-today or numeric date (`formatTimeTodayOrDateNumeric`).
+
 ---
 
 ## Tab: On Hold
@@ -117,6 +122,8 @@ Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progres
 
 **Hold** snapshots `prev_sales_status`. **Resume** → `POST /api/leads/[id]/resume` with `role: 'sales'` restores prior tab/status.
 
+**Columns:** Name · Company · Product Interests · Hold Reason · Hold Until · Created · Sent to Hold · Actions — Created and Sent to Hold use time-today or numeric date.
+
 ---
 
 ## Tab: Rejected
@@ -125,6 +132,8 @@ Sales workflow stages: **claim** → **Claimed** tab → rep clicks **In Progres
 
 - `status = 'Rejected'` AND `prev_status = 'Routed to Sales'`
 - Excludes SDR-only rejections
+
+**Columns:** Name · Company · Product Interests · Phone · Rejection Reason · Created · Sent to Rejected · Action — reason labels via `rejectReasonLabel`; dates use time-today or numeric format.
 
 ---
 
@@ -150,9 +159,19 @@ Centered modal (`780px`, `80vh`). See `components/sales/sales-drawer.tsx`.
 ## API
 
 - `GET /api/leads/sales/page-data?tab=&limit=&offset=&search=&user_id=` → `{ leads, counts: { pipeline, claimed, in_progress, follow_up, hold, rejected }, pagination }`
+  - Every lead row includes optional **`routed_at`** (from `fetchRoutedToSalesAtByLeadIds`)
+  - When `tab=in_progress`, each row also includes **`in_progress_at`** (from `fetchSalesInProgressAtByLeadIds`, sales role only)
 - `GET /api/leads/sales-counts` → lightweight `{ counts }` (same shape)
 - `POST /api/leads/[id]/claim` → `sales_status: "Claimed"`
 - `POST /api/leads/[id]/in-progress` with `{ role: "sales" }` → `sales_status: "In Progress"` (from Claimed only)
+
+---
+
+## Admin reassign modal
+
+**Reassign** on Claimed / In Progress / Quote Sent tabs opens a dialog to change `sales_owner_id`.
+
+When the lead's customer has an **active Key Account rep**, the modal shows an advisory info callout with the rep name. Assignment is not forced — admin may still reassign or unassign freely.
 
 ---
 

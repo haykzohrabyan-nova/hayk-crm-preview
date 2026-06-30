@@ -49,3 +49,29 @@ export async function countLeadsRoutedToSales(
   const ids = await fetchRoutedToSalesLeadIds(admin, opts);
   return ids.length;
 }
+
+/** Most recent `lead_routed_to_sales` activity timestamp per lead id. */
+export async function fetchRoutedToSalesAtByLeadIds(
+  admin: AdminClient,
+  leadIds: string[],
+): Promise<Map<string, string>> {
+  if (leadIds.length === 0) return new Map();
+
+  const { data, error } = await admin
+    .from("activities")
+    .select("lead_id, created_at")
+    .eq("type", "lead_routed_to_sales")
+    .in("lead_id", leadIds)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    const leadId = row.lead_id as string | null;
+    const at = row.created_at as string | null;
+    if (!leadId || !at || map.has(leadId)) continue;
+    map.set(leadId, at);
+  }
+  return map;
+}

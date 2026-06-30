@@ -7,6 +7,7 @@ import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
 import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
 import { validateLeadInterestsPayload } from "@/lib/utils/validate-lead-product-interests";
+import { resolveActiveKeyAccountSalesRep } from "@/lib/utils/resolve-key-account-sales-rep";
 
 export async function POST(request: NextRequest) {
   const { userId, roleName, errorResponse } = await requireSession();
@@ -40,7 +41,24 @@ export async function POST(request: NextRequest) {
     has_design,
     customer_id,
     create_customer,
+    route_to_key_account,
   } = body;
+
+  const routeToKeyAccount = route_to_key_account === true;
+
+  if (routeToKeyAccount && create_customer) {
+    return NextResponse.json(
+      { error: "Route to Key Account requires an existing linked customer.", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
+  }
+
+  if (routeToKeyAccount && !customer_id) {
+    return NextResponse.json(
+      { error: "Route to Key Account requires a linked customer.", code: "VALIDATION_ERROR" },
+      { status: 400 },
+    );
+  }
 
   if (!phone) {
     return NextResponse.json(
@@ -113,6 +131,17 @@ export async function POST(request: NextRequest) {
       .eq("id", resolvedCustomerId);
   }
 
+  let keyRep: { id: string; full_name: string | null } | null = null;
+  if (routeToKeyAccount && resolvedCustomerId) {
+    keyRep = await resolveActiveKeyAccountSalesRep(admin, resolvedCustomerId);
+    if (!keyRep) {
+      return NextResponse.json(
+        { error: "This customer has no active Key Account sales rep.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+  }
+
   const { data: lead, error: lErr } = await admin
     .from("leads")
     .insert({
@@ -123,7 +152,9 @@ export async function POST(request: NextRequest) {
         ? urgency.charAt(0).toUpperCase() + urgency.slice(1).toLowerCase()
         : null,
       is_inbox: false,
-      status: "Pending",
+      status: routeToKeyAccount ? "Routed to Sales" : "Pending",
+      sales_status: routeToKeyAccount ? "Claimed" : null,
+      sales_owner_id: keyRep?.id ?? null,
       sdr_id: userId,
       is_returning_customer: is_returning_customer ?? false,
       sdr_comment: sdr_comment ?? null,
@@ -151,5 +182,30 @@ export async function POST(request: NextRequest) {
     payload: { source },
   });
 
-  return NextResponse.json({ lead }, { status: 201 });
+  if (routeToKeyAccount && keyRep) {
+    await admin.from("activities").insert([
+      {
+        lead_id: lead.id,
+        customer_id: resolvedCustomerId,
+        type: "lead_routed_to_sales",
+        by_user_id: userId,
+        payload: {},
+      },
+      {
+        lead_id: lead.id,
+        customer_id: resolvedCustomerId,
+        type: "lead_reassigned",
+        by_user_id: userId,
+        payload: {
+          from_user_id: null,
+          from_name: null,
+          to_user_id: keyRep.id,
+          to_name: keyRep.full_name,
+          role: "sales",
+        },
+      },
+    ]);
+  }
+
+  return NextResponse.json({ lead, key_account_rep: keyRep }, { status: 201 });
 }

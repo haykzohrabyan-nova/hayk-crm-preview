@@ -414,7 +414,7 @@ export function VerifyDrawer({
       ...payload,
       status: "Routed to Sales",
       sales_status: salesOwnerId ? "Claimed" : null,
-      ...(salesOwnerId ? { sales_owner_id: salesOwnerId } : {}),
+      sales_owner_id: salesOwnerId,
     });
     setSaving(false);
     if (!updated) return;
@@ -1320,6 +1320,7 @@ export function VerifyDrawer({
           void doRoute(salesOwnerId);
         }}
         saving={saving}
+        customerId={lead.customer_id}
       />
     </>
   );

@@ -5,7 +5,7 @@
 Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are seeded and cannot be deleted. Admin can create additional custom roles and assign page access to each via the Settings → Roles tab.
 
 **Enforcement layers:**
-1. **`proxy.ts`** — reads role permissions from DB on every **page** request; redirects unauthorized roles; hard-blocks **`/settings`**, **`/reports`**, and **`/activity-log`** for non-admins
+1. **`proxy.ts`** — reads role permissions from DB on every **page** request; redirects unauthorized roles; hard-blocks **`/settings`**, **`/reports`**, **`/activity-log`**, and **`/operations`** for non-admins
 2. **Route Handlers** — `requireSession()` / `requireAdmin()` + object checks (`canReadLead`, `canAccessTicket`, …) + page gates:
    - **`requirePageAccess(route)`** — single page route (lists, CRM, payments, …)
    - **`requireAnyPageAccess(routes)`** — ticket detail, shipping addresses, contextual ticket APIs
@@ -17,7 +17,7 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 
 **Action permission helpers (Slice 0):** `lib/auth/has-permission.ts` (`hasPermission`, `hasAllPermissions`, `hasAnyPermission`), `lib/auth/require-permission.ts` (`requirePermission` — server guard returning 403), `hooks/use-permissions.ts` (`usePermissions().can(key)` — client hook). Action grants are loaded into every session and cached 45 s alongside page routes.
 
-> **Current enforcement status:** Slice 0 is deployed. The `permissions` catalog (50 keys) and `role_action_grants` seeds are in the DB. All helpers are ready. **Zero route handlers have been wired yet** — all existing `roleName` checks are still active and authoritative. Wiring happens slice-by-slice when workflows are stable. See [`rbac-migration/plan.md`](rbac-migration/plan.md) for the exact step-by-step wiring process.
+> **Current enforcement status:** Slice 0 is deployed. The `permissions` catalog (**52 keys** — includes Key Account permissions added 2026-07-01) and `role_action_grants` seeds are in the DB. All helpers are ready. **Zero route handlers have been wired yet** — all existing `roleName` checks are still active and authoritative. Wiring happens slice-by-slice when workflows are stable. See [`rbac-migration/plan.md`](rbac-migration/plan.md) for the exact step-by-step wiring process.
 
 ---
 
@@ -73,9 +73,9 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 - Admin gives the role a name and display label
 - Admin then checks which pages from the `pages` table this role can access
 - Users can be assigned to custom roles exactly like system roles
-- Custom roles cannot access `/admin/*`, `/reports`, or `/activity-log` — locked in Roles UI; grant API returns `403`; proxy hard-blocks non-admins
+- Custom roles cannot access `/admin/*`, `/reports`, `/activity-log`, or `/operations` — locked in Roles UI; grant API returns `403`; proxy hard-blocks non-admins
 
-> **Note — System role permissions are locked in the UI.** SDR, Sales, Accountant, and Admin page-permission checkboxes are read-only. Permissions for system roles are fixed and can only be changed via a database migration. Custom roles remain editable; admin-only pages (`/admin`, `/reports`, `/activity-log`) show a lock badge and cannot be granted.
+> **Note — System role permissions are locked in the UI.** SDR, Sales, Accountant, and Admin page-permission checkboxes are read-only. Permissions for system roles are fixed and can only be changed via a database migration. Custom roles remain editable; admin-only pages (`/admin`, `/reports`, `/activity-log`, `/operations`) show a lock badge and cannot be granted.
 
 ---
 
@@ -107,6 +107,7 @@ Roles are **fully database-driven**. Three system roles (SDR, Sales, Admin) are 
 | `/admin/audit` | ✗ | ✗ | ✓ | ✗ | |
 | `/reports` | ✗ | ✗ | ✓ | ✗ | Admin-only — proxy hard-block even if granted in DB |
 | `/activity-log` | ✗ | ✗ | ✓ | ✗ | Admin-only — proxy hard-block even if granted in DB |
+| `/operations` | ✗ | ✗ | ✓ | ✗ | Admin-only — proxy hard-block even if granted in DB |
 
 Admin accessing `/leads` or `/sales` should see the full (unfiltered) view of all leads in those sections.
 
@@ -133,7 +134,7 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET /api/crm/page-data` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
 | `GET /api/customers`, lookup, `[id]` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
 | `GET /api/customers/[id]/shipping-addresses` | ✓ | ✓ | ✓ | `/crm` or `/quotes`; **`scopeJobTicketsQuery()`** on ticket ids |
-| `PATCH /api/customers/[id]` | ✓ | ✓ | ✓ | Requires `/crm` page permission |
+| `PATCH /api/customers/[id]` | ✓ | ✓ | ✓ | Requires `/crm` page permission; **`key_account_sales_rep_id` Admin only** |
 | `POST /api/customers/[id]/merge` | ✗ | ✓ | ✓ | Requires `/crm` page permission |
 | `GET /api/tickets` | ✓ (own) | ✓ (own + all routed) | ✓ (all) | Accountant: ✗ quote list (`kind=quote`) |
 | `GET /api/quotes/page-data` | ✓ | ✓ | ✓ | Accountant → `403` |
@@ -188,6 +189,7 @@ All app endpoints require **`requireSession()`** (MFA-complete) unless noted. Ad
 | `GET/POST /api/admin/materials` | ✗ | ✗ | ✓ |
 | `PATCH/DELETE /api/admin/materials/[id]` | ✗ | ✗ | ✓ |
 | `GET /api/admin/activity-log` | ✗ | ✗ | ✓ |
+| `GET /api/admin/operations/page-data` | ✗ | ✗ | ✓ |
 
 ---
 
@@ -219,7 +221,7 @@ The existing `proxy.ts` enforces on **pages** (not `/api/*`):
 2. No TOTP enrolled → redirect to `/setup-2fa` *(skipped when `user_profiles.mfa_required = false`)*
 3. Session not AAL2 → redirect to `/verify-2fa` *(skipped when trusted-device cookie valid or `mfa_required = false`)*
 
-**API routes** mirror steps 1–3 via `requireSession()` in every Route Handler, plus page gates (`requirePageAccess`, `requireLeadApiPageAccess`, `requireTicketDetailPageAccess`). Non-admins are hard-blocked from **`/reports`** and **`/activity-log`** even if stale `role_permissions` rows exist. See **`docs/security.md`**.
+**API routes** mirror steps 1–3 via `requireSession()` in every Route Handler, plus page gates (`requirePageAccess`, `requireLeadApiPageAccess`, `requireTicketDetailPageAccess`). Non-admins are hard-blocked from **`/reports`**, **`/activity-log`**, and **`/operations`** even if stale `role_permissions` rows exist. See **`docs/security.md`**.
 
 Admins can toggle **`mfa_required`** per user on **Admin → Users** (confirmation dialog). Default is `true` for all users. Admins cannot disable their own 2FA.
 

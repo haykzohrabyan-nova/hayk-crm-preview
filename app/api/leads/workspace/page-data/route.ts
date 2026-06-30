@@ -7,6 +7,7 @@ import {
   fetchLeadsWorkspaceTabCounts,
   parseLeadsWorkspaceQuery,
 } from "@/lib/utils/leads-workspace-query";
+import { fetchSdrInProgressAtByLeadIds } from "@/lib/utils/lead-in-progress-query";
 import { parseListPaginationParams, toPaginatedMeta } from "@/lib/utils/pagination";
 
 /** GET /api/leads/workspace/page-data — paginated workspace list + all tab counts in one auth pass. */
@@ -28,8 +29,21 @@ export async function GET(request: NextRequest) {
       fetchLeadsWorkspace(admin, { ...query, pagination }, userId!, roleName),
       fetchLeadsWorkspaceTabCounts(admin, userId!, roleName, filterUserId),
     ]);
+
+    const leadIds = result.rows
+      .map((row) => row.id)
+      .filter((id): id is string => Boolean(id));
+    const inProgressAtByLeadId =
+      query.status === "In Progress"
+        ? await fetchSdrInProgressAtByLeadIds(admin, leadIds)
+        : new Map<string, string>();
+    const leads = result.rows.map((row) => ({
+      ...row,
+      in_progress_at: row.id ? inProgressAtByLeadId.get(row.id) ?? null : null,
+    }));
+
     return NextResponse.json({
-      leads: result.rows,
+      leads,
       counts,
       routedSubCounts: result.routedSubCounts,
       pagination: toPaginatedMeta({

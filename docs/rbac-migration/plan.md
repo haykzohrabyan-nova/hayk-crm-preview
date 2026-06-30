@@ -132,6 +132,7 @@ If user has page but **no scope key**, list is empty (safe default).
 | `leads.lock` | Acquire lock |
 | `leads.unlock_own` / `leads.unlock_any` | Release lock |
 | `leads.route_to_sales` | Route to sales pipeline |
+| `leads.route_to_key_account` | Add Lead → Route to Key Account Holder (`POST /api/leads/manual`) |
 | `leads.reject` | Reject lead |
 | `leads.hold` / `leads.resume` | Hold / resume |
 | `leads.claim` | Sales claim routed lead |
@@ -298,6 +299,8 @@ Wire routes one at a time within a slice, or wire an entire slice together if yo
 | `PATCH /api/leads/[id]` status=Rejected | `leads.reject` |
 | `PATCH /api/leads/[id]` status=Routed | `leads.route_to_sales` |
 | `PATCH /api/leads/[id]` (rejected lead) | `leads.override_terminal` |
+| `POST /api/leads/manual` (`route_to_key_account: true`) | `leads.route_to_key_account` |
+| `PATCH /api/customers/[id]` (`key_account_sales_rep_id`) | `crm.assign_key_account` |
 | `POST /api/customers/[id]/merge` | `crm.merge` |
 | `PATCH /api/tickets/[id]` claim_ownership | `quotes.claim` |
 | `PATCH /api/tickets/[id]` ticket_status=cancelled | `quotes.cancel` / `orders.cancel` |
@@ -321,6 +324,7 @@ Wire routes one at a time within a slice, or wire an entire slice together if yo
 - [x] Three-tier model + Lead Entry Only example documented
 - [x] Slice 0 shipped — DB tables, seeds, helpers, Admin UI Actions tab (2026-06-09)
 - [x] SQL patch reviewed against full codebase scan — all 50 keys verified (2026-06-09)
+- [x] Key Account catalog keys added — **52 keys** total (`20260701_key_account_permissions.sql`, 2026-07-01)
 - [ ] Slice 1 (Leads) deployed and tested — wire when core workflows stable
 - [ ] Slice 2 (Sales + CRM) deployed and tested
 - [ ] Slice 3 (Quotes) deployed and tested

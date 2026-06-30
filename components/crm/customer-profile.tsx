@@ -44,14 +44,22 @@ interface Customer {
   website: string | null;
   authority: string | null;
   heat_tag: "hot" | "warm" | "cold" | null;
+  key_account_sales_rep_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface KeyAccountRep {
+  id: string;
+  full_name: string | null;
+  is_active: boolean;
 }
 
 interface ProfileData {
   customer: Customer;
   lead_count: number;
   customer_status: "new" | "known" | "returning";
+  key_account_rep?: KeyAccountRep | null;
 }
 
 interface TicketSummary {
@@ -125,18 +133,21 @@ interface EditForm {
   website: string;
   authority: string;
   heat_tag: string;
+  key_account_sales_rep_id: string;
 }
 
 function EditCustomerModal({
   customer,
   industries,
+  isAdmin,
   onClose,
   onSaved,
 }: {
   customer: Customer;
   industries: LookupOption[];
+  isAdmin: boolean;
   onClose: () => void;
-  onSaved: (updated: Customer) => void;
+  onSaved: (updated: Customer, keyAccountRep?: KeyAccountRep | null) => void;
 }) {
   const [form, setForm] = useState<EditForm>({
     first_name: customer.first_name ?? "",
@@ -148,13 +159,23 @@ function EditCustomerModal({
     website: customer.website ?? "",
     authority: customer.authority ?? "",
     heat_tag: customer.heat_tag ?? "",
+    key_account_sales_rep_id: customer.key_account_sales_rep_id ?? "",
   });
+  const [salesReps, setSalesReps] = useState<{ id: string; full_name: string | null }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [websiteError, setWebsiteError] = useState<string | null>(null);
   const editFormRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetch("/api/leads/sales-users")
+      .then((r) => r.json())
+      .then((d) => setSalesReps(d.users ?? []))
+      .catch(() => setSalesReps([]));
+  }, [isAdmin]);
 
   function failField(
     anchor: string,
@@ -191,12 +212,15 @@ function EditCustomerModal({
         website: normalizeWebsite(form.website),
         authority: form.authority || null,
         heat_tag: form.heat_tag || null,
+        ...(isAdmin
+          ? { key_account_sales_rep_id: form.key_account_sales_rep_id || null }
+          : {}),
       }),
     });
     const data = await res.json();
     setSaving(false);
     if (!res.ok) { const msg = data.error ?? "Failed to save."; setError(msg); reportApiError(msg, res, "CustomerProfile"); return; }
-    onSaved(data.customer);
+    onSaved(data.customer, data.key_account_rep ?? null);
     onClose();
   }
 
@@ -300,6 +324,34 @@ function EditCustomerModal({
               </SelectContent>
             </Select>
           </div>
+          {isAdmin && (
+            <div className="col-span-2">
+              <label className={labelCls} style={labelStyle}>Key Account</label>
+              <Select
+                value={form.key_account_sales_rep_id || "__none__"}
+                onValueChange={(v) =>
+                  setForm((f) => ({ ...f, key_account_sales_rep_id: v === "__none__" ? "" : (v ?? "") }))
+                }
+              >
+                <SelectTrigger className="h-9 text-sm w-full">
+                  <SelectValue placeholder="None">
+                    {form.key_account_sales_rep_id
+                      ? salesReps.find((u) => u.id === form.key_account_sales_rep_id)?.full_name ?? "Unknown rep"
+                      : "None"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {salesReps.map((u) => (
+                    <SelectItem key={u.id} value={u.id}>{u.full_name ?? "Unnamed"}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-[11px]" style={{ color: "var(--color-text-muted)" }}>
+                Dedicated sales rep for this customer. Used when routing leads to Sales.
+              </p>
+            </div>
+          )}
         </div>
 
         {error && <p className="mt-3 text-[12px] font-medium" style={{ color: "var(--color-danger)" }}>{error}</p>}
@@ -361,6 +413,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
   const [hasDuplicates, setHasDuplicates] = useState(false);
   const [addLeadOpen, setAddLeadOpen] = useState(false);
   const [isSdr, setIsSdr] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [leadLookups, setLeadLookups] = useState<LookupMap>({});
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
@@ -376,6 +429,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
         .single();
       const roleName = (profile?.roles as unknown as { name: string } | null)?.name;
       setIsSdr(roleName === "sdr");
+      setIsAdmin(roleName === "admin");
     });
   }, []);
 
@@ -417,8 +471,10 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
     setToast({ message, type });
   }
 
-  function handleCustomerSaved(updated: Customer) {
-    setData((prev) => prev ? { ...prev, customer: updated } : prev);
+  function handleCustomerSaved(updated: Customer, keyAccountRep?: KeyAccountRep | null) {
+    setData((prev) =>
+      prev ? { ...prev, customer: updated, key_account_rep: keyAccountRep ?? prev.key_account_rep } : prev,
+    );
     showToast("Customer updated.");
     window.dispatchEvent(new Event("bazaar:customers-changed"));
   }
@@ -438,9 +494,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
 
   function handleLeadCreated(_lead: Lead) {
     setAddLeadOpen(false);
-    showToast("Lead created.");
     void refreshProfile();
-    window.dispatchEvent(new Event("bazaar:refresh-counts"));
   }
 
   if (loading) return <ProfileSkeleton />;
@@ -450,7 +504,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
     </div>
   );
 
-  const { customer: c, lead_count, customer_status } = data;
+  const { customer: c, lead_count, customer_status, key_account_rep } = data;
   const statusStyle = CUSTOMER_STATUS_STYLE[customer_status];
 
   return (
@@ -578,6 +632,14 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
             </div>
           ))}
           <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>Key Account</p>
+            <p className="text-[13px]" style={{ color: key_account_rep ? "var(--color-text-primary)" : "var(--color-text-muted)" }}>
+              {key_account_rep
+                ? `${key_account_rep.full_name ?? "Unnamed"}${key_account_rep.is_active ? "" : " (Inactive)"}`
+                : "—"}
+            </p>
+          </div>
+          <div>
             <p className="text-[11px] font-medium uppercase tracking-[0.06em] mb-1" style={{ color: "var(--color-text-muted)" }}>Total Leads</p>
             <p className="text-[13px] font-semibold" style={{ color: "var(--color-text-primary)" }}>{lead_count}</p>
           </div>
@@ -670,6 +732,7 @@ export function CustomerProfile({ customerId }: { customerId: string }) {
         <EditCustomerModal
           customer={c}
           industries={industries}
+          isAdmin={isAdmin}
           onClose={() => setEditOpen(false)}
           onSaved={handleCustomerSaved}
         />

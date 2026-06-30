@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireSession } from "@/lib/auth/require-session";
 import { requirePageAccess } from "@/lib/auth/require-page-access";
+import {
+  fetchRoutedToSalesAtByLeadIds,
+} from "@/lib/utils/lead-routed-to-sales-query";
+import { fetchSalesInProgressAtByLeadIds } from "@/lib/utils/lead-in-progress-query";
 import { isSalesAdminFilterTab } from "@/lib/utils/lead-sales-scoped-tab";
 import {
   fetchLeadsSalesTabCounts,
@@ -67,8 +71,22 @@ export async function GET(request: NextRequest) {
       fetchLeadsWorkspace(admin, { ...workspaceQuery, pagination }, userId!, roleName),
       fetchLeadsSalesTabCounts(admin, userId!, roleName, adminFilterUserId),
     ]);
+
+    const leadIds = result.rows
+      .map((row) => row.id)
+      .filter((id): id is string => Boolean(id));
+    const [routedAtByLeadId, inProgressAtByLeadId] = await Promise.all([
+      fetchRoutedToSalesAtByLeadIds(admin, leadIds),
+      tab === "in_progress" ? fetchSalesInProgressAtByLeadIds(admin, leadIds) : Promise.resolve(new Map<string, string>()),
+    ]);
+    const leads = result.rows.map((row) => ({
+      ...row,
+      routed_at: row.id ? routedAtByLeadId.get(row.id) ?? null : null,
+      in_progress_at: row.id ? inProgressAtByLeadId.get(row.id) ?? null : null,
+    }));
+
     return NextResponse.json({
-      leads: result.rows,
+      leads,
       counts,
       pagination: toPaginatedMeta({
         ...pagination,

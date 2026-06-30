@@ -46,7 +46,59 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }
   Dropped: {
     bg: "var(--color-danger-bg)", text: "var(--color-danger)", border: "var(--color-danger-border)",
   },
+  // Quote / order ticket labels (Orders + Quotes list pages — Operations reuses these)
+  Draft: {
+    bg: "var(--color-neutral-bg)", text: "var(--color-neutral-text)", border: "var(--color-neutral-border)",
+  },
+  Sent: {
+    bg: "var(--color-info-bg)", text: "var(--color-info-text)", border: "var(--color-info-border)",
+  },
+  Approved: {
+    bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
+  },
+  Routed: {
+    bg: "var(--color-warning-bg)", text: "var(--color-warning)", border: "var(--color-warning-border)",
+  },
+  Cancelled: {
+    bg: "var(--color-danger-bg)", text: "var(--color-danger)", border: "var(--color-danger-border)",
+  },
+  "In Production": {
+    bg: "var(--color-info-bg)", text: "var(--color-info-text)", border: "var(--color-info-border)",
+  },
+  Completed: {
+    bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
+  },
+  Converted: {
+    bg: "var(--color-info-bg)", text: "var(--color-info-text)", border: "var(--color-info-border)",
+  },
+  "Confirmed by Customer": {
+    bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
+  },
+  "Pending Payment": {
+    bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)", border: "var(--color-warning-border)",
+  },
+  "Awaiting payment confirmation": {
+    bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)", border: "var(--color-warning-border)",
+  },
+  "Awaiting tax-exempt approval": {
+    bg: "var(--color-warning-bg)", text: "var(--color-warning-text-deep)", border: "var(--color-warning-border)",
+  },
+  "Confirmed — awaiting deposit": {
+    bg: "var(--color-success-bg)", text: "var(--color-success)", border: "var(--color-success-border)",
+  },
 };
+
+function resolveStatusStyle(status: string): { bg: string; text: string; border: string } {
+  const exact = STATUS_STYLES[status];
+  if (exact) return exact;
+
+  const lower = status.toLowerCase();
+  if (lower.startsWith("converted by") || lower.includes("converted —")) {
+    return STATUS_STYLES["Converted"];
+  }
+
+  return STATUS_STYLES["Pending"];
+}
 
 interface StatusPillProps {
   status: Status;
@@ -54,7 +106,7 @@ interface StatusPillProps {
 }
 
 export function StatusPill({ status, size = "sm" }: StatusPillProps) {
-  const style = STATUS_STYLES[status] ?? STATUS_STYLES["Pending"];
+  const style = resolveStatusStyle(status);
   const px = size === "md" ? "px-2.5 py-1 text-[12px]" : "px-2 py-0.5 text-[11px]";
 
   return (

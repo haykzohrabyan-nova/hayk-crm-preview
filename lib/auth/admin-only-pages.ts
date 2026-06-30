@@ -1,5 +1,5 @@
 /** Page routes reserved for the admin role — not grantable to custom roles. */
-export const ADMIN_ONLY_PAGE_ROUTES = ["/admin", "/reports", "/activity-log"] as const;
+export const ADMIN_ONLY_PAGE_ROUTES = ["/admin", "/reports", "/activity-log", "/operations"] as const;
 
 export function isAdminOnlyPageRoute(route: string): boolean {
   return (ADMIN_ONLY_PAGE_ROUTES as readonly string[]).includes(route);

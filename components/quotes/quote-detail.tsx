@@ -539,8 +539,13 @@ export default function QuoteDetail({ ticketId, context = "order" }: { ticketId:
         }
       })
       .catch(() => { if (!silent) setError("Failed to load ticket."); })
-      .finally(() => { if (!silent) setLoading(false); });
-  }, [ticketId, applyFormBootstrap]); // eslint-disable-line react-hooks/exhaustive-deps
+      .finally(() => {
+        if (!silent) {
+          setLoading(false);
+          hideLoading();
+        }
+      });
+  }, [ticketId, applyFormBootstrap, hideLoading]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     loadPageBootstrap(false);

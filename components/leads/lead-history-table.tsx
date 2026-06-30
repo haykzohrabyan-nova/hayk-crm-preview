@@ -2,7 +2,7 @@
 
 import { UrgencyPill } from "@/components/ui/urgency-pill";
 import { StatusPill } from "@/components/ui/status-pill";
-import { relativeTime } from "@/lib/utils/format";
+import { formatTimeTodayOrDateNumeric } from "@/lib/utils/format";
 import { formatLeadProductInterests } from "@/lib/utils/format-lead-product-interests";
 import {
   leadSourceLabel,
@@ -132,7 +132,7 @@ function HistoryRowCells({
         <TicketRefBadges quoteRef={quoteRef} orderRef={orderRef} />
       </td>
       <td className="px-3 py-2.5 text-xs whitespace-nowrap" style={{ color: "var(--color-text-muted)" }}>
-        {relativeTime(lead.created_at)}
+        {formatTimeTodayOrDateNumeric(lead.created_at)}
       </td>
     </>
   );
@@ -205,7 +205,7 @@ function MobileCard({
         </div>
         <div className="flex justify-between">
           <span>Created</span>
-          <span className="normal-case tracking-normal">{relativeTime(lead.created_at)}</span>
+          <span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.created_at)}</span>
         </div>
       </div>
     </div>

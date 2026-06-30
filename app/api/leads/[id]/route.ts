@@ -6,6 +6,7 @@ import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
 import { canReadLead, canMutateLead } from "@/lib/utils/lead-access";
 import { validateLeadInterestsPayload } from "@/lib/utils/validate-lead-product-interests";
+import { resolveActiveKeyAccountSalesRep } from "@/lib/utils/resolve-key-account-sales-rep";
 
 // Only these fields may be written via a general PATCH.
 // Privileged columns (locked_by_id, sdr_id, hold_*, follow_up_*, etc.)
@@ -189,6 +190,18 @@ export async function PATCH(
   // "rejected from the sales pipeline" (prev_status == "Routed to Sales").
   if (update.status === "Rejected") {
     update.prev_status = current.status;
+  }
+
+  if (update.status === "Routed to Sales" && current.customer_id) {
+    const hasExplicitOwner = "sales_owner_id" in body;
+    const choseQueue = hasExplicitOwner && update.sales_owner_id == null;
+    if (!choseQueue && !update.sales_owner_id) {
+      const keyRep = await resolveActiveKeyAccountSalesRep(admin, current.customer_id);
+      if (keyRep) {
+        update.sales_owner_id = keyRep.id;
+        update.sales_status = "Claimed";
+      }
+    }
   }
 
   update.updated_at = new Date().toISOString();

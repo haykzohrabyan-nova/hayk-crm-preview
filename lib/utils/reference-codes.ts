@@ -64,6 +64,17 @@ export function formatOrderReference(year: number, seq: number): string {
   return `ORD-${year}-${String(seq).padStart(4, "0")}`;
 }
 
+/** Converted quote → order keeps the same sequence (ORD-2026-0082 ← QUO-2026-0082). */
+export function quoteReferenceFromOrderReference(
+  orderReference: string | null | undefined,
+): string | null {
+  const ref = orderReference?.trim();
+  if (!ref || !isOrderReferenceCode(ref)) return null;
+  const match = ref.match(/^ORD-(\d{4})-(\d+)$/i);
+  if (!match) return null;
+  return formatQuoteReference(Number(match[1]), Number(match[2]));
+}
+
 /** Atomically increment the quote sequence counter for a year. */
 export async function nextQuoteNumber(
   admin: ReturnType<typeof createAdminClient>,

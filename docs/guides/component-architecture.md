@@ -53,7 +53,8 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 | Ticket detail | `components/quotes/quote-detail.tsx` | Single component; `context` prop for `quote` \| `order` \| `payment` \| `completed` (`production` legacy in types; route redirects to `order`) |
 | Detail sections | `components/quotes/quote-detail/*`, `components/orders/*-detail-overview.tsx` | Extract shared blocks here |
 | Shared form blocks | `components/quotes/shared/` | Used by new-quote-form + quote-detail edit mode; includes `shipping-fulfillment-section.tsx`, `quote-form.tsx` |
-| Pure helpers | `lib/utils/format.ts` | **Single source of truth** for all display formatting — `formatCurrency`, `formatDate`, `formatDateTime`, `formatDateLong`, `relativeTime`, `relativeDays`, `formatCompact`, `roundMoney`. **Never copy or re-implement these in components.** |
+| Pure helpers | `lib/utils/format.ts` | **Single source of truth** for display formatting — `formatCurrency`, `formatDate`, `formatDateTime`, `formatDateLong`, `formatDateNumeric`, **`formatTimeTodayOrDateNumeric`** (list tables: time if today, else numeric date), `relativeTime`, `relativeDays`, `formatCompact`, `roundMoney`, `displayContactName`. **Never copy or re-implement these in components.** |
+| Lookup reason labels | `lib/constants/hold-reasons.ts`, `follow-up-reasons.ts`, **`reject-reasons.ts`** | `holdReasonLabel`, `followUpReasonLabel`, **`rejectReasonLabel`** — map stored slugs to display text |
 | Line item validation | `lib/utils/validate-quote-skus.ts` | `validateLineItems()` — canonical 6-field validation; import from here, never duplicate inline |
 | Amount paid | `lib/utils/invoice-payment-summary.ts` | `getAmountPaid(ticket)` — canonical `payment_amount_received ?? deposit_amount ?? 0`; never inline this chain |
 | Layout shell | `components/layout/` | sidebar, mobile-nav, idle-timer, theme-provider, global-loading-provider, **error-boundary**, **app-session-provider** (Supabase token auto-refresh + `SIGNED_OUT` redirect) |
@@ -77,10 +78,10 @@ See `.cursor/rules/folder-structure.mdc` for the full rule. Summary:
 app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
   └── components/leads/leads-page.tsx               └── components/sales/sales-page.tsx
         │                                                  │
-        ├── Tabs: All Leads | Follow Up Later | On Hold |
-        │         Directed to Sales | Rejected | Won
-        │                                                  ├── Tabs: Pipeline | Follow Up Later |
-        │                                                  │         On Hold | Rejected
+        ├── Tabs: All Leads | Claimed | In Progress | Follow Up Later |
+        │         On Hold | Directed to Sales | Rejected | Won
+        │                                                  ├── Tabs: Pipeline | Claimed | In Progress |
+        │                                                  │         Follow Up Later | On Hold | Rejected
         │                                                  │
         ├── Inline table (per tab)                         ├── Inline table (per tab)
         │     Columns vary per tab                         │     Columns vary per tab
@@ -96,7 +97,8 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | Component | File | Role |
 |-----------|------|------|
 | `VerifyDrawer` | `components/leads/verify-drawer.tsx` | SDR (edit), Admin (full edit with amber override banner on rejected leads) |
-| `AddLeadModal` | `components/leads/add-lead-modal.tsx` | SDR + Admin — `/leads` header and CRM profile **Add Lead**; dedup lookup, field validation, scroll-to-error |
+| `AddLeadModal` | `components/leads/add-lead-modal.tsx` | SDR + Admin — `/leads` header and CRM profile **Add Lead**; dedup lookup, field validation, scroll-to-error; **Route to Key Account Holder** when linked customer has active Key Account |
+| `RouteToSalesModal` | `components/leads/route-to-sales-modal.tsx` | SDR/Admin — assign rep or queue when routing lead to Sales; Key Account hint + pre-select |
 | `HoldSubForm` | `components/leads/hold-sub-form.tsx` | Used inside VerifyDrawer |
 | `SalesDrawer` | `components/sales/sales-drawer.tsx` | Sales (edit), Admin (full edit with amber override banner on Won/Dropped/Rejected leads) |
 | `SdrDashboard` | `components/sales/sdr-dashboard.tsx` | SDR only |
@@ -165,7 +167,7 @@ app/(app)/leads/page.tsx                         app/(app)/sales/page.tsx
 | `PublicLineItemSkusGrid` | `components/public/public-line-item-skus-grid.tsx` | Customer portal SKU grid (2-col) + line attachment row; image/PDF preview + Download |
 | `PublicShippingAddressesList` / `PublicShippingAddressSingle` | `components/public/public-shipping-addresses.tsx` | Multi- vs single-destination shipping on `/q/[token]` |
 | `ShippingFulfillmentSection` | `components/quotes/shared/shipping-fulfillment-section.tsx` | Pickup / Ship + **Add shipping address** blocks; **Previous addresses** per destination |
-| `RouteToSalesModal` | `components/quotes/route-to-sales-modal.tsx` | SDR manual route from new quote Line Items — `route_reason` picker + notes |
+| `RouteToSalesModal` | `components/quotes/route-to-sales-modal.tsx` | SDR manual route from new quote Line Items — `route_reason` picker + notes (quote workflow; **not** lead rep assignment) |
 | `ShippingDestinationsOverviewList` | `components/quotes/ticket-overview-sections.tsx` | Read-only destination list on quote/order overview |
 | `DatePicker` | `components/ui/date-picker.tsx` | New Quote form (Due Date field), Quote Detail (Due Date edit), Quote tab (First Reminder date) |
 

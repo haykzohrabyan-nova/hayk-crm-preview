@@ -17,12 +17,17 @@ Before writing ANY new function or component, search the codebase first. If an e
 | Format date (Jun 19, 2026) | `formatDate` — `lib/utils/format.ts` |
 | Format date + time | `formatDateTime` — `lib/utils/format.ts` |
 | Format date long (June 19, 2026) | `formatDateLong` — `lib/utils/format.ts` |
+| Format date numeric (6/29/2026) | `formatDateNumeric` — `lib/utils/format.ts` |
+| Time today or date otherwise | `formatTimeTodayOrDateNumeric` — `lib/utils/format.ts` |
+| Reject reason label (`spam_bot` → Spam / Bot) | `rejectReasonLabel` — `lib/constants/reject-reasons.ts` |
 | Relative time (5m ago, 3d ago) | `relativeTime` — `lib/utils/format.ts` |
 | Relative days (Today, Yesterday) | `relativeDays` — `lib/utils/format.ts` |
 | Round to cents | `roundMoney` — `lib/utils/format.ts` |
 | Amount received from ticket | `getAmountPaid` — `lib/utils/invoice-payment-summary.ts` |
 | Validate quote line items | `validateLineItems` — `lib/utils/validate-quote-skus.ts` |
 | Contact display name | `displayContactName` — `lib/utils/format.ts` |
+| Active Key Account sales rep for routing | `resolveActiveKeyAccountSalesRep` — `lib/utils/resolve-key-account-sales-rep.ts` |
+| Key Account rep display (incl. inactive) | `fetchKeyAccountRepForDisplay` — `lib/utils/resolve-key-account-sales-rep.ts` |
 
 ## Rules
 

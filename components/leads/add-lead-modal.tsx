@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { User, X } from "lucide-react";
+import { User, X, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -111,8 +111,8 @@ export function AddLeadModal({
   const [productRows, setProductRows] = useState<LeadProductInterestRow[]>([]);
   const [productRowErrors, setProductRowErrors] = useState(EMPTY_PRODUCT_ROW_ERRORS);
   const [productInterestsError, setProductInterestsError] = useState<string | null>(null);
+  const [keyAccount, setKeyAccount] = useState<{ id: string; full_name: string | null } | null>(null);
 
-  // Product types from admin panel
   const [productTypes, setProductTypes] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
     fetch("/api/admin/product-types")
@@ -158,6 +158,7 @@ export function AddLeadModal({
     setSelectedCustomer(linkedCustomer);
     setDedupBanner("none");
     setShowPickModal(false);
+    setKeyAccount(null);
   }
 
   useEffect(() => {
@@ -165,6 +166,18 @@ export function AddLeadModal({
     reset();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, linkedCustomer?.id]);
+
+  useEffect(() => {
+    const customerId = selectedCustomer?.id ?? linkedCustomer?.id ?? null;
+    if (!open || !customerId) {
+      setKeyAccount(null);
+      return;
+    }
+    fetch(`/api/leads/sales-users?customer_id=${encodeURIComponent(customerId)}`)
+      .then((r) => r.json())
+      .then((d) => setKeyAccount(d.key_account ?? null))
+      .catch(() => setKeyAccount(null));
+  }, [open, selectedCustomer?.id, linkedCustomer?.id]);
 
   function addProductRow() {
     setProductRows((rows) => [...rows, { product: "", quantity: "", has_design: false }]);
@@ -243,8 +256,7 @@ export function AddLeadModal({
     setDedupBanner("none");
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submitLead(routeToKeyAccount: boolean) {
     setError(null);
     setFirstNameError(null);
     setSourceError(null);
@@ -291,6 +303,12 @@ export function AddLeadModal({
     setProductRowErrors(EMPTY_PRODUCT_ROW_ERRORS);
     setProductInterestsError(null);
 
+    const resolvedCustomerId = selectedCustomer?.id ?? linkedCustomer?.id ?? null;
+    if (routeToKeyAccount && !resolvedCustomerId) {
+      setError("Link an existing customer to route to their Key Account rep.");
+      return;
+    }
+
     setSaving(true);
     const { interests, quantities, has_design } = productPayload;
 
@@ -304,8 +322,9 @@ export function AddLeadModal({
         interests,
         quantities,
         has_design,
-        customer_id: selectedCustomer?.id ?? null,
-        create_customer: !selectedCustomer,
+        customer_id: resolvedCustomerId,
+        create_customer: !resolvedCustomerId,
+        route_to_key_account: routeToKeyAccount,
       }),
     });
     const data = await res.json();
@@ -333,7 +352,23 @@ export function AddLeadModal({
 
     reset();
     onCreated(data.lead);
-    showToast("Lead created.");
+    if (routeToKeyAccount) {
+      const repName = data.key_account_rep?.full_name ?? keyAccount?.full_name ?? "Key Account rep";
+      showToast(`Lead routed to ${repName}.`);
+      window.dispatchEvent(new Event("bazaar:leads-changed"));
+    } else {
+      showToast("Lead created.");
+    }
+    window.dispatchEvent(new Event("bazaar:refresh-counts"));
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    await submitLead(false);
+  }
+
+  async function handleRouteToKeyAccount() {
+    await submitLead(true);
   }
 
   const sources = lookups.source ?? [];
@@ -400,6 +435,23 @@ export function AddLeadModal({
                   <X className="h-3 w-3" />
                 </button>
               )}
+            </div>
+          )}
+
+          {keyAccount && (
+            <div
+              className="flex gap-2.5 rounded-[8px] border px-4 py-3 text-[13px]"
+              style={{
+                background: "var(--color-info-bg)",
+                borderColor: "var(--color-info-border)",
+                color: "var(--color-info-text-deep)",
+              }}
+            >
+              <Info className="h-4 w-4 shrink-0 mt-0.5" style={{ color: "var(--color-info-text)" }} />
+              <p>
+                This customer has a Key Account assigned to{" "}
+                <strong>{keyAccount.full_name ?? "Unnamed"}</strong>.
+              </p>
             </div>
           )}
 
@@ -677,10 +729,24 @@ export function AddLeadModal({
               </div>
             )}
 
-            <div className="sm:col-span-2 flex justify-end gap-2 pt-1">
+            <div className="sm:col-span-2 flex flex-wrap justify-end gap-2 pt-1">
               <Button type="button" variant="outline" onClick={handleClose} disabled={saving}>
                 Cancel
               </Button>
+              {keyAccount && (
+                <Button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void handleRouteToKeyAccount()}
+                  className="rounded-[6px] px-4 py-1.5 text-[13px] font-medium disabled:opacity-50"
+                  style={{
+                    background: "var(--color-btn-primary-bg)",
+                    color: "var(--color-btn-primary-text)",
+                  }}
+                >
+                  {saving ? "Routing…" : "Route to Key Account Holder"}
+                </Button>
+              )}
               <Button type="submit" disabled={saving}>
                 {saving ? "Saving…" : "Save Lead"}
               </Button>

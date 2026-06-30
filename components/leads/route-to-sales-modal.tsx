@@ -1,9 +1,14 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { X, UserCheck } from "lucide-react";
+import { X, UserCheck, Info } from "lucide-react";
 
 interface SalesUser {
+  id: string;
+  full_name: string | null;
+}
+
+interface KeyAccount {
   id: string;
   full_name: string | null;
 }
@@ -13,6 +18,7 @@ interface RouteToSalesModalProps {
   onClose: () => void;
   onConfirm: (salesOwnerId: string | null) => void;
   saving: boolean;
+  customerId?: string | null;
 }
 
 const QUEUE_VALUE = "__queue__";
@@ -22,21 +28,40 @@ export function RouteToSalesModal({
   onClose,
   onConfirm,
   saving,
+  customerId,
 }: RouteToSalesModalProps) {
   const [users, setUsers] = useState<SalesUser[]>([]);
+  const [keyAccount, setKeyAccount] = useState<KeyAccount | null>(null);
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<string>(QUEUE_VALUE);
 
   useEffect(() => {
     if (!open) return;
     setSelected(QUEUE_VALUE);
+    setKeyAccount(null);
     setLoading(true);
-    fetch("/api/leads/sales-users")
+
+    const url = customerId
+      ? `/api/leads/sales-users?customer_id=${encodeURIComponent(customerId)}`
+      : "/api/leads/sales-users";
+
+    fetch(url)
       .then((r) => r.json())
-      .then((d) => setUsers(d.users ?? []))
-      .catch(() => setUsers([]))
+      .then((d) => {
+        const list: SalesUser[] = d.users ?? [];
+        setUsers(list);
+        const ka: KeyAccount | null = d.key_account ?? null;
+        setKeyAccount(ka);
+        if (ka && list.some((u) => u.id === ka.id)) {
+          setSelected(ka.id);
+        }
+      })
+      .catch(() => {
+        setUsers([]);
+        setKeyAccount(null);
+      })
       .finally(() => setLoading(false));
-  }, [open]);
+  }, [open, customerId]);
 
   if (!open) return null;
 
@@ -78,6 +103,23 @@ export function RouteToSalesModal({
             <X className="h-4 w-4" />
           </button>
         </div>
+
+        {keyAccount && (
+          <div
+            className="mb-4 flex gap-2.5 rounded-[8px] border px-3.5 py-2.5 text-[12px]"
+            style={{
+              background: "var(--color-info-bg)",
+              borderColor: "var(--color-info-border)",
+              color: "var(--color-info-text-deep)",
+            }}
+          >
+            <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" style={{ color: "var(--color-info-text)" }} />
+            <p>
+              This customer&apos;s Key Account rep is{" "}
+              <strong>{keyAccount.full_name ?? "Unnamed"}</strong>. They are pre-selected for this route.
+            </p>
+          </div>
+        )}
 
         {/* Subtitle */}
         <p className="mb-4 text-[13px]" style={{ color: "var(--color-text-muted)" }}>

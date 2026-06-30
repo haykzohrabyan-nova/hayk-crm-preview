@@ -55,12 +55,28 @@ export async function resolveNavPagesForUser(
       (p.section === "admin" && p.route === "/admin"),
   );
 
+  const orderedNavPages = pinOperationsAfterDashboard(navPages);
+
   navPagesCache.set(key, {
-    pages: navPages,
+    pages: orderedNavPages,
     expiresAt: Date.now() + NAV_PAGES_TTL_MS,
   });
 
-  return navPages;
+  return orderedNavPages;
+}
+
+/** Admin pipeline view — always directly below Dashboard in sidebar / mobile nav. */
+function pinOperationsAfterDashboard(pages: Page[]): Page[] {
+  const dashIdx = pages.findIndex((p) => p.route === "/dashboard");
+  const opsIdx = pages.findIndex((p) => p.route === "/operations");
+  if (dashIdx === -1 || opsIdx === -1 || opsIdx === dashIdx + 1) {
+    return pages;
+  }
+  const next = [...pages];
+  const [operations] = next.splice(opsIdx, 1);
+  const insertAt = next.findIndex((p) => p.route === "/dashboard") + 1;
+  next.splice(insertAt, 0, operations);
+  return next;
 }
 
 export function invalidateNavPagesCache(userId?: string) {

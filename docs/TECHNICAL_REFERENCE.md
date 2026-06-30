@@ -32,7 +32,9 @@
 24. [UI Design System](#24-ui-design-system)
 25. [Sidebar, Navigation & Counts](#25-sidebar-navigation--counts)
 26. [Environment Variables](#26-environment-variables)
-27. [Key File Index](#27-key-file-index)
+27. [Performance Notes (Jun 2026)](#27-performance-notes-jun-2026)
+28. [Admin Operations Pipeline](#28-admin-operations-pipeline)
+29. [Key File Index](#29-key-file-index)
 
 ---
 
@@ -333,7 +335,7 @@ When a logged-in user makes a request, `proxy.ts` checks:
 2. **Must change password** (`profile.must_change_password`) → `/change-password`
 3. **MFA enforcement** — AAL level check (see above)
 4. **`/settings` for non-admin** → redirect to `/profile`
-5. **Admin-only paths** (`/admin`, `/reports`, `/activity-log`) for non-admin → default home
+5. **Admin-only paths** (`/admin`, `/reports`, `/activity-log`, `/operations`) for non-admin → default home
 6. **RBAC** — non-admin, non-universal routes require matching `role_permissions` row
 
 ### Default home by role
@@ -404,7 +406,7 @@ Custom roles can be created (admin UI) with any combination of permitted pages (
 
 ### Admin-only routes (hard-coded, not grantable)
 
-`/admin`, `/reports`, `/activity-log` and all subpaths. Enforced in `lib/auth/admin-only-pages.ts`, proxy, and all admin route handlers.
+`/admin`, `/reports`, `/activity-log`, `/operations` and all subpaths. Enforced in `lib/auth/admin-only-pages.ts`, proxy, and all admin route handlers.
 
 ### Universal routes (no permission row needed)
 
@@ -942,6 +944,8 @@ Component: `components/leads/leads-page.tsx`
 | **Rejected** | `status = Rejected`, scoped to current user | `rejected` |
 | **Won** | `sales_status = Won` + has `lead_routed_to_sales` activity | `won` |
 
+**List date display (2026-06-29):** Tab tables use `formatTimeTodayOrDateNumeric` for Created and milestone/deferral columns; **`in_progress_at`** enriched on In Progress tab via workspace page-data. Rejection reasons use `rejectReasonLabel`. Drawer History still uses `relativeTime`. See `docs/feature-specs/leads-sdr.md`.
+
 **Opening a lead:**
 1. `POST /api/leads/[id]/lock` → 200 = exclusive lock for this SDR → opens `VerifyDrawer`
 2. 409 = another user's lock → read-only mode (shows who locked it)
@@ -965,12 +969,14 @@ Query params: `tab`, `search`, `sort` (`created`|`urgency`), `sort_dir`, `limit`
 Response:
 ```json
 {
-  "leads": [...],
+  "leads": [ "…Lead[] — optional routed_at (sales) or in_progress_at (SDR In Progress tab)…" ],
   "counts": { "all", "follow_up", "hold", "routed", "rejected", "won" },
   "routedSubCounts": { "all", "awaiting", "in_progress", "quote_sent", "on_hold", "dropped" },
   "pagination": { "total", "limit", "offset", "hasMore" }
 }
 ```
+
+When `status=In Progress`, each lead includes **`in_progress_at`** (SDR `lead_in_progress` activity). See `app/api/leads/workspace/page-data/route.ts`.
 
 #### `PATCH /api/leads/[id]`
 
@@ -1046,11 +1052,17 @@ Activity: `lead_reassigned` with from/to names
 
 Roles: `sdr`, `admin`; requires `/leads` access
 
-Creates a new lead directly (not from intake). Body: `{ phone, first_name, source, industry, ...optionalFields }`
+Creates a new lead directly (not from intake). Body: `{ phone, first_name, source, industry, ...optionalFields, route_to_key_account?: boolean }`
 
-Sets `status: "Pending"`, `is_inbox: false`, `sdr_id: userId` — no lock (open pool)
+Default: `status: "Pending"`, `is_inbox: false`, `sdr_id: userId` — no lock (open pool)
 
-Activity: `lead_manual_created` with `{ source }`
+**Route to Key Account:** when `route_to_key_account: true` with linked `customer_id` (not `create_customer`), creates lead as `Routed to Sales` / `Claimed` assigned to customer's active Key Account rep (`lib/utils/resolve-key-account-sales-rep.ts`)
+
+Activity: `lead_manual_created`; when routed via Key Account also `lead_routed_to_sales` + `lead_reassigned`
+
+#### `GET /api/leads/sales-users`
+
+Active sales users for assignment modals. Optional `?customer_id=` returns `key_account` (active Key Account rep or null).
 
 ### SDR VerifyDrawer actions
 
@@ -1059,7 +1071,7 @@ Activity: `lead_manual_created` with `{ source }`
 | Action | API call | Effect |
 |--------|----------|--------|
 | Save | `PATCH /api/leads/[id]` | Field updates only |
-| Route to Sales | Opens `RouteToSalesModal` → `PATCH` with `status: "Routed to Sales"` + optional `sales_owner_id` + unlock | Moves lead to Sales pipeline; optionally pre-assigns to a rep |
+| Route to Sales | Opens `components/leads/route-to-sales-modal.tsx` → `PATCH` with `status: "Routed to Sales"`, explicit `sales_owner_id`, unlock | Key Account hint + pre-select when customer has active rep; server auto-assigns when owner omitted |
 | Hold | `POST /hold` | Removes from current view, keeps in workspace |
 | Follow-up | `POST /follow-up` | Schedules for later |
 | Resume | `POST /resume` | Restores prior status |
@@ -1087,6 +1099,8 @@ Component: `components/sales/sales-page.tsx`
 
 All counts loaded in single `GET /api/leads/sales/page-data` call. Admin **search + team filter** on Claimed and In Progress only. Quotes live in **Quoted Requests** (`/quotes`), not a Sales tab.
 
+**List columns (2026-06-29):** Worklist tabs show **Created** + milestone (**Routed** on Pipeline/Claimed, **In Progress** on In Progress tab). Follow Up / On Hold / Rejected tabs add deferral columns (**Sent to Follow Up**, **Sent to Hold**, **Sent to Rejected**). All use `formatTimeTodayOrDateNumeric`. Page-data enriches **`routed_at`** (all tabs) and **`in_progress_at`** (`tab=in_progress`). See `docs/feature-specs/leads-sales.md`.
+
 ### Sales visibility rules
 
 - **Pipeline** tab: unclaimed pool only (not mixed with owned leads).
@@ -1094,6 +1108,8 @@ All counts loaded in single `GET /api/leads/sales/page-data` call. Admin **searc
 
 **Claim flow:**
 1. `POST /api/leads/[id]/claim` → sets `sales_owner_id`, **`sales_status: "Claimed"`**
+
+**Admin reassign:** Reassign dialog on Claimed / In Progress / Quote Sent tabs shows Key Account advisory hint when customer's active Key Account rep exists (`GET /api/leads/sales-users?customer_id=`).
 2. Open `SalesDrawer` (owned leads skip the lock step)
 3. Rep clicks **In Progress** → `POST /api/leads/[id]/in-progress` with `{ role: "sales" }` → `sales_status: "In Progress"`
 
@@ -1108,7 +1124,7 @@ All counts loaded in single `GET /api/leads/sales/page-data` call. Admin **searc
 
 ### API
 
-`GET /api/leads/sales/page-data?tab=` → `{ leads, counts: { pipeline, claimed, in_progress, follow_up, hold, rejected }, pagination }`
+`GET /api/leads/sales/page-data?tab=` → `{ leads (+ routed_at; + in_progress_at when tab=in_progress), counts: { pipeline, claimed, in_progress, follow_up, hold, rejected }, pagination }`
 
 `GET /api/leads/sales-counts` → lightweight `{ counts }` for realtime refresh
 
@@ -1879,6 +1895,7 @@ Available from: CRM list Merge icon button (only when `is_duplicate_phone = true
 | Step | SQL |
 |------|-----|
 | 1 | `UPDATE customers SET {overrides} WHERE id = target_id` (if overrides) |
+| 1b | If target has no Key Account and source does: copy `key_account_sales_rep_id` to target |
 | 2 | `UPDATE leads SET customer_id = target_id WHERE customer_id = source_id` |
 | 3 | `UPDATE job_tickets SET customer_id = target_id WHERE customer_id = source_id` |
 | 4 | `UPDATE activities SET customer_id = target_id WHERE customer_id = source_id` |
@@ -1933,7 +1950,15 @@ Spec: `docs/feature-specs/order-import.md`
 
 ### Customer profile (`/crm/customers/[id]`)
 
-Full view: customer edit, all leads (with nested tickets), all tickets, shipping address history.
+Component: `components/crm/customer-profile.tsx`
+
+**Key Account (2026-07-01):** Optional dedicated sales rep on `customers.key_account_sales_rep_id`. **Admin only** may set/clear via Edit Customer modal. All CRM roles see read-only **Key Account** on the contact grid (inactive reps show “Inactive”). Used when routing leads to Sales.
+
+**Add Lead from profile:** SDR-only **Add Lead** opens `AddLeadModal` with `linkedCustomer` — shows Key Account banner + **Route to Key Account Holder** when active.
+
+Full view: customer edit, quotes & orders list, tax-exempt modal, merge duplicate.
+
+`GET /api/customers/[id]` returns `key_account_rep` display metadata. Quotes & Orders loaded via `GET /api/tickets?customer_id=…`.
 
 `GET /api/customers/[id]/shipping-addresses` — deduped ship-to lines from `ticket_shipping_destinations` + legacy columns on tickets the user has access to.
 
@@ -2490,9 +2515,9 @@ Search inputs are **`w-full`** on mobile (below `lg`) and a fixed width (`lg:w-5
 
 - **Brand:** `BAZAARPRINTING` + `CRM` subtitle in `--color-accent`; collapsed shows `B`
 - **Profile card:** avatar initial, name, role; links to `/profile`
-- **Nav items:** loaded from `pages` DB table filtered by `role_permissions` (`filterPagesForRole`)
+- **Nav items:** loaded from `pages` DB table filtered by `role_permissions` (`filterPagesForRole`); **`/operations`** pinned directly below **`/dashboard`** via `pinOperationsAfterDashboard()` in `lib/auth/resolve-nav-pages.ts`
 - **Sections:** `main` pages, `admin` section (only `/admin` in sidebar), bottom controls
-- **Icons:** Lucide map keyed by `page.icon` string from DB
+- **Icons:** Lucide map keyed by `page.icon` string from DB (`GitBranch` for Operations)
 
 **Active nav item:** `background: var(--color-accent)`, `color: var(--color-btn-primary-text)`
 
@@ -2581,7 +2606,40 @@ Search inputs are **`w-full`** on mobile (below `lg`) and a fixed width (`lg:w-5
 
 All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start delays. The region is co-located with the Supabase project.
 
-## 27. Key File Index
+---
+
+## 28. Admin Operations Pipeline
+
+**Route:** `/operations` — admin-only deal traceability + team Performance scorecard.
+
+**Spec:** `docs/feature-specs/operations.md`
+
+### Filter tabs
+
+**Performance** (first) · All active · SDR · Unclaimed leads · Sales working · Quoted · Order · Completed · On hold / Follow up · Rejected.
+
+Bucket logic: `lib/utils/admin-deal-stage.ts` (`getOperationsFilterBucket`, `getAdminDealStageLabel`, `countOperationsFilters`).
+
+### Data loading
+
+- **API:** `GET /api/admin/operations/page-data` — `requireAdmin()`
+- **Lead pool:** `fetchOperationsLeadPool()` in `lib/utils/fetch-admin-operations-data.ts` — all leads + linked tickets + unlinked quote/order/completed tickets in date range
+- **Performance:** `buildAdminOperationsPerformance()` in `lib/utils/fetch-admin-operations-performance.ts`
+- **Client:** `useStaleWhileRevalidate` — not `useListPageData`; events: `bazaar:leads-changed`, `bazaar:tickets-changed`, `bazaar:refresh-counts`
+
+### UI
+
+| File | Purpose |
+|------|---------|
+| `components/admin/operations-page.tsx` | Tabs, filters, pipeline table, pagination |
+| `components/admin/operations-performance-panel.tsx` | Performance scorecard table |
+| `components/admin/operations-deal-detail-dialog.tsx` | Row detail — collapsible activity, global loading on QUO/ORD navigation |
+
+**Dates in Operations UI:** `formatDateNumeric()` (`6/29/2026`) — not `formatDate()`.
+
+---
+
+## 29. Key File Index
 
 ### Core business logic (`lib/utils/`)
 
@@ -2603,7 +2661,10 @@ All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start d
 | `lead-activity-display.ts` | `leadActivityLabel`, `leadActivityDetailLines` |
 | `lead-routed-pipeline-stage.ts` | Routed lead stage badges |
 | `ticket-shipping-destinations.ts` | Multi-destination shipping helpers |
-| `format.ts` | `formatCurrency`, `formatCurrencyOrNull`, `formatDate`, `formatDateTime`, `formatDateLong`, `formatCompact`, `relativeTime`, `relativeDays`, `roundMoney`, `displayContactName` — **single source of truth for all display formatting** |
+| `lead-routed-to-sales-query.ts` | `fetchRoutedToSalesLeadIds`, `fetchRoutedToSalesAtByLeadIds` |
+| `lead-in-progress-query.ts` | `fetchInProgressAtByLeadIds`, `fetchSalesInProgressAtByLeadIds`, `fetchSdrInProgressAtByLeadIds` |
+| `resolve-key-account-sales-rep.ts` | `resolveActiveKeyAccountSalesRep`, `fetchKeyAccountRepForDisplay` — Key Account rep for route-to-sales and CRM display |
+| `format.ts` | `formatCurrency`, `formatCurrencyOrNull`, `formatDate`, `formatDateNumeric`, `formatTimeTodayOrDateNumeric`, `formatDateTime`, `formatDateLong`, `formatCompact`, `relativeTime`, `relativeDays`, `roundMoney`, `displayContactName` — **single source of truth for all display formatting** |
 | `validate-quote-skus.ts` | `validateLineItems` — canonical 6-field line item validation (product type, material, width, height, quantity, unit price + variants) |
 | `pagination.ts` | Shared pagination helpers |
 | `validate-quote-send.ts` | `canSendQuote`, `getQuoteSendMissingFields` (tax-exempt: permit # + `hasSalesPermitFile`) |
@@ -2614,6 +2675,9 @@ All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start d
 | `fetch-payments-data.ts` | Payments page-data: evidence + tax-exempt queues and merged approved list |
 | `ticket-list-select.ts` | `jobTicketCustomerEmbed()` — disambiguated customer embed after migration 105 |
 | `fetch-crm-data.ts` | CRM list with aggregated lead/ticket counts |
+| `admin-deal-stage.ts` | Operations filter buckets, stage labels, owner highlight |
+| `fetch-admin-operations-data.ts` | Operations lead pool + deals list |
+| `fetch-admin-operations-performance.ts` | Operations Performance tab aggregation |
 
 ### Stripe (`lib/stripe/`)
 
@@ -2649,6 +2713,9 @@ All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start d
 | `components/leads/verify-drawer.tsx` | SDR lead verification modal |
 | `components/sales/sales-drawer.tsx` | Sales pipeline lead modal |
 | `components/layout/sidebar.tsx` | Nav, badges, realtime subscriptions |
+| `components/admin/operations-page.tsx` | Admin Operations pipeline + Performance tab |
+| `components/admin/operations-performance-panel.tsx` | Performance scorecard table |
+| `components/admin/operations-deal-detail-dialog.tsx` | Operations deal detail modal |
 
 ### Auth & RBAC (`lib/auth/`)
 
@@ -2693,4 +2760,4 @@ All auth-only responses arrive in 150–280ms, confirming no Vercel cold-start d
 
 ---
 
-*Last updated: 2026-06-04. Database DDL: `supabase/schema.sql` only. Page-load guide: `docs/FuturePlan/Performance/page-loading.md`. See `docs/api-contract.md`.*
+*Last updated: 2026-06-30. Database DDL: `supabase/schema.sql` + migrations. Operations spec: `docs/feature-specs/operations.md`. See `docs/reference/api-contract.md`.*

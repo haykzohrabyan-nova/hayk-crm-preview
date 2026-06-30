@@ -48,8 +48,8 @@ export async function POST(
   const admin = createAdminClient();
 
   const [srcResult, tgtResult] = await Promise.all([
-    admin.from("customers").select("id, first_name, last_name").eq("id", id).single(),
-    admin.from("customers").select("id, first_name, last_name").eq("id", target_id).single(),
+    admin.from("customers").select("id, first_name, last_name, key_account_sales_rep_id").eq("id", id).single(),
+    admin.from("customers").select("id, first_name, last_name, key_account_sales_rep_id").eq("id", target_id).single(),
   ]);
 
   if (srcResult.error || !srcResult.data) {
@@ -67,6 +67,20 @@ export async function POST(
       .eq("id", target_id);
     if (overrideErr) {
       return NextResponse.json({ error: overrideErr.message, code: "DB_ERROR" }, { status: 500 });
+    }
+  }
+
+  // Preserve Key Account from source when target has none.
+  if (!tgtResult.data.key_account_sales_rep_id && srcResult.data.key_account_sales_rep_id) {
+    const { error: keyErr } = await admin
+      .from("customers")
+      .update({
+        key_account_sales_rep_id: srcResult.data.key_account_sales_rep_id,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", target_id);
+    if (keyErr) {
+      return NextResponse.json({ error: keyErr.message, code: "DB_ERROR" }, { status: 500 });
     }
   }
 

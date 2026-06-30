@@ -176,12 +176,11 @@ Table of tickets for this customer via **`GET /api/tickets?customer_id=[id]`** (
 - **Decision Maker?** — Yes / No (`customers.authority`)
 - **Website / Social** — optional; validated client-side via `validateWebsite()`; normalized with `https://` prefix on save; scheme optional in the input
 - Heat Tag (Hot / Warm / Cold / None)
+- **Key Account** — Admin only; optional dedicated sales rep (`customers.key_account_sales_rep_id`). Select from active sales users or None.
 
-**Validation:** Phone, email, and website validated on save. Invalid fields show inline error + red border and **scroll into view** if off-screen (`data-field-anchor` + `scrollToFormField()`).
+**Display:** Contact grid includes **Key Account** (all CRM roles, read-only). Inactive assigned reps show name + “(Inactive)”.
 
 **Save** → `PATCH /api/customers/[id]` + logs `contact_edited` activity.
-
-**Display:** Contact grid shows industry and decision maker as **human-readable labels**, not raw DB values.
 
 ---
 
@@ -191,7 +190,7 @@ Table of tickets for this customer via **`GET /api/tickets?customer_id=[id]`** (
 - **Merge** icon button in the CRM list Actions column — only rendered when `is_duplicate_phone = true` (invisible placeholder maintains button alignment otherwise)
 - **Merge Duplicate** button on the customer profile page (`/crm/customers/[id]`) — conditionally shown: on load, `GET /api/customers?search={phone}` is called; the button renders only when the response contains 2+ customers (i.e. another record shares the same phone). Hidden for customers with a unique phone number.
 
-**Auth:** `POST /api/customers/[id]/merge` — **Admin and Sales only** (`403` for SDR, Accountant, etc.). Destructive: deletes victim customers after reassigning leads, tickets, and activities.
+**Auth:** `POST /api/customers/[id]/merge` — **Admin and Sales only** (`403` for SDR, Accountant, etc.). Destructive: deletes victim customers after reassigning leads, tickets, and activities. If the surviving customer has no Key Account and the merged record does, Key Account is copied to the survivor.
 
 **Component:** `components/crm/merge-customer-modal.tsx`
 

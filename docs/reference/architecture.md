@@ -129,6 +129,8 @@ BazarCRM/
 │   │   │   ├── page.tsx                  ✓ Completed orders list
 │   │   │   ├── loading.tsx               ✓ Route-level skeleton
 │   │   │   └── [id]/page.tsx             ✓ Completed order detail
+│   │   ├── operations/
+│   │   │   └── page.tsx                  ✓ Admin Operations pipeline + Performance tab (admin-only)
 │   │   ├── activity-log/
 │   │   │   ├── page.tsx                  ✓ Activity Log (Order / Lead + User Activity tabs)
 │   │   │   └── loading.tsx               ✓ Route-level skeleton
@@ -221,6 +223,8 @@ BazarCRM/
 │   │       ├── product-types/[id]/materials/[matId]/ ✓ POST link / DELETE unlink material
 │   │       ├── materials/route.ts        ✓ GET/POST materials
 │   │       ├── materials/[id]/route.ts   ✓ PATCH/DELETE material
+│   │       ├── operations/
+│   │       │   └── page-data/route.ts    ✓ GET — admin pipeline list + tab counts or Performance scorecard
 │   │       └── leads/
 │   │           └── import/
 │   │               ├── route.ts          ✓ POST bulk import (`?dry_run=true` validate)
@@ -245,12 +249,15 @@ BazarCRM/
 │   │   ├── sms-templates-section.tsx       ✓ Admin-editable SMS/WhatsApp bodies
 │   │   ├── email-templates-section.tsx     ✓ Admin-editable customer and staff email subject/body/CTA
 │   │   ├── activity-log-section.tsx      ✓ Paginated system activity feed
-│   │   └── user-activity-section.tsx     ✓ Per-user session KPI cards + history table
+│   │   ├── user-activity-section.tsx     ✓ Per-user session KPI cards + history table
+│   │   ├── operations-page.tsx           ✓ Admin Operations pipeline (filter tabs, table, pagination)
+│   │   ├── operations-performance-panel.tsx ✓ Performance scorecard table
+│   │   └── operations-deal-detail-dialog.tsx ✓ Deal detail modal (linked QUO/ORD, activity)
 │   ├── auth/
 │   │   └── otp-input.tsx                 ✓ 6-box OTP input (used in setup-2fa + verify-2fa)
 │   ├── crm/
 │   │   ├── crm-page.tsx                  ✓ Customer registry — paginated list, server filters
-│   │   └── customer-profile.tsx          ✓ Full customer profile with history
+│   │   └── customer-profile.tsx          ✓ Customer profile — Key Account (Admin edit); quotes & orders list
 │   ├── layout/
 │   │   ├── sidebar.tsx                   ✓ Collapsible left sidebar (role-aware nav)
 │   │   ├── mobile-nav.tsx                ✓ Mobile bottom nav drawer
@@ -260,9 +267,11 @@ BazarCRM/
 │   │   ├── error-boundary.tsx            ✓ React ErrorBoundary — wraps page content in app layout; "Try again" button
 │   │   └── global-event-handlers.tsx     ✓ App-wide window event wiring
 │   ├── leads/
-│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Follow Up/Hold/Routed/Rejected/Won) — All/My toggle, Claim loading, VerifyDrawer + AddLeadModal via next/dynamic
+│   │   ├── leads-page.tsx                ✓ SDR/Admin lead pipeline (All/Claimed/In Progress/Follow Up/Hold/Directed to Sales/Rejected/Won) — list dates via formatTimeTodayOrDateNumeric; VerifyDrawer + AddLeadModal via next/dynamic
 │   │   ├── product-interest-rows.tsx     ✓ Shared Product Interests rows (Add Lead + Verify drawer)
 │   │   ├── verify-drawer.tsx             ✓ SDR lead work drawer (edit + read-only modes)
+│   │   ├── route-to-sales-modal.tsx      ✓ Assign sales rep or queue; Key Account pre-select
+│   │   ├── add-lead-modal.tsx            ✓ Manual add lead + Route to Key Account Holder shortcut
 │   │   ├── hold-sub-form.tsx             ✓ Hold reason sub-form (Verify Drawer + Sales modal)
 │   │   └── follow-up-sub-form.tsx        ✓ Follow Up Later reason sub-form (shared SDR + Sales)
 │   ├── orders/
@@ -308,7 +317,7 @@ BazarCRM/
 │   │   ├── payment-ledger-section.tsx    ✓ Payment line items in period
 │   │   └── awaiting-collection-section.tsx ✓ Live balance-due snapshot
 │   ├── sales/
-│   │   ├── sales-page.tsx                ✓ Sales pipeline (Pipeline/Follow Up/Hold/Rejected) — claim via POST /claim; Open skips lock when owned
+│   │   ├── sales-page.tsx                ✓ Sales pipeline (Pipeline/Claimed/In Progress/Follow Up/Hold/Rejected) — routed_at / in_progress_at enrichment; claim via POST /claim
 │   │   ├── sales-drawer.tsx              ✓ Sales lead work drawer
 │   │   ├── sales-dashboard.tsx           ✓ Sales-specific dashboard (self-contained)
 │   │   └── sdr-dashboard.tsx             ✓ SDR-specific dashboard (self-contained)
@@ -408,6 +417,7 @@ List pages fetch **scoped, slim payloads** — no `line_items` on table views. F
 | `/leads` | `GET /api/leads/workspace/page-data` | `GET /api/leads/workspace` + `/api/leads/workspace/counts` |
 | `/sales` | `GET /api/leads/sales/page-data` | workspace list + `/api/leads/sales-counts` |
 | `/crm` | `GET /api/crm/page-data` | `GET /api/customers` (merge search / full list callers only) |
+| `/operations` | `GET /api/admin/operations/page-data` | Admin-only — pipeline + Performance scorecard; see `docs/feature-specs/operations.md` |
 
 **List pagination (May–Jun 2026):** All tabbed list pages — Orders, Quotes, Payments, Sales, Completed, Production, CRM, Leads — use server-side `limit`/`offset` + `ListPagination` (default 25). Shared: `lib/utils/pagination.ts`, `components/ui/list-pagination.tsx`.
 

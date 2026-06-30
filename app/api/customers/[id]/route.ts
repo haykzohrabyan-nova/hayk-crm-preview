@@ -5,6 +5,10 @@ import { requirePageAccess } from "@/lib/auth/require-page-access";
 import { digitsOnly } from "@/lib/utils/phone";
 import { normalizeAuthority } from "@/lib/utils/authority";
 import { normalizeWebsite, validateWebsite } from "@/lib/utils/website";
+import {
+  fetchKeyAccountRepForDisplay,
+  resolveActiveKeyAccountSalesRep,
+} from "@/lib/utils/resolve-key-account-sales-rep";
 
 export async function GET(
   _request: NextRequest,
@@ -37,8 +41,18 @@ export async function GET(
   const leads = leadsResult.data ?? [];
   const lead_count = leads.length;
   const customer_status = lead_count === 0 ? "new" : "known";
+  const key_account_rep = await fetchKeyAccountRepForDisplay(
+    admin,
+    customerResult.data.key_account_sales_rep_id,
+  );
 
-  return NextResponse.json({ customer: customerResult.data, leads, lead_count, customer_status });
+  return NextResponse.json({
+    customer: customerResult.data,
+    leads,
+    lead_count,
+    customer_status,
+    key_account_rep,
+  });
 }
 
 const ALLOWED_FIELDS = [
@@ -51,6 +65,7 @@ const ALLOWED_FIELDS = [
   "website",
   "authority",
   "heat_tag",
+  "key_account_sales_rep_id",
 ] as const;
 
 export async function PATCH(
@@ -66,6 +81,13 @@ export async function PATCH(
   const { id } = await params;
   const body = await request.json().catch(() => ({}));
 
+  if ("key_account_sales_rep_id" in body && roleName !== "admin") {
+    return NextResponse.json(
+      { error: "Only admins may assign a Key Account rep.", code: "FORBIDDEN" },
+      { status: 403 },
+    );
+  }
+
   // Strip disallowed fields
   const update: Record<string, unknown> = {};
   for (const field of ALLOWED_FIELDS) {
@@ -74,6 +96,13 @@ export async function PATCH(
         update[field] = digitsOnly(String(body[field] ?? ""));
       } else if (field === "authority") {
         update[field] = normalizeAuthority(String(body[field] ?? ""));
+      } else if (field === "key_account_sales_rep_id") {
+        const raw = body[field];
+        if (raw === null || raw === "" || raw === undefined) {
+          update[field] = null;
+        } else {
+          update[field] = String(raw);
+        }
       } else if (field === "website") {
         const raw = String(body[field] ?? "").trim();
         if (raw) {
@@ -98,9 +127,27 @@ export async function PATCH(
     );
   }
 
+  const admin = createAdminClient();
+
+  if (update.key_account_sales_rep_id) {
+    const { data: rep, error: repErr } = await admin
+      .from("user_profiles_with_role")
+      .select("id")
+      .eq("id", update.key_account_sales_rep_id as string)
+      .eq("role_name", "sales")
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (repErr || !rep) {
+      return NextResponse.json(
+        { error: "Key Account rep must be an active sales user.", code: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+  }
+
   update.updated_at = new Date().toISOString();
 
-  const admin = createAdminClient();
   const { data, error } = await admin
     .from("customers")
     .update(update)
@@ -123,5 +170,7 @@ export async function PATCH(
     payload: { fields: Object.keys(update).filter((f) => f !== "updated_at") },
   });
 
-  return NextResponse.json({ customer: data });
+  const key_account_rep = await fetchKeyAccountRepForDisplay(admin, data.key_account_sales_rep_id);
+
+  return NextResponse.json({ customer: data, key_account_rep });
 }

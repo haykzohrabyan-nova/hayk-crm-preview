@@ -43,6 +43,31 @@ export function formatDate(iso: string | null | undefined): string {
   });
 }
 
+/** Numeric US date for compact tables (e.g. "6/29/2026"). */
+export function formatDateNumeric(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+/** Local time (e.g. "2:30 PM") when the timestamp is today; otherwise numeric date. */
+export function formatTimeTodayOrDateNumeric(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (isToday) {
+    return d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  }
+  return formatDateNumeric(iso);
+}
+
 /** Parse YYYY-MM-DD as local midnight (not UTC). */
 export function parseLocalDate(dateStr: string): Date {
   return new Date(`${dateStr}T00:00:00`);

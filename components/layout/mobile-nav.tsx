@@ -24,6 +24,7 @@ import {
   Megaphone,
   ClipboardList,
   Bell,
+  GitBranch,
   type LucideIcon,
 } from "lucide-react";
 import { useTheme } from "@/components/layout/theme-provider";
@@ -34,7 +35,7 @@ import type { Page } from "@/lib/types";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard, Inbox, Briefcase, BookUser, FileText, BarChart3,
-  Settings, ShieldCheck, Users, KeyRound, ListFilter, Megaphone, ClipboardList, Bell,
+  Settings, ShieldCheck, Users, KeyRound, ListFilter, Megaphone, ClipboardList, Bell, GitBranch,
 };
 
 function roleLabel(name: string | undefined): string {

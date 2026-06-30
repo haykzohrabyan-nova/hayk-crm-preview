@@ -29,6 +29,7 @@ app/
     ├── layout.tsx                    ✓ EXISTS (sidebar + mobile nav shell)
     │
     ├── dashboard/page.tsx            ✓ EXISTS — role router (SDR / Sales / Admin / Accountant dashboards); SDR/Sales/Admin use DashboardDateRangeFilter (default Last 30 Days)
+    ├── operations/page.tsx             ✓ EXISTS — Admin Operations pipeline (admin-only; sidebar: directly after Dashboard)
     ├── tickets/page.tsx              ✓ EXISTS — redirect stub → `/quotes` (legacy; hub removed in migration 028)
     ├── overview/page.tsx             ✓ EXISTS — admin overview alias (renders DashboardPage)
     │
@@ -153,6 +154,7 @@ BAZAARPRINTING
 
 ─── Main ───────────────────────
 ✓ Dashboard                        /dashboard
+✓ Operations                       /operations     (no badge — admin only)
 ✓ Leads                            /leads          (badge — see Sidebar badge counts)
 ✓ Pipeline                         /sales          (badge — see Sidebar badge counts)
 ✓ CRM                              /crm            (no badge)
@@ -179,7 +181,7 @@ BAZAARPRINTING
 
 ## Sidebar badge counts
 
-Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0**. Counts cap at **99+** (expanded) or **99** (collapsed icon dot). Items with no badge: **Dashboard**, **CRM**, **Reports**, **Activity Log**, **Admin Panel**, **Settings**.
+Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0**. Counts cap at **99+** (expanded) or **99** (collapsed icon dot). Items with no badge: **Dashboard**, **CRM**, **Reports**, **Operations**, **Activity Log**, **Admin Panel**, **Settings**.
 
 **Source:** `GET /api/sidebar-counts?routes=…` → `lib/utils/sidebar-counts-query.ts`. Desktop sidebar passes only the user's visible routes; mobile nav fetches all applicable counts. Refreshes on mount, Supabase Realtime (`leads`, `job_tickets`, `activities`, `customers`), and the `bazaar:refresh-counts` window event (debounced 300 ms on desktop).
 
@@ -198,7 +200,7 @@ Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0*
 
 † Accountant has `/orders` and `/completed` in the default permission seed but not `/quotes`; if granted via a custom role, quote badge logic applies the same scoping rules.
 
-**Display rules:** Badge hidden when count is 0. No badge on Dashboard, CRM, Reports, Activity Log, Admin Panel, or Profile.
+**Display rules:** Badge hidden when count is 0. No badge on Dashboard, CRM, Reports, Operations, Activity Log, Admin Panel, or Profile.
 
 **Legacy:** `/production` badge (in-production only, unscoped) still exists in the counts helper but that route redirects to `/orders?tab=in_production` and is not in the sidebar.
 
@@ -216,6 +218,7 @@ Sidebar and mobile nav show a numeric pill on nav items when the count is **> 0*
 | Orders (`/orders`) | `Package` |
 | Payments (`/payments`) | `CreditCard` |
 | Completed (`/completed`) | `PackageCheck` |
+| Operations (`/operations`) | `GitBranch` |
 | Activity Log (`/activity-log`) | `ClipboardList` |
 | Settings (personal) | `Settings` | Sidebar user card → `/profile` |
 | Admin Panel | `ShieldCheck` |
@@ -432,6 +435,26 @@ No sub-tabs. Single table view with filters (search, role filter, show inactive 
 
 ---
 
+## Operations — `/operations`
+
+Built, **admin-only** (`ADMIN_ONLY_PAGE_ROUTES` + `pages` row; not grantable to custom roles).
+
+**Full spec:** [`docs/feature-specs/operations.md`](../feature-specs/operations.md)
+
+### Summary
+
+- **Sidebar:** directly below **Dashboard**; icon **`GitBranch`**; no badge
+- **Filter pills (order):** **Performance** · All active · SDR · Unclaimed leads · Sales working · Quoted · Order · Completed · On hold / Follow up · Rejected
+- **Performance tab:** totals row + per-user scorecard (pipeline counts + Paid / Awaiting on orders)
+- **Pipeline tabs:** deal table — stage, SDR, sales rep, QUO/ORD refs, numeric dates; pagination 25/50/100
+- **Date filter:** lead or linked ticket activity in range (default Last 30 days); aligned with Quotes / Orders / Completed
+- **User filter:** SDR, sales owner, or locker
+- **Row click:** detail dialog → optional read-only **VerifyDrawer**
+- **Live updates:** `bazaar:leads-changed`, `bazaar:tickets-changed`, `bazaar:refresh-counts` (no polling)
+- **API:** `GET /api/admin/operations/page-data?stage=&limit=&offset=&search=&user_id=&date_preset=&date_from=&date_to=`
+
+---
+
 ## Activity Log — `/activity-log`
 
 Built, accessible to **Admin** by default (`/activity-log` in `pages`; API `GET /api/admin/activity-log` requires admin). Custom roles need both page permission and a future non-admin API if extended.
@@ -471,6 +494,7 @@ Each page has a simple `<h1>` page title. No breadcrumbs needed given the shallo
 | `/completed` | Completed Orders |
 | `/completed/[id]` | Completed Order |
 | `/reports` | Reports |
+| `/operations` | Operations |
 | `/crm/customers/[id]` | Customer Profile |
 | `/q/[token]` | Customer portal (public) — quote/order checklist, payment, line items with additional-SKU grid + file preview/download; **shipping** (single Ship To column or 2-col address cards); PDF download (`GET /api/public/quotes/[token]/pdf`). During payment-proof resubmit, hides balance-review/resubmit banners — customer uses `/evidence` from email/SMS |
 | `/evidence/[token]` | Payment proof resubmit portal (public) — OTP verify + upload; read-only original payment method; link `{APP_URL}/evidence/{payment_evidence_resubmit_token}` in `payment_evidence_resubmit_requested` email/SMS |

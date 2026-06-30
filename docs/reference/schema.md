@@ -98,16 +98,19 @@ create table public.pages (
 | `route` | `display_name` | `icon` | `section` | `sort_order` |
 |---------|---------------|--------|-----------|-------------|
 | `/dashboard` | Dashboard | `LayoutDashboard` | main | 0 |
-| `/leads` | Leads | `Inbox` | main | 1 |
-| `/sales` | Sales Pipeline | `Briefcase` | main | 2 |
-| `/crm` | CRM | `BookUser` | main | 3 |
-| `/quotes` | Quoted Requests | `MessageSquareQuote` | main | 5 |
-| `/orders` | Orders | `ClipboardList` | main | 6 |
-| `/completed` | Completed | `PackageCheck` | main | 7 |
-| `/activity-log` | Activity Log | `ClipboardList` | main | 8 |
-| `/reports` | Reports | `BarChart3` | main | 9 |
+| `/operations` | Operations | `GitBranch` | main | 1 |
+| `/leads` | Leads | `Inbox` | main | 2 |
+| `/sales` | Sales Pipeline | `Briefcase` | main | 3 |
+| `/crm` | CRM | `BookUser` | main | 4 |
+| `/quotes` | Quoted Requests | `MessageSquareQuote` | main | 6 |
+| `/orders` | Orders | `ClipboardList` | main | 7 |
+| `/completed` | Completed | `PackageCheck` | main | 8 |
+| `/activity-log` | Activity Log | `ClipboardList` | main | 9 |
+| `/reports` | Reports | `BarChart3` | main | 10 |
 | `/admin` | Admin Panel | `ShieldCheck` | admin | 0 |
 | `/admin/settings/users` | Users | `Users` | admin-sub | 10 |
+
+> **Added (Jun 2026):** `/operations` — admin-only Operations pipeline (`20260629_operations_page.sql`, `20260630_operations_nav_order.sql`). Not in seeded `role_permissions`; access via `ADMIN_ONLY_PAGE_ROUTES` for admin role only.
 
 > **Removed from `pages`:** `/settings` (migration 025), `/production` (079), `/tickets`, `/statistics`, `/overview`. Personal profile uses **`/profile`** — universal in `proxy.ts`, not stored in `pages`.
 
@@ -210,6 +213,7 @@ Customers whose leads are still Pending/On Hold/Rejected and who have no tickets
 | `website` | `text` | Optional URL; validated/normalized via `lib/utils/website.ts` on lead create, customer PATCH, `POST /api/customers`, and `POST /api/tickets` customer upsert. User may enter without `http(s)://`; stored with `https://` prefix when omitted. |
 | `authority` | `text` | Decision maker for this customer (`'yes'` \| `'no'` \| `null`) |
 | `heat_tag` | `text` | `'hot'` \| `'warm'` \| `'cold'` \| `null` |
+| `key_account_sales_rep_id` | `uuid` FK → `user_profiles` ON DELETE SET NULL | Optional dedicated sales rep (Admin assigns). Used when routing leads to Sales. |
 | `tax_exempt_last_permit_number` | `text` | Last accountant-approved permit # (migration **105**) |
 | `tax_exempt_last_storage_path` | `text` | Storage path for reuse on new quotes |
 | `tax_exempt_last_file_name` | `text` | |
@@ -232,6 +236,7 @@ create table public.customers (
   website     text,
   authority   text,
   heat_tag    text        check (heat_tag in ('hot', 'warm', 'cold')),
+  -- key_account_sales_rep_id added in migration 20260701
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );

@@ -131,4 +131,6 @@ export const GLOBAL_LOADING_MESSAGES = {
   releasingProduction: "Releasing to production…",
   completingOrder: "Completing order…",
   openingLead: "Opening lead…",
+  openingQuote: "Opening quote…",
+  openingOrder: "Opening order…",
 } as const;

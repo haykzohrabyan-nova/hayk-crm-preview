@@ -487,9 +487,9 @@ When adding a new mutation that changes customer-visible ticket data, call `noti
 
 | Entity | Migration(s) | Channel name | Browser event | Page consumers |
 |--------|-------------|-------------|---------------|----------------|
-| `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx`, `crm-page.tsx` (silent refresh) |
+| `leads` | `035_enable_leads_realtime.sql`<br>`037_grant_realtime_select.sql`<br>`038_fix_leads_rls_for_realtime.sql` | `leads-realtime` | `bazaar:leads-changed` | `leads-page.tsx`, `sales-page.tsx`, `crm-page.tsx` (silent refresh), **`operations-page.tsx`** (admin) |
 | `activities` | `036_enable_activities_realtime.sql`<br>`037_grant_realtime_select.sql` | `activities-realtime` (sidebar) | `bazaar:activities-changed` **and** `bazaar:tickets-changed` when `payload.new.ticket_id` or `lead_id` is set (May 2026 — claim/routed flows where `job_tickets` UPDATE is invisible to non-owners under RLS) | `activity-log-section.tsx`, quote/order list pages via tickets event |
-| `job_tickets` | `047_enable_job_tickets_realtime.sql` (consolidated in `schema.sql`) · **`086_job_tickets_routed_realtime_rls.sql`** | `tickets-realtime` (sidebar) + `quotes-page-routed-sync` on Quotes page | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx` (Routed tab), `orders-page.tsx`, … |
+| `job_tickets` | `047_enable_job_tickets_realtime.sql` (consolidated in `schema.sql`) · **`086_job_tickets_routed_realtime_rls.sql`** | `tickets-realtime` (sidebar) + `quotes-page-routed-sync` on Quotes page | `bazaar:tickets-changed` + `bazaar:refresh-counts` | `quotes-page.tsx` (Routed tab), `orders-page.tsx`, **`operations-page.tsx`** (admin), … |
 | `customers` | `083_enable_customers_realtime.sql` | `customers-realtime` (sidebar only) | `bazaar:customers-changed` | `crm-page.tsx` |
 | Public `/q/[token]` | *(none — broadcast, not postgres_changes)* | `public-quote:{public_token}` | Supabase broadcast `updated` | `app/(public)/q/[token]/page.tsx` |
 
@@ -559,6 +559,8 @@ const { data: pageData, isLoading, isRevalidating } = useListPageData({
 ```
 
 **Sidebar badges:** `bazaar:refresh-counts` → **immediate** `fetchBadges()` (no 300ms debounce).
+
+**Admin Operations (`/operations`):** Uses `useStaleWhileRevalidate` directly (not `useListPageData`) with the same **0ms** realtime refetch on `bazaar:leads-changed`, `bazaar:tickets-changed`, and `bazaar:refresh-counts`. Refetch pauses while the read-only lead drawer is open. See `docs/feature-specs/operations.md`.
 
 **Detail pages:** `useTicketRealtimeSync(ticketId, onRefresh)` — default debounce **0**. Initial mount: `GET /api/tickets/[id]/page-data`; silent refresh: `GET /api/tickets/[id]`.
 

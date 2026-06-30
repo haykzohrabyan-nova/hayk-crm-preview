@@ -42,10 +42,11 @@ const RouteToSalesModal = dynamic(
   { ssr: false, loading: () => null },
 );
 import { Lead, LookupMap } from "@/lib/types";
+import { rejectReasonLabel } from "@/lib/constants/reject-reasons";
 import { holdReasonLabel } from "@/lib/constants/hold-reasons";
 import { followUpReasonLabel } from "@/lib/constants/follow-up-reasons";
 import { formatPhone } from "@/lib/utils/phone";
-import { relativeTime, displayContactName } from "@/lib/utils/format";
+import { formatTimeTodayOrDateNumeric, relativeTime, displayContactName } from "@/lib/utils/format";
 import { ToastBanner } from "@/components/ui/toast-banner";
 import { fetchLeadById } from "@/lib/utils/fetch-lead";
 import { LeadHistoryTable, type LeadHistoryRow } from "@/components/leads/lead-history-table";
@@ -85,6 +86,10 @@ interface Toast {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 
+
+function inProgressAtLabel(lead: Lead): string {
+  return formatTimeTodayOrDateNumeric(lead.in_progress_at ?? lead.updated_at);
+}
 
 function productInterestsText(lead: Lead): string {
   return formatLeadProductInterests(lead.interests, lead.quantities);
@@ -575,7 +580,7 @@ export function LeadsPage() {
       body: JSON.stringify({
         status: "Routed to Sales",
         sales_status: salesOwnerId ? "Claimed" : null,
-        ...(salesOwnerId ? { sales_owner_id: salesOwnerId } : {}),
+        sales_owner_id: salesOwnerId,
       }),
     });
     const data = await res.json();
@@ -825,7 +830,7 @@ export function LeadsPage() {
                         )}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {relativeTime(lead.created_at)}
+                        {formatTimeTodayOrDateNumeric(lead.created_at)}
                       </td>
                       <td className="px-3 py-2.5">
                         {isAdmin ? (
@@ -939,7 +944,7 @@ export function LeadsPage() {
                         <span className="normal-case tracking-normal text-right truncate max-w-[200px]">{productInterestsText(lead)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{relativeTime(lead.created_at)}</span></div>
+                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.created_at)}</span></div>
                     <div className="flex justify-between items-center">
                       <span>Owner</span>
                       {lead.locked_by_id ? (
@@ -1046,7 +1051,7 @@ export function LeadsPage() {
                       </td>
                       <td className="px-3 py-2.5"><UrgencyPill urgency={lead.urgency} /></td>
                       <td className="px-3 py-2.5"><StatusPill status={lead.status} /></td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.created_at)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{formatTimeTodayOrDateNumeric(lead.created_at)}</td>
                       <td className="px-3 py-2.5">
                         <button
                           onClick={() => void handleWorkLead(lead)}
@@ -1093,7 +1098,7 @@ export function LeadsPage() {
                     {lead.customer?.phone && <div className="flex justify-between"><span>Phone</span><span className="normal-case tracking-normal">{formatPhone(lead.customer.phone)}</span></div>}
                     <div className="flex justify-between"><span>Source</span><span className="normal-case tracking-normal">{(lead.source && (sourceLabels[lead.source] ?? lead.source)) || "—"}</span></div>
                     <ProductInterestsMobileRow lead={lead} />
-                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{relativeTime(lead.created_at)}</span></div>
+                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.created_at)}</span></div>
                   </div>
                   <button
                     onClick={() => void handleWorkLead(lead)}
@@ -1117,17 +1122,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Created By", "Company", "Product Interests", "Working SDR", "Urgency", "Started", "Action"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Working SDR", "Urgency", "Created", "In Progress", "Action"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={8} />
+                  <TableRowsSkeleton cols={9} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads in progress.
                     </td>
                   </tr>
@@ -1154,7 +1159,10 @@ export function LeadsPage() {
                         <UrgencyPill urgency={lead.urgency} />
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {relativeTime(lead.updated_at)}
+                        {formatTimeTodayOrDateNumeric(lead.created_at)}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {inProgressAtLabel(lead)}
                       </td>
                       <td className="px-3 py-2.5">
                         {isAdmin ? (
@@ -1235,7 +1243,8 @@ export function LeadsPage() {
                       <span>Working SDR</span>
                       <span className="normal-case tracking-normal font-medium" style={{ color: "var(--color-text-primary)" }}>{lead.locked_by?.full_name ?? "—"}</span>
                     </div>
-                    <div className="flex justify-between"><span>Started</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
+                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.created_at)}</span></div>
+                    <div className="flex justify-between"><span>In Progress</span><span className="normal-case tracking-normal">{inProgressAtLabel(lead)}</span></div>
                   </div>
                   {isAdmin ? (
                     <div className="flex gap-2">
@@ -1279,17 +1288,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Created By", "Company", "Product Interests", "Reason", "Follow Up On", "Marked", "Actions"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Reason", "Follow Up On", "Created", "Sent to Follow Up", "Actions"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={8} />
+                  <TableRowsSkeleton cols={9} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads scheduled for follow-up.
                     </td>
                   </tr>
@@ -1314,7 +1323,10 @@ export function LeadsPage() {
                         {lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString("en-US") : "—"}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {lead.follow_up_at ? relativeTime(lead.follow_up_at) : "—"}
+                        {formatTimeTodayOrDateNumeric(lead.created_at)}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {lead.follow_up_at ? formatTimeTodayOrDateNumeric(lead.follow_up_at) : "—"}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
@@ -1363,6 +1375,8 @@ export function LeadsPage() {
                     <ProductInterestsMobileRow lead={lead} />
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{followUpReasonLabel(lead.follow_up_reason)}</span></div>
                     <div className="flex justify-between"><span>Follow up on</span><span className="normal-case tracking-normal">{lead.follow_up_until ? new Date(lead.follow_up_until).toLocaleDateString("en-US") : "—"}</span></div>
+                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.created_at)}</span></div>
+                    <div className="flex justify-between"><span>Sent to Follow Up</span><span className="normal-case tracking-normal">{lead.follow_up_at ? formatTimeTodayOrDateNumeric(lead.follow_up_at) : "—"}</span></div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => handleResumeLead(lead)} className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium" style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}>Resume</button>
@@ -1389,17 +1403,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Created By", "Company", "Product Interests", "Hold Reason", "Hold Until", "Held", "Actions"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Hold Reason", "Hold Until", "Created", "Sent to Hold", "Actions"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={8} />
+                  <TableRowsSkeleton cols={9} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       No leads on hold.
                     </td>
                   </tr>
@@ -1424,7 +1438,10 @@ export function LeadsPage() {
                         {lead.hold_until ? new Date(lead.hold_until).toLocaleDateString("en-US") : "—"}
                       </td>
                       <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
-                        {lead.held_at ? relativeTime(lead.held_at) : "—"}
+                        {formatTimeTodayOrDateNumeric(lead.created_at)}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {lead.held_at ? formatTimeTodayOrDateNumeric(lead.held_at) : "—"}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
@@ -1474,6 +1491,8 @@ export function LeadsPage() {
                     <ProductInterestsMobileRow lead={lead} />
                     <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{holdReasonLabel(lead.hold_reason)}</span></div>
                     <div className="flex justify-between"><span>Until</span><span className="normal-case tracking-normal">{lead.hold_until ? new Date(lead.hold_until).toLocaleDateString("en-US") : "—"}</span></div>
+                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.created_at)}</span></div>
+                    <div className="flex justify-between"><span>Sent to Hold</span><span className="normal-case tracking-normal">{lead.held_at ? formatTimeTodayOrDateNumeric(lead.held_at) : "—"}</span></div>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => handleResumeLead(lead)} className="flex-1 rounded-[6px] py-1.5 text-[13px] font-medium" style={{ background: "var(--color-btn-primary-bg)", color: "var(--color-btn-primary-text)" }}>Resume</button>
@@ -1537,17 +1556,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Created By", "Company", "Product Interests", "Phone", "Stage", "Lead Status", "Sales Rep", "Updated"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Phone", "Stage", "Lead Status", "Sales Rep", "Created", "Updated"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={9} />
+                  <TableRowsSkeleton cols={10} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
+                    <td colSpan={10} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>
                       {routedFilter === "all"
                         ? "No leads directed to sales."
                         : `No leads in ${ROUTED_FILTER_LABELS[routedFilter]}.`}
@@ -1597,7 +1616,12 @@ export function LeadsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {formatTimeTodayOrDateNumeric(lead.created_at)}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {formatTimeTodayOrDateNumeric(lead.updated_at)}
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1665,7 +1689,8 @@ export function LeadsPage() {
                         </span>
                       )}
                     </div>
-                    <div className="flex justify-between"><span>Updated</span><span className="normal-case tracking-normal">{relativeTime(lead.updated_at)}</span></div>
+                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.created_at)}</span></div>
+                    <div className="flex justify-between"><span>Updated</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.updated_at)}</span></div>
                   </div>
                 </div>
               ))
@@ -1681,17 +1706,17 @@ export function LeadsPage() {
             <table className="w-full text-sm">
               <thead style={{ background: "color-mix(in srgb, var(--color-border) 30%, transparent)", borderBottom: "1px solid var(--color-border)" }}>
                 <tr>
-                  {["Name", "Created By", "Company", "Product Interests", "Rejection Reason", "Rejected", "Action"].map((h) => (
+                  {["Name", "Created By", "Company", "Product Interests", "Rejection Reason", "Created", "Sent to Rejected", "Action"].map((h) => (
                     <th key={h} className="px-3 py-2.5 text-left text-[11px] font-medium uppercase tracking-[0.06em]" style={{ color: "var(--color-text-muted)" }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <TableRowsSkeleton cols={7} />
+                  <TableRowsSkeleton cols={8} />
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No rejected leads.</td>
+                    <td colSpan={8} className="px-3 py-16 text-center text-sm" style={{ color: "var(--color-text-muted)" }}>No rejected leads.</td>
                   </tr>
                 ) : (
                   filtered.map((lead, idx) => (
@@ -1710,8 +1735,13 @@ export function LeadsPage() {
                       <CreatedByTableCell lead={lead} />
                       <td className="px-3 py-2.5" style={{ color: "var(--color-text-muted)" }}>{lead.customer?.company || "—"}</td>
                       <ProductInterestsTableCell lead={lead} />
-                      <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{lead.rejection_reason || "—"}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>{relativeTime(lead.updated_at)}</td>
+                      <td className="px-3 py-2.5 text-xs" style={{ color: "var(--color-text-muted)" }}>{rejectReasonLabel(lead.rejection_reason)}</td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {formatTimeTodayOrDateNumeric(lead.created_at)}
+                      </td>
+                      <td className="px-3 py-2.5 whitespace-nowrap text-xs" style={{ color: "var(--color-text-muted)" }}>
+                        {formatTimeTodayOrDateNumeric(lead.updated_at)}
+                      </td>
                       <td className="px-3 py-2.5">
                         <button
                           onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
@@ -1749,7 +1779,9 @@ export function LeadsPage() {
                   <div className="text-[11px] uppercase tracking-[0.06em] space-y-1" style={{ color: "var(--color-text-muted)" }}>
                     <CreatedByMobileRow lead={lead} />
                     <ProductInterestsMobileRow lead={lead} />
-                    <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{lead.rejection_reason || "—"}</span></div>
+                    <div className="flex justify-between"><span>Reason</span><span className="normal-case tracking-normal">{rejectReasonLabel(lead.rejection_reason)}</span></div>
+                    <div className="flex justify-between"><span>Created</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.created_at)}</span></div>
+                    <div className="flex justify-between"><span>Sent to Rejected</span><span className="normal-case tracking-normal">{formatTimeTodayOrDateNumeric(lead.updated_at)}</span></div>
                   </div>
                   <button
                     onClick={() => void (isAdmin ? handleViewLead(lead) : handleWorkLead(lead))}
@@ -1907,6 +1939,7 @@ export function LeadsPage() {
         onClose={() => setRouteModalLead(null)}
         onConfirm={(salesOwnerId) => void confirmRouteLeadToSales(salesOwnerId)}
         saving={routeModalSaving}
+        customerId={routeModalLead?.customer_id}
       />
     </div>
   );

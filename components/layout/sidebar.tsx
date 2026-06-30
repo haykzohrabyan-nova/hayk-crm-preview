@@ -19,6 +19,7 @@ import {
   ClipboardList,
   MessageSquareQuote,
   Bell,
+  GitBranch,
   Sun,
   Moon,
   LogOut,
@@ -51,6 +52,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   ClipboardList,
   MessageSquareQuote,
   Bell,
+  GitBranch,
 };
 
 const COLLAPSE_KEY = "bazaar-sidebar-collapsed";

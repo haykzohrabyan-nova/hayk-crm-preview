@@ -2,6 +2,14 @@
 
 Access: Admin role only. `proxy.ts` blocks non-admins and redirects to `/dashboard`.
 
+**Related admin pages (not under `/admin/settings`):**
+
+| Page | Route | Spec |
+|------|-------|------|
+| Operations pipeline | `/operations` | [`operations.md`](./operations.md) |
+| Reports | `/reports` | [`reports.md`](./reports.md) |
+| Activity Log | `/activity-log` | [`navigation.md`](../reference/navigation.md) |
+
 ---
 
 ## `/admin` — Overview (Card Grid) ✅ Built

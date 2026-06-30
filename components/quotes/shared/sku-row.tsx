@@ -13,6 +13,12 @@ import {
 } from "./line-item-attachment";
 import { lineQuantityFromVariants, sumVariantQuantities } from "@/lib/utils/line-item-variant-quantity";
 
+function syncTextareaHeight(el: HTMLTextAreaElement | null) {
+  if (!el) return;
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 interface SkuRowProps {
   idx: number;
   sku: QuoteSku;
@@ -326,6 +332,7 @@ export function SkuRow({
   const [heightRaw, setHeightRaw]       = useState(sku.height     != null ? String(sku.height)     : "");
   const [quantityRaw, setQuantityRaw]   = useState(sku.quantity   != null ? String(sku.quantity)   : "");
   const [unitPriceRaw, setUnitPriceRaw] = useState(sku.unit_price != null ? String(sku.unit_price) : "");
+  const commentRef = useRef<HTMLTextAreaElement>(null);
 
   const variantList = variants ?? [];
   const hasVariants = variantList.length > 0;
@@ -342,6 +349,10 @@ export function SkuRow({
       setQuantityRaw("");
     }
   }, [variants, sku.quantity]);
+
+  useEffect(() => {
+    syncTextareaHeight(commentRef.current);
+  }, [sku.comment]);
 
   function handleVariantsChange(next: FormLineVariant[]) {
     const migrated = applyVariantListAttachmentChanges(variantList, next, lineAttachment);
@@ -569,11 +580,15 @@ export function SkuRow({
       <div className="mt-3">
         <label className="block text-xs font-medium mb-1.5" style={{ color: "var(--color-text-muted)" }}>Line Item Comment</label>
         <textarea
+          ref={commentRef}
           rows={2}
           placeholder="Optional notes for this SKU"
           value={sku.comment ?? ""}
-          onChange={(e) => onUpdate(idx, "comment", e.target.value || undefined)}
-          className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none"
+          onChange={(e) => {
+            onUpdate(idx, "comment", e.target.value || undefined);
+            syncTextareaHeight(e.target);
+          }}
+          className="w-full px-3 py-2 rounded-md text-sm outline-none resize-none overflow-hidden"
           style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", color: "var(--color-text-primary)" }}
         />
       </div>

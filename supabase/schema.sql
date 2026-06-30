@@ -662,7 +662,8 @@ alter table public.customers
   add column if not exists tax_exempt_last_mime_type text,
   add column if not exists tax_exempt_last_reviewed_at timestamptz,
   add column if not exists tax_exempt_last_reviewed_by_id uuid references public.user_profiles(id),
-  add column if not exists tax_exempt_last_source_ticket_id uuid references public.job_tickets(id);
+  add column if not exists tax_exempt_last_source_ticket_id uuid references public.job_tickets(id),
+  add column if not exists key_account_sales_rep_id uuid references public.user_profiles(id) on delete set null;
 
 alter table public.job_tickets
   add column if not exists payment_evidence_resubmit_requested_at timestamptz,
@@ -800,6 +801,9 @@ create index if not exists customers_updated_at_idx
 create index if not exists customers_heat_tag_updated_idx
   on public.customers (heat_tag, updated_at desc)
   where heat_tag is not null;
+create index if not exists customers_key_account_sales_rep_id_idx
+  on public.customers (key_account_sales_rep_id)
+  where key_account_sales_rep_id is not null;
 create index if not exists tickets_status_updated_idx
   on public.job_tickets (ticket_status, updated_at desc);
 create index if not exists tickets_updated_at_idx
@@ -1717,13 +1721,14 @@ insert into public.permissions (key, display_name, area, description, sort_order
 ('leads.lock',              'Lock / claim lead (SDR ownership)',   'leads', 'POST /api/leads/[id]/lock',                                   70),
 ('leads.unlock_own',        'Release own lock',                    'leads', 'POST /api/leads/[id]/unlock',                                 80),
 ('leads.unlock_any',        'Force-release any lock',              'leads', 'Admin-only override',                                         90),
-('leads.route_to_sales',    'Route lead to Sales',                 'leads', 'Set status = Routed to Sales',                               100),
+('leads.route_to_sales',    'Route lead to Sales',                 'leads', 'Set status = Routed to Sales via PATCH /api/leads/[id] — Key Account pre-select + auto-assign when active', 100),
+('leads.route_to_key_account', 'Route new lead to Key Account holder', 'leads', 'POST /api/leads/manual with route_to_key_account=true', 105),
 ('leads.reject',            'Reject a lead',                       'leads', 'Set status = Rejected',                                      110),
 ('leads.hold',              'Put lead on hold',                    'leads', 'POST /api/leads/[id]/hold',                                  120),
 ('leads.resume',            'Resume from hold / follow-up',        'leads', 'POST /api/leads/[id]/resume',                                130),
 ('leads.follow_up',         'Mark follow-up later',                'leads', 'POST /api/leads/[id]/follow-up',                             140),
 ('leads.claim',             'Claim a routed lead (Sales)',         'leads', 'POST /api/leads/[id]/claim',                                 150),
-('leads.reassign',          'Reassign lead to another SDR',        'leads', 'POST /api/leads/[id]/reassign — admin reassign',             160),
+('leads.reassign',          'Reassign lead to another SDR',        'leads', 'POST /api/leads/[id]/reassign — admin reassign; Key Account hint on Sales reassign modal', 160),
 ('leads.override_terminal', 'Edit rejected leads',                 'leads', 'Modify a lead in Rejected status (admin only)',               170),
 -- SALES
 ('sales.view_pipeline',     'View the Sales pipeline',             'sales', 'Access /sales',                                               10),
@@ -1756,7 +1761,8 @@ insert into public.permissions (key, display_name, area, description, sort_order
 ('payments.refund',                    'Issue a refund',                         'payments', 'POST /api/tickets/[id]/refund',              90),
 -- CRM
 ('crm.view',   'View customer profiles',    'crm', 'Read customer details and history',        10),
-('crm.edit',   'Edit customer information', 'crm', 'PATCH /api/customers/[id]',               20),
+('crm.edit',   'Edit customer information', 'crm', 'PATCH /api/customers/[id] — contact fields (Key Account rep requires crm.assign_key_account)', 20),
+('crm.assign_key_account', 'Assign Key Account sales rep', 'crm', 'PATCH /api/customers/[id] — set or clear customers.key_account_sales_rep_id (Admin only today)', 25),
 ('crm.merge',  'Merge duplicate customers', 'crm', 'POST /api/customers/[id]/merge',          30),
 ('crm.create', 'Create a new customer',     'crm', 'POST /api/customers during lead creation', 40),
 -- ADMIN
@@ -1780,7 +1786,7 @@ select r.id, p.id from public.roles r cross join public.permissions p
 where r.name = 'sdr' and p.key in (
   'leads.scope.inbox_pool','leads.scope.own',
   'leads.create','leads.edit','leads.lock','leads.unlock_own',
-  'leads.route_to_sales','leads.reject','leads.hold','leads.resume','leads.follow_up',
+  'leads.route_to_sales','leads.route_to_key_account','leads.reject','leads.hold','leads.resume','leads.follow_up',
   'leads.reassign',
   'quotes.create','quotes.edit','quotes.send','quotes.cancel','quotes.upload_sales_permit',
   'orders.view_own',

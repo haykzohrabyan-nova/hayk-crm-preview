@@ -1,8 +1,23 @@
 # BazarCRM — Security Model
 
-**Last updated:** June 9, 2026
+**Last updated:** June 30, 2026
 
 This document describes how the app protects data, what is stored in the browser, and how API + database layers work together.
+
+---
+
+## Admin-only pages (proxy hard-block)
+
+These routes are **not grantable** to custom roles and are blocked in **`proxy.ts`** for non-admins even if stale `role_permissions` rows exist. Canonical list: `lib/auth/admin-only-pages.ts` (`ADMIN_ONLY_PAGE_ROUTES`).
+
+| Route | API gate | Notes |
+|-------|----------|--------|
+| `/admin/*` | `requireAdmin()` | Settings, users, roles, imports, webhook, etc. |
+| `/reports` | `requireAdmin()` | Reports summary |
+| `/activity-log` | `requireAdmin()` | System activity feed |
+| `/operations` | `requireAdmin()` | Admin Operations pipeline + Performance tab — `GET /api/admin/operations/page-data` |
+
+Non-admins are redirected to their default home. Admin → Roles UI shows a lock badge on these pages.
 
 ---
 
@@ -139,11 +154,12 @@ These endpoints verify the caller has access to the specific object before retur
 | Endpoint | Check |
 |----------|-------|
 | `GET /api/leads/[id]` | `canReadLead()` |
-| `PATCH /api/leads/[id]` | `canMutateLead()` + lock/rejected guards; **field whitelist** — only 14 named fields accepted, privileged columns (`sales_owner_id`, `locked_by_id`, `sdr_id`, hold/follow-up fields) silently dropped |
+| `PATCH /api/leads/[id]` | `canMutateLead()` + lock/rejected guards; **field whitelist** — privileged columns (`locked_by_id`, `sdr_id`, hold/follow-up fields) silently dropped; **`sales_owner_id` allowed** for Route to Sales; Key Account auto-assign on route when queue not explicitly chosen |
 | `POST /api/leads/[id]/claim` | Sales or admin only; `canClaimLead()`; **atomic** conditional write (`WHERE sales_owner_id IS NULL`) |
 | `POST /api/leads/[id]/lock` | SDR/Sales/Admin only; `canAcquireLeadLock()`; **atomic** conditional write for non-admins |
 | `POST /api/leads/[id]/hold` | Workflow branch derived from session `roleName` (not `body.role`) — prevents SDR from spoofing sales scope |
 | `GET /api/customers/[id]`, CRM list/lookup | `requirePageAccess(..., '/crm')` |
+| `PATCH /api/customers/[id]` | `requirePageAccess(..., '/crm')`; **`key_account_sales_rep_id` Admin only** (403 for other roles) |
 | `GET /api/customers/[id]/shipping-addresses` | `requireAnyPageAccess(..., ['/crm', '/quotes'])` |
 | `GET /api/leads/[id]/activities` | `canReadLead()` on the lead before returning its timeline |
 | `GET /api/activities?lead_id=` | `canReadLead()` on the referenced lead |

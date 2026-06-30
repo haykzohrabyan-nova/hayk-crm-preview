@@ -14,6 +14,8 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 
 > **Pagination (May 2026):** Default **25** rows per page; selector 25 / 50 / 100. Search, SDR owner scope, routed sub-filters, and column sort are **server-side**. Reset to page 1 when any filter changes.
 
+> **List date display (2026-06-29):** Tab table **Created**, milestone, and deferral columns use **`formatTimeTodayOrDateNumeric`** from `lib/utils/format.ts` — local **time** when the timestamp is today (e.g. `2:30 PM`), otherwise numeric **date** (e.g. `6/28/2026`). **Not** relative labels (`4d ago`) on list rows. Rejection reasons use **`rejectReasonLabel`** (`lib/constants/reject-reasons.ts`). Activity timelines in drawers still use **`relativeTime`**.
+
 ---
 
 ## Tab: All Leads (Inbox)
@@ -37,7 +39,7 @@ The SDR Lead Pipeline is the primary workspace for SDRs. It is a **tabbed page**
 | Urgency | All | Colour-coded pill: High / Medium / Low / Not Defined |
 | Status | All | `StatusPill` — Pending / Validated |
 | Owner | All | SDR name / "You" / "Unclaimed" badge |
-| Created | All | Relative time (e.g. "2 hours ago") |
+| Created | All | `created_at` via `formatTimeTodayOrDateNumeric` |
 | Action | All | **Claim** (SDR, unclaimed) / **View** (SDR, claimed) / **Edit** + **Assign/Reassign** + **Route to Sales** (Admin) |
 
 ### Behaviors
@@ -59,6 +61,30 @@ Tab count for **All Leads** = unclaimed pool size (`locked_by_id IS NULL`), alwa
 
 ---
 
+## Tab: Claimed Leads (SDR only)
+
+**Data:** `GET /api/leads/workspace/page-data?statuses=Pending,Validated&owner_scope=mine`
+
+- Leads the current SDR has **claimed** (`locked_by_id = currentUserId`)
+- Admin does not see this tab
+
+### Table Columns
+
+| Column | Notes |
+|--------|-------|
+| Name | |
+| Created By | System / user who created the lead |
+| Company | |
+| Source | Lookup label |
+| Product Interests | `ProductName[quantity]` |
+| Phone | |
+| Urgency | `UrgencyPill` |
+| Status | `StatusPill` — Pending / Validated |
+| Created | `created_at` — time today or numeric date |
+| Action | **View** |
+
+---
+
 ## Tab: Follow Up Later
 
 **Data:** `GET /api/leads/workspace?status=Follow Up Later&scope=mine`
@@ -75,7 +101,8 @@ Tab count for **All Leads** = unclaimed pool size (`locked_by_id IS NULL`), alwa
 | Product Interests | `ProductName[quantity]` |
 | Reason | Admin-managed `follow_up_reason` lookup label |
 | Follow Up On | Optional date (`follow_up_until`) |
-| Marked | Relative time (`follow_up_at`) |
+| Created | `created_at` — time today or numeric date |
+| Sent to Follow Up | `follow_up_at` — time today or numeric date (when marked follow-up) |
 | Actions | **Resume**, **View** |
 
 ### Behaviors
@@ -102,7 +129,8 @@ Tab count for **All Leads** = unclaimed pool size (`locked_by_id IS NULL`), alwa
 | Product Interests | `ProductName[quantity]` from `interests` + `quantities` |
 | Hold Reason | |
 | Hold Until | Formatted date (or "—" if indefinite) |
-| Held | Relative time (`held_at`) |
+| Created | `created_at` — time today or numeric date |
+| Sent to Hold | `held_at` — time today or numeric date (when marked on hold) |
 | Actions | **Resume** button, **View** button |
 
 ### Behaviors
@@ -143,13 +171,15 @@ Pills always visible; count badge when that stage has leads. **Stage** badge and
 | Column | Notes |
 |--------|-------|
 | Name | |
+| Created By | System / user who created the lead |
 | Company | |
 | Product Interests | `ProductName[quantity]` |
 | Phone | |
 | **Stage** | Pipeline stage badge (Awaiting Claim, In Progress, Quote Sent, On Hold, Dropped, Won, Rejected) |
 | Lead Status | SDR `status` field (e.g. Routed to Sales, Quoted, Validated, Rejected) |
 | Sales Rep | Name of the Sales rep who claimed the lead, or **Unclaimed** |
-| Updated | `updated_at` relative time |
+| Created | `created_at` — time today or numeric date |
+| Updated | `updated_at` — time today or numeric date |
 
 ### Behaviors
 
@@ -198,7 +228,7 @@ A lead appears here when:
 | Product Interests | `ProductName[quantity]` from `interests` + `quantities` |
 | Urgency | `UrgencyPill` |
 | Quote / Order | `QUO-…` / `ORD-…` badges from nested tickets — **reference codes only, no amounts** |
-| Created | Relative time |
+| Created | `created_at` — time today or numeric date via `formatTimeTodayOrDateNumeric` |
 
 ### Behaviors
 
@@ -222,10 +252,12 @@ A lead appears here when:
 | Column | Notes |
 |--------|-------|
 | Name | |
+| Created By | System / user who created the lead |
 | Company | |
 | Product Interests | `ProductName[quantity]` |
-| Rejection Reason | |
-| Rejected At | Relative time |
+| Rejection Reason | `rejectReasonLabel` (e.g. `spam_bot` → Spam / Bot) |
+| Created | `created_at` — time today or numeric date |
+| Sent to Rejected | `updated_at` when rejected — time today or numeric date |
 | Actions | **View** button |
 
 ### Behaviors
@@ -241,6 +273,8 @@ SDR lead queues use separate tabs instead of an in-tab toggle:
 - **All Leads** — only **unlocked** leads (`locked_by_id IS NULL`) in the shared pool; any SDR can **Claim**
 - **Claimed Leads** — leads the current SDR has **claimed** (`locked_by_id = currentUserId`); **View** action
 - **In Progress** — leads with `status = In Progress` scoped to the SDR (`sdr_id = me`); Admin sees all
+
+**Table columns:** Name · Created By · Company · Product Interests · Working SDR · Urgency · Created · In Progress · Action — **In Progress** uses SDR `lead_in_progress` activity time (`in_progress_at` from API); dates use time-today or numeric format.
 
 Leads currently locked by another SDR are **hidden from the queue entirely**. SDRs never see a lead that someone else is working — there is nothing to click on.
 
@@ -331,7 +365,7 @@ Actions available depending on drawer mode and current `status`. **All action bu
 | Action | When Available | What it does |
 |--------|---------------|--------------|
 | ~~**Validate**~~ | _Removed_ | The Validate step has been removed from the SDR workflow. SDRs go directly to Route to Sales, On Hold, or Reject. |
-| **Route to Sales** | Edit mode (SDR **and** Admin), any non-routed status | Opens **Route to Sales modal** — radio list of active sales reps + "Add to queue — don't assign yet" (default). On confirm: saves form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Claimed'` when rep selected (else `null` for unclaimed queue), optionally sets `sales_owner_id`. Admin also has a **Route to Sales** button on each list row (opens the same modal, no drawer required). |
+| **Route to Sales** | Edit mode (SDR **and** Admin), any non-routed status | Opens **Route to Sales modal** — radio list of active sales reps + "Add to queue — don't assign yet". When the linked customer has an **active Key Account rep**, modal shows an info callout and **pre-selects** that rep (queue still selectable). On confirm: saves form edits + sets `status = 'Routed to Sales'`, `sales_status = 'Claimed'` when rep assigned (else `null` for queue), sends explicit `sales_owner_id`. Server auto-assigns Key Account when owner omitted. Admin also has inline **Route to Sales** on list rows. |
 | **Follow Up Later** | Edit mode, not On Hold / Follow Up Later / Rejected | Full-screen follow-up sub-form; `POST /api/leads/[id]/follow-up` |
 | **On Hold** | Edit mode, status not Rejected | Replaces drawer body with full-screen hold sub-form (tabs + lead form hidden until hold is confirmed or cancelled) |
 | **Resume** | Edit mode, `status = 'On Hold'` or `Follow Up Later` | Saves form edits + `POST /api/leads/[id]/resume` → restores `prev_status` |
@@ -441,7 +475,8 @@ Below the grid (full width):
 - **Verify Lead Comment** — textarea: "Add verification notes before opening Order / Quote..."
 
 Footer:
-- **Save Lead** → `POST /api/leads/manual` → creates lead + customer (if new); lead stays **unclaimed** (`locked_by_id` null) until Claim/Assign
+- **Save Lead** → `POST /api/leads/manual` → creates lead + customer (if new); lead stays **Pending** until Claim/Assign
+- **Route to Key Account Holder** (when linked customer has active Key Account) → same validation as Save Lead → `POST /api/leads/manual` with `route_to_key_account: true` → lead created as **Routed to Sales**, **Claimed**, assigned to Key Account rep; info banner shown in modal
 - **Cancel**
 
 Required fields (*): Phone, First Name, Source, Industry.
