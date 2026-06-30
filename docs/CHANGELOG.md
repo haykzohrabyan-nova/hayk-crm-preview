@@ -6,10 +6,15 @@ Format: `## [version or date] — description`, newest first.
 ## [2026-06-29] — Operations column grouping
 
 ### Added
-- `lib/utils/operations-list-group.ts` — group keys and pipeline stage order for Operations list
+- `docs/prototypes/operations-performance-dashboard.html` — standalone HTML prototype for Operations Performance dashboard (3-band layout, app color tokens)
 
 ### Changed
 - Operations pipeline table — click **Stage**, **SDR**, or **Sales rep** column header to group rows on the current page (layers icon; click again to clear); mobile cards use matching section headers
+- Operations Performance tab — row breakdown under each name uses tab-style chips (same labels as pipeline tabs) instead of a dense single-line sentence
+- Operations Performance tab — removed redundant chip breakdown under names; counts live in the table columns only (fixes cramped layout)
+- Operations Performance tab — aligned fixed-column table (Active, Claimed, Quoted, Paid, …) so every rep row lines up vertically; — for zero
+- Operations Performance tab — table typography matches All active pipeline table (`text-[11px]` headers, `lg:text-xs xl:text-sm` cells, same padding)
+- `components/admin/operations-performance-card.tsx` — card layout matching admin dashboard team cards
 
 ## [2026-07-01] — Customer Key Account sales rep
 

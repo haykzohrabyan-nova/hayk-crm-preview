@@ -20,6 +20,7 @@ import {
   defaultDashboardDateRangeFilterValue,
   type DashboardDateRangeFilterValue,
 } from "@/lib/utils/dashboard-date-range-filter";
+import { SDR_DASHBOARD_PRESET_LABELS } from "@/lib/utils/sdr-dashboard-date-range";
 import { AdminUserFilter } from "@/components/ui/admin-user-filter";
 import { appendAdminFilterUserId } from "@/lib/utils/admin-user-filter";
 import { ListPagination } from "@/components/ui/list-pagination";
@@ -55,6 +56,11 @@ const VerifyDrawer = dynamic(
   () => import("@/components/leads/verify-drawer").then((m) => ({ default: m.VerifyDrawer })),
   { ssr: false, loading: () => null },
 );
+
+function operationsPeriodLabel(filter: DashboardDateRangeFilterValue): string {
+  if (filter.preset === "custom") return "Custom range";
+  return SDR_DASHBOARD_PRESET_LABELS[filter.preset];
+}
 
 function TicketRefCell({
   refCode,
@@ -385,6 +391,11 @@ export default function OperationsPage() {
 
   const isPerformanceTab = activeStage === "performance";
 
+  const performancePeriodLabel = useMemo(
+    () => operationsPeriodLabel(dateFilter),
+    [dateFilter],
+  );
+
   type OperationsPageData = {
     deals?: OperationsDealRow[];
     counts?: Record<string, number>;
@@ -603,6 +614,7 @@ export default function OperationsPage() {
           totals={performance?.totals ?? null}
           users={performance?.users ?? []}
           loading={loading}
+          periodLabel={performancePeriodLabel}
         />
       ) : (
         <>

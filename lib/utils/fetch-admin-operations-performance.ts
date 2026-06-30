@@ -3,6 +3,7 @@ import {
   getOperationsFilterBucket,
   hasOperationsSentQuote,
   matchesOperationsFilter,
+  OPERATIONS_FILTER_LABELS,
   primaryOperationsTicket,
   resolveOperationsTicketRefs,
   type OperationsLead,
@@ -51,15 +52,32 @@ export type OperationsPerformanceData = {
   users: OperationsPerformanceRow[];
 };
 
-/** Plain-language breakdown for Performance table hints (e.g. "2 quoted (1 sent) · 2 ordered"). */
-export function formatPerformanceRowSummary(
+export type PerformanceSummarySegment = {
+  key: string;
+  label: string;
+  count: number;
+  /** Optional second line inside the chip (e.g. sent vs not sent under Quoted). */
+  sublabel?: string;
+};
+
+export type PerformanceRowSummary = {
+  onHand: number;
+  segments: PerformanceSummarySegment[];
+};
+
+/** Structured breakdown — labels match Operations filter tabs / table columns. */
+export function buildPerformanceRowSummary(
   row: OperationsPerformanceCounts,
   options?: { includeUnclaimed?: boolean },
-): string | null {
-  const parts: string[] = [];
+): PerformanceRowSummary | null {
+  const segments: PerformanceSummarySegment[] = [];
 
   if (options?.includeUnclaimed && row.unclaimed > 0) {
-    parts.push(`${row.unclaimed} unclaimed`);
+    segments.push({
+      key: "unclaimed",
+      label: OPERATIONS_FILTER_LABELS.sales_queue,
+      count: row.unclaimed,
+    });
   }
 
   const earlyPipeline =
@@ -73,54 +91,130 @@ export function formatPerformanceRowSummary(
       row.completed);
 
   if (earlyPipeline > 0) {
-    parts.push(`${earlyPipeline} SDR / early pipeline`);
+    segments.push({
+      key: "sdr",
+      label: OPERATIONS_FILTER_LABELS.sdr,
+      count: earlyPipeline,
+    });
   }
 
   if (row.claimed > 0) {
-    parts.push(`${row.claimed} claimed`);
+    segments.push({ key: "claimed", label: "Claimed", count: row.claimed });
   }
   if (row.in_progress > 0) {
-    parts.push(`${row.in_progress} in progress`);
+    segments.push({ key: "in_progress", label: "In progress", count: row.in_progress });
   }
   if (row.on_hold > 0) {
-    parts.push(`${row.on_hold} on hold`);
+    segments.push({
+      key: "hold",
+      label: OPERATIONS_FILTER_LABELS.hold,
+      count: row.on_hold,
+    });
   }
   if (row.rejected > 0) {
-    parts.push(`${row.rejected} rejected`);
+    segments.push({
+      key: "rejected",
+      label: OPERATIONS_FILTER_LABELS.rejected,
+      count: row.rejected,
+    });
   }
 
   if (row.quoted > 0) {
     const notSent = row.quoted - row.sent_to_customer;
+    let sublabel: string | undefined;
     if (row.sent_to_customer > 0 && notSent > 0) {
-      parts.push(
-        `${row.quoted} quoted (${row.sent_to_customer} sent, ${notSent} not sent)`,
-      );
+      sublabel = `${row.sent_to_customer} sent · ${notSent} not sent`;
     } else if (row.sent_to_customer > 0) {
-      parts.push(`${row.quoted} quoted (all sent)`);
+      sublabel = "all sent";
     } else {
-      parts.push(`${row.quoted} quoted (not sent yet)`);
+      sublabel = "not sent yet";
     }
+    segments.push({
+      key: "quoted",
+      label: OPERATIONS_FILTER_LABELS.quoted,
+      count: row.quoted,
+      sublabel,
+    });
   }
 
   if (row.ordered > 0) {
-    parts.push(`${row.ordered} ordered / in production`);
+    segments.push({
+      key: "order",
+      label: OPERATIONS_FILTER_LABELS.order,
+      count: row.ordered,
+    });
   }
   if (row.completed > 0) {
-    parts.push(`${row.completed} completed`);
+    segments.push({
+      key: "completed",
+      label: OPERATIONS_FILTER_LABELS.completed,
+      count: row.completed,
+    });
   }
 
-  if (parts.length === 0) {
-    if (row.leads_on_hand > 0) {
-      return `${row.leads_on_hand} active — see stage columns`;
-    }
+  if (segments.length === 0 && row.leads_on_hand === 0) {
     return null;
   }
 
-  if (row.leads_on_hand > 0 && parts.length > 0) {
-    return `${row.leads_on_hand} on hand — ${parts.join(" · ")}`;
+  return { onHand: row.leads_on_hand, segments };
+}
+
+/** Plain-text fallback for tooltips and screen readers. */
+export function formatPerformanceRowSummary(
+  row: OperationsPerformanceCounts,
+  options?: { includeUnclaimed?: boolean },
+): string | null {
+  const built = buildPerformanceRowSummary(row, options);
+  if (!built) return null;
+
+  if (built.segments.length === 0) {
+    return built.onHand > 0 ? `${built.onHand} on hand` : null;
+  }
+
+  const parts = built.segments.map((segment) => {
+    const base = `${segment.count} ${segment.label.toLowerCase()}`;
+    return segment.sublabel ? `${base} (${segment.sublabel})` : base;
+  });
+
+  if (built.onHand > 0) {
+    return `${built.onHand} on hand — ${parts.join(" · ")}`;
   }
 
   return parts.join(" · ");
+}
+
+/** Quoted column — Sent is a subset of Quoted, not a separate pipeline stage. */
+export function formatPerformanceQuotedCell(
+  quoted: number,
+  sentToCustomer: number,
+): { primary: string; detail: string | null; title: string } {
+  if (quoted <= 0) {
+    return { primary: "0", detail: null, title: "No deals in quote stage" };
+  }
+
+  const notSent = quoted - sentToCustomer;
+
+  if (sentToCustomer >= quoted) {
+    return {
+      primary: String(quoted),
+      detail: "all sent",
+      title: `${quoted} in quote stage — all ${quoted} sent to customer`,
+    };
+  }
+
+  if (sentToCustomer <= 0) {
+    return {
+      primary: String(quoted),
+      detail: "not sent",
+      title: `${quoted} in quote stage — none sent to customer yet`,
+    };
+  }
+
+  return {
+    primary: String(quoted),
+    detail: `${sentToCustomer} sent · ${notSent} not sent`,
+    title: `${quoted} in quote stage — ${sentToCustomer} sent to customer, ${notSent} not sent yet`,
+  };
 }
 
 const PAYMENT_TICKET_SELECT =

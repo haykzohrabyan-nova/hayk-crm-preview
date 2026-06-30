@@ -107,7 +107,7 @@ Row click opens `OperationsDealDetailDialog`:
 
 **Total row** (highlighted) + one row per active Admin / SDR / Sales user with activity in range.
 
-**UI hints:** Info callout explains On hand vs stage columns; each row shows a plain-language summary under the rep name via `formatPerformanceRowSummary()` (e.g. `4 on hand — 2 quoted (1 sent, 1 not sent) · 2 ordered / in production`).
+**UI:** Card grid (same pattern as Admin dashboard team cards) — avatar, role pill, **X active** badge, metric grids for pipeline / outcomes / money. Team **Total** card spans full width above rep cards. Short info callout; no wide table.
 
 | Column | Meaning |
 |--------|---------|
@@ -117,10 +117,9 @@ Row click opens `OperationsDealDetailDialog`:
 | In progress | Sales working — In Progress / Ongoing |
 | On hold | Hold / follow up |
 | Rejected | Rejected |
-| Quoted | Quote-stage deals |
-| Sent | Quote sent to customer |
-| Ordered | Order / in production |
-| Completed | Completed orders |
+| Quoted | Still in **quote** stage — not converted to order yet. Mutually exclusive with Ordered; counts toward On hand. Subline = sent vs not sent within those quotes |
+| Ordered | **Order** or in-production — converted past quote stage. Mutually exclusive with Quoted; counts toward On hand |
+| Completed | Completed orders in range — **not** included in On hand |
 | Paid | Collected on user's orders (`getAmountPaid`) |
 | Awaiting | Balance due on open orders (`computeInvoicePaymentSummary`) |
 

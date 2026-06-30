@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Operations performance — BazarCRM prototype</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --color-bg: #ffffff;
+      --color-surface: #fafafa;
+      --color-topbar: #32373f;
+      --color-accent: #e8c97a;
+      --color-accent-dark: #c9a84c;
+      --color-text-primary: #333333;
+      --color-text-muted: #666666;
+      --color-border: #e5e7eb;
+      --color-badge-bg: #eaf0fb;
+      --color-badge-text: #1b2b4b;
+      --color-success: #16a34a;
+      --color-success-bg: #f0fdf4;
+      --color-warning: #d97706;
+      --color-warning-bg: #fffbeb;
+      --color-danger: #dc2626;
+      --color-danger-bg: #fef2f2;
+      --color-info-text: #2563eb;
+      --color-info-bg: #eff6ff;
+      --color-neutral-text: #999999;
+      --color-in-progress-text: #7c3aed;
+      --shell-bg: var(--color-bg);
+      --panel-bg: var(--color-surface);
+      --shell-border: var(--color-border);
+      --text-main: var(--color-text-primary);
+      --text-muted: var(--color-text-muted);
+      --gold: var(--color-accent);
+      --gold-light: var(--color-accent-dark);
+      --paid: var(--color-success);
+      --awaiting: var(--color-warning);
+      --rejected: var(--color-danger);
+      --completed: var(--color-info-text);
+      --stage-claimed: var(--color-info-text);
+      --stage-inprog: var(--color-in-progress-text);
+      --stage-hold: var(--color-neutral-text);
+      --stage-quoted: var(--color-accent-dark);
+      --stage-quoted-ns: var(--color-accent);
+      --stage-ordered: var(--color-success);
+      --navy: var(--color-topbar);
+      --navy-mid: var(--color-surface);
+      --navy-light: var(--color-badge-bg);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-size: 12px;
+      font-variant-numeric: tabular-nums;
+      background: color-mix(in srgb, var(--color-topbar) 6%, var(--shell-bg));
+      color: var(--text-main);
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+
+    .shell {
+      max-width: 1100px;
+      margin: 0 auto;
+      background: var(--shell-bg);
+      border: 1px solid var(--shell-border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .shell-header {
+      background: var(--color-topbar);
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--shell-border);
+    }
+
+    .shell-header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--color-accent);
+      letter-spacing: 0.05em;
+    }
+
+    .shell-header p {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.55);
+      margin-top: 4px;
+    }
+
+    .shell-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .band1 {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+
+    .band1-left {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .band1-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .stacked-bar {
+      display: flex;
+      height: 24px;
+      border-radius: 4px;
+      overflow: hidden;
+      gap: 1px;
+      background: var(--shell-border);
+    }
+
+    .stacked-seg {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2px;
+      font-size: 10px;
+      font-weight: 600;
+      color: #ffffff;
+      transition: opacity 0.15s;
+      cursor: default;
+    }
+
+    .stacked-seg:hover {
+      opacity: 0.85;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 16px;
+      margin-top: 10px;
+      align-items: center;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .legend-swatch {
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .legend-note {
+      font-size: 10px;
+      font-style: italic;
+      color: var(--gold);
+      margin-left: 4px;
+    }
+
+    .kpi-col {
+      min-width: 144px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .kpi-tile {
+      background: var(--panel-bg);
+      border: 1px solid var(--shell-border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      border-left-width: 3px;
+      border-left-style: solid;
+    }
+
+    .kpi-tile.active {
+      border-left-color: var(--gold);
+    }
+
+    .kpi-tile.paid {
+      border-left-color: var(--paid);
+    }
+
+    .kpi-tile.awaiting {
+      border-left-color: var(--awaiting);
+    }
+
+    .kpi-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .kpi-value {
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .band-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .band-title span {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .badge {
+      font-size: 10px;
+      font-weight: 500;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--color-badge-bg);
+      color: var(--color-badge-text);
+    }
+
+    .rep-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .rep-name-col {
+      width: 80px;
+      flex-shrink: 0;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-main);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .rep-bar-wrap {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .rep-bar-outer {
+      height: 20px;
+      border-radius: 4px;
+      background: var(--shell-border);
+      overflow: hidden;
+    }
+
+    .rep-bar-inner {
+      height: 100%;
+      display: flex;
+      gap: 1px;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .rep-bar-seg {
+      min-width: 1px;
+      transition: opacity 0.15s;
+    }
+
+    .rep-bar-seg:hover {
+      opacity: 0.85;
+    }
+
+    .rep-active-count {
+      width: 28px;
+      text-align: right;
+      font-size: 10px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--panel-bg);
+      border: 1px solid var(--shell-border);
+      border-radius: 6px;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 6px;
+    }
+
+    .toggle-row:hover {
+      background: var(--color-badge-bg);
+    }
+
+    .toggle-arrow {
+      font-size: 10px;
+      color: var(--text-muted);
+      transition: transform 0.2s;
+      width: 12px;
+      flex-shrink: 0;
+    }
+
+    .toggle-row.open .toggle-arrow {
+      transform: rotate(90deg);
+    }
+
+    .toggle-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      flex-shrink: 0;
+    }
+
+    .toggle-meta {
+      flex: 1;
+      text-align: right;
+      font-size: 10px;
+      color: var(--text-muted);
+    }
+
+    .toggle-meta strong {
+      color: var(--text-main);
+      font-weight: 500;
+    }
+
+    .cards-wrap {
+      display: none;
+      gap: 10px;
+      margin-bottom: 14px;
+      padding: 0 4px 4px;
+    }
+
+    .cards-wrap.open {
+      display: flex;
+    }
+
+    .card {
+      flex: 1;
+      min-width: 0;
+      background: var(--panel-bg);
+      border: 1px solid var(--shell-border);
+      border-radius: 6px;
+      padding: 12px;
+    }
+
+    .card-header {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 2px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+
+    .card-sub {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+    }
+
+    .card-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 11px;
+    }
+
+    .card-row-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--text-muted);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .card-row-val {
+      font-weight: 500;
+      color: var(--text-main);
+    }
+
+    .quoted-block {
+      margin-top: 8px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--gold) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--gold) 25%, transparent);
+    }
+
+    .quoted-block-label {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--gold);
+      margin-bottom: 4px;
+    }
+
+    .quoted-sub {
+      display: flex;
+      justify-content: space-between;
+      font-size: 10px;
+      padding: 2px 0;
+    }
+
+    .quoted-sub span:first-child {
+      color: var(--text-muted);
+    }
+
+    .quoted-sub span:last-child {
+      color: var(--gold-light);
+      font-weight: 500;
+    }
+
+    .block-note {
+      font-size: 9px;
+      font-style: italic;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .ordered-block {
+      margin-top: 8px;
+      padding: 6px 8px;
+      border-radius: 4px;
+      background: color-mix(in srgb, var(--paid) 8%, transparent);
+      border: 1px solid color-mix(in srgb, var(--paid) 25%, transparent);
+    }
+
+    .ordered-block-label {
+      font-size: 9px;
+      font-weight: 600;
+      color: var(--paid);
+      margin-bottom: 2px;
+    }
+
+    .pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .pill-rejected {
+      background: var(--color-danger-bg);
+      color: var(--rejected);
+      border: 1px solid color-mix(in srgb, var(--rejected) 20%, transparent);
+    }
+
+    .pill-completed {
+      background: var(--color-info-bg);
+      color: var(--completed);
+      border: 1px solid color-mix(in srgb, var(--completed) 20%, transparent);
+    }
+
+    .win-rate {
+      font-size: 10px;
+      font-style: italic;
+      color: var(--text-muted);
+      margin-top: 8px;
+    }
+
+    .money-val-green {
+      color: var(--paid);
+      font-weight: 500;
+    }
+
+    .money-val-amber {
+      color: var(--awaiting);
+      font-weight: 500;
+    }
+
+    .divider {
+      height: 1px;
+      background: var(--shell-border);
+      margin: 8px 0;
+    }
+
+    @media (max-width: 768px) {
+      .band1 {
+        flex-direction: column;
+      }
+
+      .kpi-col {
+        flex-direction: row;
+        flex-wrap: wrap;
+        min-width: 0;
+      }
+
+      .kpi-tile {
+        flex: 1;
+        min-width: 120px;
+      }
+
+      .cards-wrap.open {
+        flex-direction: column;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="shell-header">
+      <h1>BAZAARPRINTING</h1>
+      <p>Operations · Performance (prototype)</p>
+    </div>
+    <div class="shell-body">
+      <section>
+        <div class="band1" id="band1"></div>
+      </section>
+      <section>
+        <div class="band-title">
+          <span>Rep workload</span>
+          <span class="badge">Active pipeline counts</span>
+        </div>
+        <div id="band2"></div>
+      </section>
+      <section>
+        <div class="section-label">Rep breakdown</div>
+        <div id="band3"></div>
+      </section>
+    </div>
+  </div>
+  <script>
+    const REPS = [
+      { name: "A. Marsh", claimed: 4, inprog: 6, hold: 1, quotedSent: 3, quotedNot: 2, ordered: 2, paid: 8420, awaiting: 3100, rejected: 2, completed: 11 },
+      { name: "B. Okafor", claimed: 2, inprog: 8, hold: 3, quotedSent: 5, quotedNot: 1, ordered: 4, paid: 12600, awaiting: 5400, rejected: 1, completed: 9 },
+      { name: "C. Lira", claimed: 6, inprog: 3, hold: 0, quotedSent: 2, quotedNot: 4, ordered: 1, paid: 4900, awaiting: 1800, rejected: 3, completed: 6 },
+      { name: "D. Sousa", claimed: 1, inprog: 5, hold: 2, quotedSent: 4, quotedNot: 0, ordered: 3, paid: 9800, awaiting: 6200, rejected: 0, completed: 14 },
+    ];
+
+    const STAGES = [
+      { key: "claimed", label: "Claimed", color: "var(--stage-claimed)", teamKey: "claimed" },
+      { key: "inprog", label: "In progress", color: "var(--stage-inprog)", teamKey: "inprog" },
+      { key: "hold", label: "On hold", color: "var(--stage-hold)", teamKey: "hold" },
+      { key: "quotedSent", label: "Quoted · sent", color: "var(--stage-quoted)", teamKey: "quotedSent" },
+      { key: "quotedNot", label: "Quoted · not sent", color: "var(--stage-quoted-ns)", teamKey: "quotedNot" },
+      { key: "ordered", label: "Ordered", color: "var(--stage-ordered)", teamKey: "ordered" },
+    ];
+
+    function activeTotal(rep) {
+      return rep.claimed + rep.inprog + rep.hold + rep.quotedSent + rep.quotedNot + rep.ordered;
+    }
+
+    function quotedTotal(rep) {
+      return rep.quotedSent + rep.quotedNot;
+    }
+
+    function winRate(rep) {
+      const denom = rep.completed + rep.rejected;
+      if (denom === 0) return "—";
+      return Math.round((rep.completed / denom) * 100) + "%";
+    }
+
+    function formatMoney(n) {
+      return "$" + n.toLocaleString("en-US");
+    }
+
+    function formatMoneyK(n) {
+      return "$" + (n / 1000).toFixed(1) + "k";
+    }
+
+    const teamTotals = REPS.reduce(
+      (acc, rep) => {
+        acc.claimed += rep.claimed;
+        acc.inprog += rep.inprog;
+        acc.hold += rep.hold;
+        acc.quotedSent += rep.quotedSent;
+        acc.quotedNot += rep.quotedNot;
+        acc.ordered += rep.ordered;
+        acc.paid += rep.paid;
+        acc.awaiting += rep.awaiting;
+        acc.rejected += rep.rejected;
+        acc.completed += rep.completed;
+        acc.active += activeTotal(rep);
+        return acc;
+      },
+      { claimed: 0, inprog: 0, hold: 0, quotedSent: 0, quotedNot: 0, ordered: 0, paid: 0, awaiting: 0, rejected: 0, completed: 0, active: 0 }
+    );
+
+    function buildStackedBar(totals) {
+      const total = STAGES.reduce((s, st) => s + totals[st.teamKey], 0);
+      const bar = document.createElement("div");
+      bar.className = "stacked-bar";
+      STAGES.forEach((st) => {
+        const val = totals[st.teamKey];
+        if (val === 0) return;
+        const seg = document.createElement("div");
+        seg.className = "stacked-seg";
+        seg.style.flex = val + " 1 0";
+        seg.style.background = st.color;
+        seg.title = st.label + ": " + val;
+        const pct = total > 0 ? val / total : 0;
+        if (val >= 3 && pct >= 0.04) seg.textContent = val;
+        bar.appendChild(seg);
+      });
+      return bar;
+    }
+
+    function renderBand1() {
+      const wrap = document.getElementById("band1");
+      const left = document.createElement("div");
+      left.className = "band1-left";
+      const lbl = document.createElement("div");
+      lbl.className = "band1-label";
+      lbl.textContent = "Team pipeline — active stages only";
+      left.appendChild(lbl);
+      left.appendChild(buildStackedBar(teamTotals));
+      const legend = document.createElement("div");
+      legend.className = "legend";
+      STAGES.forEach((st, i) => {
+        const item = document.createElement("div");
+        item.className = "legend-item";
+        const sw = document.createElement("span");
+        sw.className = "legend-swatch";
+        sw.style.background = st.color;
+        item.appendChild(sw);
+        item.appendChild(document.createTextNode(st.label + " (" + teamTotals[st.teamKey] + ")"));
+        legend.appendChild(item);
+        if (st.key === "quotedNot") {
+          const note = document.createElement("span");
+          note.className = "legend-note";
+          note.textContent = "Sent is a subset of Quoted — Ordered is a separate stage";
+          legend.appendChild(note);
+        }
+      });
+      left.appendChild(legend);
+      const right = document.createElement("div");
+      right.className = "kpi-col";
+      const kpis = [
+        { cls: "active", label: "Active now", value: String(teamTotals.active) },
+        { cls: "paid", label: "Paid", value: formatMoneyK(teamTotals.paid) },
+        { cls: "awaiting", label: "Awaiting", value: formatMoneyK(teamTotals.awaiting) },
+      ];
+      kpis.forEach((k) => {
+        const tile = document.createElement("div");
+        tile.className = "kpi-tile " + k.cls;
+        tile.innerHTML = '<div class="kpi-label">' + k.label + '</div><div class="kpi-value">' + k.value + "</div>";
+        right.appendChild(tile);
+      });
+      wrap.appendChild(left);
+      wrap.appendChild(right);
+    }
+
+    function renderBand2() {
+      const wrap = document.getElementById("band2");
+      const maxActive = Math.max(...REPS.map(activeTotal), 1);
+      REPS.forEach((rep) => {
+        const row = document.createElement("div");
+        row.className = "rep-row";
+        const name = document.createElement("div");
+        name.className = "rep-name-col";
+        name.textContent = rep.name;
+        name.title = rep.name;
+        const barWrap = document.createElement("div");
+        barWrap.className = "rep-bar-wrap";
+        const outer = document.createElement("div");
+        outer.className = "rep-bar-outer";
+        const inner = document.createElement("div");
+        inner.className = "rep-bar-inner";
+        const act = activeTotal(rep);
+        inner.style.width = Math.round((act / maxActive) * 100) + "%";
+        STAGES.forEach((st) => {
+          const val = rep[st.teamKey];
+          if (val === 0) return;
+          const seg = document.createElement("div");
+          seg.className = "rep-bar-seg";
+          seg.style.flex = val + " 1 0";
+          seg.style.background = st.color;
+          seg.title = st.label + ": " + val;
+          inner.appendChild(seg);
+        });
+        outer.appendChild(inner);
+        barWrap.appendChild(outer);
+        const count = document.createElement("div");
+        count.className = "rep-active-count";
+        count.textContent = act;
+        row.appendChild(name);
+        row.appendChild(barWrap);
+        row.appendChild(count);
+        wrap.appendChild(row);
+      });
+    }
+
+    function cardRow(label, val, dotColor) {
+      const row = document.createElement("div");
+      row.className = "card-row";
+      const left = document.createElement("div");
+      left.className = "card-row-left";
+      const dot = document.createElement("span");
+      dot.className = "dot";
+      dot.style.background = dotColor;
+      left.appendChild(dot);
+      left.appendChild(document.createTextNode(label));
+      const right = document.createElement("span");
+      right.className = "card-row-val";
+      right.textContent = val;
+      row.appendChild(left);
+      row.appendChild(right);
+      return row;
+    }
+
+    function buildCards(rep) {
+      const wrap = document.createElement("div");
+      wrap.className = "cards-wrap";
+      const act = activeTotal(rep);
+      const qt = quotedTotal(rep);
+
+      const c1 = document.createElement("div");
+      c1.className = "card";
+      c1.innerHTML = '<div class="card-header">Pipeline <span class="badge">Active: ' + act + '</span></div><div class="card-sub">Pipeline stages only — not outcomes</div>';
+      c1.appendChild(cardRow("Claimed", rep.claimed, "var(--stage-claimed)"));
+      c1.appendChild(cardRow("In progress", rep.inprog, "var(--stage-inprog)"));
+      c1.appendChild(cardRow("On hold", rep.hold, "var(--stage-hold)"));
+      const qb = document.createElement("div");
+      qb.className = "quoted-block";
+      qb.innerHTML = '<div class="quoted-block-label">Quoted total: ' + qt + '</div>';
+      [["Sent", rep.quotedSent], ["Not sent", rep.quotedNot]].forEach(([lbl, v]) => {
+        const sr = document.createElement("div");
+        sr.className = "quoted-sub";
+        sr.innerHTML = "<span>" + lbl + '</span><span>' + v + "</span>";
+        qb.appendChild(sr);
+      });
+      const qn = document.createElement("div");
+      qn.className = "block-note";
+      qn.textContent = "Sent + not sent = " + qt + " total quoted";
+      qb.appendChild(qn);
+      c1.appendChild(qb);
+      const ob = document.createElement("div");
+      ob.className = "ordered-block";
+      ob.innerHTML = '<div class="ordered-block-label">Ordered: ' + rep.ordered + "</div>";
+      const on = document.createElement("div");
+      on.className = "block-note";
+      on.textContent = "Separate stage — never overlaps Quoted";
+      ob.appendChild(on);
+      c1.appendChild(ob);
+
+      const c2 = document.createElement("div");
+      c2.className = "card";
+      c2.innerHTML = '<div class="card-header">Outcomes</div><div class="card-sub">Not counted in active total</div>';
+      c2.appendChild(cardRow("Rejected", rep.rejected, "var(--rejected)"));
+      c2.appendChild(cardRow("Completed", rep.completed, "var(--completed)"));
+      const pills = document.createElement("div");
+      pills.className = "pill-row";
+      pills.innerHTML = '<span class="pill pill-rejected">' + rep.rejected + " rejected</span><span class=\"pill pill-completed\">" + rep.completed + " completed</span>";
+      c2.appendChild(pills);
+      const wr = document.createElement("div");
+      wr.className = "win-rate";
+      wr.textContent = "Win rate: " + winRate(rep);
+      c2.appendChild(wr);
+
+      const c3 = document.createElement("div");
+      c3.className = "card";
+      c3.innerHTML = '<div class="card-header">Money</div><div class="card-sub">Revenue collected & pending</div>';
+      const paidRow = cardRow("Paid", formatMoney(rep.paid), "var(--paid)");
+      paidRow.querySelector(".card-row-val").classList.add("money-val-green");
+      c3.appendChild(paidRow);
+      const awaitRow = cardRow("Awaiting", formatMoney(rep.awaiting), "var(--awaiting)");
+      awaitRow.querySelector(".card-row-val").classList.add("money-val-amber");
+      c3.appendChild(awaitRow);
+      const div = document.createElement("div");
+      div.className = "divider";
+      c3.appendChild(div);
+      const totalBilled = rep.paid + rep.awaiting;
+      c3.appendChild(cardRow("Total billed", formatMoney(totalBilled), "var(--text-muted)"));
+
+      wrap.appendChild(c1);
+      wrap.appendChild(c2);
+      wrap.appendChild(c3);
+      return wrap;
+    }
+
+    function renderBand3() {
+      const wrap = document.getElementById("band3");
+      REPS.forEach((rep) => {
+        const toggle = document.createElement("div");
+        toggle.className = "toggle-row";
+        const arrow = document.createElement("span");
+        arrow.className = "toggle-arrow";
+        arrow.textContent = "▶";
+        const nm = document.createElement("span");
+        nm.className = "toggle-name";
+        nm.textContent = rep.name;
+        const meta = document.createElement("span");
+        meta.className = "toggle-meta";
+        meta.innerHTML =
+          "Active: <strong>" +
+          activeTotal(rep) +
+          "</strong> · Paid: <strong>" +
+          formatMoneyK(rep.paid) +
+          "</strong> · Awaiting: <strong>" +
+          formatMoneyK(rep.awaiting) +
+          "</strong>";
+        toggle.appendChild(arrow);
+        toggle.appendChild(nm);
+        toggle.appendChild(meta);
+        const cards = buildCards(rep);
+        toggle.addEventListener("click", () => {
+          toggle.classList.toggle("open");
+          cards.classList.toggle("open");
+        });
+        wrap.appendChild(toggle);
+        wrap.appendChild(cards);
+      });
+    }
+
+    renderBand1();
+    renderBand2();
+    renderBand3();
+  </script>
+</body>
+</html>
