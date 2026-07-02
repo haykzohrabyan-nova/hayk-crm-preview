@@ -778,7 +778,11 @@ function DealDetailPanel({ deal, onClose }: { deal: Deal; onClose: () => void })
         )}
       </div>
 
-      <div style={{ padding: "10px", background: "#171717", color: "#fff", borderRadius: "8px", textAlign: "center", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>View full details →</div>
+      <a
+        href={`/preview/sales-pipeline?deal=${encodeURIComponent(deal.id)}`}
+        title={`Open ${deal.customer} in the Sales Pipeline`}
+        style={{ display: "block", padding: "10px", background: "#171717", color: "#fff", borderRadius: "8px", textAlign: "center", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", textDecoration: "none" }}
+      >View full details →</a>
     </div>
   );
 }
