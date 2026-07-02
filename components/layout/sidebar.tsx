@@ -72,6 +72,9 @@ const PREVIEW_ROUTE_OVERRIDES: Record<string, string> = {
   "/orders":          "/preview/orders",
   "/quotes":          "/preview/new-quote",
   "/inbox":           "/preview/inbox",
+  // Hayk 2026-07-02 — payments preview (Arusyak's view). If a /payments DB
+  // Page exists it redirects here; if not, PreviewPaymentsLink adds the entry.
+  "/payments":        "/preview/payments",
 };
 
 // Hayk 2026-07-01 — Preview-only sidebar link for the unified Inbox hub.
@@ -82,6 +85,16 @@ const PREVIEW_INBOX_LINK = {
   label: "Inbox",
   icon: "Inbox" as const,
   insertAfterRoute: "/leads",
+};
+
+// Hayk 2026-07-02 — Preview-only sidebar link for the Payments Manager
+// (Arusyak's accountant view). No /payments DB Page exists yet, so we
+// inject the entry right after Orders. Role visibility handled per-page.
+const PREVIEW_PAYMENTS_LINK = {
+  route: "/preview/payments",
+  label: "Payments",
+  icon: "Briefcase" as const,
+  insertAfterRoute: "/orders",
 };
 
 // Role-specific display name overrides for the /dashboard page
@@ -225,6 +238,42 @@ function PreviewInboxLink({ collapsed }: { collapsed: boolean }) {
           {unread > 99 ? "99+" : unread}
         </span>
       )}
+    </Link>
+  );
+}
+
+// Hayk 2026-07-02 — Preview Payments link (Arusyak's view).
+function PreviewPaymentsLink({ collapsed }: { collapsed: boolean }) {
+  const pathname = usePathname();
+  const active = pathname === "/preview/payments" || pathname.startsWith("/preview/payments/");
+  return (
+    <Link
+      href="/preview/payments"
+      title={collapsed ? "Payments" : undefined}
+      className={cn(
+        "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors",
+        collapsed && "justify-center px-0"
+      )}
+      style={
+        active
+          ? { backgroundColor: "var(--color-accent)", color: "var(--color-btn-primary-text)", fontWeight: 500 }
+          : { color: "var(--color-sidebar-nav)" }
+      }
+      onMouseEnter={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLElement).style.backgroundColor = "var(--color-sidebar-hover-bg)";
+          (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav-hover)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLElement).style.backgroundColor = "";
+          (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav)";
+        }
+      }}
+    >
+      <Briefcase className="h-4 w-4 shrink-0" />
+      {!collapsed && <span className="flex-1 truncate">Payments</span>}
     </Link>
   );
 }
@@ -605,6 +654,11 @@ export function Sidebar() {
                 {page.route === PREVIEW_INBOX_LINK.insertAfterRoute &&
                   !PREVIEW_ROLES_HIDING_PREVIEW_INBOX.includes(previewRole) && (
                   <PreviewInboxLink collapsed={collapsed} />
+                )}
+                {/* Hayk 2026-07-02 — inject Payments link right after Orders (accountant + admin only) */}
+                {page.route === PREVIEW_PAYMENTS_LINK.insertAfterRoute &&
+                  !PREVIEW_ROLE_HIDDEN_ROUTES[previewRole].includes("/payments") && (
+                  <PreviewPaymentsLink collapsed={collapsed} />
                 )}
               </div>
             ))}

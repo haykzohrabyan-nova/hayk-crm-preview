@@ -266,10 +266,13 @@ function MoneyPositionD() {
   return (
     <div style={CARD_STYLE}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-        <div style={SECTION_HEADER}>
-          Money Position
-          <InfoTip text="Snapshot of money moving through the business in the last 30 days." />
-        </div>
+        {/* Hayk 2026-07-02 — Money Position tile header links to Arusyak's payments view. */}
+        <Link href="/preview/payments" style={{ textDecoration: "none", color: "inherit" }}>
+          <div style={SECTION_HEADER}>
+            Money Position
+            <InfoTip text="Snapshot of money moving through the business in the last 30 days. Click to open Arusyak's payments manager." />
+          </div>
+        </Link>
         <span style={{ fontSize: "11px", color: "var(--preview-text-muted)" }}>Last 30 days</span>
       </div>
       <div style={{ marginTop: "14px", display: "flex", flexDirection: "column", gap: "10px" }}>
