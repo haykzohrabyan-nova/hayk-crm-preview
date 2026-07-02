@@ -1189,7 +1189,7 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
           {selectedProduct ? (
             <a
-              href={`https://bazaarprinting.com/product/${slugify(selectedProduct.name)}?id=${selectedProduct.id}${selectedProduct.subcategory ? `&activePage=${encodeURIComponent(selectedProduct.subcategory)}` : ""}`}
+              href={`https://bazaarprinting.com/bazaarprinting/product/${slugify(selectedProduct.name)}?id=${selectedProduct.id}${selectedProduct.subcategory ? `&activePage=${encodeURIComponent(selectedProduct.subcategory)}` : ""}`}
               target="_blank"
               rel="noreferrer"
               title={`Open ${selectedProduct.name} on bazaarprinting.com to double-check specs, pricing tiers, and options match the live site.`}
