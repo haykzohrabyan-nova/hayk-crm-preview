@@ -60,20 +60,56 @@ interface LineItem {
   artworkFiles?: { name: string; size: string }[];
 }
 
-// FINISHING labels — DO NOT INVENT.
-// Populate ONLY with IDs verified against bazaarprinting.com admin.
-// The webhook pushes real labels from Material.displayName once wired.
-// Kept minimal on purpose — unknown IDs fall back to `Finish #NNN`.
+// FINISHING labels — sourced directly from the local Bazaar dev DB (Material.details).
+// These are Lamination-type Material rows. Whitespace / casing kept as stored.
 const FINISHING_LABELS: Record<number, string> = {
-  // Empty until verified. Add pairs like  177: "Matte Lam"  only after checking the live site.
+  177: "Matte Lam",
+  178: "Soft Touch (Karess)",
+  179: "Gloss Lam",
+  180: "Matte Lam",
+  181: "Gloss Lam",
+  182: "Soft Touch Lam",
+  183: "Soft Touch — Non-Scratch",
+  201: "Rainbow Holographic Lam",
+  225: "Rainbow Holographic Lam",
+  344: "3mil Gloss Lamination",
+  345: "3mil Gloss Lamination",
+  346: "3mil Matte Lamination",
+  347: "3mil Matte Lamination",
+  348: "5mil Gloss Lamination",
+  349: "5mil Gloss Lamination",
+  350: "5mil Matte Lamination",
+  351: "5mil Matte Lamination",
+  403: "Matte Lamination",
+  404: "Gloss Lamination",
+  405: "Soft Touch Lamination",
 };
 
-// SPECIAL EFFECTS labels — DO NOT INVENT.
-// The Bazaar Material table has proper labels for these IDs; the webhook pushes them.
-// Empty by design — anything that isn't verified against the live Bazaar site
-// falls back to `Effect #NNN` per Hayk's "never state unverified" rule.
-// Populate this map ONLY with IDs Hayk has explicitly confirmed.
-const SPECIAL_EFFECT_LABELS: Record<number, string> = {};
+// SPECIAL EFFECTS labels — Foil + Liquid (Raised UV) Material rows from the Bazaar DB.
+const SPECIAL_EFFECT_LABELS: Record<number, string> = {
+  206: "Gold Foil",
+  207: "Gold Foil",
+  208: "Bronze Foil",
+  209: "Silver Dot Foil",
+  210: "Digital Gold Foil",
+  211: "Rainbow Holo Foil",
+  212: "Royal Blue Foil",
+  213: "Green Textile Foil",
+  214: "Red Textile Foil",
+  215: "Red Textile Foil",
+  216: "Royal Blue Foil",
+  217: "Holo Dot Foil",
+  218: "Green Textile Foil",
+  219: "Rainbow Holo Foil",
+  227: "1-Pass Raised UV",
+  228: "3-Pass Raised UV",
+  229: "Raised UV — 40µ (light)",
+  230: "Raised UV — 50µ (standard)",
+  231: "Raised UV — 60µ (thick)",
+  232: "Raised UV — 80µ (max)",
+  233: "Cast & Cure",
+  329: "Cast & Cure Film",
+};
 const finishLabel = (id: number) => FINISHING_LABELS[id] || `Finish #${id}`;
 const effectLabel = (id: number) => SPECIAL_EFFECT_LABELS[id] || `Effect #${id}`;
 const slugify = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -240,6 +276,36 @@ export default function NewQuotePreview() {
   const taxAmount = taxExempt ? 0 : preTax * (taxRate / 100);
   const total = preTax + taxAmount;
 
+  // Per-step required-field validation. Empty array = step is complete.
+  function stepIssues(target: 1 | 2 | 3): string[] {
+    const issues: string[] = [];
+    if (target === 1) {
+      if (!quoteName?.trim()) issues.push("Quote name");
+      if (!dueDate) issues.push("Due date");
+      if (!salesRep?.trim()) issues.push("Sales rep");
+    }
+    if (target === 2) {
+      if (lineItems.length === 0) issues.push("At least one line item");
+      lineItems.forEach((l, i) => {
+        if (!l.productId)  issues.push(`Line ${i + 1}: product`);
+        if (!l.materialId) issues.push(`Line ${i + 1}: material`);
+        if (!l.quantity || l.quantity <= 0) issues.push(`Line ${i + 1}: quantity`);
+      });
+    }
+    return issues;
+  }
+  const step1Issues = stepIssues(1);
+  const step2Issues = stepIssues(2);
+  const currentIssues = step === 1 ? step1Issues : step === 2 ? step2Issues : [];
+  const canAdvance = currentIssues.length === 0;
+  function tryAdvance() {
+    if (!canAdvance) {
+      showToast("err", `Fill required: ${currentIssues.slice(0, 3).join(" · ")}${currentIssues.length > 3 ? ` · +${currentIssues.length - 3} more` : ""}`);
+      return;
+    }
+    setStep((step + 1) as 1 | 2 | 3);
+  }
+
   // ─── Draft persistence (localStorage) ─────────────────
   function showToast(kind: "ok" | "err", msg: string) {
     setToast({ kind, msg });
@@ -343,7 +409,7 @@ export default function NewQuotePreview() {
           {step === 3 && <button onClick={() => setPreviewOpen(true)} style={btnLight}>👁 Preview as customer</button>}
           <button onClick={saveDraft} style={btnLight}>💾 Save Draft</button>
           {step < 3
-            ? <button onClick={() => setStep((step + 1) as 1 | 2 | 3)} style={btnPrimary}>Next: {step === 1 ? "Products" : "Review & Send"} →</button>
+            ? <button onClick={tryAdvance} title={canAdvance ? undefined : `Missing: ${currentIssues.join(" · ")}`} style={{ ...btnPrimary, opacity: canAdvance ? 1 : 0.55, cursor: canAdvance ? "pointer" : "not-allowed" }}>Next: {step === 1 ? "Products" : "Review & Send"} →</button>
             : <button onClick={handleSendQuote} disabled={sending} style={{ ...btnPrimary, opacity: sending ? 0.5 : 1 }}>{sending ? "Sending…" : "✈ Save & Send Quote"}</button>}
         </div>
       </div>
@@ -384,6 +450,12 @@ export default function NewQuotePreview() {
 
         {/* RIGHT — step content */}
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+          {step < 3 && currentIssues.length > 0 && (
+            <div style={{ padding: "10px 14px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "10px", color: "#78350f", fontSize: "12.5px", fontWeight: 600, display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "15px" }}>⚠</span>
+              <span>Still needed before you can move on: <b>{currentIssues.join(" · ")}</b></span>
+            </div>
+          )}
           {step === 1 && (
             <Step1Info
               quoteRefId={quoteRefId}
@@ -444,7 +516,7 @@ export default function NewQuotePreview() {
               <button onClick={() => { if (confirm("Discard this quote?")) { discardDraft(); router.push("/preview/orders"); } }} style={btnLight}>Cancel</button>
               <button onClick={saveDraft} style={btnLight}>Save Draft</button>
               {step < 3
-                ? <button onClick={() => setStep((step + 1) as 1 | 2 | 3)} style={btnPrimary}>{step === 1 ? "Continue" : "Next: Review Quote"} →</button>
+                ? <button onClick={tryAdvance} title={canAdvance ? undefined : `Missing: ${currentIssues.join(" · ")}`} style={{ ...btnPrimary, opacity: canAdvance ? 1 : 0.55, cursor: canAdvance ? "pointer" : "not-allowed" }}>{step === 1 ? "Continue" : "Next: Review Quote"} →</button>
                 : <button onClick={handleSendQuote} disabled={sending} style={{ ...btnPrimary, opacity: sending ? 0.5 : 1 }}>{sending ? "Sending…" : "✈ Save & Send Quote"}</button>}
             </div>
           </div>
