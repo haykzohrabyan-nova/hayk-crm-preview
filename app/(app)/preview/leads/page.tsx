@@ -8,6 +8,7 @@
 
 import { useMemo, useState } from "react";
 import { commsForLead } from "../inbox/_seed";
+import { RoleGate } from "../_shared/RoleGate";
 
 const ACCENT = "#FF5D2E";
 
@@ -371,7 +372,16 @@ const DATE_FILTER_LABEL: Record<DateFilter, string> = {
 const DATE_FILTER_MAX_DAYS: Record<DateFilter, number> = { all: Infinity, "7d": 7, "30d": 30, "90d": 90 };
 
 // ─── Page ────────────────────────────────────────
-export default function LeadsPreview() {
+// Hayk 2026-07-02 — role gate: leads hidden from accountant / designer / print-manager.
+export default function LeadsPreviewGated() {
+  return (
+    <RoleGate capability="leads-module">
+      <LeadsPreview />
+    </RoleGate>
+  );
+}
+
+function LeadsPreview() {
   const [view, setView] = useState<"list" | "detail">("list");
   const [layout, setLayout] = useState<"table" | "kanban">("table");
   const [selectedId, setSelectedId] = useState<string | null>(null);

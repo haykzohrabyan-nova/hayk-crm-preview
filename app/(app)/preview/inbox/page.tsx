@@ -8,6 +8,8 @@
 import { useMemo, useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { COMM_ITEMS, type CommItem, type Channel } from "./_seed";
+// Hayk 2026-07-02 — role-view: designer sees only a truncated inbox.
+import { usePreviewRole } from "../_shared/role";
 
 const ACCENT = "#FF5D2E";
 
@@ -54,6 +56,13 @@ export default function InboxPreview() {
 function InboxInner() {
   const searchParams = useSearchParams();
   const initialItemId = searchParams.get("item");
+  // Hayk 2026-07-02 — designer view is a 5-item slice of the inbox.
+  // Everyone else sees the full list.
+  const [previewRole] = usePreviewRole();
+  const roleFilteredItems = useMemo(
+    () => (previewRole === "designer" ? COMM_ITEMS.slice(0, 5) : COMM_ITEMS),
+    [previewRole]
+  );
 
   const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
@@ -69,31 +78,31 @@ function InboxInner() {
 
   const channelCounts = useMemo(() => {
     const c: Record<ChannelFilter, number> = { all: 0, call: 0, sms: 0, email: 0, ig: 0, web_form: 0 };
-    COMM_ITEMS.forEach((it) => {
+    roleFilteredItems.forEach((it) => {
       if (it.unread && !readIds.has(it.id)) {
         c.all += 1;
         c[it.channel] += 1;
       }
     });
     return c;
-  }, [readIds]);
+  }, [readIds, roleFilteredItems]);
 
   const customerOptions = useMemo(() => {
     const s = new Set<string>();
-    COMM_ITEMS.forEach((c) => s.add(c.customerName));
+    roleFilteredItems.forEach((c) => s.add(c.customerName));
     return Array.from(s).sort();
-  }, []);
+  }, [roleFilteredItems]);
 
   const filtered = useMemo(() => {
-    let out = COMM_ITEMS.slice();
+    let out = roleFilteredItems.slice();
     if (channelFilter !== "all") out = out.filter((c) => c.channel === channelFilter);
     if (customerFilter !== "all") out = out.filter((c) => c.customerName === customerFilter);
     if (dateFilter === "today") out = out.filter((c) => isToday(c.receivedAtISO));
     if (dateFilter === "week") out = out.filter((c) => isThisWeek(c.receivedAtISO));
     return out.sort((a, b) => (a.receivedAtISO > b.receivedAtISO ? -1 : 1));
-  }, [channelFilter, customerFilter, dateFilter]);
+  }, [channelFilter, customerFilter, dateFilter, roleFilteredItems]);
 
-  const selected = COMM_ITEMS.find((c) => c.id === selectedId) ?? filtered[0] ?? null;
+  const selected = roleFilteredItems.find((c) => c.id === selectedId) ?? filtered[0] ?? null;
 
   function selectItem(id: string) {
     setSelectedId(id);

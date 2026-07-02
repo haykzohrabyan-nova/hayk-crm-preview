@@ -7,6 +7,7 @@
 // Real /sales-pipeline page NOT touched.
 
 import { useMemo, useState } from "react";
+import { RoleGate } from "../_shared/RoleGate";
 
 const ACCENT = "#FF5D2E";
 
@@ -162,7 +163,16 @@ const activityIcon = (k: ActivityKind) => {
 };
 
 // ─── Page ────────────────────────────────────────────
-export default function SalesPipelinePreview() {
+// Hayk 2026-07-02 — role gate: sales pipeline hidden from accountant / designer / print-manager.
+export default function SalesPipelinePreviewGated() {
+  return (
+    <RoleGate capability="sales-pipeline">
+      <SalesPipelinePreview />
+    </RoleGate>
+  );
+}
+
+function SalesPipelinePreview() {
   const [deals, setDeals] = useState<Deal[]>(INITIAL_DEALS);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"kanban" | "list">("kanban");

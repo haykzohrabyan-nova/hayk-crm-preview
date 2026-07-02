@@ -16,6 +16,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertsPanelA, FunnelPanelA, ScoreCard } from "./_VersionAClient";
+// Hayk 2026-07-02 — role-view: hide money-position + outstanding blocks from non-admin/accountant.
+import { usePreviewRole, canSee } from "../_shared/role";
 
 const ACCENT = "#FF5D2E";
 
@@ -592,6 +594,10 @@ function ConversionRateD() {
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function VersionDClient() {
+  // Hayk 2026-07-02 — role-view: hide money-position + outstanding blocks
+  // TODO(role-view): also gate individual KPI rows (revenue, cash) for stricter sales view
+  const [previewRole] = usePreviewRole();
+  const canSeeMoney = canSee(previewRole, "money-position-dashboard");
   // ---- Date range ----
   const [dateRange, setDateRange] = useState<DateRangeState>({ key: "30d" });
   const [dateOpen, setDateOpen] = useState(false);
@@ -664,7 +670,10 @@ export default function VersionDClient() {
     }
   }
 
-  const anyRow2 = widgets.moneyPosition || widgets.outstandingBreakdown || widgets.pipelineValue;
+  // Hayk 2026-07-02 — role-gated flags for row2 blocks
+  const showMoneyPosition = widgets.moneyPosition && canSeeMoney;
+  const showOutstanding = widgets.outstandingBreakdown && canSeeMoney;
+  const anyRow2 = showMoneyPosition || showOutstanding || widgets.pipelineValue;
   const anyRow3 = widgets.activeJobs || widgets.totalLeads || widgets.conversionRate;
   const anyRow4 = widgets.alertsActions || widgets.pipelineFunnel;
 
@@ -874,9 +883,9 @@ export default function VersionDClient() {
 
       {/* ─── SECTION 2 · 3-CARD ROW ────────────────────────── */}
       {anyRow2 && (
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${[widgets.moneyPosition, widgets.outstandingBreakdown, widgets.pipelineValue].filter(Boolean).length}, minmax(0, 1fr))`, gap: "12px", marginBottom: "16px", alignItems: "stretch" }}>
-          {widgets.moneyPosition && <MoneyPositionD />}
-          {widgets.outstandingBreakdown && <OutstandingBreakdownD />}
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${[showMoneyPosition, showOutstanding, widgets.pipelineValue].filter(Boolean).length}, minmax(0, 1fr))`, gap: "12px", marginBottom: "16px", alignItems: "stretch" }}>
+          {showMoneyPosition && <MoneyPositionD />}
+          {showOutstanding && <OutstandingBreakdownD />}
           {widgets.pipelineValue && <PipelineValueD />}
         </div>
       )}

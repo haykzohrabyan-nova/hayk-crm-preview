@@ -7,6 +7,7 @@
 import Link from "next/link";
 import VersionAClient from "./_VersionAClient";
 import VersionDClient from "./_VersionDClient";
+import { DashboardRoleGate } from "./_RoleGateClient";
 
 const ACCENT = "#FF5D2E";
 
@@ -15,6 +16,7 @@ export default async function DashboardPreview({ searchParams }: { searchParams:
   const v = (sp?.v ?? "d").toLowerCase();
 
   return (
+    <DashboardRoleGate>
     <div>
       {/* Version switcher */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "20px", alignItems: "center", padding: "10px 14px", background: "var(--preview-surface-2)", borderRadius: "10px", color: "var(--preview-text)" }}>
@@ -45,6 +47,7 @@ export default async function DashboardPreview({ searchParams }: { searchParams:
       {v === "c" && <VersionC />}
       {(v === "d" || (v !== "a" && v !== "b" && v !== "c")) && <VersionDClient />}
     </div>
+    </DashboardRoleGate>
   );
 }
 

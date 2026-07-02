@@ -7,6 +7,7 @@
 // Customer → Lead → Quote → Order. Every button wired.
 
 import { useMemo, useState } from "react";
+import { RoleGate } from "../_shared/RoleGate";
 
 const ACCENT = "#FF5D2E";
 
@@ -285,7 +286,16 @@ const fmtMoney = (n: number) => `$${n.toLocaleString()}`;
 const tierColor = (t: Tier) => t === "Gold" ? { bg: "#fef3c7", fg: "#a16207", pill: "#d97706" } : t === "Silver" ? { bg: "#f1f5f9", fg: "#475569", pill: "#64748b" } : t === "Bronze" ? { bg: "#fee2e2", fg: "#b45309", pill: "#c2410c" } : { bg: "#dbeafe", fg: "#1e40af", pill: "#3b82f6" };
 
 // ─── Page ────────────────────────────────────────────
-export default function CRMPreview() {
+// Hayk 2026-07-02 — role gate: CRM hidden from designer (no customer contact info).
+export default function CRMPreviewGated() {
+  return (
+    <RoleGate capability="customer-contact-info">
+      <CRMPreview />
+    </RoleGate>
+  );
+}
+
+function CRMPreview() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("all");
   const [search, setSearch] = useState("");
