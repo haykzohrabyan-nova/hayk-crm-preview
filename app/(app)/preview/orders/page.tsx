@@ -11,7 +11,7 @@ const ACCENT = "#FF5D2E";
 const GOLD = "#fbbf24";
 
 // ─── Types ────────────────────────────────────────────
-type OrderStatus = "Pending Payment" | "In Production" | "Ready to Ship" | "Shipped" | "Delivered" | "Cancelled";
+type OrderStatus = "Pending Payment" | "In Production" | "Ready to Ship" | "Shipped" | "Delivered" | "Cancelled" | "Refunded";
 type PaymentStatus = "Paid" | "Partial" | "Tax Exempt" | "Pending Tax Review" | "Unpaid";
 type Priority = "Normal" | "High" | "Rush";
 
@@ -58,10 +58,14 @@ interface Order {
   status: OrderStatus;
   payment: PaymentStatus;
   createdAgo: string;
+  createdDate: string;             // "06/28/2026" — actual date the order was placed
   attachmentsCount: number;
+  attachments: string[];           // sample file names, e.g. ["artwork_v3.ai", "dieline.pdf"]
   productionNotes?: string;
   shippingMethod?: "Pickup" | "Ship";
   trackingRef?: string;
+  refundedAmount?: number;         // set when status is Refunded
+  refundReason?: string;
 }
 
 // ─── Mock dataset ────────────────────────────────────────
@@ -77,7 +81,7 @@ const ORDERS: Order[] = [
     total: 54.88, received: 54.88, balanceDue: 0,
     priority: "High", dueDate: "07/01/2026", dueOverdue: false,
     status: "In Production", payment: "Paid",
-    createdAgo: "16h ago", attachmentsCount: 2, productionNotes: "Rush — customer needs first article today",
+    createdAgo: "16h ago", createdDate: "06/30/2026", attachmentsCount: 2, attachments: ["artwork_v3.ai", "dieline.pdf"], productionNotes: "Rush — customer needs first article today",
     shippingMethod: "Pickup",
   },
   {
@@ -91,7 +95,7 @@ const ORDERS: Order[] = [
     total: 5702.40, received: 5702.40, balanceDue: 0,
     priority: "Normal", dueDate: "07/03/2026",
     status: "In Production", payment: "Tax Exempt",
-    createdAgo: "16h ago", attachmentsCount: 4,
+    createdAgo: "16h ago", createdDate: "06/30/2026", attachmentsCount: 4, attachments: ["9sku_master.ai", "proof_front.pdf", "proof_back.pdf", "raised_uv_map.pdf"],
     shippingMethod: "Ship",
   },
   {
@@ -105,7 +109,7 @@ const ORDERS: Order[] = [
     total: 1245.66, received: 1245.66, balanceDue: 0,
     priority: "Normal", dueDate: "",
     status: "In Production", payment: "Paid",
-    createdAgo: "20h ago", attachmentsCount: 1,
+    createdAgo: "20h ago", createdDate: "06/30/2026", attachmentsCount: 1, attachments: ["moon_mind_carton.pdf"],
     shippingMethod: "Pickup",
   },
   {
@@ -119,7 +123,7 @@ const ORDERS: Order[] = [
     total: 1500.00, received: 800.00, balanceDue: 700.00,
     priority: "Normal", dueDate: "07/03/2026",
     status: "In Production", payment: "Tax Exempt",
-    createdAgo: "18h ago", attachmentsCount: 3,
+    createdAgo: "18h ago", createdDate: "06/30/2026", attachmentsCount: 3, attachments: ["la_kush_label.ai", "spot_uv_mask.pdf", "small_die.dxf"],
     shippingMethod: "Ship",
   },
   {
@@ -134,7 +138,7 @@ const ORDERS: Order[] = [
     total: 9517.52, received: 5000.00, balanceDue: 4517.52,
     priority: "Normal", dueDate: "07/03/2026",
     status: "In Production", payment: "Partial",
-    createdAgo: "20h ago", attachmentsCount: 6,
+    createdAgo: "20h ago", createdDate: "06/30/2026", attachmentsCount: 6, attachments: ["trap_snacks_box_v2.ai", "trap_snacks_pouch.ai", "terp_head.dxf", "spot_uv_front.pdf", "spot_uv_back.pdf", "proof_bundle.pdf"],
     shippingMethod: "Ship",
   },
   {
@@ -148,7 +152,7 @@ const ORDERS: Order[] = [
     total: 1800.01, received: 1800.01, balanceDue: 0,
     priority: "Normal", dueDate: "06/30/2026", dueOverdue: true,
     status: "In Production", payment: "Paid",
-    createdAgo: "3d ago", attachmentsCount: 5,
+    createdAgo: "3d ago", createdDate: "06/28/2026", attachmentsCount: 5, attachments: ["crunch_berries_box.ai", "tube_label.ai", "jar_label.ai", "silver_foil_map.pdf", "final_proof.pdf"],
     shippingMethod: "Ship",
   },
   {
@@ -163,7 +167,7 @@ const ORDERS: Order[] = [
     total: 480.00, received: 0, balanceDue: 480.00,
     priority: "Normal", dueDate: "07/02/2026",
     status: "Pending Payment", payment: "Pending Tax Review",
-    createdAgo: "1d ago", attachmentsCount: 2,
+    createdAgo: "1d ago", createdDate: "06/29/2026", attachmentsCount: 2, attachments: ["8th_label.ai", "quarter_label.ai"],
   },
   {
     refId: "2026-0103", quoteRefId: "QO-2026-0103",
@@ -174,7 +178,7 @@ const ORDERS: Order[] = [
     total: 0.44, received: 0.44, balanceDue: 0,
     priority: "Normal", dueDate: "06/30/2026", dueOverdue: true,
     status: "In Production", payment: "Paid",
-    createdAgo: "1d ago", attachmentsCount: 0,
+    createdAgo: "1d ago", createdDate: "06/29/2026", attachmentsCount: 0, attachments: [],
   },
   {
     refId: "2026-0083", quoteRefId: "QO-2026-0083",
@@ -187,7 +191,7 @@ const ORDERS: Order[] = [
     total: 1426.75, received: 1426.75, balanceDue: 0,
     priority: "Normal", dueDate: "06/30/2026", dueOverdue: true,
     status: "In Production", payment: "Paid",
-    createdAgo: "4d ago", attachmentsCount: 2,
+    createdAgo: "4d ago", createdDate: "06/26/2026", attachmentsCount: 2, attachments: ["jesus_girl_logo.ai", "shirt_placement.pdf"],
   },
   {
     refId: "2026-0079", quoteRefId: "QO-2026-0079",
@@ -200,7 +204,7 @@ const ORDERS: Order[] = [
     total: 2100.00, received: 2100.00, balanceDue: 0,
     priority: "Normal", dueDate: "07/03/2026",
     status: "Ready to Ship", payment: "Paid",
-    createdAgo: "5d ago", attachmentsCount: 3,
+    createdAgo: "5d ago", createdDate: "06/25/2026", attachmentsCount: 3, attachments: ["cold_brew_label.ai", "matte_finish_spec.pdf", "print_proof.jpg"],
     shippingMethod: "Ship",
   },
   {
@@ -214,7 +218,7 @@ const ORDERS: Order[] = [
     total: 3200.00, received: 3200.00, balanceDue: 0,
     priority: "Normal", dueDate: "06/28/2026",
     status: "Shipped", payment: "Paid",
-    createdAgo: "6d ago", attachmentsCount: 4,
+    createdAgo: "6d ago", createdDate: "06/24/2026", attachmentsCount: 4, attachments: ["coco_bloom_carton.ai", "gold_foil_map.pdf", "matte_lam_spec.pdf", "final_proof.pdf"],
     shippingMethod: "Ship", trackingRef: "1Z999AA10123456784",
   },
   {
@@ -228,7 +232,7 @@ const ORDERS: Order[] = [
     total: 5400.00, received: 5400.00, balanceDue: 0,
     priority: "Rush", dueDate: "06/25/2026",
     status: "Delivered", payment: "Paid",
-    createdAgo: "9d ago", attachmentsCount: 5,
+    createdAgo: "9d ago", createdDate: "06/21/2026", attachmentsCount: 5, attachments: ["verdant_pouch.ai", "holographic_foil.pdf", "gusset_spec.pdf", "front_proof.jpg", "back_proof.jpg"],
     shippingMethod: "Ship", trackingRef: "1Z999AA10123456789",
   },
   {
@@ -242,7 +246,7 @@ const ORDERS: Order[] = [
     total: 1760.00, received: 1760.00, balanceDue: 0,
     priority: "Normal", dueDate: "06/26/2026",
     status: "Shipped", payment: "Paid",
-    createdAgo: "8d ago", attachmentsCount: 3,
+    createdAgo: "8d ago", createdDate: "06/22/2026", attachmentsCount: 3, attachments: ["rise_kombucha_label.ai", "spot_uv_mask.pdf", "clear_bopp_spec.pdf"],
     shippingMethod: "Ship", trackingRef: "1Z999AA10555432198",
   },
   {
@@ -257,7 +261,7 @@ const ORDERS: Order[] = [
     total: 1150.00, received: 1150.00, balanceDue: 0,
     priority: "Normal", dueDate: "06/22/2026",
     status: "Delivered", payment: "Paid",
-    createdAgo: "12d ago", attachmentsCount: 2,
+    createdAgo: "12d ago", createdDate: "06/18/2026", attachmentsCount: 2, attachments: ["postcard_artwork.pdf", "trifold_artwork.pdf"],
     shippingMethod: "Pickup",
   },
   {
@@ -271,7 +275,7 @@ const ORDERS: Order[] = [
     total: 5750.00, received: 2000.00, balanceDue: 3750.00,
     priority: "Normal", dueDate: "07/05/2026",
     status: "Pending Payment", payment: "Partial",
-    createdAgo: "2d ago", attachmentsCount: 4,
+    createdAgo: "2d ago", createdDate: "06/28/2026", attachmentsCount: 4, attachments: ["hearth_pouch_sku1.ai", "hearth_pouch_sku2.ai", "hearth_pouch_sku3.ai", "hearth_pouch_sku4.ai"],
     shippingMethod: "Ship",
   },
   {
@@ -285,8 +289,40 @@ const ORDERS: Order[] = [
     total: 700.00, received: 0, balanceDue: 0,
     priority: "Normal", dueDate: "06/29/2026",
     status: "Cancelled", payment: "Unpaid",
-    createdAgo: "10d ago", attachmentsCount: 1,
+    createdAgo: "10d ago", createdDate: "06/20/2026", attachmentsCount: 1, attachments: ["solstice_stickers.ai"],
     productionNotes: "Customer changed direction — cancelled before production started.",
+  },
+  {
+    refId: "2026-0048", quoteRefId: "QO-2026-0048",
+    contact: "Priya Shah", company: "Petal & Pine",
+    createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
+    title: "Wedding invite suite — refund issued, print color mismatch",
+    lineItems: [
+      { id: "l1", productId: 40, productName: "Invitation Cards", productCategory: "Marketing Materials", materialId: 199, materialName: "14pt C2S Card Stock", quantity: 250, widthIn: 5, heightIn: 7, sides: "S2", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [208], specialEffectLabels: ["Gold Foil"], unitPrice: 2.60, extended: 650.00 },
+    ],
+    total: 650.00, received: 650.00, balanceDue: 0,
+    priority: "Normal", dueDate: "06/15/2026",
+    status: "Refunded", payment: "Paid",
+    createdAgo: "14d ago", createdDate: "06/16/2026", attachmentsCount: 3, attachments: ["invite_artwork.ai", "gold_foil_map.pdf", "refund_request.pdf"],
+    productionNotes: "Color mismatch on gold foil vs. proof. Refunded in full 06/24.",
+    refundedAmount: 650.00, refundReason: "Gold foil off-spec vs. approved proof",
+    shippingMethod: "Ship",
+  },
+  {
+    refId: "2026-0042", quoteRefId: "QO-2026-0042",
+    contact: "Diego Alvarez", company: "Alta Sauces",
+    createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
+    title: "Sauce bottle labels — partial refund, 500 pcs under-registered",
+    lineItems: [
+      { id: "l1", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 3000, widthIn: 2.5, heightIn: 3.5, sides: "S1", colorMode: "CMYK", finishingIds: [179], finishingLabels: ["Gloss Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.28, extended: 840.00 },
+    ],
+    total: 840.00, received: 840.00, balanceDue: 0,
+    priority: "Normal", dueDate: "06/10/2026",
+    status: "Refunded", payment: "Paid",
+    createdAgo: "20d ago", createdDate: "06/10/2026", attachmentsCount: 2, attachments: ["alta_bottle_label.ai", "refund_memo.pdf"],
+    productionNotes: "500 pcs mis-registered — customer accepted partial refund of $140, kept usable stock.",
+    refundedAmount: 140.00, refundReason: "500 pcs mis-registered — partial refund",
+    shippingMethod: "Ship",
   },
 ];
 
@@ -300,6 +336,7 @@ const STATUS_COLORS: Record<OrderStatus, { bg: string; fg: string }> = {
   "Shipped": { bg: "#e0e7ff", fg: "#4338ca" },
   "Delivered": { bg: "#dcfce7", fg: "#166534" },
   "Cancelled": { bg: "#fee2e2", fg: "#dc2626" },
+  "Refunded": { bg: "#ede9fe", fg: "#6d28d9" },
 };
 
 const PAY_COLORS: Record<PaymentStatus, { bg: string; fg: string }> = {
@@ -310,32 +347,74 @@ const PAY_COLORS: Record<PaymentStatus, { bg: string; fg: string }> = {
   "Unpaid": { bg: "#fee2e2", fg: "#dc2626" },
 };
 
+// ─── Quick-filter chips ────────────────────────────────
+type ChipKey = "overdue" | "rush" | "hasFiles" | "awaitingPayment" | "balanceDue";
+const CHIPS: { key: ChipKey; label: string; tint: string }[] = [
+  { key: "overdue",         label: "🔴 Overdue",         tint: "#dc2626" },
+  { key: "rush",            label: "⚠ Rush",             tint: "#f59e0b" },
+  { key: "hasFiles",        label: "📎 Has files",        tint: "#3b82f6" },
+  { key: "awaitingPayment", label: "🕒 Awaiting payment", tint: "#a16207" },
+  { key: "balanceDue",      label: "💰 Balance due",      tint: "#dc2626" },
+];
+
 // ─── Page ────────────────────────────────────────────
 export default function OrdersPreview() {
-  const [tab, setTab] = useState<"all" | "pending" | "production" | "cancelled">("all");
+  const [tab, setTab] = useState<"all" | "pending" | "production" | "ready" | "shipped" | "completed" | "cancelled" | "refunds">("all");
   const [dateRange, setDateRange] = useState<"today" | "yesterday" | "7d" | "30d" | "custom">("30d");
   const [teamFilter, setTeamFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>("2026-0114");
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [view, setView] = useState<"table" | "kanban">("table");
+  const [chips, setChips] = useState<Set<ChipKey>>(new Set());
+
+  const toggleChip = (k: ChipKey) => {
+    setChips(prev => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  };
 
   const filtered = useMemo(() => {
     let out = ORDERS;
     if (tab === "pending") out = out.filter(o => o.status === "Pending Payment");
     if (tab === "production") out = out.filter(o => o.status === "In Production");
+    if (tab === "ready") out = out.filter(o => o.status === "Ready to Ship");
+    if (tab === "shipped") out = out.filter(o => o.status === "Shipped");
+    if (tab === "completed") out = out.filter(o => o.status === "Delivered");
     if (tab === "cancelled") out = out.filter(o => o.status === "Cancelled");
+    if (tab === "refunds") out = out.filter(o => o.status === "Refunded");
+    if (teamFilter) out = out.filter(o => o.createdBy === teamFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
       out = out.filter(o => o.contact.toLowerCase().includes(q) || o.company.toLowerCase().includes(q) || o.refId.includes(q) || o.title.toLowerCase().includes(q));
     }
-    return out;
-  }, [tab, search]);
+    if (chips.has("overdue"))         out = out.filter(o => o.dueOverdue === true);
+    if (chips.has("rush"))            out = out.filter(o => o.priority === "Rush");
+    if (chips.has("hasFiles"))        out = out.filter(o => o.attachmentsCount > 0);
+    if (chips.has("awaitingPayment")) out = out.filter(o => o.status === "Pending Payment" || o.payment !== "Paid");
+    if (chips.has("balanceDue"))      out = out.filter(o => o.balanceDue > 0);
+    // Overdue-first sort: any order past due (and still open) floats to the top,
+    // regardless of tab/filter — so nothing critical gets buried.
+    const isOverdue = (o: Order) => o.dueOverdue === true && o.status !== "Delivered" && o.status !== "Cancelled" && o.status !== "Refunded";
+    return [...out].sort((a, b) => {
+      const ao = isOverdue(a) ? 1 : 0;
+      const bo = isOverdue(b) ? 1 : 0;
+      if (ao !== bo) return bo - ao;
+      return 0;
+    });
+  }, [tab, search, teamFilter, chips]);
 
   const counts = {
     all: ORDERS.length,
     pending: ORDERS.filter(o => o.status === "Pending Payment").length,
     production: ORDERS.filter(o => o.status === "In Production").length,
+    ready: ORDERS.filter(o => o.status === "Ready to Ship").length,
+    shipped: ORDERS.filter(o => o.status === "Shipped").length,
+    completed: ORDERS.filter(o => o.status === "Delivered").length,
     cancelled: ORDERS.filter(o => o.status === "Cancelled").length,
+    refunds: ORDERS.filter(o => o.status === "Refunded").length,
   };
 
   const detailOrder = detailId ? ORDERS.find(o => o.refId === detailId) : null;
@@ -374,7 +453,11 @@ export default function OrdersPreview() {
                 { key: "all", label: "All", count: counts.all },
                 { key: "pending", label: "Pending Payment", count: counts.pending },
                 { key: "production", label: "In Production", count: counts.production },
+                { key: "ready", label: "Ready to Ship", count: counts.ready },
+                { key: "shipped", label: "Shipped", count: counts.shipped },
+                { key: "completed", label: "Completed", count: counts.completed },
                 { key: "cancelled", label: "Cancelled", count: counts.cancelled },
+                { key: "refunds", label: "Refunds", count: counts.refunds },
               ].map(t => {
                 const active = tab === t.key;
                 return (
@@ -392,6 +475,19 @@ export default function OrdersPreview() {
               })}
             </div>
             <div style={{ display: "flex", gap: "8px" }}>
+              {/* View toggle: Table / Kanban */}
+              <div style={{ display: "flex", gap: "3px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", padding: "3px" }}>
+                <button onClick={() => setView("table")} style={{
+                  padding: "5px 10px", background: view === "table" ? "#0a0a0a" : "transparent",
+                  color: view === "table" ? "#fff" : "#666", border: "none", borderRadius: "6px",
+                  fontSize: "12px", fontWeight: view === "table" ? 700 : 500, cursor: "pointer",
+                }}>☰ Table</button>
+                <button onClick={() => setView("kanban")} style={{
+                  padding: "5px 10px", background: view === "kanban" ? "#0a0a0a" : "transparent",
+                  color: view === "kanban" ? "#fff" : "#666", border: "none", borderRadius: "6px",
+                  fontSize: "12px", fontWeight: view === "kanban" ? 700 : 500, cursor: "pointer",
+                }}>▦ Kanban</button>
+              </div>
               <select value={teamFilter || "all"} onChange={e => setTeamFilter(e.target.value === "all" ? null : e.target.value)} style={{ padding: "7px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", cursor: "pointer" }}>
                 <option value="all">All team members</option>
                 <option>Manny Carlo</option><option>Maria Hakobyan</option><option>Gary Matevosyan</option><option>Ernesto Navarro</option>
@@ -402,12 +498,42 @@ export default function OrdersPreview() {
             </div>
           </div>
 
-          {/* Orders table */}
+          {/* Quick-filter chips */}
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px", alignItems: "center" }}>
+            <span style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginRight: "4px" }}>Quick filters:</span>
+            {CHIPS.map(c => {
+              const active = chips.has(c.key);
+              return (
+                <button key={c.key} onClick={() => toggleChip(c.key)} style={{
+                  padding: "4px 10px",
+                  background: active ? c.tint + "22" : "var(--preview-surface-2)",
+                  color: active ? c.tint : "#666",
+                  border: `1px solid ${active ? c.tint + "66" : "var(--preview-border)"}`,
+                  borderRadius: "999px",
+                  fontSize: "11.5px",
+                  fontWeight: active ? 700 : 500,
+                  cursor: "pointer",
+                }}>{c.label}</button>
+              );
+            })}
+            {chips.size > 0 && (
+              <button onClick={() => setChips(new Set())} style={{
+                padding: "4px 8px", background: "transparent", border: "none",
+                color: "#888", fontSize: "11px", cursor: "pointer", textDecoration: "underline",
+              }}>Clear</button>
+            )}
+          </div>
+
+          {view === "kanban" ? (
+            <KanbanBoard orders={filtered} onCardClick={id => setDetailId(id)} />
+          ) : (
+          /* Orders table */
           <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
               <thead>
                 <tr style={{ color: "#888", fontSize: "10.5px", textTransform: "uppercase", letterSpacing: "0.06em", background: "var(--preview-surface-2)" }}>
                   <th style={{ ...th, width: "110px" }}>Order #</th>
+                  <th style={{ ...th, width: "92px", cursor: "help" }} title="Order Placed — the date the quote was converted to an order (customer paid or agreed to terms).">Date</th>
                   <th style={th}>Contact</th>
                   <th style={{ ...th, maxWidth: "280px" }}>Title</th>
                   <th style={th}>Created By</th>
@@ -435,6 +561,7 @@ export default function OrdersPreview() {
               </tbody>
             </table>
           </div>
+          )}
         </>
       )}
     </div>
@@ -458,12 +585,19 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
             {order.refId}
           </div>
         </td>
+        <td style={td} title={`Order Placed — the date the quote was converted to an order (customer paid or agreed to terms). This order was placed on ${order.createdDate} (${order.createdAgo}).`}>
+          <div style={{ fontSize: "12px", color: "var(--preview-text)", fontWeight: 600, whiteSpace: "nowrap", cursor: "help" }}>{order.createdDate}</div>
+          <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)" }}>{order.createdAgo}</div>
+        </td>
         <td style={td}>
           <div style={{ fontSize: "13px", fontWeight: 700 }}>{order.contact}</div>
           {order.company && <div style={{ fontSize: "11px", color: "#888" }}>{order.company}</div>}
         </td>
         <td style={{ ...td, maxWidth: "280px" }}>
           <div style={{ fontSize: "12.5px", lineHeight: 1.4, color: "#333", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as any }}>{order.title || <span style={{ color: "#bbb" }}>—</span>}</div>
+          <div style={{ fontSize: "10.5px", color: order.attachmentsCount > 0 ? "#3b82f6" : "#bbb", marginTop: "3px", fontWeight: 600 }}>
+            {order.attachmentsCount > 0 ? `📎 ${order.attachmentsCount}` : "—"}
+          </div>
         </td>
         <td style={td}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
@@ -502,7 +636,7 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
       {/* Expanded row — line items in quote-parameter format */}
       {expanded && (
         <tr style={{ background: "var(--preview-surface)" }}>
-          <td colSpan={13} style={{ padding: "6px 20px 14px 20px" }}>
+          <td colSpan={14} style={{ padding: "6px 20px 14px 20px" }}>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
               {order.lineItems.map(l => (
                 <div key={l.id} style={{ background: "#fff7ed", border: `1px solid ${ACCENT}44`, borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
@@ -525,6 +659,21 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
                   <div style={{ fontSize: "20px", fontWeight: 800, color: "#16a34a", whiteSpace: "nowrap" }}>{fmtMoney(l.extended)}</div>
                 </div>
               ))}
+              {order.attachments.length > 0 && (
+                <div style={{ padding: "2px 4px" }}>
+                  <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>Attachments ({order.attachmentsCount})</div>
+                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                    {order.attachments.slice(0, 3).map(name => (
+                      <span key={name} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 10px", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", fontSize: "11px", fontWeight: 600, borderRadius: "6px" }}>
+                        📎 {name}
+                      </span>
+                    ))}
+                    {order.attachments.length > 3 && (
+                      <span style={{ fontSize: "11px", color: "#888", padding: "3px 4px" }}>+{order.attachments.length - 3} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
               <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 4px", fontSize: "12px", color: "#666" }}>
                 <span>Quote source: <b style={{ color: ACCENT, fontFamily: "monospace" }}>{order.quoteRefId}</b> · {order.attachmentsCount} attachment{order.attachmentsCount !== 1 ? "s" : ""} · {order.shippingMethod || "Not set"}</span>
                 <button onClick={onView} style={{ padding: "5px 12px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>Full details →</button>
@@ -543,6 +692,72 @@ function Pill({ children, tone }: { children: React.ReactNode; tone?: "amber" | 
   const bd = tone === "amber" ? "#fde68a" : tone === "purple" ? "#c4b5fd" : "#e5e5e5";
   return (
     <span style={{ padding: "3px 10px", background: bg, color: fg, border: `1px solid ${bd}`, fontSize: "11px", fontWeight: 600, borderRadius: "6px", whiteSpace: "nowrap" }}>{children}</span>
+  );
+}
+
+// ─── Kanban board ────────────────────────────────────────
+function KanbanBoard({ orders, onCardClick }: { orders: Order[]; onCardClick: (id: string) => void }) {
+  const columns: OrderStatus[] = ["Pending Payment", "In Production", "Ready to Ship", "Shipped", "Delivered", "Cancelled", "Refunded"];
+  return (
+    <div style={{ display: "flex", gap: "10px", overflowX: "auto", paddingBottom: "8px" }}>
+      {columns.map(col => {
+        const items = orders.filter(o => o.status === col);
+        const c = STATUS_COLORS[col];
+        return (
+          <div key={col} style={{ flex: "0 0 260px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "10px", display: "flex", flexDirection: "column", gap: "8px", maxHeight: "calc(100vh - 260px)" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 4px 6px 4px", borderBottom: `2px solid ${c.fg}22` }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: c.fg }} />
+                <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#171717" }}>{col}</span>
+              </div>
+              <span style={{ padding: "1px 7px", background: c.bg, color: c.fg, borderRadius: "999px", fontSize: "10.5px", fontWeight: 700 }}>{items.length}</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto", flex: 1 }}>
+              {items.length === 0 ? (
+                <div style={{ padding: "16px 8px", textAlign: "center", color: "#bbb", fontSize: "11px", fontStyle: "italic" }}>Empty</div>
+              ) : items.map(o => (
+                <KanbanCard key={o.refId} order={o} onClick={() => onCardClick(o.refId)} />
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
+  const overdue = order.dueOverdue;
+  return (
+    <div onClick={onClick} style={{
+      background: "var(--preview-surface)",
+      border: `1px solid ${overdue ? "#dc2626" : "var(--preview-border)"}`,
+      borderLeft: `3px solid ${overdue ? "#dc2626" : order.priority === "Rush" ? "#f59e0b" : order.priority === "High" ? "#dc2626" : "#22c55e"}`,
+      borderRadius: "8px",
+      padding: "10px 12px",
+      cursor: "pointer",
+      display: "flex",
+      flexDirection: "column",
+      gap: "4px",
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: "#171717" }}>{order.refId}</span>
+        <span style={{ fontSize: "10px", fontWeight: 700, color: order.priority === "Rush" ? "#f59e0b" : order.priority === "High" ? "#dc2626" : "#22c55e" }}>{order.priority}</span>
+      </div>
+      <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#171717", lineHeight: 1.3 }}>{order.contact}</div>
+      {order.company && <div style={{ fontSize: "10.5px", color: "#888" }}>{order.company}</div>}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
+        <span style={{ fontSize: "13px", fontWeight: 800, color: "#16a34a" }}>{fmtMoney(order.total)}</span>
+        {order.dueDate ? (
+          <span style={{ fontSize: "10.5px", color: overdue ? "#dc2626" : "#666", fontWeight: overdue ? 700 : 500 }}>
+            {overdue ? "⚠ " : "📅 "}{order.dueDate}
+          </span>
+        ) : <span style={{ fontSize: "10.5px", color: "#bbb" }}>—</span>}
+      </div>
+      {order.attachmentsCount > 0 && (
+        <div style={{ fontSize: "10px", color: "#3b82f6", fontWeight: 600, marginTop: "2px" }}>📎 {order.attachmentsCount}</div>
+      )}
+    </div>
   );
 }
 
@@ -622,7 +837,7 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
         </MetaCell>
         <MetaCell icon="⚙" label="Status">
           <select value={status} onChange={e => setStatus(e.target.value as OrderStatus)} style={{ padding: "3px 10px 3px 6px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "5px", fontSize: "12.5px", fontWeight: 700, width: "100%" }}>
-            <option>Pending Payment</option><option>In Production</option><option>Ready to Ship</option><option>Shipped</option><option>Delivered</option><option>Cancelled</option>
+            <option>Pending Payment</option><option>In Production</option><option>Ready to Ship</option><option>Shipped</option><option>Delivered</option><option>Cancelled</option><option>Refunded</option>
           </select>
         </MetaCell>
         <MetaCell icon="🚚" label="Fulfillment">
@@ -957,7 +1172,7 @@ function ActivityTimelineCard({ events }: { events: TimelineEvent[] }) {
 // ─── Right: Workflow Progress card ─────────────────
 function WorkflowProgressCard({ order }: { order: Order }) {
   const stages = ["Quote", "Approved", "Design", "Production", "QC", "Pickup"];
-  const currentIdx = order.status === "Pending Payment" ? 1 : order.status === "In Production" ? 3 : order.status === "Ready to Ship" ? 4 : order.status === "Shipped" ? 5 : order.status === "Delivered" ? 5 : 3;
+  const currentIdx = order.status === "Pending Payment" ? 1 : order.status === "In Production" ? 3 : order.status === "Ready to Ship" ? 4 : order.status === "Shipped" ? 5 : order.status === "Delivered" ? 5 : order.status === "Refunded" ? 5 : 3;
   return (
     <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
       <div style={{ fontSize: "10.5px", fontWeight: 800, color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "12px" }}>Workflow Progress</div>

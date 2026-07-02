@@ -439,7 +439,7 @@ export function Sidebar() {
           // Hayk 2026-07-01 — hide Quoted Requests nav entry from the sidebar
           // while the /quotes page is still a placeholder. Underlying page and
           // access rules untouched.
-          const visiblePages = pages.filter((p) => p.route !== "/quotes");
+          const visiblePages = pages.filter((p) => p.route !== "/quotes" && p.route !== "/completed");
           if (visiblePages.length === 0) return null;
           return (
           <div key={section} className={cn("flex flex-col gap-0.5", idx > 0 && "mt-3")}>
