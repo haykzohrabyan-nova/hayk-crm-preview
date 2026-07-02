@@ -149,7 +149,12 @@ function displayMaterialLabel(m: any): string {
 export default function NewQuotePreview() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const prefillLeadId = searchParams?.get("leadId") || "";
+  // sales-pipeline agent routes pipeline-originated quotes via ?dealId=
+  // (not ?leadId=). Customer info (name/phone/email) is already passed as
+  // query params, so no lookup needed — treat dealId as a valid identifier
+  // and fall back to it when leadId is absent.
+  const prefillDealId = searchParams?.get("dealId") || "";
+  const prefillLeadId = searchParams?.get("leadId") || prefillDealId;
   const prefillName = searchParams?.get("name") || "";
   const prefillPhone = searchParams?.get("phone") || "";
   const prefillEmail = searchParams?.get("email") || "";
