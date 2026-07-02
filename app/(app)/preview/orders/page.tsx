@@ -39,6 +39,12 @@ interface OrderLineItem {
   overrideReason?: string;
 }
 
+interface Attachment { name: string; sizeKB: number; kind: "pdf" | "ai" | "png" | "jpg" | "dxf"; }
+interface CommEntry { channel: "email_in" | "email_out" | "call_in" | "call_out" | "sms_in" | "sms_out" | "ig_in" | "ig_out" | "note"; author: string; subject?: string; body: string; at: string; attachments?: string[]; }
+interface PaymentEntry { method: "ACH" | "Wire" | "Card" | "Zelle" | "Cash Terminal"; amount: number; date: string; ref: string; status: "Completed" | "Pending Clearance" | "Failed"; }
+interface TimelineEntry { icon: string; tint: string; title: string; sub?: string; at: string; actor?: string; ref?: string; }
+interface CustomerProfile { phone: string; email: string; city: string; state: string; lifetimeOrders: number; lifetimeValue: number; returning: boolean; }
+
 interface Order {
   refId: string;                // "2026-0114" — same numeric core across quote → order → production
   quoteRefId: string;           // "QO-2026-0114" — links back to the source quote
@@ -64,271 +70,689 @@ interface Order {
   createdDate: string;             // "06/28/2026" — actual date the order was placed
   attachmentsCount: number;
   attachments: string[];           // sample file names, e.g. ["artwork_v3.ai", "dieline.pdf"]
+  files?: Attachment[];            // richer per-file metadata
   productionNotes?: string;
   shippingMethod?: "Pickup" | "Ship";
   trackingRef?: string;
   refundedAmount?: number;         // set when status is Refunded
   refundReason?: string;
+  customer?: CustomerProfile;      // rich customer block
+  communications?: CommEntry[];    // per-order email / call / sms / IG log
+  payments?: PaymentEntry[];       // per-order payment ledger
+  timeline?: TimelineEntry[];      // per-order activity timeline (overrides buildTimeline)
 }
 
 // ─── Mock dataset ────────────────────────────────────────
+// Fixed "today" = 2026-07-01 for consistent age/overdue math.
+// Product IDs and material IDs come straight from lib/catalog/catalog-v1.json
+// so nothing has to be re-mapped when a quote converts to an order.
 const ORDERS: Order[] = [
+  // ─── 1. Boris Boris / Grimeylyfe — In Production, Rush, repeat customer with 12 lifetime orders ───
   {
-    refId: "2026-0114", quoteRefId: "QO-2026-0114",
-    contact: "Joseph", company: "Frenzy Organics",
-    createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
-    title: "JAR DESIGN — 1 OFF SAMPLE PRINT ON CLEAR LABEL MATERIAL",
-    lineItems: [
-      { id: "l1", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 200, materialName: "Clear Label (Clear BOPP)", quantity: 1, widthIn: 2.5, heightIn: 3.5, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [], specialEffectLabels: [], unitPrice: 54.88, extended: 54.88, comment: "Sample print — clear material" },
-    ],
-    total: 54.88, received: 54.88, balanceDue: 0,
-    priority: "High", dueDate: "07/01/2026", dueOverdue: false,
-    status: "In Production", payment: "Paid",
-    createdAgo: "16h ago", createdDate: "06/30/2026", attachmentsCount: 2, attachments: ["artwork_v3.ai", "dieline.pdf"], productionNotes: "Rush — customer needs first article today",
-    shippingMethod: "Pickup",
-  },
-  {
-    refId: "2026-0112", quoteRefId: "QO-2026-0112",
-    contact: "ulisesss Sillero", company: "The Holding Company",
+    refId: "2026-0135", quoteRefId: "QO-2026-0135",
+    contact: "Boris Boris", company: "Grimeylyfe Records",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
-    title: "has 9 sku wants 640 each transparent labels with raised uv matte finish total 5760",
+    title: "LA Kush 9ml jar combos + matching 2x2 roll labels, soft touch + silver dot foil",
     lineItems: [
-      { id: "l1", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 200, materialName: "Clear Label (Clear BOPP)", quantity: 5760, widthIn: 2, heightIn: 3, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [206], specialEffectLabels: ["Raised UV"], unitPrice: 0.99, extended: 5702.40 },
+      { id: "l1", productId: 111, productName: "1oz Jar + Label Combo", productCategory: "Combos", materialId: 189, materialName: "Semi-Gloss Paper", quantity: 2500, widthIn: 2.5, heightIn: 1.65, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [209], specialEffectLabels: ["Silver Dot Foil"], unitPrice: 1.15, extended: 2875.00, comment: "Match previous batch — die 492" },
+      { id: "l2", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 184, materialName: "White BOPP", quantity: 5000, widthIn: 2, heightIn: 2, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [209], specialEffectLabels: ["Silver Dot Foil"], unitPrice: 0.42, extended: 2100.00 },
     ],
-    total: 5702.40, received: 5702.40, balanceDue: 0,
-    priority: "Normal", dueDate: "07/03/2026",
-    status: "In Production", payment: "Tax Exempt",
-    createdAgo: "16h ago", createdDate: "06/30/2026", attachmentsCount: 4, attachments: ["9sku_master.ai", "proof_front.pdf", "proof_back.pdf", "raised_uv_map.pdf"],
-    shippingMethod: "Ship",
+    total: 4975.00, received: 4975.00, balanceDue: 0,
+    priority: "Rush", dueDate: "07/03/2026",
+    status: "In Production", payment: "Paid",
+    createdAgo: "1d ago", createdDate: "06/30/2026",
+    attachmentsCount: 5, attachments: ["Grimeylyfe_LAKush_9ml_V3.ai", "Grimeylyfe_2x2_RollLabel_V2.ai", "Boris_die_492.dxf", "Silver_dot_foil_map.pdf", "Proof_Round2.pdf"],
+    files: [
+      { name: "Grimeylyfe_LAKush_9ml_V3.ai", sizeKB: 1240, kind: "ai" },
+      { name: "Grimeylyfe_2x2_RollLabel_V2.ai", sizeKB: 860, kind: "ai" },
+      { name: "Boris_die_492.dxf", sizeKB: 42, kind: "dxf" },
+      { name: "Silver_dot_foil_map.pdf", sizeKB: 380, kind: "pdf" },
+      { name: "Proof_Round2.pdf", sizeKB: 612, kind: "pdf" },
+    ],
+    productionNotes: "Rush — Boris confirmed 07/03 deadline for weekend drop. Foil layer needs re-registration on Karlville.",
+    shippingMethod: "Ship", trackingRef: "1Z999AA10298475632",
+    customer: { phone: "(310) 555-0142", email: "boris@grimeylyfe.co", city: "Los Angeles", state: "CA", lifetimeOrders: 12, lifetimeValue: 83240, returning: true },
+    payments: [
+      { method: "Wire", amount: 4975.00, date: "06/30/2026", ref: "WIRE-CHASE-88214", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Boris Boris", subject: "Re: LA Kush drop — same as last batch", body: "Yes exact match to the last batch we ran. Same soft touch, same silver dot foil. Need it by Friday 3rd — we've got a drop on Saturday. Wired the full amount today.", at: "06/30 · 10:14 AM" },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Wire received — order in production", body: "Boris — wire cleared this morning, jars + labels queued on Indigo 6K + Karlville for Wednesday run. Silver dot foil map is locked from your last batch so no reproof needed. Tracking will hit your inbox Thursday.", at: "06/30 · 11:02 AM", attachments: ["ORD-2026-0135_confirmation.pdf"] },
+      { channel: "sms_out", author: "Ernesto Navarro", body: "Boris — you're all set, running Wed, ships Thursday. -Ernesto", at: "06/30 · 11:04 AM" },
+      { channel: "call_in", author: "Boris Boris", body: "Called to confirm foil color matches last run — sent him a Karlville press-check photo, he approved.", at: "07/01 · 9:22 AM" },
+    ],
+    timeline: [
+      { icon: "📝", tint: "#f97316", title: "Quote drafted", sub: "QO-2026-0135 · Boris confirmed sizes over the phone", at: "06/29 · 4:12 PM", actor: "Ernesto Navarro" },
+      { icon: "✉", tint: "#3b82f6", title: "Quote sent", sub: "Email to boris@grimeylyfe.co", at: "06/29 · 4:15 PM", actor: "Ernesto Navarro" },
+      { icon: "👁", tint: "#22c55e", title: "Customer viewed quote", sub: "Opened from mobile", at: "06/29 · 6:44 PM", actor: "Boris Boris" },
+      { icon: "✓", tint: "#16a34a", title: "Quote approved", sub: "Boris confirmed via SMS", at: "06/30 · 9:58 AM", actor: "Boris Boris" },
+      { icon: "💵", tint: "#16a34a", title: "Wire received — $4,975.00", sub: "Chase wire · confirmation 88214", at: "06/30 · 10:47 AM" },
+      { icon: "📦", tint: "#8b5cf6", title: "Order created", sub: "ORD-2026-0135 · from QO-2026-0135", at: "06/30 · 11:00 AM", ref: "ORD-2026-0135" },
+      { icon: "🎨", tint: "#a78bfa", title: "Assigned to designer", sub: "Marianna — reusing last batch's approved files", at: "06/30 · 11:20 AM", actor: "Marianna" },
+      { icon: "✓", tint: "#16a34a", title: "Files re-approved by customer", sub: "Boris signed off — identical to last batch", at: "06/30 · 2:34 PM", actor: "Boris Boris" },
+      { icon: "🏭", tint: "#06b6d4", title: "On press — Indigo 6K", sub: "Labels running · press operator Arsen", at: "07/01 · 8:15 AM", actor: "Arsen" },
+      { icon: "🏭", tint: "#06b6d4", title: "Foil layer on Karlville", sub: "Silver dot foil registration re-set for HP 72", at: "07/01 · 10:00 AM", actor: "Arsen" },
+    ],
   },
+  // ─── 2. Prime Cannabis — In Production, Net-30 past due ───
   {
-    refId: "2026-0109", quoteRefId: "QO-2026-0109",
-    contact: "Matt", company: "Moon Mind",
+    refId: "2026-0130", quoteRefId: "QO-2026-0130",
+    contact: "Terrence Blake", company: "Prime Cannabis",
     createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
-    title: "",
+    title: "9-SKU clear label run — matte lam + raised UV highlights, 2000 per SKU",
     lineItems: [
-      { id: "l1", productId: 12, productName: "Folding Cartons", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt SBS C1S", quantity: 500, widthIn: 3.5, heightIn: 2.5, sides: "S1", colorMode: "CMYK", finishingIds: [179], finishingLabels: ["Gloss Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 2.49, extended: 1245.66 },
+      { id: "l1", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 200, materialName: "Clear BOPP", quantity: 18000, widthIn: 2, heightIn: 3, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [230], specialEffectLabels: ["Raised UV 50µ"], unitPrice: 0.31, extended: 5580.00, comment: "9 designs · 2000 each" },
     ],
-    total: 1245.66, received: 1245.66, balanceDue: 0,
-    priority: "Normal", dueDate: "",
-    status: "In Production", payment: "Paid",
-    createdAgo: "20h ago", createdDate: "06/30/2026", attachmentsCount: 1, attachments: ["moon_mind_carton.pdf"],
-    shippingMethod: "Pickup",
-  },
-  {
-    refId: "2026-0111", quoteRefId: "QO-2026-0111",
-    contact: "Boris Boris", company: "",
-    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
-    title: "has 1 sku wants 2000 pcs at 0.75 each soft touch spot uv using small die LA Kush 9ml jar",
-    lineItems: [
-      { id: "l1", productId: 30, productName: "Label + 9ml Jar Combo", productCategory: "Combos", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 2000, widthIn: 2, heightIn: 2, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [201], specialEffectLabels: ["Spot UV"], unitPrice: 0.75, extended: 1500.00 },
+    total: 5580.00, received: 0, balanceDue: 5580.00,
+    paymentTerms: "Net-30", paymentDueDate: "06/10/2026", paymentOverdue: true,
+    priority: "High", dueDate: "07/05/2026",
+    status: "In Production", payment: "Unpaid",
+    createdAgo: "6d ago", createdDate: "06/25/2026",
+    attachmentsCount: 4, attachments: ["Prime_9SKU_Master.ai", "Raised_UV_map.pdf", "Print_Ready_v2.pdf", "Reseller_Cert_PrimeCannabis.pdf"],
+    files: [
+      { name: "Prime_9SKU_Master.ai", sizeKB: 3420, kind: "ai" },
+      { name: "Raised_UV_map.pdf", sizeKB: 512, kind: "pdf" },
+      { name: "Print_Ready_v2.pdf", sizeKB: 1840, kind: "pdf" },
+      { name: "Reseller_Cert_PrimeCannabis.pdf", sizeKB: 218, kind: "pdf" },
     ],
-    total: 1500.00, received: 800.00, balanceDue: 700.00,
-    paymentTerms: "Net-15", paymentDueDate: "06/15/2026", paymentOverdue: true,
-    priority: "Normal", dueDate: "07/03/2026",
-    status: "In Production", payment: "Tax Exempt",
-    createdAgo: "18h ago", createdDate: "06/30/2026", attachmentsCount: 3, attachments: ["la_kush_label.ai", "spot_uv_mask.pdf", "small_die.dxf"],
     shippingMethod: "Ship",
+    productionNotes: "Ran on Indigo 6K — clean pass. Raised UV cleared, awaiting collections before shipping.",
+    customer: { phone: "(213) 555-0177", email: "terrence@primecannabis.co", city: "Long Beach", state: "CA", lifetimeOrders: 6, lifetimeValue: 41200, returning: true },
+    payments: [],
+    communications: [
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Net-30 invoice past due — ORD-2026-0130", body: "Hi Terrence — flagging that this invoice is now 21 days past our Net-30 terms. Order is complete and boxed but I can't release until payment clears. Can we get an ETA today?", at: "07/01 · 8:30 AM" },
+      { channel: "email_in", author: "Terrence Blake", subject: "Re: Net-30 invoice past due", body: "Maria — sorry for the lag. ACH went out yesterday, should hit your account within 24-48h. I'll forward the confirmation.", at: "07/01 · 10:12 AM" },
+      { channel: "note", author: "Maria Hakobyan", body: "Terrence usually pays same-day. This is his first late. Flagged with Hayk — holding shipment until ACH clears.", at: "07/01 · 10:20 AM" },
+    ],
   },
+  // ─── 3. Amazi Amazi / Trap Snacks — In Production, Net-30 past due, repeat customer ───
   {
-    refId: "2026-0108", quoteRefId: "QO-2026-0108",
+    refId: "2026-0128", quoteRefId: "QO-2026-0128",
     contact: "Amazi Amazi", company: "Trap Snacks",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
-    title: "for trap snacks has 6 skus wants 427 of each box and bag soft touch spot uv front and bak using terp head die",
+    title: "Terp Head 6-SKU snack pouches + display boxes — soft touch + spot UV both sides",
     lineItems: [
-      { id: "l1", productId: 12, productName: "Folding Cartons", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt SBS C1S", quantity: 2562, widthIn: 4, heightIn: 3, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [201], specialEffectLabels: ["Spot UV"], unitPrice: 2.19, extended: 5610.78 },
-      { id: "l2", productId: 30, productName: "Stand Up Pouch", productCategory: "Bags & Pouches", materialId: 175, materialName: "MET PET", quantity: 2562, widthIn: 5, heightIn: 8, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [201], specialEffectLabels: ["Spot UV"], unitPrice: 1.52, extended: 3906.74 },
+      { id: "l1", productId: 30, productName: "Stand Up Pouches", productCategory: "Bags & Pouches", materialId: 184, materialName: "White BOPP", quantity: 2500, widthIn: 5, heightIn: 8, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [230], specialEffectLabels: ["Raised UV 50µ"], unitPrice: 1.42, extended: 3550.00, comment: "6 SKUs · ~427 pcs each" },
+      { id: "l2", productId: 171, productName: "Display box", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt White SBS", quantity: 500, widthIn: 8, heightIn: 6, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [230], specialEffectLabels: ["Raised UV 50µ"], unitPrice: 3.20, extended: 1600.00 },
     ],
-    total: 9517.52, received: 5000.00, balanceDue: 4517.52,
+    total: 5150.00, received: 2000.00, balanceDue: 3150.00,
     paymentTerms: "Net-30", paymentDueDate: "06/05/2026", paymentOverdue: true,
-    priority: "Normal", dueDate: "07/03/2026",
+    priority: "Normal", dueDate: "07/04/2026",
     status: "In Production", payment: "Partial",
-    createdAgo: "20h ago", createdDate: "06/30/2026", attachmentsCount: 6, attachments: ["trap_snacks_box_v2.ai", "trap_snacks_pouch.ai", "terp_head.dxf", "spot_uv_front.pdf", "spot_uv_back.pdf", "proof_bundle.pdf"],
-    shippingMethod: "Ship",
-  },
-  {
-    refId: "2026-0094", quoteRefId: "QO-2026-0094",
-    contact: "Guy Eran", company: "Green Boyz",
-    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
-    title: "crunch berries 3.5g jar boxes and labels and tube label, ssoft touch, spot uv, silver dot foiling",
-    lineItems: [
-      { id: "l1", productId: 12, productName: "Folding Cartons", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt SBS C1S", quantity: 500, widthIn: 3, heightIn: 2, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [201, 209], specialEffectLabels: ["Spot UV", "Silver Foil"], unitPrice: 3.60, extended: 1800.01 },
+    createdAgo: "5d ago", createdDate: "06/26/2026",
+    attachmentsCount: 6, attachments: ["TrapSnacks_Pouch_6SKU.ai", "TrapSnacks_DisplayBox.ai", "TerpHead_die.dxf", "RaisedUV_map_front.pdf", "RaisedUV_map_back.pdf", "Proof_Round1.pdf"],
+    files: [
+      { name: "TrapSnacks_Pouch_6SKU.ai", sizeKB: 4820, kind: "ai" },
+      { name: "TrapSnacks_DisplayBox.ai", sizeKB: 1240, kind: "ai" },
+      { name: "TerpHead_die.dxf", sizeKB: 38, kind: "dxf" },
+      { name: "RaisedUV_map_front.pdf", sizeKB: 420, kind: "pdf" },
+      { name: "RaisedUV_map_back.pdf", sizeKB: 418, kind: "pdf" },
+      { name: "Proof_Round1.pdf", sizeKB: 1120, kind: "pdf" },
     ],
-    total: 1800.01, received: 1800.01, balanceDue: 0,
-    priority: "Normal", dueDate: "06/30/2026", dueOverdue: true,
-    status: "In Production", payment: "Paid",
-    createdAgo: "3d ago", createdDate: "06/28/2026", attachmentsCount: 5, attachments: ["crunch_berries_box.ai", "tube_label.ai", "jar_label.ai", "silver_foil_map.pdf", "final_proof.pdf"],
+    productionNotes: "Pouches ran clean on Karlville. Display boxes queued behind Boris job.",
     shippingMethod: "Ship",
-  },
-  {
-    refId: "2026-0106", quoteRefId: "QO-2026-0106",
-    contact: "Safe Care Packaging", company: "Safe Care LLC",
-    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
-    title: "for suspended wants 3000pcs for 8th labels and 1000pcs for 1/4 labels",
-    lineItems: [
-      { id: "l1", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 3000, widthIn: 2, heightIn: 3, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.12, extended: 360.00 },
-      { id: "l2", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 1000, widthIn: 1.75, heightIn: 2.5, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.12, extended: 120.00 },
+    customer: { phone: "(818) 555-0233", email: "amazi@trapsnacks.co", city: "Van Nuys", state: "CA", lifetimeOrders: 8, lifetimeValue: 52180, returning: true },
+    payments: [
+      { method: "ACH", amount: 2000.00, date: "06/26/2026", ref: "ACH-BOA-11284", status: "Completed" },
     ],
-    total: 480.00, received: 0, balanceDue: 480.00,
-    priority: "Normal", dueDate: "07/02/2026",
-    status: "Pending Payment", payment: "Pending Tax Review",
-    createdAgo: "1d ago", createdDate: "06/29/2026", attachmentsCount: 2, attachments: ["8th_label.ai", "quarter_label.ai"],
+    communications: [
+      { channel: "email_in", author: "Amazi Amazi", subject: "6 SKU snack drop — same terp head die", body: "Ernesto — running the fall drop, same 6 SKUs as spring. Sending $2k deposit today, balance on delivery per usual. Need by 4th of July weekend.", at: "06/26 · 9:14 AM" },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Re: 6 SKU snack drop", body: "Amazi — got it. Deposit received, order queued. Terp head die is still on file. Balance ($3,150) is Net-30, tracking Wed 07/02.", at: "06/26 · 11:05 AM" },
+      { channel: "sms_out", author: "Ernesto Navarro", body: "Amazi — heads up your Net-30 hit 06/05, need to settle the $3,150 balance to release shipment. Zelle or ACH works.", at: "07/01 · 8:45 AM" },
+      { channel: "sms_in", author: "Amazi Amazi", body: "My bad — Zelle going out this afternoon. Sorry for the delay.", at: "07/01 · 9:02 AM" },
+    ],
   },
+  // ─── 4. Nicole Han — In Production, Rush, cosmetic labels + pouches ───
   {
-    refId: "2026-0103", quoteRefId: "QO-2026-0103",
-    contact: "Davit Zargaryan", company: "",
-    createdBy: "Zargaryan Davit", ownerAvatar: "DZ", ownerColor: "#8b5cf6",
-    title: "Test-5",
-    lineItems: [{ id: "l1", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 1, widthIn: 2, heightIn: 2, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.44, extended: 0.44 }],
-    total: 0.44, received: 0.44, balanceDue: 0,
-    priority: "Normal", dueDate: "06/30/2026", dueOverdue: true,
-    status: "In Production", payment: "Paid",
-    createdAgo: "1d ago", createdDate: "06/29/2026", attachmentsCount: 0, attachments: [],
-  },
-  {
-    refId: "2026-0083", quoteRefId: "QO-2026-0083",
-    contact: "Quoanda Renee", company: "Jesus Girl Apparel",
+    refId: "2026-0126", quoteRefId: "QO-2026-0126",
+    contact: "Nicole Han", company: "Han Beauty Co",
     createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
-    title: "B/W TEES, 1 LOGOS PER SHIRT LG/SM",
+    title: "Serum bottle labels + stand-up pouches for launch — Rush, ship by 07/03",
     lineItems: [
-      { id: "l1", productId: 50, productName: "T-Shirt (Screen Print)", productCategory: "Apparel", materialId: 100, materialName: "Cotton T-Shirt", quantity: 285, widthIn: 8, heightIn: 10, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [], specialEffectLabels: [], unitPrice: 5.00, extended: 1425.00, comment: "LG + SM shirts, 1-color logo" },
+      { id: "l1", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 200, materialName: "Clear BOPP", quantity: 5000, widthIn: 2, heightIn: 4, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [206], specialEffectLabels: ["Gold Foil"], unitPrice: 0.58, extended: 2900.00 },
+      { id: "l2", productId: 30, productName: "Stand Up Pouches", productCategory: "Bags & Pouches", materialId: 175, materialName: "Silver Virgin (MET PET)", quantity: 1000, widthIn: 4, heightIn: 6, sides: "S2", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [206], specialEffectLabels: ["Gold Foil"], unitPrice: 1.35, extended: 1350.00 },
     ],
-    total: 1426.75, received: 1426.75, balanceDue: 0,
-    priority: "Normal", dueDate: "06/30/2026", dueOverdue: true,
+    total: 4250.00, received: 4250.00, balanceDue: 0,
+    priority: "Rush", dueDate: "07/03/2026",
     status: "In Production", payment: "Paid",
-    createdAgo: "4d ago", createdDate: "06/26/2026", attachmentsCount: 2, attachments: ["jesus_girl_logo.ai", "shirt_placement.pdf"],
-  },
-  {
-    refId: "2026-0079", quoteRefId: "QO-2026-0079",
-    contact: "Oscar Rivera", company: "Old Salt Coffee",
-    createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
-    title: "Cold brew label roll — 15,000 pcs, matte lam",
-    lineItems: [
-      { id: "l1", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 15000, widthIn: 3, heightIn: 4, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.14, extended: 2100.00 },
+    createdAgo: "3d ago", createdDate: "06/28/2026",
+    attachmentsCount: 4, attachments: ["HanBeauty_Serum_2x4.ai", "HanBeauty_Pouch_4x6.ai", "Gold_foil_map.pdf", "Nicole_Approved_Proof.pdf"],
+    files: [
+      { name: "HanBeauty_Serum_2x4.ai", sizeKB: 920, kind: "ai" },
+      { name: "HanBeauty_Pouch_4x6.ai", sizeKB: 1180, kind: "ai" },
+      { name: "Gold_foil_map.pdf", sizeKB: 340, kind: "pdf" },
+      { name: "Nicole_Approved_Proof.pdf", sizeKB: 780, kind: "pdf" },
     ],
-    total: 2100.00, received: 2100.00, balanceDue: 0,
-    priority: "Normal", dueDate: "07/03/2026",
-    status: "Ready to Ship", payment: "Paid",
-    createdAgo: "5d ago", createdDate: "06/25/2026", attachmentsCount: 3, attachments: ["cold_brew_label.ai", "matte_finish_spec.pdf", "print_proof.jpg"],
+    productionNotes: "Rush — Nicole needs for 07/05 launch event. Ran ahead of Boris on Indigo 15K.",
+    shippingMethod: "Ship", trackingRef: "1Z999AA10412873441",
+    customer: { phone: "(626) 555-0918", email: "nicole@hanbeauty.co", city: "Pasadena", state: "CA", lifetimeOrders: 3, lifetimeValue: 9820, returning: true },
+    payments: [
+      { method: "Card", amount: 4250.00, date: "06/28/2026", ref: "VISA •••• 4419", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Nicole Han", subject: "Launch order — need by July 3rd", body: "Manny — pushing our launch to July 5. Can you get labels + pouches to me by the 3rd? Files attached. Going with clear label + gold foil, matte pouch.", at: "06/28 · 10:14 AM", attachments: ["HanBeauty_files.zip"] },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: Launch order — you're set", body: "Nicole — locked in. Rush surcharge is $180 (included). Charged card. Proof coming end of day, ship by 07/03.", at: "06/28 · 11:22 AM" },
+      { channel: "ig_in", author: "Nicole Han", body: "You're the best 🙏", at: "06/28 · 11:30 AM" },
+      { channel: "call_out", author: "Manny Carlo", body: "Called Nicole to confirm gold foil vs. copper — she confirmed gold. Ran proof.", at: "06/29 · 2:15 PM" },
+      { channel: "email_out", author: "Manny Carlo", subject: "Proof — please approve", body: "Attached proof round 1. Give it a look and approve so we can hit press first thing tomorrow.", at: "06/29 · 4:40 PM", attachments: ["Proof_Round1.pdf"] },
+      { channel: "email_in", author: "Nicole Han", subject: "Re: Proof", body: "Approved!", at: "06/29 · 5:02 PM" },
+    ],
+  },
+  // ─── 5. Ivy Bloom / Ivy Botanicals — In Production ───
+  {
+    refId: "2026-0124", quoteRefId: "QO-2026-0124",
+    contact: "Ivy Bloom", company: "Ivy Botanicals",
+    createdBy: "Marianna", ownerAvatar: "MA", ownerColor: "#a78bfa",
+    title: "Cosmetic bottle labels + Hand Cream boxes — Pantone 2035C match",
+    lineItems: [
+      { id: "l1", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 184, materialName: "White BOPP", quantity: 5000, widthIn: 2.25, heightIn: 3.5, sides: "S1", colorMode: "Pantone", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.44, extended: 2200.00, comment: "Pantone 2035C match on floral illustration" },
+      { id: "l2", productId: 189, productName: "Flip-Top Hinged Lid Box", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt White SBS", quantity: 1000, widthIn: 4, heightIn: 2.5, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 2.85, extended: 2850.00 },
+    ],
+    total: 5050.00, received: 2500.00, balanceDue: 2550.00,
+    paymentTerms: "Net-15", paymentDueDate: "06/12/2026", paymentOverdue: true,
+    priority: "Normal", dueDate: "07/08/2026",
+    status: "In Production", payment: "Partial",
+    createdAgo: "4d ago", createdDate: "06/27/2026",
+    attachmentsCount: 3, attachments: ["Ivy_Botanicals_Label_V4.ai", "Ivy_HandCream_Box_V2.ai", "Pantone_2035C_swatch.pdf"],
+    files: [
+      { name: "Ivy_Botanicals_Label_V4.ai", sizeKB: 2140, kind: "ai" },
+      { name: "Ivy_HandCream_Box_V2.ai", sizeKB: 1890, kind: "ai" },
+      { name: "Pantone_2035C_swatch.pdf", sizeKB: 180, kind: "pdf" },
+    ],
+    productionNotes: "Pantone match dialed on Indigo 15K — Arsen confirmed 2035C dead on.",
     shippingMethod: "Ship",
-  },
-  {
-    refId: "2026-0075", quoteRefId: "QO-2026-0075",
-    contact: "Ruben Torres", company: "Coco Bloom",
-    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
-    title: "Custom folding cartons — matte + gold foil dot",
-    lineItems: [
-      { id: "l1", productId: 12, productName: "Folding Cartons", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt SBS C1S", quantity: 1000, widthIn: 3.5, heightIn: 3.5, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [208], specialEffectLabels: ["Gold Foil"], unitPrice: 3.20, extended: 3200.00 },
+    customer: { phone: "(415) 555-0620", email: "ivy@ivybotanicals.com", city: "San Francisco", state: "CA", lifetimeOrders: 2, lifetimeValue: 8300, returning: true },
+    payments: [
+      { method: "ACH", amount: 2500.00, date: "06/27/2026", ref: "ACH-WELLS-52911", status: "Completed" },
     ],
-    total: 3200.00, received: 3200.00, balanceDue: 0,
+    communications: [
+      { channel: "email_in", author: "Ivy Bloom", subject: "Fall collection — labels + boxes", body: "Hi — running the fall collection. Attached artwork. Pantone match on the floral is critical — 2035C. Boxes go with the hand cream line.", at: "06/26 · 3:12 PM", attachments: ["Ivy_files.zip"] },
+      { channel: "email_out", author: "Marianna", subject: "Re: Fall collection", body: "Ivy — got it. Quote attached. Pantone 2035C is on Indigo 15K's approved swatch library so we're good. Turnaround 10 business days.", at: "06/26 · 5:20 PM", attachments: ["QO-2026-0124.pdf"] },
+      { channel: "email_in", author: "Ivy Bloom", subject: "Re: Fall collection", body: "Approved, sending ACH.", at: "06/27 · 9:04 AM" },
+    ],
+  },
+  // ─── 6. Grim Lawd — In Production, tax exempt ───
+  {
+    refId: "2026-0122", quoteRefId: "QO-2026-0122",
+    contact: "Grim Lawd", company: "Grimeylyfe Records",
+    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
+    title: "Merch drop — 2500 postcards + 5000 business cards + tour poster labels",
+    lineItems: [
+      { id: "l1", productId: 8, productName: "Postcards", productCategory: "Marketing Materials", materialId: 199, materialName: "Matte 14pt Card Stock", quantity: 2500, widthIn: 4, heightIn: 6, sides: "S2", colorMode: "CMYK", finishingIds: [179], finishingLabels: ["Gloss Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.32, extended: 800.00 },
+      { id: "l2", productId: 2, productName: "Business Cards", productCategory: "Marketing Materials", materialId: 199, materialName: "Matte 14pt Card Stock", quantity: 5000, widthIn: 3.5, heightIn: 2, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [209], specialEffectLabels: ["Silver Dot Foil"], unitPrice: 0.28, extended: 1400.00 },
+      { id: "l3", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 184, materialName: "White BOPP", quantity: 3000, widthIn: 3, heightIn: 4, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.36, extended: 1080.00, comment: "Tour poster stickers — 8 designs" },
+    ],
+    total: 3280.00, received: 3280.00, balanceDue: 0,
+    priority: "Normal", dueDate: "07/06/2026",
+    status: "In Production", payment: "Tax Exempt",
+    createdAgo: "5d ago", createdDate: "06/26/2026",
+    attachmentsCount: 5, attachments: ["Grim_Postcards.ai", "Grim_BizCard_V3.ai", "Tour_Sticker_8Designs.ai", "Grimeylyfe_Reseller.pdf", "Proof_Bundle.pdf"],
+    files: [
+      { name: "Grim_Postcards.ai", sizeKB: 3210, kind: "ai" },
+      { name: "Grim_BizCard_V3.ai", sizeKB: 1420, kind: "ai" },
+      { name: "Tour_Sticker_8Designs.ai", sizeKB: 4820, kind: "ai" },
+      { name: "Grimeylyfe_Reseller.pdf", sizeKB: 240, kind: "pdf" },
+      { name: "Proof_Bundle.pdf", sizeKB: 1840, kind: "pdf" },
+    ],
+    productionNotes: "Ran on Indigo 6K — press operator Arsen. Silver dot foil on bizcards clean on 2nd pass.",
+    shippingMethod: "Pickup",
+    customer: { phone: "(310) 555-0142", email: "boris@grimeylyfe.co", city: "Los Angeles", state: "CA", lifetimeOrders: 12, lifetimeValue: 83240, returning: true },
+    payments: [
+      { method: "Wire", amount: 3280.00, date: "06/26/2026", ref: "WIRE-CHASE-71822", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Grim Lawd", subject: "Tour merch — cards + stickers + postcards", body: "Ernesto — need the full tour merch package. Same silver dot on the bizcards as before. Tour sticker files attached — 8 designs, 3000 total split across.", at: "06/26 · 11:04 AM" },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Tour merch — locked in", body: "Grim — done. Reseller cert on file so tax exempt. Pickup at the shop 07/06.", at: "06/26 · 12:15 PM" },
+    ],
+  },  // ─── 7. Safe Care Packaging — In Production, awaiting resale cert ───
+  {
+    refId: "2026-0120", quoteRefId: "QO-2026-0120",
+    contact: "Corey Nishimura", company: "SafeCare Packaging",
+    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
+    title: "Body Lotion Boxes — 3000 pcs matte, white cardstock only",
+    lineItems: [
+      { id: "l1", productId: 165, productName: "Body Lotion Box", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt White SBS", quantity: 3000, widthIn: 2.5, heightIn: 6, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 1.85, extended: 5550.00, comment: "White cardstock only — no kraft" },
+    ],
+    total: 5550.00, received: 5550.00, balanceDue: 0,
+    priority: "Normal", dueDate: "07/07/2026",
+    status: "In Production", payment: "Pending Tax Review",
+    createdAgo: "3d ago", createdDate: "06/28/2026",
+    attachmentsCount: 3, attachments: ["SafeCare_BodyLotion_Front_V3.pdf", "SafeCare_BodyLotion_Back_V3.pdf", "Reseller_Cert_SafeCare.pdf"],
+    files: [
+      { name: "SafeCare_BodyLotion_Front_V3.pdf", sizeKB: 246, kind: "pdf" },
+      { name: "SafeCare_BodyLotion_Back_V3.pdf", sizeKB: 262, kind: "pdf" },
+      { name: "Reseller_Cert_SafeCare.pdf", sizeKB: 189, kind: "pdf" },
+    ],
+    productionNotes: "White SBS run on Indigo 15K. Tax review pending — Corey submitted resale cert, waiting on Nikolay to verify.",
+    shippingMethod: "Ship",
+    customer: { phone: "(714) 555-0311", email: "corey@safecarepkg.com", city: "Anaheim", state: "CA", lifetimeOrders: 4, lifetimeValue: 22400, returning: true },
+    payments: [
+      { method: "ACH", amount: 5550.00, date: "06/28/2026", ref: "ACH-BOA-63914", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Corey Nishimura", subject: "Body lotion boxes — reorder", body: "Same file as last run, quantity bumped to 3000. Reseller cert attached — should be on file already but sending fresh.", at: "06/28 · 10:20 AM", attachments: ["SafeCare_files.zip", "Reseller_Cert.pdf"] },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Re: Reorder", body: "Corey — got it. Cert going to tax review, we'll flip you to Tax Exempt once cleared. In the meantime running production, since payment cleared.", at: "06/28 · 11:45 AM" },
+    ],
+  },
+  // ─── 8. Global 448 — In Production, die-cut stickers ───
+  {
+    refId: "2026-0118", quoteRefId: "QO-2026-0118",
+    contact: "Ricky Ortiz", company: "Global 448",
+    createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
+    title: "Die Cut Stickers — 4 designs, 2500 each, holographic",
+    lineItems: [
+      { id: "l1", productId: 24, productName: "Die Cut / Kiss Cut Stickers", productCategory: "Labels & Stickers", materialId: 224, materialName: "Rainbow Holographic BOPP", quantity: 10000, widthIn: 3, heightIn: 3, sides: "S1", colorMode: "CMYK", finishingIds: [179], finishingLabels: ["Gloss Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.38, extended: 3800.00, comment: "4 designs · 2500 each" },
+    ],
+    total: 3800.00, received: 3800.00, balanceDue: 0,
+    priority: "Normal", dueDate: "07/10/2026",
+    status: "In Production", payment: "Paid",
+    createdAgo: "6d ago", createdDate: "06/25/2026",
+    attachmentsCount: 4, attachments: ["Global448_Stickers_4Designs.ai", "Dieline_Approved.pdf", "Holo_swatch.pdf", "Proof_Round1.pdf"],
+    files: [
+      { name: "Global448_Stickers_4Designs.ai", sizeKB: 2840, kind: "ai" },
+      { name: "Dieline_Approved.pdf", sizeKB: 320, kind: "pdf" },
+      { name: "Holo_swatch.pdf", sizeKB: 210, kind: "pdf" },
+      { name: "Proof_Round1.pdf", sizeKB: 940, kind: "pdf" },
+    ],
+    shippingMethod: "Ship",
+    customer: { phone: "(619) 555-0872", email: "ricky@global448.com", city: "San Diego", state: "CA", lifetimeOrders: 5, lifetimeValue: 18200, returning: true },
+    payments: [
+      { method: "Card", amount: 3800.00, date: "06/25/2026", ref: "MC •••• 8830", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Ricky Ortiz", subject: "Holo stickers — reorder", body: "Manny — 4 designs, 2500 each. Same holo material as last time. Files below.", at: "06/25 · 8:12 AM" },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: Holo stickers", body: "Ricky — got it. Charged card, running week of 07/07. Ship by 07/10.", at: "06/25 · 9:30 AM" },
+    ],
+  },
+  // ─── 9. Gold Custom Packaging — Ready to Ship, large-volume ───
+  {
+    refId: "2026-0115", quoteRefId: "QO-2026-0115",
+    contact: "Alex Golden", company: "Gold Custom Packaging",
+    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
+    title: "Mylar stand-up pouches — 25,000 pcs across 4 SKUs, CR zippers",
+    lineItems: [
+      { id: "l1", productId: 33, productName: "Child-Resistant Stand Up Pouches", productCategory: "Bags & Pouches", materialId: 175, materialName: "Silver Virgin (MET PET)", quantity: 25000, widthIn: 5, heightIn: 8, sides: "S2", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.92, extended: 23000.00, comment: "4 SKUs · CR Zipper Style 8511U" },
+    ],
+    total: 23000.00, received: 23000.00, balanceDue: 0,
+    priority: "Normal", dueDate: "07/02/2026",
+    status: "Ready to Ship", payment: "Paid",
+    createdAgo: "12d ago", createdDate: "06/19/2026",
+    attachmentsCount: 6, attachments: ["Gold_Pouch_4SKU_Master.ai", "Zipper_spec_8511U.pdf", "Dieline_Approved.pdf", "Print_Ready_v2.pdf", "Front_Proof.pdf", "Back_Proof.pdf"],
+    files: [
+      { name: "Gold_Pouch_4SKU_Master.ai", sizeKB: 8420, kind: "ai" },
+      { name: "Zipper_spec_8511U.pdf", sizeKB: 320, kind: "pdf" },
+      { name: "Dieline_Approved.pdf", sizeKB: 410, kind: "pdf" },
+      { name: "Print_Ready_v2.pdf", sizeKB: 3120, kind: "pdf" },
+      { name: "Front_Proof.pdf", sizeKB: 1280, kind: "pdf" },
+      { name: "Back_Proof.pdf", sizeKB: 1240, kind: "pdf" },
+    ],
+    productionNotes: "Ran on Karlville over 3 shifts. QC passed 06/30. Palletized, awaiting freight pickup.",
+    shippingMethod: "Ship", trackingRef: "SAIA-88214771",
+    customer: { phone: "(818) 555-1240", email: "alex@goldpkg.com", city: "Sun Valley", state: "CA", lifetimeOrders: 9, lifetimeValue: 148300, returning: true },
+    payments: [
+      { method: "Wire", amount: 23000.00, date: "06/20/2026", ref: "WIRE-CHASE-91188", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Alex Golden", subject: "25K pouch reorder", body: "Same 4 SKUs, quantity bumped to 25K total. Wire going out Monday.", at: "06/19 · 2:14 PM" },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Re: 25K reorder", body: "Alex — got it. Karlville has capacity next week. Wire received 06/20, in production.", at: "06/20 · 10:45 AM" },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Palletized — freight pickup Wednesday", body: "Alex — all 25K palletized on 2 skids. SAIA freight scheduled Wed 07/02. Tracking SAIA-88214771.", at: "06/30 · 4:30 PM" },
+    ],
+  },
+  // ─── 10. Rise Botanicals — Ready to Ship ───
+  {
+    refId: "2026-0113", quoteRefId: "QO-2026-0113",
+    contact: "Marcus King", company: "Rise Botanicals",
+    createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
+    title: "Bottle labels — 8000 pcs, spot UV highlights on floral",
+    lineItems: [
+      { id: "l1", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 200, materialName: "Clear BOPP", quantity: 8000, widthIn: 3, heightIn: 4, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [226], specialEffectLabels: ["Raised UV 20µ"], unitPrice: 0.29, extended: 2320.00 },
+    ],
+    total: 2320.00, received: 2320.00, balanceDue: 0,
+    priority: "Normal", dueDate: "07/01/2026",
+    status: "Ready to Ship", payment: "Paid",
+    createdAgo: "9d ago", createdDate: "06/22/2026",
+    attachmentsCount: 3, attachments: ["Rise_Bottle_Label_V4.ai", "SpotUV_map.pdf", "Print_Ready_v2.pdf"],
+    files: [
+      { name: "Rise_Bottle_Label_V4.ai", sizeKB: 1120, kind: "ai" },
+      { name: "SpotUV_map.pdf", sizeKB: 320, kind: "pdf" },
+      { name: "Print_Ready_v2.pdf", sizeKB: 890, kind: "pdf" },
+    ],
+    productionNotes: "Ran clean. Roll direction: Left Out. Ready for UPS pickup.",
+    shippingMethod: "Ship",
+    customer: { phone: "(707) 555-0399", email: "marcus@risebotanicals.co", city: "Santa Rosa", state: "CA", lifetimeOrders: 3, lifetimeValue: 6120, returning: true },
+    payments: [
+      { method: "Card", amount: 2320.00, date: "06/22/2026", ref: "VISA •••• 2214", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Marcus King", subject: "Bottle labels for Q3", body: "Rerun of the Q2 label, same file. Bumping to 8000. Please confirm.", at: "06/22 · 11:14 AM" },
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Re: Q3 bottle labels", body: "Marcus — done. Turnaround 8-10 business days, tracking will hit 07/01.", at: "06/22 · 12:30 PM" },
+    ],
+  },  // ─── 11. Vick May Day — Shipped, folding cartons ───
+  {
+    refId: "2026-0107", quoteRefId: "QO-2026-0107",
+    contact: "Vick May Day", company: "May Day Studios",
+    createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
+    title: "Mini Tuck End Boxes — 2000 pcs, gold foil logo",
+    lineItems: [
+      { id: "l1", productId: 167, productName: "Mini Tuck End Box", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt White SBS", quantity: 2000, widthIn: 3, heightIn: 4, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [206], specialEffectLabels: ["Gold Foil"], unitPrice: 1.65, extended: 3300.00 },
+    ],
+    total: 3300.00, received: 3300.00, balanceDue: 0,
     priority: "Normal", dueDate: "06/28/2026",
     status: "Shipped", payment: "Paid",
-    createdAgo: "6d ago", createdDate: "06/24/2026", attachmentsCount: 4, attachments: ["coco_bloom_carton.ai", "gold_foil_map.pdf", "matte_lam_spec.pdf", "final_proof.pdf"],
-    shippingMethod: "Ship", trackingRef: "1Z999AA10123456784",
-  },
-  {
-    refId: "2026-0071", quoteRefId: "QO-2026-0071",
-    contact: "Zoe Lin", company: "Verdant Roots",
-    createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
-    title: "Standup pouches — 3,000 units, holographic foil",
-    lineItems: [
-      { id: "l1", productId: 30, productName: "Stand Up Pouch", productCategory: "Bags & Pouches", materialId: 175, materialName: "MET PET", quantity: 3000, widthIn: 5, heightIn: 8, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [210], specialEffectLabels: ["Holographic Foil"], unitPrice: 1.80, extended: 5400.00 },
+    createdAgo: "14d ago", createdDate: "06/17/2026",
+    attachmentsCount: 3, attachments: ["MayDay_MiniTuck_V2.ai", "Dieline_Approved.pdf", "Gold_foil_map.pdf"],
+    files: [
+      { name: "MayDay_MiniTuck_V2.ai", sizeKB: 1720, kind: "ai" },
+      { name: "Dieline_Approved.pdf", sizeKB: 280, kind: "pdf" },
+      { name: "Gold_foil_map.pdf", sizeKB: 210, kind: "pdf" },
     ],
-    total: 5400.00, received: 5400.00, balanceDue: 0,
-    priority: "Rush", dueDate: "06/25/2026",
-    status: "Delivered", payment: "Paid",
-    createdAgo: "9d ago", createdDate: "06/21/2026", attachmentsCount: 5, attachments: ["verdant_pouch.ai", "holographic_foil.pdf", "gusset_spec.pdf", "front_proof.jpg", "back_proof.jpg"],
-    shippingMethod: "Ship", trackingRef: "1Z999AA10123456789",
+    shippingMethod: "Ship", trackingRef: "1Z999AA10778112034",
+    customer: { phone: "(213) 555-0448", email: "vick@maydaystudios.co", city: "Los Angeles", state: "CA", lifetimeOrders: 1, lifetimeValue: 3300, returning: false },
+    payments: [
+      { method: "Card", amount: 3300.00, date: "06/17/2026", ref: "AMEX •••• 1008", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Vick May Day", subject: "First order — mini tuck boxes", body: "Hey — first time working with you. Attached artwork for 2000 tuck end boxes with gold foil logo. Please quote.", at: "06/16 · 3:22 PM" },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: First order", body: "Vick — welcome! Quote attached. If it looks good I'll send a payment link.", at: "06/16 · 5:14 PM", attachments: ["QO-2026-0107.pdf"] },
+      { channel: "email_in", author: "Vick May Day", subject: "Re: First order", body: "Looks good — paid. When will it ship?", at: "06/17 · 8:30 AM" },
+      { channel: "email_out", author: "Manny Carlo", subject: "Shipped — UPS", body: "Vick — shipped today. Tracking 1Z999AA10778112034.", at: "06/29 · 4:15 PM" },
+    ],
   },
+  // ─── 12. Cane Company — Shipped ───
   {
-    refId: "2026-0068", quoteRefId: "QO-2026-0068",
-    contact: "Marcus King", company: "Rise Kombucha",
+    refId: "2026-0104", quoteRefId: "QO-2026-0104",
+    contact: "Ruben Cane", company: "Cane Company",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
-    title: "Bottle labels — 8,000 pcs, spot UV highlights",
+    title: "White BOPP labels — 4000 pcs, matte lam",
     lineItems: [
-      { id: "l1", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 200, materialName: "Clear Label (Clear BOPP)", quantity: 8000, widthIn: 3, heightIn: 4, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [201], specialEffectLabels: ["Spot UV"], unitPrice: 0.22, extended: 1760.00 },
+      { id: "l1", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 184, materialName: "White BOPP", quantity: 4000, widthIn: 2.5, heightIn: 3.5, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.28, extended: 1120.00 },
     ],
-    total: 1760.00, received: 1760.00, balanceDue: 0,
-    priority: "Normal", dueDate: "06/26/2026",
+    total: 1120.00, received: 1120.00, balanceDue: 0,
+    priority: "Normal", dueDate: "06/27/2026",
     status: "Shipped", payment: "Paid",
-    createdAgo: "8d ago", createdDate: "06/22/2026", attachmentsCount: 3, attachments: ["rise_kombucha_label.ai", "spot_uv_mask.pdf", "clear_bopp_spec.pdf"],
-    shippingMethod: "Ship", trackingRef: "1Z999AA10555432198",
-  },
-  {
-    refId: "2026-0065", quoteRefId: "QO-2026-0065",
-    contact: "Nikoloz K.", company: "Iron Pine",
-    createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
-    title: "Postcards + trifold brochures for launch event",
-    lineItems: [
-      { id: "l1", productId: 40, productName: "Postcards", productCategory: "Marketing Materials", materialId: 199, materialName: "14pt C2S Card Stock", quantity: 2500, widthIn: 4, heightIn: 6, sides: "S2", colorMode: "CMYK", finishingIds: [179], finishingLabels: ["Gloss Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.28, extended: 700.00 },
-      { id: "l2", productId: 41, productName: "Trifold Brochure", productCategory: "Marketing Materials", materialId: 199, materialName: "14pt C2S Card Stock", quantity: 1000, widthIn: 8.5, heightIn: 11, sides: "S2", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.45, extended: 450.00 },
+    createdAgo: "13d ago", createdDate: "06/18/2026",
+    attachmentsCount: 2, attachments: ["Cane_Label_V1.ai", "Print_Ready_v2.pdf"],
+    files: [
+      { name: "Cane_Label_V1.ai", sizeKB: 780, kind: "ai" },
+      { name: "Print_Ready_v2.pdf", sizeKB: 620, kind: "pdf" },
     ],
-    total: 1150.00, received: 1150.00, balanceDue: 0,
+    shippingMethod: "Ship", trackingRef: "1Z999AA10229384765",
+    customer: { phone: "(760) 555-0122", email: "ruben@canecompany.co", city: "Palm Springs", state: "CA", lifetimeOrders: 2, lifetimeValue: 2340, returning: true },
+    payments: [
+      { method: "ACH", amount: 1120.00, date: "06/18/2026", ref: "ACH-CHASE-40182", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Ruben Cane", subject: "Reorder labels", body: "Same as last time, 4000 pcs.", at: "06/18 · 9:14 AM" },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Re: Reorder", body: "Ruben — running this week, ships 06/27.", at: "06/18 · 10:22 AM" },
+    ],
+  },
+  // ─── 13. Cali Papers — Shipped, vinyl banners ───
+  {
+    refId: "2026-0101", quoteRefId: "QO-2026-0101",
+    contact: "Ana Rivera", company: "Cali Papers",
+    createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
+    title: "Two 4x8 vinyl banners for expo booth",
+    lineItems: [
+      { id: "l1", productId: 35, productName: "Vinyl Banners", productCategory: "Wide Format", materialId: 190, materialName: "13oz Matte Vinyl", quantity: 2, widthIn: 96, heightIn: 48, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: ["Hemmed + Grommets"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 240.00, extended: 480.00, comment: "SQFT sizing · 32 sqft each" },
+    ],
+    total: 480.00, received: 480.00, balanceDue: 0,
+    priority: "Normal", dueDate: "06/25/2026",
+    status: "Shipped", payment: "Paid",
+    createdAgo: "15d ago", createdDate: "06/16/2026",
+    attachmentsCount: 2, attachments: ["CaliPapers_Banner_4x8.pdf", "Booth_layout.pdf"],
+    files: [
+      { name: "CaliPapers_Banner_4x8.pdf", sizeKB: 4820, kind: "pdf" },
+      { name: "Booth_layout.pdf", sizeKB: 320, kind: "pdf" },
+    ],
+    shippingMethod: "Ship", trackingRef: "1Z999AA10665128374",
+    customer: { phone: "(408) 555-0788", email: "ana@calipapers.com", city: "San Jose", state: "CA", lifetimeOrders: 1, lifetimeValue: 480, returning: false },
+    payments: [
+      { method: "Card", amount: 480.00, date: "06/16/2026", ref: "VISA •••• 5581", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Ana Rivera", subject: "Banners for expo", body: "Need two 4x8 banners for our July 20 expo. Hemmed with grommets.", at: "06/16 · 1:04 PM" },
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Re: Banners", body: "Ana — quote $480. Turnaround 5 business days.", at: "06/16 · 2:15 PM" },
+      { channel: "email_in", author: "Ana Rivera", subject: "Re: Banners", body: "Approved, paid.", at: "06/16 · 3:00 PM" },
+    ],
+  },
+  // ─── 14. Green Leaf Wellness — Delivered ───
+  {
+    refId: "2026-0098", quoteRefId: "QO-2026-0098",
+    contact: "Priya Nair", company: "Green Leaf Wellness",
+    createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
+    title: "Tincture bottle labels + CR pouches — 4 SKU",
+    lineItems: [
+      { id: "l1", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 200, materialName: "Clear BOPP", quantity: 5000, widthIn: 2, heightIn: 3, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.26, extended: 1300.00 },
+      { id: "l2", productId: 34, productName: "Child-Resistant Flat Pouches", productCategory: "Bags & Pouches", materialId: 175, materialName: "Silver Virgin (MET PET)", quantity: 2500, widthIn: 4, heightIn: 6, sides: "S2", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.98, extended: 2450.00 },
+    ],
+    total: 3750.00, received: 3750.00, balanceDue: 0,
     priority: "Normal", dueDate: "06/22/2026",
     status: "Delivered", payment: "Paid",
-    createdAgo: "12d ago", createdDate: "06/18/2026", attachmentsCount: 2, attachments: ["postcard_artwork.pdf", "trifold_artwork.pdf"],
-    shippingMethod: "Pickup",
-  },
-  {
-    refId: "2026-0060", quoteRefId: "QO-2026-0060",
-    contact: "Lena Park", company: "Hearth Bread",
-    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
-    title: "Mylar bags for cookie collection — 4 SKU",
-    lineItems: [
-      { id: "l1", productId: 30, productName: "Mylar Bag", productCategory: "Bags & Pouches", materialId: 175, materialName: "MET PET", quantity: 5000, widthIn: 5, heightIn: 7, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 1.15, extended: 5750.00 },
+    createdAgo: "18d ago", createdDate: "06/13/2026",
+    attachmentsCount: 4, attachments: ["GreenLeaf_TinctureLabel.ai", "GreenLeaf_CRPouch.ai", "CR_zipper_spec.pdf", "Print_Ready_v2.pdf"],
+    files: [
+      { name: "GreenLeaf_TinctureLabel.ai", sizeKB: 1420, kind: "ai" },
+      { name: "GreenLeaf_CRPouch.ai", sizeKB: 2210, kind: "ai" },
+      { name: "CR_zipper_spec.pdf", sizeKB: 220, kind: "pdf" },
+      { name: "Print_Ready_v2.pdf", sizeKB: 1080, kind: "pdf" },
     ],
-    total: 5750.00, received: 2000.00, balanceDue: 3750.00,
-    paymentTerms: "Net-15", paymentDueDate: "06/17/2026", paymentOverdue: true,
-    priority: "Normal", dueDate: "07/05/2026",
-    status: "Pending Payment", payment: "Partial",
-    createdAgo: "2d ago", createdDate: "06/28/2026", attachmentsCount: 4, attachments: ["hearth_pouch_sku1.ai", "hearth_pouch_sku2.ai", "hearth_pouch_sku3.ai", "hearth_pouch_sku4.ai"],
-    shippingMethod: "Ship",
+    shippingMethod: "Ship", trackingRef: "1Z999AA10119284563",
+    customer: { phone: "(415) 555-0722", email: "priya@greenleafwellness.co", city: "Oakland", state: "CA", lifetimeOrders: 4, lifetimeValue: 14200, returning: true },
+    payments: [
+      { method: "ACH", amount: 3750.00, date: "06/13/2026", ref: "ACH-CHASE-71299", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Priya Nair", subject: "Tincture + pouch reorder", body: "Same 4 SKUs. 5K labels + 2.5K pouches.", at: "06/13 · 11:04 AM" },
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Re: Reorder", body: "Priya — got it. Ships 06/22.", at: "06/13 · 12:22 PM" },
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Delivered — signature confirmed", body: "Priya — UPS delivered 06/23 at 11:14 AM, signed by 'P Nair'.", at: "06/23 · 11:44 AM" },
+    ],
   },
+  // ─── 15. Vibe Botanicals — Delivered, trading cards ───
   {
-    refId: "2026-0055", quoteRefId: "QO-2026-0055",
-    contact: "David Han", company: "Solstice Coffee",
+    refId: "2026-0095", quoteRefId: "QO-2026-0095",
+    contact: "Diego Alvarez", company: "Vibe Botanicals",
     createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
-    title: "Custom sticker sheets — cancelled by customer",
+    title: "Standard Trading Cards — 5000 pcs, gloss lam",
     lineItems: [
-      { id: "l1", productId: 4, productName: "Die Cut Stickers", productCategory: "Labels & Stickers", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 2000, widthIn: 3, heightIn: 3, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.35, extended: 700.00 },
+      { id: "l1", productId: 49, productName: "Standard Trading Cards", productCategory: "Marketing Materials", materialId: 199, materialName: "Matte 14pt Card Stock", quantity: 5000, widthIn: 2.5, heightIn: 3.5, sides: "S2", colorMode: "CMYK", finishingIds: [179], finishingLabels: ["Gloss Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.18, extended: 900.00 },
     ],
-    total: 700.00, received: 0, balanceDue: 0,
-    priority: "Normal", dueDate: "06/29/2026",
-    status: "Cancelled", payment: "Unpaid",
-    createdAgo: "10d ago", createdDate: "06/20/2026", attachmentsCount: 1, attachments: ["solstice_stickers.ai"],
-    productionNotes: "Customer changed direction — cancelled before production started.",
-  },
+    total: 900.00, received: 900.00, balanceDue: 0,
+    priority: "Normal", dueDate: "06/20/2026",
+    status: "Delivered", payment: "Paid",
+    createdAgo: "22d ago", createdDate: "06/09/2026",
+    attachmentsCount: 2, attachments: ["Vibe_TradingCards_Front.pdf", "Vibe_TradingCards_Back.pdf"],
+    files: [
+      { name: "Vibe_TradingCards_Front.pdf", sizeKB: 1240, kind: "pdf" },
+      { name: "Vibe_TradingCards_Back.pdf", sizeKB: 1180, kind: "pdf" },
+    ],
+    shippingMethod: "Pickup",
+    customer: { phone: "(213) 555-0918", email: "diego@vibebotanicals.co", city: "Los Angeles", state: "CA", lifetimeOrders: 2, lifetimeValue: 1800, returning: true },
+    payments: [
+      { method: "Card", amount: 900.00, date: "06/09/2026", ref: "VISA •••• 7712", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Diego Alvarez", subject: "Trading cards for launch", body: "5000 standard trading cards for a launch giveaway.", at: "06/09 · 9:14 AM" },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: Trading cards", body: "Diego — quote $900. Pickup 06/20.", at: "06/09 · 10:44 AM" },
+      { channel: "sms_out", author: "Manny Carlo", body: "Diego — cards are ready for pickup at the shop.", at: "06/19 · 3:14 PM" },
+      { channel: "sms_in", author: "Diego Alvarez", body: "On my way", at: "06/19 · 4:02 PM" },
+    ],
+  },  // ─── 16. Little Buddha — Delivered ───
   {
-    refId: "2026-0048", quoteRefId: "QO-2026-0048",
+    refId: "2026-0090", quoteRefId: "QO-2026-0090",
+    contact: "Ren Takahashi", company: "Little Buddha",
+    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
+    title: "Bottle labels + business cards package",
+    lineItems: [
+      { id: "l1", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 184, materialName: "White BOPP", quantity: 3000, widthIn: 2, heightIn: 3, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.32, extended: 960.00 },
+      { id: "l2", productId: 2, productName: "Business Cards", productCategory: "Marketing Materials", materialId: 199, materialName: "Matte 14pt Card Stock", quantity: 500, widthIn: 3.5, heightIn: 2, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.24, extended: 120.00 },
+    ],
+    total: 1080.00, received: 1080.00, balanceDue: 0,
+    priority: "Normal", dueDate: "06/18/2026",
+    status: "Delivered", payment: "Paid",
+    createdAgo: "24d ago", createdDate: "06/07/2026",
+    attachmentsCount: 3, attachments: ["LittleBuddha_Label_V2.ai", "LittleBuddha_BizCard.ai", "Proof_Approved.pdf"],
+    files: [
+      { name: "LittleBuddha_Label_V2.ai", sizeKB: 940, kind: "ai" },
+      { name: "LittleBuddha_BizCard.ai", sizeKB: 620, kind: "ai" },
+      { name: "Proof_Approved.pdf", sizeKB: 480, kind: "pdf" },
+    ],
+    shippingMethod: "Ship", trackingRef: "1Z999AA10884127653",
+    customer: { phone: "(310) 555-0311", email: "ren@littlebuddha.co", city: "Culver City", state: "CA", lifetimeOrders: 2, lifetimeValue: 2140, returning: true },
+    payments: [
+      { method: "Card", amount: 1080.00, date: "06/07/2026", ref: "VISA •••• 3319", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Ren Takahashi", subject: "Labels + cards bundle", body: "Reorder labels, and add 500 business cards this time.", at: "06/07 · 10:14 AM" },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Re: Bundle", body: "Ren — quote $1,080. Ships 06/18.", at: "06/07 · 11:22 AM" },
+    ],
+  },
+  // ─── 17. Urban Farms — Delivered ───
+  {
+    refId: "2026-0086", quoteRefId: "QO-2026-0086",
+    contact: "Kaleb Foster", company: "Urban Farms",
+    createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
+    title: "Custom boxes for microgreens — 1500 pcs",
+    lineItems: [
+      { id: "l1", productId: 189, productName: "Flip-Top Hinged Lid Box", productCategory: "Packaging & Boxes", materialId: 198, materialName: "18pt White SBS", quantity: 1500, widthIn: 6, heightIn: 4, sides: "S1", colorMode: "CMYK", finishingIds: [179], finishingLabels: ["Gloss Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 2.10, extended: 3150.00 },
+    ],
+    total: 3150.00, received: 3150.00, balanceDue: 0,
+    priority: "Normal", dueDate: "06/16/2026",
+    status: "Delivered", payment: "Paid",
+    createdAgo: "27d ago", createdDate: "06/04/2026",
+    attachmentsCount: 3, attachments: ["UrbanFarms_HingedLid.ai", "Dieline_Approved.pdf", "Proof_Round2.pdf"],
+    files: [
+      { name: "UrbanFarms_HingedLid.ai", sizeKB: 2410, kind: "ai" },
+      { name: "Dieline_Approved.pdf", sizeKB: 320, kind: "pdf" },
+      { name: "Proof_Round2.pdf", sizeKB: 890, kind: "pdf" },
+    ],
+    shippingMethod: "Pickup",
+    customer: { phone: "(510) 555-0644", email: "kaleb@urbanfarms.co", city: "Berkeley", state: "CA", lifetimeOrders: 1, lifetimeValue: 3150, returning: false },
+    payments: [
+      { method: "ACH", amount: 3150.00, date: "06/04/2026", ref: "ACH-BOA-88291", status: "Completed" },
+    ],
+    communications: [
+      { channel: "email_in", author: "Kaleb Foster", subject: "First order — microgreens box", body: "New here. Need 1500 boxes for my microgreens delivery service. Attached mockup.", at: "06/04 · 9:14 AM" },
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Re: Microgreens box", body: "Kaleb — welcome. Quote $3,150 attached. White cardstock only, standard for our line. Pickup 06/16.", at: "06/04 · 11:22 AM" },
+    ],
+  },
+  // ─── 18. Richard Shaltz — Pending Payment ───
+  {
+    refId: "2026-0133", quoteRefId: "QO-2026-0133",
+    contact: "Richard Shaltz", company: "Shaltz Botanicals",
+    createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
+    title: "Labels for oil line — 3000 pcs, waiting on payment",
+    lineItems: [
+      { id: "l1", productId: 1, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 184, materialName: "White BOPP", quantity: 3000, widthIn: 2, heightIn: 4, sides: "S1", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.36, extended: 1080.00 },
+    ],
+    total: 1080.00, received: 0, balanceDue: 1080.00,
+    priority: "Normal", dueDate: "07/09/2026",
+    status: "Pending Payment", payment: "Unpaid",
+    createdAgo: "1d ago", createdDate: "06/30/2026",
+    attachmentsCount: 2, attachments: ["Shaltz_OilLabel_V1.ai", "QO-2026-0133.pdf"],
+    files: [
+      { name: "Shaltz_OilLabel_V1.ai", sizeKB: 720, kind: "ai" },
+      { name: "QO-2026-0133.pdf", sizeKB: 320, kind: "pdf" },
+    ],
+    shippingMethod: "Ship",
+    customer: { phone: "(408) 555-0201", email: "richard@shaltzbotanicals.co", city: "San Jose", state: "CA", lifetimeOrders: 1, lifetimeValue: 620, returning: false },
+    payments: [],
+    communications: [
+      { channel: "email_in", author: "Richard Shaltz", subject: "Oil label order", body: "3000 white BOPP labels, matte lam. Please quote.", at: "06/30 · 10:14 AM" },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: Oil label", body: "Richard — quote attached, $1,080. Payment link included. Payment before we start.", at: "06/30 · 11:22 AM", attachments: ["QO-2026-0133.pdf"] },
+      { channel: "sms_out", author: "Manny Carlo", body: "Richard — heads up on the quote for 3K oil labels, sent to your inbox.", at: "07/01 · 8:44 AM" },
+    ],
+  },
+  // ─── 19. Dream Snacks Co — Pending Payment, mylar bags ───
+  {
+    refId: "2026-0132", quoteRefId: "QO-2026-0132",
+    contact: "Willa Chen", company: "Dream Snacks Co",
+    createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
+    title: "Mylar stand-up pouches — 5000 pcs, holographic accents",
+    lineItems: [
+      { id: "l1", productId: 30, productName: "Stand Up Pouches", productCategory: "Bags & Pouches", materialId: 175, materialName: "Silver Virgin (MET PET)", quantity: 5000, widthIn: 5, heightIn: 8, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [211], specialEffectLabels: ["Rainbow Holographic Foil"], unitPrice: 1.48, extended: 7400.00, comment: "3 SKUs · 1667 each" },
+    ],
+    total: 7400.00, received: 0, balanceDue: 7400.00,
+    paymentTerms: "Net-15", paymentDueDate: "06/29/2026", paymentOverdue: false,
+    priority: "Normal", dueDate: "07/14/2026",
+    status: "Pending Payment", payment: "Unpaid",
+    createdAgo: "2d ago", createdDate: "06/29/2026",
+    attachmentsCount: 4, attachments: ["DreamSnacks_3SKU_Master.ai", "Holo_foil_map.pdf", "Dieline_Approved.pdf", "QO-2026-0132.pdf"],
+    files: [
+      { name: "DreamSnacks_3SKU_Master.ai", sizeKB: 4220, kind: "ai" },
+      { name: "Holo_foil_map.pdf", sizeKB: 420, kind: "pdf" },
+      { name: "Dieline_Approved.pdf", sizeKB: 310, kind: "pdf" },
+      { name: "QO-2026-0132.pdf", sizeKB: 380, kind: "pdf" },
+    ],
+    shippingMethod: "Ship",
+    customer: { phone: "(212) 555-0917", email: "willa@dreamsnacks.co", city: "Brooklyn", state: "NY", lifetimeOrders: 1, lifetimeValue: 0, returning: false },
+    payments: [],
+    communications: [
+      { channel: "email_in", author: "Willa Chen", subject: "Mylar pouches — 3 SKUs", body: "5000 total split across 3 SKUs. Holo foil accent on all. Please send quote.", at: "06/29 · 11:14 AM" },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Re: Mylar pouches", body: "Willa — quote $7,400. Karlville run, 10 business days from payment. Payment link attached.", at: "06/29 · 1:22 PM", attachments: ["QO-2026-0132.pdf"] },
+    ],
+  },
+  // ─── 20. Sun Roll — Cancelled ───
+  {
+    refId: "2026-0100", quoteRefId: "QO-2026-0100",
+    contact: "Kai Nakamura", company: "Sun Roll",
+    createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
+    title: "Sticker sheets — cancelled by customer",
+    lineItems: [
+      { id: "l1", productId: 24, productName: "Die Cut / Kiss Cut Stickers", productCategory: "Labels & Stickers", materialId: 189, materialName: "Semi-Gloss Paper", quantity: 2000, widthIn: 3, heightIn: 3, sides: "S1", colorMode: "CMYK", finishingIds: [], finishingLabels: [], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.32, extended: 640.00 },
+    ],
+    total: 640.00, received: 0, balanceDue: 0,
+    priority: "Normal", dueDate: "06/28/2026",
+    status: "Cancelled", payment: "Unpaid",
+    createdAgo: "14d ago", createdDate: "06/17/2026",
+    attachmentsCount: 1, attachments: ["SunRoll_Stickers_V1.ai"],
+    files: [
+      { name: "SunRoll_Stickers_V1.ai", sizeKB: 1140, kind: "ai" },
+    ],
+    productionNotes: "Customer changed direction — cancelled before production started.",
+    customer: { phone: "(808) 555-0244", email: "kai@sunroll.co", city: "Honolulu", state: "HI", lifetimeOrders: 0, lifetimeValue: 0, returning: false },
+    payments: [],
+    communications: [
+      { channel: "email_in", author: "Kai Nakamura", subject: "Sticker order", body: "2000 die-cut stickers, files attached.", at: "06/17 · 9:14 AM" },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: Stickers", body: "Kai — quote $640. Payment link attached.", at: "06/17 · 11:22 AM" },
+      { channel: "email_in", author: "Kai Nakamura", subject: "Cancel please", body: "Going a different direction — please cancel.", at: "06/19 · 2:30 PM" },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: Cancel", body: "Kai — no problem, cancelled. No charge since we hadn't started.", at: "06/19 · 3:14 PM" },
+    ],
+  },
+  // ─── 21. Petal & Pine — Refunded, gold foil off-spec ───
+  {
+    refId: "2026-0088", quoteRefId: "QO-2026-0088",
     contact: "Priya Shah", company: "Petal & Pine",
     createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
-    title: "Wedding invite suite — refund issued, print color mismatch",
+    title: "Wedding invitation suite — refund issued, gold foil off-spec",
     lineItems: [
-      { id: "l1", productId: 40, productName: "Invitation Cards", productCategory: "Marketing Materials", materialId: 199, materialName: "14pt C2S Card Stock", quantity: 250, widthIn: 5, heightIn: 7, sides: "S2", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [208], specialEffectLabels: ["Gold Foil"], unitPrice: 2.60, extended: 650.00 },
+      { id: "l1", productId: 8, productName: "Postcards", productCategory: "Marketing Materials", materialId: 199, materialName: "Matte 14pt Card Stock", quantity: 250, widthIn: 5, heightIn: 7, sides: "S2", colorMode: "CMYK", finishingIds: [177], finishingLabels: ["Matte Lam"], specialEffectIds: [206], specialEffectLabels: ["Gold Foil"], unitPrice: 2.60, extended: 650.00 },
     ],
     total: 650.00, received: 650.00, balanceDue: 0,
-    priority: "Normal", dueDate: "06/15/2026",
+    priority: "Normal", dueDate: "06/12/2026",
     status: "Refunded", payment: "Paid",
-    createdAgo: "14d ago", createdDate: "06/16/2026", attachmentsCount: 3, attachments: ["invite_artwork.ai", "gold_foil_map.pdf", "refund_request.pdf"],
-    productionNotes: "Color mismatch on gold foil vs. proof. Refunded in full 06/24.",
+    createdAgo: "26d ago", createdDate: "06/05/2026",
+    attachmentsCount: 4, attachments: ["Invite_artwork.ai", "Gold_foil_map.pdf", "Refund_request.pdf", "Photo_of_mismatch.jpg"],
+    files: [
+      { name: "Invite_artwork.ai", sizeKB: 3210, kind: "ai" },
+      { name: "Gold_foil_map.pdf", sizeKB: 240, kind: "pdf" },
+      { name: "Refund_request.pdf", sizeKB: 180, kind: "pdf" },
+      { name: "Photo_of_mismatch.jpg", sizeKB: 2840, kind: "jpg" },
+    ],
+    productionNotes: "Gold foil ran warmer than approved proof. Customer accepted full refund and kept usable stock.",
     refundedAmount: 650.00, refundReason: "Gold foil off-spec vs. approved proof",
     shippingMethod: "Ship",
-  },
-  {
-    refId: "2026-0042", quoteRefId: "QO-2026-0042",
-    contact: "Diego Alvarez", company: "Alta Sauces",
-    createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
-    title: "Sauce bottle labels — partial refund, 500 pcs under-registered",
-    lineItems: [
-      { id: "l1", productId: 3, productName: "Roll Labels", productCategory: "Labels & Stickers", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 3000, widthIn: 2.5, heightIn: 3.5, sides: "S1", colorMode: "CMYK", finishingIds: [179], finishingLabels: ["Gloss Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 0.28, extended: 840.00 },
+    customer: { phone: "(415) 555-0812", email: "priya@petalandpine.co", city: "Berkeley", state: "CA", lifetimeOrders: 1, lifetimeValue: 0, returning: false },
+    payments: [
+      { method: "Card", amount: 650.00, date: "06/05/2026", ref: "VISA •••• 8842", status: "Completed" },
+      { method: "Card", amount: -650.00, date: "06/24/2026", ref: "REFUND VISA •••• 8842", status: "Completed" },
     ],
-    total: 840.00, received: 840.00, balanceDue: 0,
-    priority: "Normal", dueDate: "06/10/2026",
-    status: "Refunded", payment: "Paid",
-    createdAgo: "20d ago", createdDate: "06/10/2026", attachmentsCount: 2, attachments: ["alta_bottle_label.ai", "refund_memo.pdf"],
-    productionNotes: "500 pcs mis-registered — customer accepted partial refund of $140, kept usable stock.",
-    refundedAmount: 140.00, refundReason: "500 pcs mis-registered — partial refund",
-    shippingMethod: "Ship",
+    communications: [
+      { channel: "email_in", author: "Priya Shah", subject: "Wedding invites — 250 with gold foil", body: "Attached final artwork. Wedding is July 4 so need by June 12.", at: "06/05 · 10:14 AM" },
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Re: Wedding invites", body: "Priya — $650, ships 06/12. Congrats!", at: "06/05 · 11:22 AM" },
+      { channel: "email_in", author: "Priya Shah", subject: "Gold foil doesn't match proof", body: "Received them and the foil is way warmer / more copper than the swatch you sent. Photo attached. Wedding is next week — what can you do?", at: "06/13 · 4:14 PM", attachments: ["Photo_of_mismatch.jpg"] },
+      { channel: "call_out", author: "Maria Hakobyan", body: "Called Priya. Offered full refund + let her keep the invites since re-run wouldn't hit her wedding date. She agreed.", at: "06/13 · 5:30 PM" },
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Full refund processed", body: "Priya — refunded $650 back to your card. Invites are yours to use. Truly sorry about the mismatch — we'll dial in the foil recipe before Q3.", at: "06/24 · 10:15 AM" },
+    ],
   },
 ];
 
@@ -382,7 +806,7 @@ export default function OrdersPreview() {
   const [dateRange, setDateRange] = useState<"today" | "yesterday" | "7d" | "30d" | "custom">("30d");
   const [teamFilter, setTeamFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>("2026-0114");
+  const [expandedId, setExpandedId] = useState<string | null>("2026-0135");
   const [detailId, setDetailId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const p = new URLSearchParams(window.location.search).get("open");
@@ -832,9 +1256,12 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
   const [status, setStatus] = useState(order.status);
   const [priority, setPriority] = useState(order.priority);
   const [showEngIds, setShowEngIds] = useState(false);
-  const [tab, setTab] = useState<"overview" | "activity" | "quotes" | "files" | "payments">("overview");
+  const [tab, setTab] = useState<"overview" | "activity" | "comms" | "quotes" | "files" | "payments">("overview");
 
-  const timeline = buildTimeline(order);
+  // Prefer per-order timeline if present, otherwise fall back to generated one.
+  const timeline: TimelineEvent[] = order.timeline
+    ? order.timeline.map(t => ({ icon: t.icon, tint: t.tint, title: t.title, sub: t.sub, at: t.at, ref: t.ref })).reverse()
+    : buildTimeline(order);
 
   return (
     <div>
@@ -860,7 +1287,12 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
             </div>
             <div style={{ fontSize: "14px", color: "#333", marginTop: "4px" }}>
               <b>{order.contact}</b> · {order.company || "—"}
-              <span style={{ marginLeft: "8px", padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>Returning Customer</span>
+              {order.customer?.returning && (
+                <span style={{ marginLeft: "8px", padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>Returning Customer · {order.customer.lifetimeOrders} orders</span>
+              )}
+              {order.customer && !order.customer.returning && (
+                <span style={{ marginLeft: "8px", padding: "2px 8px", background: "#e0e7ff", color: "#4338ca", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>New Customer</span>
+              )}
             </div>
             <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
               <span style={{ padding: "3px 10px", background: STATUS_COLORS[status].bg, color: STATUS_COLORS[status].fg, fontSize: "11px", fontWeight: 700, borderRadius: "6px" }}>{status}</span>
@@ -884,7 +1316,7 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
                 >💸 Payment {d} {d === 1 ? "day" : "days"} past due · terms {order.paymentTerms || "—"}</div>
               );
             })()}
-            <div style={{ fontSize: "10.5px", color: "#888", marginTop: "1px" }}>on Jun 30, 2026</div>
+            <div style={{ fontSize: "10.5px", color: "#888", marginTop: "1px" }}>on {order.createdDate}</div>
           </div>
         </div>
       </div>
@@ -898,8 +1330,8 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
           </span>
         </MetaCell>
         <MetaCell icon="📅" label="Created">
-          <div style={{ fontWeight: 700 }}>Jun 30, 2026</div>
-          <div style={{ fontSize: "10.5px", color: "#888" }}>3:50 PM ({order.createdAgo})</div>
+          <div style={{ fontWeight: 700 }}>{order.createdDate}</div>
+          <div style={{ fontSize: "10.5px", color: "#888" }}>{order.createdAgo}</div>
         </MetaCell>
         <MetaCell icon="📅" label="Due Date">
           <div style={{ fontWeight: 700, color: order.dueOverdue ? "#dc2626" : "var(--preview-text)" }}>{order.dueDate || "—"}</div>
@@ -940,10 +1372,11 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
           <div style={{ display: "flex", gap: "20px", padding: "0 22px", borderBottom: "1px solid #eee" }}>
             {[
               { key: "overview", label: "Overview" },
-              { key: "activity", label: "Activity Timeline" },
+              { key: "activity", label: `Activity Timeline (${timeline.length})` },
+              { key: "comms", label: `Communications (${order.communications?.length ?? 0})` },
               { key: "quotes", label: `Quote History (3)` },
               { key: "files", label: `Files (${order.attachmentsCount})` },
-              { key: "payments", label: "Payments" },
+              { key: "payments", label: `Payments (${order.payments?.length ?? 0})` },
             ].map(t => {
               const active = tab === t.key;
               return (
@@ -957,6 +1390,7 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
           <div style={{ padding: "18px 22px" }}>
             {tab === "overview" && <OverviewTab order={order} showEngIds={showEngIds} setShowEngIds={setShowEngIds} />}
             {tab === "activity" && <ActivityTab events={timeline} />}
+            {tab === "comms" && <CommsTab order={order} />}
             {tab === "quotes" && <QuoteHistoryTab order={order} />}
             {tab === "files" && <FilesTab order={order} />}
             {tab === "payments" && <PaymentsTab order={order} />}
@@ -1006,15 +1440,15 @@ function CustomerSidebar({ order }: { order: Order }) {
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "11.5px", color: "#666", marginBottom: "12px" }}>
-          <div>📞 (213) 561-7090</div>
-          <div>✉ jbelay0001@ymail.com</div>
-          <div>🚶 Walk-in</div>
+          <div>📞 {order.customer?.phone || "—"}</div>
+          <div>✉ {order.customer?.email || "—"}</div>
+          <div>📍 {order.customer ? `${order.customer.city}, ${order.customer.state}` : "—"}</div>
         </div>
-        <span style={{ display: "inline-block", padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px", marginBottom: "12px" }}>Returning Customer</span>
+        <span style={{ display: "inline-block", padding: "2px 8px", background: order.customer?.returning ? "#dcfce7" : "#e0e7ff", color: order.customer?.returning ? "#166534" : "#4338ca", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px", marginBottom: "12px" }}>{order.customer?.returning ? "Returning Customer" : "New Customer"}</span>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "6px", padding: "10px", background: "var(--preview-surface-2)", borderRadius: "8px" }}>
-          <div><div style={{ fontSize: "9.5px", color: "#888", textTransform: "uppercase", fontWeight: 700 }}>Lifetime</div><div style={{ fontSize: "12px", fontWeight: 800 }}>$83,240</div></div>
-          <div><div style={{ fontSize: "9.5px", color: "#888", textTransform: "uppercase", fontWeight: 700 }}>Total</div><div style={{ fontSize: "12px", fontWeight: 800 }}>12</div></div>
-          <div><div style={{ fontSize: "9.5px", color: "#888", textTransform: "uppercase", fontWeight: 700 }}>Open</div><div style={{ fontSize: "12px", fontWeight: 800 }}>4</div></div>
+          <div><div style={{ fontSize: "9.5px", color: "#888", textTransform: "uppercase", fontWeight: 700 }}>Lifetime</div><div style={{ fontSize: "12px", fontWeight: 800 }}>${(order.customer?.lifetimeValue ?? 0).toLocaleString()}</div></div>
+          <div><div style={{ fontSize: "9.5px", color: "#888", textTransform: "uppercase", fontWeight: 700 }}>Orders</div><div style={{ fontSize: "12px", fontWeight: 800 }}>{order.customer?.lifetimeOrders ?? 0}</div></div>
+          <div><div style={{ fontSize: "9.5px", color: "#888", textTransform: "uppercase", fontWeight: 700 }}>Terms</div><div style={{ fontSize: "12px", fontWeight: 800 }}>{order.paymentTerms || "Prepay"}</div></div>
         </div>
       </div>
 
@@ -1115,15 +1549,20 @@ function OverviewTab({ order, showEngIds, setShowEngIds }: { order: Order; showE
           <div style={{ padding: "14px", textAlign: "center", color: "#aaa", fontSize: "12px", border: "1px dashed #ddd", borderRadius: "6px" }}>No attachments</div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "8px" }}>
-            {["mockup.pdf", "die-line.pdf"].slice(0, order.attachmentsCount).map((name, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
-                <div style={{ width: "36px", height: "36px", background: "#fee2e2", color: "#dc2626", borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>📄</div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: "12.5px", fontWeight: 700 }}>{name}</div>
-                  <div style={{ fontSize: "10.5px", color: "#888" }}>PDF · {["2.4 MB", "348 KB"][i]}</div>
+            {(order.files ?? order.attachments.map(name => ({ name, sizeKB: 480, kind: (name.endsWith(".ai") ? "ai" : name.endsWith(".jpg") ? "jpg" : name.endsWith(".png") ? "png" : name.endsWith(".dxf") ? "dxf" : "pdf") as Attachment["kind"] }))).map((f, i) => {
+              const tintBg = f.kind === "pdf" ? "#fee2e2" : f.kind === "ai" ? "#fef3c7" : f.kind === "dxf" ? "#e0e7ff" : "#dbeafe";
+              const tintFg = f.kind === "pdf" ? "#dc2626" : f.kind === "ai" ? "#a16207" : f.kind === "dxf" ? "#4338ca" : "#1e40af";
+              const sizeLabel = f.sizeKB >= 1024 ? `${(f.sizeKB / 1024).toFixed(1)} MB` : `${f.sizeKB} KB`;
+              return (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
+                  <div style={{ width: "36px", height: "36px", background: tintBg, color: tintFg, borderRadius: "6px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 800 }}>{f.kind.toUpperCase()}</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: "12.5px", fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.name}</div>
+                    <div style={{ fontSize: "10.5px", color: "#888" }}>{f.kind.toUpperCase()} · {sizeLabel}</div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1179,7 +1618,16 @@ function QuoteHistoryTab({ order }: { order: Order }) {
 }
 
 function FilesTab({ order }: { order: Order }) {
-  const files = ["mockup.pdf", "die-line.pdf", "artwork.ai", "photo.jpg", "spec.pdf", "reference.png"].slice(0, Math.max(order.attachmentsCount, 2));
+  // Prefer rich file objects with size/kind; fall back to plain string names.
+  const richFiles: Attachment[] = order.files
+    ?? order.attachments.map(name => ({
+      name,
+      sizeKB: 480,
+      kind: (name.endsWith(".ai") ? "ai" : name.endsWith(".jpg") ? "jpg" : name.endsWith(".png") ? "png" : name.endsWith(".dxf") ? "dxf" : "pdf") as Attachment["kind"],
+    }));
+  const fileNames = richFiles.map(f => f.name);
+  const files = fileNames.length ? fileNames : ["mockup.pdf", "die-line.pdf"];
+  const fileMeta: Record<string, Attachment> = Object.fromEntries(richFiles.map(f => [f.name, f]));
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
@@ -1194,7 +1642,9 @@ function FilesTab({ order }: { order: Order }) {
             </div>
             <div style={{ padding: "8px 10px" }}>
               <div style={{ fontSize: "11.5px", fontWeight: 700 }}>{f}</div>
-              <div style={{ fontSize: "10px", color: "#888" }}>Attached via {order.quoteRefId}</div>
+              <div style={{ fontSize: "10px", color: "#888" }}>
+                {fileMeta[f] ? `${fileMeta[f].kind.toUpperCase()} · ${fileMeta[f].sizeKB >= 1024 ? (fileMeta[f].sizeKB / 1024).toFixed(1) + " MB" : fileMeta[f].sizeKB + " KB"}` : `Attached via ${order.quoteRefId}`}
+              </div>
             </div>
           </div>
         ))}
@@ -1203,22 +1653,88 @@ function FilesTab({ order }: { order: Order }) {
   );
 }
 
+// ─── Communications tab — email / call / SMS / IG / note log ───
+function CommsTab({ order }: { order: Order }) {
+  const comms = order.communications ?? [];
+  if (comms.length === 0) {
+    return <div style={{ padding: "20px", textAlign: "center", color: "#888", fontSize: "12.5px" }}>No communications logged for this order yet.</div>;
+  }
+  const iconFor = (c: CommEntry["channel"]) => {
+    switch (c) {
+      case "email_in": return { icon: "✉", tint: "#3b82f6", label: "Email in" };
+      case "email_out": return { icon: "✉", tint: "#22c55e", label: "Email out" };
+      case "call_in": return { icon: "📞", tint: "#3b82f6", label: "Call in" };
+      case "call_out": return { icon: "📞", tint: "#22c55e", label: "Call out" };
+      case "sms_in": return { icon: "💬", tint: "#3b82f6", label: "SMS in" };
+      case "sms_out": return { icon: "💬", tint: "#22c55e", label: "SMS out" };
+      case "ig_in": return { icon: "📷", tint: "#e11d48", label: "IG DM in" };
+      case "ig_out": return { icon: "📷", tint: "#e11d48", label: "IG DM out" };
+      case "note": return { icon: "📝", tint: "#78350f", label: "Internal note" };
+    }
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {comms.map((c, i) => {
+        const meta = iconFor(c.channel);
+        return (
+          <div key={i} style={{ padding: "12px 14px", background: c.channel === "note" ? "#fffbeb" : "var(--preview-surface-2)", border: `1px solid ${c.channel === "note" ? "#fde68a" : "var(--preview-border)"}`, borderRadius: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px", marginBottom: "4px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <span style={{ width: "22px", height: "22px", borderRadius: "50%", background: meta.tint + "22", color: meta.tint, fontSize: "11px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{meta.icon}</span>
+                <span style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{meta.label}</span>
+                <span style={{ fontSize: "12px", fontWeight: 700 }}>· {c.author}</span>
+              </div>
+              <span style={{ fontSize: "10.5px", color: "#888" }}>{c.at}</span>
+            </div>
+            {c.subject && <div style={{ fontSize: "12.5px", fontWeight: 700, marginBottom: "3px" }}>{c.subject}</div>}
+            <div style={{ fontSize: "12px", color: "#333", lineHeight: 1.5 }}>{c.body}</div>
+            {c.attachments && c.attachments.length > 0 && (
+              <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginTop: "6px" }}>
+                {c.attachments.map(a => (
+                  <span key={a} style={{ padding: "2px 8px", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", fontSize: "10.5px", fontWeight: 600, borderRadius: "5px" }}>📎 {a}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      <button style={{ marginTop: "6px", padding: "8px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>+ Log new communication</button>
+    </div>
+  );
+}
+
 function PaymentsTab({ order }: { order: Order }) {
+  const payments = order.payments ?? [];
+  if (payments.length === 0) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ padding: "12px 16px", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: "8px" }}>
+          <div style={{ fontSize: "13px", fontWeight: 800, color: "#dc2626" }}>Awaiting payment — {fmtMoney(order.balanceDue)}</div>
+          <div style={{ fontSize: "11px", color: "#dc2626" }}>No payments recorded yet.</div>
+        </div>
+        <button style={{ padding: "10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>+ Record Payment</button>
+      </div>
+    );
+  }
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-      <div style={{ padding: "12px 16px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-          <div>
-            <div style={{ fontSize: "13px", fontWeight: 800 }}>Payment #1 — {fmtMoney(order.received)}</div>
-            <div style={{ fontSize: "11px", color: "#888" }}>Jun 30, 2026 · 3:50 PM · VISA •••• 7131</div>
+      {payments.map((p, i) => (
+        <div key={i} style={{ padding: "12px 16px", background: p.amount < 0 ? "#fef3c7" : "var(--preview-surface-2)", border: `1px solid ${p.amount < 0 ? "#fde68a" : "var(--preview-border)"}`, borderRadius: "8px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+            <div>
+              <div style={{ fontSize: "13px", fontWeight: 800 }}>
+                {p.amount < 0 ? "Refund" : `Payment #${i + 1}`} — {fmtMoney(Math.abs(p.amount))}
+              </div>
+              <div style={{ fontSize: "11px", color: "#888" }}>{p.date} · {p.method} · {p.ref}</div>
+            </div>
+            <div style={{ padding: "3px 8px", background: p.status === "Completed" ? "#dcfce7" : p.status === "Pending Clearance" ? "#fef3c7" : "#fee2e2", color: p.status === "Completed" ? "#166534" : p.status === "Pending Clearance" ? "#78350f" : "#dc2626", fontSize: "11px", fontWeight: 700, borderRadius: "5px" }}>{p.status}</div>
           </div>
-          <div style={{ padding: "3px 8px", background: "#dcfce7", color: "#166534", fontSize: "11px", fontWeight: 700, borderRadius: "5px" }}>Completed</div>
         </div>
-      </div>
+      ))}
       {order.balanceDue > 0 && (
         <div style={{ padding: "12px 16px", background: "#fee2e2", border: "1px solid #fecaca", borderRadius: "8px" }}>
           <div style={{ fontSize: "13px", fontWeight: 800, color: "#dc2626" }}>Balance Due — {fmtMoney(order.balanceDue)}</div>
-          <div style={{ fontSize: "11px", color: "#dc2626" }}>Awaiting payment</div>
+          <div style={{ fontSize: "11px", color: "#dc2626" }}>Awaiting payment · terms {order.paymentTerms || "—"}</div>
         </div>
       )}
       <button style={{ padding: "10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>+ Record Payment</button>
@@ -1300,8 +1816,8 @@ function FinancialSummary({ order }: { order: Order }) {
         <span style={{ padding: "2px 8px", background: paid ? "#dcfce7" : "#fef3c7", color: paid ? "#166534" : "#78350f", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>{paid ? "Paid in full" : "Partial"}</span>
       </div>
       <FinCell label="Amount Paid" value={fmtMoney(order.received)} />
-      <FinCell label="Payment Date" value="Jun 30, 2026 3:50 PM" />
-      <FinCell label="Payment Method" value="VISA •••• 7131" />
+      <FinCell label="Last Payment" value={order.payments && order.payments.length > 0 ? order.payments[order.payments.length - 1].date : "—"} />
+      <FinCell label="Payment Method" value={order.payments && order.payments.length > 0 ? `${order.payments[order.payments.length - 1].method} · ${order.payments[order.payments.length - 1].ref}` : (order.balanceDue > 0 ? "Awaiting" : "—")} />
       <button style={{ padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>📄 View Receipt</button>
     </div>
   );
