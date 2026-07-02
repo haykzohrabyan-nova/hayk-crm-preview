@@ -110,8 +110,14 @@ const SPECIAL_EFFECT_LABELS: Record<number, string> = {
   233: "Cast & Cure",
   329: "Cast & Cure Film",
 };
-const finishLabel = (id: number) => FINISHING_LABELS[id] || `Finish #${id}`;
-const effectLabel = (id: number) => SPECIAL_EFFECT_LABELS[id] || `Effect #${id}`;
+// Material aliases — resolved from prod deploy-snapshot (Material.details.color/material/finishing/type).
+// Rationale: the catalog snapshot picked the "material" field for pouches, but the Bazaar
+// website itself displays "color" for those SKUs (e.g. id 175 shows "Silver Virgin" not "MET PET").
+// This aliases the CRM display back to what the customer actually sees on bazaarprinting.com.
+import MATERIAL_ALIASES from "@/lib/catalog/material-aliases.json";
+
+const finishLabel = (id: number) => (MATERIAL_ALIASES as Record<string, string>)[String(id)] || FINISHING_LABELS[id] || `Finish #${id}`;
+const effectLabel = (id: number) => (MATERIAL_ALIASES as Record<string, string>)[String(id)] || SPECIAL_EFFECT_LABELS[id] || `Effect #${id}`;
 const slugify = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
 // Some material rows in the catalog snapshot ship with generic "Material NNN"
@@ -119,6 +125,9 @@ const slugify = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-")
 // This helper builds a more informative label from the other fields we DO have.
 function displayMaterialLabel(m: any): string {
   if (!m) return "";
+  // First check the customer-facing alias — that's what shows on bazaarprinting.com.
+  const alias = m.id ? (MATERIAL_ALIASES as Record<string, string>)[String(m.id)] : undefined;
+  if (alias) return alias;
   const dn: string = m.displayName || "";
   if (dn && !/^Material \d+$/.test(dn)) return dn;   // real name — use it
   // Fallback — synthesize from priceMultiplier + frame size
@@ -477,6 +486,7 @@ export default function NewQuotePreview() {
               categories={categories} products={products}
               quoteType={quoteType} setQuoteType={setQuoteType}
               subtotal={subtotal}
+              quoteRefId={quoteRefId}
               previousOrdersCount={previousOrdersCount}
               pastOrderBannerDismissed={pastOrderBannerDismissed}
               setPastOrderBannerDismissed={setPastOrderBannerDismissed}
@@ -766,7 +776,7 @@ function Step1Info(props: any) {
 }
 
 // ─── STEP 2: Line Items ───────────────────────────────────────
-function Step2LineItems({ lineItems, setLineItems, categories, products, quoteType, setQuoteType, subtotal, previousOrdersCount, pastOrderBannerDismissed, setPastOrderBannerDismissed }: any) {
+function Step2LineItems({ lineItems, setLineItems, categories, products, quoteType, setQuoteType, subtotal, quoteRefId, previousOrdersCount, pastOrderBannerDismissed, setPastOrderBannerDismissed }: any) {
   // Show a "similar past order" heads-up whenever the customer has >2 prior orders.
   // Sample values shown until real order-history data is wired.
   const showSimilarOrderBanner = previousOrdersCount > 2 && !pastOrderBannerDismissed;
@@ -844,6 +854,7 @@ function Step2LineItems({ lineItems, setLineItems, categories, products, quoteTy
               key={line.id}
               lineItem={line}
               index={i}
+              quoteRefId={quoteRefId}
               categories={categories}
               products={products}
               onUpdate={(patch: any) => update(line.id, patch)}
@@ -959,8 +970,87 @@ function isRollProduct(subcategory?: string | null) {
   return s === "labels-stickers" || s === "label-bag-combo" || s === "label-jar-combo" || s === "label-tube-combo";
 }
 
+// ─── Multi-select dropdown (Finishing / Special Effects) ─────────
+function MultiSelectDropdown({ label, accent, tintBg, tintText, options, selected, onToggle }: {
+  label: string;
+  accent: string;
+  tintBg: string;
+  tintText: string;
+  options: { value: number; label: string }[];
+  selected: number[];
+  onToggle: (v: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const selectedLabels = options.filter(o => selected.includes(o.value)).map(o => o.label);
+  const buttonText = selectedLabels.length === 0
+    ? `Select ${label.toLowerCase()}…`
+    : selectedLabels.length <= 2
+      ? selectedLabels.join(", ")
+      : `${selectedLabels[0]} +${selectedLabels.length - 1}`;
+  return (
+    <div ref={wrapRef} style={{ position: "relative" }}>
+      <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginBottom: "6px" }}>{label}</div>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: "100%",
+          textAlign: "left",
+          padding: "8px 12px",
+          background: selected.length > 0 ? tintBg : "var(--preview-surface)",
+          border: `1px solid ${selected.length > 0 ? accent : "var(--preview-border)"}`,
+          borderRadius: "8px",
+          fontSize: "12px",
+          fontWeight: selected.length > 0 ? 700 : 500,
+          color: selected.length > 0 ? tintText : "var(--preview-text-muted)",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "8px",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {buttonText}
+          {selected.length > 0 && <span style={{ marginLeft: "6px", padding: "1px 7px", background: accent, color: "#fff", borderRadius: "999px", fontSize: "10px" }}>{selected.length}</span>}
+        </span>
+        <span style={{ fontSize: "10px", color: "var(--preview-text-muted)" }}>▾</span>
+      </button>
+      {open && (
+        <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 100, background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "10px", boxShadow: "0 10px 30px rgba(0,0,0,0.15)", maxHeight: "260px", overflowY: "auto", padding: "6px" }}>
+          {options.map(o => {
+            const on = selected.includes(o.value);
+            return (
+              <div
+                key={o.value}
+                onClick={() => onToggle(o.value)}
+                style={{ padding: "7px 10px", borderRadius: "6px", fontSize: "12.5px", cursor: "pointer", display: "flex", alignItems: "center", gap: "8px", background: on ? tintBg : "transparent", color: on ? tintText : "var(--preview-text)", fontWeight: on ? 700 : 500 }}
+                onMouseEnter={e => { if (!on) e.currentTarget.style.background = "var(--preview-chip-bg)"; }}
+                onMouseLeave={e => { if (!on) e.currentTarget.style.background = "transparent"; }}
+              >
+                <span style={{ fontSize: "13px" }}>{on ? "☑" : "☐"}</span>
+                <span>{o.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Line Item Editor ────────────────────────────────
-function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDuplicate, onRemove, canRemove, collapsed, onToggleCollapse }: any) {
+function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onUpdate, onDuplicate, onRemove, canRemove, collapsed, onToggleCollapse }: any) {
+  const lineTag = quoteRefId ? `${String(quoteRefId).replace(/^Q-/i, "")}-${index + 1}` : `Line ${index + 1}`;
   const [categoryId, setCategoryId] = useState<string>("");
   const [renamingName, setRenamingName] = useState(false);
   const [displayName, setDisplayName] = useState(`Line ${index + 1}`);
@@ -1044,17 +1134,19 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
     const finStr = finCount > 0 ? `${finCount} finish${finCount === 1 ? "" : "es"}` : null;
     const priceShown = lineItem.overrideEnabled ? lineItem.overrideExtended : lineItem.extended;
     const artwork = lineItem.artworkFiles?.[0]?.name;
+    const attCount = lineItem.artworkFiles?.length || 0;
     return (
-      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "10px 14px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "12px" }}>
-        <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "6px", padding: "2px", lineHeight: 0, flexShrink: 0 }}>
-          <div style={{ transform: "scale(0.55)", transformOrigin: "top left", width: "44px", height: "33px" }}>
-            <ProductThumb subcategory={selectedProduct?.subcategory} />
-          </div>
+      <div style={{ background: "var(--preview-surface)", border: "2px solid var(--preview-border)", borderRadius: "12px", padding: "12px 16px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "14px", boxShadow: "0 2px 6px rgba(0,0,0,0.04)" }}>
+        <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", width: "56px", height: "56px", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 0, flexShrink: 0, position: "relative" }}>
+          <ProductThumb subcategory={selectedProduct?.subcategory} />
+          {attCount > 0 && (
+            <span title={`${attCount} attached file${attCount === 1 ? "" : "s"}`} style={{ position: "absolute", top: "-6px", right: "-6px", background: "#3b82f6", color: "#fff", fontSize: "9.5px", fontWeight: 800, padding: "1px 5px", borderRadius: "999px", border: "1.5px solid var(--preview-surface)" }}>📎 {attCount}</span>
+          )}
         </div>
-        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "4px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <span style={{ fontSize: "10.5px", fontWeight: 800, color: "var(--preview-text-muted)", letterSpacing: "0.05em" }}>LINE {index + 1}</span>
-            <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--preview-text)" }}>{lineItem.productName || displayName || "Untitled product"}</span>
+            <span style={{ fontSize: "11px", fontWeight: 800, color: ACCENT, letterSpacing: "0.03em", padding: "2px 8px", background: "rgba(245,158,11,0.12)", borderRadius: "999px" }}>#{lineTag}</span>
+            <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--preview-text)" }}>{lineItem.productName || displayName || "Untitled product"}</span>
             {lineItem.materialName && <span style={{ fontSize: "11.5px", color: "var(--preview-text-muted)" }}>· {lineItem.materialName}</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11.5px", color: "var(--preview-text-muted)", flexWrap: "wrap" }}>
@@ -1077,28 +1169,37 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
     );
   }
 
+  const attCount = lineItem.artworkFiles?.length || 0;
   return (
-    <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "14px 16px", marginBottom: "12px" }}>
+    <div style={{ background: "var(--preview-surface-2)", border: `2px solid ${ACCENT}55`, borderRadius: "14px", padding: "16px 18px", marginBottom: "16px", boxShadow: "0 4px 12px rgba(0,0,0,0.06)" }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", paddingBottom: "10px", borderBottom: "1px solid var(--preview-border)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", padding: "4px", lineHeight: 0 }}>
+          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", width: "56px", height: "56px", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 0, position: "relative" }}>
             <ProductThumb subcategory={selectedProduct?.subcategory} />
+            {attCount > 0 && (
+              <span title={`${attCount} attached file${attCount === 1 ? "" : "s"}`} style={{ position: "absolute", top: "-6px", right: "-6px", background: "#3b82f6", color: "#fff", fontSize: "9.5px", fontWeight: 800, padding: "1px 5px", borderRadius: "999px", border: "1.5px solid var(--preview-surface-2)" }}>📎 {attCount}</span>
+            )}
           </div>
-          <span style={{ fontSize: "11px", fontWeight: 800, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>LINE {index + 1}</span>
+          <span style={{ fontSize: "12px", fontWeight: 800, color: ACCENT, letterSpacing: "0.03em", padding: "3px 10px", background: "rgba(245,158,11,0.12)", borderRadius: "999px" }}>#{lineTag}</span>
           {renamingName
             ? <input autoFocus value={displayName} onChange={e => setDisplayName(e.target.value)} onBlur={() => setRenamingName(false)} onKeyDown={e => { if (e.key === "Enter") setRenamingName(false); }} style={{ ...inp, padding: "3px 8px", width: "180px" }} />
             : <span onClick={() => setRenamingName(true)} style={{ fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>{displayName} ✎</span>}
         </div>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
-          {selectedProduct && (
+          {selectedProduct ? (
             <a
-              href={`https://bazaarprinting.com/products/${slugify(selectedProduct.name)}`}
+              href={`https://bazaarprinting.com/product/${slugify(selectedProduct.name)}?id=${selectedProduct.id}${selectedProduct.subcategory ? `&activePage=${encodeURIComponent(selectedProduct.subcategory)}` : ""}`}
               target="_blank"
               rel="noreferrer"
               title={`Open ${selectedProduct.name} on bazaarprinting.com to double-check specs, pricing tiers, and options match the live site.`}
               style={{ padding: "5px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", color: "#1e40af", textDecoration: "none" }}
             >↗ Verify on Bazaar site</a>
+          ) : (
+            <span
+              title="Pick a category and product first — the Bazaar product page opens once we know which one to link to."
+              style={{ padding: "5px 10px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600, color: "var(--preview-text-faint)", cursor: "not-allowed", opacity: 0.6 }}
+            >↗ Verify on Bazaar site</span>
           )}
           <button onClick={onDuplicate} style={{ padding: "5px 10px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer" }}>⧉ Duplicate</button>
           {canRemove && <button onClick={onRemove} style={{ padding: "5px 8px", background: "#fff", border: "1px solid #fca5a5", borderRadius: "6px", color: "#dc2626", fontSize: "12px", cursor: "pointer" }}>🗑</button>}
@@ -1177,34 +1278,26 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
       {(availableFinishing.length > 0 || availableSpecialEffects.length > 0) && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "10px" }}>
           {availableFinishing.length > 0 && (
-            <div>
-              <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginBottom: "6px" }}>Finishing / Lamination</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {availableFinishing.map(fid => {
-                  const on = (lineItem.finishingIds || []).includes(fid);
-                  return (
-                    <label key={fid} onClick={() => toggleFinishing(fid)} style={{ padding: "5px 12px", background: on ? "#fef3c7" : "#fff", border: `1px solid ${on ? GOLD : "#e5e5e5"}`, borderRadius: "6px", fontSize: "12px", fontWeight: on ? 700 : 500, color: on ? "#78350f" : "#333", cursor: "pointer" }}>
-                      <span style={{ marginRight: "4px" }}>{on ? "✓" : "☐"}</span>{finishLabel(fid)}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+            <MultiSelectDropdown
+              label="Finishing / Lamination"
+              accent={GOLD}
+              tintBg="#fef3c7"
+              tintText="#78350f"
+              options={availableFinishing.map(fid => ({ value: fid, label: finishLabel(fid) }))}
+              selected={lineItem.finishingIds || []}
+              onToggle={toggleFinishing}
+            />
           )}
           {availableSpecialEffects.length > 0 && (
-            <div>
-              <div style={{ fontSize: "11px", fontWeight: 700, color: "#555", marginBottom: "6px" }}>Special Effects</div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {availableSpecialEffects.map(eid => {
-                  const on = (lineItem.specialEffectIds || []).includes(eid);
-                  return (
-                    <label key={eid} onClick={() => toggleEffect(eid)} style={{ padding: "5px 12px", background: on ? "#ede9fe" : "#fff", border: `1px solid ${on ? "#a78bfa" : "#e5e5e5"}`, borderRadius: "6px", fontSize: "12px", fontWeight: on ? 700 : 500, color: on ? "#5b21b6" : "#333", cursor: "pointer" }}>
-                      <span style={{ marginRight: "4px" }}>{on ? "✓" : "☐"}</span>{effectLabel(eid)}
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
+            <MultiSelectDropdown
+              label="Special Effects"
+              accent="#a78bfa"
+              tintBg="#ede9fe"
+              tintText="#5b21b6"
+              options={availableSpecialEffects.map(eid => ({ value: eid, label: effectLabel(eid) }))}
+              selected={lineItem.specialEffectIds || []}
+              onToggle={toggleEffect}
+            />
           )}
         </div>
       )}
