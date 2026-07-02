@@ -7,6 +7,7 @@
 // Real /leads page NOT touched.
 
 import { useMemo, useState } from "react";
+import { commsForLead } from "../inbox/_seed";
 
 const ACCENT = "#FF5D2E";
 
@@ -856,6 +857,9 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         <ActionBtn icon="✉" label="Email" />
         <ActionBtn icon="📷" label="Open IG" />
       </div>
+
+      {/* Comms — last 3 touchpoints from the unified Inbox */}
+      <LeadCommsPreview leadId={lead.id} phone={lead.phone} email={lead.email} instagram={lead.instagram} />
 
       {/* Lead Status progress */}
       <StageProgress current={lead.stage} stamps={lead.stageTimestamps} />
@@ -1850,6 +1854,48 @@ function TagPill({ color, label, filled }: any) {
       color: filled ? "#fff" : color,
       fontSize: "11px", fontWeight: 700, borderRadius: "6px",
     }}>{label}</span>
+  );
+}
+
+// Hayk 2026-07-01 — Comms history from the unified Inbox, last 3 touchpoints.
+// Sources: /preview/inbox/_seed. Clicking a row deep-links into the inbox.
+function LeadCommsPreview({ leadId, phone, email, instagram }: { leadId: string; phone?: string; email?: string; instagram?: string }) {
+  const items = commsForLead(leadId, phone, email, instagram, 3);
+  const channelIcon: Record<string, string> = { call: "📞", sms: "📱", email: "✉", ig: "📷", web_form: "🌐" };
+  return (
+    <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "10px 12px", marginBottom: "14px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+        <div style={{ fontSize: "10.5px", textTransform: "uppercase", letterSpacing: "0.08em", color: "var(--preview-text-muted)", fontWeight: 700 }}>
+          Recent Comms
+        </div>
+        <a href="/preview/inbox" style={{ fontSize: "10.5px", color: ACCENT, textDecoration: "none", fontWeight: 700 }}>Open Inbox →</a>
+      </div>
+      {items.length === 0 ? (
+        <div style={{ fontSize: "11.5px", color: "var(--preview-text-muted)", fontStyle: "italic", padding: "4px 0" }}>
+          No touchpoints yet for this lead.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          {items.map((it) => (
+            <a
+              key={it.id}
+              href={`/preview/inbox?item=${encodeURIComponent(it.id)}`}
+              style={{ display: "flex", gap: "8px", padding: "6px 8px", borderRadius: "6px", textDecoration: "none", color: "var(--preview-text)", background: "var(--preview-surface)", border: "1px solid var(--preview-border)" }}
+              onMouseEnter={e => (e.currentTarget.style.background = "var(--preview-chip-bg)")}
+              onMouseLeave={e => (e.currentTarget.style.background = "var(--preview-surface)")}
+            >
+              <div style={{ fontSize: "13px", lineHeight: 1.1 }}>{channelIcon[it.channel] ?? "•"}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "11.5px", fontStyle: "italic", color: "var(--preview-text)", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" as const, overflow: "hidden" }}>
+                  {it.aiSummary}
+                </div>
+                <div style={{ fontSize: "10px", color: "var(--preview-text-muted)", marginTop: "1px" }}>{it.receivedAt}</div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
