@@ -10,6 +10,17 @@ import { useMemo, useState } from "react";
 const ACCENT = "#FF5D2E";
 const GOLD = "#fbbf24";
 
+// Hayk 2026-07-01 — Passport number. The numeric core (e.g. "135") rides on
+// every downstream artifact: quote (Q-135) → order (ORD-135) → workflow card
+// (#135) → invoice (INV-135) → packing slip (PS-135). Same number, never
+// re-invented. This helper strips the prefix (Q-, QO-, ORD-, INV-, PS-) and
+// any year segment (2026-) so we always land on the 3-digit core.
+export const passportCore = (refId: string): string =>
+  refId
+    .replace(/^(Q|QO|ORD|INV|PS)-?/i, "")
+    .replace(/^\d{4}-/, "")
+    .padStart(3, "0");
+
 // ─── Types ────────────────────────────────────────────
 type OrderStatus = "Pending Payment" | "In Production" | "Ready to Ship" | "Shipped" | "Delivered" | "Cancelled" | "Refunded";
 type PaymentStatus = "Paid" | "Partial" | "Tax Exempt" | "Pending Tax Review" | "Unpaid";
