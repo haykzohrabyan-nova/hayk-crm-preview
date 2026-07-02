@@ -35,6 +35,9 @@ import { clearTicketFormBootstrapClientCache } from "@/lib/client/ticket-form-bo
 import { useAppSession } from "@/components/layout/app-session-provider";
 import type { Page } from "@/lib/types";
 import type { NavSection } from "@/lib/auth/nav-sections";
+// Hayk 2026-07-02 — preview role picker for the sidebar footer + nav filtering.
+import { usePreviewRole, type PreviewRole } from "@/app/(app)/preview/_shared/role";
+import { SidebarRolePicker } from "@/app/(app)/preview/_shared/RolePicker";
 
 const ICON_MAP: Record<string, LucideIcon> = {
   LayoutDashboard,
@@ -226,6 +229,68 @@ function PreviewInboxLink({ collapsed }: { collapsed: boolean }) {
   );
 }
 
+// Hayk 2026-07-02 — Preview role → hidden nav routes. Empty array = show all.
+// Routes here are matched against Page.route (i.e. the DB route field).
+const PREVIEW_ROLE_HIDDEN_ROUTES: Record<PreviewRole, string[]> = {
+  admin: [],
+  sales: [
+    // Payments module is being built by another agent — hide from sales.
+    "/payments",
+    "/reports",
+    "/settings",
+  ],
+  sdr: [
+    "/payments",
+    "/reports",
+    "/settings",
+  ],
+  designer: [
+    // Designer sees almost nothing in CRM nav — only orders (files-only view).
+    "/dashboard",
+    "/leads",
+    "/sales",
+    "/sales-pipeline",
+    "/crm",
+    "/quotes",
+    "/inbox",
+    "/completed",
+    "/payments",
+    "/reports",
+    "/settings",
+    "/operations",
+  ],
+  accountant: [
+    "/leads",
+    "/sales",
+    "/sales-pipeline",
+  ],
+  "print-manager": [
+    "/leads",
+    "/sales",
+    "/sales-pipeline",
+    "/payments",
+    "/reports",
+    "/inbox",
+  ],
+};
+
+// Extra items to inject per role (preview-only synthetic nav entries).
+type SyntheticNav = { route: string; label: string; icon: keyof typeof ICON_MAP };
+const PREVIEW_ROLE_EXTRA_NAV: Record<PreviewRole, SyntheticNav[]> = {
+  admin: [],
+  sales: [],
+  sdr: [],
+  designer: [
+    { route: "/preview/designer-home", label: "Designer Home", icon: "LayoutDashboard" },
+  ],
+  accountant: [],
+  "print-manager": [],
+};
+
+// Hayk 2026-07-02 — Preview inbox is preview-only; hide it too for roles
+// that shouldn't see it.
+const PREVIEW_ROLES_HIDING_PREVIEW_INBOX: PreviewRole[] = ["designer", "print-manager"];
+
 function roleLabel(name: string | undefined): string {
   if (name === "admin")      return "Administrator";
   if (name === "sales")      return "Sales Rep";
@@ -237,6 +302,7 @@ function roleLabel(name: string | undefined): string {
 export function Sidebar() {
   const { theme, setTheme } = useTheme();
   const { me, sections } = useAppSession();
+  const [previewRole] = usePreviewRole();
   const [collapsed, setCollapsed] = useState(false);
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
   const userFullName = me?.fullName ?? null;
@@ -509,7 +575,12 @@ export function Sidebar() {
           // Hayk 2026-07-01 — hide Quoted Requests nav entry from the sidebar
           // while the /quotes page is still a placeholder. Underlying page and
           // access rules untouched.
-          const visiblePages = pages.filter((p) => p.route !== "/quotes" && p.route !== "/completed");
+          // Hayk 2026-07-02 — also filter by the preview-role toggle so Hayk can
+          // preview the sidebar from other team members' eyes.
+          const hidden = PREVIEW_ROLE_HIDDEN_ROUTES[previewRole] ?? [];
+          const visiblePages = pages.filter(
+            (p) => p.route !== "/quotes" && p.route !== "/completed" && !hidden.includes(p.route)
+          );
           if (visiblePages.length === 0) return null;
           return (
           <div key={section} className={cn("flex flex-col gap-0.5", idx > 0 && "mt-3")}>
@@ -531,7 +602,8 @@ export function Sidebar() {
                   roleName={userRoleName}
                 />
                 {/* Hayk 2026-07-01 — inject preview Inbox link right after Leads */}
-                {page.route === PREVIEW_INBOX_LINK.insertAfterRoute && (
+                {page.route === PREVIEW_INBOX_LINK.insertAfterRoute &&
+                  !PREVIEW_ROLES_HIDING_PREVIEW_INBOX.includes(previewRole) && (
                   <PreviewInboxLink collapsed={collapsed} />
                 )}
               </div>
@@ -539,6 +611,62 @@ export function Sidebar() {
           </div>
           );
         })}
+
+        {/* Hayk 2026-07-02 — Synthetic preview-only nav items per role */}
+        {PREVIEW_ROLE_EXTRA_NAV[previewRole].length > 0 && (
+          <div className="mt-3 flex flex-col gap-0.5">
+            {PREVIEW_ROLE_EXTRA_NAV[previewRole].map((item) => {
+              const Icon = ICON_MAP[item.icon] ?? LayoutDashboard;
+              return (
+                <Link
+                  key={item.route}
+                  href={item.route}
+                  title={collapsed ? item.label : undefined}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors",
+                    collapsed && "justify-center px-0"
+                  )}
+                  style={{ color: "var(--color-sidebar-nav)" }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = "var(--color-sidebar-hover-bg)";
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.backgroundColor = "";
+                  }}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {!collapsed && <span className="flex-1 truncate">{item.label}</span>}
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Hayk 2026-07-02 — Workflow board external link for designer + print-manager */}
+        {(previewRole === "designer" || previewRole === "print-manager") && (
+          <div className="mt-1">
+            <a
+              href="http://localhost:3004/board"
+              target="_blank"
+              rel="noopener noreferrer"
+              title={collapsed ? "Workflow board" : undefined}
+              className={cn(
+                "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors",
+                collapsed && "justify-center px-0"
+              )}
+              style={{ color: "var(--color-sidebar-nav)" }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = "var(--color-sidebar-hover-bg)";
+              }}
+              onMouseLeave={(e) => {
+                (e.currentTarget as HTMLElement).style.backgroundColor = "";
+              }}
+            >
+              <GitBranch className="h-4 w-4 shrink-0" />
+              {!collapsed && <span className="flex-1 truncate">Workflow board ↗</span>}
+            </a>
+          </div>
+        )}
       </nav>
 
       {/* Bottom utility strip */}
@@ -546,6 +674,11 @@ export function Sidebar() {
         className="flex flex-col gap-0.5 p-2"
         style={{ borderTop: "1px solid var(--color-sidebar-divider)" }}
       >
+        {/* Hayk 2026-07-02 — sidebar-footer role picker (fallback to floating chip) */}
+        <div className={cn("pb-1", collapsed && "px-0")}>
+          <SidebarRolePicker collapsed={collapsed} />
+        </div>
+
         <button
           onClick={toggleTheme}
           title={collapsed ? (theme === "dark" ? "Light mode" : "Dark mode") : undefined}
