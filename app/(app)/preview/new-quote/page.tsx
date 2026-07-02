@@ -7,6 +7,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { ORDERS, fmtMoney as fmtMoneyOrders, daysPastDue as daysPastDueOrders, type Order } from "../orders/page";
+import { usePreviewRole } from "../_shared/role";
 
 const DRAFT_STORAGE_KEY = "bazaar.quoteDraft";
 
@@ -146,6 +148,58 @@ function displayMaterialLabel(m: any): string {
   return parts.join(" · ");
 }
 
+// Hayk 2026-07-02 — pending-material-alias helper. Aliases containing this
+// substring are placeholders for Material rows the Bazaar admin hasn't
+// given a proper displayName yet — we style them in muted amber-italic
+// wherever they render so it's visually obvious.
+export function isPendingAlias(label: string): boolean {
+  return typeof label === "string" && label.includes("(Bazaar admin — name pending)");
+}
+
+// ─── Overdue-account block (Hayk 2026-07-02) ─────────────────
+// If the customer we're quoting for has any past-due orders in ORDERS,
+// block the quote and force either admin override or return-to-lead.
+interface OverdueSummary {
+  orders: Order[];
+  totalBalance: number;
+  oldestDaysLate: number;
+  oldestTerms: string;
+  customerName: string;
+}
+function normalizeName(s?: string): string {
+  return (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function findOverdueForCustomer(name?: string, email?: string): OverdueSummary | null {
+  const nname = normalizeName(name);
+  const emailLc = (email || "").toLowerCase().trim();
+  if (!nname && !emailLc) return null;
+  const matches = ORDERS.filter(o => {
+    if (o.paymentOverdue !== true) return false;
+    if (o.balanceDue <= 0) return false;
+    const custEmail = (o.customer?.email || "").toLowerCase().trim();
+    if (emailLc && custEmail && custEmail === emailLc) return true;
+    const orderName = normalizeName(o.contact);
+    const orderCompany = normalizeName(o.company);
+    if (nname && (orderName === nname || orderCompany === nname)) return true;
+    if (nname && (orderName.includes(nname) || nname.includes(orderName) || orderCompany.includes(nname) || nname.includes(orderCompany))) return true;
+    return false;
+  });
+  if (matches.length === 0) return null;
+  const totalBalance = matches.reduce((s, o) => s + o.balanceDue, 0);
+  let oldestDaysLate = 0;
+  let oldestTerms = "Net terms";
+  for (const m of matches) {
+    const d = daysPastDueOrders(m.paymentDueDate || "");
+    if (d > oldestDaysLate) {
+      oldestDaysLate = d;
+      oldestTerms = m.paymentTerms || "Net terms";
+    }
+  }
+  return { orders: matches, totalBalance, oldestDaysLate, oldestTerms, customerName: matches[0].company };
+}
+
+const TERMS_REQUEST_STORAGE_KEY = "bazaar.preview.termsRequests";
+
 export default function NewQuotePreview() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -184,6 +238,20 @@ export default function NewQuotePreview() {
   const [customerName, setCustomerName] = useState(prefillName || "Hayk Zohrabyan");
   const [customerEmail, setCustomerEmail] = useState(prefillEmail || "haykzoh@gmail.com");
   const [customerPhone, setCustomerPhone] = useState(prefillPhone || "(818) 927-7146");
+
+  // Hayk 2026-07-02 — Overdue-account block. If this customer has past-due
+  // orders in ORDERS, we block the quote and require either admin override
+  // or return-to-lead.
+  const [role] = usePreviewRole();
+  const overdue = useMemo(() => findOverdueForCustomer(customerName, customerEmail), [customerName, customerEmail]);
+  const [overdueOverride, setOverdueOverride] = useState(false);
+  const [overrideRequested, setOverrideRequested] = useState(false);
+  const showOverdueBlock = !!overdue && !overdueOverride;
+  const canOverrideBlock = role === "admin" || role === "accountant";
+
+  // Terms request modal
+  const [termsRequestOpen, setTermsRequestOpen] = useState(false);
+  const [currentCustomerTerms, setCurrentCustomerTerms] = useState<string>("Prepay");
 
   // Step 1: Job overview
   const [quoteName, setQuoteName] = useState(prefillName ? `${prefillName} — Quote` : "Trap Snacks Labels + Boxes");
@@ -474,6 +542,32 @@ export default function NewQuotePreview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── PAST-DUE BLOCK (Hayk 2026-07-02) ────────────────────
+  // If the customer is past-due, block the entire quote UI (native + iframe)
+  // behind a full-page overlay until an override is granted or the rep leaves.
+  if (showOverdueBlock && overdue) {
+    return (
+      <PastDueBlockPage
+        overdue={overdue}
+        canOverride={canOverrideBlock}
+        overrideRequested={overrideRequested}
+        onOverride={() => {
+          // eslint-disable-next-line no-console
+          console.log("[new-quote] Admin override used for", overdue.customerName, "by role", role);
+          setOverdueOverride(true);
+        }}
+        onRequestOverride={() => {
+          // eslint-disable-next-line no-console
+          console.log("[new-quote] Override request sent to Hayk/Arusyak for", overdue.customerName);
+          setOverrideRequested(true);
+        }}
+        onReturn={() => {
+          try { router.back(); } catch { window.history.back(); }
+        }}
+      />
+    );
+  }
+
   // ─── IFRAME MODE ─────────────────────────────────────────
   // Two-week bridge: embed the live Bazaar admin new-order form so we don't
   // re-implement product/material/pricing logic. Native wizard preserved below.
@@ -519,6 +613,9 @@ export default function NewQuotePreview() {
             phone={customerPhone}
             salesRep={salesRep}
             leadId={prefillLeadId}
+            overdue={overdue}
+            currentTerms={currentCustomerTerms}
+            onRequestTerms={() => setTermsRequestOpen(true)}
           />
           <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "16px", height: "fit-content" }}>
             <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "10px" }}>Quote Reference</div>
@@ -595,6 +692,18 @@ export default function NewQuotePreview() {
               </div>
             )}
           </div>
+        )}
+        {termsRequestOpen && (
+          <TermsRequestModal
+            customerName={customerName}
+            currentRep={salesRep}
+            onClose={() => setTermsRequestOpen(false)}
+            onSubmitted={() => {
+              setToast({ kind: "ok", msg: "✓ Terms request sent to Arusyak for approval" });
+              setTimeout(() => setToast(null), 3000);
+              setTermsRequestOpen(false);
+            }}
+          />
         )}
       </div>
     );
@@ -744,9 +853,204 @@ export default function NewQuotePreview() {
       </div>
 
       {previewOpen && <PreviewModal onClose={() => setPreviewOpen(false)} quoteRefId={quoteRefId} quoteType={quoteType} noteToCustomer={noteToCustomer} lineItems={lineItems} total={total} validForDays={validForDays} />}
+      {termsRequestOpen && (
+        <TermsRequestModal
+          customerName={customerName}
+          currentRep={salesRep}
+          onClose={() => setTermsRequestOpen(false)}
+          onSubmitted={() => {
+            setToast({ kind: "ok", msg: "✓ Terms request sent to Arusyak for approval" });
+            setTimeout(() => setToast(null), 3000);
+            setTermsRequestOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }
+
+// ─── Past-Due block page (Hayk 2026-07-02) ─────────────────
+function PastDueBlockPage({
+  overdue, canOverride, overrideRequested,
+  onOverride, onRequestOverride, onReturn,
+}: {
+  overdue: OverdueSummary;
+  canOverride: boolean;
+  overrideRequested: boolean;
+  onOverride: () => void;
+  onRequestOverride: () => void;
+  onReturn: () => void;
+}) {
+  return (
+    <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", background: "var(--preview-bg)", color: "var(--preview-text)", minHeight: "100vh", margin: "-20px", padding: "40px 20px" }}>
+      <div style={{ maxWidth: "620px", margin: "0 auto", background: "var(--preview-surface)", border: "2px solid #dc2626", borderRadius: "14px", padding: "28px 30px", boxShadow: "0 20px 40px rgba(220,38,38,0.15)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "14px" }}>
+          <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "#fee2e2", color: "#991b1b", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "22px", fontWeight: 800 }}>⚠</div>
+          <div>
+            <div style={{ fontSize: "18px", fontWeight: 800, color: "#991b1b" }}>Account is past due</div>
+            <div style={{ fontSize: "12px", color: "var(--preview-text-muted)" }}>New quotes are blocked until this is resolved.</div>
+          </div>
+        </div>
+        <div style={{ fontSize: "13.5px", color: "var(--preview-text)", lineHeight: 1.55, marginBottom: "16px" }}>
+          <b>{overdue.customerName}</b> has <b style={{ color: "#dc2626" }}>{fmtMoneyOrders(overdue.totalBalance)}</b> overdue on <b>{overdue.orders.length}</b> order{overdue.orders.length === 1 ? "" : "s"} — oldest is <b>{overdue.oldestDaysLate} days</b> past their <b>{overdue.oldestTerms}</b> terms. New quotes are blocked until the account is cleared or an override is granted.
+        </div>
+
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12.5px", marginBottom: "18px" }}>
+          <thead>
+            <tr>
+              <th style={pdTh}>Order</th>
+              <th style={pdTh}>Terms</th>
+              <th style={{ ...pdTh, textAlign: "right" }}>Balance</th>
+              <th style={{ ...pdTh, textAlign: "center" }}>Days Late</th>
+            </tr>
+          </thead>
+          <tbody>
+            {overdue.orders.map(o => (
+              <tr key={o.refId}>
+                <td style={pdTd}>
+                  <div style={{ fontFamily: "monospace", fontSize: "11.5px", color: "var(--preview-text-muted)" }}>ORD-{o.refId}</div>
+                </td>
+                <td style={pdTd}>{o.paymentTerms || "—"}</td>
+                <td style={{ ...pdTd, textAlign: "right", fontWeight: 800, color: "#dc2626" }}>{fmtMoneyOrders(o.balanceDue)}</td>
+                <td style={{ ...pdTd, textAlign: "center", color: "#991b1b", fontWeight: 700 }}>{daysPastDueOrders(o.paymentDueDate || "")}d</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {overrideRequested && (
+          <div style={{ padding: "10px 12px", background: "#dcfce7", border: "1px solid #86efac", borderRadius: "8px", color: "#166534", fontSize: "12.5px", fontWeight: 700, marginBottom: "14px" }}>
+            ✓ Override request sent to Hayk / Arusyak. You'll be notified when a decision comes back.
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "flex-end" }}>
+          <button onClick={onReturn} style={pdBtnLight}>Cancel — return to lead</button>
+          <button onClick={onRequestOverride} disabled={overrideRequested} style={{ ...pdBtnGold, opacity: overrideRequested ? 0.4 : 1, cursor: overrideRequested ? "not-allowed" : "pointer" }}>
+            {overrideRequested ? "Request sent" : "Request admin override"}
+          </button>
+          {canOverride && (
+            <button onClick={onOverride} style={pdBtnDanger}>Override this once (Admin)</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const pdTh: React.CSSProperties = { textAlign: "left", padding: "6px 8px", fontSize: "10.5px", fontWeight: 800, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", borderBottom: "1px solid var(--preview-border)" };
+const pdTd: React.CSSProperties = { padding: "8px", borderBottom: "1px solid var(--preview-border)" };
+const pdBtnLight: React.CSSProperties = { padding: "9px 14px", background: "var(--preview-surface)", color: "var(--preview-text)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" };
+const pdBtnGold: React.CSSProperties = { padding: "9px 14px", background: GOLD, color: "#171717", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 800, cursor: "pointer" };
+const pdBtnDanger: React.CSSProperties = { padding: "9px 14px", background: "#dc2626", color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 800, cursor: "pointer" };
+
+// ─── Terms Request modal (Hayk 2026-07-02) ─────────────────
+function TermsRequestModal({ customerName, currentRep, onClose, onSubmitted }: { customerName: string; currentRep: string; onClose: () => void; onSubmitted: () => void }) {
+  const [requestedTerms, setRequestedTerms] = useState("Net-30");
+  const [justification, setJustification] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const valid = justification.trim().length >= 20;
+
+  // Pull volume history straight from ORDERS for this customer
+  const history = useMemo(() => {
+    const nname = normalizeName(customerName);
+    if (!nname) return { orderCount: 0, ltv: 0 };
+    const matches = ORDERS.filter(o => {
+      const oc = normalizeName(o.contact);
+      const oco = normalizeName(o.company);
+      return oc === nname || oco === nname || oc.includes(nname) || oco.includes(nname);
+    });
+    return {
+      orderCount: matches.length,
+      ltv: matches.reduce((s, o) => s + o.total, 0),
+    };
+  }, [customerName]);
+
+  function handleSubmit() {
+    if (!valid || submitting) return;
+    setSubmitting(true);
+    const req = {
+      id: `req-${Date.now()}`,
+      customer: customerName,
+      rep: currentRep,
+      requestedTerms,
+      requestedAt: new Date().toLocaleString("en-US", { month: "2-digit", day: "2-digit", hour: "numeric", minute: "2-digit" }),
+      justification: justification.trim(),
+      ltv: history.ltv,
+      orderCount: history.orderCount,
+      status: "pending",
+    };
+    try {
+      const raw = localStorage.getItem(TERMS_REQUEST_STORAGE_KEY);
+      const arr = raw ? JSON.parse(raw) : [];
+      arr.unshift(req);
+      localStorage.setItem(TERMS_REQUEST_STORAGE_KEY, JSON.stringify(arr));
+    } catch {}
+    // eslint-disable-next-line no-console
+    console.log("[new-quote/terms-request] submitted:", req);
+    setTimeout(() => { setSubmitting(false); onSubmitted(); }, 400);
+  }
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 300, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", borderRadius: "12px", padding: "22px 24px", width: "min(520px, 100%)", maxHeight: "88vh", overflow: "auto", boxShadow: "0 20px 40px rgba(0,0,0,0.3)", color: "var(--preview-text)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+          <div>
+            <div style={{ fontSize: "16px", fontWeight: 800 }}>Request Net terms</div>
+            <div style={{ fontSize: "11.5px", color: "var(--preview-text-muted)", marginTop: "3px" }}>Routed to Arusyak for approval</div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", fontSize: "20px", color: "var(--preview-text-muted)", cursor: "pointer", padding: 0 }}>×</button>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          <div>
+            <div style={trmLbl}>Customer</div>
+            <div style={trmRO}>{customerName || "—"}</div>
+          </div>
+          <div>
+            <div style={trmLbl}>Requesting rep</div>
+            <div style={trmRO}>{currentRep || "—"}</div>
+          </div>
+          <div>
+            <div style={trmLbl}>Terms requested</div>
+            <select value={requestedTerms} onChange={e => setRequestedTerms(e.target.value)} style={trmInp}>
+              <option>Net-15</option><option>Net-30</option><option>Net-45</option><option>Net-60</option>
+            </select>
+          </div>
+          <div>
+            <div style={trmLbl}>Justification <span style={{ color: "#dc2626" }}>(required, min 20 chars)</span></div>
+            <textarea
+              value={justification}
+              onChange={e => setJustification(e.target.value)}
+              rows={5}
+              placeholder="Why should this customer get Net terms? (relationship, volume, cash cycle, cert status)"
+              style={{ ...trmInp, resize: "vertical", fontFamily: "system-ui, sans-serif" }}
+            />
+            <div style={{ textAlign: "right", fontSize: "10.5px", color: valid ? "#16a34a" : "#a16207", marginTop: "3px" }}>{justification.length} / 20 min</div>
+          </div>
+          <div>
+            <div style={trmLbl}>Business volume history</div>
+            <div style={{ ...trmRO, display: "flex", gap: "14px" }}>
+              <span>📦 {history.orderCount} order{history.orderCount === 1 ? "" : "s"}</span>
+              <span>💰 LTV {fmtMoneyOrders(history.ltv)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "16px" }}>
+          <button onClick={onClose} style={pdBtnLight}>Cancel</button>
+          <button onClick={handleSubmit} disabled={!valid || submitting} style={{ ...pdBtnGold, opacity: (!valid || submitting) ? 0.4 : 1, cursor: (!valid || submitting) ? "not-allowed" : "pointer" }}>
+            {submitting ? "Sending…" : "Send request"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const trmLbl: React.CSSProperties = { fontSize: "10.5px", fontWeight: 800, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" };
+const trmRO: React.CSSProperties = { padding: "8px 12px", background: "var(--preview-surface-2)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, color: "var(--preview-text)" };
+const trmInp: React.CSSProperties = { width: "100%", padding: "8px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", outline: "none", boxSizing: "border-box", color: "var(--preview-text)" };
 
 // ─── Stepper ────────────────────────────────────────
 function Stepper({ step }: { step: number }) {
@@ -782,7 +1086,7 @@ function Stepper({ step }: { step: number }) {
 }
 
 // ─── Left: Customer card ────────────────────────────────────────
-function CustomerCard({ name, email, phone, salesRep, leadId }: { name: string; email: string; phone: string; salesRep: string; leadId?: string }) {
+function CustomerCard({ name, email, phone, salesRep, leadId, overdue, currentTerms, onRequestTerms }: { name: string; email: string; phone: string; salesRep: string; leadId?: string; overdue?: OverdueSummary | null; currentTerms?: string; onRequestTerms?: () => void }) {
   const initials = (name || "?")
     .split(/\s+/)
     .map((w: string) => w[0])
@@ -828,6 +1132,30 @@ function CustomerCard({ name, email, phone, salesRep, leadId }: { name: string; 
       <MiniField icon="🕒" label="Last Order" value="5 days ago" href={lastOrderHref} tooltip="Click to open the most recent order" />
       <MiniField icon="💳" label="Preferred Payment" value="ACH" />
       <MiniField icon="👤" label="Sales Rep" value={salesRep || "—"} />
+
+      {/* Hayk 2026-07-02 — Past-due red banner */}
+      {overdue && (
+        <div style={{ marginTop: "12px", padding: "10px 12px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "8px", color: "#991b1b" }}>
+          <div style={{ fontSize: "11.5px", fontWeight: 800, marginBottom: "3px" }}>⚠ Past due: {fmtMoneyOrders(overdue.totalBalance)}</div>
+          <div style={{ fontSize: "10.5px", lineHeight: 1.4 }}>
+            {overdue.orders.length} order{overdue.orders.length === 1 ? "" : "s"} · {overdue.oldestDaysLate} day{overdue.oldestDaysLate === 1 ? "" : "s"} past {overdue.oldestTerms}
+          </div>
+        </div>
+      )}
+
+      {/* Hayk 2026-07-02 — Terms request row */}
+      <div style={{ marginTop: "12px", padding: "10px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)", fontWeight: 600 }}>Customer terms</div>
+          <div style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)" }}>{currentTerms || "Prepay"}</div>
+        </div>
+        <button
+          onClick={onRequestTerms}
+          style={{ padding: "5px 10px", background: "#fff", color: "#0a0a0a", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11px", fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}
+        >
+          Request Net terms
+        </button>
+      </div>
 
       <Link href={crmHref} style={{ display: "block", width: "100%", marginTop: "12px", padding: "8px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)", textDecoration: "none", textAlign: "center", boxSizing: "border-box" }}>↗ View Full Profile</Link>
     </div>
@@ -1376,7 +1704,11 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
           <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
             <span style={{ fontSize: "11px", fontWeight: 800, color: ACCENT, letterSpacing: "0.03em", padding: "2px 8px", background: "rgba(245,158,11,0.12)", borderRadius: "999px" }}>#{lineTag}</span>
             <span style={{ fontSize: "14px", fontWeight: 700, color: "var(--preview-text)" }}>{lineItem.productName || displayName || "Untitled product"}</span>
-            {lineItem.materialName && <span style={{ fontSize: "11.5px", color: "var(--preview-text-muted)" }}>· {lineItem.materialName}</span>}
+            {lineItem.materialName && (
+              isPendingAlias(lineItem.materialName)
+                ? <span style={{ fontSize: "11.5px", color: "#a16207", fontStyle: "italic" }}>· {lineItem.materialName}</span>
+                : <span style={{ fontSize: "11.5px", color: "var(--preview-text-muted)" }}>· {lineItem.materialName}</span>
+            )}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11.5px", color: "var(--preview-text-muted)", flexWrap: "wrap" }}>
             {sizeStr && <span>{sizeStr}</span>}
@@ -1459,8 +1791,16 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
             onUpdate({ materialId: m?.id, materialName: displayMaterialLabel(m) });
           }} style={inp} disabled={!selectedProduct}>
             <option value="">{selectedProduct ? "Select material…" : "Pick product first"}</option>
-            {availableMaterials.map((m: any) => <option key={m.id} value={m.id}>{displayMaterialLabel(m)}</option>)}
+            {availableMaterials.map((m: any) => {
+              const lbl = displayMaterialLabel(m);
+              return <option key={m.id} value={m.id}>{isPendingAlias(lbl) ? `⏳ ${lbl}` : lbl}</option>;
+            })}
           </select>
+          {lineItem.materialName && isPendingAlias(lineItem.materialName) && (
+            <div style={{ marginTop: "4px", fontSize: "10.5px", color: "#a16207", fontStyle: "italic" }}>
+              ⏳ Placeholder name — Bazaar admin needs to add a real displayName for this material.
+            </div>
+          )}
         </FieldWrap>
         <FieldWrap label="Quantity" required tight>
           <input type="number" value={lineItem.quantity} onChange={e => onUpdate({ quantity: Number(e.target.value) || 0 })} style={inp} />
@@ -1919,7 +2259,7 @@ function PreviewModal({ onClose, quoteRefId, quoteType, noteToCustomer, lineItem
                 <td style={{ padding: "10px 0" }}>
                   {quoteType === "comparison" && <div style={{ fontSize: "10px", color: "#888", fontWeight: 700 }}>Option {String.fromCharCode(65 + i)}</div>}
                   <div style={{ fontWeight: 700 }}>{l.productName || "—"}</div>
-                  <div style={{ fontSize: "11px", color: "#888" }}>{l.materialName || ""}</div>
+                  <div style={{ fontSize: "11px", color: l.materialName && isPendingAlias(l.materialName) ? "#a16207" : "#888", fontStyle: l.materialName && isPendingAlias(l.materialName) ? "italic" : "normal" }}>{l.materialName || ""}</div>
                 </td>
                 <td style={{ textAlign: "right", padding: "10px 0", fontWeight: 700 }}>{l.quantity.toLocaleString()}</td>
                 <td style={{ textAlign: "right", padding: "10px 0", fontWeight: 800 }}>{l.extended != null ? `$${l.extended.toFixed(2)}` : "—"}</td>
