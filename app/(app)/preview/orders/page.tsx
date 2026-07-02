@@ -383,7 +383,11 @@ export default function OrdersPreview() {
   const [teamFilter, setTeamFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>("2026-0114");
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const [detailId, setDetailId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    const p = new URLSearchParams(window.location.search).get("open");
+    return p || null;
+  });
   const [view, setView] = useState<"table" | "kanban">("table");
   const [chips, setChips] = useState<Set<ChipKey>>(() => {
     // Auto-apply chip from ?filter= URL param, so dashboard callouts can deep-link.

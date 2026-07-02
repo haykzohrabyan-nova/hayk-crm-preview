@@ -378,6 +378,8 @@ export default function LeadsPreview() {
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [userLeads, setUserLeads] = useState<Lead[]>([]);
+  const [leadEdits, setLeadEdits] = useState<Record<string, Partial<Lead>>>({});
+  const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
   const [savedToast, setSavedToast] = useState<string | null>(null);
   const [sourceFilter, setSourceFilter] = useState<string>("all");
   const [sdrFilter, setSdrFilter] = useState<string>("all");
@@ -419,7 +421,15 @@ export default function LeadsPreview() {
     return c;
   }, []);
 
-  const selectedLead = selectedId ? [...userLeads, ...PADDED_LEADS].find(l => l.id === selectedId) : null;
+  const selectedLeadRaw = selectedId ? [...userLeads, ...PADDED_LEADS].find(l => l.id === selectedId) : null;
+  const selectedLead = selectedLeadRaw && leadEdits[selectedLeadRaw.id]
+    ? { ...selectedLeadRaw, ...leadEdits[selectedLeadRaw.id] } as Lead
+    : selectedLeadRaw;
+  const saveLeadEdits = (id: string, patch: Partial<Lead>) => {
+    setLeadEdits(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
+    setSavedToast(`Lead updated`);
+    setTimeout(() => setSavedToast(null), 2200);
+  };
 
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", background: "var(--preview-bg)", color: "var(--preview-text)", borderRadius: "14px", padding: "20px", margin: "-20px" }}>
@@ -441,6 +451,7 @@ export default function LeadsPreview() {
           onSelect={id => setSelectedId(id)}
           onOpenAdd={() => setAddOpen(true)}
           onViewFull={() => setView("detail")}
+          onEdit={(id: string) => setEditingLeadId(id)}
           selectedLead={selectedLead}
           layout={layout}
           setLayout={setLayout}
@@ -471,6 +482,18 @@ export default function LeadsPreview() {
           }}
         />
       )}
+      {editingLeadId && (() => {
+        const target = [...userLeads, ...PADDED_LEADS].find(l => l.id === editingLeadId);
+        if (!target) return null;
+        const merged = leadEdits[target.id] ? { ...target, ...leadEdits[target.id] } as Lead : target;
+        return (
+          <EditLeadModal
+            lead={merged}
+            onClose={() => setEditingLeadId(null)}
+            onSave={patch => { saveLeadEdits(target.id, patch); setEditingLeadId(null); }}
+          />
+        );
+      })()}
       {savedToast && (
         <div style={{ position: "fixed", bottom: "24px", right: "24px", padding: "12px 18px", background: "#16a34a", color: "#fff", borderRadius: "10px", fontSize: "13px", fontWeight: 600, boxShadow: "0 10px 30px rgba(0,0,0,0.3)", zIndex: 1000 }}>{savedToast}</div>
       )}
@@ -507,7 +530,7 @@ function FilterSelect({ value, onChange, options }: { value: string; onChange: (
 }
 
 // ─── LIST VIEW ────────────────────────────────────────
-function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, selectedId, onSelect, onOpenAdd, onViewFull, selectedLead, layout, setLayout, sourceFilter, setSourceFilter, sdrFilter, setSdrFilter, dateFilter, setDateFilter, sourceOptions, sdrOptions }: any) {
+function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, selectedId, onSelect, onOpenAdd, onViewFull, onEdit, selectedLead, layout, setLayout, sourceFilter, setSourceFilter, sdrFilter, setSdrFilter, dateFilter, setDateFilter, sourceOptions, sdrOptions }: any) {
   return (
     <div>
       {/* Header */}
@@ -619,7 +642,7 @@ function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, sel
         )}
 
         {/* Side panel */}
-        {selectedLead && <SidePanel lead={selectedLead} onClose={() => onSelect(null)} onViewFull={onViewFull} />}
+        {selectedLead && <SidePanel lead={selectedLead} onClose={() => onSelect(null)} onViewFull={onViewFull} onEdit={onEdit} />}
       </div>
     </div>
   );
@@ -769,18 +792,18 @@ function sourceIcon(source: string) {
 }
 
 // ─── Side Panel ────────────────────────────────────────
-function SidePanel({ lead, onClose, onViewFull }: { lead: Lead; onClose: () => void; onViewFull: () => void }) {
+function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose: () => void; onViewFull: () => void; onEdit: (id: string) => void }) {
   return (
     <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", padding: "16px", height: "fit-content", position: "sticky", top: "16px" }}>
       {/* Back / Edit / Route */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
         <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--preview-text-muted)", fontSize: "12px", cursor: "pointer" }}>← Back to Leads</button>
         <div style={{ display: "flex", gap: "6px" }}>
-          <a
-            href={`/preview/leads/${lead.id}/edit`}
+          <button
+            onClick={() => onEdit(lead.id)}
             title="Edit this lead's contact info + project details"
-            style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
-          >✎ Edit</a>
+            style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer" }}
+          >✎ Edit</button>
           {/* Create Quote — visible for any lead stage except Won/Rejected. Both SDR and Sales can create quotes. */}
           {(["New", "Claimed", "Contacted", "Routed to Sales"] as Stage[]).includes(lead.stage) && (
             <a
@@ -789,13 +812,7 @@ function SidePanel({ lead, onClose, onViewFull }: { lead: Lead; onClose: () => v
               style={{ padding: "6px 12px", fontSize: "11.5px", background: "#22c55e", border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
             >📄 Quote</a>
           )}
-          {(["Routed to Sales", "Quote Sent", "Won"] as Stage[]).includes(lead.stage) ? (
-            <a
-              href={`/preview/sales-pipeline?leadId=${encodeURIComponent(lead.id)}`}
-              title="This lead is already in the sales pipeline — open it there to see the full deal view"
-              style={{ padding: "6px 12px", fontSize: "11.5px", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: "8px", color: "#22c55e", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
-            >→ Open in Sales</a>
-          ) : (
+          {!(["Routed to Sales", "Quote Sent", "Won", "Rejected"] as Stage[]).includes(lead.stage) && (
             <button
               title="Hand this lead off to the Sales team so they can build a quote and close it"
               style={{ padding: "6px 12px", fontSize: "11.5px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}
@@ -930,24 +947,38 @@ function SidePanel({ lead, onClose, onViewFull }: { lead: Lead; onClose: () => v
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "10px" }}>
           <PanelCard title={`Quotes · ${lead.quotes.length}`}>
             {lead.quotes.map(q => (
-              <div key={q.ref} style={{ padding: "4px 0", fontSize: "11.5px", borderBottom: "1px solid var(--preview-border)" }}>
+              <a
+                key={q.ref}
+                href={`/preview/sales-pipeline?quote=${encodeURIComponent(q.ref)}&leadId=${encodeURIComponent(lead.id)}`}
+                title={`Open ${q.ref} in Sales Pipeline`}
+                style={{ display: "block", padding: "4px 0", fontSize: "11.5px", borderBottom: "1px solid var(--preview-border)", color: "var(--preview-text)", textDecoration: "none", cursor: "pointer" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--preview-chip-bg)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "var(--preview-text)" }}>{q.ref}</span>
+                  <span style={{ color: ACCENT, fontWeight: 600 }}>{q.ref} ↗</span>
                   <span style={{ fontWeight: 700 }}>{fmtMoney(q.amount)}</span>
                 </div>
                 <div style={{ fontSize: "10px", color: "var(--preview-text-muted)" }}>Sent {q.sentDaysAgo} days ago · {q.status}</div>
-              </div>
+              </a>
             ))}
           </PanelCard>
           <PanelCard title={`Previous Orders · ${lead.previousOrdersList.length}`}>
             {lead.previousOrdersList.map(o => (
-              <div key={o.ref} style={{ padding: "4px 0", fontSize: "11.5px", borderBottom: "1px solid var(--preview-border)" }}>
+              <a
+                key={o.ref}
+                href={`/preview/orders?open=${encodeURIComponent(o.ref.replace(/^ORD-/, ""))}`}
+                title={`Open ${o.ref} detail`}
+                style={{ display: "block", padding: "4px 0", fontSize: "11.5px", borderBottom: "1px solid var(--preview-border)", color: "var(--preview-text)", textDecoration: "none", cursor: "pointer" }}
+                onMouseEnter={e => (e.currentTarget.style.background = "var(--preview-chip-bg)")}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "var(--preview-text)" }}>{o.ref}</span>
+                  <span style={{ color: ACCENT, fontWeight: 600 }}>{o.ref} ↗</span>
                   <span style={{ fontWeight: 700 }}>{fmtMoney(o.amount)}</span>
                 </div>
                 <div style={{ fontSize: "10px", color: "var(--preview-text-muted)" }}>Shipped {o.shipped}</div>
-              </div>
+              </a>
             ))}
           </PanelCard>
         </div>
@@ -2124,3 +2155,86 @@ function QuickActionModal({ type, lead, onClose, onLog, onAttach }: { type: stri
 }
 
 const darkLabel: React.CSSProperties = { display: "block", fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.06em" };
+
+// ─── Edit Lead Modal ─────────────────────────────────────
+function EditLeadModal({ lead, onClose, onSave }: { lead: Lead; onClose: () => void; onSave: (patch: Partial<Lead>) => void }) {
+  const [name, setName] = useState(lead.name || "");
+  const [company, setCompany] = useState(lead.company || "");
+  const [email, setEmail] = useState(lead.email || "");
+  const [phone, setPhone] = useState(lead.phone || "");
+  const [source, setSource] = useState<Lead["source"]>(lead.source);
+  const [priority, setPriority] = useState<Priority>(lead.priority || "Medium");
+  const [nextAction, setNextAction] = useState(lead.nextAction || "");
+  const [notes, setNotes] = useState(lead.notes || "");
+  const inp: React.CSSProperties = { width: "100%", padding: "8px 10px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "13px", background: "var(--preview-surface)", color: "var(--preview-text)", boxSizing: "border-box" };
+  const lbl: React.CSSProperties = { display: "block", fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", marginBottom: "5px", textTransform: "uppercase", letterSpacing: "0.05em" };
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 2000, display: "flex", alignItems: "center", justifyContent: "center", padding: "20px" }} onClick={onClose}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", color: "var(--preview-text)", borderRadius: "14px", padding: "22px 26px", width: "min(560px, 100%)", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.5)", border: "1px solid var(--preview-border)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: "17px", fontWeight: 800 }}>Edit Lead</h2>
+            <div style={{ fontSize: "11.5px", color: "var(--preview-text-muted)", marginTop: "2px" }}>{lead.id} · changes apply immediately in this preview</div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--preview-text-muted)", fontSize: "20px", cursor: "pointer" }}>✕</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "10px" }}>
+          <div>
+            <label style={lbl}>Name</label>
+            <input value={name} onChange={e => setName(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Company</label>
+            <input value={company} onChange={e => setCompany(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Email</label>
+            <input value={email} onChange={e => setEmail(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Phone</label>
+            <input value={phone} onChange={e => setPhone(e.target.value)} style={inp} />
+          </div>
+          <div>
+            <label style={lbl}>Source</label>
+            <select value={source} onChange={e => setSource(e.target.value as Lead["source"])} style={inp}>
+              <option>Instagram</option>
+              <option>Website</option>
+              <option>Referral</option>
+              <option>Email</option>
+              <option>Phone</option>
+              <option>Walk-in</option>
+            </select>
+          </div>
+          <div>
+            <label style={lbl}>Priority</label>
+            <select value={priority} onChange={e => setPriority(e.target.value as Priority)} style={inp}>
+              <option>Low</option>
+              <option>Medium</option>
+              <option>High</option>
+            </select>
+          </div>
+        </div>
+
+        <div style={{ marginBottom: "10px" }}>
+          <label style={lbl}>Next action</label>
+          <input value={nextAction} onChange={e => setNextAction(e.target.value)} style={inp} />
+        </div>
+
+        <div style={{ marginBottom: "14px" }}>
+          <label style={lbl}>Notes</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} />
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", paddingTop: "12px", borderTop: "1px solid var(--preview-border)" }}>
+          <button onClick={onClose} style={{ padding: "8px 14px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", fontSize: "12.5px", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
+          <button
+            onClick={() => onSave({ name, company, email, phone, source, priority, nextAction, notes })}
+            style={{ padding: "8px 18px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}
+          >Save Changes</button>
+        </div>
+      </div>
+    </div>
+  );
+}
