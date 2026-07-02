@@ -110,13 +110,13 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "BoyBoy LLC",
     contact: "+1 (818) 555-0142",
     assignedTo: "Marianna",
-    linkedTo: { kind: "order", ref: "ORD-2026-0111", label: "Order #0111" },
+    linkedTo: { kind: "order", ref: "ORD-111", label: "Order #0111" },
     receivedAt: "17m ago",
     receivedAtISO: "2026-07-01T14:12:00Z",
     unread: true,
     flagged: true,
     aiSummary:
-      "Boris asking when Body Lotion Box order (ORD-2026-0111) will ship. Confirmed shipping window is Jul 3–5. Wants tracking as soon as it's out.",
+      "Boris asking when Body Lotion Box order (ORD-111) will ship. Confirmed shipping window is Jul 3–5. Wants tracking as soon as it's out.",
     aiActionItems: [
       "Send tracking number when shipped",
       "Confirm delivery address is Warehouse B",
@@ -231,7 +231,7 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "SafeCare Packaging",
     contact: "+1 (818) 555-0333",
     assignedTo: "Marianna",
-    linkedTo: { kind: "order", ref: "ORD-2026-0114", label: "Order #0114" },
+    linkedTo: { kind: "order", ref: "ORD-114", label: "Order #0114" },
     receivedAt: "1d ago",
     receivedAtISO: "2026-06-30T18:40:00Z",
     unread: false,
@@ -239,7 +239,7 @@ export const COMM_ITEMS: CommItem[] = [
     aiSummary:
       "SafeCare's ops manager pushing back on invoice — says they were quoted 500 but billed for 512. Wants a credit note by Wednesday.",
     aiActionItems: [
-      "Reconcile 500 vs 512 quantity on ORD-2026-0114",
+      "Reconcile 500 vs 512 quantity on ORD-114",
       "Issue credit note if overrun was internal",
     ],
     aiSummarizedAt: "Jun 30, 6:48 PM",
@@ -267,7 +267,7 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "Amazi Labels",
     contact: "+1 (310) 555-0288",
     assignedTo: "Marianna",
-    linkedTo: { kind: "order", ref: "ORD-2026-0119", label: "Order #0119" },
+    linkedTo: { kind: "order", ref: "ORD-119", label: "Order #0119" },
     receivedAt: "1d ago",
     receivedAtISO: "2026-06-30T15:15:00Z",
     unread: false,
@@ -310,7 +310,7 @@ export const COMM_ITEMS: CommItem[] = [
       "Hayk chasing overdue $8,420 invoice. Prime's finance lead says wire went out Monday — sending confirmation. Asked to pause any new work until cleared.",
     aiActionItems: [
       "Match incoming wire to Prime's overdue invoice",
-      "Resume production on ORD-2026-0122 once cleared",
+      "Resume production on ORD-122 once cleared",
     ],
     aiSummarizedAt: "Jun 29, 4:11 PM",
     body: {
@@ -322,7 +322,7 @@ export const COMM_ITEMS: CommItem[] = [
         { who: "customer", name: "Miguel (Prime Finance)", timestamp: "00:05", text: "Hayk — I know, I know, the invoice." },
         { who: "agent", name: "Hayk", timestamp: "00:09", text: "Just need to know when it's landing so I don't stall your next run." },
         { who: "customer", name: "Miguel (Prime Finance)", timestamp: "00:14", text: "Wire went out Monday. I'll email you the confirmation as soon as I hang up." },
-        { who: "agent", name: "Hayk", timestamp: "00:20", text: "Perfect. Once we see it we're rolling on ORD-2026-0122 again." },
+        { who: "agent", name: "Hayk", timestamp: "00:20", text: "Perfect. Once we see it we're rolling on ORD-122 again." },
         { who: "customer", name: "Miguel (Prime Finance)", timestamp: "00:26", text: "Appreciate the patience. Won't happen again." },
       ],
     },
@@ -396,7 +396,7 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "Hearth Bread",
     contact: "+1 (626) 555-0455",
     assignedTo: "Marianna",
-    linkedTo: { kind: "order", ref: "ORD-2026-0121", label: "Order #0121" },
+    linkedTo: { kind: "order", ref: "ORD-121", label: "Order #0121" },
     receivedAt: "6h ago",
     receivedAtISO: "2026-07-01T08:44:00Z",
     unread: false,
@@ -456,7 +456,7 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "BoyBoy LLC",
     contact: "+1 (818) 555-0142",
     assignedTo: "Marianna",
-    linkedTo: { kind: "order", ref: "ORD-2026-0111", label: "Order #0111" },
+    linkedTo: { kind: "order", ref: "ORD-111", label: "Order #0111" },
     receivedAt: "1d ago",
     receivedAtISO: "2026-06-30T13:22:00Z",
     unread: false,
@@ -508,7 +508,7 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "Amazi Labels",
     contact: "amazi@amazilabels.com",
     assignedTo: "Marianna",
-    linkedTo: { kind: "order", ref: "ORD-2026-0119", label: "Order #0119" },
+    linkedTo: { kind: "order", ref: "ORD-119", label: "Order #0119" },
     receivedAt: "1h ago",
     receivedAtISO: "2026-07-01T13:22:00Z",
     unread: true,
@@ -522,12 +522,12 @@ export const COMM_ITEMS: CommItem[] = [
     aiSummarizedAt: "Jul 1, 1:26 PM",
     body: {
       kind: "email",
-      subject: "Re: QO-2026-0189 — Pantone reference for jar labels",
+      subject: "Re: QO-189 — Pantone reference for jar labels",
       chain: [
         {
           from: "amazi@amazilabels.com",
           to: "marianna@bazaarprinting.com",
-          subject: "Re: QO-2026-0189 — Pantone reference for jar labels",
+          subject: "Re: QO-189 — Pantone reference for jar labels",
           at: "Jul 1, 1:22 PM",
           body:
             "Hi Marianna,\n\nAs promised — confirmed color is PMS 2726 C. I've attached my brand style guide for your records. When can I expect the wet proof? I'd love to get it in hand by end of week if possible.\n\nAlso, please make sure the proof is on the matte BOPP, not the coated stock.\n\nThanks!\nAmazi",
@@ -535,7 +535,7 @@ export const COMM_ITEMS: CommItem[] = [
         {
           from: "marianna@bazaarprinting.com",
           to: "amazi@amazilabels.com",
-          subject: "Re: QO-2026-0189 — Pantone reference for jar labels",
+          subject: "Re: QO-189 — Pantone reference for jar labels",
           at: "Jun 30, 3:35 PM",
           body:
             "Amazi,\n\nGreat — got it, 2726 C on matte BOPP. I'll queue a wet proof run for Wednesday and courier it same-day. You should have it Thursday morning.\n\nHolding the press slot open until we hear back from you.\n\nMarianna",
@@ -543,7 +543,7 @@ export const COMM_ITEMS: CommItem[] = [
         {
           from: "amazi@amazilabels.com",
           to: "marianna@bazaarprinting.com",
-          subject: "QO-2026-0189 — Pantone reference for jar labels",
+          subject: "QO-189 — Pantone reference for jar labels",
           at: "Jun 30, 2:41 PM",
           body:
             "Hi Marianna,\n\nQuick note — the Pantone for the labels needs to be 2726 C, uncoated. Please confirm.\n\nAmazi",
@@ -558,7 +558,7 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "Grimeylyfe Records",
     contact: "grim@grimeylyfe.com",
     assignedTo: "Hayk",
-    linkedTo: { kind: "quote", ref: "QO-2026-0184", label: "Quote QO-2026-0184" },
+    linkedTo: { kind: "quote", ref: "QO-184", label: "Quote QO-184" },
     receivedAt: "4h ago",
     receivedAtISO: "2026-07-01T10:10:00Z",
     unread: false,
@@ -598,7 +598,7 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "BoyBoy LLC",
     contact: "boris@boyboy.la",
     assignedTo: "Marianna",
-    linkedTo: { kind: "order", ref: "ORD-2026-0111", label: "Order #0111" },
+    linkedTo: { kind: "order", ref: "ORD-111", label: "Order #0111" },
     receivedAt: "1d ago",
     receivedAtISO: "2026-06-30T16:30:00Z",
     unread: false,
@@ -630,7 +630,7 @@ export const COMM_ITEMS: CommItem[] = [
     customerCompany: "SafeCare Packaging",
     contact: "denise@safecarepack.com",
     assignedTo: "Marianna",
-    linkedTo: { kind: "order", ref: "ORD-2026-0114", label: "Order #0114" },
+    linkedTo: { kind: "order", ref: "ORD-114", label: "Order #0114" },
     receivedAt: "1d ago",
     receivedAtISO: "2026-06-30T19:12:00Z",
     unread: false,
@@ -680,7 +680,7 @@ export const COMM_ITEMS: CommItem[] = [
       "Prime's finance sent wire confirmation for overdue $8,420 invoice. Hayk to confirm receipt on Bazaar's side and un-hold production.",
     aiActionItems: [
       "Verify wire posts to Chase account",
-      "Un-hold ORD-2026-0122 once cleared",
+      "Un-hold ORD-122 once cleared",
     ],
     aiSummarizedAt: "Jun 29, 4:25 PM",
     body: {
@@ -741,7 +741,7 @@ export const COMM_ITEMS: CommItem[] = [
     receivedAtISO: "2026-06-28T14:45:00Z",
     unread: false,
     aiSummary:
-      "Sam sent updated die file for pouches (ORD-2026-0118). Waiting on internal press review before scheduling.",
+      "Sam sent updated die file for pouches (ORD-118). Waiting on internal press review before scheduling.",
     aiActionItems: [
       "Have production review die file this week",
     ],

@@ -87,7 +87,7 @@ const INITIAL_DEALS: Deal[] = [
   { id: "q3", customer: "Rise Kombucha", product: "Bottle Labels", estValue: 5300, priority: "Medium", lastActivity: { kind: "email_replied", label: "Reply 3h ago", at: "3h ago" }, rep: "MH", stage: "Qualifying", timeInStageHours: 30, hoursInSystem: 78, lastActivityHoursAgo: 3, projectDetails: { products: "Bottle Labels", quantity: "2,500 units" } },
 
   { id: "qo1", customer: "Grim Lawd", starred: true, company: "Grimeylife Records", product: "Die Cutting", estValue: 18450, priority: "High", lastActivity: { kind: "quote_viewed", label: "Quote viewed 18m ago", at: "18m ago" }, rep: "MC", stage: "Quoting", timeInStageHours: 4.5, hoursInSystem: 40, lastActivityHoursAgo: 0.3, probability: 82, projectDetails: { products: "Die Cutting", quantity: "5,000 units", needBy: "July 15, 2026", hasArtwork: "Yes", budget: "$15K – $20K", decisionMaker: "Yes", currentSupplier: "ABC Printing" }, nextAction: { label: "Send revised quote", dueLabel: "Due today 11:00 AM" }, activityTimeline: [
-    { icon: "👁", tint: "#22c55e", title: "Quote viewed", sub: "Customer viewed quote QO-2026-0189", at: "18m ago" },
+    { icon: "👁", tint: "#22c55e", title: "Quote viewed", sub: "Customer viewed quote QO-189", at: "18m ago" },
     { icon: "✉", tint: "#f59e0b", title: "Email opened", sub: "You: Revised quote for Grim Lawd", at: "45m ago" },
     { icon: "✉", tint: "#8b5cf6", title: "Email sent", sub: "You: Initial quote", at: "2h ago" },
     { icon: "🎯", tint: "#3b82f6", title: "Lead assigned", sub: "Assigned to Maria Hakobyan", at: "3h ago" },
@@ -762,7 +762,7 @@ function FullDetailView({ deal, onBack, onMove }: { deal: Deal; onBack: () => vo
     { id: "c3", type: "call_out", author: "Maria Hakobyan", at: "3h ago", body: "Discussed specs and timeline. Confirmed budget range.", icon: "📞", color: "#22c55e" },
   ]);
   const [files] = useState([
-    { name: "QO-2026-0189.pdf", size: "246 KB", kind: "pdf" },
+    { name: "QO-189.pdf", size: "246 KB", kind: "pdf" },
     { name: "Customer-reference.png", size: "1.2 MB", kind: "image" },
   ]);
   const [moveOpen, setMoveOpen] = useState(false);

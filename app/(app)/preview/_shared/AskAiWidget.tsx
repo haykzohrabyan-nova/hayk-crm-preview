@@ -26,13 +26,13 @@ const SCRIPTED_ANSWERS: { triggers: string[]; answer: string; suggestions?: stri
   {
     triggers: ["boris", "ord-2026-0111", "0111", "body lotion"],
     answer:
-      "Boris Boris — Body Lotion Box order (ORD-2026-0111)\n\n" +
+      "Boris Boris — Body Lotion Box order (ORD-111)\n\n" +
       "• Status: In production, on Machine 4 (digital press) as of yesterday\n" +
       "• Ship window: Jul 3–5 (confirmed with Boris on call Jun 30, 2:14 PM)\n" +
       "• Next milestone: die-cut + gluing scheduled tomorrow morning\n" +
       "• Last comm: Boris asked for tracking as soon as it ships — flagged on my inbox\n\n" +
       "Nothing is blocked. Payment already cleared.",
-    suggestions: ["Show ORD-2026-0111 full timeline", "Draft ship-notification text"],
+    suggestions: ["Show ORD-111 full timeline", "Draft ship-notification text"],
   },
   {
     triggers: ["hot leads", "needs attention", "hot today", "priority leads"],
@@ -48,8 +48,8 @@ const SCRIPTED_ANSWERS: { triggers: string[]; answer: string; suggestions?: stri
     triggers: ["rush", "rush orders", "urgent orders"],
     answer:
       "2 rush orders in the queue:\n\n" +
-      "• ORD-2026-0117 · Ivy Bloom · Custom pouches · Rush due Jul 3 (paid rush fee)\n" +
-      "• ORD-2026-0121 · Lena Park / Hearth Bread · Bread bags · Rush due Jul 5\n\n" +
+      "• ORD-117 · Ivy Bloom · Custom pouches · Rush due Jul 3 (paid rush fee)\n" +
+      "• ORD-121 · Lena Park / Hearth Bread · Bread bags · Rush due Jul 5\n\n" +
       "Both are on schedule right now. Ivy's is the tighter deadline — 2 days out.",
     suggestions: ["Show Ivy Bloom's order details"],
   },
@@ -57,7 +57,7 @@ const SCRIPTED_ANSWERS: { triggers: string[]; answer: string; suggestions?: stri
     triggers: ["yesterday", "who did i talk to yesterday", "yesterday's calls", "yesterday comms"],
     answer:
       "You had 5 touchpoints yesterday (Jun 30):\n\n" +
-      "• 2:14 PM — Call · Boris Boris (12 min) · confirmed ship window on ORD-2026-0111\n" +
+      "• 2:14 PM — Call · Boris Boris (12 min) · confirmed ship window on ORD-111\n" +
       "• 11:42 AM — Email · Amazi Amazi · Pantone reference for jar labels\n" +
       "• 10:18 AM — SMS · Grim Lawd · artwork approval thread\n" +
       "• 9:30 AM — Call · Nicole Han (7 min) · rush apparel quote question\n" +
@@ -67,12 +67,12 @@ const SCRIPTED_ANSWERS: { triggers: string[]; answer: string; suggestions?: stri
   {
     triggers: ["amazi", "pantone"],
     answer:
-      "Amazi Amazi — most recent thread is about Pantone matching on jar labels (ORD-2026-0119).\n\n" +
+      "Amazi Amazi — most recent thread is about Pantone matching on jar labels (ORD-119).\n\n" +
       "• She sent PMS 2726 C as the target color\n" +
       "• Marianna forwarded to press ops Jun 30, 11:42 AM\n" +
       "• Awaiting internal confirmation before responding\n\n" +
       "This was flagged \"action needed\" in your inbox.",
-    suggestions: ["Open ORD-2026-0119"],
+    suggestions: ["Open ORD-119"],
   },
   {
     triggers: ["waiting", "waiting on customer", "stalled"],
@@ -80,8 +80,8 @@ const SCRIPTED_ANSWERS: { triggers: string[]; answer: string; suggestions?: stri
       "4 items are stalled waiting on the customer:\n\n" +
       "• L001 Grim Lawd — quote sent 4 days ago, no reply\n" +
       "• L003 Nicole Han — needs to approve artwork proof\n" +
-      "• ORD-2026-0114 SafeCare — waiting on final press-check sign-off\n" +
-      "• ORD-2026-0118 Rise Botanicals — waiting on final die file",
+      "• ORD-114 SafeCare — waiting on final press-check sign-off\n" +
+      "• ORD-118 Rise Botanicals — waiting on final die file",
   },
   {
     triggers: ["ivy", "ivy bloom", "@ivy"],
