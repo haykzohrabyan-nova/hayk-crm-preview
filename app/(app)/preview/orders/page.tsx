@@ -57,8 +57,10 @@ export interface TimelineEntry { icon: string; tint: string; title: string; sub?
 export interface CustomerProfile { phone: string; email: string; city: string; state: string; lifetimeOrders: number; lifetimeValue: number; returning: boolean; }
 
 export interface Order {
-  refId: string;                // "2026-0114" — same numeric core across quote → order → production
-  quoteRefId: string;           // "QO-2026-0114" — links back to the source quote
+  refId: string;                // "114" — 3-digit passport core, rendered as ORD-114
+  quoteRefId: string;           // "QO-114" — links back to the source quote
+  invoiceRefId?: string;        // "INV-114" — same passport core, auto-derived if omitted
+  packingSlipRefId?: string;    // "PS-114" — same passport core, auto-derived if omitted
   contact: string;
   company: string;
   createdBy: string;
@@ -100,7 +102,7 @@ export interface Order {
 export const ORDERS: Order[] = [
   // ─── 1. Boris Boris / Grimeylyfe — In Production, Rush, repeat customer with 12 lifetime orders ───
   {
-    refId: "2026-0135", quoteRefId: "QO-2026-0135",
+    refId: "135", quoteRefId: "QO-135",
     contact: "Boris Boris", company: "Grimeylyfe Records",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
     title: "LA Kush 9ml jar combos + matching 2x2 roll labels, soft touch + silver dot foil",
@@ -128,17 +130,17 @@ export const ORDERS: Order[] = [
     ],
     communications: [
       { channel: "email_in", author: "Boris Boris", subject: "Re: LA Kush drop — same as last batch", body: "Yes exact match to the last batch we ran. Same soft touch, same silver dot foil. Need it by Friday 3rd — we've got a drop on Saturday. Wired the full amount today.", at: "06/30 · 10:14 AM" },
-      { channel: "email_out", author: "Ernesto Navarro", subject: "Wire received — order in production", body: "Boris — wire cleared this morning, jars + labels queued on Indigo 6K + Karlville for Wednesday run. Silver dot foil map is locked from your last batch so no reproof needed. Tracking will hit your inbox Thursday.", at: "06/30 · 11:02 AM", attachments: ["ORD-2026-0135_confirmation.pdf"] },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Wire received — order in production", body: "Boris — wire cleared this morning, jars + labels queued on Indigo 6K + Karlville for Wednesday run. Silver dot foil map is locked from your last batch so no reproof needed. Tracking will hit your inbox Thursday.", at: "06/30 · 11:02 AM", attachments: ["ORD-135_confirmation.pdf"] },
       { channel: "sms_out", author: "Ernesto Navarro", body: "Boris — you're all set, running Wed, ships Thursday. -Ernesto", at: "06/30 · 11:04 AM" },
       { channel: "call_in", author: "Boris Boris", body: "Called to confirm foil color matches last run — sent him a Karlville press-check photo, he approved.", at: "07/01 · 9:22 AM" },
     ],
     timeline: [
-      { icon: "📝", tint: "#f97316", title: "Quote drafted", sub: "QO-2026-0135 · Boris confirmed sizes over the phone", at: "06/29 · 4:12 PM", actor: "Ernesto Navarro" },
+      { icon: "📝", tint: "#f97316", title: "Quote drafted", sub: "QO-135 · Boris confirmed sizes over the phone", at: "06/29 · 4:12 PM", actor: "Ernesto Navarro" },
       { icon: "✉", tint: "#3b82f6", title: "Quote sent", sub: "Email to boris@grimeylyfe.co", at: "06/29 · 4:15 PM", actor: "Ernesto Navarro" },
       { icon: "👁", tint: "#22c55e", title: "Customer viewed quote", sub: "Opened from mobile", at: "06/29 · 6:44 PM", actor: "Boris Boris" },
       { icon: "✓", tint: "#16a34a", title: "Quote approved", sub: "Boris confirmed via SMS", at: "06/30 · 9:58 AM", actor: "Boris Boris" },
       { icon: "💵", tint: "#16a34a", title: "Wire received — $4,975.00", sub: "Chase wire · confirmation 88214", at: "06/30 · 10:47 AM" },
-      { icon: "📦", tint: "#8b5cf6", title: "Order created", sub: "ORD-2026-0135 · from QO-2026-0135", at: "06/30 · 11:00 AM", ref: "ORD-2026-0135" },
+      { icon: "📦", tint: "#8b5cf6", title: "Order created", sub: "ORD-135 · from QO-135", at: "06/30 · 11:00 AM", ref: "ORD-135" },
       { icon: "🎨", tint: "#a78bfa", title: "Assigned to designer", sub: "Marianna — reusing last batch's approved files", at: "06/30 · 11:20 AM", actor: "Marianna" },
       { icon: "✓", tint: "#16a34a", title: "Files re-approved by customer", sub: "Boris signed off — identical to last batch", at: "06/30 · 2:34 PM", actor: "Boris Boris" },
       { icon: "🏭", tint: "#06b6d4", title: "On press — Indigo 6K", sub: "Labels running · press operator Arsen", at: "07/01 · 8:15 AM", actor: "Arsen" },
@@ -147,7 +149,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 2. Prime Cannabis — In Production, Net-30 past due ───
   {
-    refId: "2026-0130", quoteRefId: "QO-2026-0130",
+    refId: "130", quoteRefId: "QO-130",
     contact: "Terrence Blake", company: "Prime Cannabis",
     createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
     title: "9-SKU clear label run — matte lam + raised UV highlights, 2000 per SKU",
@@ -171,14 +173,14 @@ export const ORDERS: Order[] = [
     customer: { phone: "(213) 555-0177", email: "terrence@primecannabis.co", city: "Long Beach", state: "CA", lifetimeOrders: 6, lifetimeValue: 41200, returning: true },
     payments: [],
     communications: [
-      { channel: "email_out", author: "Maria Hakobyan", subject: "Net-30 invoice past due — ORD-2026-0130", body: "Hi Terrence — flagging that this invoice is now 21 days past our Net-30 terms. Order is complete and boxed but I can't release until payment clears. Can we get an ETA today?", at: "07/01 · 8:30 AM" },
+      { channel: "email_out", author: "Maria Hakobyan", subject: "Net-30 invoice past due — ORD-130", body: "Hi Terrence — flagging that this invoice is now 21 days past our Net-30 terms. Order is complete and boxed but I can't release until payment clears. Can we get an ETA today?", at: "07/01 · 8:30 AM" },
       { channel: "email_in", author: "Terrence Blake", subject: "Re: Net-30 invoice past due", body: "Maria — sorry for the lag. ACH went out yesterday, should hit your account within 24-48h. I'll forward the confirmation.", at: "07/01 · 10:12 AM" },
       { channel: "note", author: "Maria Hakobyan", body: "Terrence usually pays same-day. This is his first late. Flagged with Hayk — holding shipment until ACH clears.", at: "07/01 · 10:20 AM" },
     ],
   },
   // ─── 3. Amazi Amazi / Trap Snacks — In Production, Net-30 past due, repeat customer ───
   {
-    refId: "2026-0128", quoteRefId: "QO-2026-0128",
+    refId: "128", quoteRefId: "QO-128",
     contact: "Amazi Amazi", company: "Trap Snacks",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
     title: "Terp Head 6-SKU snack pouches + display boxes — soft touch + spot UV both sides",
@@ -215,7 +217,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 4. Nicole Han — In Production, Rush, cosmetic labels + pouches ───
   {
-    refId: "2026-0126", quoteRefId: "QO-2026-0126",
+    refId: "126", quoteRefId: "QO-126",
     contact: "Nicole Han", company: "Han Beauty Co",
     createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
     title: "Serum bottle labels + stand-up pouches for launch — Rush, ship by 07/03",
@@ -251,7 +253,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 5. Ivy Bloom / Ivy Botanicals — In Production ───
   {
-    refId: "2026-0124", quoteRefId: "QO-2026-0124",
+    refId: "124", quoteRefId: "QO-124",
     contact: "Ivy Bloom", company: "Ivy Botanicals",
     createdBy: "Marianna", ownerAvatar: "MA", ownerColor: "#a78bfa",
     title: "Cosmetic bottle labels + Hand Cream boxes — Pantone 2035C match",
@@ -278,13 +280,13 @@ export const ORDERS: Order[] = [
     ],
     communications: [
       { channel: "email_in", author: "Ivy Bloom", subject: "Fall collection — labels + boxes", body: "Hi — running the fall collection. Attached artwork. Pantone match on the floral is critical — 2035C. Boxes go with the hand cream line.", at: "06/26 · 3:12 PM", attachments: ["Ivy_files.zip"] },
-      { channel: "email_out", author: "Marianna", subject: "Re: Fall collection", body: "Ivy — got it. Quote attached. Pantone 2035C is on Indigo 15K's approved swatch library so we're good. Turnaround 10 business days.", at: "06/26 · 5:20 PM", attachments: ["QO-2026-0124.pdf"] },
+      { channel: "email_out", author: "Marianna", subject: "Re: Fall collection", body: "Ivy — got it. Quote attached. Pantone 2035C is on Indigo 15K's approved swatch library so we're good. Turnaround 10 business days.", at: "06/26 · 5:20 PM", attachments: ["QO-124.pdf"] },
       { channel: "email_in", author: "Ivy Bloom", subject: "Re: Fall collection", body: "Approved, sending ACH.", at: "06/27 · 9:04 AM" },
     ],
   },
   // ─── 6. Grim Lawd — In Production, tax exempt ───
   {
-    refId: "2026-0122", quoteRefId: "QO-2026-0122",
+    refId: "122", quoteRefId: "QO-122",
     contact: "Grim Lawd", company: "Grimeylyfe Records",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
     title: "Merch drop — 2500 postcards + 5000 business cards + tour poster labels",
@@ -317,7 +319,7 @@ export const ORDERS: Order[] = [
     ],
   },  // ─── 7. Safe Care Packaging — In Production, awaiting resale cert ───
   {
-    refId: "2026-0120", quoteRefId: "QO-2026-0120",
+    refId: "120", quoteRefId: "QO-120",
     contact: "Corey Nishimura", company: "SafeCare Packaging",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
     title: "Body Lotion Boxes — 3000 pcs matte, white cardstock only",
@@ -347,7 +349,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 8. Global 448 — In Production, die-cut stickers ───
   {
-    refId: "2026-0118", quoteRefId: "QO-2026-0118",
+    refId: "118", quoteRefId: "QO-118",
     contact: "Ricky Ortiz", company: "Global 448",
     createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
     title: "Die Cut Stickers — 4 designs, 2500 each, holographic",
@@ -377,7 +379,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 9. Gold Custom Packaging — Ready to Ship, large-volume ───
   {
-    refId: "2026-0115", quoteRefId: "QO-2026-0115",
+    refId: "115", quoteRefId: "QO-115",
     contact: "Alex Golden", company: "Gold Custom Packaging",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
     title: "Mylar stand-up pouches — 25,000 pcs across 4 SKUs, CR zippers",
@@ -411,7 +413,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 10. Rise Botanicals — Ready to Ship ───
   {
-    refId: "2026-0113", quoteRefId: "QO-2026-0113",
+    refId: "113", quoteRefId: "QO-113",
     contact: "Marcus King", company: "Rise Botanicals",
     createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
     title: "Bottle labels — 8000 pcs, spot UV highlights on floral",
@@ -440,7 +442,7 @@ export const ORDERS: Order[] = [
     ],
   },  // ─── 11. Vick May Day — Shipped, folding cartons ───
   {
-    refId: "2026-0107", quoteRefId: "QO-2026-0107",
+    refId: "107", quoteRefId: "QO-107",
     contact: "Vick May Day", company: "May Day Studios",
     createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
     title: "Mini Tuck End Boxes — 2000 pcs, gold foil logo",
@@ -464,14 +466,14 @@ export const ORDERS: Order[] = [
     ],
     communications: [
       { channel: "email_in", author: "Vick May Day", subject: "First order — mini tuck boxes", body: "Hey — first time working with you. Attached artwork for 2000 tuck end boxes with gold foil logo. Please quote.", at: "06/16 · 3:22 PM" },
-      { channel: "email_out", author: "Manny Carlo", subject: "Re: First order", body: "Vick — welcome! Quote attached. If it looks good I'll send a payment link.", at: "06/16 · 5:14 PM", attachments: ["QO-2026-0107.pdf"] },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: First order", body: "Vick — welcome! Quote attached. If it looks good I'll send a payment link.", at: "06/16 · 5:14 PM", attachments: ["QO-107.pdf"] },
       { channel: "email_in", author: "Vick May Day", subject: "Re: First order", body: "Looks good — paid. When will it ship?", at: "06/17 · 8:30 AM" },
       { channel: "email_out", author: "Manny Carlo", subject: "Shipped — UPS", body: "Vick — shipped today. Tracking 1Z999AA10778112034.", at: "06/29 · 4:15 PM" },
     ],
   },
   // ─── 12. Cane Company — Shipped ───
   {
-    refId: "2026-0104", quoteRefId: "QO-2026-0104",
+    refId: "104", quoteRefId: "QO-104",
     contact: "Ruben Cane", company: "Cane Company",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
     title: "White BOPP labels — 4000 pcs, matte lam",
@@ -499,7 +501,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 13. Cali Papers — Shipped, vinyl banners ───
   {
-    refId: "2026-0101", quoteRefId: "QO-2026-0101",
+    refId: "101", quoteRefId: "QO-101",
     contact: "Ana Rivera", company: "Cali Papers",
     createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
     title: "Two 4x8 vinyl banners for expo booth",
@@ -528,7 +530,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 14. Green Leaf Wellness — Delivered ───
   {
-    refId: "2026-0098", quoteRefId: "QO-2026-0098",
+    refId: "098", quoteRefId: "QO-098",
     contact: "Priya Nair", company: "Green Leaf Wellness",
     createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
     title: "Tincture bottle labels + CR pouches — 4 SKU",
@@ -560,7 +562,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 15. Vibe Botanicals — Delivered, trading cards ───
   {
-    refId: "2026-0095", quoteRefId: "QO-2026-0095",
+    refId: "095", quoteRefId: "QO-095",
     contact: "Diego Alvarez", company: "Vibe Botanicals",
     createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
     title: "Standard Trading Cards — 5000 pcs, gloss lam",
@@ -589,7 +591,7 @@ export const ORDERS: Order[] = [
     ],
   },  // ─── 16. Little Buddha — Delivered ───
   {
-    refId: "2026-0090", quoteRefId: "QO-2026-0090",
+    refId: "090", quoteRefId: "QO-090",
     contact: "Ren Takahashi", company: "Little Buddha",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
     title: "Bottle labels + business cards package",
@@ -619,7 +621,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 17. Urban Farms — Delivered ───
   {
-    refId: "2026-0086", quoteRefId: "QO-2026-0086",
+    refId: "086", quoteRefId: "QO-086",
     contact: "Kaleb Foster", company: "Urban Farms",
     createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
     title: "Custom boxes for microgreens — 1500 pcs",
@@ -648,7 +650,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 18. Richard Shaltz — Pending Payment ───
   {
-    refId: "2026-0133", quoteRefId: "QO-2026-0133",
+    refId: "133", quoteRefId: "QO-133",
     contact: "Richard Shaltz", company: "Shaltz Botanicals",
     createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
     title: "Labels for oil line — 3000 pcs, waiting on payment",
@@ -659,23 +661,23 @@ export const ORDERS: Order[] = [
     priority: "Normal", dueDate: "07/09/2026",
     status: "Pending Payment", payment: "Unpaid",
     createdAgo: "1d ago", createdDate: "06/30/2026",
-    attachmentsCount: 2, attachments: ["Shaltz_OilLabel_V1.ai", "QO-2026-0133.pdf"],
+    attachmentsCount: 2, attachments: ["Shaltz_OilLabel_V1.ai", "QO-133.pdf"],
     files: [
       { name: "Shaltz_OilLabel_V1.ai", sizeKB: 720, kind: "ai" },
-      { name: "QO-2026-0133.pdf", sizeKB: 320, kind: "pdf" },
+      { name: "QO-133.pdf", sizeKB: 320, kind: "pdf" },
     ],
     shippingMethod: "Ship",
     customer: { phone: "(408) 555-0201", email: "richard@shaltzbotanicals.co", city: "San Jose", state: "CA", lifetimeOrders: 1, lifetimeValue: 620, returning: false },
     payments: [],
     communications: [
       { channel: "email_in", author: "Richard Shaltz", subject: "Oil label order", body: "3000 white BOPP labels, matte lam. Please quote.", at: "06/30 · 10:14 AM" },
-      { channel: "email_out", author: "Manny Carlo", subject: "Re: Oil label", body: "Richard — quote attached, $1,080. Payment link included. Payment before we start.", at: "06/30 · 11:22 AM", attachments: ["QO-2026-0133.pdf"] },
+      { channel: "email_out", author: "Manny Carlo", subject: "Re: Oil label", body: "Richard — quote attached, $1,080. Payment link included. Payment before we start.", at: "06/30 · 11:22 AM", attachments: ["QO-133.pdf"] },
       { channel: "sms_out", author: "Manny Carlo", body: "Richard — heads up on the quote for 3K oil labels, sent to your inbox.", at: "07/01 · 8:44 AM" },
     ],
   },
   // ─── 19. Dream Snacks Co — Pending Payment, mylar bags ───
   {
-    refId: "2026-0132", quoteRefId: "QO-2026-0132",
+    refId: "132", quoteRefId: "QO-132",
     contact: "Willa Chen", company: "Dream Snacks Co",
     createdBy: "Ernesto Navarro", ownerAvatar: "EN", ownerColor: "#22c55e",
     title: "Mylar stand-up pouches — 5000 pcs, holographic accents",
@@ -687,24 +689,24 @@ export const ORDERS: Order[] = [
     priority: "Normal", dueDate: "07/14/2026",
     status: "Pending Payment", payment: "Unpaid",
     createdAgo: "2d ago", createdDate: "06/29/2026",
-    attachmentsCount: 4, attachments: ["DreamSnacks_3SKU_Master.ai", "Holo_foil_map.pdf", "Dieline_Approved.pdf", "QO-2026-0132.pdf"],
+    attachmentsCount: 4, attachments: ["DreamSnacks_3SKU_Master.ai", "Holo_foil_map.pdf", "Dieline_Approved.pdf", "QO-132.pdf"],
     files: [
       { name: "DreamSnacks_3SKU_Master.ai", sizeKB: 4220, kind: "ai" },
       { name: "Holo_foil_map.pdf", sizeKB: 420, kind: "pdf" },
       { name: "Dieline_Approved.pdf", sizeKB: 310, kind: "pdf" },
-      { name: "QO-2026-0132.pdf", sizeKB: 380, kind: "pdf" },
+      { name: "QO-132.pdf", sizeKB: 380, kind: "pdf" },
     ],
     shippingMethod: "Ship",
     customer: { phone: "(212) 555-0917", email: "willa@dreamsnacks.co", city: "Brooklyn", state: "NY", lifetimeOrders: 1, lifetimeValue: 0, returning: false },
     payments: [],
     communications: [
       { channel: "email_in", author: "Willa Chen", subject: "Mylar pouches — 3 SKUs", body: "5000 total split across 3 SKUs. Holo foil accent on all. Please send quote.", at: "06/29 · 11:14 AM" },
-      { channel: "email_out", author: "Ernesto Navarro", subject: "Re: Mylar pouches", body: "Willa — quote $7,400. Karlville run, 10 business days from payment. Payment link attached.", at: "06/29 · 1:22 PM", attachments: ["QO-2026-0132.pdf"] },
+      { channel: "email_out", author: "Ernesto Navarro", subject: "Re: Mylar pouches", body: "Willa — quote $7,400. Karlville run, 10 business days from payment. Payment link attached.", at: "06/29 · 1:22 PM", attachments: ["QO-132.pdf"] },
     ],
   },
   // ─── 20. Sun Roll — Cancelled ───
   {
-    refId: "2026-0100", quoteRefId: "QO-2026-0100",
+    refId: "100", quoteRefId: "QO-100",
     contact: "Kai Nakamura", company: "Sun Roll",
     createdBy: "Manny Carlo", ownerAvatar: "MC", ownerColor: "#3b82f6",
     title: "Sticker sheets — cancelled by customer",
@@ -731,7 +733,7 @@ export const ORDERS: Order[] = [
   },
   // ─── 21. Petal & Pine — Refunded, gold foil off-spec ───
   {
-    refId: "2026-0088", quoteRefId: "QO-2026-0088",
+    refId: "088", quoteRefId: "QO-088",
     contact: "Priya Shah", company: "Petal & Pine",
     createdBy: "Maria Hakobyan", ownerAvatar: "MH", ownerColor: "#f97316",
     title: "Wedding invitation suite — refund issued, gold foil off-spec",
@@ -817,7 +819,7 @@ export default function OrdersPreview() {
   const [dateRange, setDateRange] = useState<"today" | "yesterday" | "7d" | "30d" | "custom">("30d");
   const [teamFilter, setTeamFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [expandedId, setExpandedId] = useState<string | null>("2026-0135");
+  const [expandedId, setExpandedId] = useState<string | null>("135");
   const [detailId, setDetailId] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const p = new URLSearchParams(window.location.search).get("open");
@@ -1049,7 +1051,7 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
         <td style={td}>
           <div style={{ display: "flex", alignItems: "center", gap: "5px", fontFamily: "monospace", fontWeight: 700, color: expanded ? ACCENT : "#171717" }}>
             <span style={{ fontSize: "10px" }}>{expanded ? "▾" : "▸"}</span>
-            {order.refId}
+            ORD-{order.refId}
           </div>
         </td>
         <td style={td} title={`Order Placed — the date the quote was converted to an order (customer paid or agreed to terms). This order was placed on ${order.createdDate} (${order.createdAgo}).`}>
@@ -1222,7 +1224,7 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
       gap: "4px",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: "var(--preview-text)" }}>{order.refId}</span>
+        <span style={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: "var(--preview-text)" }}>ORD-{order.refId}</span>
         <span
           title={`Priority: ${order.priority}${order.priority === "Rush" ? " — top priority" : order.priority === "High" ? " — above normal" : " — normal turnaround"}`}
           style={{ fontSize: "10px", fontWeight: 700, color: order.priority === "Rush" ? "#f59e0b" : order.priority === "High" ? "#dc2626" : "#22c55e", cursor: "help", padding: "1px 6px", background: order.priority === "Rush" ? "rgba(245,158,11,0.12)" : order.priority === "High" ? "rgba(220,38,38,0.12)" : "rgba(34,197,94,0.12)", borderRadius: "999px" }}
@@ -1291,10 +1293,16 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
       <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "18px 22px", marginBottom: "12px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
               <h1 style={{ fontSize: "26px", fontWeight: 800, margin: 0, fontFamily: "monospace" }}>ORD-{order.refId}</h1>
               <button style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: "13px", padding: "2px 4px" }} title="Copy full ID">⧉</button>
               <button style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: "13px", padding: "2px 4px" }} title="Print order">🖨</button>
+              <span
+                style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 10px", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: "999px", fontSize: "11px", fontWeight: 800, fontFamily: "monospace" }}
+                title={`Same number rides on the quote (Q-${passportCore(order.refId)}), production card (#${passportCore(order.refId)}), invoice (INV-${passportCore(order.refId)}), and shipping. Never re-invented.`}
+              >
+                🔒 Passport: {passportCore(order.refId)}
+              </span>
             </div>
             <div style={{ fontSize: "14px", color: "#333", marginTop: "4px" }}>
               <b>{order.contact}</b> · {order.company || "—"}
@@ -1659,6 +1667,10 @@ function FilesTab({ order }: { order: Order }) {
             </div>
           </div>
         ))}
+      </div>
+      {/* Passport-number filename convention hint — Hayk 2026-07-02 */}
+      <div style={{ marginTop: "10px", fontSize: "10.5px", color: "#888", fontStyle: "italic" }}>
+        Recommended filename convention: {"{clean-name}"}-{passportCore(order.refId)}.{"{ext}"} (e.g. LAKush_9ml_V3-{passportCore(order.refId)}.ai) — makes files searchable by passport number across the shop.
       </div>
     </div>
   );

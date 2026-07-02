@@ -122,7 +122,19 @@ export async function POST(request: Request) {
         { status: res.status },
       );
     }
-    return NextResponse.json({ ok: true, workflowResponse: data });
+    // Hayk 2026-07-02 — Passport-number linkage. The quote's numeric core
+    // rides straight through to the order ref, so downstream artifacts
+    // (INV-XXX, PS-XXX, workflow card #XXX) all match Q-XXX.
+    const core = body.quoteRefId
+      .replace(/^(Q|QO|ORD|INV|PS)-?/i, "")
+      .replace(/^\d{4}-/, "")
+      .padStart(3, "0");
+    return NextResponse.json({
+      ok: true,
+      orderRefId: `ORD-${core}`,
+      passportCore: core,
+      workflowResponse: data,
+    });
   } catch (e) {
     return NextResponse.json(
       { ok: false, error: e instanceof Error ? e.message : String(e) },
