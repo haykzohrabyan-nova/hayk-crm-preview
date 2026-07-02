@@ -68,6 +68,17 @@ const PREVIEW_ROUTE_OVERRIDES: Record<string, string> = {
   "/crm":             "/preview/crm",
   "/orders":          "/preview/orders",
   "/quotes":          "/preview/new-quote",
+  "/inbox":           "/preview/inbox",
+};
+
+// Hayk 2026-07-01 — Preview-only sidebar link for the unified Inbox hub.
+// Real /inbox route doesn't exist yet — this hardcoded entry lives here until
+// the DB nav_sections table gets the Inbox page. Slot: between Leads and Sales.
+const PREVIEW_INBOX_LINK = {
+  route: "/preview/inbox",
+  label: "Inbox",
+  icon: "Inbox" as const,
+  insertAfterRoute: "/leads",
 };
 
 // Role-specific display name overrides for the /dashboard page
@@ -150,6 +161,65 @@ function NavLink({
         <span className="ml-auto shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 text-[10px] font-bold"
           style={{ background: active ? "rgba(0,0,0,0.2)" : "var(--color-danger)", color: "var(--color-text-inverse)" }}>
           {badge > 99 ? "99+" : badge}
+        </span>
+      )}
+    </Link>
+  );
+}
+
+// Hayk 2026-07-01 — Preview Inbox link. Unread count is loaded from the seed
+// module lazily so this file has no static dependency on the preview code.
+function PreviewInboxLink({ collapsed }: { collapsed: boolean }) {
+  const pathname = usePathname();
+  const [unread, setUnread] = useState<number>(0);
+  useEffect(() => {
+    let cancelled = false;
+    import("@/app/(app)/preview/inbox/_seed")
+      .then((m) => { if (!cancelled) setUnread(m.UNREAD_COUNT ?? 0); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  const active = pathname === "/preview/inbox" || pathname.startsWith("/preview/inbox/");
+  return (
+    <Link
+      href="/preview/inbox"
+      title={collapsed ? "Inbox" : undefined}
+      className={cn(
+        "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors",
+        collapsed && "justify-center px-0"
+      )}
+      style={
+        active
+          ? { backgroundColor: "var(--color-accent)", color: "var(--color-btn-primary-text)", fontWeight: 500 }
+          : { color: "var(--color-sidebar-nav)" }
+      }
+      onMouseEnter={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLElement).style.backgroundColor = "var(--color-sidebar-hover-bg)";
+          (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav-hover)";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLElement).style.backgroundColor = "";
+          (e.currentTarget as HTMLElement).style.color = "var(--color-sidebar-nav)";
+        }
+      }}
+    >
+      <div className="relative shrink-0">
+        <Inbox className="h-4 w-4" />
+        {collapsed && unread > 0 && (
+          <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[8px] font-bold"
+            style={{ background: "var(--color-danger)", color: "var(--color-text-inverse)" }}>
+            {unread > 99 ? "99" : unread}
+          </span>
+        )}
+      </div>
+      {!collapsed && <span className="flex-1 truncate">Inbox</span>}
+      {!collapsed && unread > 0 && (
+        <span className="ml-auto shrink-0 min-w-[18px] h-[18px] flex items-center justify-center rounded-full px-1 text-[10px] font-bold"
+          style={{ background: active ? "rgba(0,0,0,0.2)" : "var(--color-danger)", color: "var(--color-text-inverse)" }}>
+          {unread > 99 ? "99+" : unread}
         </span>
       )}
     </Link>
@@ -453,13 +523,18 @@ export function Sidebar() {
               </p>
             )}
             {visiblePages.map((page) => (
-              <NavLink
-                key={page.id}
-                page={page}
-                collapsed={collapsed}
-                badge={badgeCounts[page.route]}
-                roleName={userRoleName}
-              />
+              <div key={page.id}>
+                <NavLink
+                  page={page}
+                  collapsed={collapsed}
+                  badge={badgeCounts[page.route]}
+                  roleName={userRoleName}
+                />
+                {/* Hayk 2026-07-01 — inject preview Inbox link right after Leads */}
+                {page.route === PREVIEW_INBOX_LINK.insertAfterRoute && (
+                  <PreviewInboxLink collapsed={collapsed} />
+                )}
+              </div>
             ))}
           </div>
           );
