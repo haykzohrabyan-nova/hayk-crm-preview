@@ -6,6 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 const DRAFT_STORAGE_KEY = "bazaar.quoteDraft";
 
@@ -116,10 +117,8 @@ export default function NewQuotePreview() {
   // Step 1: Job overview
   const [quoteName, setQuoteName] = useState(prefillName ? `${prefillName} — Quote` : "Trap Snacks Labels + Boxes");
   const [priority, setPriority] = useState<"Normal" | "Rush" | "Critical">("Normal");
-  const [productionSpeed, setProductionSpeed] = useState("5 Business Days");
   const [dueDate, setDueDate] = useState("2026-07-08");
   const [salesRep, setSalesRep] = useState("Ernesto");
-  const [productionFacility, setProductionFacility] = useState("Los Angeles");
   const [notesToProduction, setNotesToProduction] = useState("Customer needs first article ASAP.\nMatch previous order.");
 
   // Step 2: Line items
@@ -149,7 +148,19 @@ export default function NewQuotePreview() {
   const [previewOpen, setPreviewOpen] = useState(false);
 
   // Quote reference — generated once when opened, carried through lifecycle
-  const [quoteRefId] = useState(() => `QO-2026-${String(Math.floor(1000 + Math.random() * 9000))}`);
+  // 3-digit reference number, no year/QO- prefix — matches sales-floor shorthand (e.g. "705").
+  const [quoteRefId] = useState(() => `Q-${String(Math.floor(Math.random() * 900) + 100)}`);
+
+  // Similar-past-order banner — dismissable per session
+  const [pastOrderBannerDismissed, setPastOrderBannerDismissed] = useState(false);
+  // Previous work collapsible — default collapsed
+  const [previousWorkOpen, setPreviousWorkOpen] = useState(false);
+  // Placeholder previous-orders count (until DB wiring). >2 triggers the similar-order banner in Step 2.
+  const previousOrdersCount = 3;
+  // Current user role (SDR/Sales/Admin) — role toggle not wired yet, so we default to SDR
+  // to always show the assignment-mismatch banner as a preview.
+  const currentUserRole: "SDR" | "Sales" | "Admin" = "SDR";
+  const currentUserName = "You";
 
   // Send-to-workflow state
   const [sending, setSending] = useState(false);
@@ -238,7 +249,7 @@ export default function NewQuotePreview() {
     return {
       savedAt: Date.now(),
       step, customerName, customerEmail, customerPhone,
-      quoteName, priority, productionSpeed, dueDate, salesRep, productionFacility,
+      quoteName, priority, dueDate, salesRep,
       notesToProduction, lineItems, quoteType,
       validForDays, taxRate, taxExempt, discountMode, discountValue, shipping,
       fulfillment, paymentStrategy, partialPct, netTermsDays, paymentMethods,
@@ -262,10 +273,8 @@ export default function NewQuotePreview() {
     if (blob.customerPhone != null) setCustomerPhone(blob.customerPhone);
     if (blob.quoteName != null) setQuoteName(blob.quoteName);
     if (blob.priority) setPriority(blob.priority);
-    if (blob.productionSpeed) setProductionSpeed(blob.productionSpeed);
     if (blob.dueDate) setDueDate(blob.dueDate);
     if (blob.salesRep) setSalesRep(blob.salesRep);
-    if (blob.productionFacility) setProductionFacility(blob.productionFacility);
     if (blob.notesToProduction != null) setNotesToProduction(blob.notesToProduction);
     if (Array.isArray(blob.lineItems) && blob.lineItems.length > 0) setLineItems(blob.lineItems);
     if (blob.quoteType) setQuoteType(blob.quoteType);
@@ -365,19 +374,29 @@ export default function NewQuotePreview() {
 
       <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: "16px", marginTop: "16px" }}>
         {/* LEFT — Customer card (persistent) */}
-        <CustomerCard name={customerName} email={customerEmail} phone={customerPhone} salesRep={salesRep} />
+        <CustomerCard
+          name={customerName}
+          email={customerEmail}
+          phone={customerPhone}
+          salesRep={salesRep}
+          leadId={prefillLeadId}
+        />
 
         {/* RIGHT — step content */}
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           {step === 1 && (
             <Step1Info
+              quoteRefId={quoteRefId}
               quoteName={quoteName} setQuoteName={setQuoteName}
               priority={priority} setPriority={setPriority}
-              productionSpeed={productionSpeed} setProductionSpeed={setProductionSpeed}
               dueDate={dueDate} setDueDate={setDueDate}
               salesRep={salesRep} setSalesRep={setSalesRep}
-              productionFacility={productionFacility} setProductionFacility={setProductionFacility}
               notes={notesToProduction} setNotes={setNotesToProduction}
+              currentUserRole={currentUserRole}
+              currentUserName={currentUserName}
+              customerName={customerName}
+              previousWorkOpen={previousWorkOpen}
+              setPreviousWorkOpen={setPreviousWorkOpen}
             />
           )}
           {step === 2 && (
@@ -386,7 +405,9 @@ export default function NewQuotePreview() {
               categories={categories} products={products}
               quoteType={quoteType} setQuoteType={setQuoteType}
               subtotal={subtotal}
-              productionSpeed={productionSpeed}
+              previousOrdersCount={previousOrdersCount}
+              pastOrderBannerDismissed={pastOrderBannerDismissed}
+              setPastOrderBannerDismissed={setPastOrderBannerDismissed}
             />
           )}
           {step === 3 && (
@@ -413,7 +434,6 @@ export default function NewQuotePreview() {
               alsoSmsTo={alsoSmsTo} setAlsoSmsTo={setAlsoSmsTo}
               noNotification={noNotification} setNoNotification={setNoNotification}
               attachments={attachments} setAttachments={setAttachments}
-              productionSpeed={productionSpeed}
             />
           )}
 
@@ -470,7 +490,7 @@ function Stepper({ step }: { step: number }) {
 }
 
 // ─── Left: Customer card ────────────────────────────────────────
-function CustomerCard({ name, email, phone, salesRep }: { name: string; email: string; phone: string; salesRep: string }) {
+function CustomerCard({ name, email, phone, salesRep, leadId }: { name: string; email: string; phone: string; salesRep: string; leadId?: string }) {
   const initials = (name || "?")
     .split(/\s+/)
     .map((w: string) => w[0])
@@ -478,6 +498,11 @@ function CustomerCard({ name, email, phone, salesRep }: { name: string; email: s
     .slice(0, 2)
     .join("")
     .toUpperCase();
+  const custQuery = leadId ? `customerId=${encodeURIComponent(leadId)}` : `customer=${encodeURIComponent(name)}`;
+  const crmHref = `/preview/crm?${custQuery}`;
+  const activeOrdersHref = `/preview/orders?${custQuery}&status=active`;
+  const openQuotesHref = `/preview/quoted-requests?${custQuery}`;
+  const lastOrderHref = `/preview/orders?${custQuery}&sort=recent`;
   return (
     <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "16px", height: "fit-content", position: "sticky", top: "16px" }}>
       <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "12px" }}>Customer</div>
@@ -485,8 +510,16 @@ function CustomerCard({ name, email, phone, salesRep }: { name: string; email: s
       <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
         <div style={{ width: "44px", height: "44px", borderRadius: "50%", background: "var(--preview-chip-bg-strong)", color: "var(--preview-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", fontWeight: 800 }}>{initials || "?"}</div>
         <div>
-          <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--preview-text)" }}>{name || "New customer"}</div>
-          <span style={{ display: "inline-block", padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px", marginTop: "2px" }}>Returning Customer <span style={{ color: GOLD }}>★</span></span>
+          <Link
+            href={crmHref}
+            title="Click to open customer 360 profile"
+            style={{ fontSize: "14px", fontWeight: 800, color: "var(--preview-text)", textDecoration: "none", cursor: "pointer", display: "inline-block" }}
+          >
+            {name || "New customer"} <span style={{ color: ACCENT, fontSize: "11px" }}>↗</span>
+          </Link>
+          <div>
+            <span style={{ display: "inline-block", padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px", marginTop: "2px" }}>Returning Customer <span style={{ color: GOLD }}>★</span></span>
+          </div>
         </div>
       </div>
 
@@ -497,36 +530,75 @@ function CustomerCard({ name, email, phone, salesRep }: { name: string; email: s
       <div style={{ height: "1px", background: "var(--preview-border)", margin: "12px 0" }} />
 
       {/* NOTE: stats below are placeholder — real DB wiring needed (customer lifetime + orders) */}
-      <MiniField icon="💰" label="Lifetime Sales" value="$148,250" valueColor="#16a34a" />
-      <MiniField icon="📦" label="Active Orders" value="4" />
-      <MiniField icon="📄" label="Open Quotes" value="2" />
-      <MiniField icon="🕒" label="Last Order" value="5 days ago" />
+      <MiniField icon="💰" label="Lifetime Sales" value="$148,250" valueColor="#16a34a" href={crmHref} tooltip="Click to see lifetime sales history" />
+      <MiniField icon="📦" label="Active Orders" value="4" href={activeOrdersHref} tooltip="Click to see this customer's active orders" />
+      <MiniField icon="📄" label="Open Quotes" value="2" href={openQuotesHref} tooltip="Click to see this customer's open quotes" />
+      <MiniField icon="🕒" label="Last Order" value="5 days ago" href={lastOrderHref} tooltip="Click to open the most recent order" />
       <MiniField icon="💳" label="Preferred Payment" value="ACH" />
       <MiniField icon="👤" label="Sales Rep" value={salesRep || "—"} />
 
-      <button style={{ width: "100%", marginTop: "12px", padding: "8px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>↗ View Full Profile</button>
+      <Link href={crmHref} style={{ display: "block", width: "100%", marginTop: "12px", padding: "8px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)", textDecoration: "none", textAlign: "center", boxSizing: "border-box" }}>↗ View Full Profile</Link>
     </div>
   );
 }
 
-function MiniField({ icon, label, value, valueColor }: any) {
-  return (
-    <div style={{ padding: "6px 0", display: "flex", alignItems: "flex-start", gap: "8px" }}>
+function MiniField({ icon, label, value, valueColor, href, tooltip }: any) {
+  const inner = (
+    <>
       <span style={{ fontSize: "13px", opacity: 0.6 }}>{icon}</span>
       <div style={{ flex: 1 }}>
         <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)", fontWeight: 600 }}>{label}</div>
-        <div style={{ fontSize: "12.5px", fontWeight: 700, color: valueColor || "var(--preview-text)" }}>{value}</div>
+        <div style={{ fontSize: "12.5px", fontWeight: 700, color: valueColor || "var(--preview-text)" }}>
+          {value}
+          {href && <span style={{ color: ACCENT, fontSize: "10px", marginLeft: "4px" }}>↗</span>}
+        </div>
       </div>
+    </>
+  );
+  if (href) {
+    return (
+      <Link
+        href={href}
+        title={tooltip || ""}
+        style={{ padding: "6px 0", display: "flex", alignItems: "flex-start", gap: "8px", textDecoration: "none", color: "inherit", borderRadius: "6px" }}
+      >
+        {inner}
+      </Link>
+    );
+  }
+  return (
+    <div style={{ padding: "6px 0", display: "flex", alignItems: "flex-start", gap: "8px" }}>
+      {inner}
     </div>
   );
 }
 
 // ─── STEP 1: Info ───────────────────────────────────────────
 function Step1Info(props: any) {
+  // Preview-only: role toggle isn't wired yet, so treat every SDR view as a mismatch to show the banner.
+  const showRepMismatchBanner = props.currentUserRole === "SDR";
+  // Sample "previous work" data — until real DB wiring is in place.
+  const previousWork = [
+    { ref: "QO-2026-172", product: "Roll Labels", total: "$2,100", status: "Won", statusColor: "#16a34a", date: "Mar 15, 2026" },
+    { ref: "QO-2026-158", product: "Folding Cartons", total: "$8,450", status: "Won", statusColor: "#16a34a", date: "Feb 20, 2026" },
+    { ref: "QO-2026-134", product: "Business Cards", total: "$340", status: "Lost", statusColor: "#dc2626", date: "Jan 8, 2026" },
+  ];
+  // Only Sales / Admin see the full history section.
+  const canSeePreviousWork = props.currentUserRole === "Sales" || props.currentUserRole === "Admin" || props.currentUserRole === "SDR"; // shown as preview always
+
   return (
     <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "22px 26px" }}>
-      <h2 style={{ fontSize: "18px", fontWeight: 800, margin: 0, marginBottom: "4px" }}>Job Overview</h2>
-      <div style={{ fontSize: "13px", color: "#666", marginBottom: "20px" }}>Tell us the basics about this quote so we can prepare everything perfectly.</div>
+      {/* Quote reference header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px", paddingBottom: "14px", borderBottom: "1px solid var(--preview-border)" }}>
+        <div>
+          <h2 style={{ fontSize: "18px", fontWeight: 800, margin: 0, marginBottom: "4px" }}>Job Overview</h2>
+          <div style={{ fontSize: "13px", color: "#666" }}>Tell us the basics about this quote so we can prepare everything perfectly.</div>
+        </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>Quote Reference</div>
+          <div style={{ fontFamily: "monospace", fontSize: "18px", fontWeight: 800, color: GOLD, marginTop: "3px" }}>{props.quoteRefId}</div>
+        </div>
+      </div>
 
       <FieldWrap label="Quote Name" required>
         <input value={props.quoteName} onChange={e => props.setQuoteName(e.target.value)} placeholder="e.g. Trap Snacks Labels + Boxes" style={inp} maxLength={100} />
@@ -549,32 +621,32 @@ function Step1Info(props: any) {
             ))}
           </div>
         </FieldWrap>
-        <FieldWrap label="Production Speed">
-          <select value={props.productionSpeed} onChange={e => props.setProductionSpeed(e.target.value)} style={inp}>
-            <option>5 Business Days</option>
-            <option>7 Business Days</option>
-            <option>10 Business Days</option>
-            <option>Rush · 2 Business Days</option>
-            <option>Rush · Next Day</option>
-          </select>
-        </FieldWrap>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
         <FieldWrap label="Due Date">
           <input type="date" value={props.dueDate} onChange={e => props.setDueDate(e.target.value)} style={inp} />
         </FieldWrap>
-        <FieldWrap label="Sales Rep">
-          <select value={props.salesRep} onChange={e => props.setSalesRep(e.target.value)} style={inp}>
-            <option>Ernesto</option><option>Maria Hakobyan</option><option>Manny Carlo</option><option>Gary Matevosyan</option>
-          </select>
-        </FieldWrap>
       </div>
 
-      <FieldWrap label="Production Facility">
-        <select value={props.productionFacility} onChange={e => props.setProductionFacility(e.target.value)} style={inp}>
-          <option>Los Angeles</option>
+      <FieldWrap
+        label={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+            <span>Sales Rep</span>
+            <span
+              title={`This customer is assigned to ${props.salesRep}. Reps often have negotiated pricing with returning customers. SDRs cannot override the assigned rep — either get admin approval or route to the assigned rep.`}
+              style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: "14px", height: "14px", borderRadius: "50%", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", fontSize: "9.5px", fontWeight: 800, color: "var(--preview-text-muted)", cursor: "help" }}
+            >
+              i
+            </span>
+          </span>
+        }
+      >
+        <select value={props.salesRep} onChange={e => props.setSalesRep(e.target.value)} style={inp}>
+          <option>Ernesto</option><option>Maria Hakobyan</option><option>Manny Carlo</option><option>Gary Matevosyan</option>
         </select>
+        {showRepMismatchBanner && (
+          <div style={{ marginTop: "8px", padding: "8px 12px", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "8px", fontSize: "11.5px", color: "#78350f", lineHeight: 1.5 }}>
+            ⚠ This customer is assigned to <b>{props.salesRep}</b>. As an SDR, you'll need admin approval or route this quote to {props.salesRep} before it can be sent.
+          </div>
+        )}
       </FieldWrap>
 
       <FieldWrap label="Notes for Production" optional>
@@ -584,20 +656,69 @@ function Step1Info(props: any) {
           <span style={{ fontSize: "10.5px", color: "#888" }}>{props.notes.length} / 500</span>
         </div>
       </FieldWrap>
+
+      {/* Previous work — collapsible, Sales/Admin only (preview always shows) */}
+      {canSeePreviousWork && (
+        <div style={{ marginTop: "18px", paddingTop: "16px", borderTop: "1px solid var(--preview-border)" }}>
+          <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)", marginBottom: "8px", fontStyle: "italic" }}>
+            🔒 Visible to Sales &amp; Admin only — SDRs see this list ONLY for quotes they closed themselves.
+          </div>
+          <button
+            onClick={() => props.setPreviousWorkOpen(!props.previousWorkOpen)}
+            style={{ width: "100%", padding: "10px 14px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "13px", fontWeight: 700, cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center", color: "var(--preview-text)" }}
+          >
+            <span>📁 Previous work for {props.customerName || "this customer"} ({previousWork.length})</span>
+            <span>{props.previousWorkOpen ? "▲" : "▼"}</span>
+          </button>
+          {props.previousWorkOpen && (
+            <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
+              {previousWork.map((row) => (
+                <Link
+                  key={row.ref}
+                  href={`/preview/orders/${row.ref}`}
+                  style={{ display: "grid", gridTemplateColumns: "120px 1fr 90px 70px 110px", gap: "10px", alignItems: "center", padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", textDecoration: "none", color: "var(--preview-text)", fontSize: "12.5px" }}
+                >
+                  <span style={{ fontFamily: "monospace", fontWeight: 700, color: ACCENT }}>{row.ref}</span>
+                  <span style={{ fontWeight: 600 }}>{row.product}</span>
+                  <span style={{ fontWeight: 700 }}>{row.total}</span>
+                  <span style={{ fontSize: "11px", fontWeight: 700, color: row.statusColor }}>{row.status}</span>
+                  <span style={{ fontSize: "11px", color: "var(--preview-text-muted)", textAlign: "right" }}>{row.date}</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── STEP 2: Line Items ───────────────────────────────────────
-function Step2LineItems({ lineItems, setLineItems, categories, products, quoteType, setQuoteType, subtotal, productionSpeed }: any) {
-  const addLine = () => setLineItems([...lineItems, { id: `l${Date.now()}`, quantity: 1000, finishingIds: [], specialEffectIds: [] }]);
+function Step2LineItems({ lineItems, setLineItems, categories, products, quoteType, setQuoteType, subtotal, previousOrdersCount, pastOrderBannerDismissed, setPastOrderBannerDismissed }: any) {
+  // Show a "similar past order" heads-up whenever the customer has >2 prior orders.
+  // Sample values shown until real order-history data is wired.
+  const showSimilarOrderBanner = previousOrdersCount > 2 && !pastOrderBannerDismissed;
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+  const addLine = () => {
+    setCollapsedIds(new Set(lineItems.map((l: LineItem) => l.id)));
+    setLineItems([...lineItems, { id: `l${Date.now()}`, quantity: 1000, finishingIds: [], specialEffectIds: [] }]);
+  };
   const duplicate = (id: string) => {
     const src = lineItems.find((l: LineItem) => l.id === id);
     if (!src) return;
+    setCollapsedIds(new Set(lineItems.map((l: LineItem) => l.id)));
     setLineItems([...lineItems, { ...src, id: `l${Date.now()}`, unitPrice: undefined, extended: undefined, overrideEnabled: false, overrideUnitPrice: undefined, overrideExtended: undefined }]);
   };
-  const remove = (id: string) => setLineItems(lineItems.filter((l: LineItem) => l.id !== id));
+  const remove = (id: string) => {
+    setLineItems(lineItems.filter((l: LineItem) => l.id !== id));
+    setCollapsedIds(s => { const n = new Set(s); n.delete(id); return n; });
+  };
   const update = (id: string, patch: Partial<LineItem>) => setLineItems(lineItems.map((l: LineItem) => l.id === id ? { ...l, ...patch } : l));
+  const toggleCollapse = (id: string) => setCollapsedIds(s => {
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: "14px" }}>
@@ -617,6 +738,24 @@ function Step2LineItems({ lineItems, setLineItems, categories, products, quoteTy
             <button onClick={() => setQuoteType("comparison")} style={{ padding: "6px 14px", background: quoteType === "comparison" ? "#171717" : "transparent", color: quoteType === "comparison" ? "#fff" : "#666", border: "none", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>Comparison</button>
           </div>
         </div>
+
+        {/* Similar past-order heads-up — sample data until real history wiring is in place */}
+        {showSimilarOrderBanner && (
+          <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "12px 14px", display: "flex", alignItems: "flex-start", gap: "10px" }}>
+            <span style={{ fontSize: "16px", lineHeight: 1 }}>⚠</span>
+            <div style={{ flex: 1, fontSize: "12.5px", color: "#78350f", lineHeight: 1.5 }}>
+              <b>Heads up</b> — This customer ordered <b>"Roll Labels · Semi-Gloss Paper Label · 3×4" · 5,000 pcs"</b> on <b>Mar 15, 2026</b> for <b>$2,100 ($0.42/pc)</b>. Similar pricing recommended for consistency.
+              <div style={{ fontSize: "10.5px", color: "#a16207", marginTop: "3px", fontStyle: "italic" }}>Sample data — real order-history wiring pending.</div>
+            </div>
+            <button
+              onClick={() => setPastOrderBannerDismissed(true)}
+              title="Dismiss"
+              style={{ background: "transparent", border: "none", color: "#92400e", cursor: "pointer", fontSize: "16px", padding: "0 4px", lineHeight: 1 }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* Line Items */}
         <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "18px 22px" }}>
@@ -639,6 +778,8 @@ function Step2LineItems({ lineItems, setLineItems, categories, products, quoteTy
               onDuplicate={() => duplicate(line.id)}
               onRemove={() => remove(line.id)}
               canRemove={lineItems.length > 1}
+              collapsed={collapsedIds.has(line.id)}
+              onToggleCollapse={() => toggleCollapse(line.id)}
             />
           ))}
 
@@ -666,7 +807,7 @@ function Step2LineItems({ lineItems, setLineItems, categories, products, quoteTy
 
         <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "16px 18px" }}>
           <div style={{ fontSize: "11px", fontWeight: 800, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" }}>Estimated Turnaround</div>
-          <div style={{ fontSize: "16px", fontWeight: 800 }}>📅 {productionSpeed}</div>
+          <div style={{ fontSize: "16px", fontWeight: 800 }}>📅 Based on due date</div>
           <div style={{ fontSize: "11px", color: "#888", marginTop: "2px" }}>Production time</div>
         </div>
 
@@ -747,7 +888,7 @@ function isRollProduct(subcategory?: string | null) {
 }
 
 // ─── Line Item Editor ────────────────────────────────
-function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDuplicate, onRemove, canRemove }: any) {
+function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDuplicate, onRemove, canRemove, collapsed, onToggleCollapse }: any) {
   const [categoryId, setCategoryId] = useState<string>("");
   const [renamingName, setRenamingName] = useState(false);
   const [displayName, setDisplayName] = useState(`Line ${index + 1}`);
@@ -823,6 +964,47 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
     onUpdate({ specialEffectIds: cur.includes(eid) ? cur.filter((x: number) => x !== eid) : [...cur, eid] });
   };
 
+  // Collapsed summary strip — shown for prior line items once the user moves on to the next one.
+  if (collapsed) {
+    const sizeStr = lineItem.widthIn && lineItem.heightIn ? `${lineItem.widthIn}×${lineItem.heightIn}"` : null;
+    const qtyStr = lineItem.quantity ? `${Number(lineItem.quantity).toLocaleString()} pcs` : null;
+    const finCount = (lineItem.finishingIds?.length || 0) + (lineItem.specialEffectIds?.length || 0);
+    const finStr = finCount > 0 ? `${finCount} finish${finCount === 1 ? "" : "es"}` : null;
+    const priceShown = lineItem.overrideEnabled ? lineItem.overrideExtended : lineItem.extended;
+    const artwork = lineItem.artworkFiles?.[0]?.name;
+    return (
+      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "10px 14px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "6px", padding: "2px", lineHeight: 0, flexShrink: 0 }}>
+          <div style={{ transform: "scale(0.55)", transformOrigin: "top left", width: "44px", height: "33px" }}>
+            <ProductThumb subcategory={selectedProduct?.subcategory} />
+          </div>
+        </div>
+        <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <span style={{ fontSize: "10.5px", fontWeight: 800, color: "var(--preview-text-muted)", letterSpacing: "0.05em" }}>LINE {index + 1}</span>
+            <span style={{ fontSize: "13px", fontWeight: 700, color: "var(--preview-text)" }}>{lineItem.productName || displayName || "Untitled product"}</span>
+            {lineItem.materialName && <span style={{ fontSize: "11.5px", color: "var(--preview-text-muted)" }}>· {lineItem.materialName}</span>}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "11.5px", color: "var(--preview-text-muted)", flexWrap: "wrap" }}>
+            {sizeStr && <span>{sizeStr}</span>}
+            {qtyStr && <span>· {qtyStr}</span>}
+            {lineItem.rollDirection && <span>· {lineItem.rollDirection}</span>}
+            {finStr && <span>· {finStr}</span>}
+            {artwork && <span title={artwork} style={{ maxWidth: "160px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>· 📎 {artwork}</span>}
+          </div>
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontSize: "15px", fontWeight: 800, color: lineItem.overrideEnabled ? ACCENT : "#16a34a" }}>
+            {priceShown != null ? `$${Number(priceShown).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
+          </div>
+          {lineItem.overrideEnabled && <div style={{ fontSize: "9.5px", color: "#888" }}>overridden</div>}
+        </div>
+        <button onClick={onToggleCollapse} style={{ padding: "6px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>✎ Edit</button>
+        {canRemove && <button onClick={onRemove} style={{ padding: "6px 8px", background: "transparent", border: "1px solid #fca5a5", borderRadius: "6px", color: "#dc2626", fontSize: "12px", cursor: "pointer" }}>🗑</button>}
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "14px 16px", marginBottom: "12px" }}>
       {/* Header */}
@@ -838,7 +1020,13 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
         </div>
         <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
           {selectedProduct && (
-            <a href={`https://bazaarprinting.com/product/${slugify(selectedProduct.name)}?id=${selectedProduct.id}`} target="_blank" rel="noreferrer" style={{ padding: "5px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", color: "#1e40af", textDecoration: "none" }}>↗ Verify on Bazaar site</a>
+            <a
+              href={`https://bazaarprinting.com/products/${slugify(selectedProduct.name)}`}
+              target="_blank"
+              rel="noreferrer"
+              title={`Open ${selectedProduct.name} on bazaarprinting.com to double-check specs, pricing tiers, and options match the live site.`}
+              style={{ padding: "5px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", color: "#1e40af", textDecoration: "none" }}
+            >↗ Verify on Bazaar site</a>
           )}
           <button onClick={onDuplicate} style={{ padding: "5px 10px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer" }}>⧉ Duplicate</button>
           {canRemove && <button onClick={onRemove} style={{ padding: "5px 8px", background: "#fff", border: "1px solid #fca5a5", borderRadius: "6px", color: "#dc2626", fontSize: "12px", cursor: "pointer" }}>🗑</button>}
@@ -953,7 +1141,7 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
       {isRollProduct(selectedProduct?.subcategory) && (
         <div style={{ marginBottom: "10px", padding: "10px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
           <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Roll Specs</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", maxWidth: "260px" }}>
             <FieldWrap label="Roll Direction" tight>
               <select value={lineItem.rollDirection || ""} onChange={e => onUpdate({ rollDirection: e.target.value })} style={inp}>
                 <option value="">Select…</option>
@@ -962,16 +1150,6 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
                 <option>Left Out</option>
                 <option>Right Out</option>
               </select>
-            </FieldWrap>
-            <FieldWrap label="Core Size" tight>
-              <select value={lineItem.coreSize || ""} onChange={e => onUpdate({ coreSize: e.target.value })} style={inp}>
-                <option value="">Select…</option>
-                <option>1"</option>
-                <option>3"</option>
-              </select>
-            </FieldWrap>
-            <FieldWrap label="Outside Diameter" tight>
-              <input value={lineItem.outsideDiameter || ""} onChange={e => onUpdate({ outsideDiameter: e.target.value })} placeholder="e.g. 6&quot;" style={inp} />
             </FieldWrap>
           </div>
         </div>
@@ -1023,7 +1201,7 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
         <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", padding: "10px 12px" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
             <div style={{ fontSize: "10.5px", color: "#666", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
-              {lineItem.overrideEnabled ? "Overridden Price" : "Estimated Price"}
+              {lineItem.overrideEnabled ? "Override Unit Price" : "Estimated Price"}
             </div>
             <label style={{ fontSize: "10px", color: "#666", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px" }}>
               <input type="checkbox" checked={!!lineItem.overrideEnabled} onChange={e => onUpdate({ overrideEnabled: e.target.checked, overrideUnitPrice: e.target.checked ? lineItem.unitPrice : undefined, overrideExtended: e.target.checked ? lineItem.extended : undefined })} style={{ width: "12px", height: "12px" }} />
@@ -1034,13 +1212,18 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
             <>
               <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
                 <span style={{ fontSize: "16px", fontWeight: 800, color: ACCENT }}>$</span>
-                <input type="number" step="0.01" value={lineItem.overrideExtended ?? ""} onChange={e => {
+                <input type="number" step="0.0001" value={lineItem.overrideUnitPrice ?? ""} onChange={e => {
                   const v = Number(e.target.value) || 0;
-                  onUpdate({ overrideExtended: v, overrideUnitPrice: lineItem.quantity ? v / lineItem.quantity : 0 });
+                  onUpdate({ overrideUnitPrice: v, overrideExtended: (lineItem.quantity || 0) * v });
                 }} style={{ ...inp, padding: "4px 8px", fontSize: "16px", fontWeight: 800, color: ACCENT, width: "120px" }} />
+                <span style={{ fontSize: "10.5px", color: "#666" }}>/ unit</span>
               </div>
-              <div style={{ fontSize: "10px", color: "#888", marginTop: "3px" }}>
-                {lineItem.overrideUnitPrice ? `$${lineItem.overrideUnitPrice.toFixed(4)} / unit` : ""} · was ${lineItem.extended?.toFixed(2) ?? "—"}
+              <div style={{ fontSize: "11px", color: "#111", marginTop: "4px", fontWeight: 700 }}>
+                = ${((lineItem.quantity || 0) * (lineItem.overrideUnitPrice || 0)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} total
+                <span style={{ fontWeight: 400, color: "#888" }}> ({(lineItem.quantity || 0).toLocaleString()} × ${(lineItem.overrideUnitPrice || 0).toFixed(4)})</span>
+              </div>
+              <div style={{ fontSize: "10px", color: "#888", marginTop: "2px" }}>
+                was ${lineItem.extended?.toFixed(2) ?? "—"}
               </div>
               <input value={lineItem.overrideReason || ""} onChange={e => onUpdate({ overrideReason: e.target.value })} placeholder="Reason (optional): discount, negotiation..." style={{ ...inp, padding: "4px 8px", fontSize: "10.5px", marginTop: "4px" }} />
             </>
@@ -1058,7 +1241,7 @@ function LineItemEditor({ lineItem, index, categories, products, onUpdate, onDup
               <div style={{ fontSize: "10px", color: "#888", marginTop: "2px" }}>
                 {lineItem.unitPrice != null ? `$${lineItem.unitPrice.toFixed(4)} / unit` : "Fill in specs"}
               </div>
-              {lineItem.extended != null && <div style={{ fontSize: "9.5px", color: "#aaa", fontStyle: "italic", marginTop: "3px" }}>Mock price · real Bazaar engine in production</div>}
+              {lineItem.extended != null && <div style={{ fontSize: "9.5px", color: "#b45309", fontStyle: "italic", marginTop: "3px" }}>⚠ Placeholder — real bazaarprinting.com pricing engine not wired yet</div>}
             </>
           )}
         </div>
@@ -1110,7 +1293,7 @@ function Step3Review(props: any) {
             <button onClick={() => props.setFulfillment("ship")} style={{ flex: 1, padding: "8px", background: props.fulfillment === "ship" ? GOLD : "transparent", color: props.fulfillment === "ship" ? "#171717" : "#666", border: "none", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>🚚 Ship to customer</button>
           </div>
           <div style={{ fontSize: "11px", fontWeight: 800, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "6px" }}>Estimated Turnaround</div>
-          <div style={{ fontSize: "15px", fontWeight: 800 }}>📅 {props.productionSpeed}</div>
+          <div style={{ fontSize: "15px", fontWeight: 800 }}>📅 Based on due date</div>
           <div style={{ fontSize: "10.5px", color: "#888", marginTop: "2px" }}>Production time after artwork approval.</div>
         </div>
       </div>

@@ -499,16 +499,16 @@ function VersionABody({ widgets }: { widgets: Record<WidgetKey, boolean> }) {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
-            <ScoreCard initials="AA" name="Azat Aslanean" role="Sales Rep" score={92} label="Excellent" color="#16a34a" rank="Rank #1 of 6"
+            <ScoreCard initials="AA" name="Azat Aslanean" repSlug="azat" role="Sales Rep" score={92} label="Excellent" color="#16a34a" rank="Rank #1 of 6"
               top={[{ k: "Quotes Sent", v: "16", d: "↗ 22%", good: true }, { k: "Orders Won", v: "5", d: "↗ 25%", good: true }, { k: "Conversion", v: "31%", d: "↗ 5%", good: true }]}
               bottom={[{ k: "Response Time", v: "18m", s: "Great" }, { k: "Follow Ups", v: "42", s: "On Track" }, { k: "Revenue", v: "$12.4K", d: "↗ 18%", good: true }]} />
-            <ScoreCard initials="MC" name="Manny Carlo" role="SDR" score={78} label="Good" color="#2563eb" rank="Rank #2 of 6"
+            <ScoreCard initials="MC" name="Manny Carlo" repSlug="manny" role="SDR" score={78} label="Good" color="#2563eb" rank="Rank #2 of 6"
               top={[{ k: "Leads Added", v: "27", d: "↗ 12%", good: true }, { k: "Qualified", v: "15", d: "↗ 25%", good: true }, { k: "Contact Rate", v: "56%", d: "↗ 10%", good: true }]}
               bottom={[{ k: "Response Time", v: "6m", s: "Great" }, { k: "Meetings Booked", v: "6", s: "On Track" }, { k: "SQL Rate", v: "28%", s: "Avg" }]} />
-            <ScoreCard initials="MH" name="Maria Hakobyan" role="Sales Rep" score={64} label="Needs Attention" color="#f59e0b" rank="Rank #5 of 6"
+            <ScoreCard initials="MH" name="Maria Hakobyan" repSlug="maria" role="Sales Rep" score={64} label="Needs Attention" color="#f59e0b" rank="Rank #5 of 6"
               top={[{ k: "Quotes Sent", v: "11", d: "↘ 8%", good: false }, { k: "Orders Won", v: "2", d: "↘ 12%", good: false }, { k: "Conversion", v: "18%", d: "↘ 7%", good: false }]}
               bottom={[{ k: "Response Time", v: "32m", s: "High" }, { k: "Follow Ups", v: "28", s: "Behind" }, { k: "Revenue", v: "$4.3K", d: "↘ 12%", good: false }]} />
-            <ScoreCard initials="GM" name="Gary Matevosyan" role="Sales Rep" score={48} label="Needs Review" color="#dc2626" rank="Rank #6 of 6"
+            <ScoreCard initials="GM" name="Gary Matevosyan" repSlug="gary" role="Sales Rep" score={48} label="Needs Review" color="#dc2626" rank="Rank #6 of 6"
               top={[{ k: "Quotes Sent", v: "9", d: "↘ 20%", good: false }, { k: "Orders Won", v: "1", d: "↘ 50%", good: false }, { k: "Conversion", v: "11%", d: "↘ 9%", good: false }]}
               bottom={[{ k: "Response Time", v: "1h 52m", s: "Very High" }, { k: "Follow Ups", v: "14", s: "Behind" }, { k: "Revenue", v: "$1.2K", d: "↘ 35%", good: false }]} />
           </div>
@@ -1004,7 +1004,7 @@ export function OutstandingBreakdownCardA() {
 
         {/* C. Payment Risk — kept as a distinct red-tinted callout. */}
         <Link
-          href="/preview/orders?risk=payment"
+          href="/preview/orders?filter=payment-overdue"
           className="risk-callout"
           style={{ marginTop: "10px", padding: "10px 12px" }}
         >
@@ -1115,10 +1115,100 @@ export function FunnelPanelA() {
   );
 }
 
-export function ScoreCard({ initials, name, role, score, label, color, rank, top, bottom }: any) {
+// Map a metric key → destination URL (or null for static/derived metrics).
+// `repSlug` is the URL-safe rep identifier: azat | manny | maria | gary.
+function scoreCardHref(metricKey: string, role: string, repSlug: string): string | null {
+  const isSDR = role === "SDR";
+  const k = metricKey.toLowerCase();
+  if (isSDR) {
+    if (k === "leads added") return `/preview/leads?sdr=${repSlug}`;
+    if (k === "qualified") return `/preview/leads?sdr=${repSlug}&stage=routed`;
+    if (k === "meetings booked") return `/preview/leads?sdr=${repSlug}&meeting=true`;
+    // Contact Rate, SQL Rate, Response Time → static
+    return null;
+  }
+  // Sales Rep
+  if (k === "quotes sent") return `/preview/sales-pipeline?rep=${repSlug}&stage=quoting,quote-approval`;
+  if (k === "orders won") return `/preview/sales-pipeline?rep=${repSlug}&stage=won`;
+  if (k === "follow ups") return `/preview/sales-pipeline?rep=${repSlug}&follow-up=true`;
+  if (k === "revenue") return `/preview/sales-pipeline?rep=${repSlug}&stage=won`;
+  // Conversion, Response Time → static
+  return null;
+}
+
+// Tooltip copy per metric.
+function scoreCardTooltip(metricKey: string, name: string): string {
+  const k = metricKey.toLowerCase();
+  switch (k) {
+    case "quotes sent": return `Quotes ${name} sent in the selected period`;
+    case "orders won": return `Deals ${name} closed and converted to orders`;
+    case "conversion": return "Orders Won ÷ Quotes Sent";
+    case "response time": return "Response-time tracking requires JustCall / Instantly / AI integration — coming soon.";
+    case "follow ups": return `Follow-up tasks assigned to ${name}`;
+    case "revenue": return `Revenue from ${name}'s won deals`;
+    case "leads added": return `Leads ${name} added in the selected period`;
+    case "qualified": return `Leads ${name} qualified and routed to sales`;
+    case "contact rate": return "Leads Contacted ÷ Leads Added";
+    case "meetings booked": return `Meetings ${name} booked with prospects`;
+    case "sql rate": return "Qualified ÷ Leads Added";
+    default: return metricKey;
+  }
+}
+
+export function ScoreCard({ initials, name, role, score, label, color, rank, top, bottom, repSlug }: any) {
   const tint = color + "1A";
+  const slug: string = repSlug || (name ? String(name).split(" ")[0].toLowerCase() : "");
+  const detailsHref = `/preview/reports/team/${slug}`;
+
+  // Cell wrapper: Link if href, plain div otherwise. Preserves layout, adds hover brightness.
+  const TopCell = ({ m }: { m: any }) => {
+    const href = scoreCardHref(m.k, role, slug);
+    const tip = scoreCardTooltip(m.k, name);
+    const inner = (
+      <>
+        <div style={{ fontSize: "9px", color: "#999", textTransform: "uppercase", letterSpacing: "0.03em", fontWeight: 600 }}>{m.k}</div>
+        <div title={tip} style={{ fontSize: "15px", fontWeight: 700, marginTop: "1px", color: href ? undefined : "#999" }}>{m.v}</div>
+        {m.d && <div style={{ fontSize: "10px", fontWeight: 700, color: m.good ? "#16a34a" : "#dc2626" }}>{m.d}</div>}
+      </>
+    );
+    if (href) {
+      return (
+        <Link href={href} className="scorecard-cell" style={{ display: "block", textDecoration: "none", color: "inherit", cursor: "pointer" }}>
+          {inner}
+        </Link>
+      );
+    }
+    return <div title={tip}>{inner}</div>;
+  };
+
+  const BottomCell = ({ m }: { m: any }) => {
+    const href = scoreCardHref(m.k, role, slug);
+    const tip = scoreCardTooltip(m.k, name);
+    const inner = (
+      <>
+        <div style={{ fontSize: "9px", color: "#999", textTransform: "uppercase", letterSpacing: "0.03em", fontWeight: 600 }}>{m.k}</div>
+        <div title={tip} style={{ fontSize: "12px", fontWeight: 700, marginTop: "1px", color: href ? undefined : "#999" }}>{m.v}</div>
+        {m.s ? (
+          <div style={{ fontSize: "9px", fontWeight: 600, color: m.s === "Great" || m.s === "On Track" ? "#16a34a" : (m.s === "Avg" ? "#f59e0b" : "#dc2626") }}>● {m.s}</div>
+        ) : (
+          m.d && <div style={{ fontSize: "9px", fontWeight: 700, color: m.good ? "#16a34a" : "#dc2626" }}>{m.d}</div>
+        )}
+      </>
+    );
+    const cellStyle: React.CSSProperties = { background: "#f9f9f9", padding: "5px 8px", borderRadius: "6px" };
+    if (href) {
+      return (
+        <Link href={href} className="scorecard-cell" style={{ ...cellStyle, display: "block", textDecoration: "none", color: "inherit", cursor: "pointer" }}>
+          {inner}
+        </Link>
+      );
+    }
+    return <div title={tip} style={cellStyle}>{inner}</div>;
+  };
+
   return (
     <div style={{ background: "var(--preview-surface)", borderRadius: "12px", padding: "14px 16px", border: "1px solid var(--preview-border)", position: "relative", overflow: "hidden" }}>
+      <style>{`.scorecard-cell:hover, .scorecard-cell:hover *{filter:brightness(1.15);}`}</style>
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "80px", background: `linear-gradient(180deg, ${color} 0%, ${color}00 100%)`, opacity: 0.18, pointerEvents: "none" }} />
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: "3px", background: color, pointerEvents: "none" }} />
       <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
@@ -1138,30 +1228,14 @@ export function ScoreCard({ initials, name, role, score, label, color, rank, top
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "10px" }}>
-        {top.map((m: any) => (
-          <div key={m.k}>
-            <div style={{ fontSize: "9px", color: "#999", textTransform: "uppercase", letterSpacing: "0.03em", fontWeight: 600 }}>{m.k}</div>
-            <div style={{ fontSize: "15px", fontWeight: 700, marginTop: "1px" }}>{m.v}</div>
-            {m.d && <div style={{ fontSize: "10px", fontWeight: 700, color: m.good ? "#16a34a" : "#dc2626" }}>{m.d}</div>}
-          </div>
-        ))}
+        {top.map((m: any) => <TopCell key={m.k} m={m} />)}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "6px", marginBottom: "10px" }}>
-        {bottom.map((m: any) => (
-          <div key={m.k} style={{ background: "#f9f9f9", padding: "5px 8px", borderRadius: "6px" }}>
-            <div style={{ fontSize: "9px", color: "#999", textTransform: "uppercase", letterSpacing: "0.03em", fontWeight: 600 }}>{m.k}</div>
-            <div style={{ fontSize: "12px", fontWeight: 700, marginTop: "1px" }}>{m.v}</div>
-            {m.s ? (
-              <div style={{ fontSize: "9px", fontWeight: 600, color: m.s === "Great" || m.s === "On Track" ? "#16a34a" : (m.s === "Avg" ? "#f59e0b" : "#dc2626") }}>● {m.s}</div>
-            ) : (
-              m.d && <div style={{ fontSize: "9px", fontWeight: 700, color: m.good ? "#16a34a" : "#dc2626" }}>{m.d}</div>
-            )}
-          </div>
-        ))}
+        {bottom.map((m: any) => <BottomCell key={m.k} m={m} />)}
       </div>
       <div style={{ borderTop: "1px solid #f4f4f4", paddingTop: "8px", display: "flex", justifyContent: "space-between" }}>
         <span style={{ fontSize: "11px", color: "#888" }}>{rank}</span>
-        <span style={{ fontSize: "11px", color: ACCENT, fontWeight: 600 }}>View details →</span>
+        <Link href={detailsHref} style={{ fontSize: "11px", color: ACCENT, fontWeight: 600, textDecoration: "none", cursor: "pointer" }}>View details →</Link>
       </div>
     </div>
   );

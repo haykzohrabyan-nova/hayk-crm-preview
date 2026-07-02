@@ -54,7 +54,10 @@ interface Order {
   balanceDue: number;
   priority: Priority;
   dueDate: string;
-  dueOverdue?: boolean;
+  dueOverdue?: boolean;              // true = production/shipping due date passed
+  paymentTerms?: string;             // "Net-15" / "Net-30" / "Due on receipt" / "Deposit + balance"
+  paymentDueDate?: string;           // "07/15/2026" — when payment is due per terms
+  paymentOverdue?: boolean;          // true = past payment terms AND still not fully paid
   status: OrderStatus;
   payment: PaymentStatus;
   createdAgo: string;
@@ -121,6 +124,7 @@ const ORDERS: Order[] = [
       { id: "l1", productId: 30, productName: "Label + 9ml Jar Combo", productCategory: "Combos", materialId: 189, materialName: "Semi-Gloss Paper Label", quantity: 2000, widthIn: 2, heightIn: 2, sides: "S1", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [201], specialEffectLabels: ["Spot UV"], unitPrice: 0.75, extended: 1500.00 },
     ],
     total: 1500.00, received: 800.00, balanceDue: 700.00,
+    paymentTerms: "Net-15", paymentDueDate: "06/15/2026", paymentOverdue: true,
     priority: "Normal", dueDate: "07/03/2026",
     status: "In Production", payment: "Tax Exempt",
     createdAgo: "18h ago", createdDate: "06/30/2026", attachmentsCount: 3, attachments: ["la_kush_label.ai", "spot_uv_mask.pdf", "small_die.dxf"],
@@ -136,6 +140,7 @@ const ORDERS: Order[] = [
       { id: "l2", productId: 30, productName: "Stand Up Pouch", productCategory: "Bags & Pouches", materialId: 175, materialName: "MET PET", quantity: 2562, widthIn: 5, heightIn: 8, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [201], specialEffectLabels: ["Spot UV"], unitPrice: 1.52, extended: 3906.74 },
     ],
     total: 9517.52, received: 5000.00, balanceDue: 4517.52,
+    paymentTerms: "Net-30", paymentDueDate: "06/05/2026", paymentOverdue: true,
     priority: "Normal", dueDate: "07/03/2026",
     status: "In Production", payment: "Partial",
     createdAgo: "20h ago", createdDate: "06/30/2026", attachmentsCount: 6, attachments: ["trap_snacks_box_v2.ai", "trap_snacks_pouch.ai", "terp_head.dxf", "spot_uv_front.pdf", "spot_uv_back.pdf", "proof_bundle.pdf"],
@@ -273,6 +278,7 @@ const ORDERS: Order[] = [
       { id: "l1", productId: 30, productName: "Mylar Bag", productCategory: "Bags & Pouches", materialId: 175, materialName: "MET PET", quantity: 5000, widthIn: 5, heightIn: 7, sides: "S2", colorMode: "CMYK", finishingIds: [178], finishingLabels: ["Soft Touch Lam"], specialEffectIds: [], specialEffectLabels: [], unitPrice: 1.15, extended: 5750.00 },
     ],
     total: 5750.00, received: 2000.00, balanceDue: 3750.00,
+    paymentTerms: "Net-15", paymentDueDate: "06/17/2026", paymentOverdue: true,
     priority: "Normal", dueDate: "07/05/2026",
     status: "Pending Payment", payment: "Partial",
     createdAgo: "2d ago", createdDate: "06/28/2026", attachmentsCount: 4, attachments: ["hearth_pouch_sku1.ai", "hearth_pouch_sku2.ai", "hearth_pouch_sku3.ai", "hearth_pouch_sku4.ai"],
@@ -329,6 +335,18 @@ const ORDERS: Order[] = [
 // ─── Format ────────────────────────────────────────────
 const fmtMoney = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+// Compute how many days past due, based on today = 07/01/2026 (the fixed mock "today").
+// Returns 0 or negative if not overdue.
+function daysPastDue(dueDate: string): number {
+  if (!dueDate) return 0;
+  const [m, d, y] = dueDate.split("/").map(Number);
+  if (!m || !d || !y) return 0;
+  const due = new Date(y, m - 1, d);
+  const today = new Date(2026, 6, 1); // 07/01/2026
+  const diff = Math.floor((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+  return diff > 0 ? diff : 0;
+}
+
 const STATUS_COLORS: Record<OrderStatus, { bg: string; fg: string }> = {
   "Pending Payment": { bg: "#fef3c7", fg: "#92400e" },
   "In Production": { bg: "#dbeafe", fg: "#1e40af" },
@@ -348,13 +366,14 @@ const PAY_COLORS: Record<PaymentStatus, { bg: string; fg: string }> = {
 };
 
 // ─── Quick-filter chips ────────────────────────────────
-type ChipKey = "overdue" | "rush" | "hasFiles" | "awaitingPayment" | "balanceDue";
-const CHIPS: { key: ChipKey; label: string; tint: string }[] = [
-  { key: "overdue",         label: "🔴 Overdue",         tint: "#dc2626" },
-  { key: "rush",            label: "⚠ Rush",             tint: "#f59e0b" },
-  { key: "hasFiles",        label: "📎 Has files",        tint: "#3b82f6" },
-  { key: "awaitingPayment", label: "🕒 Awaiting payment", tint: "#a16207" },
-  { key: "balanceDue",      label: "💰 Balance due",      tint: "#dc2626" },
+type ChipKey = "overdue" | "paymentOverdue" | "rush" | "hasFiles" | "awaitingPayment" | "balanceDue";
+const CHIPS: { key: ChipKey; label: string; tint: string; tooltip: string }[] = [
+  { key: "overdue",         label: "🔴 Delivery Overdue", tint: "#dc2626", tooltip: "Order due date has passed (production / shipping deadline missed)." },
+  { key: "paymentOverdue",  label: "💸 Payment Overdue",   tint: "#b91c1c", tooltip: "Customer is past their agreed payment terms (Net-15 / Net-30 etc.) and hasn't paid yet." },
+  { key: "rush",            label: "⚠ Rush",              tint: "#f59e0b", tooltip: "Rush-priority orders needing extra attention." },
+  { key: "hasFiles",        label: "📎 Has files",         tint: "#3b82f6", tooltip: "Orders with at least one uploaded artwork / dieline / reference file." },
+  { key: "awaitingPayment", label: "🕒 Awaiting payment",  tint: "#a16207", tooltip: "Orders that have not yet been paid in full — includes partial and unpaid." },
+  { key: "balanceDue",      label: "💰 Balance due",       tint: "#dc2626", tooltip: "Orders with any unpaid amount remaining, regardless of terms." },
 ];
 
 // ─── Page ────────────────────────────────────────────
@@ -366,7 +385,15 @@ export default function OrdersPreview() {
   const [expandedId, setExpandedId] = useState<string | null>("2026-0114");
   const [detailId, setDetailId] = useState<string | null>(null);
   const [view, setView] = useState<"table" | "kanban">("table");
-  const [chips, setChips] = useState<Set<ChipKey>>(new Set());
+  const [chips, setChips] = useState<Set<ChipKey>>(() => {
+    // Auto-apply chip from ?filter= URL param, so dashboard callouts can deep-link.
+    if (typeof window === "undefined") return new Set();
+    const p = new URLSearchParams(window.location.search).get("filter");
+    if (p === "payment-overdue") return new Set(["paymentOverdue" as ChipKey]);
+    if (p === "past-due" || p === "overdue") return new Set(["overdue" as ChipKey]);
+    if (p === "rush") return new Set(["rush" as ChipKey]);
+    return new Set();
+  });
 
   const toggleChip = (k: ChipKey) => {
     setChips(prev => {
@@ -391,6 +418,7 @@ export default function OrdersPreview() {
       out = out.filter(o => o.contact.toLowerCase().includes(q) || o.company.toLowerCase().includes(q) || o.refId.includes(q) || o.title.toLowerCase().includes(q));
     }
     if (chips.has("overdue"))         out = out.filter(o => o.dueOverdue === true);
+    if (chips.has("paymentOverdue"))  out = out.filter(o => o.paymentOverdue === true);
     if (chips.has("rush"))            out = out.filter(o => o.priority === "Rush");
     if (chips.has("hasFiles"))        out = out.filter(o => o.attachmentsCount > 0);
     if (chips.has("awaitingPayment")) out = out.filter(o => o.status === "Pending Payment" || o.payment !== "Paid");
@@ -504,7 +532,7 @@ export default function OrdersPreview() {
             {CHIPS.map(c => {
               const active = chips.has(c.key);
               return (
-                <button key={c.key} onClick={() => toggleChip(c.key)} style={{
+                <button key={c.key} onClick={() => toggleChip(c.key)} title={c.tooltip} style={{
                   padding: "4px 10px",
                   background: active ? c.tint + "22" : "var(--preview-surface-2)",
                   color: active ? c.tint : "#666",
@@ -616,8 +644,11 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
         <td style={td}>
           {order.dueDate ? (
             <>
-              <div style={{ fontSize: "11.5px", color: overdue ? "#dc2626" : "#171717", fontWeight: overdue ? 700 : 500 }}>{order.dueDate}</div>
-              {overdue && <div style={{ fontSize: "10px", color: "#dc2626", fontWeight: 700 }}>Overdue</div>}
+              <div style={{ fontSize: "11.5px", color: overdue ? "#dc2626" : "var(--preview-text)", fontWeight: overdue ? 700 : 500 }}>{order.dueDate}</div>
+              {overdue && (() => {
+                const d = daysPastDue(order.dueDate);
+                return <div style={{ fontSize: "10px", color: "#dc2626", fontWeight: 700 }} title={`Due date passed ${d} day${d === 1 ? "" : "s"} ago`}>⚠ {d} {d === 1 ? "day" : "days"} late</div>;
+              })()}
             </>
           ) : <span style={{ color: "#bbb" }}>—</span>}
         </td>
@@ -741,19 +772,30 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
       gap: "4px",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: "#171717" }}>{order.refId}</span>
-        <span style={{ fontSize: "10px", fontWeight: 700, color: order.priority === "Rush" ? "#f59e0b" : order.priority === "High" ? "#dc2626" : "#22c55e" }}>{order.priority}</span>
+        <span style={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: "var(--preview-text)" }}>{order.refId}</span>
+        <span
+          title={`Priority: ${order.priority}${order.priority === "Rush" ? " — top priority" : order.priority === "High" ? " — above normal" : " — normal turnaround"}`}
+          style={{ fontSize: "10px", fontWeight: 700, color: order.priority === "Rush" ? "#f59e0b" : order.priority === "High" ? "#dc2626" : "#22c55e", cursor: "help", padding: "1px 6px", background: order.priority === "Rush" ? "rgba(245,158,11,0.12)" : order.priority === "High" ? "rgba(220,38,38,0.12)" : "rgba(34,197,94,0.12)", borderRadius: "999px" }}
+        >⚑ {order.priority}</span>
       </div>
-      <div style={{ fontSize: "12.5px", fontWeight: 700, color: "#171717", lineHeight: 1.3 }}>{order.contact}</div>
-      {order.company && <div style={{ fontSize: "10.5px", color: "#888" }}>{order.company}</div>}
+      <div style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)", lineHeight: 1.3 }}>{order.contact}</div>
+      {order.company && <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)" }}>{order.company}</div>}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
         <span style={{ fontSize: "13px", fontWeight: 800, color: "#16a34a" }}>{fmtMoney(order.total)}</span>
         {order.dueDate ? (
-          <span style={{ fontSize: "10.5px", color: overdue ? "#dc2626" : "#666", fontWeight: overdue ? 700 : 500 }}>
+          <span style={{ fontSize: "10.5px", color: overdue ? "#dc2626" : "var(--preview-text-muted)", fontWeight: overdue ? 700 : 500 }}>
             {overdue ? "⚠ " : "📅 "}{order.dueDate}
           </span>
-        ) : <span style={{ fontSize: "10.5px", color: "#bbb" }}>—</span>}
+        ) : <span style={{ fontSize: "10.5px", color: "var(--preview-text-faint)" }}>—</span>}
       </div>
+      {overdue && (() => {
+        const d = daysPastDue(order.dueDate);
+        return (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "3px", marginTop: "2px", padding: "2px 7px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "999px", fontSize: "10px", color: "#dc2626", fontWeight: 700, alignSelf: "flex-start" }}
+            title={`Due date passed ${d} day${d === 1 ? "" : "s"} ago`}
+          >⚠ {d} {d === 1 ? "day" : "days"} late</div>
+        );
+      })()}
       {order.attachmentsCount > 0 && (
         <div style={{ fontSize: "10px", color: "#3b82f6", fontWeight: 600, marginTop: "2px" }}>📎 {order.attachmentsCount}</div>
       )}
@@ -827,8 +869,16 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
           <div style={{ fontSize: "10.5px", color: "#888" }}>3:50 PM ({order.createdAgo})</div>
         </MetaCell>
         <MetaCell icon="📅" label="Due Date">
-          <div style={{ fontWeight: 700, color: order.dueOverdue ? "#dc2626" : "#171717" }}>{order.dueDate || "—"}</div>
-          {order.dueOverdue && <div style={{ fontSize: "10.5px", color: "#dc2626", fontWeight: 700 }}>Overdue</div>}
+          <div style={{ fontWeight: 700, color: order.dueOverdue ? "#dc2626" : "var(--preview-text)" }}>{order.dueDate || "—"}</div>
+          {order.dueOverdue && (() => {
+            const d = daysPastDue(order.dueDate);
+            return (
+              <div
+                style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginTop: "3px", padding: "2px 8px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "999px", fontSize: "10.5px", color: "#dc2626", fontWeight: 700 }}
+                title={`Due date passed ${d} day${d === 1 ? "" : "s"} ago`}
+              >⚠ {d} {d === 1 ? "day" : "days"} late</div>
+            );
+          })()}
         </MetaCell>
         <MetaCell icon="🚩" label="Priority">
           <select value={priority} onChange={e => setPriority(e.target.value as Priority)} style={{ padding: "3px 10px 3px 6px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "5px", fontSize: "12.5px", fontWeight: 700, width: "100%" }}>

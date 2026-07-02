@@ -13,11 +13,140 @@
 // Reuses AlertsPanelA, FunnelPanelA, ScoreCard from _VersionAClient for
 // sections 5 and 6 verbatim.
 
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AlertsPanelA, FunnelPanelA, ScoreCard } from "./_VersionAClient";
 
 const ACCENT = "#FF5D2E";
+
+// ─── Inline popover styles (mirror _VersionAClient) ────────────
+const POPOVER_STYLE: React.CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 8px)",
+  right: 0,
+  background: "var(--preview-surface, #ffffff)",
+  backgroundColor: "var(--preview-surface, #ffffff)",
+  border: "1px solid var(--preview-border)",
+  borderRadius: "12px",
+  boxShadow: "0 20px 50px rgba(0, 0, 0, 0.5)",
+  zIndex: 9999,
+  padding: "6px",
+  minWidth: "220px",
+  color: "var(--preview-text)",
+  isolation: "isolate",
+};
+
+const POPOVER_ITEM_STYLE: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: "8px",
+  fontSize: "13px",
+  cursor: "pointer",
+  color: "var(--preview-text)",
+  textDecoration: "none",
+  display: "block",
+  transition: "background 120ms ease",
+};
+
+// ─── Types ────────────────────────────────────────────────────
+type DateRangeKey = "today" | "7d" | "30d" | "90d" | "custom";
+type DateRangeState = { key: DateRangeKey; from?: string; to?: string };
+
+type WidgetKey =
+  | "kpiTiles"
+  | "moneyPosition"
+  | "outstandingBreakdown"
+  | "pipelineValue"
+  | "activeJobs"
+  | "totalLeads"
+  | "conversionRate"
+  | "alertsActions"
+  | "pipelineFunnel"
+  | "teamPerformance"
+  | "quickActions";
+
+type Notification = { id: string; text: string; ts: string };
+
+const DEFAULT_WIDGETS: Record<WidgetKey, boolean> = {
+  kpiTiles: true,
+  moneyPosition: true,
+  outstandingBreakdown: true,
+  pipelineValue: true,
+  activeJobs: true,
+  totalLeads: true,
+  conversionRate: true,
+  alertsActions: true,
+  pipelineFunnel: true,
+  teamPerformance: true,
+  quickActions: true,
+};
+
+const WIDGET_LABELS: Record<WidgetKey, string> = {
+  kpiTiles: "KPI Tiles",
+  moneyPosition: "Money Position",
+  outstandingBreakdown: "Outstanding",
+  pipelineValue: "Pipeline Value",
+  activeJobs: "Active Jobs",
+  totalLeads: "Total Leads",
+  conversionRate: "Conversion Rate",
+  alertsActions: "Alerts",
+  pipelineFunnel: "Funnel",
+  teamPerformance: "Team Performance",
+  quickActions: "Quick Actions",
+};
+
+const DEFAULT_NOTIFS: Notification[] = [
+  { id: "n1", text: "Lead Sarah Chen requires response", ts: "2m ago" },
+  { id: "n2", text: "Quote #Q-4821 past due (48h)", ts: "14m ago" },
+  { id: "n3", text: "Payment received from Northside Café — $2,480", ts: "38m ago" },
+  { id: "n4", text: "Rush order #O-9124 in production", ts: "1h ago" },
+  { id: "n5", text: "New lead from website: Vahan Petrosyan", ts: "2h ago" },
+  { id: "n6", text: "Quote #Q-4815 approved by customer", ts: "3h ago" },
+  { id: "n7", text: "Follow-up due: Green Leaf Dispensary", ts: "4h ago" },
+  { id: "n8", text: "Shipping label printed for #O-9110", ts: "5h ago" },
+  { id: "n9", text: "Lead David Kim requires response", ts: "6h ago" },
+  { id: "n10", text: "Design proof ready for #O-9098", ts: "yesterday" },
+  { id: "n11", text: "Payment received from Bloom Studio — $6,120", ts: "yesterday" },
+  { id: "n12", text: "Rush order #O-9081 shipped", ts: "yesterday" },
+];
+
+const AI_SUGGESTIONS = [
+  "Show me this week's revenue trend",
+  "Which leads need my attention?",
+  "Draft a follow-up email for X customer",
+  "Summarize open quotes",
+];
+
+function formatDateShort(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function rangeLabel(r: DateRangeState): string {
+  switch (r.key) {
+    case "today": return "Today";
+    case "7d": return "Last 7 days";
+    case "30d": return "Last 30 days";
+    case "90d": return "Last 90 days";
+    case "custom":
+      if (r.from && r.to) return `${formatDateShort(r.from)} – ${formatDateShort(r.to)}`;
+      return "Custom range…";
+    default: return "Last 30 days";
+  }
+}
+
+function useClickOutside<T extends HTMLElement>(open: boolean, onClose: () => void) {
+  const ref = useRef<T>(null);
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open, onClose]);
+  return ref;
+}
 
 // ─── Small primitives ─────────────────────────────────────────
 function DeltaPill({ value, positive = true }: { value: string; positive?: boolean }) {
@@ -232,7 +361,7 @@ function OutstandingBreakdownD() {
 
       {/* Payment Risk */}
       <Link
-        href="/preview/orders?risk=payment"
+        href="/preview/orders?filter=payment-overdue"
         style={{
           marginTop: "14px",
           padding: "12px",
@@ -463,91 +592,348 @@ function ConversionRateD() {
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function VersionDClient() {
+  // ---- Date range ----
+  const [dateRange, setDateRange] = useState<DateRangeState>({ key: "30d" });
+  const [dateOpen, setDateOpen] = useState(false);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
+  const [showCustomInputs, setShowCustomInputs] = useState(false);
+
+  // ---- Widgets ----
+  const [widgets, setWidgets] = useState<Record<WidgetKey, boolean>>(DEFAULT_WIDGETS);
+  const [customizeOpen, setCustomizeOpen] = useState(false);
+
+  // ---- Notifications ----
+  const [notifications, setNotifications] = useState<Notification[]>(DEFAULT_NOTIFS);
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  // ---- AI panel ----
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiMessages, setAiMessages] = useState<{ role: "user" | "ai"; text: string }[]>([
+    { role: "ai", text: "Hi Hayk — I'm your AI Assistant. Ask me anything about your business, or pick a suggestion below." },
+  ]);
+  const [aiInput, setAiInput] = useState("");
+
+  // ---- User menu ----
+  const [userOpen, setUserOpen] = useState(false);
+
+  // ---- Persist to localStorage (D-specific keys) ----
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("bazaar.dashboardD.dateRange");
+      if (raw) setDateRange(JSON.parse(raw));
+      const rawW = localStorage.getItem("bazaar.dashboardD.widgets");
+      if (rawW) setWidgets({ ...DEFAULT_WIDGETS, ...JSON.parse(rawW) });
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("bazaar.dashboardD.dateRange", JSON.stringify(dateRange)); } catch {}
+  }, [dateRange]);
+  useEffect(() => {
+    try { localStorage.setItem("bazaar.dashboardD.widgets", JSON.stringify(widgets)); } catch {}
+  }, [widgets]);
+
+  const dateRef = useClickOutside<HTMLDivElement>(dateOpen, () => { setDateOpen(false); setShowCustomInputs(false); });
+  const customizeRef = useClickOutside<HTMLDivElement>(customizeOpen, () => setCustomizeOpen(false));
+  const notifRef = useClickOutside<HTMLDivElement>(notifOpen, () => setNotifOpen(false));
+  const userRef = useClickOutside<HTMLDivElement>(userOpen, () => setUserOpen(false));
+
+  const badgeCount = notifications.length;
+
+  function dismissNotif(id: string) { setNotifications(n => n.filter(x => x.id !== id)); }
+  function markAllRead() { setNotifications([]); }
+
+  function sendAi(text: string) {
+    const q = text.trim();
+    if (!q) return;
+    setAiMessages(m => [...m, { role: "user", text: q }, { role: "ai", text: "I'd need real data access to answer that. This is a preview." }]);
+    setAiInput("");
+  }
+
+  function signOut() {
+    fetch("/api/auth/session", { method: "DELETE" }).catch(() => {}).finally(() => {
+      window.location.href = "/login";
+    });
+  }
+
+  function applyCustomRange() {
+    if (customFrom && customTo) {
+      setDateRange({ key: "custom", from: customFrom, to: customTo });
+      setDateOpen(false);
+      setShowCustomInputs(false);
+    }
+  }
+
+  const anyRow2 = widgets.moneyPosition || widgets.outstandingBreakdown || widgets.pipelineValue;
+  const anyRow3 = widgets.activeJobs || widgets.totalLeads || widgets.conversionRate;
+  const anyRow4 = widgets.alertsActions || widgets.pipelineFunnel;
+
   return (
     <div className="text-foreground" style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}>
       <style>{`
         .vd-hover:hover { filter: brightness(1.05); }
+        .dropdown-item-hover:hover { background: var(--preview-chip-bg) !important; }
       `}</style>
 
       {/* ─── HEADER ROW ────────────────────────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px", gap: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px", gap: "16px", position: "relative", zIndex: 100, isolation: "isolate" }}>
         <div style={{ minWidth: 0 }}>
           <h1 style={{ fontSize: "22px", fontWeight: 700, letterSpacing: "-0.5px" }}>Good morning, Hayk! 👋</h1>
           <div className="text-muted-foreground" style={{ fontSize: "13px", marginTop: "2px" }}>Here's what's happening with your business.</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
-          <div style={{ fontSize: "12px", color: "var(--preview-text)", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", padding: "6px 12px", borderRadius: "8px", whiteSpace: "nowrap", cursor: "pointer" }}>
-            📅 Last 30 days ▾
+
+          {/* Date range */}
+          <div ref={dateRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setDateOpen(v => !v)}
+              style={{ fontSize: "12px", color: "var(--preview-text)", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", padding: "6px 12px", borderRadius: "8px", whiteSpace: "nowrap", cursor: "pointer" }}
+            >
+              📅 {rangeLabel(dateRange)} ▾
+            </button>
+            {dateOpen && (
+              <div style={POPOVER_STYLE}>
+                {([
+                  ["today", "Today"],
+                  ["7d", "Last 7 days"],
+                  ["30d", "Last 30 days"],
+                  ["90d", "Last 90 days"],
+                ] as [DateRangeKey, string][]).map(([k, l]) => (
+                  <div
+                    key={k}
+                    onClick={() => { setDateRange({ key: k }); setDateOpen(false); setShowCustomInputs(false); }}
+                    className="dropdown-item-hover"
+                    style={{ ...POPOVER_ITEM_STYLE, background: dateRange.key === k ? "var(--preview-surface-2)" : "transparent" }}
+                  >{l}</div>
+                ))}
+                <div
+                  onClick={() => setShowCustomInputs(v => !v)}
+                  className="dropdown-item-hover"
+                  style={{ ...POPOVER_ITEM_STYLE, background: dateRange.key === "custom" ? "var(--preview-surface-2)" : "transparent", borderTop: "1px solid var(--preview-border)", marginTop: "4px", borderRadius: 0 }}
+                >Custom range…</div>
+                {showCustomInputs && (
+                  <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: "6px", borderTop: "1px solid var(--preview-border)", marginTop: "4px" }}>
+                    <label style={{ fontSize: "11px", color: "var(--preview-text-muted)" }}>From
+                      <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} style={{ width: "100%", marginTop: "2px", padding: "5px 8px", border: "1px solid var(--preview-border)", borderRadius: "6px", background: "var(--preview-surface-2)", color: "var(--preview-text)", fontSize: "12px" }} />
+                    </label>
+                    <label style={{ fontSize: "11px", color: "var(--preview-text-muted)" }}>To
+                      <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} style={{ width: "100%", marginTop: "2px", padding: "5px 8px", border: "1px solid var(--preview-border)", borderRadius: "6px", background: "var(--preview-surface-2)", color: "var(--preview-text)", fontSize: "12px" }} />
+                    </label>
+                    <button onClick={applyCustomRange} disabled={!customFrom || !customTo} style={{ marginTop: "4px", padding: "6px 10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: customFrom && customTo ? "pointer" : "not-allowed", opacity: customFrom && customTo ? 1 : 0.5 }}>Apply</button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          <div style={{ fontSize: "12px", color: "#fff", background: "#0a0a0a", padding: "6px 12px", borderRadius: "8px", fontWeight: 500, whiteSpace: "nowrap", cursor: "pointer" }}>⚙ Customize</div>
-          <div style={{ position: "relative", cursor: "pointer" }}>
-            <span style={{ fontSize: "18px" }}>🔔</span>
-            <span style={{ position: "absolute", top: "-4px", right: "-6px", background: "#dc2626", color: "#fff", fontSize: "9px", fontWeight: 700, padding: "1px 5px", borderRadius: "999px" }}>12</span>
+
+          {/* Customize */}
+          <div ref={customizeRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setCustomizeOpen(v => !v)}
+              style={{ fontSize: "12px", color: "#fff", background: "#0a0a0a", padding: "6px 12px", borderRadius: "8px", fontWeight: 500, whiteSpace: "nowrap", border: "none", cursor: "pointer" }}
+            >⚙ Customize</button>
+            {customizeOpen && (
+              <div style={{ ...POPOVER_STYLE, minWidth: "260px" }}>
+                <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", padding: "4px 14px 8px" }}>Show widgets</div>
+                {(Object.keys(WIDGET_LABELS) as WidgetKey[]).map(k => (
+                  <label key={k} className="dropdown-item-hover" style={{ ...POPOVER_ITEM_STYLE, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span>{WIDGET_LABELS[k]}</span>
+                    <input type="checkbox" checked={widgets[k]} onChange={e => setWidgets(w => ({ ...w, [k]: e.target.checked }))} />
+                  </label>
+                ))}
+                <div style={{ borderTop: "1px solid var(--preview-border)", marginTop: "6px", paddingTop: "6px", display: "flex", justifyContent: "space-between" }}>
+                  <button onClick={() => setWidgets(DEFAULT_WIDGETS)} style={{ background: "transparent", border: "none", color: ACCENT, fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>Reset</button>
+                  <button onClick={() => setCustomizeOpen(false)} style={{ background: "transparent", border: "none", color: "var(--preview-text-muted)", fontSize: "12px", cursor: "pointer" }}>Done</button>
+                </div>
+              </div>
+            )}
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "linear-gradient(90deg,#a78bfa,#f472b6)", color: "#fff", padding: "6px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", cursor: "pointer" }}>✨ AI</div>
-          <div style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#e5e5e5", color: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "12px" }}>H</div>
+
+          {/* Notifications */}
+          <div ref={notifRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setNotifOpen(v => !v)}
+              style={{ position: "relative", background: "transparent", border: "none", cursor: "pointer", padding: "2px 4px" }}
+              aria-label="Notifications"
+            >
+              <span style={{ fontSize: "18px" }}>🔔</span>
+              {badgeCount > 0 && (
+                <span style={{ position: "absolute", top: "-4px", right: "-6px", background: "#dc2626", color: "#fff", fontSize: "9px", fontWeight: 700, padding: "1px 5px", borderRadius: "999px" }}>{badgeCount}</span>
+              )}
+            </button>
+            {notifOpen && (
+              <div style={{ ...POPOVER_STYLE, width: "340px", maxHeight: "440px", padding: 0, display: "flex", flexDirection: "column" }}>
+                <div style={{ padding: "10px 12px", borderBottom: "1px solid var(--preview-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: "13px", fontWeight: 700 }}>Notifications</span>
+                  <span style={{ fontSize: "11px", color: "var(--preview-text-muted)" }}>{badgeCount} unread</span>
+                </div>
+                <div style={{ overflowY: "auto", flex: 1 }}>
+                  {notifications.length === 0 && (
+                    <div style={{ padding: "24px", textAlign: "center", fontSize: "12px", color: "var(--preview-text-muted)" }}>You're all caught up.</div>
+                  )}
+                  {notifications.map(n => (
+                    <div
+                      key={n.id}
+                      onClick={() => dismissNotif(n.id)}
+                      style={{ padding: "10px 12px", borderBottom: "1px solid var(--preview-border)", cursor: "pointer", fontSize: "12px", display: "flex", flexDirection: "column", gap: "3px" }}
+                    >
+                      <span style={{ color: "var(--preview-text)" }}>{n.text}</span>
+                      <span style={{ fontSize: "10px", color: "var(--preview-text-muted)" }}>{n.ts} · click to dismiss</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ padding: "8px 12px", borderTop: "1px solid var(--preview-border)", display: "flex", justifyContent: "space-between" }}>
+                  <button onClick={markAllRead} style={{ background: "transparent", border: "none", color: ACCENT, fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>Mark all as read</button>
+                  <button onClick={() => setNotifOpen(false)} style={{ background: "transparent", border: "none", color: "var(--preview-text-muted)", fontSize: "12px", cursor: "pointer" }}>Close</button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* AI button */}
+          <button
+            onClick={() => setAiOpen(true)}
+            style={{ display: "flex", alignItems: "center", gap: "6px", background: "linear-gradient(90deg,#a78bfa,#f472b6)", color: "#fff", padding: "6px 12px", borderRadius: "8px", fontSize: "12px", fontWeight: 600, whiteSpace: "nowrap", border: "none", cursor: "pointer" }}
+          >✨ AI</button>
+
+          {/* User avatar menu */}
+          <div ref={userRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setUserOpen(v => !v)}
+              style={{ width: "32px", height: "32px", borderRadius: "50%", background: "#e5e5e5", color: "#0a0a0a", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700, fontSize: "12px", border: "none", cursor: "pointer" }}
+            >H</button>
+            {userOpen && (
+              <div style={POPOVER_STYLE}>
+                <a href="/profile" className="dropdown-item-hover" style={POPOVER_ITEM_STYLE}>Profile</a>
+                <a href="/settings" className="dropdown-item-hover" style={POPOVER_ITEM_STYLE}>Settings</a>
+                <a href="/team" className="dropdown-item-hover" style={POPOVER_ITEM_STYLE}>Team members</a>
+                <div style={{ height: "1px", background: "var(--preview-border)", margin: "4px 0" }} />
+                <button onClick={signOut} className="dropdown-item-hover" style={{ ...POPOVER_ITEM_STYLE, width: "100%", textAlign: "left", color: "#dc2626", background: "transparent", border: "none" }}>Sign out</button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* ─── AI SLIDE-IN PANEL ────────────────────────────── */}
+      {aiOpen && (
+        <>
+          <div onClick={() => setAiOpen(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 1100 }} />
+          <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: "min(420px, 100vw)", background: "var(--preview-surface)", borderLeft: "1px solid var(--preview-border)", zIndex: 1101, display: "flex", flexDirection: "column", boxShadow: "-10px 0 40px rgba(0,0,0,0.18)", color: "var(--preview-text)" }}>
+            <div style={{ padding: "14px 18px", borderBottom: "1px solid var(--preview-border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ background: "linear-gradient(135deg,#a78bfa,#ec4899)", width: "28px", height: "28px", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontSize: "13px" }}>✨</span>
+                <div>
+                  <div style={{ fontSize: "14px", fontWeight: 700 }}>AI Assistant</div>
+                  <div style={{ fontSize: "11px", color: "var(--preview-text-muted)" }}>Preview mode</div>
+                </div>
+              </div>
+              <button onClick={() => setAiOpen(false)} style={{ background: "transparent", border: "none", fontSize: "20px", cursor: "pointer", color: "var(--preview-text-muted)" }}>×</button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 18px", display: "flex", flexDirection: "column", gap: "10px" }}>
+              {aiMessages.map((m, i) => (
+                <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "85%", background: m.role === "user" ? ACCENT : "var(--preview-surface-2)", color: m.role === "user" ? "#fff" : "var(--preview-text)", padding: "8px 12px", borderRadius: "10px", fontSize: "13px", lineHeight: 1.4 }}>
+                  {m.text}
+                </div>
+              ))}
+              {aiMessages.length <= 1 && (
+                <div style={{ marginTop: "10px" }}>
+                  <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" }}>Try asking</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {AI_SUGGESTIONS.map(s => (
+                      <button key={s} onClick={() => sendAi(s)} style={{ textAlign: "left", padding: "8px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", cursor: "pointer", color: "var(--preview-text)" }}>{s}</button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div style={{ padding: "12px 14px", borderTop: "1px solid var(--preview-border)", display: "flex", gap: "8px" }}>
+              <input
+                value={aiInput}
+                onChange={e => setAiInput(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") sendAi(aiInput); }}
+                placeholder="Ask anything…"
+                style={{ flex: 1, padding: "8px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "13px", color: "var(--preview-text)" }}
+              />
+              <button onClick={() => sendAi(aiInput)} style={{ background: ACCENT, color: "#fff", border: "none", padding: "0 14px", borderRadius: "8px", fontSize: "13px", fontWeight: 600, cursor: "pointer" }}>Send</button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ─── SECTION 1 · 5 HERO KPI TILES ──────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "12px", marginBottom: "16px", alignItems: "stretch" }}>
-        <HeroTile emoji="🛒" tint="#3b82f6" label="Total Revenue"   value="$394,600" delta="12%"  href="/preview/orders" />
-        <HeroTile emoji="📈" tint="#22c55e" label="Pipeline Value"  value="$155,000" delta="12%"  href="/preview/sales-pipeline" />
-        <HeroTile emoji="💼" tint="#a78bfa" label="Active Jobs"     value="71"       delta="22%"  href="/preview/orders?status=active" />
-        <HeroTile emoji="👥" tint="#fb923c" label="Total Leads"     value="42"       delta="8%"   href="/preview/leads" />
-        <HeroTile emoji="🎯" tint="#38bdf8" label="Conversion Rate" value="12.4%"    delta="2.1%" href="/preview/reports/conversion" />
-      </div>
+      {widgets.kpiTiles && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: "12px", marginBottom: "16px", alignItems: "stretch" }}>
+          <HeroTile emoji="🛒" tint="#3b82f6" label="Total Revenue"   value="$394,600" delta="12%"  href="/preview/orders" />
+          <HeroTile emoji="📈" tint="#22c55e" label="Pipeline Value"  value="$155,000" delta="12%"  href="/preview/sales-pipeline" />
+          <HeroTile emoji="💼" tint="#a78bfa" label="Active Jobs"     value="71"       delta="22%"  href="/preview/orders?status=active" />
+          <HeroTile emoji="👥" tint="#fb923c" label="Total Leads"     value="42"       delta="8%"   href="/preview/leads" />
+          <HeroTile emoji="🎯" tint="#38bdf8" label="Conversion Rate" value="12.4%"    delta="2.1%" href="/preview/reports/conversion" />
+        </div>
+      )}
 
       {/* ─── SECTION 2 · 3-CARD ROW ────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", marginBottom: "16px", alignItems: "stretch" }}>
-        <MoneyPositionD />
-        <OutstandingBreakdownD />
-        <PipelineValueD />
-      </div>
+      {anyRow2 && (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${[widgets.moneyPosition, widgets.outstandingBreakdown, widgets.pipelineValue].filter(Boolean).length}, minmax(0, 1fr))`, gap: "12px", marginBottom: "16px", alignItems: "stretch" }}>
+          {widgets.moneyPosition && <MoneyPositionD />}
+          {widgets.outstandingBreakdown && <OutstandingBreakdownD />}
+          {widgets.pipelineValue && <PipelineValueD />}
+        </div>
+      )}
 
       {/* ─── SECTION 3 · 3-CARD ROW ────────────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: "12px", marginBottom: "16px", alignItems: "stretch" }}>
-        <ActiveJobsD />
-        <TotalLeadsD />
-        <ConversionRateD />
-      </div>
+      {anyRow3 && (
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${[widgets.activeJobs, widgets.totalLeads, widgets.conversionRate].filter(Boolean).length}, minmax(0, 1fr))`, gap: "12px", marginBottom: "16px", alignItems: "stretch" }}>
+          {widgets.activeJobs && <ActiveJobsD />}
+          {widgets.totalLeads && <TotalLeadsD />}
+          {widgets.conversionRate && <ConversionRateD />}
+        </div>
+      )}
 
       {/* ─── SECTION 4 · ALERTS + FUNNEL ───────────────────── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: "14px", marginBottom: "22px", alignItems: "stretch" }}>
-        <AlertsPanelA />
-        <FunnelPanelA />
-      </div>
+      {anyRow4 && (
+        <div style={{ display: "grid", gridTemplateColumns: widgets.alertsActions && widgets.pipelineFunnel ? "1fr 1.4fr" : "1fr", gap: "14px", marginBottom: "22px", alignItems: "stretch" }}>
+          {widgets.alertsActions && <AlertsPanelA />}
+          {widgets.pipelineFunnel && <FunnelPanelA />}
+        </div>
+      )}
 
       {/* ─── SECTION 5 · TEAM PERFORMANCE ──────────────────── */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
-        <div style={{ fontSize: "12px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--preview-text-muted)" }}>Team Performance</div>
-        <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
-          <div style={{ fontSize: "12px", color: "var(--preview-text)", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", padding: "6px 12px", borderRadius: "8px" }}>Last 30 days ▾</div>
-          <Link href="/preview/team" style={{ fontSize: "12px", color: ACCENT, fontWeight: 600, textDecoration: "none" }}>View full team →</Link>
-        </div>
-      </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
-        <ScoreCard initials="AA" name="Azat Aslanean" role="Sales Rep" score={92} label="Excellent" color="#16a34a" rank="Rank #1 of 6"
-          top={[{ k: "Quotes Sent", v: "16", d: "↗ 22%", good: true }, { k: "Orders Won", v: "5", d: "↗ 25%", good: true }, { k: "Conversion", v: "31%", d: "↗ 5%", good: true }]}
-          bottom={[{ k: "Response Time", v: "18m", s: "Great" }, { k: "Follow Ups", v: "42", s: "On Track" }, { k: "Revenue", v: "$12.4K", d: "↗ 18%", good: true }]} />
-        <ScoreCard initials="MC" name="Manny Carlo" role="SDR" score={78} label="Good" color="#2563eb" rank="Rank #2 of 6"
-          top={[{ k: "Leads Added", v: "27", d: "↗ 12%", good: true }, { k: "Qualified", v: "15", d: "↗ 25%", good: true }, { k: "Contact Rate", v: "56%", d: "↗ 10%", good: true }]}
-          bottom={[{ k: "Response Time", v: "6m", s: "Great" }, { k: "Meetings Booked", v: "6", s: "On Track" }, { k: "SQL Rate", v: "28%", s: "Avg" }]} />
-        <ScoreCard initials="MH" name="Maria Hakobyan" role="Sales Rep" score={64} label="Needs Attention" color="#f59e0b" rank="Rank #5 of 6"
-          top={[{ k: "Quotes Sent", v: "11", d: "↘ 8%", good: false }, { k: "Orders Won", v: "2", d: "↘ 12%", good: false }, { k: "Conversion", v: "18%", d: "↘ 7%", good: false }]}
-          bottom={[{ k: "Response Time", v: "32m", s: "High" }, { k: "Follow Ups", v: "28", s: "Behind" }, { k: "Revenue", v: "$4.3K", d: "↘ 12%", good: false }]} />
-        <ScoreCard initials="GM" name="Gary Matevosyan" role="Sales Rep" score={48} label="Needs Review" color="#dc2626" rank="Rank #6 of 6"
-          top={[{ k: "Quotes Sent", v: "9", d: "↘ 20%", good: false }, { k: "Orders Won", v: "1", d: "↘ 50%", good: false }, { k: "Conversion", v: "11%", d: "↘ 9%", good: false }]}
-          bottom={[{ k: "Response Time", v: "1h 52m", s: "Very High" }, { k: "Follow Ups", v: "14", s: "Behind" }, { k: "Revenue", v: "$1.2K", d: "↘ 35%", good: false }]} />
-      </div>
+      {widgets.teamPerformance && (
+        <>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+            <div style={{ fontSize: "12px", fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase", color: "var(--preview-text-muted)" }}>Team Performance</div>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+              <div style={{ fontSize: "12px", color: "var(--preview-text)", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", padding: "6px 12px", borderRadius: "8px" }}>Last 30 days ▾</div>
+              <Link href="/preview/team" style={{ fontSize: "12px", color: ACCENT, fontWeight: 600, textDecoration: "none" }}>View full team →</Link>
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "12px" }}>
+            <ScoreCard initials="AA" name="Azat Aslanean" repSlug="azat" role="Sales Rep" score={92} label="Excellent" color="#16a34a" rank="Rank #1 of 6"
+              top={[{ k: "Quotes Sent", v: "16", d: "↗ 22%", good: true }, { k: "Orders Won", v: "5", d: "↗ 25%", good: true }, { k: "Conversion", v: "31%", d: "↗ 5%", good: true }]}
+              bottom={[{ k: "Response Time", v: "18m", s: "Great" }, { k: "Follow Ups", v: "42", s: "On Track" }, { k: "Revenue", v: "$12.4K", d: "↗ 18%", good: true }]} />
+            <ScoreCard initials="MC" name="Manny Carlo" repSlug="manny" role="SDR" score={78} label="Good" color="#2563eb" rank="Rank #2 of 6"
+              top={[{ k: "Leads Added", v: "27", d: "↗ 12%", good: true }, { k: "Qualified", v: "15", d: "↗ 25%", good: true }, { k: "Contact Rate", v: "56%", d: "↗ 10%", good: true }]}
+              bottom={[{ k: "Response Time", v: "6m", s: "Great" }, { k: "Meetings Booked", v: "6", s: "On Track" }, { k: "SQL Rate", v: "28%", s: "Avg" }]} />
+            <ScoreCard initials="MH" name="Maria Hakobyan" repSlug="maria" role="Sales Rep" score={64} label="Needs Attention" color="#f59e0b" rank="Rank #5 of 6"
+              top={[{ k: "Quotes Sent", v: "11", d: "↘ 8%", good: false }, { k: "Orders Won", v: "2", d: "↘ 12%", good: false }, { k: "Conversion", v: "18%", d: "↘ 7%", good: false }]}
+              bottom={[{ k: "Response Time", v: "32m", s: "High" }, { k: "Follow Ups", v: "28", s: "Behind" }, { k: "Revenue", v: "$4.3K", d: "↘ 12%", good: false }]} />
+            <ScoreCard initials="GM" name="Gary Matevosyan" repSlug="gary" role="Sales Rep" score={48} label="Needs Review" color="#dc2626" rank="Rank #6 of 6"
+              top={[{ k: "Quotes Sent", v: "9", d: "↘ 20%", good: false }, { k: "Orders Won", v: "1", d: "↘ 50%", good: false }, { k: "Conversion", v: "11%", d: "↘ 9%", good: false }]}
+              bottom={[{ k: "Response Time", v: "1h 52m", s: "Very High" }, { k: "Follow Ups", v: "14", s: "Behind" }, { k: "Revenue", v: "$1.2K", d: "↘ 35%", good: false }]} />
+          </div>
+        </>
+      )}
 
       {/* ─── SECTION 6 · QUICK ACTIONS ─────────────────────── */}
-      <div style={{ marginTop: "20px", background: "var(--preview-surface)", borderRadius: "14px", padding: "12px 18px", border: "1px solid var(--preview-border)", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
-        <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--preview-text-muted)" }}>Quick Actions</span>
-        {["👤 Add Lead", "📄 Create Quote", "🛒 New Order", "📅 Schedule Follow Up"].map(a => (
-          <div key={a} style={{ fontSize: "12px", padding: "6px 12px", background: "var(--preview-surface-2)", borderRadius: "8px", color: "var(--preview-text)", fontWeight: 500, cursor: "pointer", border: "1px solid var(--preview-border)" }}>{a}</div>
-        ))}
-      </div>
+      {widgets.quickActions && (
+        <div style={{ marginTop: "20px", background: "var(--preview-surface)", borderRadius: "14px", padding: "12px 18px", border: "1px solid var(--preview-border)", display: "flex", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--preview-text-muted)" }}>Quick Actions</span>
+          {["👤 Add Lead", "📄 Create Quote", "🛒 New Order", "📅 Schedule Follow Up"].map(a => (
+            <div key={a} style={{ fontSize: "12px", padding: "6px 12px", background: "var(--preview-surface-2)", borderRadius: "8px", color: "var(--preview-text)", fontWeight: 500, cursor: "pointer", border: "1px solid var(--preview-border)" }}>{a}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

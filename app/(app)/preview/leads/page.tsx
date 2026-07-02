@@ -776,11 +776,30 @@ function SidePanel({ lead, onClose, onViewFull }: { lead: Lead; onClose: () => v
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
         <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--preview-text-muted)", fontSize: "12px", cursor: "pointer" }}>← Back to Leads</button>
         <div style={{ display: "flex", gap: "6px" }}>
-          <button style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer" }}>✎ Edit</button>
+          <a
+            href={`/preview/leads/${lead.id}/edit`}
+            title="Edit this lead's contact info + project details"
+            style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
+          >✎ Edit</a>
+          {/* Create Quote — visible for any lead stage except Won/Rejected. Both SDR and Sales can create quotes. */}
+          {(["New", "Claimed", "Contacted", "Routed to Sales"] as Stage[]).includes(lead.stage) && (
+            <a
+              href={`/preview/new-quote?leadId=${encodeURIComponent(lead.id)}&name=${encodeURIComponent(lead.name)}&phone=${encodeURIComponent(lead.phone || "")}&email=${encodeURIComponent(lead.email || "")}`}
+              title="Start a new quote for this lead"
+              style={{ padding: "6px 12px", fontSize: "11.5px", background: "#22c55e", border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
+            >📄 Quote</a>
+          )}
           {(["Routed to Sales", "Quote Sent", "Won"] as Stage[]).includes(lead.stage) ? (
-            <button style={{ padding: "6px 12px", fontSize: "11.5px", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: "8px", color: "#22c55e", fontWeight: 700, cursor: "pointer" }}>→ Open in Sales</button>
+            <a
+              href={`/preview/sales-pipeline?leadId=${encodeURIComponent(lead.id)}`}
+              title="This lead is already in the sales pipeline — open it there to see the full deal view"
+              style={{ padding: "6px 12px", fontSize: "11.5px", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: "8px", color: "#22c55e", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
+            >→ Open in Sales</a>
           ) : (
-            <button style={{ padding: "6px 12px", fontSize: "11.5px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}>Route to Sales</button>
+            <button
+              title="Hand this lead off to the Sales team so they can build a quote and close it"
+              style={{ padding: "6px 12px", fontSize: "11.5px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}
+            >Route to Sales</button>
           )}
           <button onClick={onClose} style={{ padding: "6px 10px", fontSize: "13px", background: "transparent", border: "none", color: "var(--preview-text-muted)", cursor: "pointer" }}>✕</button>
         </div>
@@ -884,11 +903,8 @@ function SidePanel({ lead, onClose, onViewFull }: { lead: Lead; onClose: () => v
       <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "12px" }}>
         <CTABtn label="Call Customer" primary />
         <CTABtn label="✉ Send Email" />
-        <CTABtn label="🖼 Request Artwork" />
         <CTABtn label="📅 Schedule Follow Up" />
-        {(["Routed to Sales", "Quote Sent", "Won"] as Stage[]).includes(lead.stage) ? (
-          <CTABtn label="→ Open in Sales Pipeline" />
-        ) : (
+        {!(["Routed to Sales", "Quote Sent", "Won"] as Stage[]).includes(lead.stage) && (
           <CTABtn label="→ Route to Sales" primary />
         )}
         <CTABtn label="🚫 Reject Lead" danger />
