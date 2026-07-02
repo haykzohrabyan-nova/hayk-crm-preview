@@ -9,15 +9,17 @@ import { useMemo, useState } from "react";
 const ACCENT = "#FF5D2E";
 
 // ─── Constants ────────────────────────────────────────────
+// Sales-owned stages only. Artwork / Proof is a production concern —
+// once a deal is paid and moved to production, artwork routing is on the
+// designer + workflow board, not the sales pipeline.
 const STAGE_COLORS: Record<string, string> = {
   "Quoting": "#f97316",
   "Quote Sent": "#3b82f6",
-  "Artwork / Proof": "#8b5cf6",
   "Payment": "#22c55e",
   "In Production": "#06b6d4",
   "Follow Up": "#eab308",
 };
-const STAGE_ORDER = ["Quoting", "Quote Sent", "Artwork / Proof", "Payment", "In Production", "Follow Up"];
+const STAGE_ORDER = ["Quoting", "Quote Sent", "Payment", "In Production", "Follow Up"];
 
 const OWNERS: Record<string, { name: string; short: string }> = {
   MH: { name: "Maria Hakobyan", short: "Maria H." },
@@ -59,8 +61,8 @@ const DEALS: Deal[] = [
   { id: "d013", customer: "Milano Pasta", project: "Product Sleeve", owner: "MH", stage: "Quote Sent", timeInStageHours: 30, totalTimeHours: 55, nextAction: "Follow up on quote acceptance", priority: "Medium", value: 5400, lastActivityHoursAgo: 20 },
   { id: "d014", customer: "Pineapple Studios", project: "Merch Stickers", owner: "MH", stage: "Quote Sent", timeInStageHours: 12, totalTimeHours: 24, nextAction: "Follow up on quote acceptance", priority: "Low", value: 3800, lastActivityHoursAgo: 6 },
   { id: "d015", customer: "Reef Nutrition", project: "Protein Pouch", owner: "MH", stage: "Quote Sent", timeInStageHours: 40, totalTimeHours: 68, nextAction: "Push for signature", priority: "High", value: 9200, lastActivityHoursAgo: 4 },
-  { id: "d016", customer: "Sable Bakery", project: "Cake Box Order", owner: "MH", stage: "Artwork / Proof", timeInStageHours: 20, totalTimeHours: 50, nextAction: "Send proof v2", priority: "High", value: 6100, lastActivityHoursAgo: 3 },
-  { id: "d017", customer: "Green Roots", project: "Product Label Set", owner: "MH", stage: "Artwork / Proof", timeInStageHours: 10, totalTimeHours: 25, nextAction: "Prepare artwork", priority: "Medium", value: 4700, lastActivityHoursAgo: 7 },
+  { id: "d016", customer: "Sable Bakery", project: "Cake Box Order", owner: "MH", stage: "In Production", timeInStageHours: 20, totalTimeHours: 50, nextAction: "Send proof v2", priority: "High", value: 6100, lastActivityHoursAgo: 3 },
+  { id: "d017", customer: "Green Roots", project: "Product Label Set", owner: "MH", stage: "In Production", timeInStageHours: 10, totalTimeHours: 25, nextAction: "Prepare artwork", priority: "Medium", value: 4700, lastActivityHoursAgo: 7 },
   { id: "d018", customer: "Rustic Farms", project: "Bag + Label Set", owner: "MH", stage: "Payment", timeInStageHours: 6, totalTimeHours: 88, nextAction: "Send invoice link", priority: "Medium", value: 8400, lastActivityHoursAgo: 1 },
   { id: "d019", customer: "Halcyon Health", project: "Product Boxes 2k", owner: "MH", stage: "In Production", timeInStageHours: 30, totalTimeHours: 110, nextAction: "Confirm production ETA", priority: "Medium", value: 13600, lastActivityHoursAgo: 10 },
 
@@ -69,7 +71,7 @@ const DEALS: Deal[] = [
   { id: "d021", customer: "Kingston Roast", project: "Custom Bag Order", owner: "GM", stage: "Quoting", timeInStageHours: 15, totalTimeHours: 30, nextAction: "Draft quote", priority: "Medium", value: 4400, lastActivityHoursAgo: 2 },
   { id: "d022", customer: "Bright Basil Co", project: "Herb Pouches", owner: "GM", stage: "Quote Sent", timeInStageHours: 22, totalTimeHours: 45, nextAction: "Follow up", priority: "Medium", value: 3700, lastActivityHoursAgo: 5 },
   { id: "d023", customer: "Wave Wellness", project: "Sticker Set", owner: "GM", stage: "Quote Sent", timeInStageHours: 8, totalTimeHours: 20, nextAction: "Follow up", priority: "Low", value: 2100, lastActivityHoursAgo: 12 },
-  { id: "d024", customer: "Baja Snacks", project: "Chip Bag Order", owner: "GM", stage: "Artwork / Proof", timeInStageHours: 28, totalTimeHours: 60, nextAction: "Get customer sign-off on proof", priority: "Medium", value: 4900, lastActivityHoursAgo: 6 },
+  { id: "d024", customer: "Baja Snacks", project: "Chip Bag Order", owner: "GM", stage: "In Production", timeInStageHours: 28, totalTimeHours: 60, nextAction: "Get customer sign-off on proof", priority: "Medium", value: 4900, lastActivityHoursAgo: 6 },
   { id: "d025", customer: "Sunset Coffee", project: "Bag Rebrand", owner: "GM", stage: "Payment", timeInStageHours: 12, totalTimeHours: 96, nextAction: "Payment reminder", priority: "High", value: 11200, lastActivityHoursAgo: 4 },
   { id: "d026", customer: "Twist Beverages", project: "Bottle Labels", owner: "GM", stage: "Follow Up", timeInStageHours: 60, totalTimeHours: 100, nextAction: "Chase feedback", priority: "High", value: 6400, lastActivityHoursAgo: 8 },
   { id: "d027", customer: "Rio Grande Roasters", project: "Kraft Bag Order", owner: "GM", stage: "Follow Up", timeInStageHours: 55, totalTimeHours: 88, nextAction: "Call for feedback", priority: "Medium", value: 5100, lastActivityHoursAgo: 10 },
@@ -81,7 +83,7 @@ const DEALS: Deal[] = [
   // Ernesto — 10 total (matches "10" in Active Deals col). Quote Sent 2, Artwork 1, Payment 2, In Production 1, Follow Up 2, Quoting 0 + 2 more
   { id: "d032", customer: "Cedar & Co", project: "Retail Sticker Order", owner: "EN", stage: "Quote Sent", timeInStageHours: 6, totalTimeHours: 12, nextAction: "Chase decision", priority: "Medium", value: 4600, lastActivityHoursAgo: 1 },
   { id: "d033", customer: "Foothill Foods", project: "Bag + Sticker Combo", owner: "EN", stage: "Quote Sent", timeInStageHours: 10, totalTimeHours: 20, nextAction: "Follow up", priority: "Medium", value: 5200, lastActivityHoursAgo: 3 },
-  { id: "d034", customer: "Nordic Bakery", project: "Bread Bag Set", owner: "EN", stage: "Artwork / Proof", timeInStageHours: 14, totalTimeHours: 35, nextAction: "Send proof for approval", priority: "Medium", value: 6100, lastActivityHoursAgo: 2 },
+  { id: "d034", customer: "Nordic Bakery", project: "Bread Bag Set", owner: "EN", stage: "In Production", timeInStageHours: 14, totalTimeHours: 35, nextAction: "Send proof for approval", priority: "Medium", value: 6100, lastActivityHoursAgo: 2 },
   { id: "d035", customer: "Zen Tea House", project: "Tea Tin Labels", owner: "EN", stage: "Payment", timeInStageHours: 4, totalTimeHours: 82, nextAction: "Await payment", priority: "High", value: 8800, lastActivityHoursAgo: 1 },
   { id: "d036", customer: "Solstice Wellness", project: "Product Sleeves", owner: "EN", stage: "Payment", timeInStageHours: 7, totalTimeHours: 55, nextAction: "Send payment link", priority: "Medium", value: 7200, lastActivityHoursAgo: 4 },
   { id: "d037", customer: "Copper Kettle", project: "Custom Kraft Bags", owner: "EN", stage: "In Production", timeInStageHours: 20, totalTimeHours: 108, nextAction: "Monitor production", priority: "Low", value: 14500, lastActivityHoursAgo: 10 },
