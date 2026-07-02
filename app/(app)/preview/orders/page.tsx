@@ -15,7 +15,7 @@ type OrderStatus = "Pending Payment" | "In Production" | "Ready to Ship" | "Ship
 type PaymentStatus = "Paid" | "Partial" | "Tax Exempt" | "Pending Tax Review" | "Unpaid";
 type Priority = "Normal" | "High" | "Rush";
 
-interface OrderLineItem {
+export interface OrderLineItem {
   id: string;
   productId: number;
   productName: string;
@@ -39,13 +39,13 @@ interface OrderLineItem {
   overrideReason?: string;
 }
 
-interface Attachment { name: string; sizeKB: number; kind: "pdf" | "ai" | "png" | "jpg" | "dxf"; }
-interface CommEntry { channel: "email_in" | "email_out" | "call_in" | "call_out" | "sms_in" | "sms_out" | "ig_in" | "ig_out" | "note"; author: string; subject?: string; body: string; at: string; attachments?: string[]; }
-interface PaymentEntry { method: "ACH" | "Wire" | "Card" | "Zelle" | "Cash Terminal"; amount: number; date: string; ref: string; status: "Completed" | "Pending Clearance" | "Failed"; }
-interface TimelineEntry { icon: string; tint: string; title: string; sub?: string; at: string; actor?: string; ref?: string; }
-interface CustomerProfile { phone: string; email: string; city: string; state: string; lifetimeOrders: number; lifetimeValue: number; returning: boolean; }
+export interface Attachment { name: string; sizeKB: number; kind: "pdf" | "ai" | "png" | "jpg" | "dxf"; }
+export interface CommEntry { channel: "email_in" | "email_out" | "call_in" | "call_out" | "sms_in" | "sms_out" | "ig_in" | "ig_out" | "note"; author: string; subject?: string; body: string; at: string; attachments?: string[]; }
+export interface PaymentEntry { method: "ACH" | "Wire" | "Card" | "Zelle" | "Cash Terminal"; amount: number; date: string; ref: string; status: "Completed" | "Pending Clearance" | "Failed"; }
+export interface TimelineEntry { icon: string; tint: string; title: string; sub?: string; at: string; actor?: string; ref?: string; }
+export interface CustomerProfile { phone: string; email: string; city: string; state: string; lifetimeOrders: number; lifetimeValue: number; returning: boolean; }
 
-interface Order {
+export interface Order {
   refId: string;                // "2026-0114" — same numeric core across quote → order → production
   quoteRefId: string;           // "QO-2026-0114" — links back to the source quote
   contact: string;
@@ -86,7 +86,7 @@ interface Order {
 // Fixed "today" = 2026-07-01 for consistent age/overdue math.
 // Product IDs and material IDs come straight from lib/catalog/catalog-v1.json
 // so nothing has to be re-mapped when a quote converts to an order.
-const ORDERS: Order[] = [
+export const ORDERS: Order[] = [
   // ─── 1. Boris Boris / Grimeylyfe — In Production, Rush, repeat customer with 12 lifetime orders ───
   {
     refId: "2026-0135", quoteRefId: "QO-2026-0135",
@@ -757,11 +757,11 @@ const ORDERS: Order[] = [
 ];
 
 // ─── Format ────────────────────────────────────────────
-const fmtMoney = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+export const fmtMoney = (n: number) => `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 // Compute how many days past due, based on today = 07/01/2026 (the fixed mock "today").
 // Returns 0 or negative if not overdue.
-function daysPastDue(dueDate: string): number {
+export function daysPastDue(dueDate: string): number {
   if (!dueDate) return 0;
   const [m, d, y] = dueDate.split("/").map(Number);
   if (!m || !d || !y) return 0;
