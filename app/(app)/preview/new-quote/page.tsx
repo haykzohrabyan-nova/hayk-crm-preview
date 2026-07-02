@@ -154,6 +154,20 @@ export default function NewQuotePreview() {
   const prefillPhone = searchParams?.get("phone") || "";
   const prefillEmail = searchParams?.get("email") || "";
 
+  // ─── Iframe-mode toggle (Hayk 2026-07-01) ─────────────────────
+  // Two-week bridge: embed the real Bazaar admin new-order form via iframe
+  // so we don't reinvent product dropdowns / pricing math / option matrix.
+  // Native 3-step wizard preserved as fallback.
+  //   ?form=iframe        → force iframe
+  //   ?form=native        → force native wizard
+  //   (no form param)     → iframe if bazaarCustomerId present, else native
+  const formModeParam = searchParams?.get("form");
+  const bazaarCustomerId = searchParams?.get("bazaarCustomerId") || "";
+  const effectiveMode: "iframe" | "native" =
+    formModeParam === "native" ? "native"
+    : formModeParam === "iframe" ? "iframe"
+    : bazaarCustomerId ? "iframe" : "native";
+
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [toast, setToast] = useState<null | { kind: "ok" | "err"; msg: string }>(null);
   const [draftFound, setDraftFound] = useState<null | { ageMinutes: number; blob: any }>(null);
@@ -285,6 +299,55 @@ export default function NewQuotePreview() {
       .catch(() => {});
   }, []);
 
+  // ─── Iframe-mode plumbing (Hayk 2026-07-01) ───────────────────
+  // Track whether the embedded Bazaar admin iframe successfully loaded.
+  // If onLoad never fires within 4s, assume X-Frame-Options blocked us
+  // and show the fallback UI.
+  const [iframeLoaded, setIframeLoaded] = useState(false);
+  const [iframeFailed, setIframeFailed] = useState(false);
+  const [manualBazaarCustomerId, setManualBazaarCustomerId] = useState("");
+
+  useEffect(() => {
+    if (effectiveMode !== "iframe") return;
+    if (!bazaarCustomerId) { setIframeFailed(true); return; }
+    // 4s timeout — if onLoad hasn't fired, show fallback
+    const t = window.setTimeout(() => {
+      setIframeLoaded(prev => {
+        if (!prev) setIframeFailed(true);
+        return prev;
+      });
+    }, 4000);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveMode, bazaarCustomerId]);
+
+  // postMessage listener — David wires the Bazaar side to postMessage back
+  // { type: "bazaar-order-saved", orderId, orderNumber, total } when a rep
+  // saves the order from inside the embedded form. Security: validate origin.
+  useEffect(() => {
+    if (effectiveMode !== "iframe") return;
+    function onMessage(event: MessageEvent) {
+      if (event.origin !== "https://bazaar-admin.com") return;
+      const data = event.data;
+      if (!data || data.type !== "bazaar-order-saved") return;
+      // eslint-disable-next-line no-console
+      console.log("[new-quote iframe] bazaar-order-saved:", data);
+      const orderNumber = data.orderNumber || data.orderId || "";
+      const totalStr = typeof data.total === "number" ? data.total.toFixed(2) : String(data.total || "");
+      const refNumeric = quoteRefId.replace(/[^0-9]/g, "");
+      setToast({
+        kind: "ok",
+        msg: `✓ Order saved on Bazaar — ORD-${orderNumber} · $${totalStr}. Passport number Q-${refNumeric} now on Workflow board.`,
+      });
+      window.setTimeout(() => {
+        try { router.push(`/preview/orders?open=${encodeURIComponent(orderNumber)}`); } catch {}
+      }, 3000);
+    }
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveMode, quoteRefId]);
+
   // Pricing math — use override if enabled, else the returned mock/live price
   const subtotal = lineItems.reduce((sum, l) => sum + ((l.overrideEnabled ? l.overrideExtended : l.extended) || 0), 0);
   const discountAmount = discountMode === "percent" ? subtotal * (discountValue / 100) : discountMode === "flat" ? discountValue : 0;
@@ -406,8 +469,143 @@ export default function NewQuotePreview() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ─── IFRAME MODE ─────────────────────────────────────────
+  // Two-week bridge: embed the live Bazaar admin new-order form so we don't
+  // re-implement product/material/pricing logic. Native wizard preserved below.
+  if (effectiveMode === "iframe") {
+    const bazaarSrc = bazaarCustomerId
+      ? `https://bazaar-admin.com/new-order/${encodeURIComponent(bazaarCustomerId)}?embed=crm&quoteRef=${encodeURIComponent(quoteRefId)}`
+      : "";
+    const openInNewTab = bazaarSrc || "https://bazaar-admin.com/new-order";
+    const showFallback = !bazaarCustomerId || iframeFailed;
+
+    return (
+      <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", background: "var(--preview-bg)", color: "var(--preview-text)", margin: "-20px", padding: "20px", minHeight: "100vh" }}>
+        {/* Preview banner */}
+        <div style={{ display: "flex", gap: "8px", marginBottom: "14px", alignItems: "center", padding: "10px 14px", background: "var(--preview-surface-2)", borderRadius: "10px", color: "var(--preview-text)" }}>
+          <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: ACCENT }}>Preview</span>
+          <span style={{ fontSize: "12px", color: "var(--preview-text)" }}>New Quote · embedded Bazaar admin · live catalog + live pricing</span>
+          <span style={{ marginLeft: "auto", fontSize: "12px", color: "var(--preview-text-muted)" }}>Reference: <b style={{ color: GOLD, fontFamily: "monospace" }}>{quoteRefId}</b></span>
+        </div>
+
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button onClick={() => window.history.back()} style={backBtn}>← Back</button>
+            <h1 style={{ fontSize: "22px", fontWeight: 800, margin: 0 }}>New Quote</h1>
+            <span style={{ padding: "3px 10px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 800, borderRadius: "5px", letterSpacing: "0.04em" }}>LIVE BAZAAR FORM</span>
+          </div>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <a href={`/preview/new-quote?form=native${prefillLeadId ? `&leadId=${encodeURIComponent(prefillLeadId)}` : ""}${prefillName ? `&name=${encodeURIComponent(prefillName)}` : ""}${prefillPhone ? `&phone=${encodeURIComponent(prefillPhone)}` : ""}${prefillEmail ? `&email=${encodeURIComponent(prefillEmail)}` : ""}`} style={{ ...btnLight, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Use native wizard →</a>
+          </div>
+        </div>
+
+        {toast && (
+          <div style={{ position: "fixed", top: "20px", right: "20px", zIndex: 200, padding: "12px 18px", borderRadius: "8px", background: toast.kind === "ok" ? "#dcfce7" : "#fee2e2", border: `1px solid ${toast.kind === "ok" ? "#86efac" : "#fca5a5"}`, color: toast.kind === "ok" ? "#166534" : "#991b1b", fontSize: "13px", fontWeight: 700, boxShadow: "0 4px 12px rgba(0,0,0,0.15)", maxWidth: "420px" }}>
+            {toast.msg}
+          </div>
+        )}
+
+        {/* Top row — customer summary + quote reference */}
+        <div style={{ display: "grid", gridTemplateColumns: "300px minmax(0, 1fr)", gap: "16px", marginBottom: "14px" }}>
+          <CustomerCard
+            name={customerName}
+            email={customerEmail}
+            phone={customerPhone}
+            salesRep={salesRep}
+            leadId={prefillLeadId}
+          />
+          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "16px", height: "fit-content" }}>
+            <div style={{ fontSize: "11px", fontWeight: 800, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "10px" }}>Quote Reference</div>
+            <div style={{ fontSize: "26px", fontWeight: 800, color: GOLD, fontFamily: "monospace", marginBottom: "6px" }}>{quoteRefId}</div>
+            <div style={{ fontSize: "11.5px", color: "var(--preview-text-muted)", lineHeight: 1.5 }}>
+              Passport number carries through to Order · Workflow · Invoice.
+            </div>
+            {bazaarCustomerId && (
+              <div style={{ marginTop: "10px", padding: "8px 10px", background: "var(--preview-surface-2)", borderRadius: "8px", fontSize: "11px", color: "var(--preview-text-muted)" }}>
+                Bazaar customer: <span style={{ fontFamily: "monospace", color: "var(--preview-text)" }}>{bazaarCustomerId.slice(0, 8)}…</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Iframe host */}
+        {bazaarCustomerId && (
+          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", overflow: "hidden" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", background: "var(--preview-surface-2)", borderBottom: "1px solid var(--preview-border)", fontSize: "11.5px", color: "var(--preview-text-muted)" }}>
+              <span>Embedded from <b style={{ color: "var(--preview-text)" }}>bazaar-admin.com</b> — every product / material / price reflects the live Bazaar admin. Changes save to Bazaar.</span>
+              <a href={openInNewTab} target="_blank" rel="noopener noreferrer" style={{ color: ACCENT, fontWeight: 700, textDecoration: "none" }}>↗ Open in new tab</a>
+            </div>
+            {!iframeFailed && (
+              <iframe
+                src={bazaarSrc}
+                onLoad={() => setIframeLoaded(true)}
+                onError={() => setIframeFailed(true)}
+                title="Bazaar admin — new order"
+                style={{ width: "100%", height: "min(1200px, calc(100vh - 220px))", border: "none", borderRadius: "0 0 12px 12px", background: "var(--preview-surface)" }}
+              />
+            )}
+          </div>
+        )}
+
+        {/* Fallback UI */}
+        {showFallback && (
+          <div style={{ marginTop: "14px", padding: "24px", border: "2px dashed var(--preview-border)", borderRadius: "12px", background: "var(--preview-surface)", textAlign: "center" }}>
+            <div style={{ fontSize: "36px", marginBottom: "8px" }}>🔒</div>
+            <div style={{ fontSize: "15px", fontWeight: 800, color: "var(--preview-text)", marginBottom: "6px" }}>Can't embed the Bazaar admin form here right now.</div>
+            <div style={{ fontSize: "12.5px", color: "var(--preview-text-muted)", marginBottom: "18px" }}>
+              {bazaarCustomerId
+                ? "Either the browser blocked the iframe, or the customer isn't linked to Bazaar admin yet."
+                : "No Bazaar customer ID was passed. Paste one below, or use the native wizard."}
+            </div>
+
+            <div style={{ display: "flex", gap: "10px", justifyContent: "center", flexWrap: "wrap", marginBottom: bazaarCustomerId ? 0 : "18px" }}>
+              <a href={openInNewTab} target="_blank" rel="noopener noreferrer" style={{ ...btnPrimary, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>↗ Open Bazaar admin new-order in new tab</a>
+              <a href={`/preview/new-quote?form=native${prefillLeadId ? `&leadId=${encodeURIComponent(prefillLeadId)}` : ""}${prefillName ? `&name=${encodeURIComponent(prefillName)}` : ""}${prefillPhone ? `&phone=${encodeURIComponent(prefillPhone)}` : ""}${prefillEmail ? `&email=${encodeURIComponent(prefillEmail)}` : ""}`} style={{ ...btnLight, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>Use native quote wizard →</a>
+            </div>
+
+            {!bazaarCustomerId && (
+              <div style={{ display: "flex", gap: "8px", justifyContent: "center", alignItems: "center", flexWrap: "wrap" }}>
+                <input
+                  type="text"
+                  value={manualBazaarCustomerId}
+                  onChange={e => setManualBazaarCustomerId(e.target.value)}
+                  placeholder="Paste Bazaar customer ID"
+                  style={{ padding: "8px 12px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontFamily: "monospace", minWidth: "300px", background: "var(--preview-surface-2)", color: "var(--preview-text)" }}
+                />
+                <button
+                  onClick={() => {
+                    const v = manualBazaarCustomerId.trim();
+                    if (!v) return;
+                    const params = new URLSearchParams();
+                    params.set("bazaarCustomerId", v);
+                    if (prefillLeadId) params.set("leadId", prefillLeadId);
+                    if (prefillName) params.set("name", prefillName);
+                    if (prefillPhone) params.set("phone", prefillPhone);
+                    if (prefillEmail) params.set("email", prefillEmail);
+                    window.location.href = `/preview/new-quote?${params.toString()}`;
+                  }}
+                  style={btnPrimary}
+                >Load</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", background: "var(--preview-bg)", color: "var(--preview-text)", margin: "-20px", padding: "20px", minHeight: "100vh" }}>
+      {/* Native-mode banner strip — reminds reps this is CRM-side, not synced to Bazaar */}
+      <div style={{ display: "flex", gap: "10px", marginBottom: "12px", alignItems: "center", padding: "9px 14px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "10px", color: "#78350f", fontSize: "12px", fontWeight: 600 }}>
+        <span>⚠</span>
+        <span>Native wizard — every dropdown / material / price is CRM-side, not synced to Bazaar admin. This is a fallback. Switch to iframe mode for the live Bazaar form.</span>
+        <a
+          href={`/preview/new-quote?form=iframe${prefillLeadId ? `&leadId=${encodeURIComponent(prefillLeadId)}` : ""}${prefillName ? `&name=${encodeURIComponent(prefillName)}` : ""}${prefillPhone ? `&phone=${encodeURIComponent(prefillPhone)}` : ""}${prefillEmail ? `&email=${encodeURIComponent(prefillEmail)}` : ""}`}
+          style={{ marginLeft: "auto", color: "#78350f", textDecoration: "underline", fontWeight: 700, whiteSpace: "nowrap" }}
+        >↗ Use Bazaar admin form instead</a>
+      </div>
       {/* Preview banner */}
       <div style={{ display: "flex", gap: "8px", marginBottom: "18px", alignItems: "center", padding: "10px 14px", background: "var(--preview-surface-2)", borderRadius: "10px", color: "var(--preview-text)" }}>
         <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: ACCENT }}>Preview</span>
