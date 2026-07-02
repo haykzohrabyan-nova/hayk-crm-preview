@@ -635,7 +635,18 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
         </td>
         <td style={{ ...td, textAlign: "right", fontWeight: 700 }}>{fmtMoney(order.total)}</td>
         <td style={{ ...td, textAlign: "right", color: "#16a34a", fontWeight: 600 }}>{order.received > 0 ? fmtMoney(order.received) : "—"}</td>
-        <td style={{ ...td, textAlign: "right", color: order.balanceDue > 0 ? "#dc2626" : "#171717", fontWeight: order.balanceDue > 0 ? 700 : 500 }}>{fmtMoney(order.balanceDue)}</td>
+        <td style={{ ...td, textAlign: "right", color: order.balanceDue > 0 ? "#dc2626" : "#171717", fontWeight: order.balanceDue > 0 ? 700 : 500 }}>
+          <div>{fmtMoney(order.balanceDue)}</div>
+          {order.paymentOverdue && order.paymentDueDate && (() => {
+            const d = daysPastDue(order.paymentDueDate);
+            if (d <= 0) return null;
+            return (
+              <div style={{ fontSize: "10px", color: "#b91c1c", fontWeight: 700, marginTop: "2px" }} title={`${order.paymentTerms || "Payment"} due ${order.paymentDueDate} — ${d} day${d === 1 ? "" : "s"} past due`}>
+                💸 {d} {d === 1 ? "day" : "days"} late
+              </div>
+            );
+          })()}
+        </td>
         <td style={td}>
           <span style={{ color: order.priority === "High" ? "#dc2626" : order.priority === "Rush" ? "#f59e0b" : "#22c55e", fontWeight: 700, fontSize: "11.5px" }}>
             {order.priority}
@@ -796,6 +807,15 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
           >⚠ {d} {d === 1 ? "day" : "days"} late</div>
         );
       })()}
+      {order.paymentOverdue && order.paymentDueDate && (() => {
+        const d = daysPastDue(order.paymentDueDate);
+        if (d <= 0) return null;
+        return (
+          <div style={{ display: "inline-flex", alignItems: "center", gap: "3px", marginTop: "2px", padding: "2px 7px", background: "rgba(185,28,28,0.12)", border: "1px solid rgba(185,28,28,0.3)", borderRadius: "999px", fontSize: "10px", color: "#b91c1c", fontWeight: 700, alignSelf: "flex-start" }}
+            title={`${order.paymentTerms || "Payment"} due ${order.paymentDueDate} — ${d} day${d === 1 ? "" : "s"} past due · balance ${fmtMoney(order.balanceDue)}`}
+          >💸 Payment {d} {d === 1 ? "day" : "days"} late</div>
+        );
+      })()}
       {order.attachmentsCount > 0 && (
         <div style={{ fontSize: "10px", color: "#3b82f6", fontWeight: 600, marginTop: "2px" }}>📎 {order.attachmentsCount}</div>
       )}
@@ -851,6 +871,15 @@ function OrderDetail({ order, onBack }: { order: Order; onBack: () => void }) {
               Received {fmtMoney(order.received)}
               {order.balanceDue > 0 && <span style={{ color: "#dc2626", marginLeft: "8px" }}>· Balance due {fmtMoney(order.balanceDue)}</span>}
             </div>
+            {order.paymentOverdue && order.paymentDueDate && (() => {
+              const d = daysPastDue(order.paymentDueDate);
+              if (d <= 0) return null;
+              return (
+                <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginTop: "6px", padding: "3px 10px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "999px", fontSize: "11px", color: "#b91c1c", fontWeight: 800 }}
+                  title={`${order.paymentTerms || "Payment"} due ${order.paymentDueDate}`}
+                >💸 Payment {d} {d === 1 ? "day" : "days"} past due · terms {order.paymentTerms || "—"}</div>
+              );
+            })()}
             <div style={{ fontSize: "10.5px", color: "#888", marginTop: "1px" }}>on Jun 30, 2026</div>
           </div>
         </div>
