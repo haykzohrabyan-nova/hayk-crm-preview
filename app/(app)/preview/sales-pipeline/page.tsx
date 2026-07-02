@@ -616,7 +616,6 @@ function AttentionTable({ deals, selectedId, onSelect, onMove }: { deals: Deal[]
 // ─── Inspector Panel ────────────────────────────────────────
 function InspectorPanel({ deal, onClose, onMove, onOpenFull }: { deal: Deal; onClose: () => void; onMove: (id: string, s: Stage) => void; onOpenFull: () => void }) {
   const [moveOpen, setMoveOpen] = useState(false);
-  const [quoteOpen, setQuoteOpen] = useState(false);
 
   const quoteCTA = (() => {
     if (["Quoting", "Quote Approval"].includes(deal.stage)) return { label: "📄 Send Revised Quote", primary: true };
@@ -710,14 +709,15 @@ function InspectorPanel({ deal, onClose, onMove, onOpenFull }: { deal: Deal; onC
           <div style={{ fontSize: "11.5px", color: "#c2410c", fontWeight: 600, marginTop: "1px" }}>{deal.nextAction.dueLabel}</div>
         </div>
       )}
-      {/* Primary stage-aware CTA — create/send quote */}
-      <button onClick={() => setQuoteOpen(true)} style={{
-        width: "100%", padding: "10px",
+      {/* Primary stage-aware CTA — routes to unified /preview/new-quote wizard */}
+      <a href={`/preview/new-quote?dealId=${encodeURIComponent(deal.id)}&name=${encodeURIComponent(deal.customer || "")}&phone=${encodeURIComponent("")}&email=${encodeURIComponent("")}`} style={{
+        display: "block", textAlign: "center", textDecoration: "none",
+        width: "100%", padding: "10px", boxSizing: "border-box",
         background: quoteCTA.primary ? ACCENT : "#fff",
         color: quoteCTA.primary ? "#fff" : "#333",
         border: quoteCTA.primary ? "none" : "1px solid #e5e5e5",
         borderRadius: "8px", fontSize: "13px", fontWeight: 700, cursor: "pointer", marginBottom: "6px",
-      }}>{quoteCTA.label}</button>
+      }}>{quoteCTA.label}</a>
 
       <div style={{ display: "flex", gap: "6px", marginBottom: "8px", position: "relative" }}>
         <button onClick={() => setMoveOpen(!moveOpen)} style={{ flex: 1, padding: "9px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>Move Stage ▾</button>
@@ -734,166 +734,10 @@ function InspectorPanel({ deal, onClose, onMove, onOpenFull }: { deal: Deal; onC
         )}
       </div>
       <button onClick={onOpenFull} style={{ width: "100%", padding: "10px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "8px", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>View Full Details →</button>
-
-      {quoteOpen && <QuoteBuilderModal deal={deal} onClose={() => setQuoteOpen(false)} onSent={() => { setQuoteOpen(false); if (deal.stage !== "Quoting" && deal.stage !== "Quote Approval") onMove(deal.id, "Quoting"); }} />}
     </div>
   );
 }
 
-// ─── Quote Builder Modal ────────────────────────────────────────
-function QuoteBuilderModal({ deal, onClose, onSent }: { deal: Deal; onClose: () => void; onSent: () => void }) {
-  type Line = { id: string; product: string; qty: number; unitPrice: number; note?: string };
-  const initialLine: Line = { id: "l1", product: deal.product, qty: Number((deal.projectDetails.quantity || "").replace(/[^0-9]/g, "")) || 1000, unitPrice: 3.5 };
-  const [lines, setLines] = useState<Line[]>([initialLine]);
-  const [taxPct, setTaxPct] = useState(9.5);
-  const [shipping, setShipping] = useState(0);
-  const [discount, setDiscount] = useState(0);
-  const [notes, setNotes] = useState("Standard turnaround: 5–7 business days after artwork approval. Rush available for 30% surcharge.");
-  const [attachments, setAttachments] = useState<{ name: string; size: string; kind: string }[]>([]);
-  const [validDays, setValidDays] = useState(30);
-
-  const addLine = () => setLines([...lines, { id: `l${Date.now()}`, product: "", qty: 100, unitPrice: 0 }]);
-  const removeLine = (id: string) => setLines(lines.filter(l => l.id !== id));
-  const updateLine = (id: string, patch: Partial<Line>) => setLines(lines.map(l => l.id === id ? { ...l, ...patch } : l));
-
-  const subtotal = lines.reduce((sum, l) => sum + l.qty * l.unitPrice, 0);
-  const afterDisc = subtotal * (1 - discount / 100);
-  const tax = afterDisc * (taxPct / 100);
-  const total = afterDisc + tax + shipping;
-  const quoteRef = `Q-2026-${Math.floor(1000 + Math.random() * 9000)}`;
-
-  return (
-    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 60, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: "14px", width: "min(820px, 96vw)", maxHeight: "92vh", overflowY: "auto", padding: "20px 24px" }}>
-        {/* Header */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "16px" }}>
-          <div>
-            <div style={{ fontSize: "18px", fontWeight: 800 }}>📄 Create & Send Quote</div>
-            <div style={{ fontSize: "12.5px", color: "#666", marginTop: "3px" }}>
-              For <b>{deal.customer}</b> · <span style={{ fontFamily: "monospace" }}>{quoteRef}</span>
-            </div>
-          </div>
-          <button onClick={onClose} style={{ background: "#f5f5f5", border: "none", borderRadius: "50%", width: "28px", height: "28px", cursor: "pointer" }}>✕</button>
-        </div>
-
-        {/* Line items */}
-        <div style={{ marginBottom: "16px" }}>
-          <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1.2fr 40px", gap: "8px", padding: "8px 10px", background: "var(--preview-surface-2)", borderRadius: "8px 8px 0 0", fontSize: "10.5px", color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700, border: "1px solid var(--preview-border)", borderBottom: "none" }}>
-            <div>Product</div>
-            <div>Quantity</div>
-            <div>Unit Price</div>
-            <div style={{ textAlign: "right" }}>Extended</div>
-            <div></div>
-          </div>
-          <div style={{ border: "1px solid var(--preview-border)", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
-            {lines.map((l, i) => (
-              <div key={l.id} style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1.2fr 40px", gap: "8px", padding: "8px 10px", borderTop: i > 0 ? "1px solid #f0f0f0" : "none", alignItems: "center" }}>
-                <input value={l.product} onChange={e => updateLine(l.id, { product: e.target.value })} placeholder="Product name" style={{ ...lightInp, padding: "6px 10px" }} />
-                <input type="number" value={l.qty} onChange={e => updateLine(l.id, { qty: Number(e.target.value) || 0 })} style={{ ...lightInp, padding: "6px 10px" }} />
-                <input type="number" step="0.01" value={l.unitPrice} onChange={e => updateLine(l.id, { unitPrice: Number(e.target.value) || 0 })} style={{ ...lightInp, padding: "6px 10px" }} />
-                <div style={{ textAlign: "right", fontWeight: 700, fontSize: "13px" }}>{fmtMoney(Math.round(l.qty * l.unitPrice * 100) / 100)}</div>
-                <button onClick={() => removeLine(l.id)} disabled={lines.length === 1} style={{ background: "transparent", border: "none", color: lines.length === 1 ? "#ddd" : "#dc2626", cursor: lines.length === 1 ? "not-allowed" : "pointer", fontSize: "14px" }}>✕</button>
-              </div>
-            ))}
-          </div>
-          <button onClick={addLine} style={{ marginTop: "8px", padding: "6px 12px", background: "#fff", border: "1px dashed #ddd", borderRadius: "8px", color: "#666", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>＋ Add line item</button>
-        </div>
-
-        {/* Adjustments + summary side by side */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px", marginBottom: "16px" }}>
-          <div>
-            <div style={{ fontSize: "11px", fontWeight: 800, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" }}>Adjustments</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-              <div>
-                <label style={lightLbl}>Discount %</label>
-                <input type="number" value={discount} onChange={e => setDiscount(Number(e.target.value) || 0)} style={lightInp} />
-              </div>
-              <div>
-                <label style={lightLbl}>Tax %</label>
-                <input type="number" step="0.1" value={taxPct} onChange={e => setTaxPct(Number(e.target.value) || 0)} style={lightInp} />
-              </div>
-              <div>
-                <label style={lightLbl}>Shipping $</label>
-                <input type="number" step="0.01" value={shipping} onChange={e => setShipping(Number(e.target.value) || 0)} style={lightInp} />
-              </div>
-              <div>
-                <label style={lightLbl}>Valid for (days)</label>
-                <input type="number" value={validDays} onChange={e => setValidDays(Number(e.target.value) || 0)} style={lightInp} />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <div style={{ fontSize: "11px", fontWeight: 800, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" }}>Summary</div>
-            <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px", padding: "10px 14px", fontSize: "12.5px" }}>
-              <SumRow label="Subtotal" value={fmtMoney(Math.round(subtotal * 100) / 100)} />
-              {discount > 0 && <SumRow label={`Discount (${discount}%)`} value={`− ${fmtMoney(Math.round((subtotal - afterDisc) * 100) / 100)}`} color="#22c55e" />}
-              <SumRow label={`Tax (${taxPct}%)`} value={fmtMoney(Math.round(tax * 100) / 100)} />
-              <SumRow label="Shipping" value={fmtMoney(shipping)} />
-              <div style={{ height: "1px", background: "#e5e5e5", margin: "6px 0" }} />
-              <SumRow label="Total" value={fmtMoney(Math.round(total * 100) / 100)} bold />
-            </div>
-          </div>
-        </div>
-
-        {/* Notes */}
-        <div style={{ marginBottom: "16px" }}>
-          <label style={lightLbl}>Notes to customer</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} style={{ ...lightInp, minHeight: "70px", resize: "vertical", fontFamily: "inherit" }} />
-        </div>
-
-        {/* Attachments */}
-        <div style={{ marginBottom: "16px" }}>
-          <label style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "6px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontWeight: 600, cursor: "pointer" }}>
-            📎 Attach file
-            <input type="file" multiple style={{ display: "none" }} onChange={e => {
-              if (!e.target.files) return;
-              const added = Array.from(e.target.files).map(f => ({
-                name: f.name,
-                size: f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} MB` : `${Math.round(f.size / 1024)} KB`,
-                kind: f.type.startsWith("image") ? "image" : f.name.endsWith(".pdf") ? "pdf" : "file",
-              }));
-              setAttachments([...attachments, ...added]);
-              e.target.value = "";
-            }} />
-          </label>
-          {attachments.length > 0 && (
-            <div style={{ marginTop: "6px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-              {attachments.map((f, i) => (
-                <span key={i} style={{ padding: "5px 10px", background: "#f5f5f5", borderRadius: "6px", fontSize: "11.5px", display: "flex", alignItems: "center", gap: "6px" }}>
-                  📎 {f.name} <span style={{ color: "#888" }}>{f.size}</span>
-                  <span onClick={() => setAttachments(attachments.filter((_, j) => j !== i))} style={{ cursor: "pointer", color: "#888" }}>✕</span>
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Footer buttons */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: "14px", borderTop: "1px solid #eee" }}>
-          <div style={{ fontSize: "11px", color: "#888" }}>
-            Deal will auto-move to <b style={{ color: STAGE_COLORS["Quoting"] }}>Quoting</b> stage on send · Quote saved as <b>{quoteRef}</b>
-          </div>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button onClick={onClose} style={{ padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer" }}>Cancel</button>
-            <button onClick={() => alert(`Preview: ${quoteRef} · Total ${fmtMoney(Math.round(total * 100) / 100)}`)} style={{ padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer" }}>👁 Preview</button>
-            <button onClick={() => alert(`Draft saved: ${quoteRef}`)} style={{ padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer" }}>Save Draft</button>
-            <button onClick={onSent} style={{ padding: "8px 18px", background: ACCENT, border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 800, color: "#fff", cursor: "pointer" }}>Send Quote →</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SumRow({ label, value, bold, color }: { label: string; value: string; bold?: boolean; color?: string }) {
-  return (
-    <div style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontWeight: bold ? 800 : 500, fontSize: bold ? "14px" : "12.5px" }}>
-      <span style={{ color: color || (bold ? "#171717" : "#666") }}>{label}</span>
-      <span style={{ color: color || "#171717" }}>{value}</span>
-    </div>
-  );
-}
 
 // ─── Full Detail View (takeover) ────────────────────────────────────────
 function FullDetailView({ deal, onBack, onMove }: { deal: Deal; onBack: () => void; onMove: (id: string, s: Stage) => void }) {
