@@ -8,6 +8,7 @@
 
 import twilio from "twilio";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { testGuardPhone } from "./test-guard";
 import { loadSmsTemplatesMap, pickSmsBody } from "./load-sms-templates";
 import { renderSmsTemplate, type SmsTemplateVars } from "./render-sms-template";
 import type { SmsTemplateKey } from "./sms-template-catalog";
@@ -321,7 +322,7 @@ async function sendSms(
 
   try {
     const client = twilio(accountSid, authToken);
-    await client.messages.create({ from, to: toFormatted, body });
+    await client.messages.create({ from, to: testGuardPhone(toFormatted), body });
     return { ok: true, channel };
   } catch (err) {
     return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
@@ -418,7 +419,7 @@ export async function sendPaymentReminder(
 
     try {
       const client = twilio(accountSid, authToken);
-      await client.messages.create({ from, to: toFormatted, body });
+      await client.messages.create({ from, to: testGuardPhone(toFormatted), body });
       return { ok: true, channel };
     } catch (err) {
       return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
@@ -491,7 +492,7 @@ export async function sendInvoiceLinkToCustomer(
 
     try {
       const client = twilio(accountSid, authToken);
-      await client.messages.create({ from, to: toFormatted, body });
+      await client.messages.create({ from, to: testGuardPhone(toFormatted), body });
       return { ok: true, channel };
     } catch (err) {
       return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
@@ -575,7 +576,7 @@ export async function sendOrderReadyToCustomer(
 
     try {
       const client = twilio(accountSid, authToken);
-      await client.messages.create({ from, to: toFormatted, body });
+      await client.messages.create({ from, to: testGuardPhone(toFormatted), body });
       return { ok: true, channel };
     } catch (err) {
       return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
@@ -665,7 +666,7 @@ export async function sendPaymentConfirmed(
 
     try {
       const client = twilio(accountSid, authToken);
-      await client.messages.create({ from, to: toFormatted, body });
+      await client.messages.create({ from, to: testGuardPhone(toFormatted), body });
       return { ok: true, channel };
     } catch (err) {
       return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
@@ -742,7 +743,7 @@ export async function sendTaxExemptApproved(
 
     try {
       const client = twilio(accountSid, authToken);
-      await client.messages.create({ from, to: toFormatted, body });
+      await client.messages.create({ from, to: testGuardPhone(toFormatted), body });
       return { ok: true, channel };
     } catch (err) {
       return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };
@@ -822,7 +823,7 @@ export async function sendQuoteFollowUpReminder(
 
     try {
       const client = twilio(accountSid, authToken);
-      await client.messages.create({ from, to: toFormatted, body });
+      await client.messages.create({ from, to: testGuardPhone(toFormatted), body });
       return { ok: true, channel };
     } catch (err) {
       return { ok: false, channel, error: err instanceof Error ? err.message : String(err) };

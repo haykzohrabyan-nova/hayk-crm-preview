@@ -83,6 +83,20 @@
   --color-in-progress-bg: #F5F3FF;
   --color-in-progress-text: #7C3AED;
   --color-in-progress-border: #DDD6FE;
+
+  /* Preview surface (used by /preview/* pages) */
+  --preview-bg: #ffffff;
+  --preview-surface: #f5f5f5;
+  --preview-surface-2: #eeeeee;
+  --preview-text: #171717;
+  --preview-text-muted: rgba(0,0,0,0.55);
+  --preview-text-faint: rgba(0,0,0,0.35);
+  --preview-border: rgba(0,0,0,0.08);
+  --preview-border-strong: rgba(0,0,0,0.15);
+  /* Translucent chip / hover backgrounds — dark ink in light mode, white ink in dark mode */
+  --preview-chip-bg: rgba(0,0,0,0.04);
+  --preview-chip-bg-strong: rgba(0,0,0,0.06);
+  --preview-chip-border: rgba(0,0,0,0.10);
 }
 
 .dark {
@@ -155,6 +169,20 @@
   --color-in-progress-bg: #2E1065;
   --color-in-progress-text: #A78BFA;
   --color-in-progress-border: #4C1D95;
+
+  /* Preview surface (used by /preview/* pages) */
+  --preview-bg: #0a0a0a;
+  --preview-surface: #151516;
+  --preview-surface-2: #1c1c1e;
+  --preview-text: #e5e5e5;
+  --preview-text-muted: rgba(255,255,255,0.55);
+  --preview-text-faint: rgba(255,255,255,0.35);
+  --preview-border: rgba(255,255,255,0.08);
+  --preview-border-strong: rgba(255,255,255,0.15);
+  /* Translucent chip / hover backgrounds */
+  --preview-chip-bg: rgba(255,255,255,0.04);
+  --preview-chip-bg-strong: rgba(255,255,255,0.06);
+  --preview-chip-border: rgba(255,255,255,0.10);
 }
 
 /* ─── Tailwind theme bridge ──────────────────────────────────────────────── */

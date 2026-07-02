@@ -57,6 +57,19 @@ const ICON_MAP: Record<string, LucideIcon> = {
 
 const COLLAPSE_KEY = "bazaar-sidebar-collapsed";
 
+// Hayk 2026-07-01 — sidebar routes redirected to preview builds while we iterate.
+// Real routes untouched — just the sidebar link target changes.
+const PREVIEW_ROUTE_OVERRIDES: Record<string, string> = {
+  "/dashboard":       "/preview/dashboard-variants",
+  "/operations":      "/preview/operations-center",
+  "/leads":           "/preview/leads",
+  "/sales":           "/preview/sales-pipeline",  // DB route is /sales (see schema.sql)
+  "/sales-pipeline":  "/preview/sales-pipeline",  // safety alias
+  "/crm":             "/preview/crm",
+  "/orders":          "/preview/orders",
+  "/quotes":          "/preview/new-quote",
+};
+
 // Role-specific display name overrides for the /dashboard page
 const DASHBOARD_ROLE_LABELS: Record<string, string> = {
   admin:      "Admin Dashboard",
@@ -78,10 +91,11 @@ function NavLink({
 }) {
   const pathname = usePathname();
   const Icon = ICON_MAP[page.icon ?? ""] ?? LayoutDashboard;
+  const targetRoute = PREVIEW_ROUTE_OVERRIDES[page.route] ?? page.route;
   const active =
     page.route === "/dashboard"
-      ? pathname === "/dashboard"
-      : pathname === page.route || pathname.startsWith(page.route + "/");
+      ? pathname === "/dashboard" || pathname === PREVIEW_ROUTE_OVERRIDES["/dashboard"]
+      : pathname === page.route || pathname.startsWith(page.route + "/") || pathname === targetRoute || pathname.startsWith(targetRoute + "/");
 
   const displayLabel =
     page.route === "/dashboard" && roleName && DASHBOARD_ROLE_LABELS[roleName]
@@ -90,7 +104,7 @@ function NavLink({
 
   return (
     <Link
-      href={page.route}
+      href={targetRoute}
       title={collapsed ? displayLabel : undefined}
       className={cn(
         "flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors",
@@ -421,7 +435,13 @@ export function Sidebar() {
 
       {/* Nav sections */}
       <nav className="flex flex-1 flex-col overflow-y-auto p-2">
-        {sections.map(({ section, pages }, idx) => (
+        {sections.map(({ section, pages }, idx) => {
+          // Hayk 2026-07-01 — hide Quoted Requests nav entry from the sidebar
+          // while the /quotes page is still a placeholder. Underlying page and
+          // access rules untouched.
+          const visiblePages = pages.filter((p) => p.route !== "/quotes");
+          if (visiblePages.length === 0) return null;
+          return (
           <div key={section} className={cn("flex flex-col gap-0.5", idx > 0 && "mt-3")}>
             {/* Section label (hidden when collapsed) */}
             {!collapsed && section === "admin" && (
@@ -432,7 +452,7 @@ export function Sidebar() {
                 Admin
               </p>
             )}
-            {pages.map((page) => (
+            {visiblePages.map((page) => (
               <NavLink
                 key={page.id}
                 page={page}
@@ -442,7 +462,8 @@ export function Sidebar() {
               />
             ))}
           </div>
-        ))}
+          );
+        })}
       </nav>
 
       {/* Bottom utility strip */}

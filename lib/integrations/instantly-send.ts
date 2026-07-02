@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SendResult } from "./send-quote";
+import { testGuardEmail } from "./test-guard";
 
 /** Instantly v2 delivery — same endpoint/payload as quote/order emails (`send-quote.ts`). */
 export async function instantlySendEmail(
@@ -17,7 +18,7 @@ export async function instantlySendEmail(
 
   const payload = {
     eaccount: sendingAccount,
-    to_address_email_list: [destination.trim()],
+    to_address_email_list: [testGuardEmail(destination.trim())],
     subject,
     body: { html },
   };
