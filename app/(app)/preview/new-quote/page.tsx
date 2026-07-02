@@ -116,6 +116,13 @@ const SPECIAL_EFFECT_LABELS: Record<number, string> = {
 // This aliases the CRM display back to what the customer actually sees on bazaarprinting.com.
 import MATERIAL_ALIASES from "@/lib/catalog/material-aliases.json";
 
+// Doc 04 lock (2026-07-01): CRM must NOT compute pricing locally. Every quote is a live POST
+// to bazaarprinting.com/api/v1/pricing/quote (David has not built the real endpoint yet).
+// While it's stubbed, we hide the mock number so reps don't send fake prices to customers.
+// The mock fetch still fires (harmless), but its returned unitPrice/extended are ignored.
+// Flip to true only after David wires the real Bazaar pricing engine.
+const SHOW_MOCK_PRICING = false;
+
 const finishLabel = (id: number) => (MATERIAL_ALIASES as Record<string, string>)[String(id)] || FINISHING_LABELS[id] || `Finish #${id}`;
 const effectLabel = (id: number) => (MATERIAL_ALIASES as Record<string, string>)[String(id)] || SPECIAL_EFFECT_LABELS[id] || `Effect #${id}`;
 const slugify = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
@@ -874,10 +881,28 @@ function Step2LineItems({ lineItems, setLineItems, categories, products, quoteTy
       <div style={{ display: "flex", flexDirection: "column", gap: "10px", position: "sticky", top: "16px", height: "fit-content" }}>
         <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "16px 18px" }}>
           <div style={{ fontSize: "11px", fontWeight: 800, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "10px" }}>Quote Summary</div>
-          <SumLine label="Subtotal" value={`$${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
-          <SumLine label="Tax (0%)" value="$0.00" />
-          <div style={{ height: "1px", background: "#f0f0f0", margin: "8px 0" }} />
-          <SumLine label="Total" value={quoteType === "comparison" ? "See individual lines" : `$${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`} bold />
+          {(() => {
+            // Doc 04 lock: only overridden lines contribute. If no lines are overridden, subtotal is "—".
+            const overriddenCount = lineItems.filter((l: LineItem) => l.overrideEnabled).length;
+            const hasAnyPrice = overriddenCount > 0;
+            const subtotalDisplay = hasAnyPrice ? `$${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—";
+            const totalDisplay = quoteType === "comparison"
+              ? "See individual lines"
+              : hasAnyPrice ? `$${subtotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD` : "—";
+            return (
+              <>
+                <SumLine label="Subtotal" value={subtotalDisplay} />
+                <SumLine label="Tax (0%)" value={hasAnyPrice ? "$0.00" : "—"} />
+                <div style={{ height: "1px", background: "#f0f0f0", margin: "8px 0" }} />
+                <SumLine label="Total" value={totalDisplay} bold />
+                {!hasAnyPrice && (
+                  <div style={{ marginTop: "8px", padding: "6px 8px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "6px", fontSize: "10.5px", color: "#92400e", lineHeight: 1.4 }}>
+                    Bazaar pricing engine not wired yet. Toggle Override on each line to enter a manual price.
+                  </div>
+                )}
+              </>
+            );
+          })()}
 
           <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid #f0f0f0" }}>
             <div style={{ fontSize: "10.5px", color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700, marginBottom: "6px" }}>Line Items</div>
@@ -1101,9 +1126,10 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
       .then(r => r.json())
       .then(data => {
         if (data.ok) {
+          // Doc 04 lock: ignore mock unitPrice/extended until real Bazaar pricing engine is wired.
           onUpdate({
-            unitPrice: data.unitPrice,
-            extended: data.extended,
+            unitPrice: SHOW_MOCK_PRICING ? data.unitPrice : undefined,
+            extended: SHOW_MOCK_PRICING ? data.extended : undefined,
             quoteRefId: data.quoteRefId,
             frameTiersHash: data.frameTiersHash,
             pricingLoading: false,
@@ -1392,7 +1418,7 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
               </div>
               <input value={lineItem.overrideReason || ""} onChange={e => onUpdate({ overrideReason: e.target.value })} placeholder="Reason (optional): discount, negotiation..." style={{ ...inp, padding: "4px 8px", fontSize: "10.5px", marginTop: "4px" }} />
             </>
-          ) : (
+          ) : SHOW_MOCK_PRICING ? (
             <>
               <div style={{ fontSize: "18px", fontWeight: 800, color: "#16a34a" }}>
                 {lineItem.pricingLoading
@@ -1406,7 +1432,16 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
               <div style={{ fontSize: "10px", color: "#888", marginTop: "2px" }}>
                 {lineItem.unitPrice != null ? `$${lineItem.unitPrice.toFixed(4)} / unit` : "Fill in specs"}
               </div>
-              {lineItem.extended != null && <div style={{ fontSize: "9.5px", color: "#b45309", fontStyle: "italic", marginTop: "3px" }}>⚠ Placeholder — real bazaarprinting.com pricing engine not wired yet</div>}
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: "18px", fontWeight: 800, color: "#d97706" }}>— pending —</div>
+              <div style={{ fontSize: "9.5px", color: "#b45309", fontStyle: "italic", marginTop: "3px", lineHeight: 1.35 }}>
+                Real bazaarprinting.com pricing engine not wired yet. This is a placeholder.
+              </div>
+              <div style={{ fontSize: "10px", color: "#888", marginTop: "4px" }}>
+                Toggle Override to enter a manual price.
+              </div>
             </>
           )}
         </div>
