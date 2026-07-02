@@ -874,6 +874,28 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
       {/* Lead Status progress */}
       <StageProgress current={lead.stage} stamps={lead.stageTimestamps} />
 
+      {/* Chronological history — the "what happened" behind the dots */}
+      {lead.activityTimeline.length > 0 && (
+        <div style={{ marginTop: "10px", padding: "10px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
+            <span style={{ fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--preview-text-muted)" }}>History</span>
+            <span style={{ fontSize: "9.5px", color: "var(--preview-text-faint)" }}>{lead.activityTimeline.length} events</span>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "160px", overflowY: "auto" }}>
+            {lead.activityTimeline.slice().reverse().map((a, i) => (
+              <div key={i} style={{ display: "flex", gap: "8px", alignItems: "flex-start", fontSize: "11px", lineHeight: 1.4 }}>
+                <span style={{ fontSize: "13px", flexShrink: 0 }}>{a.icon}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ color: "var(--preview-text)", fontWeight: 600 }}>{a.title}</div>
+                  {a.sub && <div style={{ color: "var(--preview-text-muted)", fontSize: "10.5px" }}>{a.sub}</div>}
+                </div>
+                <span style={{ fontSize: "10px", color: "var(--preview-text-faint)", whiteSpace: "nowrap", flexShrink: 0 }}>{a.time}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Grid: Contact / Project Interest / Lead Score */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "14px", marginBottom: "14px" }}>
         <PanelCard title="Contact Information">
@@ -930,14 +952,11 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginTop: "2px" }}>{lead.nextActionDue}</div>
       </div>
 
-      {/* Big CTAs */}
+      {/* Big CTAs. Route to Sales lives at the top next to Quote — no dupe here. */}
       <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "12px" }}>
         <CTABtn label="Call Customer" primary />
         <CTABtn label="✉ Send Email" />
         <CTABtn label="📅 Schedule Follow Up" />
-        {!(["Routed to Sales", "Quote Sent", "Won"] as Stage[]).includes(lead.stage) && (
-          <CTABtn label="→ Route to Sales" primary />
-        )}
         <CTABtn label="🚫 Reject Lead" danger />
         <CTABtn label="📥 Archive Lead" />
         <CTABtn label="✓ Mark Complete" />
