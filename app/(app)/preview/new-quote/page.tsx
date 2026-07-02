@@ -57,6 +57,20 @@ interface LineItem {
   rollDirection?: string;
   coreSize?: string;
   outsideDiameter?: string;
+  // Doc 06 conditional spec fields — populated only when shouldShow() returns true
+  depthIn?: number;                      // 3D products (boxes)
+  finishedSizeLabel?: string;            // auto-computed "4×5×2 in"
+  dielineId?: string;                    // die-cut products
+  dielineNotes?: string;                 // free-text notes for dieline
+  application?: string;                  // combos only — application service
+  perforation?: string;
+  gusset?: string;                       // bags/pouches
+  tearNotch?: string;                    // bags/pouches
+  zipper?: string;                       // bags/pouches
+  window?: string;                       // bags/pouches
+  foldType?: string;                     // brochures / trifolds
+  // Multi-SKU breakdown (doc 06 skus[] payload)
+  skus?: { quantity: number; designName: string; artworkFile?: string }[];
   // Artwork
   designerName?: string;
   artworkFiles?: { name: string; size: string }[];
@@ -117,6 +131,7 @@ const SPECIAL_EFFECT_LABELS: Record<number, string> = {
 // website itself displays "color" for those SKUs (e.g. id 175 shows "Silver Virgin" not "MET PET").
 // This aliases the CRM display back to what the customer actually sees on bazaarprinting.com.
 import MATERIAL_ALIASES from "@/lib/catalog/material-aliases.json";
+import { shouldShow, hasKnownSubcategory, fieldAllowlist } from "./_shared/product-conditional-fields";
 
 // Doc 04 lock (2026-07-01): CRM must NOT compute pricing locally. Every quote is a live POST
 // to bazaarprinting.com/api/v1/pricing/quote (David has not built the real endpoint yet).
@@ -327,12 +342,26 @@ export default function NewQuotePreview() {
             materialName: l.materialName,
             widthIn: l.widthIn,
             heightIn: l.heightIn,
+            depthIn: l.depthIn,
+            finishedSizeLabel: l.finishedSizeLabel,
             sides: l.sides,
             colorMode: l.colorMode,
             quantity: l.quantity,
             comment: l.comment,
             finishingIds: l.finishingIds,
             specialEffectIds: l.specialEffectIds,
+            // Doc 06 conditional spec fields
+            rollDirection: l.rollDirection,
+            dielineId: l.dielineId,
+            dielineNotes: l.dielineNotes,
+            application: l.application,
+            perforation: l.perforation,
+            gusset: l.gusset,
+            tearNotch: l.tearNotch,
+            zipper: l.zipper,
+            window: l.window,
+            foldType: l.foldType,
+            skus: l.skus,
             unitPrice: l.overrideEnabled ? l.overrideUnitPrice : l.unitPrice,
             extended: l.overrideEnabled ? l.overrideExtended : l.extended,
           })),
@@ -343,7 +372,9 @@ export default function NewQuotePreview() {
       const data = await res.json();
       if (data.ok) {
         const wf = data.workflowResponse || {};
-        const orderNo = wf.order_number || wf.orderId || wf.order_id || "";
+        // Passport-number linkage: prefer the CRM-derived ORD-XXX ref
+        // (same numeric core as the source quote) over the raw workflow response.
+        const orderNo = data.orderRefId || wf.order_number || wf.orderId || wf.order_id || "";
         setSendResult({ ok: true, msg: `Sent to Workflow board. Order: ${orderNo}` });
         // Clear draft on successful send
         try { localStorage.removeItem(DRAFT_STORAGE_KEY); } catch {}
@@ -1199,9 +1230,9 @@ function Step1Info(props: any) {
   const showRepMismatchBanner = props.currentUserRole === "SDR";
   // Sample "previous work" data — until real DB wiring is in place.
   const previousWork = [
-    { ref: "QO-2026-172", product: "Roll Labels", total: "$2,100", status: "Won", statusColor: "#16a34a", date: "Mar 15, 2026" },
-    { ref: "QO-2026-158", product: "Folding Cartons", total: "$8,450", status: "Won", statusColor: "#16a34a", date: "Feb 20, 2026" },
-    { ref: "QO-2026-134", product: "Business Cards", total: "$340", status: "Lost", statusColor: "#dc2626", date: "Jan 8, 2026" },
+    { ref: "QO-172", product: "Roll Labels", total: "$2,100", status: "Won", statusColor: "#16a34a", date: "Mar 15, 2026" },
+    { ref: "QO-158", product: "Folding Cartons", total: "$8,450", status: "Won", statusColor: "#16a34a", date: "Feb 20, 2026" },
+    { ref: "QO-134", product: "Business Cards", total: "$340", status: "Lost", statusColor: "#dc2626", date: "Jan 8, 2026" },
   ];
   // Only Sales / Admin see the full history section.
   const canSeePreviousWork = props.currentUserRole === "Sales" || props.currentUserRole === "Admin" || props.currentUserRole === "SDR"; // shown as preview always
@@ -1521,11 +1552,6 @@ function ProductThumb({ subcategory }: { subcategory?: string | null }) {
     </svg>
   );
 }
-function isRollProduct(subcategory?: string | null) {
-  const s = subcategory || "";
-  return s === "labels-stickers" || s === "label-bag-combo" || s === "label-jar-combo" || s === "label-tube-combo";
-}
-
 // ─── Multi-select dropdown (Finishing / Special Effects) ─────────
 function MultiSelectDropdown({ label, accent, tintBg, tintText, options, selected, onToggle }: {
   label: string;
@@ -1633,6 +1659,30 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
   const availableMaterials = selectedProduct?.materials || [];
   const availableFinishing: number[] = (selectedProduct?.fields?.FINISHING as number[]) || [];
   const availableSpecialEffects: number[] = (selectedProduct?.fields?.SPECIAL_EFFECTS as number[]) || [];
+
+  // Doc 06 finishedSizeLabel — auto-computed from width × height × depth (depth
+  // only when the product actually has a depth axis).
+  const finishedSizeLabel = useMemo(() => {
+    const parts: (string | number)[] = [];
+    if (lineItem.widthIn) parts.push(lineItem.widthIn);
+    if (lineItem.heightIn) parts.push(lineItem.heightIn);
+    if (lineItem.depthIn && shouldShow("depthIn", selectedProduct)) parts.push(lineItem.depthIn);
+    return parts.length >= 2 ? `${parts.join("×")} in` : "";
+  }, [lineItem.widthIn, lineItem.heightIn, lineItem.depthIn, selectedProduct]);
+
+  // Persist finishedSizeLabel back onto the line item so it flows through to the
+  // review page and the order-sender payload.
+  useEffect(() => {
+    if (lineItem.finishedSizeLabel !== finishedSizeLabel) {
+      onUpdate({ finishedSizeLabel });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [finishedSizeLabel]);
+
+  // Multi-SKU sum validator — sum of per-SKU quantities must equal total quantity.
+  const skuList = lineItem.skus || [];
+  const skuSum = skuList.reduce((acc: number, s: any) => acc + (Number(s.quantity) || 0), 0);
+  const skuMismatch = skuList.length > 0 && skuSum !== Number(lineItem.quantity || 0);
 
   // Fetch price when relevant fields change
   useEffect(() => {
@@ -1807,27 +1857,48 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
         </FieldWrap>
       </div>
 
-      {/* Size */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 2fr", gap: "10px", marginBottom: "10px" }}>
+      {/* Subcategory-unknown fallback caption */}
+      {selectedProduct && !hasKnownSubcategory(selectedProduct) && (
+        <div style={{ marginBottom: "10px", padding: "6px 10px", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "6px", fontSize: "10.5px", color: "#1e40af", fontStyle: "italic" }}>
+          Product subcategory unknown — showing all fields as a fallback.
+        </div>
+      )}
+
+      {/* Size (+ Depth for 3D products) / Sides / ColorMode */}
+      <div style={{ display: "grid", gridTemplateColumns: shouldShow("depthIn", selectedProduct) ? "1fr 1fr 1fr 1fr 1fr" : "1fr 1fr 1fr 2fr", gap: "10px", marginBottom: "10px" }}>
         <FieldWrap label="Width (in)" tight>
           <input type="number" step="0.01" value={lineItem.widthIn ?? ""} onChange={e => onUpdate({ widthIn: Number(e.target.value) || undefined })} placeholder="e.g. 4.0" style={inp} />
         </FieldWrap>
         <FieldWrap label="Height (in)" tight>
           <input type="number" step="0.01" value={lineItem.heightIn ?? ""} onChange={e => onUpdate({ heightIn: Number(e.target.value) || undefined })} placeholder="e.g. 3.0" style={inp} />
         </FieldWrap>
-        <FieldWrap label="Sides" tight>
-          <select value={lineItem.sides || "S1"} onChange={e => onUpdate({ sides: e.target.value })} style={inp}>
-            <option value="S1">Single Side</option>
-            <option value="S2">Double Sided</option>
-          </select>
-        </FieldWrap>
+        {shouldShow("depthIn", selectedProduct) && (
+          <FieldWrap label="Depth (in)" tight>
+            <input type="number" step="0.01" value={lineItem.depthIn ?? ""} onChange={e => onUpdate({ depthIn: Number(e.target.value) || undefined })} placeholder="e.g. 2.0" style={inp} />
+          </FieldWrap>
+        )}
+        {shouldShow("sides", selectedProduct) && (
+          <FieldWrap label="Sides" tight>
+            <select value={lineItem.sides || "S1"} onChange={e => onUpdate({ sides: e.target.value as "S1" | "S2" })} style={inp}>
+              <option value="S1">Single Side</option>
+              <option value="S2">Double Sided</option>
+            </select>
+          </FieldWrap>
+        )}
         <FieldWrap label="Color Mode" tight>
-          <select value={lineItem.colorMode || "CMYK"} onChange={e => onUpdate({ colorMode: e.target.value })} style={inp}>
+          <select value={lineItem.colorMode || "CMYK"} onChange={e => onUpdate({ colorMode: e.target.value as "CMYK" | "Pantone" })} style={inp}>
             <option>CMYK</option>
             <option>Pantone</option>
           </select>
         </FieldWrap>
       </div>
+
+      {/* Finished-size label (computed, read-only preview) */}
+      {finishedSizeLabel && (
+        <div style={{ marginBottom: "10px", fontSize: "11px", color: "var(--preview-text-muted)" }}>
+          <b style={{ color: "var(--preview-text)" }}>Finished size:</b> {finishedSizeLabel}
+        </div>
+      )}
 
       {/* Empty pouch/product-specific fields warning — these EXIST in the catalog but have no values yet.
           Surfaces the data quality gap so Hayk can flag it for Bazaar admin population. */}
@@ -1871,23 +1942,138 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
         </div>
       )}
 
-      {/* Roll Specs — only for roll-based products (labels + combos) */}
-      {isRollProduct(selectedProduct?.subcategory) && (
-        <div style={{ marginBottom: "10px", padding: "10px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Roll Specs</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: "10px", maxWidth: "260px" }}>
-            <FieldWrap label="Roll Direction" tight>
-              <select value={lineItem.rollDirection || ""} onChange={e => onUpdate({ rollDirection: e.target.value })} style={inp}>
-                <option value="">Select…</option>
-                <option>Top Out</option>
-                <option>Bottom Out</option>
-                <option>Left Out</option>
-                <option>Right Out</option>
+      {/* Product-specific specs — conditional per subcategory via shouldShow() */}
+      {selectedProduct && (() => {
+        const showRoll = shouldShow("rollDirection", selectedProduct);
+        const showApp = shouldShow("application", selectedProduct);
+        const showDie = shouldShow("dielineId", selectedProduct);
+        const showGusset = shouldShow("gusset", selectedProduct);
+        const showTear = shouldShow("tearNotch", selectedProduct);
+        const showZip = shouldShow("zipper", selectedProduct);
+        const showWin = shouldShow("window", selectedProduct);
+        const showFold = shouldShow("foldType", selectedProduct);
+        const showPerf = shouldShow("perforation", selectedProduct);
+        const anyShown = showRoll || showApp || showDie || showGusset || showTear || showZip || showWin || showFold || showPerf;
+        if (!anyShown) return null;
+
+        // Helper for allowlist-driven dropdowns with the "TBD" caption fallback.
+        const AllowlistDropdown = ({ label, fieldKey, value, onChange }: { label: string; fieldKey: string; value: string; onChange: (v: string) => void }) => {
+          const opts = fieldAllowlist(selectedProduct, fieldKey);
+          return (
+            <FieldWrap label={label} tight>
+              <select value={value || ""} onChange={e => onChange(e.target.value)} style={inp} disabled={opts.length === 0}>
+                <option value="">{opts.length === 0 ? "TBD" : "Select…"}</option>
+                {opts.map((o: any) => (
+                  <option key={String(o)} value={String(o)}>{String(o)}</option>
+                ))}
               </select>
+              {opts.length === 0 && (
+                <div style={{ marginTop: "3px", fontSize: "10px", color: "#a16207", fontStyle: "italic" }}>
+                  Not populated on Bazaar admin yet — TBD
+                </div>
+              )}
             </FieldWrap>
+          );
+        };
+
+        return (
+          <div style={{ marginBottom: "10px", padding: "10px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
+            <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Product Specs</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px" }}>
+              {showRoll && (
+                <FieldWrap label="Roll Direction" tight>
+                  <select value={lineItem.rollDirection || ""} onChange={e => onUpdate({ rollDirection: e.target.value })} style={inp}>
+                    <option value="">Select…</option>
+                    <option>Top Out</option>
+                    <option>Bottom Out</option>
+                    <option>Left Out</option>
+                    <option>Right Out</option>
+                  </select>
+                </FieldWrap>
+              )}
+              {showApp && (
+                <AllowlistDropdown label="Application Service" fieldKey="APPLICATION" value={lineItem.application || ""} onChange={v => onUpdate({ application: v })} />
+              )}
+              {showDie && (
+                <AllowlistDropdown label="Dieline" fieldKey="DIE" value={lineItem.dielineId || ""} onChange={v => onUpdate({ dielineId: v })} />
+              )}
+              {showGusset && (
+                <AllowlistDropdown label="Gusset" fieldKey="GUSSET" value={lineItem.gusset || ""} onChange={v => onUpdate({ gusset: v })} />
+              )}
+              {showTear && (
+                <AllowlistDropdown label="Tear Notch" fieldKey="TEAR_NOTCH" value={lineItem.tearNotch || ""} onChange={v => onUpdate({ tearNotch: v })} />
+              )}
+              {showZip && (
+                <AllowlistDropdown label="Zipper" fieldKey="ZIPPER" value={lineItem.zipper || ""} onChange={v => onUpdate({ zipper: v })} />
+              )}
+              {showWin && (
+                <AllowlistDropdown label="Window" fieldKey="WINDOW" value={lineItem.window || ""} onChange={v => onUpdate({ window: v })} />
+              )}
+              {showFold && (
+                <AllowlistDropdown label="Fold Type" fieldKey="FOLD_TYPE" value={lineItem.foldType || ""} onChange={v => onUpdate({ foldType: v })} />
+              )}
+              {showPerf && (
+                <AllowlistDropdown label="Perforation" fieldKey="PERFORATION" value={lineItem.perforation || ""} onChange={v => onUpdate({ perforation: v })} />
+              )}
+            </div>
+            {showDie && (
+              <div style={{ marginTop: "10px" }}>
+                <FieldWrap label="Dieline Notes" tight optional>
+                  <textarea rows={2} value={lineItem.dielineNotes || ""} onChange={e => onUpdate({ dielineNotes: e.target.value })} placeholder="Free-text notes for the dieline (custom shape, cutout position, etc.)" style={{ ...inp, resize: "vertical", fontFamily: "inherit" }} />
+                </FieldWrap>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* Multi-SKU editor — split the total quantity across N designs */}
+      {selectedProduct && (() => {
+        const skuCount = skuList.length;
+        return (
+          <div style={{ marginBottom: "10px", padding: "10px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <div style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Number of SKUs</div>
+              <select value={skuCount} onChange={e => {
+                const n = Number(e.target.value);
+                if (n <= 1) { onUpdate({ skus: [] }); return; }
+                const cur = skuList.slice();
+                while (cur.length < n) cur.push({ quantity: 0, designName: "" });
+                cur.length = n;
+                onUpdate({ skus: cur });
+              }} style={{ ...inp, width: "auto", padding: "5px 10px", fontSize: "11.5px" }}>
+                {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+                  <option key={n} value={n}>{n} SKU{n === 1 ? "" : "s"}</option>
+                ))}
+              </select>
+            </div>
+            {skuCount > 1 && (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                  {skuList.map((s: any, i: number) => (
+                    <div key={i} style={{ display: "grid", gridTemplateColumns: "80px 1fr 1fr auto", gap: "6px", alignItems: "center" }}>
+                      <input type="number" value={s.quantity ?? 0} placeholder="Qty" onChange={e => {
+                        const next = skuList.slice(); next[i] = { ...s, quantity: Number(e.target.value) || 0 }; onUpdate({ skus: next });
+                      }} style={{ ...inp, padding: "5px 8px", fontSize: "11.5px" }} />
+                      <input value={s.designName || ""} placeholder={`Design ${i + 1} name`} onChange={e => {
+                        const next = skuList.slice(); next[i] = { ...s, designName: e.target.value }; onUpdate({ skus: next });
+                      }} style={{ ...inp, padding: "5px 8px", fontSize: "11.5px" }} />
+                      <input value={s.artworkFile || ""} placeholder="Artwork file (optional)" onChange={e => {
+                        const next = skuList.slice(); next[i] = { ...s, artworkFile: e.target.value }; onUpdate({ skus: next });
+                      }} style={{ ...inp, padding: "5px 8px", fontSize: "11.5px" }} />
+                      <button onClick={() => { const next = skuList.slice(); next.splice(i, 1); onUpdate({ skus: next }); }} style={{ background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: "5px", padding: "3px 8px", fontSize: "11px", cursor: "pointer" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: "6px", fontSize: "11px", color: skuMismatch ? "#dc2626" : "var(--preview-text-muted)", fontWeight: skuMismatch ? 700 : 400 }}>
+                  Sum of SKU quantities: <b>{skuSum.toLocaleString()}</b> / Total quantity: <b>{Number(lineItem.quantity || 0).toLocaleString()}</b>
+                  {skuMismatch && <span> — must match</span>}
+                </div>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Artwork uploader */}
       <div style={{ marginBottom: "10px", padding: "10px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
