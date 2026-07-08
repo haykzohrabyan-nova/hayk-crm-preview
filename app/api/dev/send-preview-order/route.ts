@@ -104,6 +104,9 @@ export async function POST(request: Request) {
     customer_contact: body.customerEmail,
     customer_phone: body.customerPhone,
     description: body.notes,
+    // Owner = account manager. The workflow matches this name against team
+    // members with the account_manager role; mismatches land unassigned.
+    owner: body.owner,
     items,
   };
 
