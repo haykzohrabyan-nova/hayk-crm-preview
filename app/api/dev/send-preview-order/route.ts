@@ -68,6 +68,12 @@ export async function POST(request: Request) {
     );
   }
 
+  // Workflow's Sides custom field accepts "Single-sided" / "Double-sided"
+  // (verified against custom_fields.options in the workflow DB). The CRM's
+  // internal S1/S2 codes get auto-corrected to blank if sent raw.
+  const sidesLabel = (s?: string) =>
+    s === "S1" ? "Single-sided" : s === "S2" ? "Double-sided" : s;
+
   // Transform CRM preview shape → workflow WebhookOrderPayload
   // (workflow expects flat snake_case fields; multi-line uses `items[]`)
   const items = body.lineItems.map((l) => ({
@@ -75,7 +81,7 @@ export async function POST(request: Request) {
     product: l.productName,
     finished_size: sizeLabel(l.widthIn, l.heightIn),
     materials: l.materialName,
-    sides: l.sides,
+    sides: sidesLabel(l.sides),
     color_mode: l.colorMode,
     order_qty: l.quantity,
     description: [
@@ -125,8 +131,10 @@ export async function POST(request: Request) {
     // Hayk 2026-07-02 — Passport-number linkage. The quote's numeric core
     // rides straight through to the order ref, so downstream artifacts
     // (INV-XXX, PS-XXX, workflow card #XXX) all match Q-XXX.
+    // QO before Q — alternation is first-match, so /Q|QO/ strips only the
+    // "Q" of "QO-777" and leaves "O-777".
     const core = body.quoteRefId
-      .replace(/^(Q|QO|ORD|INV|PS)-?/i, "")
+      .replace(/^(QO|ORD|INV|PS|Q)-?/i, "")
       .replace(/^\d{4}-/, "")
       .padStart(3, "0");
     return NextResponse.json({

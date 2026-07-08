@@ -17,7 +17,9 @@ const GOLD = "#fbbf24";
 // any year segment (2026-) so we always land on the 3-digit core.
 export const passportCore = (refId: string): string =>
   refId
-    .replace(/^(Q|QO|ORD|INV|PS)-?/i, "")
+    // QO before Q — alternation is first-match; /Q|QO/ would strip only
+    // the "Q" of "QO-777" and leave "O-777".
+    .replace(/^(QO|ORD|INV|PS|Q)-?/i, "")
     .replace(/^\d{4}-/, "")
     .padStart(3, "0");
 
