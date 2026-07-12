@@ -655,16 +655,8 @@ export function Sidebar() {
                     roleName={userRoleName}
                   />
                 )}
-                {/* Hayk 2026-07-01 — inject preview Inbox link right after Leads */}
-                {page.route === PREVIEW_INBOX_LINK.insertAfterRoute &&
-                  !PREVIEW_ROLES_HIDING_PREVIEW_INBOX.includes(previewRole) && (
-                  <PreviewInboxLink collapsed={collapsed} />
-                )}
-                {/* Hayk 2026-07-02 — inject Payments link right after Orders (accountant + admin only) */}
-                {page.route === PREVIEW_PAYMENTS_LINK.insertAfterRoute &&
-                  !PREVIEW_ROLE_HIDDEN_ROUTES[previewRole].includes("/payments") && (
-                  <PreviewPaymentsLink collapsed={collapsed} />
-                )}
+                {/* Hayk 2026-07-12 — Inbox removed from nav; Payments already exists
+                    as a DB nav item, so the injected duplicate is dropped. */}
               </div>
             ))}
           </div>
