@@ -48,6 +48,13 @@ export interface OrderLineItem {
   // Real-data specs pulled straight from the job ticket's product_lines jsonb
   // (print, style, finish, stock, etc.) — rendered honestly, only when present.
   specs?: { label: string; value: string }[];
+  // Per-SKU artwork/proof image + files, resolved from assets by sku_key.
+  thumbnailUrl?: string;
+  files?: { name: string; url?: string; kind: string }[];
+  // Per-item people assignment (who owns this SKU). Defaults seeded from the
+  // order rep / board stage; editable in the UI (state only until wired).
+  accountManager?: string;
+  productionOwner?: string;
 }
 
 export interface Attachment { name: string; sizeKB: number; kind: "pdf" | "ai" | "png" | "jpg" | "dxf"; }

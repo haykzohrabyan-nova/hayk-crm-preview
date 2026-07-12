@@ -138,7 +138,12 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
       </div>
 
       {detailOrder ? (
-        <OrderDetail order={detailOrder} boardStages={boardStages} onBack={() => setDetailId(null)} />
+        <OrderDetail
+          order={detailOrder}
+          boardStages={boardStages}
+          onBack={() => setDetailId(null)}
+          onViewCustomerOrders={(q) => { setDetailId(null); setStatusSel(new Set()); setChips(new Set()); setSearch(q); }}
+        />
       ) : (
         <>
           {/* Header */}
@@ -550,166 +555,382 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
 }
 
 // ─── Order Detail (full page takeover) ────────────────────────────────────────
-function OrderDetail({ order, boardStages, onBack }: { order: Order; boardStages: BoardStage[]; onBack: () => void }) {
-  const [status, setStatus] = useState(order.status);
+function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { order: Order; boardStages: BoardStage[]; onBack: () => void; onViewCustomerOrders: (query: string) => void }) {
+  const [status, setStatus] = useState<string>(order.stageName ?? order.status);
   const [priority, setPriority] = useState(order.priority);
-  const [showEngIds, setShowEngIds] = useState(false);
-  const [tab, setTab] = useState<"overview" | "activity" | "comms" | "quotes" | "files" | "payments">("overview");
+  const [showCustomer, setShowCustomer] = useState(false);
+  const [showMore, setShowMore] = useState(false);
+  const [moreTab, setMoreTab] = useState<"quotes" | "activity" | "files">("quotes");
 
-  // Prefer per-order timeline if present, otherwise fall back to generated one.
+  // Real workflow statuses come straight from the live production board columns.
+  const WORKFLOW_STATUSES = boardStages.map(s => s.name).filter(Boolean);
+  const statusOptions = WORKFLOW_STATUSES.length ? WORKFLOW_STATUSES : [order.status];
+
+  // Per-item people rosters (real): account managers + production stations.
+  const ACCOUNT_MANAGERS = ["Marianna", "Gary", "Ernesto", "Manny"];
+  const prodFromBoard = boardStages.map(s => s.name).filter(n => ["Arsen", "Hrach", "Production", "Apparel"].includes(n));
+  const PRODUCTION_OWNERS = prodFromBoard.length ? prodFromBoard : ["Arsen", "Hrach", "Production", "Apparel"];
+
   const timeline: TimelineEvent[] = order.timeline
     ? order.timeline.map(t => ({ icon: t.icon, tint: t.tint, title: t.title, sub: t.sub, at: t.at, ref: t.ref })).reverse()
     : buildTimeline(order);
 
+  const payPill = PAY_COLORS[order.payment];
+
   return (
     <div>
-      {/* Top bar */}
+      {/* Top bar — Send to Workflow removed */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
         <button onClick={onBack} style={{ background: "transparent", border: "none", color: "#666", fontSize: "13px", cursor: "pointer", fontWeight: 500 }}>← Back to Orders</button>
         <div style={{ display: "flex", gap: "8px" }}>
-          <button style={{ padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer" }}>📄 View Source Quote ({order.quoteRefId})</button>
-          <button style={{ padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer" }}>✎ Edit Order</button>
-          <button style={{ padding: "8px 16px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>→ Send to Workflow</button>
-          <button style={{ padding: "8px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", cursor: "pointer" }}>⋯</button>
+          <button style={{ ...CONTROL, fontWeight: 600 }}>📄 View Source Quote ({order.quoteRefId})</button>
+          <button style={{ ...CONTROL, fontWeight: 600 }}>✎ Edit Order</button>
+          <button style={{ ...CONTROL, padding: "0 12px" }}>⋯</button>
         </div>
       </div>
 
-      {/* Header card — compact */}
+      {/* ONE combined header — identity + customer + meta + total, all in a single card */}
       <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "18px 22px", marginBottom: "12px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
               <h1 style={{ fontSize: "26px", fontWeight: 800, margin: 0, fontFamily: "monospace" }}>ORD-{order.refId}</h1>
               <button style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: "13px", padding: "2px 4px" }} title="Copy full ID">⧉</button>
               <button style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: "13px", padding: "2px 4px" }} title="Print order">🖨</button>
               <span
                 style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 10px", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: "999px", fontSize: "11px", fontWeight: 800, fontFamily: "monospace" }}
-                title={`Same number rides on the quote (Q-${passportCore(order.refId)}), production card (#${passportCore(order.refId)}), invoice (INV-${passportCore(order.refId)}), and shipping. Never re-invented.`}
-              >
-                🔒 Passport: {passportCore(order.refId)}
-              </span>
+                title={`Same number rides on the quote, production card, invoice, and shipping. Never re-invented.`}
+              >🔒 Passport: {passportCore(order.refId)}</span>
             </div>
-            <div style={{ fontSize: "14px", color: "#333", marginTop: "4px" }}>
-              <b>{order.contact}</b> · {order.company || "—"}
-              {order.customer?.returning && (
-                <span style={{ marginLeft: "8px", padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>Returning Customer · {order.customer.lifetimeOrders} orders</span>
-              )}
-              {order.customer && !order.customer.returning && (
-                <span style={{ marginLeft: "8px", padding: "2px 8px", background: "#e0e7ff", color: "#4338ca", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>New Customer</span>
-              )}
-            </div>
-            <div style={{ display: "flex", gap: "6px", marginTop: "10px" }}>
-              <span title="Live production stage" style={{ padding: "3px 10px", background: STATUS_COLORS[status].bg, color: STATUS_COLORS[status].fg, fontSize: "11px", fontWeight: 700, borderRadius: "6px" }}>{order.stageName ?? status}</span>
-              <span style={{ padding: "3px 10px", background: PAY_COLORS[order.payment].bg, color: PAY_COLORS[order.payment].fg, fontSize: "11px", fontWeight: 700, borderRadius: "6px" }}>{order.payment}</span>
-              <span style={{ padding: "3px 10px", background: priority === "High" ? "#fee2e2" : priority === "Rush" ? "#fef3c7" : "#dcfce7", color: priority === "High" ? "#dc2626" : priority === "Rush" ? "#f59e0b" : "#22c55e", fontSize: "11px", fontWeight: 700, borderRadius: "6px" }}>🚩 {priority} Priority</span>
+            {/* Clickable customer → popup with contact + all-orders */}
+            <div style={{ fontSize: "14px", color: "var(--preview-text)", marginTop: "6px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+              <button onClick={() => setShowCustomer(true)} style={{ background: "transparent", border: "none", padding: 0, cursor: "pointer", fontSize: "15px", fontWeight: 800, color: ACCENT, textDecoration: "underline", textUnderlineOffset: "2px" }} title="View customer contact & all their orders">
+                {order.contact}
+              </button>
+              {order.company && order.company !== order.contact && <span style={{ color: "#888" }}>· {order.company}</span>}
+              {order.customer?.returning
+                ? <span style={{ padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>Returning · {order.customer.lifetimeOrders} orders</span>
+                : <span style={{ padding: "2px 8px", background: "#e0e7ff", color: "#4338ca", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>New customer</span>}
             </div>
           </div>
-          <div style={{ textAlign: "right" }}>
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
             <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Order Total</div>
             <div style={{ fontSize: "30px", fontWeight: 800, letterSpacing: "-0.5px" }}>{fmtMoney(order.total)}</div>
             <div style={{ fontSize: "11.5px", marginTop: "2px", color: "#16a34a", fontWeight: 700 }}>
               Received {fmtMoney(order.received)}
-              {order.balanceDue > 0 && <span style={{ color: "#dc2626", marginLeft: "8px" }}>· Balance due {fmtMoney(order.balanceDue)}</span>}
+              {order.balanceDue > 0 && <span style={{ color: "#dc2626", marginLeft: "8px" }}>· Balance {fmtMoney(order.balanceDue)}</span>}
             </div>
-            {order.paymentOverdue && order.paymentDueDate && (() => {
-              const d = daysPastDue(order.paymentDueDate);
-              if (d <= 0) return null;
-              return (
-                <div style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginTop: "6px", padding: "3px 10px", background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: "999px", fontSize: "11px", color: "#b91c1c", fontWeight: 800 }}
-                  title={`${order.paymentTerms || "Payment"} due ${order.paymentDueDate}`}
-                >💸 Payment {d} {d === 1 ? "day" : "days"} past due · terms {order.paymentTerms || "—"}</div>
-              );
-            })()}
-            <div style={{ fontSize: "10.5px", color: "#888", marginTop: "1px" }}>on {order.createdDate}</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Meta strip — Created By, Created, Due, Priority, Status, Fulfillment */}
-      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "12px 20px", marginBottom: "14px", display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: "16px", alignItems: "center" }}>
-        <MetaCell icon="👤" label="Created By">
-          <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
-            <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: order.ownerColor + "22", color: order.ownerColor, fontSize: "9px", fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{order.ownerAvatar}</span>
-            {order.createdBy}
-          </span>
-        </MetaCell>
-        <MetaCell icon="📅" label="Created">
-          <div style={{ fontWeight: 700 }}>{order.createdDate}</div>
-          <div style={{ fontSize: "10.5px", color: "#888" }}>{order.createdAgo}</div>
-        </MetaCell>
-        <MetaCell icon="📅" label="Due Date">
-          <div style={{ fontWeight: 700, color: order.dueOverdue ? "#dc2626" : "var(--preview-text)" }}>{order.dueDate || "—"}</div>
-          {order.dueOverdue && (() => {
-            const d = daysPastDue(order.dueDate);
-            return (
-              <div
-                style={{ display: "inline-flex", alignItems: "center", gap: "4px", marginTop: "3px", padding: "2px 8px", background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "999px", fontSize: "10.5px", color: "#dc2626", fontWeight: 700 }}
-                title={`Due date passed ${d} day${d === 1 ? "" : "s"} ago`}
-              >⚠ {d} {d === 1 ? "day" : "days"} late</div>
-            );
-          })()}
-        </MetaCell>
-        <MetaCell icon="🚩" label="Priority">
-          <select value={priority} onChange={e => setPriority(e.target.value as Priority)} style={{ padding: "3px 10px 3px 6px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "5px", fontSize: "12.5px", fontWeight: 700, width: "100%" }}>
-            <option>Normal</option><option>High</option><option>Rush</option><option>Low</option>
-          </select>
-        </MetaCell>
-        <MetaCell icon="⚙" label="Status">
-          <select value={status} onChange={e => setStatus(e.target.value as OrderStatus)} style={{ padding: "3px 10px 3px 6px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "5px", fontSize: "12.5px", fontWeight: 700, width: "100%" }}>
-            <option>Pending Payment</option><option>In Production</option><option>Ready to Ship</option><option>Shipped</option><option>Delivered</option><option>Cancelled</option><option>Refunded</option>
-          </select>
-        </MetaCell>
-        <MetaCell icon="🚚" label="Fulfillment">
-          <div style={{ fontWeight: 700 }}>{order.shippingMethod || "—"}</div>
-          {order.trackingRef && <div style={{ fontSize: "10.5px", color: "#888" }}>{order.trackingRef}</div>}
-        </MetaCell>
-      </div>
-
-      {/* 3-column body: Customer sidebar (LEFT) | Content tabs (MIDDLE) | Timeline + Workflow (RIGHT) */}
-      <div style={{ display: "grid", gridTemplateColumns: "280px minmax(0, 1fr) 320px", gap: "14px", marginBottom: "14px" }}>
-        {/* LEFT — Customer sidebar with Actions */}
-        <CustomerSidebar order={order} />
-
-        {/* MIDDLE — Tabbed content */}
-        <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "0", overflow: "hidden" }}>
-          {/* Tab bar */}
-          <div style={{ display: "flex", gap: "20px", padding: "0 22px", borderBottom: "1px solid #eee" }}>
-            {[
-              { key: "overview", label: "Overview" },
-              { key: "activity", label: `Activity Timeline (${timeline.length})` },
-              { key: "comms", label: `Communications (${order.communications?.length ?? 0})` },
-              { key: "quotes", label: `Quote History (${order.quoteHistory?.length ?? 0})` },
-              { key: "files", label: `Files (${order.attachmentsCount})` },
-              { key: "payments", label: `Payments (${order.payments?.length ?? 0})` },
-            ].map(t => {
-              const active = tab === t.key;
-              return (
-                <button key={t.key} onClick={() => setTab(t.key as any)} style={{ background: "transparent", border: "none", padding: "14px 4px", marginBottom: "-1px", borderBottom: active ? `2px solid ${ACCENT}` : "2px solid transparent", color: active ? "#171717" : "#666", fontSize: "13px", fontWeight: active ? 700 : 500, cursor: "pointer" }}>
-                  {t.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div style={{ padding: "18px 22px" }}>
-            {tab === "overview" && <OverviewTab order={order} showEngIds={showEngIds} setShowEngIds={setShowEngIds} />}
-            {tab === "activity" && <ActivityTab events={timeline} />}
-            {tab === "comms" && <CommsTab order={order} />}
-            {tab === "quotes" && <QuoteHistoryTab order={order} />}
-            {tab === "files" && <FilesTab order={order} />}
-            {tab === "payments" && <PaymentsTab order={order} />}
           </div>
         </div>
 
-        {/* RIGHT — Activity Timeline + Workflow Progress */}
+        {/* Inline meta row (was a separate strip) — no Fulfillment */}
+        <div style={{ display: "flex", gap: "26px", alignItems: "center", flexWrap: "wrap", marginTop: "14px", paddingTop: "14px", borderTop: "1px solid var(--preview-border)" }}>
+          <MetaInline icon="👤" label="Created by">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
+              <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: order.ownerColor + "22", color: order.ownerColor, fontSize: "9px", fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{order.ownerAvatar}</span>
+              {order.createdBy}
+            </span>
+          </MetaInline>
+          <MetaInline icon="📅" label="Created">{order.createdDate} <span style={{ color: "#888", fontWeight: 500 }}>· {order.createdAgo}</span></MetaInline>
+          <MetaInline icon="📅" label="Due">
+            <span style={{ fontWeight: 700, color: order.dueOverdue ? "#dc2626" : "var(--preview-text)" }}>{order.dueDate || "—"}</span>
+            {order.dueOverdue && (() => { const d = daysPastDue(order.dueDate); return <span style={{ marginLeft: "6px", color: "#dc2626", fontWeight: 700, fontSize: "11px" }}>⚠ {d}d late</span>; })()}
+          </MetaInline>
+          <MetaInline icon="🚩" label="Priority">
+            <select value={priority} onChange={e => setPriority(e.target.value as Priority)} style={{ padding: "4px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>
+              <option>Normal</option><option>High</option><option>Rush</option><option>Low</option>
+            </select>
+          </MetaInline>
+          <MetaInline icon="⚙" label="Status">
+            <select value={status} onChange={e => setStatus(e.target.value)} style={{ padding: "4px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", maxWidth: "180px" }}>
+              {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </MetaInline>
+        </div>
+      </div>
+
+      {/* Payment strip — up top, buttons right here */}
+      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "14px 20px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "18px" }}>💰</span>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "10px", color: "#888", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>Payment</span>
+              <span style={{ padding: "2px 9px", background: payPill.bg, color: payPill.fg, fontSize: "11px", fontWeight: 800, borderRadius: "5px" }}>{order.payment}</span>
+            </div>
+            <div style={{ fontSize: "13px", fontWeight: 700, marginTop: "3px" }}>
+              {fmtMoney(order.received)} received of {fmtMoney(order.total)}
+              {order.balanceDue > 0 && <span style={{ color: "#dc2626" }}> · {fmtMoney(order.balanceDue)} balance due</span>}
+              {order.balanceDue === 0 && <span style={{ color: "#16a34a" }}> · paid in full</span>}
+            </div>
+          </div>
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
+          {order.balanceDue > 0 && (
+            <button style={{ padding: "9px 16px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>＋ Make a payment</button>
+          )}
+          <button style={{ padding: "9px 16px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>✉ Send payment request</button>
+          <button style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>📄 Receipt</button>
+        </div>
+      </div>
+
+      {/* Body: LEFT main (line items + communication) | RIGHT rail (workflow + actions) */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: "14px", marginBottom: "14px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
+          <LineItemsSection order={order} accountManagers={ACCOUNT_MANAGERS} productionOwners={PRODUCTION_OWNERS} />
+          <CommunicationSection order={order} />
+        </div>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <ActivityTimelineCard events={timeline.slice(0, 5)} />
           <WorkflowProgressCard order={order} boardStages={boardStages} />
+          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
+            <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Actions</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              <ActionButton bg="#0a0a0a" fg="#fff">✓ Mark as Completed</ActionButton>
+              <ActionButton bg="#fff" fg="#333" border="#e5e5e5">🔗 Resend Link to Customer</ActionButton>
+              <ActionButton bg="#fef3c7" fg="#78350f" border="#fde68a">↩ Refund Payment</ActionButton>
+              <ActionButton bg="#fee2e2" fg="#dc2626" border="#fecaca">✕ Cancel Order</ActionButton>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Financial Summary bar */}
-      <FinancialSummary order={order} />
+      {/* Lower — collapsible Quote History / Activity / Files (secondary info) */}
+      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", marginBottom: "14px", overflow: "hidden" }}>
+        <button onClick={() => setShowMore(v => !v)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", background: "transparent", border: "none", cursor: "pointer", fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)" }}>
+          <span>Quote history · activity timeline · files</span>
+          <span style={{ color: "#888" }}>{showMore ? "▲ Hide" : "▼ Show"}</span>
+        </button>
+        {showMore && (
+          <div style={{ borderTop: "1px solid var(--preview-border)" }}>
+            <div style={{ display: "flex", gap: "20px", padding: "0 20px", borderBottom: "1px solid var(--preview-border)" }}>
+              {([["quotes", `Quote History (${order.quoteHistory?.length ?? 0})`], ["activity", `Activity Timeline (${timeline.length})`], ["files", `Files (${order.attachmentsCount})`]] as const).map(([k, lbl]) => {
+                const active = moreTab === k;
+                return <button key={k} onClick={() => setMoreTab(k)} style={{ background: "transparent", border: "none", padding: "12px 4px", marginBottom: "-1px", borderBottom: active ? `2px solid ${ACCENT}` : "2px solid transparent", color: active ? "var(--preview-text)" : "#666", fontSize: "12.5px", fontWeight: active ? 700 : 500, cursor: "pointer" }}>{lbl}</button>;
+              })}
+            </div>
+            <div style={{ padding: "18px 20px" }}>
+              {moreTab === "quotes" && <QuoteHistoryTab order={order} />}
+              {moreTab === "activity" && <ActivityTab events={timeline} />}
+              {moreTab === "files" && <FilesTab order={order} />}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {showCustomer && <CustomerPopup order={order} onClose={() => setShowCustomer(false)} onViewAllOrders={() => { setShowCustomer(false); onViewCustomerOrders(order.company || order.contact); }} />}
+    </div>
+  );
+}
+
+// Inline meta item for the combined header row.
+function MetaInline({ icon, label, children }: any) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+        <span>{icon}</span><span>{label}</span>
+      </div>
+      <div style={{ fontSize: "12.5px" }}>{children}</div>
+    </div>
+  );
+}
+
+// ─── Line items — each SKU with its image, files, and people assignment ───
+function LineItemsSection({ order, accountManagers, productionOwners }: { order: Order; accountManagers: string[]; productionOwners: string[] }) {
+  return (
+    <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "18px 20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+        <div style={{ fontSize: "12px", fontWeight: 800, letterSpacing: "0.04em" }}>LINE ITEMS ({order.lineItems.length})</div>
+        <button style={{ padding: "5px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: "6px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>+ Upload File</button>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+        {order.lineItems.map((l, i) => (
+          <LineItemCard key={l.id} line={l} index={i} accountManagers={accountManagers} productionOwners={productionOwners} />
+        ))}
+      </div>
+
+      {/* Production notes */}
+      <div style={{ marginTop: "16px" }}>
+        <div style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "0.04em", marginBottom: "6px", color: "#666" }}>📝 PRODUCTION NOTES</div>
+        <textarea defaultValue={order.productionNotes || ""} placeholder="Notes visible to production team..." style={{ width: "100%", minHeight: "56px", padding: "10px 12px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+      </div>
+    </div>
+  );
+}
+
+function LineItemCard({ line, index, accountManagers, productionOwners }: { line: OrderLineItem; index: number; accountManagers: string[]; productionOwners: string[] }) {
+  const [am, setAm] = useState(line.accountManager ?? "");
+  const [prod, setProd] = useState(line.productionOwner ?? "");
+  const files = line.files ?? [];
+  return (
+    <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "14px 16px" }}>
+      <div style={{ display: "flex", gap: "14px" }}>
+        <LineThumb src={line.thumbnailUrl} alt={line.productName} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>SKU {index + 1}</div>
+              <div style={{ fontSize: "15px", fontWeight: 800, marginTop: "1px" }}>{line.productName}{line.materialName && <span style={{ fontSize: "12px", color: "#888", fontWeight: 500 }}> · {line.materialName}</span>}</div>
+            </div>
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontSize: "17px", fontWeight: 800, color: "#16a34a" }}>{fmtMoney(line.extended)}</div>
+              <div style={{ fontSize: "10.5px", color: "#888" }}>{line.quantity.toLocaleString()} × {fmtMoney(line.unitPrice)}</div>
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
+            {line.widthIn && line.heightIn && <Pill>Size: {line.widthIn}" × {line.heightIn}"</Pill>}
+            {line.sides && <Pill>Sides: {line.sides === "S1" ? "Single" : "Double"}</Pill>}
+            {line.colorMode && <Pill>Color: {line.colorMode}</Pill>}
+            {(line.specs ?? []).map(s => <Pill key={s.label}>{s.label}: {s.value}</Pill>)}
+            {(line.finishingLabels ?? []).map(f => <Pill key={f} tone="amber">{f}</Pill>)}
+            {(line.specialEffectLabels ?? []).map(e => <Pill key={e} tone="purple">{e}</Pill>)}
+          </div>
+        </div>
+      </div>
+
+      {/* Files for THIS item */}
+      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "10px" }}>
+        {files.length === 0 ? (
+          <span style={{ fontSize: "11px", color: "#aaa" }}>No files on this item yet</span>
+        ) : files.map((f, k) => (
+          <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 9px", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", fontSize: "11px", fontWeight: 600, borderRadius: "6px" }}>
+            {f.kind === "img" ? "🖼️" : "📎"} {f.name}
+          </span>
+        ))}
+      </div>
+
+      {/* People assigned to THIS item */}
+      <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
+        <PersonSelect icon="🎨" label="Account Manager" value={am} onChange={setAm} options={accountManagers} />
+        <PersonSelect icon="🏭" label="Production / Design" value={prod} onChange={setProd} options={productionOwners} />
+      </div>
+    </div>
+  );
+}
+
+function PersonSelect({ icon, label, value, onChange, options }: { icon: string; label: string; value: string; onChange: (v: string) => void; options: string[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+      <span style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{icon} {label}</span>
+      <select value={value} onChange={e => onChange(e.target.value)} style={{ padding: "5px 8px", background: "var(--preview-surface)", border: `1px solid ${value ? "var(--preview-border)" : "#fca5a5"}`, borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)", minWidth: "150px" }}>
+        <option value="">— Unassigned —</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  );
+}
+
+// Per-line artwork thumbnail (bigger than the row thumb).
+function LineThumb({ src, alt }: { src?: string; alt?: string }) {
+  const [broken, setBroken] = useState(false);
+  const box: React.CSSProperties = { width: "72px", height: "72px", flexShrink: 0, borderRadius: "10px", border: "1px solid var(--preview-border)", overflow: "hidden", background: "var(--preview-surface)", display: "flex", alignItems: "center", justifyContent: "center" };
+  if (!src || broken) return <div style={box} title="No proof uploaded yet"><span style={{ fontSize: "22px", opacity: 0.4 }}>🖼️</span></div>;
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={src} alt={alt || "proof"} onError={() => setBroken(true)} style={{ ...box, objectFit: "cover" }} />;
+}
+
+// ─── Communication — full per-order history + send/update actions ───
+function CommunicationSection({ order }: { order: Order }) {
+  const comms = order.communications ?? [];
+  const iconFor = (c: CommEntry["channel"]) => {
+    switch (c) {
+      case "email_in": return { icon: "✉", tint: "#3b82f6", label: "Email in" };
+      case "email_out": return { icon: "✉", tint: "#22c55e", label: "Email out" };
+      case "call_in": return { icon: "📞", tint: "#3b82f6", label: "Call in" };
+      case "call_out": return { icon: "📞", tint: "#22c55e", label: "Call out" };
+      case "sms_in": return { icon: "💬", tint: "#3b82f6", label: "Text in" };
+      case "sms_out": return { icon: "💬", tint: "#22c55e", label: "Text out" };
+      case "ig_in": return { icon: "📷", tint: "#e11d48", label: "IG DM in" };
+      case "ig_out": return { icon: "📷", tint: "#e11d48", label: "IG DM out" };
+      case "note": return { icon: "📝", tint: "#78350f", label: "Internal note" };
+      default: return { icon: "•", tint: "#64748b", label: "Update" };
+    }
+  };
+  return (
+    <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "18px 20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+        <div style={{ fontSize: "12px", fontWeight: 800, letterSpacing: "0.04em" }}>💬 COMMUNICATION</div>
+        <span style={{ fontSize: "10.5px", color: "#888" }}>Calls · texts · email — synced with JustCall</span>
+      </div>
+
+      {/* Composer: reach the customer + push an update, right here */}
+      <div style={{ border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "12px", marginBottom: "14px", background: "var(--preview-surface-2)" }}>
+        <textarea placeholder={`Message ${order.contact}…`} style={{ width: "100%", minHeight: "48px", padding: "8px 10px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px", alignItems: "center" }}>
+          <button style={{ padding: "6px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: "7px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>✉ Send email</button>
+          <button style={{ padding: "6px 12px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "7px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>💬 Send text</button>
+          <span style={{ width: "1px", height: "20px", background: "var(--preview-border)", margin: "0 2px" }} />
+          <span style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase" }}>Quick update:</span>
+          <button style={quickUpdateBtn}>📄 Send proof</button>
+          <button style={quickUpdateBtn}>✅ Ready to ship</button>
+          <button style={quickUpdateBtn}>💰 Request payment</button>
+        </div>
+      </div>
+
+      {/* History */}
+      {comms.length === 0 ? (
+        <div style={{ padding: "20px", textAlign: "center", color: "var(--preview-text-muted)", fontSize: "12px", border: "1px dashed var(--preview-border)", borderRadius: "8px" }}>
+          No messages logged for this order yet. Calls, texts and emails will thread here once JustCall + email are connected.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {comms.map((c, i) => {
+            const meta = iconFor(c.channel);
+            return (
+              <div key={i} style={{ padding: "12px 14px", background: c.channel === "note" ? "#fffbeb" : "var(--preview-surface-2)", border: `1px solid ${c.channel === "note" ? "#fde68a" : "var(--preview-border)"}`, borderRadius: "10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "8px", marginBottom: "4px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span style={{ width: "22px", height: "22px", borderRadius: "50%", background: meta.tint + "22", color: meta.tint, fontSize: "11px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{meta.icon}</span>
+                    <span style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{meta.label}</span>
+                    <span style={{ fontSize: "12px", fontWeight: 700 }}>· {c.author}</span>
+                  </div>
+                  <span style={{ fontSize: "10.5px", color: "#888" }}>{c.at}</span>
+                </div>
+                {c.subject && <div style={{ fontSize: "12.5px", fontWeight: 700, marginBottom: "3px" }}>{c.subject}</div>}
+                <div style={{ fontSize: "12px", color: "var(--preview-text)", lineHeight: 1.5 }}>{c.body}</div>
+                {c.attachments && c.attachments.length > 0 && (
+                  <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginTop: "6px" }}>
+                    {c.attachments.map(a => <span key={a} style={{ padding: "2px 8px", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", fontSize: "10.5px", fontWeight: 600, borderRadius: "5px" }}>📎 {a}</span>)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const quickUpdateBtn: React.CSSProperties = { padding: "6px 10px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "7px", fontSize: "11.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" };
+
+// ─── Customer popup — contact + jump to all their orders ───
+function CustomerPopup({ order, onClose, onViewAllOrders }: { order: Order; onClose: () => void; onViewAllOrders: () => void }) {
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "16px", padding: "22px 24px", width: "380px", maxWidth: "90vw", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ width: "46px", height: "46px", borderRadius: "50%", background: order.ownerColor + "22", color: order.ownerColor, fontSize: "15px", fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{order.contact.slice(0, 2).toUpperCase()}</div>
+            <div>
+              <div style={{ fontSize: "17px", fontWeight: 800 }}>{order.contact}</div>
+              {order.company && <div style={{ fontSize: "12px", color: "#888" }}>{order.company}</div>}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", fontSize: "18px", color: "#888", cursor: "pointer", lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", fontSize: "13px", marginBottom: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><span>📞</span> {order.customer?.phone || "—"}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}><span>✉</span> {order.customer?.email || "—"}</div>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", padding: "12px", background: "var(--preview-surface-2)", borderRadius: "10px", marginBottom: "16px" }}>
+          <div><div style={{ fontSize: "9.5px", color: "#888", textTransform: "uppercase", fontWeight: 700 }}>Lifetime spend</div><div style={{ fontSize: "15px", fontWeight: 800 }}>${(order.customer?.lifetimeValue ?? 0).toLocaleString()}</div></div>
+          <div><div style={{ fontSize: "9.5px", color: "#888", textTransform: "uppercase", fontWeight: 700 }}>Total orders</div><div style={{ fontSize: "15px", fontWeight: 800 }}>{order.customer?.lifetimeOrders ?? 0}</div></div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <button onClick={onViewAllOrders} style={{ padding: "10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "9px", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>📋 Show all of {order.contact}'s orders</button>
+          <button onClick={onClose} style={{ padding: "9px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>Close</button>
+        </div>
+      </div>
     </div>
   );
 }

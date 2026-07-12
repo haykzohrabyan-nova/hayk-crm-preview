@@ -161,7 +161,7 @@ type OrderRow = {
 
 type ColumnRow = { id: string; tenant_id: string; name: string | null; kind: string | null; position: number | null };
 type ActivityRow = { id: string; order_id: string | null; actor: string | null; action: string | null; metadata: Record<string, unknown> | null; created_at: string | null };
-type AssetRow = { id: string; order_id: string | null; file_name: string | null; mime_type: string | null; size: number | null; external_url: string | null; storage_path: string | null };
+type AssetRow = { id: string; order_id: string | null; file_name: string | null; mime_type: string | null; size: number | null; external_url: string | null; storage_path: string | null; sku_key: string | null };
 
 // ── Classifiers / helpers ────────────────────────────────────────────────────
 
@@ -429,6 +429,32 @@ export async function loadOrders(): Promise<Order[]> {
     // Line items from the ticket's product_lines jsonb.
     const rawLines = Array.isArray(t.product_lines) ? (t.product_lines as unknown[]) : [];
     const lineItems: OrderLineItem[] = rawLines.map(mapLine);
+
+    // Attach per-SKU artwork + files from assets. Match by sku_key "sku<N>" to
+    // the line index; otherwise fall back to distributing images by order.
+    const orderAssets = assetsByOrder.get(o.id) ?? [];
+    const fileKind = (name: string, mime: string | null) => {
+      const n = name.toLowerCase();
+      if ((mime ?? "").startsWith("image/") || /\.(png|jpe?g|webp|gif)$/.test(n)) return "img";
+      if (n.endsWith(".pdf")) return "pdf";
+      if (n.endsWith(".ai")) return "ai";
+      if (n.endsWith(".dxf")) return "dxf";
+      return "file";
+    };
+    const imgAssets = orderAssets.filter(a => (a.mime_type ?? "").startsWith("image/") && (a.external_url || a.storage_path));
+    lineItems.forEach((li, idx) => {
+      // Preferred: an asset whose sku_key is exactly "sku<idx>".
+      let mine = orderAssets.filter(a => a.sku_key === `sku${idx}`);
+      // Single-line order with a lone proof image → give it to line 0.
+      if (mine.length === 0 && lineItems.length === 1) mine = orderAssets;
+      // Otherwise index-match an image if counts line up.
+      if (mine.length === 0 && imgAssets[idx]) mine = [imgAssets[idx]];
+      const img = mine.find(a => (a.mime_type ?? "").startsWith("image/"));
+      li.thumbnailUrl = img?.external_url ?? undefined;
+      li.files = mine.map(a => ({ name: a.file_name ?? "file", url: a.external_url ?? undefined, kind: fileKind(a.file_name ?? "", a.mime_type) }));
+      li.accountManager = rep ?? undefined;
+      li.productionOwner = (["Arsen", "Hrach", "Production", "Apparel"].includes(stageName) ? stageName : undefined);
+    });
 
     // Payment ledger — real, derived from the ticket's deposit/balance fields.
     const payments: PaymentEntry[] = [];
