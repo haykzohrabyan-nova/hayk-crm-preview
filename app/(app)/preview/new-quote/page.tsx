@@ -2154,19 +2154,8 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
 function Step3Review(props: any) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      {/* Top row: Customer summary + Pricing summary + Fulfillment */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr 1fr", gap: "14px" }}>
-        <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "16px 18px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 800, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "10px" }}>Customer</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "6px", fontSize: "12.5px" }}>
-            <div><b>Hayk Zohrabyan</b></div>
-            <div style={{ color: "#666" }}>🏢 Cecile</div>
-            <div style={{ color: "#666" }}>📞 (818) 927-7146</div>
-            <div style={{ color: "#666" }}>✉ haykzoh@gmail.com</div>
-          </div>
-          <button style={{ width: "100%", marginTop: "12px", padding: "6px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>↗ View Full Profile</button>
-        </div>
-
+      {/* Top row: Pricing summary + Fulfillment (customer already shown in the sidebar) */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: "14px" }}>
         <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "16px 18px" }}>
           <div style={{ fontSize: "11px", fontWeight: 800, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "10px" }}>Pricing Summary</div>
           {props.quoteType === "comparison" ? (
