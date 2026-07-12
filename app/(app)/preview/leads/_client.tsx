@@ -170,7 +170,7 @@ export default function LeadsPreviewGated({ leads }: { leads: Lead[] }) {
 
 function LeadsPreview({ leads }: { leads: Lead[] }) {
   const [view, setView] = useState<"list" | "detail">("list");
-  const [layout, setLayout] = useState<"table" | "kanban">("table");
+  const [layout, setLayout] = useState<"table" | "kanban">("kanban");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tab, setTab] = useState<TabKey>("all");
   const [search, setSearch] = useState("");
