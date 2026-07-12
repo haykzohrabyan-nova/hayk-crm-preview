@@ -50,14 +50,19 @@ function mapSource(s: string | null | undefined): Lead["source"] {
 }
 
 // Real status / sales_status → the UI's pipeline Stage.
+// New Lead → Qualifying → Qualified → Claimed → Quoted → Won → Lost.
 function mapStage(status: string | null | undefined, salesStatus: string | null | undefined): Stage {
   const s = (status ?? "").toLowerCase();
   const ss = (salesStatus ?? "").toLowerCase();
   if (ss === "won" || s.includes("converted") || s === "won") return "Won";
-  if (s.includes("reject") || ss.includes("reject")) return "Rejected";
-  if (status === "New" || status === "Claimed" || status === "Contacted" || status === "Routed to Sales" || status === "Quote Sent") return status as Stage;
-  if (s === "pending" || s === "") return "New";
-  return "New";
+  if (s.includes("reject") || s.includes("lost") || ss.includes("reject") || ss.includes("lost")) return "Lost";
+  if (status === "New Lead" || status === "Qualifying" || status === "Qualified" || status === "Claimed" || status === "Quoted") return status as Stage;
+  // Back-compat with any older status labels.
+  if (status === "New" || s === "pending" || s === "") return "New Lead";
+  if (status === "Contacted") return "Qualifying";
+  if (status === "Routed to Sales") return "Qualified";
+  if (status === "Quote Sent") return "Quoted";
+  return "New Lead";
 }
 
 function mapPriority(u: string | null | undefined): Priority {
@@ -71,26 +76,26 @@ function mapPriority(u: string | null | undefined): Priority {
 // Standard next step per stage (process rule, not fabricated data).
 function nextActionFor(stage: Stage): string {
   switch (stage) {
-    case "New": return "Claim & make first contact";
-    case "Claimed": return "Reach out to customer";
-    case "Contacted": return "Qualify & route to sales";
-    case "Routed to Sales": return "Prepare & send quote";
-    case "Quote Sent": return "Follow up on the quote";
+    case "New Lead": return "Start qualifying this lead";
+    case "Qualifying": return "Confirm fit & mark qualified";
+    case "Qualified": return "Sales rep to claim it";
+    case "Claimed": return "Contact customer & build quote";
+    case "Quoted": return "Follow up on the quote";
     case "Won": return "—";
-    case "Rejected": return "—";
+    case "Lost": return "—";
   }
 }
 
 // Transparent close-probability by stage (placeholder until real scoring exists).
 function closeProbFor(stage: Stage): number {
   switch (stage) {
-    case "New": return 15;
-    case "Claimed": return 25;
-    case "Contacted": return 40;
-    case "Routed to Sales": return 55;
-    case "Quote Sent": return 70;
+    case "New Lead": return 10;
+    case "Qualifying": return 25;
+    case "Qualified": return 40;
+    case "Claimed": return 55;
+    case "Quoted": return 70;
     case "Won": return 100;
-    case "Rejected": return 0;
+    case "Lost": return 0;
   }
 }
 
@@ -194,7 +199,7 @@ export async function loadLeads(): Promise<Lead[]> {
       leadScore: 0,
       leadScoreBreakdown: [],
       closeProbability: closeProbFor(stage),
-      closeProbabilityBand: stage === "Quote Sent" || stage === "Won" ? "High" : stage === "New" ? "Low" : "Good",
+      closeProbabilityBand: stage === "Quoted" || stage === "Won" ? "High" : stage === "New Lead" ? "Low" : "Good",
       estOrderMin: potential || 0,
       estOrderMax: potential || 0,
       estOrderConfidence: potential > 0 ? "High" : "Low",

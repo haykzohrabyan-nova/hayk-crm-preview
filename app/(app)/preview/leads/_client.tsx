@@ -14,8 +14,8 @@ const ACCENT = "#FF5D2E";
 
 // ─── Types ────────────────────────────────────────────
 export type Priority = "High" | "Medium" | "Low";
-export type Stage = "New" | "Claimed" | "Contacted" | "Routed to Sales" | "Quote Sent" | "Won" | "Rejected";
-type TabKey = "all" | "new" | "claimed" | "contacted" | "routed" | "quote_sent" | "won" | "rejected";
+export type Stage = "New Lead" | "Qualifying" | "Qualified" | "Claimed" | "Quoted" | "Won" | "Lost";
+type TabKey = "all" | "new" | "qualifying" | "qualified" | "claimed" | "quoted" | "won" | "lost";
 
 export interface Lead {
   id: string;
@@ -90,249 +90,17 @@ interface CommItem {
   read?: boolean;
 }
 
-// ─── Mock dataset ────────────────────────────────────────
-const LEADS: Lead[] = [
-  {
-    id: "L001", name: "Grim Lawd", starred: true, company: "Grimeylyfe Records", industry: "Cannabis & CBD",
-    source: "Instagram", sourceHandle: "@grimlawd",
-    potentialMin: 18000, potentialMax: 25000,
-    stage: "Routed to Sales", priority: "High",
-    tags: ["Folding Cartons", "Labels"],
-    phone: "(864) 982-2186", email: "grimlawd@grimeylyfe.com", instagram: "@grimlawd", website: "www.grimeylyfe.com",
-    products: ["Folding Cartons", "Labels"],
-    estimatedQty: 5000, timeline: "July 15, 2026",
-    budgetMin: 18000, budgetMax: 25000,
-    hasArtwork: true, currentSupplier: "ABC Printing", decisionMaker: "Yes", returningCustomer: false,
-    ltvSpend: 28440, previousOrders: 3, avgOrderValue: 9480, lastOrderDate: "Jun 10, 2026",
-    createdBy: "Manny Carlo", createdAgo: "17 minutes ago",
-    sdrOwner: "Manny Carlo", salesRep: "Maria Hakobyan",
-    lastActivity: "Replied", lastActivityAt: "18m ago",
-    nextAction: "Call customer", nextActionDue: "Due today at 2:00 PM",
-    leadScore: 87,
-    leadScoreBreakdown: [
-      { label: "Rush Job", points: 5, on: true },
-      { label: "Decision Maker", points: 15, on: true },
-      { label: "Artwork Ready", points: 10, on: true },
-      { label: "High Quantity", points: 15, on: true },
-      { label: "Existing Brand", points: 10, on: true },
-      { label: "Budget Provided", points: 10, on: true },
-      { label: "Responded Within 1h", points: 5, on: true },
-      { label: "Returning Customer", points: 20, on: false },
-    ],
-    closeProbability: 68, closeProbabilityBand: "Good",
-    estOrderMin: 13500, estOrderMax: 16200, estOrderConfidence: "Medium",
-    activityTimeline: [
-      { time: "11:03 AM", title: "Lead created", sub: "Lead created by Hayk Zohrabyan", icon: "👤", tint: "#f97316" },
-      { time: "11:04 AM", title: "Instagram conversation imported", sub: "Lead captured from Instagram", icon: "📷", tint: "#ec4899" },
-      { time: "11:07 AM", title: "Lead assigned", sub: "Assigned to Maria", icon: "🎯", tint: "#3b82f6" },
-      { time: "11:10 AM", title: "Quote requested", sub: "Customer requested pricing", icon: "📄", tint: "#8b5cf6" },
-      { time: "11:11 AM", title: "Customer viewed quote", sub: "Viewed Quote #Q-2026-0189", icon: "👁", tint: "#22c55e" },
-    ],
-    quotes: [
-      { ref: "QO-189", amount: 18450, sentDaysAgo: 2, status: "Sent" },
-      { ref: "QO-172", amount: 21300, sentDaysAgo: 5, status: "Viewed" },
-    ],
-    previousOrdersList: [
-      { ref: "ORD-091", amount: 14250, shipped: "Jun 10, 2026" },
-      { ref: "ORD-067", amount: 8760, shipped: "May 2, 2026" },
-      { ref: "ORD-032", amount: 5430, shipped: "Mar 18, 2026" },
-    ],
-    notes: "Customer reached out via Instagram. Looking for die cutting for custom packaging. Need pricing for 1 design. Interested in fast turnaround. Launching a new cannabis product.",
-    suggestedQuestion: "Are these die cuts for folding cartons or labels?",
-    stageTimestamps: {
-      "New": "Jul 1 · 10:47a",
-      "Claimed": "Jul 1 · 10:52a",
-      "Contacted": "Jul 1 · 11:04a",
-      "Routed to Sales": "Jul 1 · 11:07a",
-    },
-    commHistory: [
-      { id: "c1", type: "ig_in", at: "Jul 1 · 10:47 AM", atRel: "17m ago", author: "Grim Lawd", body: "Hey, looking for pricing on folding cartons and labels for a cannabis product line. Launching mid-July. Need about 5k units.", read: true },
-      { id: "c2", type: "note", at: "Jul 1 · 10:52 AM", atRel: "12m ago", author: "Manny Carlo", noteAuthor: "Manny Carlo", body: "Warm lead — mentioned launching a new product. Has budget. Not returning yet. Routing to Maria." },
-      { id: "c3", type: "call_out", at: "Jul 1 · 11:04 AM", atRel: "10m ago", author: "Maria Hakobyan", body: "Called customer to introduce Bazaar and ask about specs.", callDurationSec: 8 * 60 + 12, callSummary: "Confirmed 5,000 units folding cartons + 5,000 labels. Rush deadline July 15. Budget $18–25K. Artwork ready. Currently with ABC Printing but wants to switch. Sending quote today." },
-      { id: "c4", type: "email_out", at: "Jul 1 · 11:11 AM", atRel: "7m ago", author: "Maria Hakobyan", subject: "Quote for folding cartons + labels · Grimeylyfe Records", body: "Hi Grim, thanks for the call. Attached is the quote for 5,000 folding cartons and 5,000 labels with rush production for July 15 delivery. Let me know if you have questions.", attachments: [{ name: "QO-189.pdf", size: "246 KB", kind: "pdf" }, { name: "Bazaar-Capabilities.pdf", size: "1.2 MB", kind: "pdf" }] },
-      { id: "c5", type: "email_in", at: "Jul 1 · 11:11 AM", atRel: "6m ago", author: "Grim Lawd", subject: "Re: Quote for folding cartons + labels", body: "Received, thanks. Reviewing with the team now. Will get back to you today.", read: false },
-    ],
-  },
-  {
-    id: "L002", name: "Global 448", company: "Global 448", industry: "Retail",
-    source: "Instagram", sourceHandle: "@global448",
-    potentialMin: 5000, potentialMax: 8000,
-    stage: "New", priority: "Medium",
-    tags: ["Die Cut Stickers"],
-    phone: "(555) 320-4482", email: "hello@global448.com", instagram: "@global448",
-    products: ["Die Cut Stickers"], estimatedQty: 3000,
-    createdBy: "Manny Carlo", createdAgo: "1h ago",
-    sdrOwner: "Manny Carlo",
-    lastActivity: "DM received", lastActivityAt: "1h ago",
-    nextAction: "Send samples", nextActionDue: "Due today",
-    needsAttention: true,
-    leadScore: 45, leadScoreBreakdown: [
-      { label: "Website Provided", points: 5, on: true },
-      { label: "Responded Within 1h", points: 5, on: true },
-      { label: "High Quantity", points: 15, on: false },
-      { label: "Artwork Ready", points: 10, on: false },
-      { label: "Decision Maker", points: 15, on: false },
-    ],
-    closeProbability: 38, closeProbabilityBand: "Low",
-    estOrderMin: 4500, estOrderMax: 7200, estOrderConfidence: "Low",
-    activityTimeline: [
-      { time: "10:12 AM", title: "Lead created", sub: "DM received", icon: "📷", tint: "#ec4899" },
-    ], quotes: [], previousOrdersList: [],
-    notes: "Asked about die-cut stickers pricing. Small quantity likely.",
-  },
-  {
-    id: "L003", name: "Nicole Han", company: "—", industry: "Apparel",
-    source: "Website",
-    potentialMin: 12000, potentialMax: 18000,
-    stage: "Contacted", priority: "High",
-    tags: ["Labels", "Pouches"],
-    phone: "(408) 555-1234", email: "nicole.han@example.com",
-    products: ["Labels", "Pouches"], estimatedQty: 6000,
-    createdBy: "Hayk Zohrabyan", createdAgo: "1d ago",
-    sdrOwner: "Hayk Zohrabyan",
-    lastActivity: "Form submitted", lastActivityAt: "1d ago",
-    nextAction: "Call customer", nextActionDue: "Due tomorrow",
-    leadScore: 62, leadScoreBreakdown: [
-      { label: "High Quantity", points: 15, on: true },
-      { label: "Website Provided", points: 5, on: true },
-      { label: "Budget Provided", points: 10, on: false },
-    ],
-    closeProbability: 55, closeProbabilityBand: "Good",
-    estOrderMin: 10800, estOrderMax: 16800, estOrderConfidence: "Medium",
-    activityTimeline: [], quotes: [], previousOrdersList: [],
-    notes: "Submitted contact form. Requested pricing for labels and pouches.",
-  },
-  {
-    id: "L004", name: "Vick May Day", company: "—", industry: "Food & Beverage",
-    source: "Referral",
-    potentialMin: 6000, potentialMax: 10000,
-    stage: "Contacted", priority: "Medium",
-    tags: ["Folding Cartons"],
-    phone: "(510) 555-9032", email: "vmd@example.com",
-    products: ["Folding Cartons"], estimatedQty: 2500,
-    createdBy: "Manny Carlo", createdAgo: "2h ago",
-    sdrOwner: "Manny Carlo",
-    lastActivity: "Called", lastActivityAt: "2h ago",
-    nextAction: "Follow up", nextActionDue: "Due tomorrow",
-    leadScore: 55, leadScoreBreakdown: [], closeProbability: 50, closeProbabilityBand: "Good",
-    estOrderMin: 5400, estOrderMax: 9200, estOrderConfidence: "Medium",
-    activityTimeline: [], quotes: [], previousOrdersList: [],
-    notes: "Referred by Peter at Sunset Coffee. Wants quote on folding cartons.",
-  },
-  {
-    id: "L005", name: "Richard Shaltz", company: "—", industry: "Music",
-    source: "Instagram",
-    potentialMin: 3000, potentialMax: 5000,
-    stage: "Contacted", priority: "Medium", waitingOnCustomer: true,
-    tags: ["Labels"],
-    phone: "(646) 555-4400", email: "richard@example.com", instagram: "@rshaltz",
-    products: ["Labels"], estimatedQty: 1500,
-    createdBy: "Manny Carlo", createdAgo: "5h ago",
-    sdrOwner: "Manny Carlo",
-    lastActivity: "Replied", lastActivityAt: "5h ago",
-    nextAction: "Waiting reply", nextActionDue: "No due date",
-    leadScore: 40, leadScoreBreakdown: [], closeProbability: 32, closeProbabilityBand: "Low",
-    estOrderMin: 2700, estOrderMax: 4500, estOrderConfidence: "Low",
-    activityTimeline: [], quotes: [], previousOrdersList: [],
-    notes: "Considering options. Asked for sample pack.",
-  },
-  {
-    id: "L006", name: "Matt Williams", company: "Moon Mind", industry: "Apparel",
-    source: "Email", potentialMin: 2000, potentialMax: 4000,
-    stage: "Contacted", priority: "Low",
-    tags: ["Posters"],
-    phone: "(213) 555-6098", email: "matt@moonmind.com",
-    products: ["Posters"], estimatedQty: 500,
-    createdBy: "Hayk Zohrabyan", createdAgo: "1d ago",
-    sdrOwner: "Hayk Zohrabyan",
-    lastActivity: "Email opened", lastActivityAt: "1d ago",
-    nextAction: "Send quote", nextActionDue: "Due in 2d",
-    leadScore: 30,
-    leadScoreBreakdown: [
-      { label: "Responded to email", points: 5, on: true },
-      { label: "Company Provided", points: 5, on: true },
-      { label: "High Quantity", points: 15, on: false },
-      { label: "Decision Maker", points: 15, on: false },
-      { label: "Artwork Ready", points: 10, on: false },
-    ],
-    closeProbability: 25, closeProbabilityBand: "Low",
-    estOrderMin: 1800, estOrderMax: 3600, estOrderConfidence: "Low",
-    activityTimeline: [
-      { time: "Jun 30 · 4:12 PM", title: "Lead created", sub: "Captured from email inquiry", icon: "✉", tint: "#f59e0b" },
-      { time: "Jun 30 · 4:14 PM", title: "Lead assigned", sub: "Assigned to Hayk Zohrabyan", icon: "🎯", tint: "#3b82f6" },
-      { time: "Jun 30 · 4:22 PM", title: "Reply sent", sub: "Asked for artwork + qty confirmation", icon: "✉", tint: "#8b5cf6" },
-      { time: "Jul 1 · 9:41 AM", title: "Email opened", sub: "Customer viewed reply", icon: "👁", tint: "#22c55e" },
-    ],
-    quotes: [], previousOrdersList: [],
-    notes: "Interested in poster prints for merchandise. Low quantity.",
-    stageTimestamps: {
-      "New": "Jun 30 · 4:12p",
-      "Claimed": "Jun 30 · 4:14p",
-      "Contacted": "Jun 30 · 4:22p",
-    },
-    commHistory: [
-      { id: "m1", type: "email_in", at: "Jun 30 · 4:12 PM", atRel: "1d ago", author: "Matt Williams", subject: "Poster printing inquiry", body: "Hi, I'm launching a new merch line and need about 500 posters printed. Looking for pricing and turnaround. Rough sizes are 18x24 in on matte paper. Thanks!", read: true },
-      { id: "m2", type: "note", at: "Jun 30 · 4:14 PM", atRel: "1d ago", author: "Hayk Zohrabyan", noteAuthor: "Hayk Zohrabyan", body: "Small quantity — likely low value but worth qualifying. New brand, possible repeat customer if we impress." },
-      { id: "m3", type: "email_out", at: "Jun 30 · 4:22 PM", atRel: "1d ago", author: "Hayk Zohrabyan", subject: "Re: Poster printing inquiry", body: "Hey Matt! Thanks for reaching out. For 500 posters at 18x24 on matte, we can turn that around in 5–7 business days. Do you have artwork ready to send over? Also, any preference on paper weight (100lb / 130lb / 160lb)?", attachments: [{ name: "Paper-Guide.pdf", size: "890 KB", kind: "pdf" }] },
-      { id: "m4", type: "email_in", at: "Jul 1 · 9:38 AM", atRel: "1h ago", author: "Matt Williams", subject: "Re: Re: Poster printing inquiry", body: "Artwork should be ready tomorrow. Let's go with 130lb. Send me a firm quote when you can.", read: false, attachments: [{ name: "poster_mockup_v1.jpg", size: "3.4 MB", kind: "image" }] },
-      { id: "m5", type: "call_out", at: "Jul 1 · 10:15 AM", atRel: "45m ago", author: "Hayk Zohrabyan", body: "Called Matt to confirm specs before sending quote.", callDurationSec: 4 * 60 + 32, callSummary: "Confirmed 500 posters, 18x24, 130lb matte. Standard turnaround OK — not rush. Sending quote today, decision expected within 2 days." },
-      { id: "m6", type: "note", at: "Jul 1 · 10:22 AM", atRel: "35m ago", author: "Hayk Zohrabyan", noteAuthor: "Hayk Zohrabyan", body: "Quote-ready. Estimating $2,100–$2,700 depending on finish. Will offer 130lb standard + upsell to soft-touch coating." },
-    ],
-  },
-];
-
-// Pad the list so tab counts look real (all metadata inherited from a template)
-const TEMPLATE_STAGES: { stage: Stage; count: number }[] = [
-  { stage: "New", count: 6 }, { stage: "Claimed", count: 4 }, { stage: "Contacted", count: 8 },
-  { stage: "Routed to Sales", count: 7 }, { stage: "Quote Sent", count: 6 }, { stage: "Won", count: 0 }, { stage: "Rejected", count: 5 },
-];
-const leads: Lead[] = (() => {
-  const out = [...LEADS];
-  const cos = ["Blue Sage Bakery","Kinder Print Co","Old Salt Coffee","Verdant Roots","Solstice Coffee","Iron Pine","Rise & Grind","Coco Bloom","Hearth Bread","Meridian Wellness"];
-  const inds = ["Food & Beverage","Retail","Cannabis & CBD","Apparel","Wellness"];
-  const prods = [["Labels"],["Boxes"],["Mylar Bags"],["Signs"],["Apparel"],["Banners"]];
-  let idx = LEADS.length;
-  TEMPLATE_STAGES.forEach(({ stage, count }) => {
-    for (let i = 0; i < count; i++) {
-      const j = idx++;
-      out.push({
-        id: `L${String(j).padStart(3, "0")}`,
-        name: cos[j % cos.length] + " #" + j,
-        company: cos[j % cos.length],
-        industry: inds[j % inds.length],
-        source: (["Instagram","Website","Referral","Email","Phone"] as const)[j % 5],
-        potentialMin: 2000 + j * 300, potentialMax: 5000 + j * 500,
-        stage, priority: (["Low","Medium","High"] as const)[j % 3],
-        tags: prods[j % prods.length],
-        phone: `(555) 000-${String(1000 + j).padStart(4, "0")}`,
-        email: `contact${j}@example.com`,
-        products: prods[j % prods.length], estimatedQty: 500 + j * 200,
-        createdBy: "Manny Carlo", createdAgo: `${(j % 10) + 1}d ago`,
-        sdrOwner: "Manny Carlo",
-        lastActivity: ["Replied","Called","Email opened","DM received"][j % 4], lastActivityAt: `${(j % 6) + 1}h ago`,
-        nextAction: ["Send quote","Follow up","Call customer","Send samples"][j % 4], nextActionDue: "Due tomorrow",
-        needsAttention: j % 5 === 0, waitingOnCustomer: j % 7 === 0,
-        leadScore: 40 + (j % 50),
-        leadScoreBreakdown: [], closeProbability: 30 + (j % 60), closeProbabilityBand: (["Low","Good","High"] as const)[j % 3],
-        estOrderMin: 2000, estOrderMax: 8000, estOrderConfidence: "Medium",
-        activityTimeline: [], quotes: [], previousOrdersList: [],
-        notes: "",
-      });
-    }
-  });
-  return out;
-})();
 
 // ─── Tab logic ────────────────────────────────────────
 const TAB_DEFS: { key: TabKey; label: string; predicate: (l: Lead) => boolean; color?: string }[] = [
-  { key: "all",         label: "All Leads",         predicate: () => true },
-  { key: "new",         label: "New",               predicate: l => l.stage === "New" },
-  { key: "claimed",     label: "Claimed",           predicate: l => l.stage === "Claimed" },
-  { key: "contacted",   label: "Contacted",         predicate: l => l.stage === "Contacted" },
-  { key: "routed",      label: "Routed to Sales",   predicate: l => l.stage === "Routed to Sales" },
-  { key: "quote_sent",  label: "Quote Sent",        predicate: l => l.stage === "Quote Sent" },
-  { key: "won",         label: "Won",               predicate: l => l.stage === "Won" },
-  { key: "rejected",    label: "Rejected",          predicate: l => l.stage === "Rejected" },
+  { key: "all",         label: "All Leads",   predicate: () => true },
+  { key: "new",         label: "New Lead",    predicate: l => l.stage === "New Lead" },
+  { key: "qualifying",  label: "Qualifying",  predicate: l => l.stage === "Qualifying" },
+  { key: "qualified",   label: "Qualified",   predicate: l => l.stage === "Qualified" },
+  { key: "claimed",     label: "Claimed",     predicate: l => l.stage === "Claimed" },
+  { key: "quoted",      label: "Quoted",      predicate: l => l.stage === "Quoted" },
+  { key: "won",         label: "Won",         predicate: l => l.stage === "Won" },
+  { key: "lost",        label: "Lost",        predicate: l => l.stage === "Lost" },
 ];
 
 // ─── Format helpers ────────────────────────────────────────
@@ -341,16 +109,16 @@ const fmtRange = (a: number, b: number) => `${fmtMoney(a).replace(",000", "K")}�
 const potentialTier = (max: number) => max >= 20000 ? "$$$$" : max >= 10000 ? "$$$" : max >= 5000 ? "$$" : "$";
 
 const STAGE_COLORS: Record<Stage, string> = {
-  "New": "#3b82f6",
-  "Claimed": "#8b5cf6",
-  "Contacted": "#eab308",
-  "Routed to Sales": ACCENT,
-  "Quote Sent": "#22c55e",
+  "New Lead": "#3b82f6",
+  "Qualifying": "#eab308",
+  "Qualified": "#8b5cf6",
+  "Claimed": ACCENT,
+  "Quoted": "#22c55e",
   "Won": "#16a34a",
-  "Rejected": "#dc2626",
+  "Lost": "#dc2626",
 };
 
-const STAGE_FLOW: Stage[] = ["New", "Claimed", "Contacted", "Routed to Sales", "Quote Sent", "Won"];
+const STAGE_FLOW: Stage[] = ["New Lead", "Qualifying", "Qualified", "Claimed", "Quoted", "Won"];
 
 // "18m ago" / "1h ago" / "2d ago" → days-old number (min → 0, hour → 0, day → n)
 function daysOldFromAgo(ago: string): number {
@@ -661,13 +429,13 @@ function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, sel
 
 // ─── KANBAN VIEW ──────────────────────────────────────
 const KANBAN_COLUMNS: { stage: Stage; color: string }[] = [
-  { stage: "New",             color: "#3b82f6" },
-  { stage: "Claimed",         color: "#a78bfa" },
-  { stage: "Contacted",       color: "#f59e0b" },
-  { stage: "Routed to Sales", color: ACCENT     },
-  { stage: "Quote Sent",      color: "#8b5cf6" },
-  { stage: "Won",             color: "#22c55e" },
-  { stage: "Rejected",        color: "#6b7280" },
+  { stage: "New Lead",   color: "#3b82f6" },
+  { stage: "Qualifying", color: "#f59e0b" },
+  { stage: "Qualified",  color: "#a78bfa" },
+  { stage: "Claimed",    color: ACCENT     },
+  { stage: "Quoted",     color: "#8b5cf6" },
+  { stage: "Won",        color: "#22c55e" },
+  { stage: "Lost",       color: "#6b7280" },
 ];
 
 function KanbanView({ leads, selectedId, onSelect }: { leads: Lead[]; selectedId: string | null; onSelect: (id: string) => void }) {
@@ -815,15 +583,15 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
             title="Edit this lead's contact info + project details"
             style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer" }}
           >✎ Edit</button>
-          {/* Create Quote — visible for any lead stage except Won/Rejected. Both SDR and Sales can create quotes. */}
-          {(["New", "Claimed", "Contacted", "Routed to Sales"] as Stage[]).includes(lead.stage) && (
+          {/* Create Quote — visible for any lead stage except Quoted/Won/Lost. Both SDR and Sales can create quotes. */}
+          {(["New Lead", "Qualifying", "Qualified", "Claimed"] as Stage[]).includes(lead.stage) && (
             <a
               href={`/preview/new-quote?leadId=${encodeURIComponent(lead.id)}&name=${encodeURIComponent(lead.name)}&phone=${encodeURIComponent(lead.phone || "")}&email=${encodeURIComponent(lead.email || "")}`}
               title="Start a new quote for this lead"
               style={{ padding: "6px 12px", fontSize: "11.5px", background: "#22c55e", border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
             >📄 Quote</a>
           )}
-          {!(["Routed to Sales", "Quote Sent", "Won", "Rejected"] as Stage[]).includes(lead.stage) && (
+          {!(["Claimed", "Quoted", "Won", "Lost"] as Stage[]).includes(lead.stage) && (
             <button
               title="Hand this lead off to the Sales team so they can build a quote and close it"
               style={{ padding: "6px 12px", fontSize: "11.5px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}
@@ -1087,7 +855,7 @@ function DetailView({ lead, onBack }: { lead: Lead; onBack: () => void }) {
             href={`/preview/new-quote?leadId=${encodeURIComponent(lead.id)}&name=${encodeURIComponent(lead.name)}&phone=${encodeURIComponent(lead.phone || "")}&email=${encodeURIComponent(lead.email || "")}`}
             style={{ padding: "8px 16px", fontSize: "12.5px", background: "#22c55e", border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
           >📄 Create Quote</a>
-          {(["Routed to Sales", "Quote Sent", "Won"] as Stage[]).includes(lead.stage) ? (
+          {(["Claimed", "Quoted", "Won"] as Stage[]).includes(lead.stage) ? (
             <button style={{ padding: "8px 16px", fontSize: "12.5px", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: "8px", color: "#22c55e", fontWeight: 700, cursor: "pointer" }}>→ Open in Sales Pipeline</button>
           ) : (
             <button onClick={() => setModal("route")} style={{ padding: "8px 16px", fontSize: "12.5px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}>→ Route to Sales</button>
@@ -1641,8 +1409,8 @@ function AddLeadModal({ draft, setDraft, onClose, onSave }: { draft: any; setDra
     const ampm = hr >= 12 ? "p" : "a";
     hr = hr % 12 || 12;
     const nowStamp = `${month} ${day} · ${hr}:${min}${ampm}`;
-    const stageTimestamps: Partial<Record<Stage, string>> = { "New": nowStamp };
-    if (assignedToSales) stageTimestamps["Routed to Sales"] = nowStamp;
+    const stageTimestamps: Partial<Record<Stage, string>> = { "New Lead": nowStamp };
+    if (assignedToSales) stageTimestamps["Qualified"] = nowStamp;
     const idSuffix = Math.random().toString(36).slice(2, 8).toUpperCase();
     return {
       stageTimestamps,
@@ -1652,7 +1420,7 @@ function AddLeadModal({ draft, setDraft, onClose, onSave }: { draft: any; setDra
       industry: "—",
       source: (draft.source as Lead["source"]) || "Instagram",
       potentialMin: 1000, potentialMax: 5000,
-      stage: assignedToSales ? "Routed to Sales" : "New",
+      stage: assignedToSales ? "Qualified" : "New Lead",
       priority: draft.urgency === "high" ? "High" : draft.urgency === "medium" ? "Medium" : "Low",
       tags: [],
       phone: draft.phone || "",
@@ -1987,7 +1755,7 @@ function StageProgress({ current, big, stamps }: { current: Stage; big?: boolean
                 border: i === idx ? `2px solid ${ACCENT}` : "2px solid transparent",
               }}>{i < idx ? "✓" : i === idx ? "●" : ""}</div>
               {/* Stage label */}
-              <div style={{ fontSize: big ? "10.5px" : "9.5px", color: reached ? "#fff" : "var(--preview-text-faint)", marginTop: "4px", fontWeight: 600 }}>{s.replace("Routed to Sales", "Routed").replace("Quote Sent", "Quote")}</div>
+              <div style={{ fontSize: big ? "10.5px" : "9.5px", color: reached ? "#fff" : "var(--preview-text-faint)", marginTop: "4px", fontWeight: 600 }}>{s}</div>
             </div>
             {i < STAGE_FLOW.length - 1 && (
               <div style={{ flex: 1, height: "2px", background: i < idx ? "#4ade80" : "var(--preview-chip-bg-strong)", margin: "0 -10px", marginTop: big ? "28px" : "24px" }} />
@@ -2098,7 +1866,7 @@ function QuickActionModal({ type, lead, onClose, onLog, onAttach }: { type: stri
     }
     if (type === "followup") onLog({ ...now, type: "note", noteAuthor: "Hayk Zohrabyan", body: `Follow-up scheduled for ${followupDate || "TBD"}. ${body}` });
     if (type === "convert") onLog({ ...now, type: "note", noteAuthor: "Hayk Zohrabyan", body: `Lead converted to order. Value: ${quoteAmount || "TBD"}. ${body}` });
-    if (type === "route") onLog({ ...now, type: "note", noteAuthor: "Hayk Zohrabyan", body: `Routed to Sales team. ${body}` });
+    if (type === "route") onLog({ ...now, type: "note", noteAuthor: "Hayk Zohrabyan", body: `Marked Qualified — routed to Sales. ${body}` });
     pendingFiles.forEach(f => onAttach(f));
     onClose();
   };
