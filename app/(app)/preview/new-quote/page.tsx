@@ -747,18 +747,11 @@ export default function NewQuotePreview() {
     <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", background: "var(--preview-bg)", color: "var(--preview-text)", margin: "-20px", padding: "20px", minHeight: "100vh" }}>
       {/* Native-mode banner strip — reminds reps this is CRM-side, not synced to Bazaar */}
       <div style={{ display: "flex", gap: "10px", marginBottom: "12px", alignItems: "center", padding: "9px 14px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "10px", color: "#78350f", fontSize: "12px", fontWeight: 600 }}>
-        <span>⚠</span>
-        <span>Native wizard — every dropdown / material / price is CRM-side, not synced to Bazaar admin. This is a fallback. Switch to iframe mode for the live Bazaar form.</span>
+        <span>⚠ Fallback form — prices aren't the live Bazaar ones yet.</span>
         <a
           href={`/preview/new-quote?form=iframe${prefillLeadId ? `&leadId=${encodeURIComponent(prefillLeadId)}` : ""}${prefillName ? `&name=${encodeURIComponent(prefillName)}` : ""}${prefillPhone ? `&phone=${encodeURIComponent(prefillPhone)}` : ""}${prefillEmail ? `&email=${encodeURIComponent(prefillEmail)}` : ""}`}
           style={{ marginLeft: "auto", color: "#78350f", textDecoration: "underline", fontWeight: 700, whiteSpace: "nowrap" }}
-        >↗ Use Bazaar admin form instead</a>
-      </div>
-      {/* Preview banner */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "18px", alignItems: "center", padding: "10px 14px", background: "var(--preview-surface-2)", borderRadius: "10px", color: "var(--preview-text)" }}>
-        <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: ACCENT }}>Preview</span>
-        <span style={{ fontSize: "12px", color: "var(--preview-text)" }}>New Quote · 3-step flow · live catalog + mock pricing</span>
-        <span style={{ marginLeft: "auto", fontSize: "12px", color: "var(--preview-text-muted)" }}>Reference: <b style={{ color: GOLD, fontFamily: "monospace" }}>{quoteRefId}</b></span>
+        >↗ Use the live Bazaar form</a>
       </div>
 
       {/* Header */}
@@ -1471,16 +1464,6 @@ function Step2LineItems({ lineItems, setLineItems, categories, products, quoteTy
           </div>
         </div>
 
-        <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "16px 18px" }}>
-          <div style={{ fontSize: "11px", fontWeight: 800, color: "#666", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "8px" }}>Estimated Turnaround</div>
-          <div style={{ fontSize: "16px", fontWeight: 800 }}>📅 Based on due date</div>
-          <div style={{ fontSize: "11px", color: "#888", marginTop: "2px" }}>Production time</div>
-        </div>
-
-        <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "12px", padding: "12px 14px" }}>
-          <div style={{ fontSize: "12px", fontWeight: 700, color: "#92400e", marginBottom: "4px" }}>💡 Tip</div>
-          <div style={{ fontSize: "11.5px", color: "#78350f", lineHeight: 1.5 }}>Add more products or finishing options to get the most accurate pricing.</div>
-        </div>
       </div>
     </div>
   );
