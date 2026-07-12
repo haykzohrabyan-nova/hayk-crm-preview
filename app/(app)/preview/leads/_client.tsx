@@ -9,7 +9,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import { commsForLead } from "../inbox/_seed";
 import { RoleGate } from "../_shared/RoleGate";
-import { searchCustomers, type CustomerHit } from "./_actions";
+import { searchCustomers, createLead, type CustomerHit } from "./_actions";
 
 const ACCENT = "#FF5D2E";
 
@@ -278,10 +278,16 @@ function LeadsPreview({ leads }: { leads: Lead[] }) {
             setSelectedId(newLead.id);
             setAddOpen(false);
             setAddDraft({ phone: "", name: "", company: "", email: "", source: "", products: [], quantity: "", notes: "", urgency: "", hasArtwork: false });
-            // Jump to the "All Leads" tab so the new lead is guaranteed to be visible.
             setTab("all");
-            setSavedToast(`✓ ${newLead.name || "New lead"} saved`);
-            setTimeout(() => setSavedToast(null), 4000);
+            // Persist to the real DB (creates/matches the customer) so the lead survives a refresh.
+            createLead({
+              name: newLead.name, company: newLead.company, phone: newLead.phone, email: newLead.email,
+              source: newLead.source, products: newLead.products, quantity: newLead.estimatedQty ?? null,
+              urgency: newLead.priority, notes: newLead.notes,
+            }).then(r => {
+              setSavedToast(r.ok ? `✓ ${newLead.name || "New lead"} saved` : `Saved on screen — DB error: ${r.error}`);
+              setTimeout(() => setSavedToast(null), 4000);
+            });
           }}
         />
       )}

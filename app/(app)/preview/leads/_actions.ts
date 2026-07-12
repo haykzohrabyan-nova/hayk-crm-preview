@@ -7,6 +7,56 @@
 // are obvious). LOCAL shared DB.
 
 import { createAdminClient } from "@/lib/supabase/admin";
+import { revalidatePath } from "next/cache";
+
+// Create a real lead: match/create the customer, insert the lead as a New Lead.
+export async function createLead(input: {
+  name: string; company?: string; phone?: string; email?: string;
+  source?: string; products?: string[]; quantity?: number | null;
+  urgency?: string; notes?: string;
+}): Promise<{ ok: boolean; leadId?: string; error?: string }> {
+  const admin = createAdminClient();
+  const tenantRes = await admin.from("orders").select("tenant_id").not("specs->>quote_ref", "is", null).limit(1).single();
+  const tenant = (tenantRes.data as { tenant_id: string } | null)?.tenant_id;
+  if (!tenant) return { ok: false, error: "no tenant" };
+
+  // Match an existing customer by phone or email, else create one.
+  let customerId: string | null = null;
+  const phoneDigits = (input.phone || "").replace(/\D+/g, "");
+  if (phoneDigits.length >= 7 || input.email) {
+    const ors: string[] = [];
+    if (input.email) ors.push(`email.ilike.%${input.email}%`);
+    if (phoneDigits.length >= 7) ors.push(`phone.ilike.%${phoneDigits}%`);
+    if (ors.length) {
+      const { data } = await admin.from("customers").select("id").or(ors.join(",")).limit(1);
+      customerId = ((data ?? [])[0] as { id: string } | undefined)?.id ?? null;
+    }
+  }
+  if (!customerId) {
+    const { data, error } = await admin.from("customers")
+      .insert({ tenant_id: tenant, name: input.name || "New lead", company: input.company || null, phone: input.phone || null, email: input.email || null })
+      .select("id").single();
+    if (error) return { ok: false, error: error.message };
+    customerId = (data as { id: string }).id;
+  }
+
+  const src = (input.source || "").toLowerCase();
+  const sourceVal = src.includes("insta") ? "instagram" : src.includes("web") ? "website" : src.includes("refer") ? "referral" : src.includes("email") ? "email" : src.includes("phone") || src.includes("call") ? "phone_call" : src.includes("walk") ? "walk-in" : "website";
+  const urgVal = (input.urgency || "").toLowerCase().startsWith("high") ? "High" : (input.urgency || "").toLowerCase().startsWith("low") ? "Low" : "Medium";
+  const interests = input.products && input.products.length ? { products: input.products } : {};
+  const quantities = input.quantity ? { total: input.quantity } : {};
+
+  const sdrRes = await admin.from("profiles").select("id").eq("full_name", "Manny").limit(1).single();
+  const sdrId = (sdrRes.data as { id: string } | null)?.id ?? null;
+
+  const { data: lead, error } = await admin.from("leads")
+    .insert({ customer_id: customerId, source: sourceVal, status: "New Lead", urgency: urgVal, interests, quantities, is_inbox: true, is_returning_customer: false, sdr_id: sdrId, sdr_comment: input.notes || null })
+    .select("id").single();
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/preview/leads");
+  revalidatePath("/preview/sales-pipeline");
+  return { ok: true, leadId: (lead as { id: string }).id };
+}
 
 export type CustomerHit = {
   id: string;
