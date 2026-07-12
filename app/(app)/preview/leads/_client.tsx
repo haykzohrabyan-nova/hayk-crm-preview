@@ -482,7 +482,7 @@ function KanbanCard({ lead, selected, onClick }: { lead: Lead; selected: boolean
         <div style={{ fontSize: "12px", fontWeight: 700, color: "var(--preview-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.name}</div>
         {lead.starred && <span style={{ color: "#fbbf24", fontSize: "10px" }}>★</span>}
       </div>
-      {lead.company && <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)", marginBottom: "5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.company}</div>}
+      {lead.company && lead.company !== lead.name && <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)", marginBottom: "5px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.company}</div>}
       <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginBottom: "5px" }}>
         <span style={{ fontSize: "9.5px", fontWeight: 700, color: priorityColor, background: `${priorityColor}22`, padding: "1px 6px", borderRadius: "4px", textTransform: "uppercase" }}>{lead.priority}</span>
         {lead.products.slice(0, 1).map(p => (
@@ -490,7 +490,8 @@ function KanbanCard({ lead, selected, onClick }: { lead: Lead; selected: boolean
         ))}
       </div>
       <div style={{ fontSize: "10px", color: "var(--preview-text-muted)", display: "flex", justifyContent: "space-between", gap: "6px" }}>
-        <span style={{ fontWeight: 600, color: "#4ade80" }}>{fmtRange(lead.potentialMin, lead.potentialMax)}</span>
+        {/* Only show a $ value once there's a real quote — no fake $0. */}
+        {lead.potentialMax > 0 ? <span style={{ fontWeight: 600, color: "#4ade80" }}>{fmtRange(lead.potentialMin, lead.potentialMax)}</span> : <span />}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.nextAction || "—"}</span>
       </div>
     </div>
@@ -520,7 +521,7 @@ function LeadRow({ lead, selected, onClick }: { lead: Lead; selected: boolean; o
               {lead.starred && <span style={{ color: "#fbbf24", fontSize: "12px" }}>★</span>}
               <span style={{ padding: "1px 7px", background: priBg, color: priColor, fontSize: "9.5px", fontWeight: 700, borderRadius: "4px", letterSpacing: "0.02em" }}>{lead.priority}</span>
             </div>
-            <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginTop: "1px" }}>{lead.company}</div>
+            {lead.company && lead.company !== lead.name && <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginTop: "1px" }}>{lead.company}</div>}
             <div style={{ display: "flex", gap: "4px", marginTop: "5px", flexWrap: "wrap" }}>
               {lead.tags.slice(0, 2).map(t => (
                 <span key={t} style={{ padding: "1px 7px", background: "var(--preview-chip-bg-strong)", color: "var(--preview-text)", fontSize: "10px", fontWeight: 600, borderRadius: "4px" }}>{t}</span>
@@ -540,8 +541,12 @@ function LeadRow({ lead, selected, onClick }: { lead: Lead; selected: boolean; o
         <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)", marginTop: "1px" }}>{lead.lastActivityAt}</div>
       </td>
       <td style={{ padding: "14px 8px" }}>
-        <div style={{ fontSize: "12.5px", fontWeight: 700 }}>{fmtRange(lead.potentialMin, lead.potentialMax)}</div>
-        <div style={{ fontSize: "10.5px", color: "#4ade80", marginTop: "1px", fontWeight: 700 }}>{potentialTier(lead.potentialMax)}</div>
+        {lead.potentialMax > 0 ? (
+          <>
+            <div style={{ fontSize: "12.5px", fontWeight: 700 }}>{fmtRange(lead.potentialMin, lead.potentialMax)}</div>
+            <div style={{ fontSize: "10.5px", color: "#4ade80", marginTop: "1px", fontWeight: 700 }}>{potentialTier(lead.potentialMax)}</div>
+          </>
+        ) : <span style={{ color: "var(--preview-text-faint)", fontSize: "12px" }}>—</span>}
       </td>
       <td style={{ padding: "14px 8px" }}>
         <div style={{ fontSize: "12px", color: stageColor, fontWeight: 700 }}>{lead.stage}</div>
