@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ORDERS, fmtMoney, daysPastDue, type Order, type PaymentEntry } from "../orders/page";
+import { ORDERS, fmtMoney, daysPastDue, type Order, type PaymentEntry } from "../orders/_shared";
 import { usePreviewRole, canSee, PREVIEW_ROLE_LABELS } from "../_shared/role";
 
 const ACCENT = "#FF5D2E";

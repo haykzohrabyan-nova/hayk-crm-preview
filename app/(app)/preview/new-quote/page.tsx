@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { ORDERS, fmtMoney as fmtMoneyOrders, daysPastDue as daysPastDueOrders, type Order } from "../orders/page";
+import { ORDERS, fmtMoney as fmtMoneyOrders, daysPastDue as daysPastDueOrders, type Order } from "../orders/_shared";
 import { usePreviewRole } from "../_shared/role";
 
 const DRAFT_STORAGE_KEY = "bazaar.quoteDraft";
