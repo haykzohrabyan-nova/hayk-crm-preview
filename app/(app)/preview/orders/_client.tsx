@@ -4,7 +4,7 @@
 // Pure presentation. Receives REAL orders + board stages as props from the
 // server component (page.tsx). No hardcoded data lives here.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import {
   passportCore, fmtMoney, daysPastDue,
   STATUS_COLORS, PAY_COLORS, CHIPS, th, td,
@@ -16,8 +16,21 @@ import {
 const ACCENT = "#FF5D2E";
 const GOLD = "#fbbf24";
 
+// Status filter options — each maps to a real OrderStatus value.
+const STATUS_OPTIONS: { key: string; label: string; match: OrderStatus }[] = [
+  { key: "pending",    label: "Pending Payment", match: "Pending Payment" },
+  { key: "production", label: "In Production",   match: "In Production" },
+  { key: "ready",      label: "Ready to Ship",   match: "Ready to Ship" },
+  { key: "shipped",    label: "Shipped",         match: "Shipped" },
+  { key: "completed",  label: "Completed",       match: "Delivered" },
+  { key: "cancelled",  label: "Cancelled",       match: "Cancelled" },
+  { key: "refunds",    label: "Refunds",         match: "Refunded" },
+];
+
 export default function OrdersClient({ orders, boardStages }: { orders: Order[]; boardStages: BoardStage[] }) {
-  const [tab, setTab] = useState<"all" | "pending" | "production" | "ready" | "shipped" | "completed" | "cancelled" | "refunds">("all");
+  // Multi-select status filter (empty = All). Replaces the old single-select tab row.
+  const [statusSel, setStatusSel] = useState<Set<string>>(new Set());
+  const [openMenu, setOpenMenu] = useState<"status" | "filters" | null>(null);
   const [dateRange, setDateRange] = useState<"today" | "yesterday" | "7d" | "30d" | "custom">("30d");
   const [teamFilter, setTeamFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -54,13 +67,13 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
 
   const filtered = useMemo(() => {
     let out = orders;
-    if (tab === "pending") out = out.filter(o => o.status === "Pending Payment");
-    if (tab === "production") out = out.filter(o => o.status === "In Production");
-    if (tab === "ready") out = out.filter(o => o.status === "Ready to Ship");
-    if (tab === "shipped") out = out.filter(o => o.status === "Shipped");
-    if (tab === "completed") out = out.filter(o => o.status === "Delivered");
-    if (tab === "cancelled") out = out.filter(o => o.status === "Cancelled");
-    if (tab === "refunds") out = out.filter(o => o.status === "Refunded");
+    // Multi-select status: empty = All; otherwise keep orders matching ANY selected status.
+    if (statusSel.size > 0) {
+      const wanted = new Set(
+        STATUS_OPTIONS.filter(s => statusSel.has(s.key)).map(s => s.match),
+      );
+      out = out.filter(o => wanted.has(o.status));
+    }
     if (teamFilter) out = out.filter(o => o.createdBy === teamFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -81,7 +94,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
       if (ao !== bo) return bo - ao;
       return 0;
     });
-  }, [orders, tab, search, teamFilter, chips]);
+  }, [orders, statusSel, search, teamFilter, chips]);
 
   // Real counts — computed from the actual board-stage buckets of the loaded
   // orders. Any tab with no matching orders honestly shows 0.
@@ -125,34 +138,100 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
             </div>
           </div>
 
-          {/* Tabs + team filter + search */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: "12px" }}>
-            <div style={{ display: "flex", gap: "22px", borderBottom: "1px solid #eee", flex: 1 }}>
-              {[
-                { key: "all", label: "All", count: counts.all },
-                { key: "pending", label: "Pending Payment", count: counts.pending },
-                { key: "production", label: "In Production", count: counts.production },
-                { key: "ready", label: "Ready to Ship", count: counts.ready },
-                { key: "shipped", label: "Shipped", count: counts.shipped },
-                { key: "completed", label: "Completed", count: counts.completed },
-                { key: "cancelled", label: "Cancelled", count: counts.cancelled },
-                { key: "refunds", label: "Refunds", count: counts.refunds },
-              ].map(t => {
-                const active = tab === t.key;
+          {/* Filter bar: Status + Quick-filter dropdowns (combinable) · view · team · search */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: "12px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }}>
+              {/* STATUS multi-select dropdown */}
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setOpenMenu(openMenu === "status" ? null : "status")} style={{
+                  display: "flex", alignItems: "center", gap: "8px",
+                  padding: "8px 12px", background: "var(--preview-surface)",
+                  border: `1px solid ${statusSel.size > 0 ? GOLD : "var(--preview-border)"}`,
+                  borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer",
+                  color: "var(--preview-text)",
+                }}>
+                  <span>Status</span>
+                  {statusSel.size > 0
+                    ? <span style={{ padding: "1px 8px", background: "#fef3c7", color: "#78350f", borderRadius: "999px", fontSize: "11px", fontWeight: 700 }}>{statusSel.size}</span>
+                    : <span style={{ color: "#999", fontWeight: 500 }}>All</span>}
+                  <span style={{ color: "#999", fontSize: "10px" }}>▾</span>
+                </button>
+                {openMenu === "status" && (
+                  <MenuPanel onClose={() => setOpenMenu(null)}>
+                    <MenuHeader
+                      title={`${counts.all} orders total`}
+                      onClear={statusSel.size > 0 ? () => setStatusSel(new Set()) : undefined}
+                      clearLabel="All statuses"
+                    />
+                    {STATUS_OPTIONS.map(s => {
+                      const on = statusSel.has(s.key);
+                      const c = (counts as any)[s.key] as number;
+                      return (
+                        <CheckRow key={s.key} on={on} label={s.label} count={c} onClick={() => {
+                          setStatusSel(prev => {
+                            const next = new Set(prev);
+                            if (next.has(s.key)) next.delete(s.key); else next.add(s.key);
+                            return next;
+                          });
+                        }} />
+                      );
+                    })}
+                  </MenuPanel>
+                )}
+              </div>
+
+              {/* QUICK FILTERS multi-select dropdown */}
+              <div style={{ position: "relative" }}>
+                <button onClick={() => setOpenMenu(openMenu === "filters" ? null : "filters")} style={{
+                  display: "flex", alignItems: "center", gap: "8px",
+                  padding: "8px 12px", background: "var(--preview-surface)",
+                  border: `1px solid ${chips.size > 0 ? GOLD : "var(--preview-border)"}`,
+                  borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer",
+                  color: "var(--preview-text)",
+                }}>
+                  <span>Quick filters</span>
+                  {chips.size > 0
+                    ? <span style={{ padding: "1px 8px", background: "#fef3c7", color: "#78350f", borderRadius: "999px", fontSize: "11px", fontWeight: 700 }}>{chips.size}</span>
+                    : <span style={{ color: "#999", fontWeight: 500 }}>None</span>}
+                  <span style={{ color: "#999", fontSize: "10px" }}>▾</span>
+                </button>
+                {openMenu === "filters" && (
+                  <MenuPanel onClose={() => setOpenMenu(null)}>
+                    <MenuHeader
+                      title="Combine any filters"
+                      onClear={chips.size > 0 ? () => setChips(new Set()) : undefined}
+                      clearLabel="Clear filters"
+                    />
+                    {CHIPS.map(c => (
+                      <CheckRow key={c.key} on={chips.has(c.key)} label={c.label} tint={c.tint} onClick={() => toggleChip(c.key)} />
+                    ))}
+                  </MenuPanel>
+                )}
+              </div>
+
+              {/* Active-filter pills (quick way to remove one) */}
+              {Array.from(statusSel).map(k => {
+                const s = STATUS_OPTIONS.find(x => x.key === k);
+                if (!s) return null;
                 return (
-                  <button key={t.key} onClick={() => setTab(t.key as any)} style={{
-                    background: "transparent", border: "none",
-                    padding: "10px 0", marginBottom: "-1px",
-                    borderBottom: active ? `2px solid ${GOLD}` : "2px solid transparent",
-                    color: active ? "#171717" : "#666",
-                    fontSize: "13px", fontWeight: active ? 700 : 500, cursor: "pointer",
-                    display: "flex", alignItems: "center", gap: "8px",
-                  }}>
-                    {t.label} <span style={{ padding: "1px 8px", background: active ? "#fef3c7" : "#f5f5f5", color: active ? "#78350f" : "#666", borderRadius: "999px", fontSize: "11px", fontWeight: 700 }}>{t.count}</span>
-                  </button>
+                  <span key={k} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 8px 4px 10px", background: "#fef3c7", color: "#78350f", borderRadius: "999px", fontSize: "11.5px", fontWeight: 700 }}>
+                    {s.label}
+                    <button onClick={() => setStatusSel(prev => { const n = new Set(prev); n.delete(k); return n; })} style={{ background: "none", border: "none", color: "#78350f", cursor: "pointer", fontSize: "13px", lineHeight: 1, padding: 0 }}>×</button>
+                  </span>
+                );
+              })}
+              {Array.from(chips).map(k => {
+                const c = CHIPS.find(x => x.key === k);
+                if (!c) return null;
+                return (
+                  <span key={k} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 8px 4px 10px", background: c.tint + "22", color: c.tint, borderRadius: "999px", fontSize: "11.5px", fontWeight: 700 }}>
+                    {c.label}
+                    <button onClick={() => toggleChip(k)} style={{ background: "none", border: "none", color: c.tint, cursor: "pointer", fontSize: "13px", lineHeight: 1, padding: 0 }}>×</button>
+                  </span>
                 );
               })}
             </div>
+
             <div style={{ display: "flex", gap: "8px" }}>
               {/* View toggle: Table / Kanban */}
               <div style={{ display: "flex", gap: "3px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", padding: "3px" }}>
@@ -175,32 +254,6 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
                 <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search orders..." style={{ padding: "7px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", width: "220px", outline: "none" }} />
               </div>
             </div>
-          </div>
-
-          {/* Quick-filter chips */}
-          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginBottom: "12px", alignItems: "center" }}>
-            <span style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginRight: "4px" }}>Quick filters:</span>
-            {CHIPS.map(c => {
-              const active = chips.has(c.key);
-              return (
-                <button key={c.key} onClick={() => toggleChip(c.key)} title={c.tooltip} style={{
-                  padding: "4px 10px",
-                  background: active ? c.tint + "22" : "var(--preview-surface-2)",
-                  color: active ? c.tint : "#666",
-                  border: `1px solid ${active ? c.tint + "66" : "var(--preview-border)"}`,
-                  borderRadius: "999px",
-                  fontSize: "11.5px",
-                  fontWeight: active ? 700 : 500,
-                  cursor: "pointer",
-                }}>{c.label}</button>
-              );
-            })}
-            {chips.size > 0 && (
-              <button onClick={() => setChips(new Set())} style={{
-                padding: "4px 8px", background: "transparent", border: "none",
-                color: "#888", fontSize: "11px", cursor: "pointer", textDecoration: "underline",
-              }}>Clear</button>
-            )}
           </div>
 
           {view === "kanban" ? (
@@ -233,7 +286,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
                     <td colSpan={14} style={{ padding: "40px 16px", textAlign: "center", color: "var(--preview-text-muted)", fontSize: "13px" }}>
                       {orders.length === 0
                         ? "No orders in the shared database yet."
-                        : "No orders match the current tab and filters."}
+                        : "No orders match the current filters."}
                     </td>
                   </tr>
                 ) : filtered.map(o => (
@@ -1191,5 +1244,66 @@ function Meta({ label, children }: any) {
       <div style={{ fontSize: "10px", color: "#888", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 700, marginBottom: "3px" }}>{label}</div>
       <div style={{ fontSize: "12.5px", fontWeight: 600, color: "#171717" }}>{children}</div>
     </div>
+  );
+}
+
+// ---- Multi-select dropdown primitives (used by Status + Quick-filter menus) ----
+
+// Panel that floats under its trigger and closes on any outside click / Esc.
+function MenuPanel({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const onDoc = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // Delay binding so the opening click itself doesn't immediately close it.
+    const id = setTimeout(() => document.addEventListener("mousedown", onDoc), 0);
+    document.addEventListener("keydown", onKey);
+    return () => { clearTimeout(id); document.removeEventListener("mousedown", onDoc); document.removeEventListener("keydown", onKey); };
+  }, [onClose]);
+  return (
+    <div ref={ref} style={{
+      position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 50,
+      minWidth: "230px", background: "var(--preview-surface)",
+      border: "1px solid var(--preview-border)", borderRadius: "10px",
+      boxShadow: "0 8px 28px rgba(0,0,0,0.14)", padding: "6px", overflow: "hidden",
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function MenuHeader({ title, onClear, clearLabel }: { title: string; onClear?: () => void; clearLabel: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "4px 8px 8px", borderBottom: "1px solid var(--preview-border)", marginBottom: "4px" }}>
+      <span style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{title}</span>
+      {onClear && (
+        <button onClick={onClear} style={{ background: "none", border: "none", color: "#888", fontSize: "11px", cursor: "pointer", textDecoration: "underline", padding: 0 }}>{clearLabel}</button>
+      )}
+    </div>
+  );
+}
+
+function CheckRow({ on, label, count, tint, onClick }: { on: boolean; label: string; count?: number; tint?: string; onClick: () => void }) {
+  return (
+    <button onClick={onClick} style={{
+      display: "flex", alignItems: "center", gap: "9px", width: "100%",
+      padding: "7px 8px", background: on ? "var(--preview-surface-2)" : "transparent",
+      border: "none", borderRadius: "6px", cursor: "pointer", textAlign: "left",
+      fontSize: "12.5px", color: "var(--preview-text)", fontWeight: on ? 700 : 500,
+    }}>
+      <span style={{
+        width: "16px", height: "16px", flexShrink: 0, borderRadius: "4px",
+        border: `1.5px solid ${on ? (tint || GOLD) : "var(--preview-border)"}`,
+        background: on ? (tint || GOLD) : "transparent",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        color: "#fff", fontSize: "11px", fontWeight: 900,
+      }}>{on ? "✓" : ""}</span>
+      <span style={{ flex: 1 }}>{label}</span>
+      {typeof count === "number" && (
+        <span style={{ padding: "1px 8px", background: "var(--preview-surface-2)", color: "#888", borderRadius: "999px", fontSize: "11px", fontWeight: 700 }}>{count}</span>
+      )}
+    </button>
   );
 }
