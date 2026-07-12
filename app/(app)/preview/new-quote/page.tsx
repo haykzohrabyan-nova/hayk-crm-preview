@@ -1348,7 +1348,8 @@ function Step1Info(props: any) {
 function Step2LineItems({ lineItems, setLineItems, categories, products, quoteType, setQuoteType, subtotal, quoteRefId, previousOrdersCount, pastOrderBannerDismissed, setPastOrderBannerDismissed }: any) {
   // Show a "similar past order" heads-up whenever the customer has >2 prior orders.
   // Sample values shown until real order-history data is wired.
-  const showSimilarOrderBanner = previousOrdersCount > 2 && !pastOrderBannerDismissed;
+  // Fake "similar past order" heads-up removed — real order-history not wired.
+  const showSimilarOrderBanner = false && previousOrdersCount > 2 && !pastOrderBannerDismissed;
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const addLine = () => {
     setCollapsedIds(new Set(lineItems.map((l: LineItem) => l.id)));
@@ -1457,11 +1458,6 @@ function Step2LineItems({ lineItems, setLineItems, categories, products, quoteTy
                 <SumLine label="Tax (0%)" value={hasAnyPrice ? "$0.00" : "—"} />
                 <div style={{ height: "1px", background: "#f0f0f0", margin: "8px 0" }} />
                 <SumLine label="Total" value={totalDisplay} bold />
-                {!hasAnyPrice && (
-                  <div style={{ marginTop: "8px", padding: "6px 8px", background: "#fef3c7", border: "1px solid #fde68a", borderRadius: "6px", fontSize: "10.5px", color: "#92400e", lineHeight: 1.4 }}>
-                    Bazaar pricing engine not wired yet. Toggle Override on each line to enter a manual price.
-                  </div>
-                )}
               </>
             );
           })()}
@@ -2163,15 +2159,7 @@ function LineItemEditor({ lineItem, index, quoteRefId, categories, products, onU
               </div>
             </>
           ) : (
-            <>
-              <div style={{ fontSize: "18px", fontWeight: 800, color: "#d97706" }}>— pending —</div>
-              <div style={{ fontSize: "9.5px", color: "#b45309", fontStyle: "italic", marginTop: "3px", lineHeight: 1.35 }}>
-                Real bazaarprinting.com pricing engine not wired yet. This is a placeholder.
-              </div>
-              <div style={{ fontSize: "10px", color: "#888", marginTop: "4px" }}>
-                Toggle Override to enter a manual price.
-              </div>
-            </>
+            <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--preview-text-faint)" }}>—</div>
           )}
         </div>
       </div>
