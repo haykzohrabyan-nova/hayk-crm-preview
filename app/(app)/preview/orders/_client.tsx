@@ -268,7 +268,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
             <KanbanBoard orders={filtered} onCardClick={id => setDetailId(id)} />
           ) : (
           /* Orders table */
-          <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", overflow: "hidden" }}>
+          <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
               <thead>
                 <tr style={{ color: "#888", fontSize: "10.5px", textTransform: "uppercase", letterSpacing: "0.06em", background: "var(--preview-surface-2)" }}>
@@ -284,14 +284,13 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
                   <th style={th}>Due Date</th>
                   <th style={th}>Status</th>
                   <th style={th}>Payment</th>
-                  <th style={th}>Created</th>
                   <th style={{ width: "60px" }}></th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={14} style={{ padding: "40px 16px", textAlign: "center", color: "var(--preview-text-muted)", fontSize: "13px" }}>
+                    <td colSpan={13} style={{ padding: "40px 16px", textAlign: "center", color: "var(--preview-text-muted)", fontSize: "13px" }}>
                       {orders.length === 0
                         ? "No orders in the shared database yet."
                         : "No orders match the current filters."}
@@ -394,7 +393,6 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
         <td style={td}>
           <span style={{ padding: "2px 8px", background: PAY_COLORS[order.payment].bg, color: PAY_COLORS[order.payment].fg, fontSize: "11px", fontWeight: 700, borderRadius: "5px" }}>{order.payment}</span>
         </td>
-        <td style={td}><span style={{ color: "#888", fontSize: "11.5px" }}>{order.createdAgo}</span></td>
         <td style={td}>
           <button onClick={e => { e.stopPropagation(); onView(); }} style={{ padding: "5px 10px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}>↗ View</button>
         </td>
@@ -403,8 +401,10 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
       {/* Expanded row — line items in quote-parameter format */}
       {expanded && (
         <tr style={{ background: "var(--preview-surface)" }}>
-          <td colSpan={14} style={{ padding: "6px 20px 14px 20px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <td colSpan={13} style={{ padding: "6px 20px 14px 20px" }}>
+            {/* Pinned left so the expanded detail always reads fully, even if the
+                wide table scrolls horizontally. */}
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", position: "sticky", left: "20px", width: "min(1180px, calc(100vw - 360px))" }}>
               {order.lineItems.map(l => (
                 <div key={l.id} style={{ background: "#fff7ed", border: `1px solid ${ACCENT}44`, borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
                   <div style={{ flex: 1 }}>
