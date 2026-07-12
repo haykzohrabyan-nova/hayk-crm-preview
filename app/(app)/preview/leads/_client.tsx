@@ -14,8 +14,8 @@ const ACCENT = "#FF5D2E";
 
 // ─── Types ────────────────────────────────────────────
 export type Priority = "High" | "Medium" | "Low";
-export type Stage = "New Lead" | "Qualifying" | "Qualified" | "Claimed" | "Quoted" | "Won" | "Lost";
-type TabKey = "all" | "new" | "qualifying" | "qualified" | "claimed" | "quoted" | "won" | "lost";
+export type Stage = "New Lead" | "Qualifying" | "Qualified" | "Converted" | "Disqualified";
+type TabKey = "all" | "new" | "qualifying" | "qualified" | "converted" | "disqualified";
 
 export interface Lead {
   id: string;
@@ -93,14 +93,12 @@ interface CommItem {
 
 // ─── Tab logic ────────────────────────────────────────
 const TAB_DEFS: { key: TabKey; label: string; predicate: (l: Lead) => boolean; color?: string }[] = [
-  { key: "all",         label: "All Leads",   predicate: () => true },
-  { key: "new",         label: "New Lead",    predicate: l => l.stage === "New Lead" },
-  { key: "qualifying",  label: "Qualifying",  predicate: l => l.stage === "Qualifying" },
-  { key: "qualified",   label: "Qualified",   predicate: l => l.stage === "Qualified" },
-  { key: "claimed",     label: "Claimed",     predicate: l => l.stage === "Claimed" },
-  { key: "quoted",      label: "Quoted",      predicate: l => l.stage === "Quoted" },
-  { key: "won",         label: "Won",         predicate: l => l.stage === "Won" },
-  { key: "lost",        label: "Lost",        predicate: l => l.stage === "Lost" },
+  { key: "all",          label: "All Leads",    predicate: () => true },
+  { key: "new",          label: "New Lead",     predicate: l => l.stage === "New Lead" },
+  { key: "qualifying",   label: "Qualifying",   predicate: l => l.stage === "Qualifying" },
+  { key: "qualified",    label: "Qualified",    predicate: l => l.stage === "Qualified" },
+  { key: "converted",    label: "Converted",    predicate: l => l.stage === "Converted" },
+  { key: "disqualified", label: "Disqualified", predicate: l => l.stage === "Disqualified" },
 ];
 
 // ─── Format helpers ────────────────────────────────────────
@@ -112,13 +110,11 @@ const STAGE_COLORS: Record<Stage, string> = {
   "New Lead": "#3b82f6",
   "Qualifying": "#eab308",
   "Qualified": "#8b5cf6",
-  "Claimed": ACCENT,
-  "Quoted": "#22c55e",
-  "Won": "#16a34a",
-  "Lost": "#dc2626",
+  "Converted": "#16a34a",
+  "Disqualified": "#6b7280",
 };
 
-const STAGE_FLOW: Stage[] = ["New Lead", "Qualifying", "Qualified", "Claimed", "Quoted", "Won"];
+const STAGE_FLOW: Stage[] = ["New Lead", "Qualifying", "Qualified", "Converted"];
 
 // "18m ago" / "1h ago" / "2d ago" → days-old number (min → 0, hour → 0, day → n)
 function daysOldFromAgo(ago: string): number {
@@ -429,13 +425,11 @@ function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, sel
 
 // ─── KANBAN VIEW ──────────────────────────────────────
 const KANBAN_COLUMNS: { stage: Stage; color: string }[] = [
-  { stage: "New Lead",   color: "#3b82f6" },
-  { stage: "Qualifying", color: "#f59e0b" },
-  { stage: "Qualified",  color: "#a78bfa" },
-  { stage: "Claimed",    color: ACCENT     },
-  { stage: "Quoted",     color: "#8b5cf6" },
-  { stage: "Won",        color: "#22c55e" },
-  { stage: "Lost",       color: "#6b7280" },
+  { stage: "New Lead",     color: "#3b82f6" },
+  { stage: "Qualifying",   color: "#f59e0b" },
+  { stage: "Qualified",    color: "#a78bfa" },
+  { stage: "Converted",    color: "#22c55e" },
+  { stage: "Disqualified", color: "#6b7280" },
 ];
 
 function KanbanView({ leads, selectedId, onSelect }: { leads: Lead[]; selectedId: string | null; onSelect: (id: string) => void }) {
@@ -583,15 +577,15 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
             title="Edit this lead's contact info + project details"
             style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer" }}
           >✎ Edit</button>
-          {/* Create Quote — visible for any lead stage except Quoted/Won/Lost. Both SDR and Sales can create quotes. */}
-          {(["New Lead", "Qualifying", "Qualified", "Claimed"] as Stage[]).includes(lead.stage) && (
+          {/* Create Quote — a qualified lead is ready to quote (which converts it). */}
+          {(["Qualifying", "Qualified"] as Stage[]).includes(lead.stage) && (
             <a
               href={`/preview/new-quote?leadId=${encodeURIComponent(lead.id)}&name=${encodeURIComponent(lead.name)}&phone=${encodeURIComponent(lead.phone || "")}&email=${encodeURIComponent(lead.email || "")}`}
               title="Start a new quote for this lead"
               style={{ padding: "6px 12px", fontSize: "11.5px", background: "#22c55e", border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "4px" }}
             >📄 Quote</a>
           )}
-          {!(["Claimed", "Quoted", "Won", "Lost"] as Stage[]).includes(lead.stage) && (
+          {!(["Converted", "Disqualified"] as Stage[]).includes(lead.stage) && (
             <button
               title="Hand this lead off to the Sales team so they can build a quote and close it"
               style={{ padding: "6px 12px", fontSize: "11.5px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}
@@ -855,7 +849,7 @@ function DetailView({ lead, onBack }: { lead: Lead; onBack: () => void }) {
             href={`/preview/new-quote?leadId=${encodeURIComponent(lead.id)}&name=${encodeURIComponent(lead.name)}&phone=${encodeURIComponent(lead.phone || "")}&email=${encodeURIComponent(lead.email || "")}`}
             style={{ padding: "8px 16px", fontSize: "12.5px", background: "#22c55e", border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px" }}
           >📄 Create Quote</a>
-          {(["Claimed", "Quoted", "Won"] as Stage[]).includes(lead.stage) ? (
+          {(["Qualified", "Converted"] as Stage[]).includes(lead.stage) ? (
             <button style={{ padding: "8px 16px", fontSize: "12.5px", background: "rgba(34,197,94,0.12)", border: "1px solid rgba(34,197,94,0.35)", borderRadius: "8px", color: "#22c55e", fontWeight: 700, cursor: "pointer" }}>→ Open in Sales Pipeline</button>
           ) : (
             <button onClick={() => setModal("route")} style={{ padding: "8px 16px", fontSize: "12.5px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}>→ Route to Sales</button>

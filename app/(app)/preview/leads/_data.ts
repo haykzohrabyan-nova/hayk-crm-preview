@@ -49,19 +49,19 @@ function mapSource(s: string | null | undefined): Lead["source"] {
   }
 }
 
-// Real status / sales_status → the UI's pipeline Stage.
-// New Lead → Qualifying → Qualified → Claimed → Quoted → Won → Lost.
+// Real status / sales_status → the UI's LEAD Stage.
+// Leads run: New Lead → Qualifying → Qualified → then Converted (became a
+// customer/order) or Disqualified (dead). Quote/Won/Lost live on the QUOTE, not
+// the lead. A lead that produced an order shows as Converted.
 function mapStage(status: string | null | undefined, salesStatus: string | null | undefined): Stage {
   const s = (status ?? "").toLowerCase();
   const ss = (salesStatus ?? "").toLowerCase();
-  if (ss === "won" || s.includes("converted") || s === "won") return "Won";
-  if (s.includes("reject") || s.includes("lost") || ss.includes("reject") || ss.includes("lost")) return "Lost";
-  if (status === "New Lead" || status === "Qualifying" || status === "Qualified" || status === "Claimed" || status === "Quoted") return status as Stage;
-  // Back-compat with any older status labels.
+  if (ss === "won" || s.includes("converted") || s === "won") return "Converted";
+  if (s.includes("reject") || s.includes("lost") || s.includes("disqualif") || ss.includes("reject") || ss.includes("lost")) return "Disqualified";
+  if (status === "New Lead" || status === "Qualifying" || status === "Qualified") return status as Stage;
+  // Back-compat with older labels: anything past "qualified" collapses to Qualified.
+  if (status === "Claimed" || status === "Quoted" || status === "Routed to Sales" || status === "Quote Sent" || status === "Contacted") return "Qualified";
   if (status === "New" || s === "pending" || s === "") return "New Lead";
-  if (status === "Contacted") return "Qualifying";
-  if (status === "Routed to Sales") return "Qualified";
-  if (status === "Quote Sent") return "Quoted";
   return "New Lead";
 }
 
@@ -78,11 +78,9 @@ function nextActionFor(stage: Stage): string {
   switch (stage) {
     case "New Lead": return "Start qualifying this lead";
     case "Qualifying": return "Confirm fit & mark qualified";
-    case "Qualified": return "Sales rep to claim it";
-    case "Claimed": return "Contact customer & build quote";
-    case "Quoted": return "Follow up on the quote";
-    case "Won": return "—";
-    case "Lost": return "—";
+    case "Qualified": return "Create a quote to convert";
+    case "Converted": return "—";
+    case "Disqualified": return "—";
   }
 }
 
@@ -90,12 +88,10 @@ function nextActionFor(stage: Stage): string {
 function closeProbFor(stage: Stage): number {
   switch (stage) {
     case "New Lead": return 10;
-    case "Qualifying": return 25;
-    case "Qualified": return 40;
-    case "Claimed": return 55;
-    case "Quoted": return 70;
-    case "Won": return 100;
-    case "Lost": return 0;
+    case "Qualifying": return 30;
+    case "Qualified": return 55;
+    case "Converted": return 100;
+    case "Disqualified": return 0;
   }
 }
 
@@ -199,12 +195,12 @@ export async function loadLeads(): Promise<Lead[]> {
       leadScore: 0,
       leadScoreBreakdown: [],
       closeProbability: closeProbFor(stage),
-      closeProbabilityBand: stage === "Quoted" || stage === "Won" ? "High" : stage === "New Lead" ? "Low" : "Good",
+      closeProbabilityBand: stage === "Converted" ? "High" : stage === "New Lead" ? "Low" : "Good",
       estOrderMin: potential || 0,
       estOrderMax: potential || 0,
       estOrderConfidence: potential > 0 ? "High" : "Low",
       activityTimeline: [],
-      quotes: potential > 0 ? [{ ref: r.quote_channel ? `Quote · ${r.quote_channel}` : "Quote", amount: potential, sentDaysAgo: 0, status: stage === "Won" ? "Accepted" : "Sent" }] : [],
+      quotes: potential > 0 ? [{ ref: r.quote_channel ? `Quote · ${r.quote_channel}` : "Quote", amount: potential, sentDaysAgo: 0, status: stage === "Converted" ? "Accepted" : "Sent" }] : [],
       previousOrdersList: [],
       notes: r.sales_notes || r.sdr_comment || "",
     };
