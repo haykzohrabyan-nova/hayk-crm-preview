@@ -38,17 +38,12 @@ const CONTROL: React.CSSProperties = {
 };
 
 // Status filter options — each maps to a real OrderStatus value.
-const STATUS_OPTIONS: { key: string; label: string; match: OrderStatus }[] = [
-  { key: "pending",    label: "Pending Payment", match: "Pending Payment" },
-  { key: "production", label: "In Production",   match: "In Production" },
-  { key: "ready",      label: "Ready to Ship",   match: "Ready to Ship" },
-  { key: "shipped",    label: "Shipped",         match: "Shipped" },
-  { key: "completed",  label: "Completed",       match: "Delivered" },
-  { key: "cancelled",  label: "Cancelled",       match: "Cancelled" },
-  { key: "refunds",    label: "Refunds",         match: "Refunded" },
-];
-
 export default function OrdersClient({ orders, boardStages }: { orders: Order[]; boardStages: BoardStage[] }) {
+  // Status = the REAL production-board stages (Start → In Progress → … →
+  // Finished: Fulfilled), pulled live from the board so it always matches the
+  // workflow. Each order filters by its actual stage (stageName).
+  const stageOf = (o: Order): string => o.stageName ?? o.status;
+  const statusOptions = boardStages.map(s => s.name).filter(Boolean);
   // Multi-select status filter (empty = All). Replaces the old single-select tab row.
   const [statusSel, setStatusSel] = useState<Set<string>>(new Set());
   const [openMenu, setOpenMenu] = useState<"status" | "filters" | null>(null);
@@ -88,13 +83,8 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
 
   const filtered = useMemo(() => {
     let out = orders;
-    // Multi-select status: empty = All; otherwise keep orders matching ANY selected status.
-    if (statusSel.size > 0) {
-      const wanted = new Set(
-        STATUS_OPTIONS.filter(s => statusSel.has(s.key)).map(s => s.match),
-      );
-      out = out.filter(o => wanted.has(o.status));
-    }
+    // Multi-select status by real board stage: empty = All.
+    if (statusSel.size > 0) out = out.filter(o => statusSel.has(stageOf(o)));
     if (teamFilter) out = out.filter(o => o.createdBy === teamFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -117,18 +107,13 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
     });
   }, [orders, statusSel, search, teamFilter, chips]);
 
-  // Real counts — computed from the actual board-stage buckets of the loaded
-  // orders. Any tab with no matching orders honestly shows 0.
-  const counts = {
-    all: orders.length,
-    pending: orders.filter(o => o.status === "Pending Payment").length,
-    production: orders.filter(o => o.status === "In Production").length,
-    ready: orders.filter(o => o.status === "Ready to Ship").length,
-    shipped: orders.filter(o => o.status === "Shipped").length,
-    completed: orders.filter(o => o.status === "Delivered").length,
-    cancelled: orders.filter(o => o.status === "Cancelled").length,
-    refunds: orders.filter(o => o.status === "Refunded").length,
-  };
+  // Real per-stage counts, keyed by the actual board stage name.
+  const stageCounts = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const o of orders) { const k = stageOf(o); m[k] = (m[k] ?? 0) + 1; }
+    return m;
+  }, [orders]);
+  const totalCount = orders.length;
 
   const detailOrder = detailId ? orders.find(o => o.refId === detailId) : null;
 
@@ -181,23 +166,21 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
                 {openMenu === "status" && (
                   <MenuPanel onClose={() => setOpenMenu(null)}>
                     <MenuHeader
-                      title={`${counts.all} orders total`}
+                      title={`${totalCount} orders · ${statusOptions.length} stages`}
                       onClear={statusSel.size > 0 ? () => setStatusSel(new Set()) : undefined}
-                      clearLabel="All statuses"
+                      clearLabel="All stages"
                     />
-                    {STATUS_OPTIONS.map(s => {
-                      const on = statusSel.has(s.key);
-                      const c = (counts as any)[s.key] as number;
-                      return (
-                        <CheckRow key={s.key} on={on} label={s.label} count={c} onClick={() => {
+                    <div style={{ maxHeight: "360px", overflowY: "auto" }}>
+                      {statusOptions.map(name => (
+                        <CheckRow key={name} on={statusSel.has(name)} label={name} count={stageCounts[name] ?? 0} onClick={() => {
                           setStatusSel(prev => {
                             const next = new Set(prev);
-                            if (next.has(s.key)) next.delete(s.key); else next.add(s.key);
+                            if (next.has(name)) next.delete(name); else next.add(name);
                             return next;
                           });
                         }} />
-                      );
-                    })}
+                      ))}
+                    </div>
                   </MenuPanel>
                 )}
               </div>
@@ -229,16 +212,12 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
               </div>
 
               {/* Active-filter pills (quick way to remove one) */}
-              {Array.from(statusSel).map(k => {
-                const s = STATUS_OPTIONS.find(x => x.key === k);
-                if (!s) return null;
-                return (
-                  <span key={k} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 8px 4px 10px", background: "#fef3c7", color: "#78350f", borderRadius: "999px", fontSize: "11.5px", fontWeight: 700 }}>
-                    {s.label}
-                    <button onClick={() => setStatusSel(prev => { const n = new Set(prev); n.delete(k); return n; })} style={{ background: "none", border: "none", color: "#78350f", cursor: "pointer", fontSize: "13px", lineHeight: 1, padding: 0 }}>×</button>
-                  </span>
-                );
-              })}
+              {Array.from(statusSel).map(k => (
+                <span key={k} style={{ display: "flex", alignItems: "center", gap: "5px", padding: "4px 8px 4px 10px", background: "#fef3c7", color: "#78350f", borderRadius: "999px", fontSize: "11.5px", fontWeight: 700 }}>
+                  {k}
+                  <button onClick={() => setStatusSel(prev => { const n = new Set(prev); n.delete(k); return n; })} style={{ background: "none", border: "none", color: "#78350f", cursor: "pointer", fontSize: "13px", lineHeight: 1, padding: 0 }}>×</button>
+                </span>
+              ))}
               {Array.from(chips).map(k => {
                 const c = CHIPS.find(x => x.key === k);
                 if (!c) return null;
