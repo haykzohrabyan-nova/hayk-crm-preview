@@ -1313,20 +1313,27 @@ function WorkflowProgressCard({ order, boardStages }: { order: Order; boardStage
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "2px", marginBottom: "14px" }}>
           {stages.map((s, i) => {
-            const done = currentIdx >= 0 && i < currentIdx;
             const current = i === currentIdx;
+            const date = order.stageDates?.[s.name];
+            // A stage counts as "reached" only if it has a recorded date (or is
+            // the current stage). Stages the order skipped stay faint — no fake ticks.
+            const done = !!date && !current;
+            const reached = done || current;
             return (
               <div key={`${s.name}-${i}`} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "3px 0" }}>
                 <div style={{
                   width: "20px", height: "20px", borderRadius: "50%",
                   background: done ? "#22c55e" : current ? ACCENT : "var(--preview-surface-2)",
-                  color: done || current ? "#fff" : "var(--preview-text-muted)",
-                  border: done || current ? "none" : "1px solid var(--preview-border)",
+                  color: reached ? "#fff" : "var(--preview-text-muted)",
+                  border: reached ? "none" : "1px solid var(--preview-border)",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: "9px", fontWeight: 800, flexShrink: 0,
                 }}>{done ? "✓" : current ? "●" : i + 1}</div>
-                <span style={{ fontSize: "11.5px", color: current ? "var(--preview-text)" : done ? "var(--preview-text)" : "var(--preview-text-muted)", fontWeight: current ? 800 : 500 }}>{s.name}</span>
-                {current && <span style={{ marginLeft: "auto", fontSize: "9.5px", fontWeight: 700, color: ACCENT, textTransform: "uppercase", letterSpacing: "0.04em" }}>Current</span>}
+                <span style={{ fontSize: "11.5px", color: reached ? "var(--preview-text)" : "var(--preview-text-muted)", fontWeight: current ? 800 : 500 }}>{s.name}</span>
+                <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
+                  {date && <span style={{ fontSize: "10.5px", color: current ? ACCENT : "#888", fontWeight: current ? 700 : 600 }}>{date}</span>}
+                  {current && <span style={{ fontSize: "9px", fontWeight: 700, color: ACCENT, textTransform: "uppercase", letterSpacing: "0.04em" }}>Current</span>}
+                </span>
               </div>
             );
           })}

@@ -54,6 +54,13 @@ function colorFor(name: string | null | undefined): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+function fmtShort(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-US", { month: "short", day: "numeric" });
+}
+
 function fmtMMDD(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -472,6 +479,19 @@ export async function loadOrders(): Promise<Order[]> {
 
     // Timeline — real activity_log events (ascending).
     const acts = actsByOrder.get(o.id) ?? [];
+
+    // Per-stage dates: when this order actually reached each board stage.
+    // First stage ← the "created" event; every "moved" event ← its target stage.
+    // Stages never visited stay absent (honest — shown faint with no date).
+    const stageDates: Record<string, string> = {};
+    const firstStageName = orderedStages[0]?.name;
+    for (const a of acts) {
+      const act = (a.action ?? "").toLowerCase();
+      const md = (a.metadata ?? {}) as Record<string, unknown>;
+      if (act === "created" && firstStageName && !stageDates[firstStageName]) stageDates[firstStageName] = fmtShort(a.created_at);
+      if (act === "moved" && md.to) stageDates[String(md.to)] = fmtShort(a.created_at);
+    }
+    if (stageName && !stageDates[stageName] && acts.length) stageDates[stageName] = fmtShort(acts[acts.length - 1].created_at);
     const timeline: TimelineEntry[] = acts.map((a) => {
       const meta = actionMeta(a.action);
       const md = (a.metadata ?? {}) as Record<string, unknown>;
@@ -541,6 +561,7 @@ export async function loadOrders(): Promise<Order[]> {
       // Real-data extensions
       stageName,
       stageKind,
+      stageDates,
       stageIndex: stageIndex >= 0 ? stageIndex : undefined,
       crmOrderNo,
       quote,
