@@ -128,7 +128,19 @@ type LeadRow = {
   sdr_comment: string | null;
   sales_notes: string | null;
   created_at: string | null;
+  updated_at: string | null;
 };
+
+// Compact duration since an ISO timestamp: "3d" / "12h" / "40m".
+function fmtDur(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return "—";
+  const ms = now - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "0m";
+  const h = ms / 3_600_000;
+  if (h < 1) return `${Math.max(1, Math.round(ms / 60000))}m`;
+  if (h < 24) return `${Math.round(h)}h`;
+  return `${Math.round(h / 24)}d`;
+}
 
 type CustomerRow = { id: string; name: string | null; company: string | null; email: string | null; phone: string | null };
 
@@ -153,7 +165,7 @@ export async function loadLeads(): Promise<Lead[]> {
 
   const { data: leadRows } = await admin
     .from("leads")
-    .select("id, customer_id, source, status, sales_status, urgency, quote_total, quote_channel, is_returning_customer, interests, quantities, sdr_id, sales_owner_id, sdr_comment, sales_notes, created_at")
+    .select("id, customer_id, source, status, sales_status, urgency, quote_total, quote_channel, is_returning_customer, interests, quantities, sdr_id, sales_owner_id, sdr_comment, sales_notes, created_at, updated_at")
     .order("created_at", { ascending: false });
 
   const rows = (leadRows ?? []) as LeadRow[];
@@ -201,6 +213,9 @@ export async function loadLeads(): Promise<Lead[]> {
       returningCustomer: !!r.is_returning_customer,
       createdBy: sdr,
       createdAgo: fmtRelative(r.created_at),
+      // "days in pipeline / days in this phase" — real, from created_at + last stage change.
+      pipelineAge: fmtDur(r.created_at),
+      stageAge: fmtDur(r.updated_at),
       sdrOwner: sdr,
       salesRep: sales ?? undefined,
       lastActivity: "Lead created",
