@@ -644,12 +644,17 @@ export function Sidebar() {
             )}
             {visiblePages.map((page) => (
               <div key={page.id}>
-                <NavLink
-                  page={page}
-                  collapsed={collapsed}
-                  badge={badgeCounts[page.route]}
-                  roleName={userRoleName}
-                />
+                {/* Hayk 2026-07-12 — Leads + Sales Pipeline merged into one board.
+                    Hide the standalone Leads nav item; Sales Pipeline is the single
+                    entry (its early columns are the SDR/lead zone). */}
+                {page.route !== "/leads" && (
+                  <NavLink
+                    page={page}
+                    collapsed={collapsed}
+                    badge={badgeCounts[page.route]}
+                    roleName={userRoleName}
+                  />
+                )}
                 {/* Hayk 2026-07-01 — inject preview Inbox link right after Leads */}
                 {page.route === PREVIEW_INBOX_LINK.insertAfterRoute &&
                   !PREVIEW_ROLES_HIDING_PREVIEW_INBOX.includes(previewRole) && (
