@@ -5,15 +5,15 @@
 // Real routes are untouched.
 
 import AskAiWidget from "./_shared/AskAiWidget";
-import { FloatingRolePicker } from "./_shared/RolePicker";
 import { PreviewRoleBanner } from "./_shared/PreviewRoleBanner";
 
 export default function PreviewLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <PreviewRoleBanner />
-      {children}
-      <FloatingRolePicker />
+      {/* Reserve space so the fixed Ask AI (bottom-right) never sits on top of
+          page buttons/content. */}
+      <div style={{ paddingBottom: "96px" }}>{children}</div>
       <AskAiWidget />
     </>
   );
