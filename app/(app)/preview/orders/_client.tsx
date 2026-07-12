@@ -594,13 +594,9 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <h1 style={{ fontSize: "26px", fontWeight: 800, margin: 0, fontFamily: "monospace" }}>ORD-{order.refId}</h1>
+              <h1 style={{ fontSize: "26px", fontWeight: 800, margin: 0, fontFamily: "monospace" }} title={`Passport ${passportCore(order.refId)} — same number rides on the quote, production card, invoice and shipping.`}>ORD-{order.refId}</h1>
               <button style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: "13px", padding: "2px 4px" }} title="Copy full ID">⧉</button>
               <button style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: "13px", padding: "2px 4px" }} title="Print order">🖨</button>
-              <span
-                style={{ display: "inline-flex", alignItems: "center", gap: "4px", padding: "3px 10px", background: "#fef3c7", color: "#92400e", border: "1px solid #fde68a", borderRadius: "999px", fontSize: "11px", fontWeight: 800, fontFamily: "monospace" }}
-                title={`Same number rides on the quote, production card, invoice, and shipping. Never re-invented.`}
-              >🔒 Passport: {passportCore(order.refId)}</span>
             </div>
             {/* Clickable customer → popup with contact + all-orders */}
             <div style={{ fontSize: "14px", color: "var(--preview-text)", marginTop: "6px", display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
@@ -608,9 +604,12 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
                 {order.contact}
               </button>
               {order.company && order.company !== order.contact && <span style={{ color: "#888" }}>· {order.company}</span>}
-              {order.customer?.returning
-                ? <span style={{ padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>Returning · {order.customer.lifetimeOrders} orders</span>
-                : <span style={{ padding: "2px 8px", background: "#e0e7ff", color: "#4338ca", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>New customer</span>}
+              {(() => {
+                const prev = Math.max(0, (order.customer?.lifetimeOrders ?? 0) - 1);
+                return prev > 0
+                  ? <span style={{ padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }} title="Orders this customer placed before this one">{prev} previous order{prev === 1 ? "" : "s"}</span>
+                  : <span style={{ padding: "2px 8px", background: "#e0e7ff", color: "#4338ca", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px" }}>First order</span>;
+              })()}
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
