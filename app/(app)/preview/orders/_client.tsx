@@ -4,7 +4,11 @@
 // Pure presentation. Receives REAL orders + board stages as props from the
 // server component (page.tsx). No hardcoded data lives here.
 
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef, useEffect, useTransition } from "react";
+import {
+  setOrderStatus, setOrderPriority, assignLineItem,
+  setProductionNotes, recordPayment, markCompleted, cancelOrder,
+} from "./_actions";
 import {
   passportCore, fmtMoney, daysPastDue,
   STATUS_COLORS, PAY_COLORS, CHIPS, th, td,
@@ -561,6 +565,12 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
   const [showCustomer, setShowCustomer] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const [moreTab, setMoreTab] = useState<"quotes" | "activity" | "files">("quotes");
+  const [showPay, setShowPay] = useState(false);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [, startSave] = useTransition();
+  const oid = order.orderId;
+  // Fire a server action, flash a "Saved" tag. Optimistic UI already updated.
+  const flash = (label: string) => { setSaved(label); setTimeout(() => setSaved(s => (s === label ? null : s)), 1600); };
 
   // Real workflow statuses come straight from the live production board columns.
   const WORKFLOW_STATUSES = boardStages.map(s => s.name).filter(Boolean);
@@ -636,15 +646,16 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
             {order.dueOverdue && (() => { const d = daysPastDue(order.dueDate); return <span style={{ marginLeft: "6px", color: "#dc2626", fontWeight: 700, fontSize: "11px" }}>⚠ {d}d late</span>; })()}
           </MetaInline>
           <MetaInline icon="🚩" label="Priority">
-            <select value={priority} onChange={e => setPriority(e.target.value as Priority)} style={{ padding: "4px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>
+            <select value={priority} onChange={e => { const v = e.target.value as Priority; setPriority(v); if (oid) startSave(async () => { await setOrderPriority(oid, order.ticketRef ?? null, v); flash("Priority saved"); }); }} style={{ padding: "4px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>
               <option>Normal</option><option>High</option><option>Rush</option><option>Low</option>
             </select>
           </MetaInline>
           <MetaInline icon="⚙" label="Status">
-            <select value={status} onChange={e => setStatus(e.target.value)} style={{ padding: "4px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", maxWidth: "180px" }}>
+            <select value={status} onChange={e => { const v = e.target.value; setStatus(v); if (oid) startSave(async () => { await setOrderStatus(oid, v); flash("Status saved"); }); }} style={{ padding: "4px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", maxWidth: "180px" }}>
               {statusOptions.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </MetaInline>
+          {saved && <span style={{ padding: "3px 10px", background: "#dcfce7", color: "#166534", fontSize: "11px", fontWeight: 700, borderRadius: "999px" }}>✓ {saved}</span>}
         </div>
       </div>
 
@@ -666,7 +677,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
           {order.balanceDue > 0 && (
-            <button style={{ padding: "9px 16px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>＋ Make a payment</button>
+            <button onClick={() => setShowPay(true)} style={{ padding: "9px 16px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>＋ Make a payment</button>
           )}
           <button style={{ padding: "9px 16px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>✉ Send payment request</button>
           <button style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>📄 Receipt</button>
@@ -679,15 +690,16 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
           <LineItemsSection order={order} accountManagers={ACCOUNT_MANAGERS} productionOwners={PRODUCTION_OWNERS} />
           <CommunicationSection order={order} />
         </div>
+        {/* right rail below */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <WorkflowProgressCard order={order} boardStages={boardStages} />
           <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
             <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Actions</div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              <ActionButton bg="#0a0a0a" fg="#fff">✓ Mark as Completed</ActionButton>
-              <ActionButton bg="#fff" fg="#333" border="#e5e5e5">🔗 Resend Link to Customer</ActionButton>
-              <ActionButton bg="#fef3c7" fg="#78350f" border="#fde68a">↩ Refund Payment</ActionButton>
-              <ActionButton bg="#fee2e2" fg="#dc2626" border="#fecaca">✕ Cancel Order</ActionButton>
+              <ActionButton bg="#0a0a0a" fg="#fff" onClick={() => { if (!oid) return; setStatus("Archive"); startSave(async () => { await markCompleted(oid); flash("Marked completed"); }); }}>✓ Mark as Completed</ActionButton>
+              <ActionButton bg="#fff" fg="#333" border="#e5e5e5" title="Needs the customer portal + email connected">🔗 Resend Link to Customer</ActionButton>
+              <ActionButton bg="#fef3c7" fg="#78350f" border="#fde68a" title="Needs a payment processor connected">↩ Refund Payment</ActionButton>
+              <ActionButton bg="#fee2e2" fg="#dc2626" border="#fecaca" onClick={() => { if (!oid) return; if (!confirm("Cancel this order?")) return; startSave(async () => { await cancelOrder(oid, order.ticketRef ?? null); flash("Order cancelled"); }); }}>✕ Cancel Order</ActionButton>
             </div>
           </div>
         </div>
@@ -717,6 +729,37 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
       </div>
 
       {showCustomer && <CustomerPopup order={order} onClose={() => setShowCustomer(false)} onViewAllOrders={() => { setShowCustomer(false); onViewCustomerOrders(order.company || order.contact); }} />}
+      {showPay && oid && order.ticketRef && (
+        <PaymentModal
+          balanceDue={order.balanceDue}
+          onClose={() => setShowPay(false)}
+          onRecord={(amount, method) => { startSave(async () => { await recordPayment(oid, order.ticketRef!, amount, method); flash("Payment recorded"); }); setShowPay(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function PaymentModal({ balanceDue, onClose, onRecord }: { balanceDue: number; onClose: () => void; onRecord: (amount: number, method: string) => void }) {
+  const [amount, setAmount] = useState(String(balanceDue || 0));
+  const [method, setMethod] = useState("Card");
+  const amt = Math.max(0, parseFloat(amount) || 0);
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "16px", padding: "22px 24px", width: "360px", maxWidth: "90vw", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ fontSize: "16px", fontWeight: 800, marginBottom: "4px" }}>Record a payment</div>
+        <div style={{ fontSize: "12px", color: "#888", marginBottom: "16px" }}>Balance due {fmtMoney(balanceDue)}. This records it in the books (no card is charged).</div>
+        <label style={{ fontSize: "11px", color: "#888", fontWeight: 700, textTransform: "uppercase" }}>Amount</label>
+        <input value={amount} onChange={e => setAmount(e.target.value)} type="number" style={{ width: "100%", padding: "9px 12px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "14px", fontWeight: 700, marginTop: "4px", marginBottom: "12px", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+        <label style={{ fontSize: "11px", color: "#888", fontWeight: 700, textTransform: "uppercase" }}>Method</label>
+        <select value={method} onChange={e => setMethod(e.target.value)} style={{ width: "100%", padding: "9px 12px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "13px", marginTop: "4px", marginBottom: "18px", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }}>
+          <option>Card</option><option>ACH / Bank</option><option>Wire</option><option>Check</option><option>Cash</option><option>Zelle</option>
+        </select>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button onClick={() => onRecord(amt, method)} disabled={amt <= 0} style={{ flex: 1, padding: "10px", background: amt > 0 ? ACCENT : "#ccc", color: "#fff", border: "none", borderRadius: "9px", fontSize: "13px", fontWeight: 700, cursor: amt > 0 ? "pointer" : "default" }}>Record {fmtMoney(amt)}</button>
+          <button onClick={onClose} style={{ padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -743,23 +786,45 @@ function LineItemsSection({ order, accountManagers, productionOwners }: { order:
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {order.lineItems.map((l, i) => (
-          <LineItemCard key={l.id} line={l} index={i} accountManagers={accountManagers} productionOwners={productionOwners} />
+          <LineItemCard key={l.id} line={l} index={i} orderId={order.orderId} ticketRef={order.ticketRef} accountManagers={accountManagers} productionOwners={productionOwners} />
         ))}
       </div>
 
-      {/* Production notes */}
-      <div style={{ marginTop: "16px" }}>
-        <div style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "0.04em", marginBottom: "6px", color: "#666" }}>📝 PRODUCTION NOTES</div>
-        <textarea defaultValue={order.productionNotes || ""} placeholder="Notes visible to production team..." style={{ width: "100%", minHeight: "56px", padding: "10px 12px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
-      </div>
+      {/* Production notes — saved on blur */}
+      <ProductionNotes orderId={order.orderId} initial={order.productionNotes || ""} />
     </div>
   );
 }
 
-function LineItemCard({ line, index, accountManagers, productionOwners }: { line: OrderLineItem; index: number; accountManagers: string[]; productionOwners: string[] }) {
+function ProductionNotes({ orderId, initial }: { orderId?: string; initial: string }) {
+  const [notes, setNotes] = useState(initial);
+  const [saved, setSaved] = useState(false);
+  const [, start] = useTransition();
+  const save = () => {
+    if (!orderId || notes === initial) return;
+    start(async () => { await setProductionNotes(orderId, notes); setSaved(true); setTimeout(() => setSaved(false), 1600); });
+  };
+  return (
+    <div style={{ marginTop: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
+        <div style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "0.04em", color: "#666" }}>📝 PRODUCTION NOTES</div>
+        {saved && <span style={{ fontSize: "10.5px", color: "#166534", fontWeight: 700 }}>✓ Saved</span>}
+      </div>
+      <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={save} placeholder="Notes visible to production team… (saves when you click away)" style={{ width: "100%", minHeight: "56px", padding: "10px 12px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+    </div>
+  );
+}
+
+function LineItemCard({ line, index, orderId, ticketRef, accountManagers, productionOwners }: { line: OrderLineItem; index: number; orderId?: string; ticketRef?: string; accountManagers: string[]; productionOwners: string[] }) {
   const [am, setAm] = useState(line.accountManager ?? "");
   const [prod, setProd] = useState(line.productionOwner ?? "");
+  const [savedField, setSavedField] = useState<string | null>(null);
+  const [, start] = useTransition();
   const files = line.files ?? [];
+  const saveAssign = (field: "accountManager" | "productionOwner", value: string) => {
+    if (!orderId || !ticketRef) return;
+    start(async () => { await assignLineItem(orderId, ticketRef, index, field, value); setSavedField(field); setTimeout(() => setSavedField(f => (f === field ? null : f)), 1500); });
+  };
   return (
     <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "14px 16px" }}>
       <div style={{ display: "flex", gap: "14px" }}>
@@ -799,17 +864,17 @@ function LineItemCard({ line, index, accountManagers, productionOwners }: { line
 
       {/* People assigned to THIS item */}
       <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
-        <PersonSelect icon="🎨" label="Account Manager" value={am} onChange={setAm} options={accountManagers} />
-        <PersonSelect icon="🏭" label="Production / Design" value={prod} onChange={setProd} options={productionOwners} />
+        <PersonSelect icon="🎨" label="Account Manager" value={am} saved={savedField === "accountManager"} onChange={v => { setAm(v); saveAssign("accountManager", v); }} options={accountManagers} />
+        <PersonSelect icon="🏭" label="Production / Design" value={prod} saved={savedField === "productionOwner"} onChange={v => { setProd(v); saveAssign("productionOwner", v); }} options={productionOwners} />
       </div>
     </div>
   );
 }
 
-function PersonSelect({ icon, label, value, onChange, options }: { icon: string; label: string; value: string; onChange: (v: string) => void; options: string[] }) {
+function PersonSelect({ icon, label, value, onChange, options, saved }: { icon: string; label: string; value: string; onChange: (v: string) => void; options: string[]; saved?: boolean }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-      <span style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{icon} {label}</span>
+      <span style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{icon} {label} {saved && <span style={{ color: "#166534" }}>✓ saved</span>}</span>
       <select value={value} onChange={e => onChange(e.target.value)} style={{ padding: "5px 8px", background: "var(--preview-surface)", border: `1px solid ${value ? "var(--preview-border)" : "#fca5a5"}`, borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)", minWidth: "150px" }}>
         <option value="">— Unassigned —</option>
         {options.map(o => <option key={o} value={o}>{o}</option>)}
@@ -1000,9 +1065,9 @@ function CustomerSidebar({ order }: { order: Order }) {
   );
 }
 
-function ActionButton({ bg, fg, border, children }: any) {
+function ActionButton({ bg, fg, border, children, onClick, title }: any) {
   return (
-    <button style={{
+    <button onClick={onClick} title={title} style={{
       padding: "9px 12px",
       background: bg,
       color: fg,

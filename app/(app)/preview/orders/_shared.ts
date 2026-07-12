@@ -71,6 +71,8 @@ export interface QuoteRecord { ref: string; date: string; total: number; status:
 
 export interface Order {
   refId: string;                // "114" — 3-digit passport core, rendered as ORD-114
+  orderId?: string;             // raw orders.id (for writes/actions)
+  ticketRef?: string;           // job_tickets.reference_code (for writes/actions)
   quoteRefId: string;           // "QO-114" — links back to the source quote
   invoiceRefId?: string;        // "INV-114" — same passport core, auto-derived if omitted
   packingSlipRefId?: string;    // "PS-114" — same passport core, auto-derived if omitted

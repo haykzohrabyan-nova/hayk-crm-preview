@@ -228,7 +228,7 @@ function mapLine(raw: unknown, i: number): OrderLineItem {
   const unitStr = String(pl.unit ?? "").replace(/[$,]/g, "");
   const specs: { label: string; value: string }[] = [];
   for (const [key, val] of Object.entries(pl)) {
-    if (["qty", "unit", "product", "material", "lineTotal"].includes(key)) continue;
+    if (["qty", "unit", "product", "material", "lineTotal", "accountManager", "productionOwner"].includes(key)) continue;
     if (val === null || val === undefined) continue;
     const label = LINE_SPEC_LABELS[key] ?? key.charAt(0).toUpperCase() + key.slice(1);
     const value = typeof val === "boolean" ? (val ? "Yes" : "No") : String(val);
@@ -242,6 +242,8 @@ function mapLine(raw: unknown, i: number): OrderLineItem {
     unitPrice: num(unitStr),
     extended: num(pl.lineTotal),
     specs: specs.length ? specs : undefined,
+    accountManager: pl.accountManager != null ? String(pl.accountManager) : undefined,
+    productionOwner: pl.productionOwner != null ? String(pl.productionOwner) : undefined,
   };
 }
 
@@ -459,8 +461,9 @@ export async function loadOrders(): Promise<Order[]> {
       const img = mine.find(a => (a.mime_type ?? "").startsWith("image/"));
       li.thumbnailUrl = img?.external_url ?? undefined;
       li.files = mine.map(a => ({ name: a.file_name ?? "file", url: a.external_url ?? undefined, kind: fileKind(a.file_name ?? "", a.mime_type) }));
-      li.accountManager = rep ?? undefined;
-      li.productionOwner = (["Arsen", "Hrach", "Production", "Apparel"].includes(stageName) ? stageName : undefined);
+      // Persisted assignment (from product_lines) wins; else sensible default.
+      li.accountManager = li.accountManager ?? rep ?? undefined;
+      li.productionOwner = li.productionOwner ?? (["Arsen", "Hrach", "Production", "Apparel"].includes(stageName) ? stageName : undefined);
     });
 
     // Payment ledger — real, derived from the ticket's deposit/balance fields.
@@ -526,7 +529,10 @@ export async function loadOrders(): Promise<Order[]> {
 
     const ord: Order = {
       refId: passport || o.id.slice(-3),
+      orderId: o.id,
+      ticketRef: t.reference_code ?? undefined,
       quoteRefId: t.reference_code ?? "—",
+      productionNotes: (spec<string>(o, "production_notes") ?? undefined),
       contact: customer?.name?.trim() || "(unnamed customer)",
       company: customer?.company ?? "",
       createdBy: rep ?? "—",
