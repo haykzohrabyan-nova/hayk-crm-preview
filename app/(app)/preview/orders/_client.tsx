@@ -16,6 +16,23 @@ import {
 const ACCENT = "#FF5D2E";
 const GOLD = "#fbbf24";
 
+// Shared control chrome so every header control (date, status, filters, team,
+// search, view toggle) is the exact same height / radius / border — clean row.
+const CONTROL: React.CSSProperties = {
+  height: "36px",
+  padding: "0 12px",
+  background: "var(--preview-surface)",
+  border: "1px solid var(--preview-border)",
+  borderRadius: "8px",
+  fontSize: "12.5px",
+  color: "var(--preview-text)",
+  cursor: "pointer",
+  boxSizing: "border-box",
+  outline: "none",
+  display: "flex",
+  alignItems: "center",
+};
+
 // Status filter options — each maps to a real OrderStatus value.
 const STATUS_OPTIONS: { key: string; label: string; match: OrderStatus }[] = [
   { key: "pending",    label: "Pending Payment", match: "Pending Payment" },
@@ -127,15 +144,14 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
           {/* Header */}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
             <h1 style={{ fontSize: "24px", fontWeight: 800, margin: 0 }}>Orders</h1>
-            <div style={{ display: "flex", gap: "6px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "3px" }}>
-              {(["today", "yesterday", "7d", "30d", "custom"] as const).map(r => (
-                <button key={r} onClick={() => setDateRange(r)} style={{
-                  padding: "7px 14px", background: dateRange === r ? "#0a0a0a" : "transparent",
-                  color: dateRange === r ? "#fff" : "#666", border: "none", borderRadius: "7px",
-                  fontSize: "12.5px", fontWeight: dateRange === r ? 700 : 500, cursor: "pointer",
-                }}>{r === "today" ? "Today" : r === "yesterday" ? "Yesterday" : r === "7d" ? "Last 7 Days" : r === "30d" ? "Last 30 Days" : "📅 Custom"}</button>
-              ))}
-            </div>
+            {/* Date range — compact dropdown (was a wide 5-button strip). */}
+            <select value={dateRange} onChange={e => setDateRange(e.target.value as any)} style={{ ...CONTROL, fontWeight: 600, minWidth: "150px" }}>
+              <option value="today">📅 Today</option>
+              <option value="yesterday">📅 Yesterday</option>
+              <option value="7d">📅 Last 7 Days</option>
+              <option value="30d">📅 Last 30 Days</option>
+              <option value="custom">📅 Custom range…</option>
+            </select>
           </div>
 
           {/* Filter bar: Status + Quick-filter dropdowns (combinable) · view · team · search */}
@@ -144,11 +160,8 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
               {/* STATUS multi-select dropdown */}
               <div style={{ position: "relative" }}>
                 <button onClick={() => setOpenMenu(openMenu === "status" ? null : "status")} style={{
-                  display: "flex", alignItems: "center", gap: "8px",
-                  padding: "8px 12px", background: "var(--preview-surface)",
+                  ...CONTROL, gap: "8px", fontWeight: 600,
                   border: `1px solid ${statusSel.size > 0 ? GOLD : "var(--preview-border)"}`,
-                  borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer",
-                  color: "var(--preview-text)",
                 }}>
                   <span>Status</span>
                   {statusSel.size > 0
@@ -183,11 +196,8 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
               {/* QUICK FILTERS multi-select dropdown */}
               <div style={{ position: "relative" }}>
                 <button onClick={() => setOpenMenu(openMenu === "filters" ? null : "filters")} style={{
-                  display: "flex", alignItems: "center", gap: "8px",
-                  padding: "8px 12px", background: "var(--preview-surface)",
+                  ...CONTROL, gap: "8px", fontWeight: 600,
                   border: `1px solid ${chips.size > 0 ? GOLD : "var(--preview-border)"}`,
-                  borderRadius: "8px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer",
-                  color: "var(--preview-text)",
                 }}>
                   <span>Quick filters</span>
                   {chips.size > 0
@@ -232,27 +242,25 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
               })}
             </div>
 
-            <div style={{ display: "flex", gap: "8px" }}>
-              {/* View toggle: Table / Kanban */}
-              <div style={{ display: "flex", gap: "3px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", padding: "3px" }}>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              {/* View toggle: Table / Kanban — same 36px height as the rest */}
+              <div style={{ ...CONTROL, padding: "3px", gap: "3px", cursor: "default" }}>
                 <button onClick={() => setView("table")} style={{
-                  padding: "5px 10px", background: view === "table" ? "#0a0a0a" : "transparent",
+                  height: "28px", padding: "0 12px", background: view === "table" ? "#0a0a0a" : "transparent",
                   color: view === "table" ? "#fff" : "#666", border: "none", borderRadius: "6px",
                   fontSize: "12px", fontWeight: view === "table" ? 700 : 500, cursor: "pointer",
                 }}>☰ Table</button>
                 <button onClick={() => setView("kanban")} style={{
-                  padding: "5px 10px", background: view === "kanban" ? "#0a0a0a" : "transparent",
+                  height: "28px", padding: "0 12px", background: view === "kanban" ? "#0a0a0a" : "transparent",
                   color: view === "kanban" ? "#fff" : "#666", border: "none", borderRadius: "6px",
                   fontSize: "12px", fontWeight: view === "kanban" ? 700 : 500, cursor: "pointer",
                 }}>▦ Kanban</button>
               </div>
-              <select value={teamFilter || "all"} onChange={e => setTeamFilter(e.target.value === "all" ? null : e.target.value)} style={{ padding: "7px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", cursor: "pointer" }}>
+              <select value={teamFilter || "all"} onChange={e => setTeamFilter(e.target.value === "all" ? null : e.target.value)} style={{ ...CONTROL, fontWeight: 500 }}>
                 <option value="all">All team members</option>
                 {teamMembers.map(m => <option key={m}>{m}</option>)}
               </select>
-              <div style={{ position: "relative" }}>
-                <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search orders..." style={{ padding: "7px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", width: "220px", outline: "none" }} />
-              </div>
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search orders..." style={{ ...CONTROL, display: "block", cursor: "text", width: "230px", fontWeight: 500 }} />
             </div>
           </div>
 
@@ -333,10 +341,15 @@ function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expande
           <div style={{ fontSize: "13px", fontWeight: 700 }}>{order.contact}</div>
           {order.company && <div style={{ fontSize: "11px", color: "#888" }}>{order.company}</div>}
         </td>
-        <td style={{ ...td, maxWidth: "280px" }}>
-          <div style={{ fontSize: "12.5px", lineHeight: 1.4, color: "#333", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as any }}>{order.title || <span style={{ color: "#bbb" }}>—</span>}</div>
-          <div style={{ fontSize: "10.5px", color: order.attachmentsCount > 0 ? "#3b82f6" : "#bbb", marginTop: "3px", fontWeight: 600 }}>
-            {order.attachmentsCount > 0 ? `📎 ${order.attachmentsCount}` : "—"}
+        <td style={{ ...td, maxWidth: "300px" }}>
+          <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
+            <OrderThumb src={order.thumbnailUrl} alt={order.title} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: "12.5px", lineHeight: 1.4, color: "#333", overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" as any }}>{order.title || <span style={{ color: "#bbb" }}>—</span>}</div>
+              <div style={{ fontSize: "10.5px", color: order.attachmentsCount > 0 ? "#3b82f6" : "#bbb", marginTop: "3px", fontWeight: 600 }}>
+                {order.attachmentsCount > 0 ? `📎 ${order.attachmentsCount}` : "—"}
+              </div>
+            </div>
           </div>
         </td>
         <td style={td}>
@@ -1235,6 +1248,25 @@ function OrderTimeline({ events, order }: { events: TimelineEvent[]; order: Orde
         </div>
       </div>
     </div>
+  );
+}
+
+// Small product/proof thumbnail on each order row — mirrors the workflow board cards.
+// Falls back to a clean tile when an order has no image yet (honest, not a broken img).
+function OrderThumb({ src, alt }: { src?: string; alt?: string }) {
+  const [broken, setBroken] = useState(false);
+  const box: React.CSSProperties = {
+    width: "44px", height: "44px", flexShrink: 0, borderRadius: "8px",
+    border: "1px solid var(--preview-border)", overflow: "hidden",
+    background: "var(--preview-surface-2)", display: "flex", alignItems: "center", justifyContent: "center",
+  };
+  if (!src || broken) {
+    return <div style={box} title="No proof uploaded yet"><span style={{ fontSize: "16px", opacity: 0.5 }}>🖼️</span></div>;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src={src} alt={alt || "proof"} onError={() => setBroken(true)}
+      style={{ ...box, objectFit: "cover" }} />
   );
 }
 

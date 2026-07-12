@@ -161,7 +161,7 @@ type OrderRow = {
 
 type ColumnRow = { id: string; tenant_id: string; name: string | null; kind: string | null; position: number | null };
 type ActivityRow = { id: string; order_id: string | null; actor: string | null; action: string | null; metadata: Record<string, unknown> | null; created_at: string | null };
-type AssetRow = { id: string; order_id: string | null; file_name: string | null; mime_type: string | null; size: number | null };
+type AssetRow = { id: string; order_id: string | null; file_name: string | null; mime_type: string | null; size: number | null; external_url: string | null; storage_path: string | null };
 
 // ── Classifiers / helpers ────────────────────────────────────────────────────
 
@@ -353,7 +353,7 @@ export async function loadOrders(): Promise<Order[]> {
       ? admin.from("activity_log").select("id, order_id, actor, action, metadata, created_at").in("order_id", orderIds).order("created_at", { ascending: true })
       : Promise.resolve({ data: [] as ActivityRow[] }),
     orderIds.length
-      ? admin.from("assets").select("id, order_id, file_name, mime_type, size").in("order_id", orderIds)
+      ? admin.from("assets").select("id, order_id, file_name, mime_type, size, external_url, storage_path").in("order_id", orderIds)
       : Promise.resolve({ data: [] as AssetRow[] }),
   ]);
 
@@ -461,9 +461,12 @@ export async function loadOrders(): Promise<Order[]> {
     });
     const lastActivityAt = acts.length ? fmtDateTime(acts[acts.length - 1].created_at) : fmtDateTime(o.created_at);
 
-    // Real files (currently none seeded → honest empty).
+    // Real files.
     const assets = assetsByOrder.get(o.id) ?? [];
     const attachments = assets.map((a) => a.file_name ?? "file");
+    // First image asset → row thumbnail (proof/artwork), same idea as the board cards.
+    const imgAsset = assets.find((a) => (a.mime_type ?? "").startsWith("image/") && (a.external_url || a.storage_path));
+    const thumbnailUrl = imgAsset?.external_url ?? undefined;
 
     const life = o.customer_id ? lifetime.get(o.customer_id) : undefined;
     const returning = !!lead?.is_returning_customer;
@@ -497,6 +500,7 @@ export async function loadOrders(): Promise<Order[]> {
       createdDate: fmtMMDD(o.created_at),
       attachmentsCount: attachments.length,
       attachments,
+      thumbnailUrl,
       files: [],
       customer: {
         phone: customer?.phone ?? "",

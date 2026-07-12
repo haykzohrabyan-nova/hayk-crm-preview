@@ -89,6 +89,7 @@ export interface Order {
   createdDate: string;             // "06/28/2026" — actual date the order was placed
   attachmentsCount: number;
   attachments: string[];           // sample file names, e.g. ["artwork_v3.ai", "dieline.pdf"]
+  thumbnailUrl?: string;           // first image asset (proof/artwork) — row thumbnail, like the board cards
   files?: Attachment[];            // richer per-file metadata
   productionNotes?: string;
   shippingMethod?: "Pickup" | "Ship";
