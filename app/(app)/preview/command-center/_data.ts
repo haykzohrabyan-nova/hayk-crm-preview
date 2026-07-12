@@ -76,6 +76,8 @@ export type TicketRow = {
   ticket_kind: string | null;
   ticket_status: string | null;
   customer_id: string | null;
+  linked_lead_id: string | null;
+  created_by_id: string | null;
   reference_code: string | null;
   title: string | null;
   quote_channel: string | null;
@@ -115,10 +117,12 @@ export type OrderRow = {
   column_id: string | null;
   title: string | null;
   description: string | null;
+  specs: Record<string, unknown> | null;
   priority: string | null;
   due_date: string | null;
   created_by: string | null;
   created_at: string | null;
+  updated_at?: string | null;
 };
 
 export type BoardColumnRow = {
@@ -235,10 +239,13 @@ function niceChannel(c: string | null | undefined): string {
     email: "email",
     sms: "text",
     phone: "phone call",
+    phone_call: "phone call",
     call: "phone call",
     ig: "Instagram",
     instagram: "Instagram",
     whatsapp: "WhatsApp",
+    website: "the website",
+    web: "the website",
     portal: "the portal",
   };
   return map[c.toLowerCase()] ?? c;
@@ -247,6 +254,22 @@ function niceChannel(c: string | null | undefined): string {
 function titleCaseStage(name: string | null | undefined): string {
   if (!name) return "In production";
   return name;
+}
+
+// Guard against the `stub_<uuid>@local.invalid` placeholder profiles Hayk saw:
+// a resolved name that is a stub is treated as "no name" so the UI never prints
+// the raw stub string. Real reps (Marianna, Gary, Ernesto, Manny…) pass through.
+function cleanName(n: string | null | undefined): string | null {
+  if (!n) return null;
+  if (/^stub_[0-9a-f-]+@local\.invalid$/i.test(n.trim())) return null;
+  return n;
+}
+
+/** Passport number from a QUO/ORD reference code, e.g. "QUO-2026-0305" → "305". */
+function parsePassport(ref: string | null | undefined): string | null {
+  if (!ref) return null;
+  const m = ref.match(/0*(\d{3,})\s*$/);
+  return m ? m[1] : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -468,7 +491,7 @@ export async function loadCustomerDetail(
     }
   }
   const nameOf = (id: string | null | undefined): string | null =>
-    id ? profMap.get(id) ?? null : null;
+    id ? cleanName(profMap.get(id) ?? null) : null;
 
   // ── Lifetime totals ─────────────────────────────────────────────────────────
   let quoted = 0;
@@ -833,4 +856,514 @@ function metaToDetail(meta: Record<string, unknown> | null): string {
   if (from && to) return `Moved from ${from} → ${to}`;
   if (meta.note) return String(meta.note);
   return "";
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PER-PROJECT MODEL (Hayk 2026-07-11)
+//
+// The customer → projects → one-project-thread structure. A "project" is the
+// life of a single job: the inquiry (lead) → the quote that became the order
+// (job_ticket) → the board card in production (orders) → its activity. They are
+// stitched by the shared customer_id and a passport number carried on the board
+// card's specs (specs.passport / specs.quote_ref = the ticket reference_code).
+//
+// READ-ONLY. Additive. Never prints the stub_… placeholder names.
+// ═════════════════════════════════════════════════════════════════════════════
+
+export type ProjectSummary = {
+  key: string; // route param — passport number, else ticket/order id
+  passport: string | null;
+  ref: string; // QUO-2026-0305, or "Board card"
+  crmOrderNo: string | null; // ORD-2026-0305
+  title: string;
+  stage: string; // live board stage, else ticket status
+  stageKind: string | null;
+  total: number;
+  paymentStatus: string | null;
+  balance: number;
+  channel: string | null; // how it started
+  startedAt: string | null; // ISO — lead created, else ticket, else order
+  owner: string | null; // real rep name
+  hasProduction: boolean; // has a board card
+};
+
+export type CustomerProjects = {
+  customer: CustomerRow;
+  repName: string | null;
+  isReturning: boolean;
+  totals: CustomerDetail["totals"];
+  projects: ProjectSummary[];
+};
+
+export type ProjectThread = {
+  customerId: string;
+  customerName: string;
+  key: string;
+  passport: string | null;
+  ref: string;
+  crmOrderNo: string | null;
+  title: string;
+  stage: string;
+  stageKind: string | null;
+  total: number;
+  balance: number;
+  paymentStatus: string | null;
+  owner: string | null;
+  events: TimelineEvent[]; // ascending (the life story of this one job)
+  rightNow: { stage: string; balance: number; nextAction: string | null };
+};
+
+type Bundle = {
+  customer: CustomerRow;
+  leads: LeadRow[];
+  tickets: TicketRow[];
+  orders: OrderRow[];
+  colMap: Map<string, BoardColumnRow>;
+  acts: ActivityRow[];
+  nameOf: (id: string | null | undefined) => string | null;
+};
+
+type Project = {
+  key: string;
+  passport: string | null;
+  ticket?: TicketRow;
+  order?: OrderRow;
+  lead?: LeadRow;
+};
+
+// ── Shared fetch: one customer's whole footprint across both systems ──────────
+async function fetchCustomerBundle(customerId: string): Promise<Bundle | null> {
+  const admin = createAdminClient();
+
+  const { data: cust } = await admin
+    .from("customers")
+    .select(
+      "id, name, company, email, phone, created_at, key_account_sales_rep_id, tax_exempt_last_permit_number, tax_exempt_last_reviewed_at",
+    )
+    .eq("id", customerId)
+    .maybeSingle();
+  if (!cust) return null;
+  const customer = cust as CustomerRow;
+
+  const [leadsRes, ticketsRes, ordersRes] = await Promise.all([
+    admin
+      .from("leads")
+      .select(
+        "id, customer_id, source, brand, status, sales_status, sdr_id, sales_owner_id, quote_total, quote_channel, urgency, is_returning_customer, sdr_comment, sales_notes, follow_up_at, follow_up_notes, created_at",
+      )
+      .eq("customer_id", customerId),
+    admin.from("job_tickets").select("*").eq("customer_id", customerId),
+    admin
+      .from("orders")
+      .select(
+        "id, customer_id, column_id, title, description, specs, priority, due_date, created_by, created_at, updated_at",
+      )
+      .eq("customer_id", customerId),
+  ]);
+
+  const leads = (leadsRes.data ?? []) as LeadRow[];
+  const tickets = (ticketsRes.data ?? []) as TicketRow[];
+  const orders = (ordersRes.data ?? []) as OrderRow[];
+
+  const columnIds = Array.from(
+    new Set(orders.map((o) => o.column_id).filter(Boolean) as string[]),
+  );
+  const orderIds = orders.map((o) => o.id);
+
+  const [colsRes, actsRes] = await Promise.all([
+    columnIds.length
+      ? admin.from("board_columns").select("id, name, kind").in("id", columnIds)
+      : Promise.resolve({ data: [] as BoardColumnRow[] }),
+    orderIds.length
+      ? admin
+          .from("activity_log")
+          .select("id, order_id, actor, action, metadata, created_at")
+          .in("order_id", orderIds)
+      : Promise.resolve({ data: [] as ActivityRow[] }),
+  ]);
+
+  const cols = (colsRes.data ?? []) as BoardColumnRow[];
+  const acts = (actsRes.data ?? []) as ActivityRow[];
+  const colMap = new Map(cols.map((c) => [c.id, c]));
+
+  // Resolve every referenced person once, through the profiles table, guarded.
+  const personIds = new Set<string>();
+  if (customer.key_account_sales_rep_id)
+    personIds.add(customer.key_account_sales_rep_id);
+  for (const l of leads) {
+    if (l.sdr_id) personIds.add(l.sdr_id);
+    if (l.sales_owner_id) personIds.add(l.sales_owner_id);
+  }
+  for (const t of tickets) if (t.created_by_id) personIds.add(t.created_by_id);
+  for (const o of orders) if (o.created_by) personIds.add(o.created_by);
+  for (const a of acts) if (a.actor) personIds.add(a.actor);
+
+  const profMap = new Map<string, string>();
+  if (personIds.size) {
+    const { data: profs } = await admin
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", Array.from(personIds));
+    for (const p of (profs ?? []) as Array<{
+      id: string;
+      full_name: string | null;
+    }>) {
+      const nm = cleanName(p.full_name);
+      if (nm) profMap.set(p.id, nm);
+    }
+  }
+  const nameOf = (id: string | null | undefined): string | null =>
+    id ? profMap.get(id) ?? null : null;
+
+  return { customer, leads, tickets, orders, colMap, acts, nameOf };
+}
+
+// ── Group a bundle into discrete projects ────────────────────────────────────
+function ticketCreatedById(t: TicketRow): string | null {
+  return t.created_by_id ?? null;
+}
+
+function orderSpec<T = unknown>(o: OrderRow | undefined, key: string): T | null {
+  const s = o?.specs;
+  if (!s || typeof s !== "object") return null;
+  const v = (s as Record<string, unknown>)[key];
+  return (v ?? null) as T | null;
+}
+
+function groupProjects(b: Bundle): Project[] {
+  const projects: Project[] = [];
+  const usedOrders = new Set<string>();
+  const singlePair = b.tickets.length === 1 && b.orders.length === 1;
+
+  for (const t of b.tickets) {
+    let order = b.orders.find(
+      (o) =>
+        !usedOrders.has(o.id) &&
+        orderSpec<string>(o, "quote_ref") === t.reference_code,
+    );
+    if (!order) {
+      const pp = parsePassport(t.reference_code);
+      order = b.orders.find(
+        (o) =>
+          !usedOrders.has(o.id) &&
+          pp != null &&
+          String(orderSpec<string | number>(o, "passport") ?? "") === pp,
+      );
+    }
+    if (!order && singlePair) order = b.orders[0];
+    if (order) usedOrders.add(order.id);
+
+    const lead = b.leads.find((l) => l.id === t.linked_lead_id);
+    const passport =
+      (order ? String(orderSpec<string | number>(order, "passport") ?? "") : "") ||
+      parsePassport(t.reference_code) ||
+      null;
+    projects.push({
+      key: passport || t.id,
+      passport: passport || null,
+      ticket: t,
+      order,
+      lead,
+    });
+  }
+
+  // Board-only cards with no matching ticket become their own projects.
+  for (const o of b.orders) {
+    if (usedOrders.has(o.id)) continue;
+    const passport = String(orderSpec<string | number>(o, "passport") ?? "") || null;
+    projects.push({ key: passport || o.id, passport, order: o });
+  }
+
+  return projects;
+}
+
+function projectStage(b: Bundle, p: Project): { name: string; kind: string | null } {
+  if (p.order) {
+    const col = p.order.column_id ? b.colMap.get(p.order.column_id) : undefined;
+    return { name: titleCaseStage(col?.name), kind: col?.kind ?? null };
+  }
+  return { name: prettyTicketStatus(p.ticket?.ticket_status ?? null), kind: null };
+}
+
+function projectTotals(p: Project): {
+  total: number;
+  balance: number;
+  paymentStatus: string | null;
+} {
+  if (p.ticket) {
+    const total = ticketTotal(p.ticket);
+    const balance = ticketOpenBalance(p.ticket);
+    return { total, balance, paymentStatus: p.ticket.payment_status };
+  }
+  const billing = orderSpec<Record<string, unknown>>(p.order, "billing");
+  return {
+    total: num(billing?.total),
+    balance: num(billing?.balance),
+    paymentStatus: (billing?.payment_status as string) ?? null,
+  };
+}
+
+function projectOwner(b: Bundle, p: Project): string | null {
+  return (
+    b.nameOf(ticketCreatedById(p.ticket ?? ({} as TicketRow))) ??
+    b.nameOf(p.order?.created_by) ??
+    b.nameOf(p.lead?.sdr_id) ??
+    (orderSpec<string>(p.order, "owner") ?? null) // specs.owner is a plain name, safe
+  );
+}
+
+function projectChannel(p: Project): string | null {
+  if (p.lead)
+    return niceChannel(p.lead.source) || niceChannel(p.lead.quote_channel) || null;
+  return niceChannel(p.ticket?.quote_channel) || null;
+}
+
+function toSummary(b: Bundle, p: Project): ProjectSummary {
+  const stage = projectStage(b, p);
+  const money = projectTotals(p);
+  return {
+    key: p.key,
+    passport: p.passport,
+    ref: p.ticket?.reference_code || "Board card",
+    crmOrderNo:
+      orderSpec<string>(p.order, "crm_order_number") ||
+      (p.passport ? `ORD-2026-${p.passport.padStart(4, "0")}` : null),
+    title:
+      p.ticket?.title ||
+      p.order?.title ||
+      (p.passport ? `Project ${p.passport}` : "Project"),
+    stage: stage.name,
+    stageKind: stage.kind,
+    total: money.total,
+    paymentStatus: money.paymentStatus,
+    balance: money.balance,
+    channel: projectChannel(p),
+    startedAt: p.lead?.created_at || p.ticket?.created_at || p.order?.created_at || null,
+    owner: projectOwner(b, p),
+    hasProduction: !!p.order,
+  };
+}
+
+function nextActionFor(
+  stageKind: string | null,
+  stageName: string,
+  balance: number,
+  paymentStatus: string | null,
+): string {
+  const s = stageName.toLowerCase();
+  if (paymentStatus === "unpaid") return "Collect deposit to release production";
+  if (stageKind === "approval" || /approv|waiting|replied/.test(s))
+    return "Follow up on customer approval";
+  if (balance > 0) return `Collect remaining balance ${fmtMoney(balance)}`;
+  if (stageKind === "done") return "Release to production";
+  if (stageKind === "archive" || /archive/.test(s)) return "Delivered — no action needed";
+  return "Continue production";
+}
+
+// ── Public: the projects list for a customer ─────────────────────────────────
+export async function loadCustomerProjects(
+  customerId: string,
+): Promise<CustomerProjects | null> {
+  const b = await fetchCustomerBundle(customerId);
+  if (!b) return null;
+
+  const projects = groupProjects(b)
+    .map((p) => toSummary(b, p))
+    .sort((a, x) => {
+      const ta = a.startedAt ? Date.parse(a.startedAt) : 0;
+      const tx = x.startedAt ? Date.parse(x.startedAt) : 0;
+      return tx - ta;
+    });
+
+  // Lifetime totals (mirror loadCustomerDetail).
+  let quoted = 0,
+    ordered = 0,
+    paid = 0,
+    openBalance = 0,
+    orderCount = 0;
+  for (const t of b.tickets) {
+    if (isQuoteKind(t)) quoted += ticketTotal(t);
+    if (isOrderKind(t)) {
+      if (!isCancelled(t)) {
+        ordered += ticketTotal(t);
+        orderCount += 1;
+      }
+      paid += num(t.payment_amount_received);
+      openBalance += ticketOpenBalance(t);
+    }
+  }
+  orderCount += b.orders.length;
+
+  const isReturning =
+    b.leads.some((l) => l.is_returning_customer) || projects.length > 1;
+
+  return {
+    customer: b.customer,
+    repName: b.nameOf(b.customer.key_account_sales_rep_id),
+    isReturning,
+    totals: {
+      quoted: Math.round(quoted * 100) / 100,
+      ordered: Math.round(ordered * 100) / 100,
+      paid: Math.round(paid * 100) / 100,
+      openBalance: Math.round(openBalance * 100) / 100,
+      orderCount,
+    },
+    projects,
+  };
+}
+
+// ── Public: the full life thread of ONE project ──────────────────────────────
+export async function loadProjectThread(
+  customerId: string,
+  projectRef: string,
+): Promise<ProjectThread | null> {
+  const b = await fetchCustomerBundle(customerId);
+  if (!b) return null;
+
+  const all = groupProjects(b);
+  const p =
+    all.find((x) => x.key === projectRef) ||
+    all.find((x) => x.passport === projectRef) ||
+    all.find((x) => x.ticket?.reference_code === projectRef) ||
+    all.find((x) => x.ticket?.id === projectRef || x.order?.id === projectRef);
+  if (!p) return null;
+
+  const stage = projectStage(b, p);
+  const money = projectTotals(p);
+  const events: TimelineEvent[] = [];
+  const push = (
+    source: EventSource,
+    at: string | null | undefined,
+    title: string,
+    detail: string,
+    who: string | null,
+  ) => {
+    if (!at) return;
+    events.push({ source, at, title, detail, who });
+  };
+
+  // 1) Inquiry — how it started
+  if (p.lead) {
+    const via = projectChannel(p);
+    const bits: string[] = [];
+    if (p.lead.source) bits.push(`Came in via ${p.lead.source}`);
+    if (p.lead.urgency) bits.push(`${p.lead.urgency} urgency`);
+    push(
+      "inquiry",
+      p.lead.created_at,
+      p.lead.is_returning_customer
+        ? "Returning customer reached out"
+        : "New inquiry received",
+      bits.join(" · ") || (via ? `Reached out over ${via}` : "New lead created"),
+      b.nameOf(p.lead.sdr_id),
+    );
+    if (p.lead.sdr_comment)
+      push("inquiry", p.lead.created_at, "Rep note", p.lead.sdr_comment, b.nameOf(p.lead.sdr_id));
+  }
+
+  // 2) Quote sent + 3) Order placed (both carried on the ticket)
+  if (p.ticket) {
+    const t = p.ticket;
+    const code = t.reference_code || "Quote";
+    const money2 = fmtMoney(ticketTotal(t));
+    const via = niceChannel(t.quote_channel);
+    push(
+      "quote",
+      t.created_at,
+      `Quote sent — ${code}`,
+      [t.title, money2, via ? `over ${via}` : null].filter(Boolean).join(" · "),
+      b.nameOf(ticketCreatedById(t)),
+    );
+    const crmNo = orderSpec<string>(p.order, "crm_order_number");
+    push(
+      "order",
+      // order placed just after the quote; if a board card exists use its creation time
+      p.order?.created_at || t.created_at,
+      `Order placed${crmNo ? ` — ${crmNo}` : ""}`,
+      [
+        "Quote approved and converted to an order",
+        t.order_source ? `source: ${t.order_source}` : null,
+        t.priority ? `${t.priority} priority` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+      b.nameOf(ticketCreatedById(t)),
+    );
+
+    // 4) Payments
+    if (num(t.deposit_amount) > 0 && t.deposit_paid_at)
+      push(
+        "payment",
+        t.deposit_paid_at,
+        "Deposit paid",
+        `${fmtMoney(num(t.deposit_amount))}${t.deposit_method ? ` by ${t.deposit_method}` : ""}`,
+        null,
+      );
+    if (t.balance_paid_at)
+      push(
+        "payment",
+        t.balance_paid_at,
+        "Balance paid — paid in full",
+        `${money2}${t.payment_method_used ? ` by ${t.payment_method_used}` : ""}`,
+        null,
+      );
+    if (t.payment_paid_at && !t.deposit_paid_at && !t.balance_paid_at)
+      push(
+        "payment",
+        t.payment_paid_at,
+        "Payment received",
+        `${fmtMoney(num(t.payment_amount_received))}${t.payment_method_used ? ` by ${t.payment_method_used}` : ""}`,
+        null,
+      );
+  }
+
+  // 5) Production events for this project's board card
+  if (p.order) {
+    push(
+      "production",
+      p.order.created_at,
+      "Job opened on the production board",
+      `Card created${p.order.due_date ? ` · due ${p.order.due_date}` : ""}`,
+      b.nameOf(p.order.created_by),
+    );
+    const acts = b.acts
+      .filter((a) => a.order_id === p.order!.id)
+      .sort((a, x) => Date.parse(a.created_at ?? "") - Date.parse(x.created_at ?? ""));
+    for (const a of acts) {
+      // skip the synthetic "created" (already shown above) to avoid duplication
+      if ((a.action ?? "").toLowerCase() === "created") continue;
+      push(
+        "production",
+        a.created_at,
+        friendlyAction(a.action),
+        metaToDetail(a.metadata),
+        b.nameOf(a.actor),
+      );
+    }
+  }
+
+  // ascending — read it as the job's life story
+  events.sort((a, x) => Date.parse(a.at) - Date.parse(x.at));
+
+  return {
+    customerId,
+    customerName: b.customer.name?.trim() || "(unnamed customer)",
+    key: p.key,
+    passport: p.passport,
+    ref: p.ticket?.reference_code || "Board card",
+    crmOrderNo: orderSpec<string>(p.order, "crm_order_number"),
+    title: p.ticket?.title || p.order?.title || `Project ${p.passport ?? ""}`.trim(),
+    stage: stage.name,
+    stageKind: stage.kind,
+    total: money.total,
+    balance: money.balance,
+    paymentStatus: money.paymentStatus,
+    owner: projectOwner(b, p),
+    events,
+    rightNow: {
+      stage: stage.name,
+      balance: money.balance,
+      nextAction: nextActionFor(stage.kind, stage.name, money.balance, money.paymentStatus),
+    },
+  };
 }
