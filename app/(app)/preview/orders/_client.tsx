@@ -131,7 +131,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", background: "var(--preview-bg)", color: "var(--preview-text)", margin: "-20px", padding: "20px", minHeight: "100vh" }}>
       {/* Preview banner */}
-      <div style={{ display: "flex", gap: "8px", marginBottom: "18px", alignItems: "center", padding: "10px 14px", background: "var(--preview-surface-2)", borderRadius: "10px", color: "var(--preview-text)" }}>
+      <div style={{ display: "flex", gap: "8px", marginBottom: "10px", alignItems: "center", padding: "7px 14px", background: "var(--preview-surface-2)", borderRadius: "10px", color: "var(--preview-text)" }}>
         <span style={{ fontSize: "11px", fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: ACCENT }}>Preview</span>
         <span style={{ fontSize: "12px", color: "var(--preview-text)" }}>Orders · live data from the shared production DB · continuous ref# through quote → order → production</span>
         <span style={{ marginLeft: "auto", fontSize: "12px", color: "var(--preview-text-muted)" }}>{orders.length} connected order{orders.length === 1 ? "" : "s"}</span>
@@ -580,7 +580,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
   return (
     <div>
       {/* Top bar — Send to Workflow removed */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
         <button onClick={onBack} style={{ background: "transparent", border: "none", color: "#666", fontSize: "13px", cursor: "pointer", fontWeight: 500 }}>← Back to Orders</button>
         <div style={{ display: "flex", gap: "8px" }}>
           <button style={{ ...CONTROL, fontWeight: 600 }}>📄 View Source Quote ({order.quoteRefId})</button>
@@ -590,7 +590,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
       </div>
 
       {/* ONE combined header — identity + customer + meta + total, all in a single card */}
-      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "18px 22px", marginBottom: "12px" }}>
+      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "13px 18px", marginBottom: "10px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
@@ -614,7 +614,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
             <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Order Total</div>
-            <div style={{ fontSize: "30px", fontWeight: 800, letterSpacing: "-0.5px" }}>{fmtMoney(order.total)}</div>
+            <div style={{ fontSize: "24px", fontWeight: 800, letterSpacing: "-0.5px" }}>{fmtMoney(order.total)}</div>
             <div style={{ fontSize: "11.5px", marginTop: "2px", color: "#16a34a", fontWeight: 700 }}>
               Received {fmtMoney(order.received)}
               {order.balanceDue > 0 && <span style={{ color: "#dc2626", marginLeft: "8px" }}>· Balance {fmtMoney(order.balanceDue)}</span>}
@@ -623,7 +623,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
         </div>
 
         {/* Inline meta row (was a separate strip) — no Fulfillment */}
-        <div style={{ display: "flex", gap: "26px", alignItems: "center", flexWrap: "wrap", marginTop: "14px", paddingTop: "14px", borderTop: "1px solid var(--preview-border)" }}>
+        <div style={{ display: "flex", gap: "26px", alignItems: "center", flexWrap: "wrap", marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
           <MetaInline icon="👤" label="Created by">
             <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
               <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: order.ownerColor + "22", color: order.ownerColor, fontSize: "9px", fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{order.ownerAvatar}</span>
@@ -649,7 +649,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
       </div>
 
       {/* Payment strip — up top, buttons right here */}
-      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "14px 20px", marginBottom: "14px", display: "flex", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
+      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "10px 18px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span style={{ fontSize: "18px" }}>💰</span>
           <div>
