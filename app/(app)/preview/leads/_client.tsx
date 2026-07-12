@@ -6,9 +6,10 @@
 // SDR-entered / CRM auto-filled / Sales-updated / AI-computed sections are labeled.
 // Real /leads page NOT touched.
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { commsForLead } from "../inbox/_seed";
 import { RoleGate } from "../_shared/RoleGate";
+import { searchCustomers, type CustomerHit } from "./_actions";
 
 const ACCENT = "#FF5D2E";
 
@@ -177,6 +178,7 @@ function LeadsPreview({ leads }: { leads: Lead[] }) {
   const [tab, setTab] = useState<TabKey>("all");
   const [search, setSearch] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
   const [userLeads, setUserLeads] = useState<Lead[]>([]);
   const [leadEdits, setLeadEdits] = useState<Record<string, Partial<Lead>>>({});
   const [editingLeadId, setEditingLeadId] = useState<string | null>(null);
@@ -250,6 +252,7 @@ function LeadsPreview({ leads }: { leads: Lead[] }) {
           selectedId={selectedId}
           onSelect={(id: string) => setSelectedId(id)}
           onOpenAdd={() => setAddOpen(true)}
+          onOpenNewQuote={() => setQuoteOpen(true)}
           onViewFull={() => setView("detail")}
           onEdit={(id: string) => setEditingLeadId(id)}
           selectedLead={selectedLead}
@@ -282,6 +285,7 @@ function LeadsPreview({ leads }: { leads: Lead[] }) {
           }}
         />
       )}
+      {quoteOpen && <NewQuoteCustomerModal onClose={() => setQuoteOpen(false)} />}
       {editingLeadId && (() => {
         const target = [...userLeads, ...leads].find(l => l.id === editingLeadId);
         if (!target) return null;
@@ -330,7 +334,7 @@ function FilterSelect({ value, onChange, options }: { value: string; onChange: (
 }
 
 // ─── LIST VIEW ────────────────────────────────────────
-function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, selectedId, onSelect, onOpenAdd, onViewFull, onEdit, selectedLead, layout, setLayout, sourceFilter, setSourceFilter, sdrFilter, setSdrFilter, dateFilter, setDateFilter, sourceOptions, sdrOptions }: any) {
+function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, selectedId, onSelect, onOpenAdd, onOpenNewQuote, onViewFull, onEdit, selectedLead, layout, setLayout, sourceFilter, setSourceFilter, sdrFilter, setSdrFilter, dateFilter, setDateFilter, sourceOptions, sdrOptions }: any) {
   return (
     <div>
       {/* Header */}
@@ -355,7 +359,7 @@ function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, sel
           <button onClick={onOpenAdd} style={{ background: "var(--preview-surface)", color: "var(--preview-text)", border: "1px solid var(--preview-border)", padding: "9px 16px", borderRadius: "10px", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}>+ Add Lead</button>
           {/* Ready-to-buy customer → skip the funnel, quote them directly. Creates
               the customer record on the spot; matches an existing one if found. */}
-          <a href="/preview/new-quote" title="Quote a walk-in / returning customer directly — no lead needed" style={{ background: ACCENT, color: "#fff", border: "none", padding: "9px 16px", borderRadius: "10px", fontWeight: 700, fontSize: "13px", cursor: "pointer", textDecoration: "none", display: "inline-flex", alignItems: "center" }}>+ New Quote</a>
+          <button onClick={onOpenNewQuote} title="Quote a walk-in / returning customer directly — no lead needed" style={{ background: ACCENT, color: "#fff", border: "none", padding: "9px 16px", borderRadius: "10px", fontWeight: 700, fontSize: "13px", cursor: "pointer", display: "inline-flex", alignItems: "center" }}>+ New Quote</button>
         </div>
       </div>
 
@@ -1436,6 +1440,110 @@ function CompactBtn({ icon, label, onClick, accent }: any) {
 }
 
 // ─── Add Lead Modal ────────────────────────────────────────
+// ─── New Quote — pick WHO the quote is for, then continue to the quote ───
+function NewQuoteCustomerModal({ onClose }: { onClose: () => void }) {
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<CustomerHit[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState<"search" | "new">("search");
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const seq = useRef(0);
+
+  // Debounced live search of the real customer database.
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setHits([]); setLoading(false); return; }
+    setLoading(true);
+    const mine = ++seq.current;
+    const t = setTimeout(async () => {
+      const res = await searchCustomers(term);
+      if (mine === seq.current) { setHits(res); setLoading(false); }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  const go = (params: Record<string, string>) => {
+    const usp = new URLSearchParams(params);
+    window.location.href = `/preview/new-quote?${usp.toString()}`;
+  };
+  const pick = (c: CustomerHit) => go({ customerId: c.id, name: c.name, phone: c.phone || "", email: c.email || "", company: c.company || "" });
+  const createAndGo = () => {
+    if (!newName.trim() || !newPhone.trim()) return;
+    go({ name: newName.trim(), phone: newPhone.trim(), email: newEmail.trim(), newCustomer: "1" });
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "8vh", zIndex: 200 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "16px", padding: "22px 24px", width: "520px", maxWidth: "92vw", boxShadow: "0 24px 70px rgba(0,0,0,0.35)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "4px" }}>
+          <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--preview-text)" }}>New Quote</div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", fontSize: "20px", color: "#888", cursor: "pointer", lineHeight: 1 }}>×</button>
+        </div>
+        <div style={{ fontSize: "12.5px", color: "var(--preview-text-muted)", marginBottom: "16px" }}>Who is this quote for? Search an existing customer, or add a new one.</div>
+
+        {mode === "search" ? (
+          <>
+            <input autoFocus value={q} onChange={e => setQ(e.target.value)} placeholder="🔍 Search by name, company, phone, or email…"
+              style={{ width: "100%", padding: "11px 14px", border: "1px solid var(--preview-border)", borderRadius: "10px", fontSize: "13.5px", boxSizing: "border-box", background: "var(--preview-surface-2)", color: "var(--preview-text)", outline: "none", marginBottom: "10px" }} />
+
+            <div style={{ minHeight: "120px" }}>
+              {q.trim().length < 2 ? (
+                <div style={{ padding: "24px", textAlign: "center", color: "var(--preview-text-faint)", fontSize: "12.5px" }}>Start typing a name to find the customer…</div>
+              ) : loading ? (
+                <div style={{ padding: "24px", textAlign: "center", color: "var(--preview-text-muted)", fontSize: "12.5px" }}>Searching…</div>
+              ) : hits.length === 0 ? (
+                <div style={{ padding: "18px", textAlign: "center", color: "var(--preview-text-muted)", fontSize: "12.5px" }}>
+                  No customer matches “{q}”.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", maxHeight: "320px", overflowY: "auto" }}>
+                  {hits.map(c => (
+                    <button key={c.id} onClick={() => pick(c)} style={{ display: "flex", alignItems: "center", gap: "12px", width: "100%", textAlign: "left", padding: "10px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "10px", cursor: "pointer" }}>
+                      <span style={{ width: "34px", height: "34px", borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", color: "#fff", fontSize: "11px", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{c.name.split(" ").map(w => w[0]).slice(0, 2).join("")}</span>
+                      <span style={{ flex: 1, minWidth: 0 }}>
+                        <span style={{ display: "block", fontSize: "13.5px", fontWeight: 700, color: "var(--preview-text)" }}>{c.name}{c.company && c.company !== c.name ? <span style={{ color: "var(--preview-text-muted)", fontWeight: 500 }}> · {c.company}</span> : null}</span>
+                        <span style={{ display: "block", fontSize: "11px", color: "var(--preview-text-muted)" }}>{[c.phone, c.email].filter(Boolean).join(" · ") || "—"}</span>
+                      </span>
+                      {c.orders > 0 && <span style={{ flexShrink: 0, fontSize: "10.5px", fontWeight: 700, color: "#166534", background: "#dcfce7", padding: "2px 8px", borderRadius: "999px" }}>{c.orders} order{c.orders === 1 ? "" : "s"} · ${c.lifetime.toLocaleString()}</span>}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--preview-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", color: "var(--preview-text-muted)" }}>Not in the system?</span>
+              <button onClick={() => { setMode("new"); setNewName(q); }} style={{ padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>+ New customer</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Name *
+                <input autoFocus value={newName} onChange={e => setNewName(e.target.value)} placeholder="Customer or company name" style={qFieldStyle} />
+              </label>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Phone *
+                <input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="(555) 000-0000" style={qFieldStyle} />
+              </label>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Email (optional)
+                <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="you@example.com" style={qFieldStyle} />
+              </label>
+            </div>
+            <div style={{ marginTop: "16px", display: "flex", gap: "8px" }}>
+              <button onClick={createAndGo} disabled={!newName.trim() || !newPhone.trim()} style={{ flex: 1, padding: "11px", background: (newName.trim() && newPhone.trim()) ? ACCENT : "#ccc", color: "#fff", border: "none", borderRadius: "10px", fontSize: "13.5px", fontWeight: 700, cursor: (newName.trim() && newPhone.trim()) ? "pointer" : "default" }}>Continue to quote →</button>
+              <button onClick={() => setMode("search")} style={{ padding: "11px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "10px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>← Back to search</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const qFieldStyle: React.CSSProperties = { display: "block", width: "100%", marginTop: "4px", padding: "10px 12px", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "13px", boxSizing: "border-box", background: "var(--preview-surface-2)", color: "var(--preview-text)", outline: "none", fontWeight: 500, textTransform: "none" };
+
 function AddLeadModal({ draft, setDraft, onClose, onSave }: { draft: any; setDraft: any; onClose: () => void; onSave: (lead: Lead, assignedToSales: boolean) => void }) {
   function buildLeadFromDraft(assignedToSales: boolean): Lead {
     const now = new Date();

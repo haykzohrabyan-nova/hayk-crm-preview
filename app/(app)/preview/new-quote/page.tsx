@@ -227,6 +227,7 @@ export default function NewQuotePreview() {
   const prefillName = searchParams?.get("name") || "";
   const prefillPhone = searchParams?.get("phone") || "";
   const prefillEmail = searchParams?.get("email") || "";
+  const prefillCompany = searchParams?.get("company") || "";
 
   // ─── Iframe-mode toggle (Hayk 2026-07-01) ─────────────────────
   // Two-week bridge: embed the real Bazaar admin new-order form via iframe
@@ -249,10 +250,11 @@ export default function NewQuotePreview() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
 
-  // Customer info — pre-filled from lead when arriving via /preview/new-quote?leadId=...&name=...
-  const [customerName, setCustomerName] = useState(prefillName || "Hayk Zohrabyan");
-  const [customerEmail, setCustomerEmail] = useState(prefillEmail || "haykzoh@gmail.com");
-  const [customerPhone, setCustomerPhone] = useState(prefillPhone || "(818) 927-7146");
+  // Customer info — comes from the New Quote picker (name/phone/email/company).
+  // No fake fallback: if nobody was picked, the fields are empty.
+  const [customerName, setCustomerName] = useState(prefillName);
+  const [customerEmail, setCustomerEmail] = useState(prefillEmail);
+  const [customerPhone, setCustomerPhone] = useState(prefillPhone);
 
   // Hayk 2026-07-02 — Overdue-account block. If this customer has past-due
   // orders in ORDERS, we block the quote and require either admin override
@@ -642,6 +644,7 @@ export default function NewQuotePreview() {
             name={customerName}
             email={customerEmail}
             phone={customerPhone}
+            company={prefillCompany}
             salesRep={salesRep}
             leadId={prefillLeadId}
             overdue={overdue}
@@ -803,6 +806,7 @@ export default function NewQuotePreview() {
           name={customerName}
           email={customerEmail}
           phone={customerPhone}
+          company={prefillCompany}
           salesRep={salesRep}
           leadId={prefillLeadId}
         />
@@ -1117,7 +1121,7 @@ function Stepper({ step }: { step: number }) {
 }
 
 // ─── Left: Customer card ────────────────────────────────────────
-function CustomerCard({ name, email, phone, salesRep, leadId, overdue, currentTerms, onRequestTerms }: { name: string; email: string; phone: string; salesRep: string; leadId?: string; overdue?: OverdueSummary | null; currentTerms?: string; onRequestTerms?: () => void }) {
+function CustomerCard({ name, email, phone, company, salesRep, leadId, overdue, currentTerms, onRequestTerms }: { name: string; email: string; phone: string; company?: string; salesRep: string; leadId?: string; overdue?: OverdueSummary | null; currentTerms?: string; onRequestTerms?: () => void }) {
   const initials = (name || "?")
     .split(/\s+/)
     .map((w: string) => w[0])
@@ -1144,25 +1148,21 @@ function CustomerCard({ name, email, phone, salesRep, leadId, overdue, currentTe
           >
             {name || "New customer"} <span style={{ color: ACCENT, fontSize: "11px" }}>↗</span>
           </Link>
-          <div>
-            <span style={{ display: "inline-block", padding: "2px 8px", background: "#dcfce7", color: "#166534", fontSize: "10.5px", fontWeight: 700, borderRadius: "5px", marginTop: "2px" }}>Returning Customer <span style={{ color: GOLD }}>★</span></span>
-          </div>
         </div>
       </div>
 
-      <MiniField icon="🏢" label="Company" value="Cecile" />
+      {company && <MiniField icon="🏢" label="Company" value={company} />}
       <MiniField icon="📞" label="Phone" value={phone || "—"} />
       <MiniField icon="✉" label="Email" value={email || "—"} />
-
-      <div style={{ height: "1px", background: "var(--preview-border)", margin: "12px 0" }} />
-
-      {/* NOTE: stats below are placeholder — real DB wiring needed (customer lifetime + orders) */}
-      <MiniField icon="💰" label="Lifetime Sales" value="$148,250" valueColor="#16a34a" href={crmHref} tooltip="Click to see lifetime sales history" />
-      <MiniField icon="📦" label="Active Orders" value="4" href={activeOrdersHref} tooltip="Click to see this customer's active orders" />
-      <MiniField icon="📄" label="Open Quotes" value="2" href={openQuotesHref} tooltip="Click to see this customer's open quotes" />
-      <MiniField icon="🕒" label="Last Order" value="5 days ago" href={lastOrderHref} tooltip="Click to open the most recent order" />
-      <MiniField icon="💳" label="Preferred Payment" value="ACH" />
-      <MiniField icon="👤" label="Sales Rep" value={salesRep || "—"} />
+      {salesRep && (
+        <>
+          <div style={{ height: "1px", background: "var(--preview-border)", margin: "12px 0" }} />
+          <MiniField icon="👤" label="Sales Rep" value={salesRep} />
+        </>
+      )}
+      {/* Lifetime / orders / open quotes come from the real customer record once
+          this screen reads live data (or from the embedded Bazaar tool) — no
+          placeholder numbers shown. */}
 
       {/* Hayk 2026-07-02 — Past-due red banner */}
       {overdue && (
