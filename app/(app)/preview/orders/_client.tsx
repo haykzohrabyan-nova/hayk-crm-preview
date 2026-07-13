@@ -1271,12 +1271,14 @@ const PROOF_STATES: Record<string, { label: string; dot: string }> = {
 };
 
 function ProductionNotes({ orderId, initial }: { orderId?: string; initial: string }) {
-  const [notes, setNotes] = useState(initial);
+  // A running log for the production team — Enter posts a line (persists to DB).
+  const [notes, setNotes] = useState<string[]>(() => initial ? initial.split("\n").map(s => s.trim()).filter(Boolean) : []);
   const [saved, setSaved] = useState(false);
   const [, start] = useTransition();
-  const save = () => {
-    if (!orderId || notes === initial) return;
-    start(async () => { await setProductionNotes(orderId, notes); setSaved(true); setTimeout(() => setSaved(false), 1600); });
+  const add = (v: string) => {
+    const next = [...notes, v];
+    setNotes(next);
+    if (orderId) start(async () => { await setProductionNotes(orderId, next.join("\n")); setSaved(true); setTimeout(() => setSaved(false), 1600); });
   };
   return (
     <div style={{ marginTop: "16px" }}>
@@ -1284,7 +1286,7 @@ function ProductionNotes({ orderId, initial }: { orderId?: string; initial: stri
         <div style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "0.04em", color: "#666" }}>📝 PRODUCTION NOTES</div>
         {saved && <span style={{ fontSize: "10.5px", color: "#166534", fontWeight: 700 }}>✓ Saved</span>}
       </div>
-      <textarea value={notes} onChange={e => setNotes(e.target.value)} onBlur={save} placeholder="Notes visible to production team… (saves when you click away)" style={{ width: "100%", minHeight: "56px", padding: "10px 12px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+      <NotesField notes={notes} onAdd={add} placeholder="Note for the production team… (Enter to post)" />
     </div>
   );
 }
