@@ -829,7 +829,7 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
 // ─── Full Detail View ────────────────────────────────────────
 function DetailView({ lead, onBack }: { lead: Lead; onBack: () => void }) {
   // Local, mutable state so every button actually does something.
-  const [tags, setTags] = useState<string[]>(["Fast Turnaround", "New Product Launch", "Custom Packaging"]);
+  const [tags, setTags] = useState<string[]>(lead.tags ?? []);
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState("");
 
@@ -1034,23 +1034,6 @@ function DetailView({ lead, onBack }: { lead: Lead; onBack: () => void }) {
               </div>
             )}
           </PanelCard>
-
-          <div style={{ marginTop: "12px" }}>
-            <PanelCard title="Nova AI Insights" big beta rightLink={`Generated 2m ago ↻`}>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
-                <AICard label="Lead Score" value={String(lead.leadScore)} band={lead.leadScore >= 80 ? "High" : lead.leadScore >= 60 ? "Good" : "Low"} />
-                <AICard label="Est. Order Value" value={fmtMoney(Math.round((lead.estOrderMin + lead.estOrderMax) / 2))} band={lead.estOrderConfidence} />
-                <AICard label="Close Probability" value={`${lead.closeProbability}%`} band={lead.closeProbabilityBand} />
-                <AICard label="Best Time to Contact" value="Today" band="2:00 PM – 4:00 PM" small />
-              </div>
-              {lead.suggestedQuestion && (
-                <div style={{ marginTop: "8px", padding: "10px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.3)", borderRadius: "8px" }}>
-                  <div style={{ fontSize: "10.5px", color: "#a78bfa", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>💫 Suggested First Question</div>
-                  <div style={{ fontSize: "12.5px", color: "var(--preview-text)", marginTop: "4px", fontStyle: "italic" }}>"{lead.suggestedQuestion}"</div>
-                </div>
-              )}
-            </PanelCard>
-          </div>
         </div>
       </div>
 
