@@ -548,15 +548,28 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
           style={{ fontSize: "10px", fontWeight: 700, color: order.priority === "Rush" ? "#f59e0b" : order.priority === "High" ? "#dc2626" : "#22c55e", cursor: "help", padding: "1px 6px", background: order.priority === "Rush" ? "rgba(245,158,11,0.12)" : order.priority === "High" ? "rgba(220,38,38,0.12)" : "rgba(34,197,94,0.12)", borderRadius: "999px" }}
         >⚑ {order.priority}</span>
       </div>
-      {(() => {
-        const company = order.company?.trim();
-        const top = company || order.contact;
-        const sub = company && order.contact && order.contact !== company ? order.contact : "";
-        return (<>
-          <div style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)", lineHeight: 1.3 }}>{top}</div>
-          {sub && <div style={{ fontSize: "12.5px", fontWeight: 500, color: "var(--preview-text)", lineHeight: 1.3 }}>{sub}</div>}
-        </>);
-      })()}
+      {/* thumbnail + company/contact + product line — mirrors the workflow card */}
+      <div style={{ display: "flex", gap: "9px", marginTop: "2px" }}>
+        <OrderThumb src={order.thumbnailUrl} alt={order.title} />
+        <div style={{ minWidth: 0, flex: 1 }}>
+          {(() => {
+            const company = order.company?.trim();
+            const top = company || order.contact;
+            const sub = company && order.contact && order.contact !== company ? order.contact : "";
+            return (<>
+              <div style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{top}</div>
+              {sub && <div style={{ fontSize: "11.5px", fontWeight: 500, color: "var(--preview-text-muted)", lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sub}</div>}
+            </>);
+          })()}
+          {(() => {
+            const li = order.lineItems?.[0];
+            if (!li) return null;
+            const sku = order.lineItems.length;
+            const qty = order.lineItems.reduce((s, l) => s + (l.quantity || 0), 0);
+            return <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)", marginTop: "3px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{li.productName}{li.materialName ? ` · ${li.materialName}` : ""} · qty {qty.toLocaleString()} · {sku} SKU</div>;
+          })()}
+        </div>
+      </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
         {/* $ only shows once the order reaches Ready to Ship (per Hayk). */}
         {MONEY_STAGES.has(order.stageName ?? "") ? <span style={{ fontSize: "13px", fontWeight: 800, color: "#16a34a" }}>{fmtMoney(order.total)}</span> : <span />}
@@ -583,9 +596,28 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
           >💸 Payment {d} {d === 1 ? "day" : "days"} late</div>
         );
       })()}
-      {order.attachmentsCount > 0 && (
-        <div style={{ fontSize: "10px", color: "#3b82f6", fontWeight: 600, marginTop: "2px" }}>📎 {order.attachmentsCount}</div>
-      )}
+      {/* proof/approval state (derived from live stage) + the two people on the job */}
+      {(() => {
+        const stg = (order.stageName ?? "").toLowerCase();
+        const approval = order.stageKind === "approval" || stg.includes("approval") || stg.includes("missing info")
+          ? { label: "⏳ Awaiting approval", bg: "#fef3c7", fg: "#92400e" }
+          : /production|completed|shipped|boyd|ready to ship|finished|application/.test(stg)
+          ? { label: "✓ Approved", bg: "#dcfce7", fg: "#166534" }
+          : null;
+        const am = order.accountManager || order.createdBy;
+        const prod = order.lineItems?.find(l => l.productionOwner)?.productionOwner;
+        if (!approval && !am && !prod && order.attachmentsCount === 0) return null;
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", marginTop: "6px", paddingTop: "6px", borderTop: "1px solid var(--preview-border)" }}>
+            {approval && <span style={{ padding: "2px 7px", background: approval.bg, color: approval.fg, fontSize: "9.5px", fontWeight: 700, borderRadius: "5px" }}>{approval.label}</span>}
+            {order.attachmentsCount > 0 && <span style={{ fontSize: "9.5px", color: "#3b82f6", fontWeight: 600 }}>📎 {order.attachmentsCount}</span>}
+            <span style={{ marginLeft: "auto", display: "flex", gap: "8px", fontSize: "9.5px", color: "var(--preview-text-muted)", fontWeight: 600 }}>
+              {am && <span title="Account manager">🎨 {am.split(" ")[0]}</span>}
+              {prod && <span title="Designer / production">🏭 {prod.split(" ")[0]}</span>}
+            </span>
+          </div>
+        );
+      })()}
     </div>
   );
 }
