@@ -1753,17 +1753,6 @@ function AddLeadModal({ draft, setDraft, onClose, onSave }: { draft: any; setDra
               </div>
             </div>
 
-            <div style={{ background: "#f0f9ff", border: "1px solid #bae6fd", borderRadius: "10px", padding: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
-                <span style={{ fontSize: "13px" }}>👥</span>
-                <span style={{ fontSize: "12.5px", fontWeight: 800 }}>Who Captures This Lead</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px", fontSize: "11.5px" }}>
-                <AIField label="Created By" value="Hayk Zohrabyan" />
-                <AIField label="Team / SDR" value="Manny Carlo" />
-                <AIField label="Date / Time" value="Jul 1, 2026 · 10:42 AM" />
-              </div>
-            </div>
           </div>
         </div>
 
