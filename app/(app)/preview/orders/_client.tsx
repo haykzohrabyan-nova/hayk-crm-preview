@@ -566,6 +566,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
   const [showPay, setShowPay] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [tab, setTab] = useState<"overview" | "workflow">("overview");
   // Per-item design notes + one general note — shared so they roll up to the
   // right-rail summary and surface inside the communication thread.
   const [designNotes, setDesignNotes] = useState<Record<string, string>>({});
@@ -733,7 +734,19 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
         );
       })()}
 
-      {/* Body: LEFT main (line items + communication) | RIGHT rail (workflow + actions) */}
+      {/* Tabs — like the old system: jump to a focused page (Overview / Workflow) */}
+      <div style={{ display: "flex", gap: "24px", borderBottom: "1px solid var(--preview-border)", marginBottom: "14px" }}>
+        {([["overview", "Order Items"], ["workflow", "Workflow Progress"]] as const).map(([k, lbl]) => {
+          const active = tab === k;
+          return <button key={k} onClick={() => setTab(k)} style={{ background: "transparent", border: "none", padding: "10px 2px", marginBottom: "-1px", borderBottom: active ? `2px solid ${ACCENT}` : "2px solid transparent", color: active ? "var(--preview-text)" : "#888", fontSize: "13.5px", fontWeight: active ? 800 : 600, cursor: "pointer" }}>{lbl}</button>;
+        })}
+      </div>
+
+      {tab === "workflow" ? (
+        <WorkflowTimeline order={order} boardStages={boardStages} />
+      ) : (
+      <>
+      {/* Body: LEFT main (line items + communication) | RIGHT rail (design notes + actions) */}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: "14px", marginBottom: "14px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
           <LineItemsSection order={order} productionOwners={PRODUCTION_OWNERS} designNotes={designNotes} setDesignNotes={setDesignNotes} />
@@ -742,7 +755,14 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
         </div>
         {/* right rail below */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <WorkflowProgressCard order={order} boardStages={boardStages} />
+          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "14px 16px" }}>
+            <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Production stage</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: ACCENT }} />
+              <span style={{ fontSize: "13.5px", fontWeight: 800 }}>{order.stageName ?? order.status}</span>
+            </div>
+            <button onClick={() => setTab("workflow")} style={{ marginTop: "10px", width: "100%", padding: "7px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>View full workflow →</button>
+          </div>
           <DesignNotesCard order={order} designNotes={designNotes} general={generalNote} setGeneral={setGeneralNote} />
           <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
             <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Actions</div>
@@ -778,6 +798,8 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
           </div>
         )}
       </div>
+      </>
+      )}
 
       {showCustomer && <CustomerPopup order={order} onClose={() => setShowCustomer(false)} onViewAllOrders={() => { setShowCustomer(false); onViewCustomerOrders(order.company || order.contact); }} />}
       {showPay && oid && order.ticketRef && (
@@ -1982,6 +2004,58 @@ function WorkflowProgressCard({ order, boardStages }: { order: Order; boardStage
       </div>
       {order.lastActivityAt && <div style={{ fontSize: "10.5px", color: "#888", marginBottom: "10px" }}>Last update · {order.lastActivityAt}</div>}
       <button style={{ width: "100%", padding: "8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>↗ Open in Workflow</button>
+    </div>
+  );
+}
+
+// Full-width timestamped workflow — its own tab, like the old system's history page.
+function WorkflowTimeline({ order, boardStages }: { order: Order; boardStages: BoardStage[] }) {
+  const currentIdx = typeof order.stageIndex === "number" ? order.stageIndex : boardStages.findIndex(s => s.name === order.stageName);
+  const stages = boardStages.length ? boardStages : (order.stageName ? [{ name: order.stageName, kind: order.stageKind ?? null }] : []);
+  return (
+    <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "20px 24px", marginBottom: "14px" }}>
+      {/* summary strip */}
+      <div style={{ display: "flex", gap: "26px", flexWrap: "wrap", alignItems: "center", marginBottom: "18px", paddingBottom: "16px", borderBottom: "1px solid var(--preview-border)" }}>
+        <div><div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Current stage</div><div style={{ fontSize: "15px", fontWeight: 800 }}>{order.stageName ?? order.status}</div></div>
+        <div><div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Time in production</div><div style={{ fontSize: "15px", fontWeight: 800 }}>{order.pipelineAge ?? "—"}</div></div>
+        <div><div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Time in this stage</div><div style={{ fontSize: "15px", fontWeight: 800 }}>{order.stageAge ?? "—"}</div></div>
+        <div><div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Created by</div><div style={{ fontSize: "15px", fontWeight: 800 }}>{order.createdBy}</div></div>
+        <button style={{ marginLeft: "auto", padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>↗ Open in Workflow board</button>
+      </div>
+
+      {stages.length === 0 ? (
+        <div style={{ fontSize: "13px", color: "var(--preview-text-muted)" }}>Not on the production board yet.</div>
+      ) : (
+        <div style={{ position: "relative" }}>
+          {stages.map((s, i) => {
+            const current = i === currentIdx;
+            const date = order.stageDates?.[s.name];
+            const done = !!date && i < currentIdx;
+            const reached = done || current;
+            const isLast = i === stages.length - 1;
+            return (
+              <div key={`${s.name}-${i}`} style={{ display: "flex", gap: "14px", alignItems: "flex-start" }}>
+                {/* rail dot + connector */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", alignSelf: "stretch" }}>
+                  <div style={{ width: "26px", height: "26px", borderRadius: "50%", background: done ? "#22c55e" : current ? ACCENT : "var(--preview-surface-2)", color: reached ? "#fff" : "var(--preview-text-muted)", border: reached ? "none" : "1px solid var(--preview-border)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "11px", fontWeight: 800, flexShrink: 0 }}>{done ? "✓" : current ? "●" : i + 1}</div>
+                  {!isLast && <div style={{ width: "2px", flex: 1, minHeight: "18px", background: done ? "#22c55e" : "var(--preview-border)" }} />}
+                </div>
+                {/* stage row */}
+                <div style={{ flex: 1, paddingBottom: isLast ? 0 : "14px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px" }}>
+                  <div>
+                    <div style={{ fontSize: "13.5px", fontWeight: current ? 800 : reached ? 700 : 500, color: reached ? "var(--preview-text)" : "var(--preview-text-muted)" }}>{s.name}</div>
+                    {current && <div style={{ fontSize: "11px", color: ACCENT, fontWeight: 700, marginTop: "1px" }}>In this stage {order.stageAge ?? ""}</div>}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+                    {date ? <span style={{ fontSize: "12px", color: current ? ACCENT : "#888", fontWeight: current ? 800 : 600 }}>{date}</span> : <span style={{ fontSize: "11.5px", color: "#bbb" }}>—</span>}
+                    {current && <span style={{ padding: "2px 8px", background: ACCENT + "22", color: ACCENT, fontSize: "9.5px", fontWeight: 800, borderRadius: "999px", textTransform: "uppercase", letterSpacing: "0.04em" }}>Current</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
