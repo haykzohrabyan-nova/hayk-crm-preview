@@ -361,7 +361,6 @@ function ListView({ leads, allCount, counts, tab, setTab, search, setSearch, sel
             <span style={{ fontSize: "20px" }}>🔔</span>
             <span style={{ position: "absolute", top: "-4px", right: "-6px", background: "#dc2626", color: "#fff", fontSize: "9px", fontWeight: 700, padding: "1px 5px", borderRadius: "999px" }}>12</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "linear-gradient(135deg,#a78bfa,#ec4899)", color: "#fff", padding: "8px 14px", borderRadius: "10px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>✨ AI Assistant</div>
           <button onClick={onOpenAdd} style={{ background: "var(--preview-surface)", color: "var(--preview-text)", border: "1px solid var(--preview-border)", padding: "9px 16px", borderRadius: "10px", fontWeight: 700, fontSize: "13px", cursor: "pointer" }}>+ Add Lead</button>
           {/* Ready-to-buy customer → skip the funnel, quote them directly. Creates
               the customer record on the spot; matches an existing one if found. */}
