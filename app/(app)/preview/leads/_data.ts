@@ -216,6 +216,8 @@ export async function loadLeads(): Promise<Lead[]> {
       // "days in pipeline / days in this phase" — real, from created_at + last stage change.
       pipelineAge: fmtDur(r.created_at),
       stageAge: fmtDur(r.updated_at),
+      // Real stage dates we actually know: created (New Lead) + last change (current stage).
+      stageTimestamps: { "New Lead": fmtShort(r.created_at), [stage]: fmtShort(r.updated_at) } as Partial<Record<Stage, string>>,
       sdrOwner: sdr,
       salesRep: sales ?? undefined,
       lastActivity: "Lead created",

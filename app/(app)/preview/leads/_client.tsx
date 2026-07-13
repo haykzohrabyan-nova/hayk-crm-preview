@@ -1896,38 +1896,31 @@ function CTABtn({ label, primary, danger }: any) {
   );
 }
 
-function StageProgress({ current, big, stamps }: { current: Stage; big?: boolean; stamps?: Partial<Record<Stage, string>> }) {
+// Vertical stage rail — legible labels + the dates we actually have (created +
+// current stage). Replaces the cramped horizontal stepper.
+function StageProgress({ current, stamps }: { current: Stage; big?: boolean; stamps?: Partial<Record<Stage, string>> }) {
   const idx = STAGE_FLOW.indexOf(current);
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", marginTop: big ? "20px" : "10px", gap: "0" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "2px", marginTop: "10px" }}>
       {STAGE_FLOW.map((s, i) => {
-        const ts = stamps?.[s];
-        const reached = i <= idx;
+        const done = i < idx;
+        const isCurrent = i === idx;
+        const reached = done || isCurrent;
+        const date = stamps?.[s];
         return (
-          <div key={s} style={{ display: "flex", alignItems: "flex-start", flex: 1 }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", flex: 1 }}>
-              {/* Date on top */}
-              <div style={{
-                fontSize: big ? "10px" : "9px",
-                color: reached ? (i === idx ? ACCENT : "#4ade80") : "var(--preview-text-faint)",
-                fontWeight: 700,
-                marginBottom: "6px",
-                minHeight: "12px",
-                whiteSpace: "nowrap",
-              }}>{ts || ""}</div>
-              {/* Circle */}
-              <div style={{
-                width: big ? "24px" : "20px", height: big ? "24px" : "20px", borderRadius: "50%",
-                background: reached ? (i === idx ? ACCENT : "#4ade80") : "var(--preview-chip-bg-strong)",
-                color: "var(--preview-text)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: big ? "11px" : "10px", fontWeight: 700,
-                border: i === idx ? `2px solid ${ACCENT}` : "2px solid transparent",
-              }}>{i < idx ? "✓" : i === idx ? "●" : ""}</div>
-              {/* Stage label */}
-              <div style={{ fontSize: big ? "10.5px" : "9.5px", color: reached ? "#fff" : "var(--preview-text-faint)", marginTop: "4px", fontWeight: 600 }}>{s}</div>
-            </div>
-            {i < STAGE_FLOW.length - 1 && (
-              <div style={{ flex: 1, height: "2px", background: i < idx ? "#4ade80" : "var(--preview-chip-bg-strong)", margin: "0 -10px", marginTop: big ? "28px" : "24px" }} />
-            )}
+          <div key={s} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "3px 0" }}>
+            <div style={{
+              width: "20px", height: "20px", borderRadius: "50%", flexShrink: 0,
+              background: done ? "#22c55e" : isCurrent ? ACCENT : "var(--preview-surface-2)",
+              color: reached ? "#fff" : "var(--preview-text-muted)",
+              border: reached ? "none" : "1px solid var(--preview-border)",
+              display: "flex", alignItems: "center", justifyContent: "center", fontSize: "9px", fontWeight: 800,
+            }}>{done ? "✓" : isCurrent ? "●" : i + 1}</div>
+            <span style={{ fontSize: "12px", color: reached ? "var(--preview-text)" : "var(--preview-text-muted)", fontWeight: isCurrent ? 800 : 500 }}>{s}</span>
+            <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "6px" }}>
+              {date && <span style={{ fontSize: "10.5px", color: isCurrent ? ACCENT : "var(--preview-text-muted)", fontWeight: isCurrent ? 700 : 600 }}>{date}</span>}
+              {isCurrent && <span style={{ fontSize: "9px", fontWeight: 700, color: ACCENT, textTransform: "uppercase", letterSpacing: "0.04em" }}>Now</span>}
+            </span>
           </div>
         );
       })}
