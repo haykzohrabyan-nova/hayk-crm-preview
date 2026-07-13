@@ -350,7 +350,19 @@ function roleLabel(name: string | undefined): string {
 
 export function Sidebar() {
   const { theme, setTheme } = useTheme();
-  const { me, sections } = useAppSession();
+  const { me, sections: rawSections } = useAppSession();
+  // Hayk 2026-07-12 — rename "CRM" → "Customers" and move it to the very bottom
+  // (not a daily-use tab). Rebuild the section list with /crm pulled to the end.
+  const sections = (() => {
+    const crm = rawSections.flatMap(s => s.pages).find(p => p.route === "/crm");
+    const stripped = rawSections.map(s => ({ ...s, pages: s.pages.filter(p => p.route !== "/crm") }));
+    if (crm && stripped.length) {
+      const relabeled = { ...crm, display_name: "Customers" };
+      const last = stripped[stripped.length - 1];
+      stripped[stripped.length - 1] = { ...last, pages: [...last.pages, relabeled] };
+    }
+    return stripped;
+  })();
   const [previewRole] = usePreviewRole();
   const [collapsed, setCollapsed] = useState(false);
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
