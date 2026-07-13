@@ -50,7 +50,7 @@ function mapSource(s: string | null | undefined): Lead["source"] {
 }
 
 // Real status / sales_status → the UNIFIED pipeline Stage (leads + deals, one board).
-const STAGE_SET: Stage[] = ["New Lead", "Qualifying", "Qualified", "Assigned", "Contacted", "Working on Quote", "Quote Sent", "Quote Approved", "Pending Payment", "Closed Won", "Follow Up", "Lost"];
+const STAGE_SET: Stage[] = ["New Lead", "Qualifying", "Qualified", "Assigned / Claimed", "Contacted", "Working on Quote", "Quote Sent", "Quote Approved", "Pending Payment", "Closed Won", "Follow Up", "Lost"];
 function mapStage(status: string | null | undefined, salesStatus: string | null | undefined): Stage {
   const s = (status ?? "").toLowerCase();
   const ss = (salesStatus ?? "").toLowerCase();
@@ -62,7 +62,7 @@ function mapStage(status: string | null | undefined, salesStatus: string | null 
   if (hit) return hit;
   // Back-compat with older labels.
   if (status === "New" || s === "pending" || s === "") return "New Lead";
-  if (status === "Claimed" || status === "Routed to Sales") return "Assigned";
+  if (status === "Assigned" || status === "Claimed" || status === "Routed to Sales") return "Assigned / Claimed";
   if (status === "Quoted") return "Quote Sent";
   return "New Lead";
 }
@@ -81,7 +81,7 @@ function nextActionFor(stage: Stage): string {
     case "New Lead": return "Start qualifying this lead";
     case "Qualifying": return "Confirm fit & mark qualified";
     case "Qualified": return "Assign to a sales rep";
-    case "Assigned": return "Make first contact";
+    case "Assigned / Claimed": return "Make first contact";
     case "Contacted": return "Build the quote";
     case "Working on Quote": return "Finish & send the quote";
     case "Quote Sent": return "Follow up for approval";
@@ -99,7 +99,7 @@ function closeProbFor(stage: Stage): number {
     case "New Lead": return 5;
     case "Qualifying": return 15;
     case "Qualified": return 30;
-    case "Assigned": return 40;
+    case "Assigned / Claimed": return 40;
     case "Contacted": return 50;
     case "Working on Quote": return 60;
     case "Quote Sent": return 70;

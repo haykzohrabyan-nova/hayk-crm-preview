@@ -9,6 +9,16 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { revalidatePath } from "next/cache";
 
+// A sales rep claims a lead from an early stage → moves it to Assigned / Claimed.
+export async function claimLead(leadId: string): Promise<{ ok: boolean; error?: string }> {
+  const admin = createAdminClient();
+  const { error } = await admin.from("leads").update({ status: "Assigned / Claimed", sales_status: "Claimed" }).eq("id", leadId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/preview/leads");
+  revalidatePath("/preview/sales-pipeline");
+  return { ok: true };
+}
+
 // Create a real lead: match/create the customer, insert the lead as a New Lead.
 export async function createLead(input: {
   name: string; company?: string; phone?: string; email?: string;

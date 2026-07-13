@@ -6,10 +6,11 @@
 // SDR-entered / CRM auto-filled / Sales-updated / AI-computed sections are labeled.
 // Real /leads page NOT touched.
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { commsForLead } from "../inbox/_seed";
 import { RoleGate } from "../_shared/RoleGate";
-import { searchCustomers, createLead, type CustomerHit } from "./_actions";
+import { searchCustomers, createLead, claimLead, type CustomerHit } from "./_actions";
 
 const ACCENT = "#FF5D2E";
 
@@ -19,7 +20,7 @@ export type Priority = "High" | "Medium" | "Low";
 // sales zone = Assigned→Closed Won. Follow Up / Lost are the two drop-out lanes.
 export type Stage =
   | "New Lead" | "Qualifying" | "Qualified"
-  | "Assigned" | "Contacted" | "Working on Quote" | "Quote Sent" | "Quote Approved" | "Pending Payment" | "Closed Won"
+  | "Assigned / Claimed" | "Contacted" | "Working on Quote" | "Quote Sent" | "Quote Approved" | "Pending Payment" | "Closed Won"
   | "Follow Up" | "Lost";
 type TabKey =
   | "all" | "new" | "qualifying" | "qualified"
@@ -108,7 +109,7 @@ const TAB_DEFS: { key: TabKey; label: string; predicate: (l: Lead) => boolean; c
   { key: "new",             label: "New Lead",        predicate: l => l.stage === "New Lead" },
   { key: "qualifying",      label: "Qualifying",      predicate: l => l.stage === "Qualifying" },
   { key: "qualified",       label: "Qualified",       predicate: l => l.stage === "Qualified" },
-  { key: "assigned",        label: "Assigned",        predicate: l => l.stage === "Assigned" },
+  { key: "assigned",        label: "Assigned / Claimed",        predicate: l => l.stage === "Assigned / Claimed" },
   { key: "contacted",       label: "Contacted",       predicate: l => l.stage === "Contacted" },
   { key: "working",         label: "Working on Quote", predicate: l => l.stage === "Working on Quote" },
   { key: "quote_sent",      label: "Quote Sent",      predicate: l => l.stage === "Quote Sent" },
@@ -128,7 +129,7 @@ const STAGE_COLORS: Record<Stage, string> = {
   "New Lead": "#3b82f6",
   "Qualifying": "#eab308",
   "Qualified": "#8b5cf6",
-  "Assigned": "#6366f1",
+  "Assigned / Claimed": "#6366f1",
   "Contacted": "#0ea5e9",
   "Working on Quote": "#f59e0b",
   "Quote Sent": "#a855f7",
@@ -140,7 +141,7 @@ const STAGE_COLORS: Record<Stage, string> = {
 };
 
 // Linear happy path for the progress rail (drop-out lanes excluded).
-const STAGE_FLOW: Stage[] = ["New Lead", "Qualifying", "Qualified", "Assigned", "Contacted", "Working on Quote", "Quote Sent", "Quote Approved", "Pending Payment", "Closed Won"];
+const STAGE_FLOW: Stage[] = ["New Lead", "Qualifying", "Qualified", "Assigned / Claimed", "Contacted", "Working on Quote", "Quote Sent", "Quote Approved", "Pending Payment", "Closed Won"];
 
 // "18m ago" / "1h ago" / "2d ago" → days-old number (min → 0, hour → 0, day → n)
 function daysOldFromAgo(ago: string): number {
@@ -465,7 +466,7 @@ const KANBAN_COLUMNS: { stage: Stage; color: string }[] = [
   { stage: "New Lead",         color: "#3b82f6" },
   { stage: "Qualifying",       color: "#eab308" },
   { stage: "Qualified",        color: "#a78bfa" },
-  { stage: "Assigned",         color: "#6366f1" },
+  { stage: "Assigned / Claimed",         color: "#6366f1" },
   { stage: "Contacted",        color: "#0ea5e9" },
   { stage: "Working on Quote", color: "#f59e0b" },
   { stage: "Quote Sent",       color: "#a855f7" },
@@ -510,6 +511,14 @@ function KanbanView({ leads, selectedId, onSelect }: { leads: Lead[]; selectedId
 
 function KanbanCard({ lead, selected, onClick }: { lead: Lead; selected: boolean; onClick: () => void }) {
   const priorityColor = lead.priority === "High" ? "#dc2626" : lead.priority === "Medium" ? "#f59e0b" : "#6b7280";
+  const router = useRouter();
+  const [claiming, startClaim] = useTransition();
+  // A sales rep can claim any lead still in the SDR zone (before it's assigned).
+  const canClaim = (["New Lead", "Qualifying", "Qualified"] as Stage[]).includes(lead.stage);
+  const doClaim = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    startClaim(async () => { await claimLead(lead.id); router.refresh(); });
+  };
   return (
     <div onClick={onClick} style={{
       background: selected ? "rgba(255,93,46,0.12)" : "var(--preview-chip-bg)",
@@ -540,6 +549,12 @@ function KanbanCard({ lead, selected, onClick }: { lead: Lead; selected: boolean
         {lead.potentialMax > 0 ? <span style={{ fontWeight: 600, color: "#4ade80" }}>{fmtRange(lead.potentialMin, lead.potentialMax)}</span> : <span />}
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lead.nextAction || "—"}</span>
       </div>
+      {/* A sales rep can claim the lead straight off the card — moves it to Assigned / Claimed. */}
+      {canClaim && (
+        <button onClick={doClaim} disabled={claiming} style={{ width: "100%", marginTop: "8px", padding: "6px", background: claiming ? "var(--preview-chip-bg-strong)" : ACCENT, color: claiming ? "var(--preview-text-muted)" : "#fff", border: "none", borderRadius: "7px", fontSize: "11px", fontWeight: 700, cursor: claiming ? "default" : "pointer" }}>
+          {claiming ? "Claiming…" : "✋ Claim this lead"}
+        </button>
+      )}
     </div>
   );
 }
@@ -632,7 +647,7 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
             style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer" }}
           >✎ Edit</button>
           {/* Create Quote — from Qualified until the quote's actually sent. */}
-          {(["Qualified", "Assigned", "Contacted", "Working on Quote"] as Stage[]).includes(lead.stage) && (
+          {(["Qualified", "Assigned / Claimed", "Contacted", "Working on Quote"] as Stage[]).includes(lead.stage) && (
             <a
               href={`/preview/new-quote?leadId=${encodeURIComponent(lead.id)}&name=${encodeURIComponent(lead.name)}&phone=${encodeURIComponent(lead.phone || "")}&email=${encodeURIComponent(lead.email || "")}`}
               title="Start a new quote for this lead"
