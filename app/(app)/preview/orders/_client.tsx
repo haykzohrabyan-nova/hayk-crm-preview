@@ -284,10 +284,11 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
                         : "No orders match the current filters."}
                     </td>
                   </tr>
-                ) : filtered.map(o => (
+                ) : filtered.map((o, i) => (
                   <OrderRow
                     key={o.refId}
                     order={o}
+                    idx={i}
                     expanded={expandedId === o.refId}
                     onToggle={() => setExpandedId(expandedId === o.refId ? null : o.refId)}
                     onView={() => setDetailId(o.refId)}
@@ -304,13 +305,15 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
 }
 
 // ─── Row (with inline expand) ────────────────────────────────────────
-function OrderRow({ order, expanded, onToggle, onView }: { order: Order; expanded: boolean; onToggle: () => void; onView: () => void }) {
+function OrderRow({ order, idx = 0, expanded, onToggle, onView }: { order: Order; idx?: number; expanded: boolean; onToggle: () => void; onView: () => void }) {
   const overdue = order.dueOverdue;
+  // Zebra striping + a clear divider so rows don't blur together when scanning.
+  const zebra = idx % 2 === 1 ? "var(--preview-surface-2)" : "transparent";
   return (
     <>
       <tr onClick={onToggle} style={{
-        borderTop: "1px solid #f4f4f4",
-        background: overdue ? "#fef2f2" : expanded ? "#fff7ed" : "transparent",
+        borderBottom: "1px solid var(--preview-border)",
+        background: overdue ? "#fef2f2" : expanded ? "#fff7ed" : zebra,
         cursor: "pointer",
         borderLeft: overdue ? "3px solid #dc2626" : "3px solid transparent",
       }}>
