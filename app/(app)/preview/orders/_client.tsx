@@ -253,7 +253,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
           </div>
 
           {view === "kanban" ? (
-            <KanbanBoard orders={filtered} onCardClick={id => setDetailId(id)} />
+            <KanbanBoard orders={filtered} boardStages={boardStages} onCardClick={id => setDetailId(id)} />
           ) : (
           /* Orders table */
           <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", overflowX: "auto" }}>
@@ -455,21 +455,22 @@ function Pill({ children, tone }: { children: React.ReactNode; tone?: "amber" | 
 }
 
 // ─── Kanban board ────────────────────────────────────────
-function KanbanBoard({ orders, onCardClick }: { orders: Order[]; onCardClick: (id: string) => void }) {
-  const columns: OrderStatus[] = ["Pending Payment", "In Production", "Ready to Ship", "Shipped", "Delivered", "Cancelled", "Refunded"];
+function KanbanBoard({ orders, boardStages, onCardClick }: { orders: Order[]; boardStages: BoardStage[]; onCardClick: (id: string) => void }) {
+  // Columns = the real production-board stages (workflow integrated here).
+  const columns = boardStages.length ? boardStages.map(s => s.name).filter(Boolean) : ["In Production"];
+  const stageOf = (o: Order) => o.stageName ?? o.status;
   return (
     <div style={{ display: "flex", gap: "10px", overflowX: "auto", paddingBottom: "8px" }}>
       {columns.map(col => {
-        const items = orders.filter(o => o.status === col);
-        const c = STATUS_COLORS[col];
+        const items = orders.filter(o => stageOf(o) === col);
         return (
           <div key={col} style={{ flex: "0 0 260px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "10px", display: "flex", flexDirection: "column", gap: "8px", maxHeight: "calc(100vh - 260px)" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 4px 6px 4px", borderBottom: `2px solid ${c.fg}22` }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "2px 4px 6px 4px", borderBottom: `2px solid ${ACCENT}33` }}>
               <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: c.fg }} />
-                <span style={{ fontSize: "11.5px", fontWeight: 800, color: "#171717" }}>{col}</span>
+                <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: ACCENT }} />
+                <span style={{ fontSize: "11.5px", fontWeight: 800, color: "var(--preview-text)" }}>{col}</span>
               </div>
-              <span style={{ padding: "1px 7px", background: c.bg, color: c.fg, borderRadius: "999px", fontSize: "10.5px", fontWeight: 700 }}>{items.length}</span>
+              <span style={{ padding: "1px 7px", background: "var(--preview-chip-bg-strong)", color: "var(--preview-text-muted)", borderRadius: "999px", fontSize: "10.5px", fontWeight: 700 }}>{items.length}</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto", flex: 1 }}>
               {items.length === 0 ? (
