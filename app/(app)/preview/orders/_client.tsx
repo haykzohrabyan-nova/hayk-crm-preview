@@ -144,6 +144,8 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
         <OrderDetail
           order={detailOrder}
           boardStages={boardStages}
+          relatedOrders={orders.filter(o => o.refId !== detailOrder.refId && (o.company || o.contact) === (detailOrder.company || detailOrder.contact))}
+          onOpenOrder={(refId) => { setDetailId(refId); if (typeof window !== "undefined") window.scrollTo({ top: 0 }); }}
           onBack={() => setDetailId(null)}
           onViewCustomerOrders={(q) => { setDetailId(null); setStatusSel(new Set()); setChips(new Set()); setSearch(q); }}
         />
@@ -557,7 +559,7 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
 }
 
 // ─── Order Detail (full page takeover) ────────────────────────────────────────
-function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { order: Order; boardStages: BoardStage[]; onBack: () => void; onViewCustomerOrders: (query: string) => void }) {
+function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBack, onViewCustomerOrders }: { order: Order; boardStages: BoardStage[]; relatedOrders?: Order[]; onOpenOrder?: (refId: string) => void; onBack: () => void; onViewCustomerOrders: (query: string) => void }) {
   const [status, setStatus] = useState<string>(order.stageName ?? order.status);
   const [priority, setPriority] = useState(order.priority);
   const [showCustomer, setShowCustomer] = useState(false);
@@ -566,7 +568,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
   const [showPay, setShowPay] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
-  const [tab, setTab] = useState<"overview" | "workflow">("overview");
+  const [tab, setTab] = useState<"overview" | "workflow" | "quotes">("overview");
   // Per-item design notes + one general note — shared so they roll up to the
   // right-rail summary and surface inside the communication thread.
   const [designNotes, setDesignNotes] = useState<Record<string, string>>({});
@@ -736,7 +738,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
 
       {/* Tabs — like the old system: jump to a focused page (Overview / Workflow) */}
       <div style={{ display: "flex", gap: "24px", borderBottom: "1px solid var(--preview-border)", marginBottom: "14px" }}>
-        {([["overview", "Order Items"], ["workflow", "Workflow Progress"]] as const).map(([k, lbl]) => {
+        {([["overview", "Order Items"], ["workflow", "Workflow Progress"], ["quotes", `Quotes & Orders${relatedOrders.length ? ` (${relatedOrders.length + 1})` : ""}`]] as const).map(([k, lbl]) => {
           const active = tab === k;
           return <button key={k} onClick={() => setTab(k)} style={{ background: "transparent", border: "none", padding: "10px 2px", marginBottom: "-1px", borderBottom: active ? `2px solid ${ACCENT}` : "2px solid transparent", color: active ? "var(--preview-text)" : "#888", fontSize: "13.5px", fontWeight: active ? 800 : 600, cursor: "pointer" }}>{lbl}</button>;
         })}
@@ -744,6 +746,8 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
 
       {tab === "workflow" ? (
         <WorkflowTimeline order={order} boardStages={boardStages} />
+      ) : tab === "quotes" ? (
+        <CustomerQuotesTab order={order} relatedOrders={relatedOrders} onOpenOrder={onOpenOrder} onViewAll={() => onViewCustomerOrders(order.company || order.contact)} />
       ) : (
       <>
       {/* Body: LEFT main (line items + communication) | RIGHT rail (design notes + actions) */}
@@ -2055,6 +2059,52 @@ function WorkflowTimeline({ order, boardStages }: { order: Order; boardStages: B
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+// Quotes & Orders tab — this order's quote highlighted, plus the customer's other orders.
+function CustomerQuotesTab({ order, relatedOrders, onOpenOrder, onViewAll }: { order: Order; relatedOrders: Order[]; onOpenOrder?: (refId: string) => void; onViewAll: () => void }) {
+  const prior = relatedOrders.length;
+  const lifetimeValue = (order.customer?.lifetimeValue ?? 0);
+  const row = (o: Order, isThis: boolean) => (
+    <div key={o.refId} onClick={() => !isThis && onOpenOrder?.(o.refId)} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px", borderRadius: "10px", border: `1px solid ${isThis ? ACCENT : "var(--preview-border)"}`, background: isThis ? ACCENT + "0d" : "var(--preview-surface)", cursor: isThis ? "default" : "pointer" }}>
+      <OrderThumb src={o.thumbnailUrl} alt={o.title} />
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontSize: "13px", fontWeight: 800, fontFamily: "monospace" }}>ORD-{o.refId}</span>
+          <span style={{ fontSize: "11px", color: "#888", fontFamily: "monospace" }}>· {o.quoteRefId}</span>
+          {isThis && <span style={{ padding: "2px 8px", background: ACCENT, color: "#fff", fontSize: "9.5px", fontWeight: 800, borderRadius: "5px", textTransform: "uppercase", letterSpacing: "0.04em" }}>This order</span>}
+        </div>
+        <div style={{ fontSize: "12px", color: "var(--preview-text)", opacity: 0.85, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px" }}>{o.title}</div>
+        <div style={{ fontSize: "11px", color: "#888", marginTop: "2px" }}>{o.createdDate} · <span style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}><span style={{ width: "7px", height: "7px", borderRadius: "50%", background: stageColor(o.stageKind).fg, display: "inline-block" }} />{o.stageName ?? o.status}</span></div>
+      </div>
+      <div style={{ textAlign: "right", flexShrink: 0 }}>
+        <div style={{ fontSize: "15px", fontWeight: 800 }}>{fmtMoney(o.total)}</div>
+        <div style={{ fontSize: "10.5px", fontWeight: 700, color: o.balanceDue > 0 ? "#dc2626" : "#16a34a" }}>{o.balanceDue > 0 ? `${fmtMoney(o.balanceDue)} due` : "Paid"}</div>
+      </div>
+      {!isThis && <span style={{ color: "#bbb", fontSize: "16px" }}>›</span>}
+    </div>
+  );
+  return (
+    <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "20px 24px", marginBottom: "14px" }}>
+      {/* customer summary */}
+      <div style={{ display: "flex", gap: "26px", flexWrap: "wrap", alignItems: "center", marginBottom: "18px", paddingBottom: "16px", borderBottom: "1px solid var(--preview-border)" }}>
+        <div><div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Customer</div><div style={{ fontSize: "15px", fontWeight: 800 }}>{order.company || order.contact}</div></div>
+        <div><div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Total orders</div><div style={{ fontSize: "15px", fontWeight: 800 }}>{prior + 1}</div></div>
+        {lifetimeValue > 0 && <div><div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Lifetime value</div><div style={{ fontSize: "15px", fontWeight: 800 }}>{fmtMoney(lifetimeValue)}</div></div>}
+        <button onClick={onViewAll} style={{ marginLeft: "auto", padding: "8px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>Open in customer view →</button>
+      </div>
+
+      <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>This order</div>
+      <div style={{ marginBottom: "18px" }}>{row(order, true)}</div>
+
+      <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Previous orders ({prior})</div>
+      {prior === 0 ? (
+        <div style={{ fontSize: "12.5px", color: "#aaa" }}>This is the customer's first order.</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>{relatedOrders.map(o => row(o, false))}</div>
       )}
     </div>
   );
