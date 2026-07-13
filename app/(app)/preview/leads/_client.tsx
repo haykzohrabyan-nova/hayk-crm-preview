@@ -1201,9 +1201,6 @@ function CommunicationHistory({ commItems, addComm, onAttach }: { commItems: Com
           <span style={{ fontSize: "11px", color: "var(--preview-text-muted)" }}>Every email · call · text · note in one place</span>
         </div>
         <div style={{ display: "flex", gap: "6px" }}>
-          <CompactBtn icon="✉" label="Log Email" onClick={() => setComposerOpen("email")} />
-          <CompactBtn icon="📞" label="Log Call" onClick={() => setComposerOpen("call")} />
-          <CompactBtn icon="💬" label="Log Text" onClick={() => setComposerOpen("sms")} />
           <CompactBtn icon="📝" label="Add Note" onClick={() => setComposerOpen("note")} accent />
         </div>
       </div>
