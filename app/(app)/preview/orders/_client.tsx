@@ -20,6 +20,17 @@ import {
 const ACCENT = "#FF5D2E";
 const GOLD = "#fbbf24";
 
+// Colour a status pill by the board column's KIND so stages read distinctly
+// (green = done, amber = waiting approval, red = exception, blue = in-flight).
+function stageColor(kind?: string | null): { bg: string; fg: string } {
+  switch ((kind ?? "").toLowerCase()) {
+    case "done": return { bg: "#dcfce7", fg: "#166534" };
+    case "approval": return { bg: "#fef3c7", fg: "#92400e" };
+    case "exception": return { bg: "#fee2e2", fg: "#b91c1c" };
+    default: return { bg: "#e0e7ff", fg: "#4338ca" };
+  }
+}
+
 // Shared control chrome so every header control (date, status, filters, team,
 // search, view toggle) is the exact same height / radius / border — clean row.
 const CONTROL: React.CSSProperties = {
@@ -379,7 +390,9 @@ function OrderRow({ order, idx = 0, expanded, onToggle, onView }: { order: Order
           ) : <span style={{ color: "#bbb" }}>—</span>}
         </td>
         <td style={td}>
-          <span title={`Live production stage${order.stageName ? ` — ${order.stageName}` : ""}`} style={{ padding: "2px 8px", background: STATUS_COLORS[order.status].bg, color: STATUS_COLORS[order.status].fg, fontSize: "11px", fontWeight: 700, borderRadius: "5px" }}>{order.stageName ?? order.status}</span>
+          {(() => { const c = stageColor(order.stageKind); return (
+            <span title={`Live production stage${order.stageName ? ` — ${order.stageName}` : ""}`} style={{ padding: "2px 8px", background: c.bg, color: c.fg, fontSize: "11px", fontWeight: 700, borderRadius: "5px" }}>{order.stageName ?? order.status}</span>
+          ); })()}
         </td>
         <td style={td}>
           <span style={{ padding: "2px 8px", background: PAY_COLORS[order.payment].bg, color: PAY_COLORS[order.payment].fg, fontSize: "11px", fontWeight: 700, borderRadius: "5px" }}>{order.payment}</span>
