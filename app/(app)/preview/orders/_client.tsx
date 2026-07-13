@@ -568,7 +568,7 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
   const [showPay, setShowPay] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
-  const [tab, setTab] = useState<"overview" | "workflow" | "quotes">("overview");
+  const [tab, setTab] = useState<"overview" | "workflow" | "invoice" | "quotes">("overview");
   // Per-item design notes + one general note — shared so they roll up to the
   // right-rail summary and surface inside the communication thread.
   const [designNotes, setDesignNotes] = useState<Record<string, string>>({});
@@ -666,79 +666,9 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
         </div>
       </div>
 
-      {/* Payment / invoice strip — figures, paid-progress bar, actions */}
-      {(() => {
-        const paidPct = order.total > 0 ? Math.min(100, Math.round((order.received / order.total) * 100)) : 0;
-        const isPaid = order.balanceDue <= 0 && order.total > 0;
-        const barColor = isPaid ? "#16a34a" : order.received > 0 ? ACCENT : "#dc2626";
-        return (
-          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "12px 18px", marginBottom: "10px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
-                <span style={{ fontSize: "18px" }}>💰</span>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <span style={{ fontSize: "10px", color: "#888", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>Invoice INV-{order.refId}</span>
-                    <span style={{ padding: "2px 9px", background: payPill.bg, color: payPill.fg, fontSize: "11px", fontWeight: 800, borderRadius: "5px" }}>{order.payment}</span>
-                  </div>
-                  <div style={{ fontSize: "12.5px", fontWeight: 600, marginTop: "3px", color: "#888" }}>
-                    {isPaid ? "Paid in full" : order.received > 0 ? "Partially paid" : "Awaiting payment"}
-                  </div>
-                </div>
-              </div>
-
-              {/* Three figures */}
-              <div style={{ display: "flex", gap: "26px", marginLeft: "8px" }}>
-                <PayFigure label="Invoice total" value={fmtMoney(order.total)} />
-                <PayFigure label="Received" value={fmtMoney(order.received)} color="#16a34a" />
-                <PayFigure label="Balance due" value={fmtMoney(order.balanceDue)} color={order.balanceDue > 0 ? "#dc2626" : "#888"} />
-              </div>
-
-              <div style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
-                {order.balanceDue > 0 && (
-                  <button onClick={() => setShowPay(true)} style={{ padding: "9px 16px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>＋ Make a payment</button>
-                )}
-                {order.balanceDue > 0 && (
-                  <button style={{ padding: "9px 16px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>✉ Send payment request</button>
-                )}
-                <button onClick={() => setShowInvoice(true)} style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>🧾 Invoice details</button>
-                {order.received > 0 && (
-                  <button onClick={() => setShowReceipt(true)} style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>📄 Receipt</button>
-                )}
-              </div>
-            </div>
-
-            {/* Paid-progress bar */}
-            <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "10px" }}>
-              <div style={{ flex: 1, height: "6px", background: "var(--preview-surface-2)", borderRadius: "999px", overflow: "hidden" }}>
-                <div style={{ width: `${paidPct}%`, height: "100%", background: barColor, borderRadius: "999px", transition: "width .3s" }} />
-              </div>
-              <span style={{ fontSize: "11px", fontWeight: 700, color: barColor, minWidth: "34px", textAlign: "right" }}>{paidPct}%</span>
-            </div>
-
-            {/* Payment history — what was received, when, how */}
-            {(order.payments ?? []).length > 0 && (
-              <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
-                <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Payment history</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                  {(order.payments ?? []).map((p, i) => (
-                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px" }}>
-                      <span style={{ color: "#888", minWidth: "62px" }}>{p.date}</span>
-                      <span style={{ fontWeight: 600, flex: 1 }}>{p.method}{p.ref ? <span style={{ color: "#888", fontWeight: 400 }}> · {p.ref}</span> : null}</span>
-                      <span style={{ fontSize: "10px", fontWeight: 700, color: p.status === "Completed" ? "#16a34a" : p.status === "Failed" ? "#dc2626" : "#f59e0b" }}>{p.status}</span>
-                      <span style={{ fontWeight: 800, minWidth: "72px", textAlign: "right" }}>{fmtMoney(p.amount)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* Tabs — like the old system: jump to a focused page (Overview / Workflow) */}
+      {/* Tabs — focused pages like the old system */}
       <div style={{ display: "flex", gap: "24px", borderBottom: "1px solid var(--preview-border)", marginBottom: "14px" }}>
-        {([["overview", "Order Items"], ["workflow", "Workflow Progress"], ["quotes", `Quotes & Orders${relatedOrders.length ? ` (${relatedOrders.length + 1})` : ""}`]] as const).map(([k, lbl]) => {
+        {([["overview", "Order Items"], ["workflow", "Workflow Progress"], ["invoice", "Invoice & Payments"], ["quotes", `Quotes & Orders${relatedOrders.length ? ` (${relatedOrders.length + 1})` : ""}`]] as const).map(([k, lbl]) => {
           const active = tab === k;
           return <button key={k} onClick={() => setTab(k)} style={{ background: "transparent", border: "none", padding: "10px 2px", marginBottom: "-1px", borderBottom: active ? `2px solid ${ACCENT}` : "2px solid transparent", color: active ? "var(--preview-text)" : "#888", fontSize: "13.5px", fontWeight: active ? 800 : 600, cursor: "pointer" }}>{lbl}</button>;
         })}
@@ -746,6 +676,8 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
 
       {tab === "workflow" ? (
         <WorkflowTimeline order={order} boardStages={boardStages} />
+      ) : tab === "invoice" ? (
+        <InvoicePaymentsTab order={order} payPill={payPill} onPay={() => setShowPay(true)} onInvoice={() => setShowInvoice(true)} onReceipt={() => setShowReceipt(true)} />
       ) : tab === "quotes" ? (
         <CustomerQuotesTab order={order} relatedOrders={relatedOrders} onOpenOrder={onOpenOrder} onViewAll={() => onViewCustomerOrders(order.company || order.contact)} />
       ) : (
@@ -1009,6 +941,63 @@ function InvoiceModal({ order, onClose, onReceipt }: { order: Order; onClose: ()
           {order.received > 0 && <button onClick={onReceipt} style={{ padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>📄 Receipt</button>}
           <button onClick={onClose} style={{ padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>Close</button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// Invoice & Payments tab — figures, paid-progress, ask-for-payment, full payment history.
+function InvoicePaymentsTab({ order, payPill, onPay, onInvoice, onReceipt }: { order: Order; payPill: { bg: string; fg: string }; onPay: () => void; onInvoice: () => void; onReceipt: () => void }) {
+  const paidPct = order.total > 0 ? Math.min(100, Math.round((order.received / order.total) * 100)) : 0;
+  const isPaid = order.balanceDue <= 0 && order.total > 0;
+  const barColor = isPaid ? "#16a34a" : order.received > 0 ? ACCENT : "#dc2626";
+  return (
+    <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "20px 24px", marginBottom: "14px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <span style={{ fontSize: "18px" }}>💰</span>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "10px", color: "#888", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>Invoice INV-{order.refId}</span>
+              <span style={{ padding: "2px 9px", background: payPill.bg, color: payPill.fg, fontSize: "11px", fontWeight: 800, borderRadius: "5px" }}>{order.payment}</span>
+            </div>
+            <div style={{ fontSize: "12.5px", fontWeight: 600, marginTop: "3px", color: "#888" }}>{isPaid ? "Paid in full" : order.received > 0 ? "Partially paid" : "Awaiting payment"}</div>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: "26px", marginLeft: "8px" }}>
+          <PayFigure label="Invoice total" value={fmtMoney(order.total)} />
+          <PayFigure label="Received" value={fmtMoney(order.received)} color="#16a34a" />
+          <PayFigure label="Balance due" value={fmtMoney(order.balanceDue)} color={order.balanceDue > 0 ? "#dc2626" : "#888"} />
+        </div>
+        <div style={{ marginLeft: "auto", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          {order.balanceDue > 0 && <button onClick={onPay} style={{ padding: "9px 16px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>＋ Make a payment</button>}
+          {order.balanceDue > 0 && <button style={{ padding: "9px 16px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }} title="Text/email the customer a payment link (needs JustCall + email)">✉ Ask for payment</button>}
+          <button onClick={onInvoice} style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>🧾 Invoice details</button>
+          {order.received > 0 && <button onClick={onReceipt} style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>📄 Receipt</button>}
+        </div>
+      </div>
+
+      <div style={{ marginTop: "12px", display: "flex", alignItems: "center", gap: "10px" }}>
+        <div style={{ flex: 1, height: "6px", background: "var(--preview-surface-2)", borderRadius: "999px", overflow: "hidden" }}><div style={{ width: `${paidPct}%`, height: "100%", background: barColor, borderRadius: "999px", transition: "width .3s" }} /></div>
+        <span style={{ fontSize: "11px", fontWeight: 700, color: barColor, minWidth: "34px", textAlign: "right" }}>{paidPct}%</span>
+      </div>
+
+      <div style={{ marginTop: "18px", paddingTop: "16px", borderTop: "1px solid var(--preview-border)" }}>
+        <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Payment history</div>
+        {(order.payments ?? []).length === 0 ? (
+          <div style={{ fontSize: "12.5px", color: "#aaa" }}>No payments recorded yet.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            {(order.payments ?? []).map((p, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "12.5px", padding: "8px 12px", background: "var(--preview-surface-2)", borderRadius: "8px" }}>
+                <span style={{ color: "#888", minWidth: "72px" }}>{p.date}</span>
+                <span style={{ fontWeight: 600, flex: 1 }}>{p.method}{p.ref ? <span style={{ color: "#888", fontWeight: 400 }}> · {p.ref}</span> : null}</span>
+                <span style={{ fontSize: "10px", fontWeight: 700, color: p.status === "Completed" ? "#16a34a" : p.status === "Failed" ? "#dc2626" : "#f59e0b" }}>{p.status}</span>
+                <span style={{ fontWeight: 800, minWidth: "84px", textAlign: "right" }}>{fmtMoney(p.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
