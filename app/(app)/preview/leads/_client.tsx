@@ -8,6 +8,7 @@
 
 import { useMemo, useState, useEffect, useRef, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { sendSms } from "../orders/_comms";
 import { commsForLead } from "../inbox/_seed";
 import { RoleGate } from "../_shared/RoleGate";
 import { searchCustomers, createLead, claimLead, type CustomerHit } from "./_actions";
@@ -1970,7 +1971,15 @@ function QuickActionModal({ type, lead, onClose, onLog, onAttach }: { type: stri
   const doSubmit = () => {
     const now = { id: `c${Date.now()}`, at: nowStamp(), atRel: "just now", author: "Hayk Zohrabyan" };
     if (type === "call") onLog({ ...now, type: "call_out", body: `Called ${lead.name}.`, callSummary: body || "Call logged — no summary.", callDurationSec: 60 * 3, ...(pendingFiles.length ? { attachments: pendingFiles } : {}) });
-    if (type === "sms") onLog({ ...now, type: "sms_out", body: body || "(empty message)", ...(pendingFiles.length ? { attachments: pendingFiles } : {}) });
+    if (type === "sms") {
+      // Actually send via Twilio (routed to your test number for safety), then log.
+      sendSms({ to: lead.phone || "", body }).then(r => {
+        onLog({ ...now, type: "sms_out", body: (body || "(empty message)") + (r.ok ? "" : `  ⚠ not sent: ${r.detail}`) });
+        alert(r.ok ? `✅ Text sent!\n${r.detail}` : `❌ Text failed\n${r.detail}`);
+      });
+      onClose();
+      return;
+    }
     if (type === "email") onLog({ ...now, type: "email_out", subject: subject || "(no subject)", body: body || "(no body)", ...(pendingFiles.length ? { attachments: pendingFiles } : {}) });
     if (type === "quote") onLog({ ...now, type: "email_out", subject: `Quote #Q-${Date.now().toString().slice(-4)} · ${lead.name}`, body: `Sent quote for ${quoteAmount || "amount TBD"}. ${body}`, attachments: [{ name: `QO-2026-${Date.now().toString().slice(-4)}.pdf`, size: "246 KB", kind: "pdf" }, ...pendingFiles] });
     if (type === "assign") {
