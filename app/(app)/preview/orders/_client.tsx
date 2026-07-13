@@ -72,7 +72,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
     const p = new URLSearchParams(window.location.search).get("open");
     return p || null;
   });
-  const [view, setView] = useState<"table" | "kanban">("table");
+  const [view, setView] = useState<"table" | "kanban">("kanban");
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [chips, setChips] = useState<Set<ChipKey>>(() => {
     // Auto-apply chip from ?filter= URL param, so dashboard callouts can deep-link.
