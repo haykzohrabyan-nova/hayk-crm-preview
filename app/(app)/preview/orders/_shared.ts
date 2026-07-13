@@ -81,6 +81,7 @@ export interface Order {
   createdBy: string;
   ownerAvatar: string;
   ownerColor: string;
+  accountManager?: string;   // order-level sales / account owner (not per-item)
   title: string;
   lineItems: OrderLineItem[];
   total: number;

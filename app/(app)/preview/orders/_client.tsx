@@ -419,8 +419,9 @@ function OrderRow({ order, idx = 0, expanded, onToggle, onView }: { order: Order
                 wide table scrolls horizontally. */}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", position: "sticky", left: "20px", width: "min(1180px, calc(100vw - 360px))" }}>
               {order.lineItems.map(l => (
-                <div key={l.id} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
-                  <div style={{ flex: 1 }}>
+                <div key={l.id} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "16px" }}>
+                  <LineThumb src={l.thumbnailUrl} alt={l.productName} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: "14px", fontWeight: 800, marginBottom: "4px" }}>
                       {l.productName}{l.materialName && <span style={{ fontSize: "11.5px", color: "#888", fontWeight: 500 }}> · {l.materialName}</span>}
                     </div>
@@ -440,9 +441,6 @@ function OrderRow({ order, idx = 0, expanded, onToggle, onView }: { order: Order
                   <div style={{ fontSize: "20px", fontWeight: 800, color: "#16a34a", whiteSpace: "nowrap" }}>{fmtMoney(l.extended)}</div>
                 </div>
               ))}
-              <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 4px 0" }}>
-                <button onClick={onView} style={{ padding: "5px 12px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>Full details →</button>
-              </div>
             </div>
           </td>
         </tr>
@@ -567,6 +565,10 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
   const [moreTab, setMoreTab] = useState<"quotes" | "activity" | "files">("quotes");
   const [showPay, setShowPay] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
+  // Per-item design notes + one general note — shared so they roll up to the
+  // right-rail summary and surface inside the communication thread.
+  const [designNotes, setDesignNotes] = useState<Record<string, string>>({});
+  const [generalNote, setGeneralNote] = useState("");
   const [saved, setSaved] = useState<string | null>(null);
   const [, startSave] = useTransition();
   const oid = order.orderId;
@@ -578,7 +580,6 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
   const statusOptions = WORKFLOW_STATUSES.length ? WORKFLOW_STATUSES : [order.status];
 
   // Per-item people rosters (real): account managers + production stations.
-  const ACCOUNT_MANAGERS = ["Marianna", "Gary", "Ernesto", "Manny"];
   const prodFromBoard = boardStages.map(s => s.name).filter(n => ["Arsen", "Hrach", "Production", "Apparel"].includes(n));
   const PRODUCTION_OWNERS = prodFromBoard.length ? prodFromBoard : ["Arsen", "Hrach", "Production", "Apparel"];
 
@@ -638,6 +639,9 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
               <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: order.ownerColor + "22", color: order.ownerColor, fontSize: "9px", fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{order.ownerAvatar}</span>
               {order.createdBy}
             </span>
+          </MetaInline>
+          <MetaInline icon="🤝" label="Account Manager">
+            <span style={{ fontWeight: 700 }}>{order.accountManager || order.createdBy}</span>
           </MetaInline>
           <MetaInline icon="📅" label="Created">{order.createdDate} <span style={{ color: "#888", fontWeight: 500 }}>· {order.createdAgo}</span></MetaInline>
           <MetaInline icon="📅" label="Due">
@@ -730,13 +734,14 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
       {/* Body: LEFT main (line items + communication) | RIGHT rail (workflow + actions) */}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: "14px", marginBottom: "14px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
-          <LineItemsSection order={order} accountManagers={ACCOUNT_MANAGERS} productionOwners={PRODUCTION_OWNERS} />
+          <LineItemsSection order={order} productionOwners={PRODUCTION_OWNERS} designNotes={designNotes} setDesignNotes={setDesignNotes} />
           <ShipmentsSection order={order} />
-          <CommunicationSection order={order} />
+          <CommunicationSection order={order} designNotes={designNotes} generalNote={generalNote} />
         </div>
         {/* right rail below */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           <WorkflowProgressCard order={order} boardStages={boardStages} />
+          <DesignNotesCard order={order} designNotes={designNotes} general={generalNote} setGeneral={setGeneralNote} />
           <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
             <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Actions</div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -1074,7 +1079,7 @@ function MetaInline({ icon, label, children }: any) {
 }
 
 // ─── Line items — each SKU with its image, files, and people assignment ───
-function LineItemsSection({ order, accountManagers, productionOwners }: { order: Order; accountManagers: string[]; productionOwners: string[] }) {
+function LineItemsSection({ order, productionOwners, designNotes, setDesignNotes }: { order: Order; productionOwners: string[]; designNotes: Record<string, string>; setDesignNotes: React.Dispatch<React.SetStateAction<Record<string, string>>> }) {
   // Send proofs for the whole order in one shot, or item-by-item.
   const [sendMode, setSendMode] = useState<"together" | "separate">("together");
   const n = order.lineItems.length;
@@ -1098,7 +1103,11 @@ function LineItemsSection({ order, accountManagers, productionOwners }: { order:
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {order.lineItems.map((l, i) => (
-          <LineItemCard key={l.id} line={l} index={i} orderId={order.orderId} ticketRef={order.ticketRef} accountManagers={accountManagers} productionOwners={productionOwners} contact={order.contact} showSend={sendMode === "separate"} />
+          <LineItemCard
+            key={l.id} line={l} index={i} orderId={order.orderId} ticketRef={order.ticketRef}
+            productionOwners={productionOwners} contact={order.contact} showSend={sendMode === "separate"}
+            note={designNotes[l.id] ?? ""} onNote={v => setDesignNotes(prev => ({ ...prev, [l.id]: v }))}
+          />
         ))}
       </div>
 
@@ -1118,6 +1127,7 @@ function layersFor(line: OrderLineItem): { key: string; label: string; tint: str
   if (fx.includes("white")) out.push({ key: "white", label: "White ink", tint: "#64748b" });
   if (fx.includes("foil")) out.push({ key: "foil", label: "Foil layer", tint: "#b45309" });
   if (fx.includes("uv")) out.push({ key: "uv", label: "Raised / spot UV", tint: "#7c3aed" });
+  if (line.sides === "S2") out.push({ key: "inside", label: "Inside / back side", tint: "#0f766e" });
   out.push({ key: "additional", label: "Additional", tint: "#6b7280" });
   return out;
 }
@@ -1148,28 +1158,43 @@ function ProductionNotes({ orderId, initial }: { orderId?: string; initial: stri
   );
 }
 
-function LineItemCard({ line, index, orderId, ticketRef, accountManagers, productionOwners, contact, showSend }: { line: OrderLineItem; index: number; orderId?: string; ticketRef?: string; accountManagers: string[]; productionOwners: string[]; contact: string; showSend: boolean }) {
-  const [am, setAm] = useState(line.accountManager ?? "");
+type DFile = { id: string; layer: string; label: string; url?: string; img?: boolean };
+let dfileSeq = 0;
+const isImgName = (s: string) => /\.(png|jpe?g|webp|gif)(\?|$)/i.test(s);
+function guessLayer(name: string): string {
+  const n = name.toLowerCase();
+  if (/white/.test(n)) return "white";
+  if (/foil/.test(n)) return "foil";
+  if (/uv/.test(n)) return "uv";
+  if (/spot|pantone/.test(n)) return "spot";
+  if (/back|inside/.test(n)) return "inside";
+  return "cmyk";
+}
+
+function LineItemCard({ line, index, orderId, ticketRef, productionOwners, contact, showSend, note, onNote }: { line: OrderLineItem; index: number; orderId?: string; ticketRef?: string; productionOwners: string[]; contact: string; showSend: boolean; note: string; onNote: (v: string) => void }) {
   const [prod, setProd] = useState(line.productionOwner ?? "");
   const [savedField, setSavedField] = useState<string | null>(null);
   const [proof, setProof] = useState<string>("none");
   const [, start] = useTransition();
-  const files = line.files ?? [];
   const layers = layersFor(line);
   const ps = PROOF_STATES[proof];
+  // Editable design-file list, grouped by layer. Seeded from the order's assets.
+  const [dfiles, setDfiles] = useState<DFile[]>(() => (line.files ?? []).map(f => ({ id: `f${dfileSeq++}`, layer: guessLayer(f.name), label: f.name, url: f.url, img: f.kind === "img" || isImgName(f.name) })));
+  const [addTo, setAddTo] = useState<string | null>(null);
+  const [aUrl, setAUrl] = useState(""); const [aLabel, setALabel] = useState("");
   const saveAssign = (field: "accountManager" | "productionOwner", value: string) => {
     if (!orderId || !ticketRef) return;
     start(async () => { await assignLineItem(orderId, ticketRef, index, field, value); setSavedField(field); setTimeout(() => setSavedField(f => (f === field ? null : f)), 1500); });
   };
-  // Match an uploaded file to a layer by filename keyword; base art = anything not tagged to a layer.
-  const fileForLayer = (key: string) => {
-    if (key === "additional") return undefined;
-    if (key === "cmyk") return files.find(f => !/(white|foil|uv|spot)/i.test(f.name));
-    return files.find(f => f.name.toLowerCase().includes(key));
+  const addFile = (layer: string) => {
+    if (!aUrl.trim() && !aLabel.trim()) { setAddTo(null); return; }
+    setDfiles(prev => [...prev, { id: `f${dfileSeq++}`, layer, label: aLabel.trim() || aUrl.trim(), url: aUrl.trim() || undefined, img: isImgName(aUrl) }]);
+    setAUrl(""); setALabel(""); setAddTo(null);
   };
 
   return (
     <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "14px 16px" }}>
+      {/* header: pic + product options (grouped, compact) + price */}
       <div style={{ display: "flex", gap: "14px" }}>
         <LineThumb src={line.thumbnailUrl} alt={line.productName} />
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -1185,6 +1210,7 @@ function LineItemCard({ line, index, orderId, ticketRef, accountManagers, produc
           </div>
           <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "8px" }}>
             {line.widthIn && line.heightIn && <Pill>Size: {line.widthIn}" × {line.heightIn}"</Pill>}
+            <Pill>Qty: {line.quantity.toLocaleString()}</Pill>
             {line.sides && <Pill>Sides: {line.sides === "S1" ? "Single" : "Double"}</Pill>}
             {line.colorMode && <Pill>Color: {line.colorMode}</Pill>}
             {(line.specs ?? []).map(s => <Pill key={s.label}>{s.label}: {s.value}</Pill>)}
@@ -1194,46 +1220,97 @@ function LineItemCard({ line, index, orderId, ticketRef, accountManagers, produc
         </div>
       </div>
 
-      {/* Design files, one slot per finish layer this item needs */}
-      <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
-        <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "7px" }}>Design files</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "7px" }}>
-          {layers.map(ly => {
-            const f = fileForLayer(ly.key);
-            return (
-              <div key={ly.key} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "7px 9px", border: "1px solid var(--preview-border)", borderRadius: "8px", background: "var(--preview-surface)" }}>
-                <span style={{ width: "8px", height: "8px", borderRadius: "2px", background: ly.tint, flexShrink: 0 }} />
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--preview-text)" }}>{ly.label}</div>
-                  {f ? (
-                    <div style={{ fontSize: "10.5px", color: "#1e40af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>🖼️ {f.name}</div>
-                  ) : (
-                    <button style={{ background: "transparent", border: "none", padding: 0, color: "#888", fontSize: "10.5px", cursor: "pointer" }} title="Upload the file for this layer">＋ Upload</button>
+      {/* body: LEFT design files (by layer, multi-file) | RIGHT proof + item design notes */}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr)", gap: "16px", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
+        {/* design files */}
+        <div>
+          <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Design files</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {layers.map(ly => {
+              const mine = dfiles.filter(f => f.layer === ly.key);
+              return (
+                <div key={ly.key}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "3px" }}>
+                    <span style={{ width: "8px", height: "8px", borderRadius: "2px", background: ly.tint, flexShrink: 0 }} />
+                    <span style={{ fontSize: "11px", fontWeight: 700 }}>{ly.label}</span>
+                    <span style={{ fontSize: "10px", color: "#aaa" }}>{mine.length || ""}</span>
+                    <button onClick={() => { setAddTo(addTo === ly.key ? null : ly.key); setAUrl(""); setALabel(""); }} style={{ marginLeft: "auto", background: "transparent", border: "none", color: ACCENT, fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>＋ add</button>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {mine.map(f => (
+                      <a key={f.id} href={f.url || "#"} target="_blank" rel="noreferrer" title={f.label} style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "3px 8px 3px 3px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "7px", textDecoration: "none", maxWidth: "220px" }}>
+                        {f.img && f.url
+                          ? <img src={f.url} alt="" style={{ width: "28px", height: "28px", borderRadius: "5px", objectFit: "cover" }} />
+                          : <span style={{ width: "28px", height: "28px", borderRadius: "5px", background: "var(--preview-surface-2)", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: "13px" }}>{f.img ? "🖼️" : "🔗"}</span>}
+                        <span style={{ fontSize: "11px", color: "var(--preview-text)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{f.label}</span>
+                      </a>
+                    ))}
+                    {mine.length === 0 && addTo !== ly.key && <span style={{ fontSize: "10.5px", color: "#bbb" }}>—</span>}
+                  </div>
+                  {addTo === ly.key && (
+                    <div style={{ display: "flex", gap: "5px", marginTop: "5px", flexWrap: "wrap" }}>
+                      <input autoFocus value={aUrl} onChange={e => setAUrl(e.target.value)} placeholder="Google Drive link or image URL" style={{ flex: "1 1 160px", padding: "5px 8px", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11px", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+                      <input value={aLabel} onChange={e => setALabel(e.target.value)} placeholder="What is it? (label)" style={{ width: "130px", padding: "5px 8px", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11px", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+                      <button onClick={() => addFile(ly.key)} style={{ padding: "5px 10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "6px", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>Add</button>
+                    </div>
                   )}
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </div>
+
+        {/* proof + per-item design notes (on the side, not the bottom) */}
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div>
+            <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "3px" }}>Proof</div>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: ps.dot }} />
+              <select value={proof} onChange={e => setProof(e.target.value)} style={{ flex: 1, padding: "5px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>
+                {Object.entries(PROOF_STATES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
+            </div>
+            {proof === "changes" && <div style={{ fontSize: "10.5px", color: "#dc2626", marginTop: "3px" }}>Customer requested changes — see notes below.</div>}
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "3px" }}>📝 Design notes (item {index + 1})</div>
+            <textarea value={note} onChange={e => onNote(e.target.value)} placeholder="Notes for this item's artwork / proof…" style={{ width: "100%", minHeight: "56px", padding: "8px 10px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+          </div>
         </div>
       </div>
 
-      {/* Proof status + assignment + per-item send */}
+      {/* footer: designer + send */}
       <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
-          <span style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Proof</span>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: ps.dot }} />
-            <select value={proof} onChange={e => setProof(e.target.value)} style={{ padding: "5px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>
-              {Object.entries(PROOF_STATES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-            </select>
-          </div>
-        </div>
-        <PersonSelect icon="🎨" label="Account Manager" value={am} saved={savedField === "accountManager"} onChange={v => { setAm(v); saveAssign("accountManager", v); }} options={accountManagers} />
         <PersonSelect icon="🏭" label="Designer / Production" value={prod} saved={savedField === "productionOwner"} onChange={v => { setProd(v); saveAssign("productionOwner", v); }} options={productionOwners} />
         {showSend && (
           <button onClick={() => { setProof("sent"); alert(`Proof for “${line.productName}” would be sent to ${contact}.\n\n(Connect email / customer portal to send for real.)`); }} style={{ marginLeft: "auto", padding: "7px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: "7px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>📤 Send this proof</button>
         )}
       </div>
+    </div>
+  );
+}
+
+// Right-rail rollup: a summary of every item's design note + one general note.
+function DesignNotesCard({ order, designNotes, general, setGeneral }: { order: Order; designNotes: Record<string, string>; general: string; setGeneral: (v: string) => void }) {
+  const perItem = order.lineItems.map((l, i) => ({ i, name: l.productName, note: (designNotes[l.id] ?? "").trim() })).filter(x => x.note);
+  return (
+    <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
+      <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>📝 Design Notes</div>
+      {perItem.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "12px" }}>
+          {perItem.map(x => (
+            <div key={x.i} style={{ fontSize: "12px" }}>
+              <span style={{ fontWeight: 700 }}>Item {x.i + 1} · {x.name}</span>
+              <div style={{ color: "var(--preview-text)", opacity: 0.85, marginTop: "1px" }}>{x.note}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: "11.5px", color: "#aaa", marginBottom: "12px" }}>Per-item notes you add will summarize here.</div>
+      )}
+      <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>General note</div>
+      <textarea value={general} onChange={e => setGeneral(e.target.value)} placeholder="Anything that applies to the whole order…" style={{ width: "100%", minHeight: "50px", padding: "8px 10px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+      <div style={{ fontSize: "10px", color: "#aaa", marginTop: "6px" }}>These notes also show in the communication thread below.</div>
     </div>
   );
 }
@@ -1260,8 +1337,16 @@ function LineThumb({ src, alt }: { src?: string; alt?: string }) {
 }
 
 // ─── Communication — full per-order history + send/update actions ───
-function CommunicationSection({ order }: { order: Order }) {
-  const comms = order.communications ?? [];
+function CommunicationSection({ order, designNotes, generalNote }: { order: Order; designNotes?: Record<string, string>; generalNote?: string }) {
+  const baseComms = order.communications ?? [];
+  // Surface design notes as internal-note entries at the top of the thread.
+  const noteEntries: CommEntry[] = [];
+  order.lineItems.forEach((l, i) => {
+    const t = (designNotes?.[l.id] ?? "").trim();
+    if (t) noteEntries.push({ channel: "note", author: "Design", at: "just now", subject: `Design note · Item ${i + 1} (${l.productName})`, body: t } as CommEntry);
+  });
+  if ((generalNote ?? "").trim()) noteEntries.push({ channel: "note", author: "Design", at: "just now", subject: "General design note", body: (generalNote ?? "").trim() } as CommEntry);
+  const comms = [...noteEntries, ...baseComms];
   const iconFor = (c: CommEntry["channel"]) => {
     switch (c) {
       case "email_in": return { icon: "✉", tint: "#3b82f6", label: "Email in" };

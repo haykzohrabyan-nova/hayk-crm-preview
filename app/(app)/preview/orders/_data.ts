@@ -554,6 +554,7 @@ export async function loadOrders(): Promise<Order[]> {
       createdBy: rep ?? "—",
       ownerAvatar: initials(rep),
       ownerColor: colorFor(rep),
+      accountManager: (spec<string>(o, "sales_owner") ?? spec<string>(o, "account_manager") ?? rep) ?? undefined,
       title: t.title || o.title || "Order",
       lineItems,
       total,
