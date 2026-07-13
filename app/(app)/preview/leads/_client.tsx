@@ -1583,7 +1583,7 @@ function AddLeadModal({ draft, setDraft, onClose, onSave }: { draft: any; setDra
       source: (draft.source as Lead["source"]) || "Instagram",
       potentialMin: 1000, potentialMax: 5000,
       stage: assignedToSales ? "Qualified" : "New Lead",
-      priority: draft.urgency === "high" ? "High" : draft.urgency === "medium" ? "Medium" : "Low",
+      priority: (["High", "Medium", "Low"].includes(draft.urgency) ? draft.urgency : "Medium") as Priority,
       tags: [],
       phone: draft.phone || "",
       email: draft.email || "",
@@ -1677,7 +1677,9 @@ function AddLeadModal({ draft, setDraft, onClose, onSave }: { draft: any; setDra
             <Field label="Urgency" icon="⏱">
               <select value={draft.urgency} onChange={e => set("urgency", e.target.value)} style={inp}>
                 <option value="">Select urgency</option>
-                <option>Rush (this week)</option><option>Standard (this month)</option><option>Flexible (planning ahead)</option>
+                <option value="High">High — rush, this week</option>
+                <option value="Medium">Medium — standard, this month</option>
+                <option value="Low">Low — flexible, planning ahead</option>
               </select>
             </Field>
             <Field label="Has Artwork?" icon="🖼">
