@@ -9,6 +9,7 @@ import {
   setOrderStatus, setOrderPriority, assignLineItem,
   setProductionNotes, recordPayment, markCompleted, cancelOrder,
 } from "./_actions";
+import { sendReadyToShipSms } from "./_comms";
 import {
   passportCore, fmtMoney, daysPastDue,
   STATUS_COLORS, PAY_COLORS, CHIPS, th, td,
@@ -1243,7 +1244,13 @@ function ShipmentsSection({ order }: { order: Order }) {
         <ShipmentSetupModal
           contact={order.contact}
           onClose={() => setSetup(false)}
-          onConfirm={(bx, notify) => { setBoxes(bx); setStep(notify.sms || notify.email ? 1 : 0); setMethod("Pending customer"); setSetup(false); }}
+          onConfirm={(bx, notify) => {
+            setBoxes(bx); setStep(notify.sms || notify.email ? 1 : 0); setMethod("Pending customer"); setSetup(false);
+            if (notify.sms) {
+              sendReadyToShipSms({ orderRef: `ORD-${order.refId}`, company: order.company || order.contact })
+                .then(r => alert(r.ok ? `✅ Text sent!\n${r.detail}` : `❌ Text failed\n${r.detail}`));
+            }
+          }}
         />
       )}
     </div>
