@@ -708,14 +708,9 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         <ActionBtn icon="📷" label="Open IG" />
       </div>
 
-      {/* Contact + project interest, right under the reach-out buttons */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "14px" }}>
-        <PanelCard title="Contact Information">
-          <SmallRow icon="📱" value={lead.phone} sub="Mobile" />
-          <SmallRow icon="✉" value={lead.email} sub="Email" />
-          {lead.instagram && <SmallRow icon="📷" value={lead.instagram} sub="Instagram" />}
-          {lead.website && <SmallRow icon="🌐" value={lead.website} sub="Website" />}
-        </PanelCard>
+      {/* Project interest, under the reach-out buttons. (Contact info lives in the
+          Call / SMS / Email / Open IG buttons — no separate card needed.) */}
+      <div style={{ marginBottom: "14px" }}>
         <PanelCard title="Project Interest">
           <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginBottom: "3px" }}>Products</div>
           <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "var(--preview-text)" }}>
