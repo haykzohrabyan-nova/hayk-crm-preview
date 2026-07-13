@@ -637,9 +637,8 @@ function sourceIcon(source: string) {
 function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose: () => void; onViewFull: () => void; onEdit: (id: string) => void }) {
   return (
     <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", padding: "16px", height: "fit-content", position: "sticky", top: "16px" }}>
-      {/* Back / Edit / Route */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-        <button onClick={onClose} style={{ background: "transparent", border: "none", color: "var(--preview-text-muted)", fontSize: "12px", cursor: "pointer" }}>← Back to Leads</button>
+      {/* Edit / Route — close via the X (no redundant Back button). */}
+      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: "12px" }}>
         <div style={{ display: "flex", gap: "6px" }}>
           <button
             onClick={() => onEdit(lead.id)}
@@ -748,30 +747,7 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         </PanelCard>
       </div>
 
-      {/* Lead Score with AI breakdown */}
-      <PanelCard title="Lead Score">
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
-          <div style={{ display: "flex", gap: "1px" }}>
-            {Array.from({ length: 5 }).map((_, i) => {
-              const stars = Math.round(lead.leadScore / 20);
-              return <span key={i} style={{ color: i < stars ? "#fbbf24" : "var(--preview-text-faint)", fontSize: "16px" }}>★</span>;
-            })}
-          </div>
-          <div style={{ display: "flex", alignItems: "baseline", gap: "5px", marginLeft: "auto" }}>
-            <span style={{ fontSize: "22px", fontWeight: 800, color: "#4ade80" }}>{lead.leadScore}</span>
-            <span style={{ fontSize: "11px", color: "#4ade80", fontWeight: 600 }}>{lead.leadScore >= 80 ? "Excellent" : lead.leadScore >= 60 ? "Good" : "Needs work"}</span>
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-          {lead.leadScoreBreakdown.filter(b => b.on).slice(0, 5).map(b => (
-            <div key={b.label} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px" }}>
-              <span style={{ color: "#4ade80" }}>✓</span>
-              <span style={{ color: "var(--preview-text)" }}>{b.label}</span>
-              <span style={{ marginLeft: "auto", color: "var(--preview-text-muted)", fontSize: "10.5px" }}>+{b.points}</span>
-            </div>
-          ))}
-        </div>
-      </PanelCard>
+      {/* Lead Score removed — placeholder until real scoring exists. */}
 
       {/* Next Action */}
       <div style={{ background: "rgba(255,93,46,0.08)", border: `1px solid ${ACCENT}44`, borderRadius: "8px", padding: "10px 12px", marginTop: "10px" }}>
