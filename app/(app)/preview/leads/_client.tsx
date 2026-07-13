@@ -768,18 +768,7 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         <button style={{ padding: "6px 12px", fontSize: "11.5px", fontWeight: 600, background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: "8px", cursor: "pointer" }}>🚫 Reject lead</button>
       </div>
 
-      {/* AI Summary */}
-      <PanelCard title="AI Summary" beta>
-        <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "11.5px", color: "var(--preview-text)", lineHeight: 1.6 }}>
-          {lead.notes.split(". ").filter(Boolean).slice(0, 4).map((s, i) => <li key={i}>{s.replace(/\.$/, "")}.</li>)}
-        </ul>
-        {lead.suggestedQuestion && (
-          <div style={{ marginTop: "8px", padding: "8px", background: "rgba(139,92,246,0.08)", border: "1px solid rgba(139,92,246,0.3)", borderRadius: "6px" }}>
-            <div style={{ fontSize: "10px", color: "#a78bfa", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Suggested first question</div>
-            <div style={{ fontSize: "11.5px", color: "var(--preview-text)", marginTop: "3px", fontStyle: "italic" }}>"{lead.suggestedQuestion}"</div>
-          </div>
-        )}
-      </PanelCard>
+      {/* AI Summary removed — comes back when AI is actually wired. */}
 
       {/* Quotes + Previous Orders */}
       {(lead.quotes.length > 0 || lead.previousOrdersList.length > 0) && (
