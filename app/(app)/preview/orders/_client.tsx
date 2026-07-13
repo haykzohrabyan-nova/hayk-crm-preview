@@ -691,14 +691,6 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
         </div>
         {/* right rail below */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "14px 16px" }}>
-            <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>Production stage</div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: ACCENT }} />
-              <span style={{ fontSize: "13.5px", fontWeight: 800 }}>{order.stageName ?? order.status}</span>
-            </div>
-            <button onClick={() => setTab("workflow")} style={{ marginTop: "10px", width: "100%", padding: "7px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>View full workflow →</button>
-          </div>
           <DesignNotesCard order={order} designNotes={designNotes} generalNotes={generalNotes} onAddGeneral={v => setGeneralNotes(prev => [...prev, v])} />
           <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
             <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Actions</div>
@@ -1355,7 +1347,7 @@ function LineItemCard({ line, index, orderId, ticketRef, productionOwners, conta
       </div>
 
       {/* body: LEFT design files (by layer, multi-file) | RIGHT proof + item design notes */}
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.5fr) minmax(0,1fr)", gap: "16px", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) minmax(0,1fr)", gap: "20px", maxWidth: "760px", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
         {/* design files */}
         <div>
           <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Design files</div>
