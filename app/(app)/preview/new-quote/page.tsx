@@ -273,9 +273,9 @@ export default function NewQuotePreview() {
   // Step 1: Job overview
   const [quoteName, setQuoteName] = useState(prefillName ? `${prefillName} — Quote` : "Trap Snacks Labels + Boxes");
   const [priority, setPriority] = useState<"Normal" | "Rush" | "Critical">("Normal");
-  const [dueDate, setDueDate] = useState("2026-07-08");
+  const [dueDate, setDueDate] = useState(() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); });
   const [salesRep, setSalesRep] = useState("Ernesto");
-  const [notesToProduction, setNotesToProduction] = useState("Customer needs first article ASAP.\nMatch previous order.");
+  const [notesToProduction, setNotesToProduction] = useState("");
 
   // Step 2: Line items
   const [lineItems, setLineItems] = useState<LineItem[]>([{ id: "l1", quantity: 1000, finishingIds: [], specialEffectIds: [] }]);
@@ -1266,7 +1266,7 @@ function Step1Info(props: any) {
           </div>
         </FieldWrap>
         <FieldWrap label="Due Date">
-          <input type="date" value={props.dueDate} onChange={e => props.setDueDate(e.target.value)} style={inp} />
+          <input type="date" min={new Date().toISOString().slice(0, 10)} value={props.dueDate} onChange={e => props.setDueDate(e.target.value)} style={inp} />
         </FieldWrap>
       </div>
 

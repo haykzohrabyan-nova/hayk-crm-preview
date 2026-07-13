@@ -913,6 +913,16 @@ function DetailView({ lead, onBack, catalog = [], team = [] }: { lead: Lead; onB
             <span>🌿 {lead.industry}</span>
             <span>⏱ Received {lead.createdAgo}</span>
           </div>
+          {/* Contact details — merged in so the block isn't half-empty */}
+          <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid var(--preview-border)" }}>
+            <SmallRow icon="📱" value={lead.phone} sub="Mobile" copyable onCopy={() => copyToClipboard(lead.phone)} />
+            <SmallRow icon="✉" value={lead.email} sub="Email" copyable onCopy={() => copyToClipboard(lead.email)} />
+            {lead.instagram && <SmallRow icon="📷" value={lead.instagram} sub="Instagram" copyable onCopy={() => copyToClipboard(lead.instagram!)} />}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "12px" }}>
+              <MiniField label="Decision Maker?" value={lead.decisionMaker || "Unknown"} valueColor={lead.decisionMaker === "Yes" ? "#4ade80" : undefined} />
+              <MiniField label="Returning Customer?" value={lead.returningCustomer ? "Yes" : "No"} />
+            </div>
+          </div>
         </div>
 
         {/* Right — Lead Status stage flow */}
@@ -924,32 +934,8 @@ function DetailView({ lead, onBack, catalog = [], team = [] }: { lead: Lead; onB
         </div>
       </div>
 
-      {/* 3-column grid: Contact / Product Interests / Activity Timeline */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.1fr 1.3fr", gap: "14px", marginBottom: "18px" }}>
-        {/* Contact + Company */}
-        <div>
-          <PanelCard title="Contact Information" big>
-            <SmallRow icon="📱" value={lead.phone} sub="Mobile" copyable onCopy={() => copyToClipboard(lead.phone)} />
-            <SmallRow icon="✉" value={lead.email} sub="Email" copyable onCopy={() => copyToClipboard(lead.email)} />
-            {lead.instagram && <SmallRow icon="📷" value={lead.instagram} sub="Instagram" copyable onCopy={() => copyToClipboard(lead.instagram!)} />}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "12px" }}>
-              <MiniField label="First Name" value={lead.name.split(" ")[0]} />
-              <MiniField label="Last Name" value={lead.name.split(" ").slice(1).join(" ")} />
-              <MiniField label="Decision Maker?" value={lead.decisionMaker || "Unknown"} valueColor={lead.decisionMaker === "Yes" ? "#4ade80" : undefined} />
-              <MiniField label="Returning Customer?" value={lead.returningCustomer ? "Yes" : "No"} />
-            </div>
-          </PanelCard>
-
-          <div style={{ marginTop: "12px" }}>
-            <PanelCard title="Company Information" big>
-              <MiniField label="Company" value={lead.company} />
-              <MiniField label="Industry" value={`🌿 ${lead.industry}`} />
-              {lead.website && <MiniField label="Website / Social" value={lead.website} valueColor={ACCENT} />}
-            </PanelCard>
-          </div>
-        </div>
-
-        {/* Product Interests + Lead Summary */}
+      {/* Product Interests + Company (2 columns) */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.3fr 1fr", gap: "14px", marginBottom: "18px" }}>
         <div>
           <PanelCard title={`Product Interests · ${products.length} item${products.length !== 1 ? "s" : ""}`} big>
             {products.map(p => (
@@ -985,58 +971,14 @@ function DetailView({ lead, onBack, catalog = [], team = [] }: { lead: Lead; onB
               <button onClick={() => setAddingProduct(true)} style={{ width: "100%", padding: "8px", background: "var(--preview-chip-bg)", border: "1px dashed var(--preview-border-strong)", borderRadius: "8px", color: "var(--preview-text-muted)", fontSize: "12px", cursor: "pointer" }}>+ Add Product Interest</button>
             )}
           </PanelCard>
-
-          <div style={{ marginTop: "12px" }}>
-            <PanelCard title="Lead Summary" big>
-              <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginBottom: "6px", fontWeight: 700 }}>Notes from SDR</div>
-              <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12.5px", color: "var(--preview-text)", lineHeight: 1.7 }}>
-                {lead.notes.split(". ").filter(Boolean).map((s, i) => <li key={i}>{s.replace(/\.$/, "")}.</li>)}
-              </ul>
-              <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginTop: "12px", marginBottom: "6px", fontWeight: 700 }}>Tags</div>
-              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
-                {tags.map(t => (
-                  <span key={t} style={{ padding: "3px 9px", background: "var(--preview-chip-bg-strong)", color: "var(--preview-text)", fontSize: "11px", borderRadius: "5px", fontWeight: 600, display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    {t}
-                    <span onClick={() => setTags(tags.filter(x => x !== t))} style={{ cursor: "pointer", color: "var(--preview-text-faint)", marginLeft: "2px" }}>✕</span>
-                  </span>
-                ))}
-                {addingTag ? (
-                  <input autoFocus value={newTag} onChange={e => setNewTag(e.target.value)} onBlur={addTag}
-                    onKeyDown={e => { if (e.key === "Enter") addTag(); if (e.key === "Escape") { setNewTag(""); setAddingTag(false); } }}
-                    placeholder="New tag"
-                    style={{ padding: "3px 8px", fontSize: "11px", background: "var(--preview-chip-bg-strong)", border: `1px solid ${ACCENT}55`, borderRadius: "5px", color: "var(--preview-text)", outline: "none", width: "120px" }} />
-                ) : (
-                  <span onClick={() => setAddingTag(true)} style={{ padding: "3px 9px", background: "transparent", color: ACCENT, fontSize: "11px", borderRadius: "5px", fontWeight: 700, cursor: "pointer" }}>+ Add Tag</span>
-                )}
-              </div>
-            </PanelCard>
-          </div>
         </div>
 
-        {/* Activity Timeline + Nova AI */}
-        <div>
-          <PanelCard title="Activity Timeline" big rightLink="View all">
-            {lead.activityTimeline.length === 0 ? (
-              <div style={{ padding: "18px 0", fontSize: "12px", color: "var(--preview-text-muted)", textAlign: "center" }}>No activity logged yet.</div>
-            ) : (
-              <div style={{ position: "relative" }}>
-                <div style={{ position: "absolute", left: "14px", top: "8px", bottom: "8px", width: "2px", background: "var(--preview-chip-bg-strong)" }} />
-                {lead.activityTimeline.map((a, i) => (
-                  <div key={i} style={{ display: "flex", gap: "10px", padding: "8px 0", position: "relative", zIndex: 1 }}>
-                    <div style={{ width: "30px", height: "30px", borderRadius: "50%", background: a.tint + "22", color: a.tint, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "13px", flexShrink: 0, border: "2px solid #1c1c1e" }}>{a.icon}</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: "6px" }}>
-                        <span style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)" }}>{a.title}</span>
-                        <span style={{ fontSize: "10.5px", color: "var(--preview-text-muted)", whiteSpace: "nowrap" }}>{a.time}</span>
-                      </div>
-                      {a.sub && <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginTop: "1px" }}>{a.sub}</div>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </PanelCard>
-        </div>
+        {/* Company */}
+        <PanelCard title="Company Information" big>
+          <MiniField label="Company" value={lead.company} />
+          <MiniField label="Industry" value={`🌿 ${lead.industry}`} />
+          {lead.website && <MiniField label="Website / Social" value={lead.website} valueColor={ACCENT} />}
+        </PanelCard>
       </div>
 
       {/* Team Notes + Files & Attachments (2 columns) */}
