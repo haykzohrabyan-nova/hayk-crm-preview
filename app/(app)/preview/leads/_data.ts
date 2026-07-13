@@ -131,6 +131,14 @@ type LeadRow = {
   updated_at: string | null;
 };
 
+// Short date "Jul 11".
+function fmtShort(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-US", { month: "short", day: "numeric" });
+}
+
 // Compact duration since an ISO timestamp: "3d" / "12h" / "40m".
 function fmtDur(iso: string | null | undefined, now = Date.now()): string {
   if (!iso) return "—";
