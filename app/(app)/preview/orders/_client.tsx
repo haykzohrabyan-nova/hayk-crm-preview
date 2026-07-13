@@ -595,8 +595,6 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
   const [status, setStatus] = useState<string>(order.stageName ?? order.status);
   const [priority, setPriority] = useState(order.priority);
   const [showCustomer, setShowCustomer] = useState(false);
-  const [showMore, setShowMore] = useState(false);
-  const [moreTab, setMoreTab] = useState<"quotes" | "activity" | "files">("quotes");
   const [showPay, setShowPay] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
@@ -618,10 +616,6 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
   // Per-item people rosters (real): account managers + production stations.
   const prodFromBoard = boardStages.map(s => s.name).filter(n => ["Arsen", "Hrach", "Production", "Apparel"].includes(n));
   const PRODUCTION_OWNERS = prodFromBoard.length ? prodFromBoard : ["Arsen", "Hrach", "Production", "Apparel"];
-
-  const timeline: TimelineEvent[] = order.timeline
-    ? order.timeline.map(t => ({ icon: t.icon, tint: t.tint, title: t.title, sub: t.sub, at: t.at, ref: t.ref })).reverse()
-    : buildTimeline(order);
 
   const payPill = PAY_COLORS[order.payment];
 
@@ -736,28 +730,6 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
         </div>
       </div>
 
-      {/* Lower — collapsible Quote History / Activity / Files (secondary info) */}
-      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", marginBottom: "14px", overflow: "hidden" }}>
-        <button onClick={() => setShowMore(v => !v)} style={{ width: "100%", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "14px 20px", background: "transparent", border: "none", cursor: "pointer", fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)" }}>
-          <span>Quote history · activity timeline · files</span>
-          <span style={{ color: "#888" }}>{showMore ? "▲ Hide" : "▼ Show"}</span>
-        </button>
-        {showMore && (
-          <div style={{ borderTop: "1px solid var(--preview-border)" }}>
-            <div style={{ display: "flex", gap: "20px", padding: "0 20px", borderBottom: "1px solid var(--preview-border)" }}>
-              {([["quotes", `Quote History (${order.quoteHistory?.length ?? 0})`], ["activity", `Activity Timeline (${timeline.length})`], ["files", `Files (${order.attachmentsCount})`]] as const).map(([k, lbl]) => {
-                const active = moreTab === k;
-                return <button key={k} onClick={() => setMoreTab(k)} style={{ background: "transparent", border: "none", padding: "12px 4px", marginBottom: "-1px", borderBottom: active ? `2px solid ${ACCENT}` : "2px solid transparent", color: active ? "var(--preview-text)" : "#666", fontSize: "12.5px", fontWeight: active ? 700 : 500, cursor: "pointer" }}>{lbl}</button>;
-              })}
-            </div>
-            <div style={{ padding: "18px 20px" }}>
-              {moreTab === "quotes" && <QuoteHistoryTab order={order} />}
-              {moreTab === "activity" && <ActivityTab events={timeline} />}
-              {moreTab === "files" && <FilesTab order={order} />}
-            </div>
-          </div>
-        )}
-      </div>
       </>
       )}
 
