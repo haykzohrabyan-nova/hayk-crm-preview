@@ -1454,6 +1454,9 @@ function NewQuoteCustomerModal({ onClose }: { onClose: () => void }) {
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
   const [newEmail, setNewEmail] = useState("");
+  const [newCompany, setNewCompany] = useState("");
+  const [newSource, setNewSource] = useState("");
+  const [newNote, setNewNote] = useState("");
   const seq = useRef(0);
 
   // Debounced live search of the real customer database.
@@ -1476,7 +1479,7 @@ function NewQuoteCustomerModal({ onClose }: { onClose: () => void }) {
   const pick = (c: CustomerHit) => go({ customerId: c.id, name: c.name, phone: c.phone || "", email: c.email || "", company: c.company || "" });
   const createAndGo = () => {
     if (!newName.trim() || !newPhone.trim()) return;
-    go({ name: newName.trim(), phone: newPhone.trim(), email: newEmail.trim(), newCustomer: "1" });
+    go({ name: newName.trim(), phone: newPhone.trim(), email: newEmail.trim(), company: newCompany.trim(), source: newSource, note: newNote.trim(), newCustomer: "1" });
   };
 
   return (
@@ -1525,15 +1528,27 @@ function NewQuoteCustomerModal({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Name *
-                <input autoFocus value={newName} onChange={e => setNewName(e.target.value)} placeholder="Customer or company name" style={qFieldStyle} />
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", maxHeight: "52vh", overflowY: "auto" }}>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Full name *
+                <input autoFocus value={newName} onChange={e => setNewName(e.target.value)} placeholder="Customer's full name" style={qFieldStyle} />
               </label>
               <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Phone *
                 <input value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="(555) 000-0000" style={qFieldStyle} />
               </label>
-              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Email (optional)
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Company
+                <input value={newCompany} onChange={e => setNewCompany(e.target.value)} placeholder="Company name (optional)" style={qFieldStyle} />
+              </label>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Email
                 <input value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="you@example.com" style={qFieldStyle} />
+              </label>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Source
+                <select value={newSource} onChange={e => setNewSource(e.target.value)} style={{ ...qFieldStyle, cursor: "pointer" }}>
+                  <option value="">Select source</option>
+                  <option>Instagram</option><option>Website</option><option>Referral</option><option>Email</option><option>Phone</option><option>Walk-in</option>
+                </select>
+              </label>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "var(--preview-text-muted)", textTransform: "uppercase" }}>Note about the customer
+                <textarea value={newNote} onChange={e => setNewNote(e.target.value)} placeholder="e.g. referral from Jane · friend of the owner · handle with care…" style={{ ...qFieldStyle, minHeight: "56px", resize: "vertical", fontFamily: "inherit" }} />
               </label>
             </div>
             <div style={{ marginTop: "16px", display: "flex", gap: "8px" }}>
