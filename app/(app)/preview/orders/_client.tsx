@@ -58,6 +58,8 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
   // workflow. Each order filters by its actual stage (stageName).
   const stageOf = (o: Order): string => o.stageName ?? o.status;
   const statusOptions = boardStages.map(s => s.name).filter(Boolean);
+  // Closed/fulfilled orders are hidden by default (still reachable via the Status filter).
+  const CLOSED_STAGES = useMemo(() => new Set(["Finished: Fulfilled"]), []);
   // Multi-select status filter (empty = All). Replaces the old single-select tab row.
   const [statusSel, setStatusSel] = useState<Set<string>>(new Set());
   const [openMenu, setOpenMenu] = useState<"status" | "filters" | null>(null);
@@ -97,8 +99,10 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
 
   const filtered = useMemo(() => {
     let out = orders;
-    // Multi-select status by real board stage: empty = All.
+    // Multi-select status by real board stage. Empty = all ACTIVE orders; closed
+    // (Finished: Fulfilled) is hidden by default until the user selects it.
     if (statusSel.size > 0) out = out.filter(o => statusSel.has(stageOf(o)));
+    else out = out.filter(o => !CLOSED_STAGES.has(stageOf(o)));
     if (teamFilter) out = out.filter(o => o.createdBy === teamFilter);
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -128,6 +132,33 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
     return m;
   }, [orders]);
   const totalCount = orders.length;
+
+  // Per-person saved default view — remembers filters/columns/layout in this browser
+  // until the user saves a new one. (Becomes truly per-account once logins are wired.)
+  const VIEW_KEY = "bazaar-orders-default-view-v1";
+  const [viewSaved, setViewSaved] = useState(false);
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current) return;
+    restored.current = true;
+    try {
+      const raw = localStorage.getItem(VIEW_KEY);
+      if (!raw) return;
+      const v = JSON.parse(raw);
+      if (Array.isArray(v.statusSel)) setStatusSel(new Set(v.statusSel));
+      if (Array.isArray(v.chips)) setChips(new Set(v.chips as ChipKey[]));
+      if (v.view === "table" || v.view === "kanban") setView(v.view);
+      if (v.teamFilter === null || typeof v.teamFilter === "string") setTeamFilter(v.teamFilter);
+      if (v.dateRange) setDateRange(v.dateRange);
+    } catch { /* ignore bad cache */ }
+  }, []);
+  const saveDefaultView = () => {
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify({ statusSel: Array.from(statusSel), chips: Array.from(chips), view, teamFilter, dateRange }));
+      setViewSaved(true); setTimeout(() => setViewSaved(false), 1800);
+    } catch { /* storage unavailable */ }
+  };
+  const hasSavedView = typeof window !== "undefined" && !!localStorage.getItem(VIEW_KEY);
 
   const detailOrder = detailId ? orders.find(o => o.refId === detailId) : null;
 
@@ -264,12 +295,13 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
                 <option value="all">All team members</option>
                 {teamMembers.map(m => <option key={m}>{m}</option>)}
               </select>
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search orders..." style={{ ...CONTROL, display: "block", cursor: "text", width: "230px", fontWeight: 500 }} />
+              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Search orders..." style={{ ...CONTROL, display: "block", cursor: "text", width: "200px", fontWeight: 500 }} />
+              <button onClick={saveDefaultView} title="Remember these filters, columns and layout as your default whenever you open Orders" style={{ ...CONTROL, fontWeight: 600, whiteSpace: "nowrap", background: viewSaved ? "#dcfce7" : "var(--preview-surface)", color: viewSaved ? "#166534" : "var(--preview-text)", borderColor: viewSaved ? "#86efac" : "var(--preview-border)" }}>{viewSaved ? "✓ Saved as default" : hasSavedView ? "★ Update my default" : "★ Save as my default view"}</button>
             </div>
           </div>
 
           {view === "kanban" ? (
-            <KanbanBoard orders={filtered} boardStages={boardStages} onCardClick={id => setDetailId(id)} />
+            <KanbanBoard orders={filtered} boardStages={statusSel.size > 0 ? boardStages.filter(s => statusSel.has(s.name)) : boardStages.filter(s => !CLOSED_STAGES.has(s.name))} onCardClick={id => setDetailId(id)} />
           ) : (
           /* Orders table */
           <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", overflowX: "auto" }}>
