@@ -327,7 +327,7 @@ function OrderRow({ order, idx = 0, expanded, onToggle, onView }: { order: Order
     <>
       <tr onClick={onToggle} style={{
         borderBottom: "1px solid var(--preview-border)",
-        background: overdue ? "#fef2f2" : expanded ? "#fff7ed" : zebra,
+        background: expanded ? "var(--preview-surface-2)" : zebra,
         cursor: "pointer",
         borderLeft: overdue ? "3px solid #dc2626" : "3px solid transparent",
       }}>
@@ -394,11 +394,17 @@ function OrderRow({ order, idx = 0, expanded, onToggle, onView }: { order: Order
         </td>
         <td style={td}>
           {(() => { const c = stageColor(order.stageKind); return (
-            <span title={`Live production stage${order.stageName ? ` — ${order.stageName}` : ""}`} style={{ padding: "2px 8px", background: c.bg, color: c.fg, fontSize: "11px", fontWeight: 700, borderRadius: "5px" }}>{order.stageName ?? order.status}</span>
+            <span title={`Live production stage${order.stageName ? ` — ${order.stageName}` : ""}`} style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11.5px", fontWeight: 600, color: "var(--preview-text)" }}>
+              <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: c.fg, flexShrink: 0 }} />
+              {order.stageName ?? order.status}
+            </span>
           ); })()}
         </td>
         <td style={td}>
-          <span style={{ padding: "2px 8px", background: PAY_COLORS[order.payment].bg, color: PAY_COLORS[order.payment].fg, fontSize: "11px", fontWeight: 700, borderRadius: "5px" }}>{order.payment}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "11.5px", fontWeight: 600, color: "var(--preview-text)" }}>
+            <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: PAY_COLORS[order.payment].fg, flexShrink: 0 }} />
+            {order.payment}
+          </span>
         </td>
         <td style={td}>
           <button onClick={e => { e.stopPropagation(); onView(); }} style={{ padding: "5px 10px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "11px", fontWeight: 600, cursor: "pointer" }}>↗ View</button>
@@ -413,7 +419,7 @@ function OrderRow({ order, idx = 0, expanded, onToggle, onView }: { order: Order
                 wide table scrolls horizontally. */}
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", position: "sticky", left: "20px", width: "min(1180px, calc(100vw - 360px))" }}>
               {order.lineItems.map(l => (
-                <div key={l.id} style={{ background: "#fff7ed", border: `1px solid ${ACCENT}44`, borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
+                <div key={l.id} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "10px", padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: "14px", fontWeight: 800, marginBottom: "4px" }}>
                       {l.productName}{l.materialName && <span style={{ fontSize: "11.5px", color: "#888", fontWeight: 500 }}> · {l.materialName}</span>}
@@ -434,23 +440,7 @@ function OrderRow({ order, idx = 0, expanded, onToggle, onView }: { order: Order
                   <div style={{ fontSize: "20px", fontWeight: 800, color: "#16a34a", whiteSpace: "nowrap" }}>{fmtMoney(l.extended)}</div>
                 </div>
               ))}
-              {order.attachments.length > 0 && (
-                <div style={{ padding: "2px 4px" }}>
-                  <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>Attachments ({order.attachmentsCount})</div>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    {order.attachments.slice(0, 3).map(name => (
-                      <span key={name} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 10px", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", fontSize: "11px", fontWeight: 600, borderRadius: "6px" }}>
-                        📎 {name}
-                      </span>
-                    ))}
-                    {order.attachments.length > 3 && (
-                      <span style={{ fontSize: "11px", color: "#888", padding: "3px 4px" }}>+{order.attachments.length - 3} more</span>
-                    )}
-                  </div>
-                </div>
-              )}
-              <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 4px", fontSize: "12px", color: "#666" }}>
-                <span>Quote source: <b style={{ color: ACCENT, fontFamily: "monospace" }}>{order.quoteRefId}</b> · {order.attachmentsCount} attachment{order.attachmentsCount !== 1 ? "s" : ""} · {order.shippingMethod || "Not set"}</span>
+              <div style={{ display: "flex", justifyContent: "flex-end", padding: "4px 4px 0" }}>
                 <button onClick={onView} style={{ padding: "5px 12px", background: "#0a0a0a", color: "#fff", border: "none", borderRadius: "6px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>Full details →</button>
               </div>
             </div>
@@ -576,6 +566,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
   const [showMore, setShowMore] = useState(false);
   const [moreTab, setMoreTab] = useState<"quotes" | "activity" | "files">("quotes");
   const [showPay, setShowPay] = useState(false);
+  const [showReceipt, setShowReceipt] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
   const [, startSave] = useTransition();
   const oid = order.orderId;
@@ -603,18 +594,16 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
         <button onClick={onBack} style={{ background: "transparent", border: "none", color: "#666", fontSize: "13px", cursor: "pointer", fontWeight: 500 }}>← Back to Orders</button>
         <div style={{ display: "flex", gap: "8px" }}>
-          <button style={{ ...CONTROL, fontWeight: 600 }}>📄 View Source Quote ({order.quoteRefId})</button>
           <button style={{ ...CONTROL, fontWeight: 600 }}>✎ Edit Order</button>
-          <button style={{ ...CONTROL, padding: "0 12px" }}>⋯</button>
         </div>
       </div>
 
       {/* ONE combined header — identity + customer + meta + total, all in a single card */}
-      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "13px 18px", marginBottom: "10px" }}>
+      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "11px 16px", marginBottom: "10px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "20px" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <h1 style={{ fontSize: "26px", fontWeight: 800, margin: 0, fontFamily: "monospace" }} title={`Passport ${passportCore(order.refId)} — same number rides on the quote, production card, invoice and shipping.`}>ORD-{order.refId}</h1>
+              <h1 style={{ fontSize: "21px", fontWeight: 800, margin: 0, fontFamily: "monospace" }} title={`Passport ${passportCore(order.refId)} — same number rides on the quote, production card, invoice and shipping.`}>ORD-{order.refId}</h1>
               <button style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: "13px", padding: "2px 4px" }} title="Copy full ID">⧉</button>
               <button style={{ background: "transparent", border: "none", color: "#aaa", cursor: "pointer", fontSize: "13px", padding: "2px 4px" }} title="Print order">🖨</button>
             </div>
@@ -633,8 +622,8 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
             </div>
           </div>
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Order Total</div>
-            <div style={{ fontSize: "24px", fontWeight: 800, letterSpacing: "-0.5px" }}>{fmtMoney(order.total)}</div>
+            <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em" }}>Order Total</div>
+            <div style={{ fontSize: "21px", fontWeight: 800, letterSpacing: "-0.5px" }}>{fmtMoney(order.total)}</div>
             <div style={{ fontSize: "11.5px", marginTop: "2px", color: "#16a34a", fontWeight: 700 }}>
               Received {fmtMoney(order.received)}
               {order.balanceDue > 0 && <span style={{ color: "#dc2626", marginLeft: "8px" }}>· Balance {fmtMoney(order.balanceDue)}</span>}
@@ -643,7 +632,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
         </div>
 
         {/* Inline meta row (was a separate strip) — no Fulfillment */}
-        <div style={{ display: "flex", gap: "26px", alignItems: "center", flexWrap: "wrap", marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
+        <div style={{ display: "flex", gap: "20px", alignItems: "center", flexWrap: "wrap", marginTop: "8px", paddingTop: "8px", borderTop: "1px solid var(--preview-border)" }}>
           <MetaInline icon="👤" label="Created by">
             <span style={{ display: "inline-flex", alignItems: "center", gap: "5px", fontWeight: 700 }}>
               <span style={{ width: "20px", height: "20px", borderRadius: "50%", background: order.ownerColor + "22", color: order.ownerColor, fontSize: "9px", fontWeight: 800, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{order.ownerAvatar}</span>
@@ -669,35 +658,80 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
         </div>
       </div>
 
-      {/* Payment strip — up top, buttons right here */}
-      <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "10px 18px", marginBottom: "10px", display: "flex", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "18px" }}>💰</span>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "10px", color: "#888", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>Payment</span>
-              <span style={{ padding: "2px 9px", background: payPill.bg, color: payPill.fg, fontSize: "11px", fontWeight: 800, borderRadius: "5px" }}>{order.payment}</span>
+      {/* Payment / invoice strip — figures, paid-progress bar, actions */}
+      {(() => {
+        const paidPct = order.total > 0 ? Math.min(100, Math.round((order.received / order.total) * 100)) : 0;
+        const isPaid = order.balanceDue <= 0 && order.total > 0;
+        const barColor = isPaid ? "#16a34a" : order.received > 0 ? ACCENT : "#dc2626";
+        return (
+          <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "12px 18px", marginBottom: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "18px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                <span style={{ fontSize: "18px" }}>💰</span>
+                <div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontSize: "10px", color: "#888", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em" }}>Invoice INV-{order.refId}</span>
+                    <span style={{ padding: "2px 9px", background: payPill.bg, color: payPill.fg, fontSize: "11px", fontWeight: 800, borderRadius: "5px" }}>{order.payment}</span>
+                  </div>
+                  <div style={{ fontSize: "12.5px", fontWeight: 600, marginTop: "3px", color: "#888" }}>
+                    {isPaid ? "Paid in full" : order.received > 0 ? "Partially paid" : "Awaiting payment"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Three figures */}
+              <div style={{ display: "flex", gap: "26px", marginLeft: "8px" }}>
+                <PayFigure label="Invoice total" value={fmtMoney(order.total)} />
+                <PayFigure label="Received" value={fmtMoney(order.received)} color="#16a34a" />
+                <PayFigure label="Balance due" value={fmtMoney(order.balanceDue)} color={order.balanceDue > 0 ? "#dc2626" : "#888"} />
+              </div>
+
+              <div style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
+                {order.balanceDue > 0 && (
+                  <button onClick={() => setShowPay(true)} style={{ padding: "9px 16px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>＋ Make a payment</button>
+                )}
+                {order.balanceDue > 0 && (
+                  <button style={{ padding: "9px 16px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>✉ Send payment request</button>
+                )}
+                {order.received > 0 && (
+                  <button onClick={() => setShowReceipt(true)} style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>📄 Receipt</button>
+                )}
+              </div>
             </div>
-            <div style={{ fontSize: "13px", fontWeight: 700, marginTop: "3px" }}>
-              {fmtMoney(order.received)} received of {fmtMoney(order.total)}
-              {order.balanceDue > 0 && <span style={{ color: "#dc2626" }}> · {fmtMoney(order.balanceDue)} balance due</span>}
-              {order.balanceDue === 0 && <span style={{ color: "#16a34a" }}> · paid in full</span>}
+
+            {/* Paid-progress bar */}
+            <div style={{ marginTop: "10px", display: "flex", alignItems: "center", gap: "10px" }}>
+              <div style={{ flex: 1, height: "6px", background: "var(--preview-surface-2)", borderRadius: "999px", overflow: "hidden" }}>
+                <div style={{ width: `${paidPct}%`, height: "100%", background: barColor, borderRadius: "999px", transition: "width .3s" }} />
+              </div>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: barColor, minWidth: "34px", textAlign: "right" }}>{paidPct}%</span>
             </div>
+
+            {/* Payment history — what was received, when, how */}
+            {(order.payments ?? []).length > 0 && (
+              <div style={{ marginTop: "10px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
+                <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Payment history</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                  {(order.payments ?? []).map((p, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", fontSize: "12px" }}>
+                      <span style={{ color: "#888", minWidth: "62px" }}>{p.date}</span>
+                      <span style={{ fontWeight: 600, flex: 1 }}>{p.method}{p.ref ? <span style={{ color: "#888", fontWeight: 400 }}> · {p.ref}</span> : null}</span>
+                      <span style={{ fontSize: "10px", fontWeight: 700, color: p.status === "Completed" ? "#16a34a" : p.status === "Failed" ? "#dc2626" : "#f59e0b" }}>{p.status}</span>
+                      <span style={{ fontWeight: 800, minWidth: "72px", textAlign: "right" }}>{fmtMoney(p.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
-        <div style={{ marginLeft: "auto", display: "flex", gap: "8px" }}>
-          {order.balanceDue > 0 && (
-            <button onClick={() => setShowPay(true)} style={{ padding: "9px 16px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>＋ Make a payment</button>
-          )}
-          <button style={{ padding: "9px 16px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>✉ Send payment request</button>
-          <button style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>📄 Receipt</button>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Body: LEFT main (line items + communication) | RIGHT rail (workflow + actions) */}
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 320px", gap: "14px", marginBottom: "14px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
           <LineItemsSection order={order} accountManagers={ACCOUNT_MANAGERS} productionOwners={PRODUCTION_OWNERS} />
+          <ShipmentsSection order={order} />
           <CommunicationSection order={order} />
         </div>
         {/* right rail below */}
@@ -746,6 +780,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
           onRecord={(amount, method) => { startSave(async () => { await recordPayment(oid, order.ticketRef!, amount, method); flash("Payment recorded"); }); setShowPay(false); }}
         />
       )}
+      {showReceipt && <ReceiptModal order={order} onClose={() => setShowReceipt(false)} />}
     </div>
   );
 }
@@ -774,6 +809,258 @@ function PaymentModal({ balanceDue, onClose, onRecord }: { balanceDue: number; o
   );
 }
 
+// Payment receipt — printable summary of what was received on the invoice.
+function ReceiptModal({ order, onClose }: { order: Order; onClose: () => void }) {
+  const pays = order.payments ?? [];
+  const lastMethod = pays.length ? pays[pays.length - 1].method : "—";
+  const receiptNo = `RCPT-${order.refId}`;
+
+  const printReceipt = () => {
+    const rows = pays.length
+      ? pays.map(p => `<tr><td>${p.date}</td><td>${p.method}${p.ref ? " · " + p.ref : ""}</td><td style="text-align:right">${fmtMoney(p.amount ?? 0)}</td></tr>`).join("")
+      : `<tr><td colspan="2">Payment received</td><td style="text-align:right">${fmtMoney(order.received)}</td></tr>`;
+    const html = `<!doctype html><html><head><title>${receiptNo}</title>
+      <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:640px;margin:40px auto;padding:0 24px}
+      h1{font-size:20px;margin:0}.muted{color:#777;font-size:12px}
+      table{width:100%;border-collapse:collapse;margin:20px 0}
+      td,th{padding:8px 6px;border-bottom:1px solid #eee;font-size:13px}
+      th{text-align:left;text-transform:uppercase;font-size:10px;color:#888}
+      .tot{font-size:16px;font-weight:800}</style></head><body>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div><h1>Bazaar Printing</h1><div class="muted">Payment Receipt</div></div>
+        <div style="text-align:right"><div style="font-weight:800">${receiptNo}</div><div class="muted">Invoice INV-${order.refId} · Order ORD-${order.refId}</div></div>
+      </div>
+      <div style="margin-top:18px" class="muted">Billed to</div>
+      <div style="font-weight:700">${order.company || order.contact}</div>
+      ${order.company && order.contact && order.company !== order.contact ? `<div class="muted">${order.contact}</div>` : ""}
+      <table><thead><tr><th>Date</th><th>Method</th><th style="text-align:right">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+      <div style="display:flex;justify-content:space-between;border-top:2px solid #111;padding-top:10px">
+        <span class="tot">Total received</span><span class="tot">${fmtMoney(order.received)}</span></div>
+      ${order.balanceDue > 0 ? `<div style="display:flex;justify-content:space-between;margin-top:6px;color:#c00"><span>Balance due</span><span>${fmtMoney(order.balanceDue)}</span></div>` : `<div style="margin-top:6px;color:#16a34a;font-weight:700">Paid in full — thank you.</div>`}
+      </body></html>`;
+    const w = window.open("", "_blank", "width=700,height=800");
+    if (w) { w.document.write(html); w.document.close(); w.focus(); w.print(); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "16px", padding: "22px 24px", width: "420px", maxWidth: "92vw", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+          <div>
+            <div style={{ fontSize: "16px", fontWeight: 800 }}>Payment receipt</div>
+            <div style={{ fontSize: "12px", color: "#888" }}>{receiptNo} · Invoice INV-{order.refId}</div>
+          </div>
+          <span style={{ padding: "3px 10px", background: order.balanceDue > 0 ? "#fef3c7" : "#dcfce7", color: order.balanceDue > 0 ? "#92400e" : "#166534", fontSize: "11px", fontWeight: 800, borderRadius: "6px" }}>{order.balanceDue > 0 ? "Partial" : "Paid"}</span>
+        </div>
+        <div style={{ background: "var(--preview-surface-2)", borderRadius: "10px", padding: "14px 16px", display: "flex", flexDirection: "column", gap: "8px" }}>
+          <ReceiptRow label="Billed to" value={order.company || order.contact} />
+          <ReceiptRow label="Method" value={lastMethod} />
+          <ReceiptRow label="Total received" value={fmtMoney(order.received)} strong color="#16a34a" />
+          {order.balanceDue > 0 && <ReceiptRow label="Balance due" value={fmtMoney(order.balanceDue)} strong color="#dc2626" />}
+        </div>
+        <div style={{ display: "flex", gap: "8px", marginTop: "18px" }}>
+          <button onClick={printReceipt} style={{ flex: 1, padding: "10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "9px", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>🖨 Print / Save PDF</button>
+          <button onClick={onClose} style={{ padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReceiptRow({ label, value, strong, color }: { label: string; value: string; strong?: boolean; color?: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <span style={{ fontSize: "12px", color: "#888", fontWeight: 600 }}>{label}</span>
+      <span style={{ fontSize: strong ? "14px" : "12.5px", fontWeight: strong ? 800 : 600, color: color ?? "var(--preview-text)" }}>{value}</span>
+    </div>
+  );
+}
+
+// ─── Shipments — box setup, customer notify, packing slips, label ───
+type ShipBox = { size: string; dims: string; weight: string };
+const BOX_SIZES: { name: string; dims: string }[] = [
+  { name: "Small", dims: `8" × 6" × 4"` },
+  { name: "Medium", dims: `12" × 10" × 8"` },
+  { name: "Large", dims: `16" × 12" × 10"` },
+  { name: "XL", dims: `20" × 16" × 12"` },
+  { name: "Custom", dims: "" },
+];
+const SHIP_FLOW = ["Ready to ship", "Customer notified", "Customer chose method", "Shipping paid", "Shipped"];
+
+function ShipmentsSection({ order }: { order: Order }) {
+  const [boxes, setBoxes] = useState<ShipBox[] | null>(null);
+  const [method, setMethod] = useState<"Ship (FedEx)" | "Pickup" | "Pending customer">("Pending customer");
+  const [step, setStep] = useState(0);
+  const [setup, setSetup] = useState(false);
+
+  const printPackingSlips = () => {
+    if (!boxes) return;
+    const total = boxes.length;
+    const itemRows = order.lineItems.map(l => `<tr><td>${l.productName}${l.materialName ? " · " + l.materialName : ""}</td><td style="text-align:right">${l.quantity.toLocaleString()}</td></tr>`).join("");
+    const img = order.thumbnailUrl ? `<img src="${order.thumbnailUrl}" style="width:120px;height:120px;object-fit:cover;border:1px solid #ddd;border-radius:8px"/>` : "";
+    const slips = boxes.map((b, i) => `
+      <div style="page-break-after:${i < total - 1 ? "always" : "auto"};padding:40px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div><h1 style="margin:0;font-size:22px">Bazaar Printing</h1><div style="color:#666;font-size:12px">Packing Slip</div></div>
+          <div style="text-align:right"><div style="font-size:40px;font-weight:800;line-height:1">${i + 1}/${total}</div><div style="color:#666;font-size:12px">Box ${i + 1} of ${total}</div></div>
+        </div>
+        <hr style="margin:18px 0;border:none;border-top:2px solid #111"/>
+        <div style="display:flex;justify-content:space-between">
+          <div>
+            <div style="color:#666;font-size:11px;text-transform:uppercase">Ship to</div>
+            <div style="font-weight:700;font-size:16px">${order.company || order.contact}</div>
+            ${order.company && order.contact && order.company !== order.contact ? `<div style="color:#666">${order.contact}</div>` : ""}
+            <div style="margin-top:14px;color:#666;font-size:11px;text-transform:uppercase">Order</div>
+            <div style="font-weight:700">ORD-${order.refId}</div>
+            <div style="color:#666;font-size:12px">Box size: ${b.dims || b.size}${b.weight ? " · " + b.weight + " lb" : ""}</div>
+          </div>
+          ${img}
+        </div>
+        <table style="width:100%;border-collapse:collapse;margin-top:20px">
+          <thead><tr><th style="text-align:left;border-bottom:1px solid #ddd;padding:6px;font-size:11px;color:#888">ITEM</th><th style="text-align:right;border-bottom:1px solid #ddd;padding:6px;font-size:11px;color:#888">QTY</th></tr></thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+      </div>`).join("");
+    const w = window.open("", "_blank", "width=800,height=900");
+    if (w) { w.document.write(`<!doctype html><html><head><title>Packing slips — ORD-${order.refId}</title><style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111;margin:0}td{padding:6px;font-size:13px}</style></head><body>${slips}</body></html>`); w.document.close(); w.focus(); w.print(); }
+  };
+
+  return (
+    <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "18px 20px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "10px" }}>
+        <div style={{ fontSize: "12px", fontWeight: 800, letterSpacing: "0.04em" }}>SHIPMENTS</div>
+        {boxes ? (
+          <span style={{ fontSize: "11.5px", fontWeight: 700, color: "#888" }}>{boxes.length} box{boxes.length === 1 ? "" : "es"} · {method}</span>
+        ) : (
+          <button onClick={() => { setSetup(true); }} style={{ padding: "6px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: "7px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>📦 Ready to Ship — set up</button>
+        )}
+      </div>
+
+      {!boxes ? (
+        <div style={{ fontSize: "12.5px", color: "#888" }}>No shipment yet. Click <b>Ready to Ship</b> to enter boxes &amp; sizes and notify the customer.</div>
+      ) : (
+        <>
+          {/* status flow */}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", marginBottom: "14px" }}>
+            {SHIP_FLOW.map((s, i) => (
+              <span key={s} style={{ padding: "4px 10px", borderRadius: "999px", fontSize: "11px", fontWeight: 700, background: i <= step ? "#dcfce7" : "var(--preview-surface-2)", color: i <= step ? "#166534" : "#999", border: i === step ? "1px solid #16a34a" : "1px solid transparent" }}>{i < step ? "✓ " : ""}{s}</span>
+            ))}
+          </div>
+
+          {/* boxes list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "14px" }}>
+            {boxes.map((b, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px", background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "8px" }}>
+                <span style={{ fontSize: "13px", fontWeight: 800, minWidth: "42px" }}>{i + 1}/{boxes.length}</span>
+                <span style={{ fontSize: "12.5px", fontWeight: 600 }}>📦 {b.size}</span>
+                <span style={{ fontSize: "12px", color: "#888" }}>{b.dims}{b.weight ? ` · ${b.weight} lb` : ""}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* actions */}
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button onClick={printPackingSlips} style={{ padding: "8px 13px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer" }}>🖨 Print packing slips ({boxes.length})</button>
+            <button onClick={() => alert("Shipping label generates through FedEx once the account is connected.")} style={{ padding: "8px 13px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }} title="Needs FedEx connected">🏷 Print shipping label</button>
+            <button onClick={() => setStep(s => Math.min(SHIP_FLOW.length - 1, s + 1))} style={{ padding: "8px 13px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>Advance status →</button>
+            <button onClick={() => { setBoxes(null); setStep(0); setMethod("Pending customer"); }} style={{ padding: "8px 13px", background: "transparent", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontWeight: 600, cursor: "pointer", color: "#888" }}>Reset</button>
+          </div>
+        </>
+      )}
+
+      {setup && (
+        <ShipmentSetupModal
+          contact={order.contact}
+          onClose={() => setSetup(false)}
+          onConfirm={(bx, notify) => { setBoxes(bx); setStep(notify.sms || notify.email ? 1 : 0); setMethod("Pending customer"); setSetup(false); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function ShipmentSetupModal({ contact, onClose, onConfirm }: { contact: string; onClose: () => void; onConfirm: (boxes: ShipBox[], notify: { sms: boolean; email: boolean }) => void }) {
+  const [phase, setPhase] = useState<"boxes" | "notify">("boxes");
+  const [count, setCount] = useState(1);
+  const [boxes, setBoxes] = useState<ShipBox[]>([{ size: "Medium", dims: BOX_SIZES[1].dims, weight: "" }]);
+  const [sms, setSms] = useState(true);
+  const [email, setEmail] = useState(true);
+
+  const setCountTo = (c: number) => {
+    const n = Math.max(1, Math.min(20, c));
+    setCount(n);
+    setBoxes(prev => Array.from({ length: n }, (_, i) => prev[i] ?? { size: "Medium", dims: BOX_SIZES[1].dims, weight: "" }));
+  };
+  const updateBox = (i: number, patch: Partial<ShipBox>) => setBoxes(prev => prev.map((b, k) => (k === i ? { ...b, ...patch } : b)));
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "16px", padding: "22px 24px", width: "480px", maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ fontSize: "16px", fontWeight: 800, marginBottom: "2px" }}>{phase === "boxes" ? "Ready to ship — boxes" : "Notify the customer"}</div>
+        <div style={{ fontSize: "12px", color: "#888", marginBottom: "16px" }}>{phase === "boxes" ? "How many boxes, and what size is each?" : "Send a pickup-or-ship link. If they ship, they enter their address and pay FedEx."}</div>
+
+        {phase === "boxes" ? (
+          <>
+            <label style={{ fontSize: "11px", color: "#888", fontWeight: 700, textTransform: "uppercase" }}>Number of boxes</label>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", margin: "6px 0 14px" }}>
+              <button onClick={() => setCountTo(count - 1)} style={{ width: "30px", height: "30px", borderRadius: "7px", border: "1px solid var(--preview-border)", background: "var(--preview-surface)", fontSize: "16px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>−</button>
+              <span style={{ fontSize: "16px", fontWeight: 800, minWidth: "28px", textAlign: "center" }}>{count}</span>
+              <button onClick={() => setCountTo(count + 1)} style={{ width: "30px", height: "30px", borderRadius: "7px", border: "1px solid var(--preview-border)", background: "var(--preview-surface)", fontSize: "16px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>+</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginBottom: "18px" }}>
+              {boxes.map((b, i) => (
+                <div key={i} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <span style={{ fontSize: "12px", fontWeight: 800, minWidth: "40px" }}>{i + 1}/{count}</span>
+                  <select value={b.size} onChange={e => { const s = e.target.value; const dims = BOX_SIZES.find(x => x.name === s)?.dims ?? ""; updateBox(i, { size: s, dims }); }} style={{ flex: 1, padding: "7px 9px", border: "1px solid var(--preview-border)", borderRadius: "7px", fontSize: "12.5px", background: "var(--preview-surface)", color: "var(--preview-text)" }}>
+                    {BOX_SIZES.map(s => <option key={s.name} value={s.name}>{s.name}{s.dims ? ` (${s.dims})` : ""}</option>)}
+                  </select>
+                  {b.size === "Custom" && <input value={b.dims} onChange={e => updateBox(i, { dims: e.target.value })} placeholder={`L" × W" × H"`} style={{ width: "110px", padding: "7px 9px", border: "1px solid var(--preview-border)", borderRadius: "7px", fontSize: "12px", background: "var(--preview-surface)", color: "var(--preview-text)" }} />}
+                  <input value={b.weight} onChange={e => updateBox(i, { weight: e.target.value })} placeholder="lb" style={{ width: "56px", padding: "7px 9px", border: "1px solid var(--preview-border)", borderRadius: "7px", fontSize: "12px", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={() => setPhase("notify")} style={{ flex: 1, padding: "10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "9px", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Next: notify customer →</button>
+              <button onClick={onClose} style={{ padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>Cancel</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "14px" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", border: "1px solid var(--preview-border)", borderRadius: "9px", cursor: "pointer" }}>
+                <input type="checkbox" checked={sms} onChange={e => setSms(e.target.checked)} />
+                <span style={{ fontSize: "13px", fontWeight: 600 }}>💬 Text (SMS) via JustCall</span>
+              </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 12px", border: "1px solid var(--preview-border)", borderRadius: "9px", cursor: "pointer" }}>
+                <input type="checkbox" checked={email} onChange={e => setEmail(e.target.checked)} />
+                <span style={{ fontSize: "13px", fontWeight: 600 }}>✉ Email</span>
+              </label>
+            </div>
+            <div style={{ background: "var(--preview-surface-2)", borderRadius: "9px", padding: "12px 14px", fontSize: "12px", color: "#888", marginBottom: "18px" }}>
+              Link to <b style={{ color: "var(--preview-text)" }}>{contact}</b>: choose <b style={{ color: "var(--preview-text)" }}>Pickup</b> or <b style={{ color: "var(--preview-text)" }}>Ship</b>. If ship → they enter address + pay FedEx, then it flips to <b style={{ color: "var(--preview-text)" }}>Shipping paid</b> on the board.
+              <div style={{ marginTop: "6px", fontSize: "11px" }}>⚠ Actual send + FedEx checkout activate once JustCall, email, and FedEx are connected.</div>
+            </div>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button onClick={() => onConfirm(boxes, { sms, email })} style={{ flex: 1, padding: "10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "9px", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>Create shipment{sms || email ? " & notify" : ""}</button>
+              <button onClick={() => setPhase("boxes")} style={{ padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>← Back</button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Compact figure for the invoice strip (Total / Received / Balance).
+function PayFigure({ label, value, color }: { label: string; value: string; color?: string }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1px" }}>
+      <span style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</span>
+      <span style={{ fontSize: "15px", fontWeight: 800, color: color ?? "var(--preview-text)" }}>{value}</span>
+    </div>
+  );
+}
+
 // Inline meta item for the combined header row.
 function MetaInline({ icon, label, children }: any) {
   return (
@@ -788,15 +1075,30 @@ function MetaInline({ icon, label, children }: any) {
 
 // ─── Line items — each SKU with its image, files, and people assignment ───
 function LineItemsSection({ order, accountManagers, productionOwners }: { order: Order; accountManagers: string[]; productionOwners: string[] }) {
+  // Send proofs for the whole order in one shot, or item-by-item.
+  const [sendMode, setSendMode] = useState<"together" | "separate">("together");
+  const n = order.lineItems.length;
+  const sendAll = () => alert(`Proof for all ${n} item${n === 1 ? "" : "s"} would be sent to ${order.contact} together.\n\n(Connect email / customer portal to send for real.)`);
+
   return (
     <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "18px 20px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
-        <div style={{ fontSize: "12px", fontWeight: 800, letterSpacing: "0.04em" }}>LINE ITEMS ({order.lineItems.length})</div>
-        <button style={{ padding: "5px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: "6px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>+ Upload File</button>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: "10px", flexWrap: "wrap" }}>
+        <div style={{ fontSize: "12px", fontWeight: 800, letterSpacing: "0.04em" }}>ORDER ITEMS ({n})</div>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+          {/* together vs separate */}
+          <div style={{ display: "flex", border: "1px solid var(--preview-border)", borderRadius: "7px", overflow: "hidden" }}>
+            {(["together", "separate"] as const).map(m => (
+              <button key={m} onClick={() => setSendMode(m)} style={{ padding: "5px 10px", background: sendMode === m ? ACCENT : "var(--preview-surface)", color: sendMode === m ? "#fff" : "var(--preview-text)", border: "none", fontSize: "11px", fontWeight: 700, cursor: "pointer" }}>{m === "together" ? "Send together" : "Send separately"}</button>
+            ))}
+          </div>
+          {sendMode === "together" && (
+            <button onClick={sendAll} style={{ padding: "6px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: "7px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>📤 Send all {n} for proof</button>
+          )}
+        </div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {order.lineItems.map((l, i) => (
-          <LineItemCard key={l.id} line={l} index={i} orderId={order.orderId} ticketRef={order.ticketRef} accountManagers={accountManagers} productionOwners={productionOwners} />
+          <LineItemCard key={l.id} line={l} index={i} orderId={order.orderId} ticketRef={order.ticketRef} accountManagers={accountManagers} productionOwners={productionOwners} contact={order.contact} showSend={sendMode === "separate"} />
         ))}
       </div>
 
@@ -805,6 +1107,27 @@ function LineItemsSection({ order, accountManagers, productionOwners }: { order:
     </div>
   );
 }
+
+// Which artwork layers this item needs, derived from its color mode + finishes.
+// Base CMYK is always present; White/Spot/Foil/UV appear only when the order marks them.
+// "Additional" is always available so nothing is ever blocked from upload.
+function layersFor(line: OrderLineItem): { key: string; label: string; tint: string }[] {
+  const fx = [...(line.specialEffectLabels ?? []), ...(line.finishingLabels ?? [])].join(" ").toLowerCase();
+  const out: { key: string; label: string; tint: string }[] = [{ key: "cmyk", label: "CMYK / base artwork", tint: "#4338ca" }];
+  if (line.colorMode === "Pantone" || fx.includes("spot") || fx.includes("pantone")) out.push({ key: "spot", label: "Spot / Pantone", tint: "#0891b2" });
+  if (fx.includes("white")) out.push({ key: "white", label: "White ink", tint: "#64748b" });
+  if (fx.includes("foil")) out.push({ key: "foil", label: "Foil layer", tint: "#b45309" });
+  if (fx.includes("uv")) out.push({ key: "uv", label: "Raised / spot UV", tint: "#7c3aed" });
+  out.push({ key: "additional", label: "Additional", tint: "#6b7280" });
+  return out;
+}
+
+const PROOF_STATES: Record<string, { label: string; dot: string }> = {
+  none:     { label: "Not sent",           dot: "#9ca3af" },
+  sent:     { label: "Sent — awaiting",    dot: "#f59e0b" },
+  approved: { label: "Approved",           dot: "#16a34a" },
+  changes:  { label: "Changes requested",  dot: "#dc2626" },
+};
 
 function ProductionNotes({ orderId, initial }: { orderId?: string; initial: string }) {
   const [notes, setNotes] = useState(initial);
@@ -825,16 +1148,26 @@ function ProductionNotes({ orderId, initial }: { orderId?: string; initial: stri
   );
 }
 
-function LineItemCard({ line, index, orderId, ticketRef, accountManagers, productionOwners }: { line: OrderLineItem; index: number; orderId?: string; ticketRef?: string; accountManagers: string[]; productionOwners: string[] }) {
+function LineItemCard({ line, index, orderId, ticketRef, accountManagers, productionOwners, contact, showSend }: { line: OrderLineItem; index: number; orderId?: string; ticketRef?: string; accountManagers: string[]; productionOwners: string[]; contact: string; showSend: boolean }) {
   const [am, setAm] = useState(line.accountManager ?? "");
   const [prod, setProd] = useState(line.productionOwner ?? "");
   const [savedField, setSavedField] = useState<string | null>(null);
+  const [proof, setProof] = useState<string>("none");
   const [, start] = useTransition();
   const files = line.files ?? [];
+  const layers = layersFor(line);
+  const ps = PROOF_STATES[proof];
   const saveAssign = (field: "accountManager" | "productionOwner", value: string) => {
     if (!orderId || !ticketRef) return;
     start(async () => { await assignLineItem(orderId, ticketRef, index, field, value); setSavedField(field); setTimeout(() => setSavedField(f => (f === field ? null : f)), 1500); });
   };
+  // Match an uploaded file to a layer by filename keyword; base art = anything not tagged to a layer.
+  const fileForLayer = (key: string) => {
+    if (key === "additional") return undefined;
+    if (key === "cmyk") return files.find(f => !/(white|foil|uv|spot)/i.test(f.name));
+    return files.find(f => f.name.toLowerCase().includes(key));
+  };
+
   return (
     <div style={{ background: "var(--preview-surface-2)", border: "1px solid var(--preview-border)", borderRadius: "12px", padding: "14px 16px" }}>
       <div style={{ display: "flex", gap: "14px" }}>
@@ -842,7 +1175,7 @@ function LineItemCard({ line, index, orderId, ticketRef, accountManagers, produc
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>SKU {index + 1}</div>
+              <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Item {index + 1}</div>
               <div style={{ fontSize: "15px", fontWeight: 800, marginTop: "1px" }}>{line.productName}{line.materialName && <span style={{ fontSize: "12px", color: "#888", fontWeight: 500 }}> · {line.materialName}</span>}</div>
             </div>
             <div style={{ textAlign: "right", flexShrink: 0 }}>
@@ -861,21 +1194,45 @@ function LineItemCard({ line, index, orderId, ticketRef, accountManagers, produc
         </div>
       </div>
 
-      {/* Files for THIS item */}
-      <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "10px" }}>
-        {files.length === 0 ? (
-          <span style={{ fontSize: "11px", color: "#aaa" }}>No files on this item yet</span>
-        ) : files.map((f, k) => (
-          <span key={k} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 9px", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", fontSize: "11px", fontWeight: 600, borderRadius: "6px" }}>
-            {f.kind === "img" ? "🖼️" : "📎"} {f.name}
-          </span>
-        ))}
+      {/* Design files, one slot per finish layer this item needs */}
+      <div style={{ marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
+        <div style={{ fontSize: "10px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "7px" }}>Design files</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "7px" }}>
+          {layers.map(ly => {
+            const f = fileForLayer(ly.key);
+            return (
+              <div key={ly.key} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "7px 9px", border: "1px solid var(--preview-border)", borderRadius: "8px", background: "var(--preview-surface)" }}>
+                <span style={{ width: "8px", height: "8px", borderRadius: "2px", background: ly.tint, flexShrink: 0 }} />
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: "10.5px", fontWeight: 700, color: "var(--preview-text)" }}>{ly.label}</div>
+                  {f ? (
+                    <div style={{ fontSize: "10.5px", color: "#1e40af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f.name}>🖼️ {f.name}</div>
+                  ) : (
+                    <button style={{ background: "transparent", border: "none", padding: 0, color: "#888", fontSize: "10.5px", cursor: "pointer" }} title="Upload the file for this layer">＋ Upload</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* People assigned to THIS item */}
-      <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
+      {/* Proof status + assignment + per-item send */}
+      <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", alignItems: "flex-end", marginTop: "12px", paddingTop: "10px", borderTop: "1px solid var(--preview-border)" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+          <span style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Proof</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: ps.dot }} />
+            <select value={proof} onChange={e => setProof(e.target.value)} style={{ padding: "5px 8px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "6px", fontSize: "12px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>
+              {Object.entries(PROOF_STATES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+          </div>
+        </div>
         <PersonSelect icon="🎨" label="Account Manager" value={am} saved={savedField === "accountManager"} onChange={v => { setAm(v); saveAssign("accountManager", v); }} options={accountManagers} />
-        <PersonSelect icon="🏭" label="Production / Design" value={prod} saved={savedField === "productionOwner"} onChange={v => { setProd(v); saveAssign("productionOwner", v); }} options={productionOwners} />
+        <PersonSelect icon="🏭" label="Designer / Production" value={prod} saved={savedField === "productionOwner"} onChange={v => { setProd(v); saveAssign("productionOwner", v); }} options={productionOwners} />
+        {showSend && (
+          <button onClick={() => { setProof("sent"); alert(`Proof for “${line.productName}” would be sent to ${contact}.\n\n(Connect email / customer portal to send for real.)`); }} style={{ marginLeft: "auto", padding: "7px 12px", background: ACCENT, color: "#fff", border: "none", borderRadius: "7px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer" }}>📤 Send this proof</button>
+        )}
       </div>
     </div>
   );
