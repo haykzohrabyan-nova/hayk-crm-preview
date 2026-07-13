@@ -1306,6 +1306,7 @@ function LineItemCard({ line, index, orderId, ticketRef, productionOwners, conta
   const [prod, setProd] = useState(line.productionOwner ?? "");
   const [savedField, setSavedField] = useState<string | null>(null);
   const [proof, setProof] = useState<string>("none");
+  const [rejectNote, setRejectNote] = useState("");
   const [, start] = useTransition();
   const layers = layersFor(line);
   const ps = PROOF_STATES[proof];
@@ -1401,7 +1402,13 @@ function LineItemCard({ line, index, orderId, ticketRef, productionOwners, conta
                 {Object.entries(PROOF_STATES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
             </div>
-            {proof === "changes" && <div style={{ fontSize: "10.5px", color: "#dc2626", marginTop: "3px" }}>Customer requested changes — see notes below.</div>}
+            <div style={{ fontSize: "10px", color: "#aaa", marginTop: "3px" }}>Flips automatically when the customer approves/rejects on the proof link — manual override until that's connected.</div>
+            {proof === "changes" && (
+              <div style={{ marginTop: "6px", padding: "8px 10px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "8px" }}>
+                <div style={{ fontSize: "9.5px", color: "#b91c1c", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "3px" }}>Customer's requested changes</div>
+                <textarea value={rejectNote} onChange={e => setRejectNote(e.target.value)} placeholder="The customer's rejection reason lands here once they respond…" style={{ width: "100%", minHeight: "44px", padding: "6px 8px", border: "1px solid #fecaca", borderRadius: "6px", fontSize: "11.5px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+              </div>
+            )}
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "3px" }}>📝 Design notes (item {index + 1})</div>
