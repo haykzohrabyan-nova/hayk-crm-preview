@@ -637,14 +637,9 @@ function sourceIcon(source: string) {
 function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose: () => void; onViewFull: () => void; onEdit: (id: string) => void }) {
   return (
     <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", padding: "16px", height: "fit-content", position: "sticky", top: "16px" }}>
-      {/* Edit / Route — close via the X (no redundant Back button). */}
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", marginBottom: "12px" }}>
+      {/* Left: Quote / Route to Sales · Right: Edit next to the X */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", gap: "8px" }}>
         <div style={{ display: "flex", gap: "6px" }}>
-          <button
-            onClick={() => onEdit(lead.id)}
-            title="Edit this lead's contact info + project details"
-            style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer" }}
-          >✎ Edit</button>
           {/* Create Quote — from Qualified until the quote's actually sent. */}
           {(["Qualified", "Assigned / Claimed", "Contacted", "Working on Quote"] as Stage[]).includes(lead.stage) && (
             <a
@@ -659,23 +654,38 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
               style={{ padding: "6px 12px", fontSize: "11.5px", background: ACCENT, border: "none", borderRadius: "8px", color: "#fff", fontWeight: 700, cursor: "pointer" }}
             >Route to Sales</button>
           )}
+        </div>
+        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          <button
+            onClick={() => onEdit(lead.id)}
+            title="Edit this lead's contact info + project details"
+            style={{ padding: "6px 12px", fontSize: "11.5px", background: "var(--preview-chip-bg-strong)", border: "1px solid var(--preview-chip-border)", borderRadius: "8px", color: "var(--preview-text)", cursor: "pointer" }}
+          >✎ Edit</button>
           <button onClick={onClose} style={{ padding: "6px 10px", fontSize: "13px", background: "transparent", border: "none", color: "var(--preview-text-muted)", cursor: "pointer" }}>✕</button>
         </div>
       </div>
 
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
-        <div style={{ width: "44px", height: "44px", borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", color: "#fff", fontSize: "13px", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          {lead.name.split(" ").map(w => w[0]).slice(0, 2).join("")}
-        </div>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--preview-text)" }}>{lead.name}</div>
-            {lead.starred && <span style={{ color: "#fbbf24" }}>★</span>}
+      {/* Header — company on top, contact name under (show whichever exist) */}
+      {(() => {
+        const company = lead.company?.trim();
+        const contact = lead.name?.trim();
+        const top = company || contact || "—";
+        const sub = company && contact && contact !== company ? contact : "";
+        return (
+          <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "8px" }}>
+            <div style={{ width: "44px", height: "44px", borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", color: "#fff", fontSize: "13px", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {top.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase()}
+            </div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--preview-text)" }}>{top}</div>
+                {lead.starred && <span style={{ color: "#fbbf24" }}>★</span>}
+              </div>
+              {sub && <div style={{ fontSize: "12px", color: "var(--preview-text-muted)" }}>{sub}</div>}
+            </div>
           </div>
-          <div style={{ fontSize: "12px", color: "var(--preview-text-muted)" }}>{lead.company}</div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Tags row */}
       <div style={{ display: "flex", gap: "6px", marginBottom: "12px", flexWrap: "wrap" }}>
@@ -683,11 +693,11 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         <TagPill color={STAGE_COLORS[lead.stage]} label={lead.stage} filled />
       </div>
 
-      {/* Source + industry chips */}
-      <div style={{ display: "flex", gap: "10px", marginBottom: "12px", fontSize: "11.5px", color: "var(--preview-text)", flexWrap: "wrap" }}>
-        <span>{sourceIcon(lead.source)} {lead.source}</span>
-        <span>🌿 {lead.industry}</span>
-        <span>⏱ Received {lead.createdAgo}</span>
+      {/* Source + received. Industry chip dropped (no real data). */}
+      <div style={{ display: "flex", gap: "12px", marginBottom: "12px", fontSize: "11.5px", color: "var(--preview-text-muted)", flexWrap: "wrap" }}>
+        <span title="Where this lead came from">{sourceIcon(lead.source)} {lead.source} <span style={{ color: "var(--preview-text-faint)" }}>· source</span></span>
+        {lead.industry && <span>🌿 {lead.industry}</span>}
+        <span>⏱ Received {lead.pipelineAge ? `${lead.pipelineAge} ago` : lead.createdAgo}</span>
       </div>
 
       {/* Action buttons */}
