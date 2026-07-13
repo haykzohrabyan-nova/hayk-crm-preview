@@ -700,12 +700,33 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         <span>⏱ Received {lead.pipelineAge ? `${lead.pipelineAge} ago` : lead.createdAgo}</span>
       </div>
 
-      {/* Action buttons */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px", marginBottom: "14px" }}>
+      {/* Action buttons — Call / SMS / Email / Open IG (go live with JustCall + email) */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "6px", marginBottom: "12px" }}>
         <ActionBtn icon="📞" label="Call" />
         <ActionBtn icon="💬" label="SMS" />
         <ActionBtn icon="✉" label="Email" />
         <ActionBtn icon="📷" label="Open IG" />
+      </div>
+
+      {/* Contact + project interest, right under the reach-out buttons */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "14px" }}>
+        <PanelCard title="Contact Information">
+          <SmallRow icon="📱" value={lead.phone} sub="Mobile" />
+          <SmallRow icon="✉" value={lead.email} sub="Email" />
+          {lead.instagram && <SmallRow icon="📷" value={lead.instagram} sub="Instagram" />}
+          {lead.website && <SmallRow icon="🌐" value={lead.website} sub="Website" />}
+        </PanelCard>
+        <PanelCard title="Project Interest">
+          <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginBottom: "3px" }}>Products</div>
+          <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "var(--preview-text)" }}>
+            {lead.products.map(p => <li key={p}>{p}</li>)}
+          </ul>
+          {lead.estimatedQty && <MiniField label="Estimated Qty" value={`${lead.estimatedQty.toLocaleString()} units`} />}
+          {lead.timeline && <MiniField label="Timeline" value={lead.timeline} />}
+          {lead.budgetMin && <MiniField label="Budget" value={fmtRange(lead.budgetMin, lead.budgetMax!)} />}
+          <MiniField label="Artwork" value={lead.hasArtwork ? "Yes, already have" : "Not yet"} />
+          {lead.currentSupplier && <MiniField label="Current Supplier" value={lead.currentSupplier} />}
+        </PanelCard>
       </div>
 
       {/* Comms — last 3 touchpoints from the unified Inbox */}
@@ -736,29 +757,6 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         </div>
       )}
 
-      {/* Grid: Contact / Project Interest / Lead Score */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "14px", marginBottom: "14px" }}>
-        <PanelCard title="Contact Information">
-          <SmallRow icon="📱" value={lead.phone} sub="Mobile" />
-          <SmallRow icon="✉" value={lead.email} sub="Email" />
-          {lead.instagram && <SmallRow icon="📷" value={lead.instagram} sub="Instagram" />}
-          {lead.website && <SmallRow icon="🌐" value={lead.website} sub="Website" />}
-        </PanelCard>
-        <PanelCard title="Project Interest">
-          <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginBottom: "3px" }}>Products</div>
-          <ul style={{ margin: 0, paddingLeft: "16px", fontSize: "12px", color: "var(--preview-text)" }}>
-            {lead.products.map(p => <li key={p}>{p}</li>)}
-          </ul>
-          {lead.estimatedQty && <MiniField label="Estimated Qty" value={`${lead.estimatedQty.toLocaleString()} units`} />}
-          {lead.timeline && <MiniField label="Timeline" value={lead.timeline} />}
-          {lead.budgetMin && <MiniField label="Budget" value={fmtRange(lead.budgetMin, lead.budgetMax!)} />}
-          <MiniField label="Artwork" value={lead.hasArtwork ? "Yes, already have" : "Not yet"} />
-          {lead.currentSupplier && <MiniField label="Current Supplier" value={lead.currentSupplier} />}
-        </PanelCard>
-      </div>
-
-      {/* Lead Score removed — placeholder until real scoring exists. */}
-
       {/* Next Action */}
       <div style={{ background: "rgba(255,93,46,0.08)", border: `1px solid ${ACCENT}44`, borderRadius: "8px", padding: "10px 12px", marginTop: "10px" }}>
         <div style={{ fontSize: "10.5px", color: ACCENT, textTransform: "uppercase", letterSpacing: "0.06em", fontWeight: 700 }}>Next Action</div>
@@ -769,14 +767,10 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
         <div style={{ fontSize: "11px", color: "var(--preview-text-muted)", marginTop: "2px" }}>{lead.nextActionDue}</div>
       </div>
 
-      {/* Big CTAs. Route to Sales lives at the top next to Quote — no dupe here. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "12px" }}>
-        <CTABtn label="Call Customer" primary />
-        <CTABtn label="✉ Send Email" />
-        <CTABtn label="📅 Schedule Follow Up" />
-        <CTABtn label="🚫 Reject Lead" danger />
-        <CTABtn label="📥 Archive Lead" />
-        <CTABtn label="✓ Mark Complete" />
+      {/* Just a small Reject Lead at the bottom. Reach-out actions live in the top
+          Call / SMS / Email / Open IG row; Quote / Route to Sales up top. */}
+      <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "14px" }}>
+        <button style={{ padding: "6px 12px", fontSize: "11.5px", fontWeight: 600, background: "transparent", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: "8px", cursor: "pointer" }}>🚫 Reject lead</button>
       </div>
 
       {/* AI Summary */}
