@@ -73,6 +73,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
     return p || null;
   });
   const [view, setView] = useState<"table" | "kanban">("table");
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const [chips, setChips] = useState<Set<ChipKey>>(() => {
     // Auto-apply chip from ?filter= URL param, so dashboard callouts can deep-link.
     if (typeof window === "undefined") return new Set();
@@ -301,7 +302,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
           </div>
 
           {view === "kanban" ? (
-            <KanbanBoard orders={filtered} boardStages={statusSel.size > 0 ? boardStages.filter(s => statusSel.has(s.name)) : boardStages.filter(s => !CLOSED_STAGES.has(s.name))} onCardClick={id => setDetailId(id)} />
+            <KanbanBoard orders={filtered} boardStages={statusSel.size > 0 ? boardStages.filter(s => statusSel.has(s.name)) : boardStages.filter(s => !CLOSED_STAGES.has(s.name))} onCardClick={id => setPreviewId(id)} />
           ) : (
           /* Orders table */
           <div style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", overflowX: "auto" }}>
@@ -339,7 +340,7 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
                     idx={i}
                     expanded={expandedId === o.refId}
                     onToggle={() => setExpandedId(expandedId === o.refId ? null : o.refId)}
-                    onView={() => setDetailId(o.refId)}
+                    onView={() => setPreviewId(o.refId)}
                   />
                 ))}
               </tbody>
@@ -348,6 +349,13 @@ export default function OrdersClient({ orders, boardStages }: { orders: Order[];
           )}
         </>
       )}
+
+      {/* Quick preview peek — opens on card/row click, before the full page */}
+      {previewId && !detailId && (() => {
+        const po = orders.find(o => o.refId === previewId);
+        if (!po) return null;
+        return <OrderPreviewModal order={po} boardStages={boardStages} onClose={() => setPreviewId(null)} onOpenFull={() => { setPreviewId(null); setDetailId(po.refId); }} />;
+      })()}
     </div>
   );
 }
@@ -618,6 +626,105 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
           </div>
         );
       })()}
+    </div>
+  );
+}
+
+// ─── Quick preview peek (opens on click, before the full page) ───────────────
+function OrderPreviewModal({ order, boardStages, onClose, onOpenFull }: { order: Order; boardStages: BoardStage[]; onClose: () => void; onOpenFull: () => void }) {
+  const [status, setStatus] = useState(order.stageName ?? order.status);
+  const [saved, setSaved] = useState<string | null>(null);
+  const [, start] = useTransition();
+  const oid = order.orderId;
+  const move = (stage: string) => { setStatus(stage); if (oid) start(async () => { await setOrderStatus(oid, stage); setSaved(stage); setTimeout(() => setSaved(s => (s === stage ? null : s)), 1500); }); };
+  const li = order.lineItems?.[0];
+  const sku = order.lineItems?.length ?? 0;
+  const qty = order.lineItems?.reduce((s, l) => s + (l.quantity || 0), 0) ?? 0;
+  const files = order.lineItems?.flatMap(l => l.files ?? []) ?? [];
+  const stg = status.toLowerCase();
+  const approval = order.stageKind === "approval" || stg.includes("approval") || stg.includes("missing info")
+    ? { label: "⏳ Awaiting approval", bg: "#fef3c7", fg: "#92400e" }
+    : /production|completed|shipped|boyd|ready to ship|finished|application/.test(stg)
+    ? { label: "✓ Approved", bg: "#dcfce7", fg: "#166534" } : null;
+  const prod = order.lineItems?.find(l => l.productionOwner)?.productionOwner;
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 120, padding: "24px" }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "16px", width: "600px", maxWidth: "96vw", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 24px 70px rgba(0,0,0,0.35)" }}>
+        {/* header */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", padding: "16px 20px", borderBottom: "1px solid var(--preview-border)" }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontFamily: "monospace", fontSize: "16px", fontWeight: 800 }}>ORD-{order.refId}</span>
+              <span style={{ fontSize: "11px", fontWeight: 700, color: order.priority === "Rush" ? "#f59e0b" : order.priority === "High" ? "#dc2626" : "#22c55e" }}>⚑ {order.priority}</span>
+              {order.pipelineAge && <span style={{ fontSize: "10.5px", color: "#888" }}>⏱ {order.pipelineAge} / {order.stageAge}</span>}
+            </div>
+            <div style={{ fontSize: "12.5px", color: "#888", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{order.company || order.contact}{order.company && order.contact && order.company !== order.contact ? ` · ${order.contact}` : ""}</div>
+          </div>
+          <button onClick={onClose} style={{ background: "transparent", border: "none", fontSize: "18px", color: "#888", cursor: "pointer" }}>✕</button>
+        </div>
+
+        {/* quick actions */}
+        <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", padding: "12px 20px", borderBottom: "1px solid var(--preview-border)" }}>
+          <button onClick={onOpenFull} style={{ padding: "8px 14px", background: ACCENT, color: "#fff", border: "none", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>Open full details →</button>
+          <button onClick={onOpenFull} style={{ padding: "8px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }} title="Set up on full details → Shipments">🚚 Ready to Ship SMS</button>
+          <button onClick={onOpenFull} style={{ padding: "8px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }} title="Packing slip on full details → Shipments">📦 Shipping slip</button>
+          <button onClick={() => alert("Order PDF export — needs the PDF generator connected.")} style={{ padding: "8px 12px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>📄 Download PDF</button>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 190px", gap: "18px", padding: "16px 20px" }}>
+          {/* left: item + files */}
+          <div>
+            <div style={{ display: "flex", gap: "12px" }}>
+              <LineThumb src={order.thumbnailUrl} alt={order.title} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: "14px", fontWeight: 800 }}>{li?.productName ?? order.title}{li?.materialName && <span style={{ fontSize: "12px", color: "#888", fontWeight: 500 }}> · {li.materialName}</span>}</div>
+                <div style={{ fontSize: "11.5px", color: "#888", marginTop: "2px" }}>qty {qty.toLocaleString()} · {sku} SKU</div>
+                <div style={{ display: "flex", gap: "5px", flexWrap: "wrap", marginTop: "6px" }}>
+                  {li?.widthIn && li?.heightIn && <Pill>Size: {li.widthIn}" × {li.heightIn}"</Pill>}
+                  {li?.sides && <Pill>Sides: {li.sides === "S1" ? "Single" : "Double"}</Pill>}
+                  {li?.colorMode && <Pill>Color: {li.colorMode}</Pill>}
+                  {(li?.finishingLabels ?? []).map(f => <Pill key={f} tone="amber">{f}</Pill>)}
+                  {(li?.specialEffectLabels ?? []).map(e => <Pill key={e} tone="purple">{e}</Pill>)}
+                </div>
+              </div>
+            </div>
+            {li?.comment && <div style={{ fontSize: "12px", color: "#666", marginTop: "10px", fontStyle: "italic" }}>“{li.comment}”</div>}
+            {files.length > 0 && (
+              <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "10px" }}>
+                {files.slice(0, 4).map((f, i) => <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: "5px", padding: "3px 9px", background: "#eff6ff", color: "#1e40af", border: "1px solid #bfdbfe", fontSize: "11px", fontWeight: 600, borderRadius: "6px" }}>{f.kind === "img" ? "🖼️" : "📎"} {f.name}</span>)}
+              </div>
+            )}
+          </div>
+
+          {/* right: status/meta */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div>
+              <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Total</div>
+              <div style={{ fontSize: "18px", fontWeight: 800 }}>{fmtMoney(order.total)}</div>
+              <div style={{ fontSize: "10.5px", fontWeight: 700, color: order.balanceDue > 0 ? "#dc2626" : "#16a34a" }}>{order.balanceDue > 0 ? `${fmtMoney(order.balanceDue)} due` : "Paid"}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Due date</div>
+              <div style={{ fontSize: "12.5px", fontWeight: 700, color: order.dueOverdue ? "#dc2626" : "var(--preview-text)" }}>{order.dueDate || "—"}</div>
+            </div>
+            {approval && <span style={{ alignSelf: "flex-start", padding: "3px 8px", background: approval.bg, color: approval.fg, fontSize: "10px", fontWeight: 800, borderRadius: "6px" }}>{approval.label}</span>}
+            <div style={{ fontSize: "11px", color: "var(--preview-text-muted)" }}>🎨 {order.accountManager || order.createdBy}{prod ? ` · 🏭 ${prod}` : ""}</div>
+          </div>
+        </div>
+
+        {/* fast stage buttons */}
+        <div style={{ padding: "0 20px 18px" }}>
+          <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "6px" }}>Move to stage {saved && <span style={{ color: "#166534" }}>✓ {saved}</span>}</div>
+          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+            {boardStages.map(s => {
+              const cur = s.name === status;
+              const c = stageColor(s.kind);
+              return <button key={s.name} onClick={() => move(s.name)} style={{ padding: "5px 10px", borderRadius: "7px", border: cur ? `1px solid ${c.fg}` : "1px solid var(--preview-border)", background: cur ? c.bg : "var(--preview-surface)", color: cur ? c.fg : "var(--preview-text)", fontSize: "11px", fontWeight: cur ? 800 : 600, cursor: "pointer" }}>{s.name}</button>;
+            })}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
