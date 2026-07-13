@@ -838,10 +838,7 @@ function DetailView({ lead, onBack }: { lead: Lead; onBack: () => void }) {
   const [addingProduct, setAddingProduct] = useState(false);
   const [newProduct, setNewProduct] = useState<{ name: string; qty: string; hasArtwork: boolean }>({ name: "", qty: "", hasArtwork: false });
 
-  const [files, setFiles] = useState<{ name: string; size: string; kind: string; caption?: string }[]>([
-    { name: "Instagram-screenshot.png", size: "612 KB", kind: "image", caption: "Original DM from customer" },
-    { name: "Reference-artwork.pdf", size: "1.4 MB", kind: "pdf", caption: "Customer's reference design" },
-  ]);
+  const [files, setFiles] = useState<{ name: string; size: string; kind: string; caption?: string }[]>([]);
 
   const [commItems, setCommItems] = useState<CommItem[]>(lead.commHistory || []);
   const addComm = (item: CommItem) => setCommItems(prev => [...prev, item]);
@@ -1970,9 +1967,9 @@ function QuickActionModal({ type, lead, onClose, onLog, onAttach }: { type: stri
     if (type === "call") onLog({ ...now, type: "call_out", body: `Called ${lead.name}.`, callSummary: body || "Call logged — no summary.", callDurationSec: 60 * 3, ...(pendingFiles.length ? { attachments: pendingFiles } : {}) });
     if (type === "sms") {
       // Actually send via Twilio (routed to your test number for safety), then log.
-      sendSms({ to: lead.phone || "", body }).then(r => {
-        onLog({ ...now, type: "sms_out", body: (body || "(empty message)") + (r.ok ? "" : `  ⚠ not sent: ${r.detail}`) });
-        alert(r.ok ? `✅ Text sent!\n${r.detail}` : `❌ Text failed\n${r.detail}`);
+      const draft = body;
+      sendSms({ to: lead.phone || "", body: draft }).then(r => {
+        onLog({ ...now, type: "sms_out", body: (draft || "(empty message)") + (r.ok ? "" : `  ⚠ not sent: ${r.detail}`) });
       });
       onClose();
       return;
