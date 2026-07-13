@@ -114,6 +114,8 @@ export interface Order {
   stageKind?: string | null;       // board column kind (normal/approval/done/exception)
   stageIndex?: number;             // index of the current stage within boardStages
   stageDates?: Record<string, string>; // stage name → date it was reached (from activity_log)
+  pipelineAge?: string;            // total time since the order was created, e.g. "6d"
+  stageAge?: string;               // time in the current stage, e.g. "16h"
   crmOrderNo?: string;             // ORD-2026-030X (real, from specs)
   quote?: QuoteRecord | null;      // the linked quote (QUO-2026-030X)
   quoteHistory?: QuoteRecord[];    // real quote records (currently the one linked quote)

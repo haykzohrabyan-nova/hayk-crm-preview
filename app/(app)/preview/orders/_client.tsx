@@ -22,6 +22,9 @@ const GOLD = "#fbbf24";
 
 // Colour a status pill by the board column's KIND so stages read distinctly
 // (green = done, amber = waiting approval, red = exception, blue = in-flight).
+// Kanban cards show the $ only once the order reaches Ready to Ship or later.
+const MONEY_STAGES = new Set(["(Boyd Only) Ready to Ship", "Shipped Customer", "Finished: Fulfilled"]);
+
 function stageColor(kind?: string | null): { bg: string; fg: string } {
   switch ((kind ?? "").toLowerCase()) {
     case "done": return { bg: "#dcfce7", fg: "#166534" };
@@ -514,16 +517,27 @@ function KanbanCard({ order, onClick }: { order: Order; onClick: () => void }) {
       gap: "4px",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span style={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: "var(--preview-text)" }}>ORD-{order.refId}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <span style={{ fontFamily: "monospace", fontSize: "11px", fontWeight: 700, color: "var(--preview-text)" }}>ORD-{order.refId}</span>
+          {order.pipelineAge && <span title={`In production ${order.pipelineAge} · in this stage ${order.stageAge}`} style={{ fontSize: "9.5px", color: "var(--preview-text-muted)", whiteSpace: "nowrap" }}>⏱ {order.pipelineAge} / {order.stageAge}</span>}
+        </div>
         <span
           title={`Priority: ${order.priority}${order.priority === "Rush" ? " — top priority" : order.priority === "High" ? " — above normal" : " — normal turnaround"}`}
           style={{ fontSize: "10px", fontWeight: 700, color: order.priority === "Rush" ? "#f59e0b" : order.priority === "High" ? "#dc2626" : "#22c55e", cursor: "help", padding: "1px 6px", background: order.priority === "Rush" ? "rgba(245,158,11,0.12)" : order.priority === "High" ? "rgba(220,38,38,0.12)" : "rgba(34,197,94,0.12)", borderRadius: "999px" }}
         >⚑ {order.priority}</span>
       </div>
-      <div style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)", lineHeight: 1.3 }}>{order.contact}</div>
-      {order.company && <div style={{ fontSize: "10.5px", color: "var(--preview-text-muted)" }}>{order.company}</div>}
+      {(() => {
+        const company = order.company?.trim();
+        const top = company || order.contact;
+        const sub = company && order.contact && order.contact !== company ? order.contact : "";
+        return (<>
+          <div style={{ fontSize: "12.5px", fontWeight: 700, color: "var(--preview-text)", lineHeight: 1.3 }}>{top}</div>
+          {sub && <div style={{ fontSize: "12.5px", fontWeight: 500, color: "var(--preview-text)", lineHeight: 1.3 }}>{sub}</div>}
+        </>);
+      })()}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "4px" }}>
-        <span style={{ fontSize: "13px", fontWeight: 800, color: "#16a34a" }}>{fmtMoney(order.total)}</span>
+        {/* $ only shows once the order reaches Ready to Ship (per Hayk). */}
+        {MONEY_STAGES.has(order.stageName ?? "") ? <span style={{ fontSize: "13px", fontWeight: 800, color: "#16a34a" }}>{fmtMoney(order.total)}</span> : <span />}
         {order.dueDate ? (
           <span style={{ fontSize: "10.5px", color: overdue ? "#dc2626" : "var(--preview-text-muted)", fontWeight: overdue ? 700 : 500 }}>
             {overdue ? "⚠ " : "📅 "}{order.dueDate}

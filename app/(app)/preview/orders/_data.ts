@@ -54,6 +54,17 @@ function colorFor(name: string | null | undefined): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length];
 }
 
+// Compact duration since an ISO timestamp: "3d" / "12h" / "40m".
+function fmtDur(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return "—";
+  const ms = now - Date.parse(iso);
+  if (!Number.isFinite(ms) || ms < 0) return "0m";
+  const h = ms / 3_600_000;
+  if (h < 1) return `${Math.max(1, Math.round(ms / 60000))}m`;
+  if (h < 24) return `${Math.round(h)}h`;
+  return `${Math.round(h / 24)}d`;
+}
+
 function fmtShort(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
@@ -495,6 +506,11 @@ export async function loadOrders(): Promise<Order[]> {
       if (act === "moved" && md.to) stageDates[String(md.to)] = fmtShort(a.created_at);
     }
     if (stageName && !stageDates[stageName] && acts.length) stageDates[stageName] = fmtShort(acts[acts.length - 1].created_at);
+    // Time in pipeline (since created) / time in current stage (since last move).
+    const lastMove = [...acts].reverse().find(a => (a.action ?? "").toLowerCase() === "moved");
+    const stageEnteredAt = lastMove?.created_at ?? o.created_at;
+    const pipelineAge = fmtDur(o.created_at);
+    const stageAge = fmtDur(stageEnteredAt);
     const timeline: TimelineEntry[] = acts.map((a) => {
       const meta = actionMeta(a.action);
       const md = (a.metadata ?? {}) as Record<string, unknown>;
@@ -549,6 +565,8 @@ export async function loadOrders(): Promise<Order[]> {
       status: bucket,
       payment: mapPayment(t),
       createdAgo: fmtRelative(o.created_at),
+      pipelineAge,
+      stageAge,
       createdDate: fmtMMDD(o.created_at),
       attachmentsCount: attachments.length,
       attachments,
