@@ -165,15 +165,16 @@ const DATE_FILTER_MAX_DAYS: Record<DateFilter, number> = { all: Infinity, "7d": 
 
 // ─── Page ────────────────────────────────────────
 // Hayk 2026-07-02 — role gate: leads hidden from accountant / designer / print-manager.
-export default function LeadsPreviewGated({ leads }: { leads: Lead[] }) {
+type TeamMember = { code: string; name: string; role: string };
+export default function LeadsPreviewGated({ leads, products = [], team = [] }: { leads: Lead[]; products?: string[]; team?: TeamMember[] }) {
   return (
     <RoleGate capability="leads-module">
-      <LeadsPreview leads={leads} />
+      <LeadsPreview leads={leads} products={products} team={team} />
     </RoleGate>
   );
 }
 
-function LeadsPreview({ leads }: { leads: Lead[] }) {
+function LeadsPreview({ leads, products = [], team = [] }: { leads: Lead[]; products?: string[]; team?: TeamMember[] }) {
   const [view, setView] = useState<"list" | "detail">("list");
   const [layout, setLayout] = useState<"table" | "kanban">("kanban");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -267,7 +268,7 @@ function LeadsPreview({ leads }: { leads: Lead[] }) {
           sdrOptions={sdrOptions}
         />
       ) : (
-        <DetailView lead={selectedLead!} onBack={() => setView("list")} />
+        <DetailView lead={selectedLead!} onBack={() => setView("list")} catalog={products} team={team} />
       )}
 
       {addOpen && (
@@ -828,7 +829,7 @@ function SidePanel({ lead, onClose, onViewFull, onEdit }: { lead: Lead; onClose:
 }
 
 // ─── Full Detail View ────────────────────────────────────────
-function DetailView({ lead, onBack }: { lead: Lead; onBack: () => void }) {
+function DetailView({ lead, onBack, catalog = [], team = [] }: { lead: Lead; onBack: () => void; catalog?: string[]; team?: TeamMember[] }) {
   // Local, mutable state so every button actually does something.
   const [tags, setTags] = useState<string[]>(lead.tags ?? []);
   const [addingTag, setAddingTag] = useState(false);
@@ -966,7 +967,10 @@ function DetailView({ lead, onBack }: { lead: Lead; onBack: () => void }) {
             ))}
             {addingProduct ? (
               <div style={{ padding: "10px", background: "var(--preview-chip-bg)", border: `1px solid ${ACCENT}55`, borderRadius: "8px" }}>
-                <input autoFocus placeholder="Product name (e.g. Labels)" value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} style={darkInp} />
+                <select autoFocus value={newProduct.name} onChange={e => setNewProduct({ ...newProduct, name: e.target.value })} style={darkInp}>
+                  <option value="">Select a product…</option>
+                  {catalog.map(p => <option key={p} value={p}>{p}</option>)}
+                </select>
                 <input placeholder="Estimated quantity (e.g. 5000)" value={newProduct.qty} onChange={e => setNewProduct({ ...newProduct, qty: e.target.value })} style={{ ...darkInp, marginTop: "6px" }} />
                 <label style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "8px", fontSize: "12px", color: "var(--preview-text)", cursor: "pointer" }}>
                   <input type="checkbox" checked={newProduct.hasArtwork} onChange={e => setNewProduct({ ...newProduct, hasArtwork: e.target.checked })} />
@@ -1061,7 +1065,7 @@ function DetailView({ lead, onBack }: { lead: Lead; onBack: () => void }) {
       <CommunicationHistory commItems={commItems} addComm={addComm} onAttach={file => setFiles([...files, file])} />
 
       {/* Modals */}
-      {modal && <QuickActionModal type={modal} lead={lead} onClose={() => setModal(null)} onLog={item => { addComm(item); setModal(null); }} onAttach={file => setFiles([...files, file])} />}
+      {modal && <QuickActionModal type={modal} lead={lead} team={team} onClose={() => setModal(null)} onLog={item => { addComm(item); setModal(null); }} onAttach={file => setFiles([...files, file])} />}
     </div>
   );
 }
@@ -1938,20 +1942,13 @@ function AICard({ label, value, band, small }: any) {
 // ─── Shared dark input style ────────────────────────────────
 const darkInp: React.CSSProperties = { width: "100%", padding: "8px 10px", background: "rgba(0,0,0,0.3)", border: "1px solid var(--preview-chip-border)", borderRadius: "6px", color: "var(--preview-text)", fontSize: "12.5px", outline: "none", boxSizing: "border-box" };
 
-const TEAM_MEMBERS = [
-  { code: "MC", name: "Manny Carlo", role: "SDR" },
-  { code: "MH", name: "Maria Hakobyan", role: "Sales Rep" },
-  { code: "GM", name: "Gary Matevosyan", role: "Sales Rep" },
-  { code: "EN", name: "Ernesto Navarro", role: "Sales Rep" },
-  { code: "DZ", name: "David Zargaryan", role: "Designer" },
-  { code: "PR", name: "Prepress Team", role: "Prepress" },
-];
 
 // ─── Quick Action Modal — Call, SMS, Email, Send Quote, Assign, Follow-up, Convert to Order, Route ─────
-function QuickActionModal({ type, lead, onClose, onLog, onAttach }: { type: string; lead: Lead; onClose: () => void; onLog: (i: CommItem) => void; onAttach: (f: any) => void }) {
+function QuickActionModal({ type, lead, team = [], onClose, onLog, onAttach }: { type: string; lead: Lead; team?: TeamMember[]; onClose: () => void; onLog: (i: CommItem) => void; onAttach: (f: any) => void }) {
+  const roster = team;
   const [body, setBody] = useState("");
   const [subject, setSubject] = useState("");
-  const [assignee, setAssignee] = useState("DZ");
+  const [assignee, setAssignee] = useState(team[0]?.code ?? "");
   const [followupDate, setFollowupDate] = useState("");
   const [quoteAmount, setQuoteAmount] = useState("");
   const [pendingFiles, setPendingFiles] = useState<any[]>([]);
@@ -1977,8 +1974,8 @@ function QuickActionModal({ type, lead, onClose, onLog, onAttach }: { type: stri
     if (type === "email") onLog({ ...now, type: "email_out", subject: subject || "(no subject)", body: body || "(no body)", ...(pendingFiles.length ? { attachments: pendingFiles } : {}) });
     if (type === "quote") onLog({ ...now, type: "email_out", subject: `Quote #Q-${Date.now().toString().slice(-4)} · ${lead.name}`, body: `Sent quote for ${quoteAmount || "amount TBD"}. ${body}`, attachments: [{ name: `QO-2026-${Date.now().toString().slice(-4)}.pdf`, size: "246 KB", kind: "pdf" }, ...pendingFiles] });
     if (type === "assign") {
-      const t = TEAM_MEMBERS.find(m => m.code === assignee);
-      onLog({ ...now, type: "note", noteAuthor: "Hayk Zohrabyan", body: `Assigned to ${t?.name} (${t?.role}). Question: ${body || "See lead notes."}` });
+      const t = roster.find(m => m.code === assignee);
+      onLog({ ...now, type: "note", noteAuthor: "Hayk Zohrabyan", body: `Assigned to ${t?.name ?? "—"}${t?.role ? ` (${t.role})` : ""}. Question: ${body || "See lead notes."}` });
     }
     if (type === "followup") onLog({ ...now, type: "note", noteAuthor: "Hayk Zohrabyan", body: `Follow-up scheduled for ${followupDate || "TBD"}. ${body}` });
     if (type === "convert") onLog({ ...now, type: "note", noteAuthor: "Hayk Zohrabyan", body: `Lead converted to order. Value: ${quoteAmount || "TBD"}. ${body}` });
@@ -2016,8 +2013,9 @@ function QuickActionModal({ type, lead, onClose, onLog, onAttach }: { type: stri
         {type === "assign" && (
           <div style={{ marginBottom: "10px" }}>
             <label style={darkLabel}>Assign to</label>
+            {roster.length === 0 && <div style={{ fontSize: "12px", color: "var(--preview-text-muted)", marginTop: "6px" }}>No team members added yet — real users appear here once they're in the system.</div>}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "6px" }}>
-              {TEAM_MEMBERS.map(m => {
+              {roster.map(m => {
                 const on = assignee === m.code;
                 return (
                   <label key={m.code} onClick={() => setAssignee(m.code)} style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px", borderRadius: "8px", background: on ? `${ACCENT}22` : "var(--preview-chip-bg)", border: `1px solid ${on ? ACCENT : "var(--preview-chip-bg-strong)"}`, cursor: "pointer" }}>

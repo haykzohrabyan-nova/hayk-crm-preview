@@ -3,12 +3,12 @@
 // Postgres via _data.ts and renders real leads (the top of the funnel that feeds
 // the connected orders). READ-ONLY. The big client UI lives in _client.tsx.
 
-import { loadLeads } from "./_data";
+import { loadLeads, loadProducts, loadTeam } from "./_data";
 import LeadsClient from "./_client";
 
 export const dynamic = "force-dynamic";
 
 export default async function LeadsPreviewPage() {
-  const leads = await loadLeads();
-  return <LeadsClient leads={leads} />;
+  const [leads, products, team] = await Promise.all([loadLeads(), loadProducts(), loadTeam()]);
+  return <LeadsClient leads={leads} products={products} team={team} />;
 }

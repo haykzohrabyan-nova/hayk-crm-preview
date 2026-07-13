@@ -247,3 +247,37 @@ export async function loadLeads(): Promise<Lead[]> {
     };
   });
 }
+
+// Real product catalog (for the lead "product interest" picker).
+export async function loadProducts(): Promise<string[]> {
+  const admin = createAdminClient();
+  const { data } = await admin.from("product_types").select("name").order("name");
+  return (data ?? []).map((r: { name: string | null }) => (r.name ?? "").trim()).filter(Boolean);
+}
+
+// Real team members (for Assign). Skips placeholder stub accounts with no name.
+export type TeamMember = { code: string; name: string; role: string };
+export async function loadTeam(): Promise<TeamMember[]> {
+  const admin = createAdminClient();
+  const { data: profs } = await admin.from("user_profiles").select("id, role_id, is_active").eq("is_active", true);
+  const rows = (profs ?? []) as Array<{ id: string; role_id: string | null }>;
+  if (!rows.length) return [];
+  const ids = rows.map(r => r.id);
+  const roleIds = Array.from(new Set(rows.map(r => r.role_id).filter(Boolean) as string[]));
+  const [nameRes, roleRes] = await Promise.all([
+    admin.from("profiles").select("id, full_name").in("id", ids),
+    roleIds.length ? admin.from("roles").select("id, name").in("id", roleIds) : Promise.resolve({ data: [] as Array<{ id: string; name: string | null }> }),
+  ]);
+  const nameOf = new Map<string, string>();
+  for (const p of (nameRes.data ?? []) as Array<{ id: string; full_name: string | null }>) {
+    const n = cleanName(p.full_name);
+    if (n) nameOf.set(p.id, n);
+  }
+  const roleName = new Map<string, string>();
+  for (const r of (roleRes.data ?? []) as Array<{ id: string; name: string | null }>) roleName.set(r.id, r.name ?? "");
+  const initials = (n: string) => n.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
+  return rows
+    .map(r => ({ id: r.id, name: nameOf.get(r.id) ?? "", role: r.role_id ? (roleName.get(r.role_id) ?? "") : "" }))
+    .filter(m => m.name) // real names only — no stub_*@local.invalid
+    .map(m => ({ code: initials(m.name), name: m.name, role: m.role || "Team" }));
+}
