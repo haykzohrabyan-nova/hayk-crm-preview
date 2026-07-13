@@ -565,6 +565,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
   const [moreTab, setMoreTab] = useState<"quotes" | "activity" | "files">("quotes");
   const [showPay, setShowPay] = useState(false);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [showInvoice, setShowInvoice] = useState(false);
   // Per-item design notes + one general note — shared so they roll up to the
   // right-rail summary and surface inside the communication thread.
   const [designNotes, setDesignNotes] = useState<Record<string, string>>({});
@@ -697,6 +698,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
                 {order.balanceDue > 0 && (
                   <button style={{ padding: "9px 16px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>✉ Send payment request</button>
                 )}
+                <button onClick={() => setShowInvoice(true)} style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>🧾 Invoice details</button>
                 {order.received > 0 && (
                   <button onClick={() => setShowReceipt(true)} style={{ padding: "9px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer" }}>📄 Receipt</button>
                 )}
@@ -786,6 +788,7 @@ function OrderDetail({ order, boardStages, onBack, onViewCustomerOrders }: { ord
         />
       )}
       {showReceipt && <ReceiptModal order={order} onClose={() => setShowReceipt(false)} />}
+      {showInvoice && <InvoiceModal order={order} onClose={() => setShowInvoice(false)} onReceipt={() => { setShowInvoice(false); setShowReceipt(true); }} />}
     </div>
   );
 }
@@ -877,6 +880,119 @@ function ReceiptRow({ label, value, strong, color }: { label: string; value: str
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
       <span style={{ fontSize: "12px", color: "#888", fontWeight: 600 }}>{label}</span>
       <span style={{ fontSize: strong ? "14px" : "12.5px", fontWeight: strong ? 800 : 600, color: color ?? "var(--preview-text)" }}>{value}</span>
+    </div>
+  );
+}
+
+// Full invoice detail — line items, subtotal, discount, sales tax, total, payments.
+// Tax/discount are derived from the line subtotal vs the ticket total (no discrete
+// columns exist yet); tax-exempt orders show no tax.
+function invoiceMath(order: Order) {
+  const subtotal = Math.round(order.lineItems.reduce((s, l) => s + (l.extended || 0), 0) * 100) / 100;
+  const total = order.total;
+  const taxExempt = order.payment === "Tax Exempt";
+  const diff = Math.round((total - subtotal) * 100) / 100;
+  const discount = diff < 0 ? -diff : 0;
+  const tax = !taxExempt && diff > 0 ? diff : 0;
+  const other = taxExempt && diff > 0 ? diff : 0; // e.g. shipping when exempt
+  return { subtotal, total, taxExempt, discount, tax, other };
+}
+
+function InvoiceModal({ order, onClose, onReceipt }: { order: Order; onClose: () => void; onReceipt: () => void }) {
+  const m = invoiceMath(order);
+  const printInvoice = () => {
+    const rows = order.lineItems.map(l => `<tr><td>${l.productName}${l.materialName ? " · " + l.materialName : ""}</td><td style="text-align:right">${l.quantity.toLocaleString()}</td><td style="text-align:right">${fmtMoney(l.unitPrice)}</td><td style="text-align:right">${fmtMoney(l.extended)}</td></tr>`).join("");
+    const line = (label: string, val: string, strong = false, color = "#111") => `<div style="display:flex;justify-content:space-between;padding:3px 0;${strong ? "font-weight:800;font-size:15px;border-top:2px solid #111;margin-top:6px;padding-top:8px" : "color:#555"}"><span>${label}</span><span style="color:${color}">${val}</span></div>`;
+    const html = `<!doctype html><html><head><title>Invoice INV-${order.refId}</title>
+      <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#111;max-width:680px;margin:40px auto;padding:0 24px}
+      h1{font-size:22px;margin:0}.muted{color:#777;font-size:12px}
+      table{width:100%;border-collapse:collapse;margin:20px 0}td,th{padding:8px 6px;border-bottom:1px solid #eee;font-size:13px}
+      th{text-align:left;text-transform:uppercase;font-size:10px;color:#888}</style></head><body>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start">
+        <div><h1>Bazaar Printing</h1><div class="muted">Invoice</div></div>
+        <div style="text-align:right"><div style="font-weight:800">INV-${order.refId}</div><div class="muted">Order ORD-${order.refId}</div></div>
+      </div>
+      <div style="margin-top:16px" class="muted">Billed to</div><div style="font-weight:700">${order.company || order.contact}</div>
+      ${order.company && order.contact && order.company !== order.contact ? `<div class="muted">${order.contact}</div>` : ""}
+      <table><thead><tr><th>Item</th><th style="text-align:right">Qty</th><th style="text-align:right">Unit</th><th style="text-align:right">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+      <div style="max-width:280px;margin-left:auto">
+        ${line("Subtotal", fmtMoney(m.subtotal))}
+        ${m.discount > 0 ? line("Discount", "− " + fmtMoney(m.discount), false, "#16a34a") : ""}
+        ${m.taxExempt ? line("Sales tax", "Tax exempt") : m.tax > 0 ? line("Sales tax", fmtMoney(m.tax)) : ""}
+        ${m.other > 0 ? line("Other / shipping", fmtMoney(m.other)) : ""}
+        ${line("Total", fmtMoney(m.total), true)}
+        ${line("Received", fmtMoney(order.received), false, "#16a34a")}
+        ${order.balanceDue > 0 ? line("Balance due", fmtMoney(order.balanceDue), false, "#c00") : ""}
+      </div></body></html>`;
+    const w = window.open("", "_blank", "width=740,height=900");
+    if (w) { w.document.write(html); w.document.close(); w.focus(); w.print(); }
+  };
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+      <div onClick={e => e.stopPropagation()} style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "16px", padding: "22px 24px", width: "560px", maxWidth: "94vw", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "14px" }}>
+          <div>
+            <div style={{ fontSize: "16px", fontWeight: 800 }}>Invoice INV-{order.refId}</div>
+            <div style={{ fontSize: "12px", color: "#888" }}>Order ORD-{order.refId} · {order.company || order.contact}</div>
+          </div>
+          <span style={{ padding: "3px 10px", background: order.balanceDue > 0 ? "#fef3c7" : "#dcfce7", color: order.balanceDue > 0 ? "#92400e" : "#166534", fontSize: "11px", fontWeight: 800, borderRadius: "6px" }}>{order.payment}</span>
+        </div>
+
+        {/* line items */}
+        <div style={{ border: "1px solid var(--preview-border)", borderRadius: "10px", overflow: "hidden", marginBottom: "12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 54px 74px 84px", padding: "8px 12px", background: "var(--preview-surface-2)", fontSize: "9.5px", fontWeight: 700, color: "#888", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+            <span>Item</span><span style={{ textAlign: "right" }}>Qty</span><span style={{ textAlign: "right" }}>Unit</span><span style={{ textAlign: "right" }}>Amount</span>
+          </div>
+          {order.lineItems.map(l => (
+            <div key={l.id} style={{ display: "grid", gridTemplateColumns: "1fr 54px 74px 84px", padding: "9px 12px", borderTop: "1px solid var(--preview-border)", fontSize: "12.5px", alignItems: "center" }}>
+              <span style={{ fontWeight: 600 }}>{l.productName}{l.materialName && <span style={{ color: "#888", fontWeight: 400 }}> · {l.materialName}</span>}</span>
+              <span style={{ textAlign: "right" }}>{l.quantity.toLocaleString()}</span>
+              <span style={{ textAlign: "right", color: "#888" }}>{fmtMoney(l.unitPrice)}</span>
+              <span style={{ textAlign: "right", fontWeight: 700 }}>{fmtMoney(l.extended)}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* totals */}
+        <div style={{ maxWidth: "260px", marginLeft: "auto", display: "flex", flexDirection: "column", gap: "3px", marginBottom: "16px" }}>
+          <InvRow label="Subtotal" value={fmtMoney(m.subtotal)} />
+          {m.discount > 0 && <InvRow label="Discount" value={"− " + fmtMoney(m.discount)} color="#16a34a" />}
+          {m.taxExempt ? <InvRow label="Sales tax" value="Tax exempt" color="#888" /> : m.tax > 0 ? <InvRow label="Sales tax" value={fmtMoney(m.tax)} /> : null}
+          {m.other > 0 && <InvRow label="Other / shipping" value={fmtMoney(m.other)} />}
+          <div style={{ borderTop: "2px solid var(--preview-text)", marginTop: "4px", paddingTop: "6px" }}><InvRow label="Total" value={fmtMoney(m.total)} strong /></div>
+          <InvRow label="Received" value={fmtMoney(order.received)} color="#16a34a" />
+          {order.balanceDue > 0 && <InvRow label="Balance due" value={fmtMoney(order.balanceDue)} color="#dc2626" strong />}
+        </div>
+
+        {/* payments */}
+        {(order.payments ?? []).length > 0 && (
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "5px" }}>Payments</div>
+            {(order.payments ?? []).map((p, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", padding: "2px 0" }}>
+                <span style={{ color: "#888" }}>{p.date} · {p.method}{p.ref ? ` · ${p.ref}` : ""}</span>
+                <span style={{ fontWeight: 700 }}>{fmtMoney(p.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button onClick={printInvoice} style={{ flex: 1, padding: "10px", background: ACCENT, color: "#fff", border: "none", borderRadius: "9px", fontSize: "13px", fontWeight: 700, cursor: "pointer" }}>🖨 Print invoice</button>
+          {order.received > 0 && <button onClick={onReceipt} style={{ padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>📄 Receipt</button>}
+          <button onClick={onClose} style={{ padding: "10px 14px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "9px", fontSize: "12.5px", fontWeight: 600, cursor: "pointer", color: "var(--preview-text)" }}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvRow({ label, value, strong, color }: { label: string; value: string; strong?: boolean; color?: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <span style={{ fontSize: strong ? "13px" : "12px", color: strong ? "var(--preview-text)" : "#888", fontWeight: strong ? 800 : 600 }}>{label}</span>
+      <span style={{ fontSize: strong ? "15px" : "12.5px", fontWeight: strong ? 800 : 700, color: color ?? "var(--preview-text)" }}>{value}</span>
     </div>
   );
 }
