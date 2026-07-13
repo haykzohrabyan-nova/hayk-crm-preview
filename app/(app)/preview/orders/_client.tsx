@@ -569,10 +569,10 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
   const [showReceipt, setShowReceipt] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
   const [tab, setTab] = useState<"overview" | "workflow" | "invoice" | "quotes">("overview");
-  // Per-item design notes + one general note — shared so they roll up to the
-  // right-rail summary and surface inside the communication thread.
-  const [designNotes, setDesignNotes] = useState<Record<string, string>>({});
-  const [generalNote, setGeneralNote] = useState("");
+  // Posted design notes (per item + general) — Enter posts one; they roll up to
+  // the right-rail summary and surface inside the communication thread.
+  const [designNotes, setDesignNotes] = useState<Record<string, string[]>>({});
+  const [generalNotes, setGeneralNotes] = useState<string[]>([]);
   const [saved, setSaved] = useState<string | null>(null);
   const [, startSave] = useTransition();
   const oid = order.orderId;
@@ -687,7 +687,7 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
         <div style={{ display: "flex", flexDirection: "column", gap: "14px", minWidth: 0 }}>
           <LineItemsSection order={order} productionOwners={PRODUCTION_OWNERS} designNotes={designNotes} setDesignNotes={setDesignNotes} />
           <ShipmentsSection order={order} />
-          <CommunicationSection order={order} designNotes={designNotes} generalNote={generalNote} />
+          <CommunicationSection order={order} designNotes={designNotes} generalNotes={generalNotes} />
         </div>
         {/* right rail below */}
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
@@ -699,7 +699,7 @@ function OrderDetail({ order, boardStages, relatedOrders = [], onOpenOrder, onBa
             </div>
             <button onClick={() => setTab("workflow")} style={{ marginTop: "10px", width: "100%", padding: "7px", background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "11.5px", fontWeight: 700, cursor: "pointer", color: "var(--preview-text)" }}>View full workflow →</button>
           </div>
-          <DesignNotesCard order={order} designNotes={designNotes} general={generalNote} setGeneral={setGeneralNote} />
+          <DesignNotesCard order={order} designNotes={designNotes} generalNotes={generalNotes} onAddGeneral={v => setGeneralNotes(prev => [...prev, v])} />
           <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
             <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>Actions</div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
@@ -1210,7 +1210,7 @@ function MetaInline({ icon, label, children }: any) {
 }
 
 // ─── Line items — each SKU with its image, files, and people assignment ───
-function LineItemsSection({ order, productionOwners, designNotes, setDesignNotes }: { order: Order; productionOwners: string[]; designNotes: Record<string, string>; setDesignNotes: React.Dispatch<React.SetStateAction<Record<string, string>>> }) {
+function LineItemsSection({ order, productionOwners, designNotes, setDesignNotes }: { order: Order; productionOwners: string[]; designNotes: Record<string, string[]>; setDesignNotes: React.Dispatch<React.SetStateAction<Record<string, string[]>>> }) {
   // Send proofs for the whole order in one shot, or item-by-item.
   const [sendMode, setSendMode] = useState<"together" | "separate">("together");
   const n = order.lineItems.length;
@@ -1237,7 +1237,7 @@ function LineItemsSection({ order, productionOwners, designNotes, setDesignNotes
           <LineItemCard
             key={l.id} line={l} index={i} orderId={order.orderId} ticketRef={order.ticketRef}
             productionOwners={productionOwners} contact={order.contact} showSend={sendMode === "separate"}
-            note={designNotes[l.id] ?? ""} onNote={v => setDesignNotes(prev => ({ ...prev, [l.id]: v }))}
+            notes={designNotes[l.id] ?? []} onAddNote={v => setDesignNotes(prev => ({ ...prev, [l.id]: [...(prev[l.id] ?? []), v] }))}
           />
         ))}
       </div>
@@ -1302,7 +1302,7 @@ function guessLayer(name: string): string {
   return "cmyk";
 }
 
-function LineItemCard({ line, index, orderId, ticketRef, productionOwners, contact, showSend, note, onNote }: { line: OrderLineItem; index: number; orderId?: string; ticketRef?: string; productionOwners: string[]; contact: string; showSend: boolean; note: string; onNote: (v: string) => void }) {
+function LineItemCard({ line, index, orderId, ticketRef, productionOwners, contact, showSend, notes, onAddNote }: { line: OrderLineItem; index: number; orderId?: string; ticketRef?: string; productionOwners: string[]; contact: string; showSend: boolean; notes: string[]; onAddNote: (v: string) => void }) {
   const [prod, setProd] = useState(line.productionOwner ?? "");
   const [savedField, setSavedField] = useState<string | null>(null);
   const [proof, setProof] = useState<string>("none");
@@ -1405,7 +1405,7 @@ function LineItemCard({ line, index, orderId, ticketRef, productionOwners, conta
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "3px" }}>📝 Design notes (item {index + 1})</div>
-            <textarea value={note} onChange={e => onNote(e.target.value)} placeholder="Notes for this item's artwork / proof…" style={{ width: "100%", minHeight: "56px", padding: "8px 10px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+            <NotesField notes={notes} onAdd={onAddNote} placeholder="Note for this item's artwork / proof… (Enter to post)" />
           </div>
         </div>
       </div>
@@ -1422,8 +1422,8 @@ function LineItemCard({ line, index, orderId, ticketRef, productionOwners, conta
 }
 
 // Right-rail rollup: a summary of every item's design note + one general note.
-function DesignNotesCard({ order, designNotes, general, setGeneral }: { order: Order; designNotes: Record<string, string>; general: string; setGeneral: (v: string) => void }) {
-  const perItem = order.lineItems.map((l, i) => ({ i, name: l.productName, note: (designNotes[l.id] ?? "").trim() })).filter(x => x.note);
+function DesignNotesCard({ order, designNotes, generalNotes, onAddGeneral }: { order: Order; designNotes: Record<string, string[]>; generalNotes: string[]; onAddGeneral: (v: string) => void }) {
+  const perItem = order.lineItems.map((l, i) => ({ i, name: l.productName, notes: designNotes[l.id] ?? [] })).filter(x => x.notes.length);
   return (
     <div style={{ background: "var(--preview-surface)", border: "1px solid var(--preview-border)", borderRadius: "14px", padding: "16px 18px" }}>
       <div style={{ fontSize: "10.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "10px" }}>📝 Design Notes</div>
@@ -1432,7 +1432,7 @@ function DesignNotesCard({ order, designNotes, general, setGeneral }: { order: O
           {perItem.map(x => (
             <div key={x.i} style={{ fontSize: "12px" }}>
               <span style={{ fontWeight: 700 }}>Item {x.i + 1} · {x.name}</span>
-              <div style={{ color: "var(--preview-text)", opacity: 0.85, marginTop: "1px" }}>{x.note}</div>
+              {x.notes.map((t, k) => <div key={k} style={{ color: "var(--preview-text)", opacity: 0.85, marginTop: "1px" }}>• {t}</div>)}
             </div>
           ))}
         </div>
@@ -1440,8 +1440,31 @@ function DesignNotesCard({ order, designNotes, general, setGeneral }: { order: O
         <div style={{ fontSize: "11.5px", color: "#aaa", marginBottom: "12px" }}>Per-item notes you add will summarize here.</div>
       )}
       <div style={{ fontSize: "9.5px", color: "#888", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>General note</div>
-      <textarea value={general} onChange={e => setGeneral(e.target.value)} placeholder="Anything that applies to the whole order…" style={{ width: "100%", minHeight: "50px", padding: "8px 10px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+      <NotesField notes={generalNotes} onAdd={onAddGeneral} placeholder="Note for the whole order… (Enter to post)" />
       <div style={{ fontSize: "10px", color: "#aaa", marginTop: "6px" }}>These notes also show in the communication thread below.</div>
+    </div>
+  );
+}
+
+// Post-on-Enter notes field: shows posted notes, textarea posts on Enter (Shift+Enter = newline).
+function NotesField({ notes, onAdd, placeholder }: { notes: string[]; onAdd: (v: string) => void; placeholder: string }) {
+  const [draft, setDraft] = useState("");
+  const post = () => { const t = draft.trim(); if (!t) return; onAdd(t); setDraft(""); };
+  return (
+    <div>
+      {notes.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "6px" }}>
+          {notes.map((t, i) => (
+            <div key={i} style={{ display: "flex", gap: "6px", fontSize: "12px", padding: "5px 8px", background: "var(--preview-surface-2)", borderRadius: "6px" }}>
+              <span style={{ color: "#888" }}>•</span><span style={{ color: "var(--preview-text)" }}>{t}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: "6px", alignItems: "flex-end" }}>
+        <textarea value={draft} onChange={e => setDraft(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); post(); } }} placeholder={placeholder} style={{ flex: 1, minHeight: "38px", padding: "8px 10px", border: "1px solid var(--preview-border)", borderRadius: "8px", fontSize: "12px", fontFamily: "inherit", resize: "vertical", boxSizing: "border-box", background: "var(--preview-surface)", color: "var(--preview-text)" }} />
+        <button onClick={post} disabled={!draft.trim()} style={{ padding: "8px 12px", background: draft.trim() ? ACCENT : "var(--preview-surface-2)", color: draft.trim() ? "#fff" : "#aaa", border: "none", borderRadius: "8px", fontSize: "12px", fontWeight: 700, cursor: draft.trim() ? "pointer" : "default" }}>Post</button>
+      </div>
     </div>
   );
 }
@@ -1468,15 +1491,16 @@ function LineThumb({ src, alt }: { src?: string; alt?: string }) {
 }
 
 // ─── Communication — full per-order history + send/update actions ───
-function CommunicationSection({ order, designNotes, generalNote }: { order: Order; designNotes?: Record<string, string>; generalNote?: string }) {
+function CommunicationSection({ order, designNotes, generalNotes }: { order: Order; designNotes?: Record<string, string[]>; generalNotes?: string[] }) {
   const baseComms = order.communications ?? [];
-  // Surface design notes as internal-note entries at the top of the thread.
+  // Surface posted design notes as internal-note entries at the top of the thread.
   const noteEntries: CommEntry[] = [];
   order.lineItems.forEach((l, i) => {
-    const t = (designNotes?.[l.id] ?? "").trim();
-    if (t) noteEntries.push({ channel: "note", author: "Design", at: "just now", subject: `Design note · Item ${i + 1} (${l.productName})`, body: t } as CommEntry);
+    (designNotes?.[l.id] ?? []).forEach(t => {
+      noteEntries.push({ channel: "note", author: "Design", at: "just now", subject: `Design note · Item ${i + 1} (${l.productName})`, body: t } as CommEntry);
+    });
   });
-  if ((generalNote ?? "").trim()) noteEntries.push({ channel: "note", author: "Design", at: "just now", subject: "General design note", body: (generalNote ?? "").trim() } as CommEntry);
+  (generalNotes ?? []).forEach(t => noteEntries.push({ channel: "note", author: "Design", at: "just now", subject: "General design note", body: t } as CommEntry));
   const comms = [...noteEntries, ...baseComms];
   const iconFor = (c: CommEntry["channel"]) => {
     switch (c) {
