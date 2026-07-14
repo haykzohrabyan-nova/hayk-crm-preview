@@ -19,6 +19,20 @@ export async function claimLead(leadId: string): Promise<{ ok: boolean; error?: 
   return { ok: true };
 }
 
+// Move a lead to any pipeline stage (drag-and-drop on the Kanban). Writes the
+// stage label straight to leads.status — mapStage() exact-matches it back.
+export async function setLeadStage(leadId: string, stage: string): Promise<{ ok: boolean; error?: string }> {
+  const admin = createAdminClient();
+  const salesStatus = stage === "Closed Won" ? "Won" : stage === "Lost" ? "Lost" : null;
+  const patch: Record<string, unknown> = { status: stage, updated_at: new Date().toISOString() };
+  if (salesStatus) patch.sales_status = salesStatus;
+  const { error } = await admin.from("leads").update(patch).eq("id", leadId);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/preview/leads");
+  revalidatePath("/preview/sales-pipeline");
+  return { ok: true };
+}
+
 // Create a real lead: match/create the customer, insert the lead as a New Lead.
 export async function createLead(input: {
   name: string; company?: string; phone?: string; email?: string;

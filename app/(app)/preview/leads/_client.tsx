@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import { sendSms } from "../orders/_comms";
 import { commsForLead } from "../inbox/_seed";
 import { RoleGate } from "../_shared/RoleGate";
-import { searchCustomers, createLead, claimLead, type CustomerHit } from "./_actions";
+import { searchCustomers, createLead, claimLead, setLeadStage, type CustomerHit } from "./_actions";
 
 const ACCENT = "#FF5D2E";
 
@@ -480,19 +480,37 @@ const KANBAN_COLUMNS: { stage: Stage; color: string }[] = [
 ];
 
 function KanbanView({ leads, selectedId, onSelect }: { leads: Lead[]; selectedId: string | null; onSelect: (id: string) => void }) {
+  const router = useRouter();
+  const [, startMove] = useTransition();
+  const [overCol, setOverCol] = useState<string | null>(null);
+  // Optimistic override so a dropped card jumps columns instantly.
+  const [moved, setMoved] = useState<Record<string, Stage>>({});
+  const stageOf = (l: Lead): Stage => moved[l.id] ?? l.stage;
+
   const byStage = useMemo(() => {
     const map: Record<string, Lead[]> = {};
     KANBAN_COLUMNS.forEach(c => { map[c.stage] = []; });
-    leads.forEach(l => { if (map[l.stage]) map[l.stage].push(l); });
+    leads.forEach(l => { const s = moved[l.id] ?? l.stage; if (map[s]) map[s].push(l); });
     return map;
-  }, [leads]);
+  }, [leads, moved]);
+
+  const drop = (leadId: string, stage: Stage) => {
+    setOverCol(null);
+    setMoved(m => ({ ...m, [leadId]: stage }));
+    startMove(async () => { await setLeadStage(leadId, stage); router.refresh(); });
+  };
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${KANBAN_COLUMNS.length}, minmax(220px, 1fr))`, gap: "10px", overflowX: "auto", paddingBottom: "6px" }}>
       {KANBAN_COLUMNS.map(col => {
         const items = byStage[col.stage] || [];
+        const isOver = overCol === col.stage;
         return (
-          <div key={col.stage} style={{ background: "var(--preview-surface)", borderRadius: "12px", border: "1px solid var(--preview-border)", padding: "10px", minHeight: "400px", display: "flex", flexDirection: "column" }}>
+          <div key={col.stage}
+            onDragOver={e => { e.preventDefault(); if (!isOver) setOverCol(col.stage); }}
+            onDragLeave={() => setOverCol(c => (c === col.stage ? null : c))}
+            onDrop={e => { e.preventDefault(); const id = e.dataTransfer.getData("text/leadId"); if (id) drop(id, col.stage); }}
+            style={{ background: isOver ? `${col.color}14` : "var(--preview-surface)", borderRadius: "12px", border: `1px solid ${isOver ? col.color : "var(--preview-border)"}`, padding: "10px", minHeight: "400px", display: "flex", flexDirection: "column", transition: "background .1s, border-color .1s" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "10px", paddingBottom: "8px", borderBottom: `2px solid ${col.color}` }}>
               <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: col.color }} />
               <div style={{ fontSize: "11.5px", fontWeight: 700, color: "var(--preview-text)", textTransform: "uppercase", letterSpacing: "0.04em" }}>{col.stage}</div>
@@ -500,7 +518,7 @@ function KanbanView({ leads, selectedId, onSelect }: { leads: Lead[]; selectedId
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "8px", overflowY: "auto", flex: 1 }}>
               {items.length === 0 && (
-                <div style={{ fontSize: "11px", color: "var(--preview-text-faint)", padding: "18px 4px", textAlign: "center", fontStyle: "italic" }}>No leads</div>
+                <div style={{ fontSize: "11px", color: "var(--preview-text-faint)", padding: "18px 4px", textAlign: "center", fontStyle: "italic" }}>{isOver ? "Drop here" : "No leads"}</div>
               )}
               {items.map(l => <KanbanCard key={l.id} lead={l} selected={l.id === selectedId} onClick={() => onSelect(l.id)} />)}
             </div>
@@ -522,11 +540,15 @@ function KanbanCard({ lead, selected, onClick }: { lead: Lead; selected: boolean
     startClaim(async () => { await claimLead(lead.id); router.refresh(); });
   };
   return (
-    <div onClick={onClick} style={{
-      background: selected ? "rgba(255,93,46,0.12)" : "var(--preview-chip-bg)",
-      border: selected ? `1px solid ${ACCENT}` : "1px solid var(--preview-border)",
-      borderRadius: "8px", padding: "9px 10px", cursor: "pointer",
-    }}>
+    <div
+      onClick={onClick}
+      draggable
+      onDragStart={e => { e.dataTransfer.setData("text/leadId", lead.id); e.dataTransfer.effectAllowed = "move"; }}
+      style={{
+        background: selected ? "rgba(255,93,46,0.12)" : "var(--preview-chip-bg)",
+        border: selected ? `1px solid ${ACCENT}` : "1px solid var(--preview-border)",
+        borderRadius: "8px", padding: "9px 10px", cursor: "grab",
+      }}>
       <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "4px" }}>
         <div style={{ width: "22px", height: "22px", borderRadius: "50%", background: "linear-gradient(135deg,#3b82f6,#8b5cf6)", color: "#fff", fontSize: "9px", fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           {lead.name.split(" ").map(w => w[0]).slice(0, 2).join("")}
