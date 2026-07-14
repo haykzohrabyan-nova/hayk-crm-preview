@@ -864,7 +864,17 @@ function DetailView({ lead, onBack, catalog = [], team = [] }: { lead: Lead; onB
   const [files, setFiles] = useState<{ name: string; size: string; kind: string; caption?: string }[]>([]);
 
   const [commItems, setCommItems] = useState<CommItem[]>(lead.commHistory || []);
-  const addComm = (item: CommItem) => setCommItems(prev => [...prev, item]);
+  const router = useRouter();
+  const [autoStage, setAutoStage] = useState<Stage | null>(null);
+  const addComm = (item: CommItem) => {
+    setCommItems(prev => [...prev, item]);
+    // Automation: first real contact (call/text/email) on a New Lead → Qualifying.
+    const contact = item.type === "call_out" || item.type === "sms_out" || item.type === "email_out";
+    if (contact && (autoStage ?? lead.stage) === "New Lead") {
+      setAutoStage("Qualifying");
+      setLeadStage(lead.id, "Qualifying").then(() => router.refresh());
+    }
+  };
 
   // Modal flags
   const [modal, setModal] = useState<null | "call" | "sms" | "email" | "quote" | "assign" | "followup" | "convert" | "route">(null);
