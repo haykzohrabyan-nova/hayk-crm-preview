@@ -1640,6 +1640,16 @@ insert into public.pages (route, display_name, icon, section, sort_order) values
   ('/completed',                    'Completed',            'PackageCheck',      'main',      7),
   ('/activity-log',                 'Activity Log',         'ClipboardList',     'main',      8),
   ('/reports',                      'Reports',              'BarChart3',         'main',      9),
+  -- Rep-facing boards (azat CRM) — added 2026-08
+  ('/my-day',                       'My Day',               'Sunrise',           'main',     10),
+  ('/tasks',                        'Tasks',                'CheckSquare',       'main',     11),
+  ('/missed-calls',                 'Missed Calls',         'PhoneMissed',       'main',     12),
+  ('/team',                         'Team',                 'Users2',            'main',     13),
+  -- Unassigned intake + pipeline boards (azat CRM) — added 2026-08
+  ('/inbox',                        'Inbox',                'Flame',             'main',     14),
+  ('/deals',                        'Deals',                'Handshake',         'main',     15),
+  -- Unified lifecycle Pipeline board (azat CRM) — added 2026-08
+  ('/pipeline',                     'Pipeline',             'GitBranch',         'main',     16),
   -- Admin sidebar entry
   ('/admin',                        'Admin Panel',          'ShieldCheck',       'admin',     0),
   -- Admin legacy sub-pages (section changed from 'admin' → 'admin-sub' in 022)
@@ -1691,6 +1701,36 @@ select r.id, p.id
 from public.roles r
 cross join public.pages p
 where r.name = 'admin'
+on conflict do nothing;
+
+-- Rep-facing boards (My Day / Tasks / Missed Calls / Team) — granted to Sales.
+-- Admin already has every page via the block above.
+insert into public.role_permissions (role_id, page_id)
+select r.id, p.id
+from public.roles r
+cross join public.pages p
+where r.name = 'sales'
+  and p.route in ('/my-day', '/tasks', '/missed-calls', '/team')
+on conflict do nothing;
+
+-- Unassigned intake inbox + pipeline boards (Inbox / Leads / Deals) — granted to
+-- SDR + Sales (they work inbound). Admin already has every page via the block above.
+insert into public.role_permissions (role_id, page_id)
+select r.id, p.id
+from public.roles r
+cross join public.pages p
+where r.name in ('sdr', 'sales')
+  and p.route in ('/inbox', '/leads', '/deals')
+on conflict do nothing;
+
+-- Unified lifecycle Pipeline board (/pipeline) — granted to SDR + Sales (they work
+-- the whole lifecycle). Admin already has every page via the block above.
+insert into public.role_permissions (role_id, page_id)
+select r.id, p.id
+from public.roles r
+cross join public.pages p
+where r.name in ('sdr', 'sales')
+  and p.route in ('/pipeline')
 on conflict do nothing;
 
 -- Accountant pages (payment review queue + order visibility)

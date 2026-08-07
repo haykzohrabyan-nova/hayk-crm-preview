@@ -23,6 +23,11 @@ function continueTargetFromRequest(request: NextRequest): string | null {
 }
 
 export async function proxy(request: NextRequest) {
+  // Local-only login bypass (development/demo). Gated by an explicit env flag —
+  // never enable in production. Lets localhost open straight into the app.
+  if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "1") {
+    return NextResponse.next({ request });
+  }
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
     // Fail closed — never bypass auth due to a missing env var.
     return new NextResponse("Service unavailable: auth is not configured.", { status: 503 });
@@ -188,7 +193,11 @@ export async function proxy(request: NextRequest) {
       }
 
       // Role-based route access (skip admin role — they get everything)
-      const universalRoutes = ["/profile", "/dashboard"];
+      // /contact/[id] is the shared Customer 360 detail page opened from Missed
+      // Calls, Communications, Inbox, and the CRM/Sales boards. It carries no data
+      // of its own — the /api/contact/[id] route enforces the real data gate — so
+      // any signed-in rep may reach the page shell.
+      const universalRoutes = ["/profile", "/dashboard", "/contact"];
       if (roleName && roleName !== "admin" && !universalRoutes.some((r) => pathname.startsWith(r))) {
         const { data: permissions } = await supabase
           .from("role_permissions")

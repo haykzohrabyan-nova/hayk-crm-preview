@@ -20,6 +20,12 @@ import {
   MessageSquareQuote,
   Bell,
   GitBranch,
+  Sunrise,
+  CheckSquare,
+  PhoneMissed,
+  Users2,
+  Flame,
+  Handshake,
   Sun,
   Moon,
   LogOut,
@@ -56,6 +62,12 @@ const ICON_MAP: Record<string, LucideIcon> = {
   MessageSquareQuote,
   Bell,
   GitBranch,
+  Sunrise,
+  CheckSquare,
+  PhoneMissed,
+  Users2,
+  Flame,
+  Handshake,
 };
 
 const COLLAPSE_KEY = "bazaar-sidebar-collapsed";

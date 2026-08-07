@@ -51,6 +51,20 @@ export type SessionResult =
 export async function requireSession(
   options?: RequireSessionOptions,
 ): Promise<SessionResult> {
+  // Local-only login bypass (development/demo). Gated by an explicit env flag.
+  // Returns a synthetic admin session so pages/APIs work without signing in.
+  if (process.env.NEXT_PUBLIC_DISABLE_AUTH === "1") {
+    return {
+      userId: "96d18012-3303-4615-8ac9-cfbc846be348",
+      roleName: "admin",
+      roleId: null,
+      fullName: "Hayk Zohrabyan",
+      allowedRoutes: [],
+      actionGrants: [],
+      errorResponse: null,
+    };
+  }
+
   const requireMfa = options?.requireMfa !== false;
   const { supabase, cookieStore } = await createServerSupabase();
   const allCookies = cookieStore.getAll();

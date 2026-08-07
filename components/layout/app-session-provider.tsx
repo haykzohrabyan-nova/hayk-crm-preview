@@ -63,7 +63,7 @@ export function AppSessionProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "SIGNED_OUT") {
+      if (event === "SIGNED_OUT" && process.env.NEXT_PUBLIC_DISABLE_AUTH !== "1") {
         window.location.assign("/login");
       }
     });

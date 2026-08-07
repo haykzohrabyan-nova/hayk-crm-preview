@@ -7,6 +7,9 @@ import {
 } from "./lib/security/content-security-policy";
 
 const nextConfig: NextConfig = {
+  // Pin the project root so Turbopack resolves deps (tailwind, etc.) from this
+  // folder — a stray lockfile in the parent workspace was misdetecting the root.
+  turbopack: { root: import.meta.dirname },
   // Using proxy.ts for session gating — do NOT add middleware.ts with auth logic.
   compress: true,
   images: {
